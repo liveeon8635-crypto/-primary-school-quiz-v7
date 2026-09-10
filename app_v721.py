@@ -745,12 +745,19 @@ def archive_student(sid:int,u:User=Depends(current_user),db:Session=Depends(get_
     db.commit()
     return {"ok":True,"studentID":student.id,"active":False,"archived":True}
 
+def school_local_iso(value):
+    """Serialize a UTC database datetime as school-local ISO-8601 (+08:00)."""
+    if not value:
+        return ""
+    aware=value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return aware.astimezone(SCHOOL_TZ).isoformat()
+
 @app.get("/teacher/audit-logs")
 def teacher_audit_logs(limit:int=80,u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"teacher")
     limit=max(1,min(limit,200))
     rows=db.scalars(select(AuditLog).where(AuditLog.school_id==u.school_id,AuditLog.user_id==u.id).order_by(AuditLog.id.desc()).limit(limit)).all()
-    return [{"id":x.id,"action":x.action,"detail":x.detail,"createdAt":x.created_at.isoformat()} for x in rows]
+    return [{"id":x.id,"action":x.action,"detail":x.detail,"createdAt":school_local_iso(x.created_at)} for x in rows]
 
 @app.post("/teacher/papers")
 def addpaper(b:PaperCreate,u:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -996,7 +1003,24 @@ def child_assignments(sid:int,u:User=Depends(current_user),db:Session=Depends(ge
     if not db.scalar(select(ParentStudent).where(ParentStudent.parent_id==u.id,ParentStudent.student_id==sid)): raise HTTPException(403,"未绑定")
     student=db.scalar(select(User).where(User.id==sid,User.school_id==u.school_id,User.role=="student"))
     if not student: raise HTTPException(404,"学生不存在")
-    rows=db.scalars(select(Assignment).join(ClassStudent,Assignment.class_id==ClassStudent.class_id).where(Assignment.school_id==u.school_id,ClassStudent.student_id==sid).order_by(Assignment.id.desc())).all()
+    # Current class assignments are visible as usual.  After a transfer/archive,
+    # also retain visibility of assignments the student actually submitted.
+    # This preserves reliable history without guessing membership for old,
+    # never-submitted assignments (the current schema has no membership history table).
+    current_ids=set(db.scalars(
+        select(Assignment.id).join(ClassStudent,Assignment.class_id==ClassStudent.class_id).where(
+            Assignment.school_id==u.school_id,ClassStudent.student_id==sid
+        )
+    ).all())
+    submitted_ids={aid for aid in db.scalars(
+        select(Submission.assignment_id).where(
+            Submission.school_id==u.school_id,Submission.student_id==sid,Submission.assignment_id.is_not(None)
+        )
+    ).all() if aid is not None}
+    visible_ids=current_ids|submitted_ids
+    rows=(db.scalars(
+        select(Assignment).where(Assignment.school_id==u.school_id,Assignment.id.in_(visible_ids)).order_by(Assignment.id.desc())
+    ).all() if visible_ids else [])
     out=[]
     for a in rows:
         p=db.scalar(select(Paper).where(Paper.id==a.paper_id,Paper.school_id==u.school_id))
