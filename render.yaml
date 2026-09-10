@@ -11,7 +11,7 @@ services:
     plan: free
     region: singapore
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app_v716:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn app_v717:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
@@ -22,3 +22,5 @@ services:
         generateValue: true
       - key: ACCESS_TOKEN_HOURS
         value: "12"
+      - key: REMEMBER_TOKEN_DAYS
+        value: "30"
