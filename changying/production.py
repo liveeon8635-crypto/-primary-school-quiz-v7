@@ -11,6 +11,11 @@ import importlib
 
 from fastapi import FastAPI
 
+from changying.domain.assignments import (
+    ASSIGNMENT_SUBMISSION_MODES,
+    assignment_mode_name,
+    assignment_status,
+)
 from changying.security.passwords import hash_password, password_ok, password_version, verify_password
 from changying.security.tokens import make_token as issue_token
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
@@ -32,6 +37,9 @@ def load_production_app() -> FastAPI:
     implementation.due_deadline_utc = due_deadline_utc
     implementation.school_local_iso = school_local_iso
     implementation._json_list = json_list
+    implementation.ASSIGNMENT_SUBMISSION_MODES = ASSIGNMENT_SUBMISSION_MODES
+    implementation.assignment_mode_name = assignment_mode_name
+    implementation.assignment_status = assignment_status
     implementation.hash_password = hash_password
     implementation.verify_password = verify_password
     implementation.password_ok = password_ok
