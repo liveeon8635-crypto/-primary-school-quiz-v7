@@ -5,41 +5,14 @@ When a newer version is promoted, update only the import below; Render can
 continue using the stable ``app:app`` start target.
 """
 
-import json
-
 import app_v924 as implementation
 
+from changying.web.pwa import build_manifest
+
 # app_v924 exposes /manifest.webmanifest but does not define MANIFEST.
-# Provide a valid PWA manifest at the stable entrypoint so the production
-# endpoint cannot fail with NameError.
-implementation.MANIFEST = json.dumps(
-    {
-        "name": "长缨辅学",
-        "short_name": "长缨辅学",
-        "id": "/",
-        "start_url": "/?source=pwa",
-        "scope": "/",
-        "display": "standalone",
-        "background_color": "#f6f7fb",
-        "theme_color": "#5362e8",
-        "icons": [
-            {
-                "src": "/icon-192.png?v=924",
-                "sizes": "192x192",
-                "type": "image/png",
-                "purpose": "any maskable",
-            },
-            {
-                "src": "/icon-512.png?v=924",
-                "sizes": "512x512",
-                "type": "image/png",
-                "purpose": "any maskable",
-            },
-        ],
-    },
-    ensure_ascii=False,
-    separators=(",", ":"),
-)
+# Keep that compatibility shim at the stable entrypoint while the legacy
+# implementation is gradually split into maintainable modules.
+implementation.MANIFEST = build_manifest(asset_version="924")
 
 app = implementation.app
 
