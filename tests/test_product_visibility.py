@@ -18,7 +18,7 @@ def test_product_visibility_routes_add_explicit_workbench_entries():
         response = client.get(path)
         assert response.status_code == 200
         assert "长缨辅学" in response.text
-        assert "教师工作台" in response.text
+        assert "实践工作台" in response.text
         assert response.headers["X-Changying-Product-UI"] == PRODUCT_SHELL_MARKER
         for header, value in NO_CACHE_HEADERS.items():
             assert response.headers[header] == value
