@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+school_quiz_v7.db
+*.sqlite
+*.sqlite3
