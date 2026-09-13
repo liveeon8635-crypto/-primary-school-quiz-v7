@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from types import ModuleType
 
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+
 from changying.domain.assignments import (
     ASSIGNMENT_SUBMISSION_MODES,
     assignment_mode_name,
@@ -34,8 +37,47 @@ from changying.security.passwords import hash_password, password_ok, password_ve
 from changying.security.tokens import make_token as issue_token
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
 from changying.utils.json_tools import json_list
-from changying.web.product_shell import install_product_shell
+from changying.web.product_shell import (
+    PRODUCT_SHELL_MARKER,
+    install_product_shell,
+    teacher_workbench_html,
+)
 from changying.web.pwa import build_manifest
+
+NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
+def install_product_visibility_routes(app: FastAPI) -> None:
+    """Add cache-safe entry points so the product UI is easy to find."""
+    if getattr(app.state, "product_visibility_routes_installed", False):
+        return
+
+    def product_response() -> HTMLResponse:
+        headers = {
+            **NO_CACHE_HEADERS,
+            "X-Changying-Product-UI": PRODUCT_SHELL_MARKER,
+        }
+        return HTMLResponse(teacher_workbench_html(), headers=headers)
+
+    @app.get("/workbench", include_in_schema=False)
+    @app.get("/new", include_in_schema=False)
+    def changying_workbench_entry():
+        return product_response()
+
+    @app.middleware("http")
+    async def product_visibility_headers(request, call_next):
+        response = await call_next(request)
+        if request.url.path in {"/", "/new", "/workbench", "/classic"}:
+            for header, value in NO_CACHE_HEADERS.items():
+                response.headers[header] = value
+            response.headers["X-Changying-Product-UI"] = PRODUCT_SHELL_MARKER
+        return response
+
+    app.state.product_visibility_routes_installed = True
 
 
 def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str) -> None:
@@ -81,6 +123,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
 
     implementation.make_token = legacy_make_token
     install_product_shell(implementation.app)
+    install_product_visibility_routes(implementation.app)
 
 
-__all__ = ["apply_legacy_compatibility"]
+__all__ = ["NO_CACHE_HEADERS", "apply_legacy_compatibility", "install_product_visibility_routes"]
