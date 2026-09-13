@@ -14,8 +14,8 @@ def test_product_shell_html_contains_brand_and_classic_entry():
 
     assert "长缨辅学" in html
     assert "教师工作台" in html
-    assert "V1.1" in html
-    assert PRODUCT_SHELL_MARKER == "changying_product_shell_v1_1"
+    assert "V1.2" in html
+    assert PRODUCT_SHELL_MARKER == "changying_product_shell_v1_2"
     assert "/classic" in html
     assert "完整系统" in html
 
@@ -31,6 +31,16 @@ def test_product_shell_reads_existing_auth_and_live_dashboard_sources():
     assert "/teacher/classes" in html
     assert "kpi-students" in html
     assert "classList" in html
+
+
+def test_product_shell_v12_contains_operating_guidance():
+    html = teacher_workbench_html()
+
+    assert "今日上课路径" in html
+    assert "运营体检" in html
+    assert "首次使用建议" in html
+    assert "STEP 01" in html
+    assert "底部" not in html or "移动端快捷入口" in html
 
 
 def test_product_shell_preserves_legacy_root_at_classic():
@@ -49,6 +59,7 @@ def test_product_shell_preserves_legacy_root_at_classic():
     assert modern.status_code == 200
     assert "长缨辅学" in modern.text
     assert "教师工作台" in modern.text
+    assert "V1.2" in modern.text
     assert "v717Token" in modern.text
     assert legacy.status_code == 200
     assert legacy.text == "legacy-home"
