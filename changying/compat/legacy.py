@@ -37,6 +37,7 @@ from changying.security.passwords import hash_password, password_ok, password_ve
 from changying.security.tokens import make_token as issue_token
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
 from changying.utils.json_tools import json_list
+from changying.web.classic_ui import install_classic_ui_patch
 from changying.web.product_shell import (
     PRODUCT_SHELL_MARKER,
     install_product_shell,
@@ -124,6 +125,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.make_token = legacy_make_token
     install_product_shell(implementation.app)
     install_product_visibility_routes(implementation.app)
+    install_classic_ui_patch(implementation.app)
 
 
 __all__ = ["NO_CACHE_HEADERS", "apply_legacy_compatibility", "install_product_visibility_routes"]
