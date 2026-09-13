@@ -15,6 +15,13 @@ from changying.domain.assignments import (
     assignment_mode_name,
     assignment_status,
 )
+from changying.domain.commercial import (
+    COMMERCIAL_PLANS,
+    FEATURE_NAMES,
+    SUBSCRIPTION_STATUS_NAMES,
+    commercial_plan,
+    effective_subscription_status,
+)
 from changying.security.passwords import hash_password, password_ok, password_version, verify_password
 from changying.security.tokens import make_token as issue_token
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
@@ -32,6 +39,11 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.ASSIGNMENT_SUBMISSION_MODES = ASSIGNMENT_SUBMISSION_MODES
     implementation.assignment_mode_name = assignment_mode_name
     implementation.assignment_status = assignment_status
+    implementation.COMMERCIAL_PLANS = COMMERCIAL_PLANS
+    implementation.SUBSCRIPTION_STATUS_NAMES = SUBSCRIPTION_STATUS_NAMES
+    implementation.FEATURE_NAMES = FEATURE_NAMES
+    implementation._commercial_plan = commercial_plan
+    implementation._effective_subscription_status = effective_subscription_status
     implementation.hash_password = hash_password
     implementation.verify_password = verify_password
     implementation.password_ok = password_ok
