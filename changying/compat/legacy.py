@@ -22,6 +22,14 @@ from changying.domain.commercial import (
     commercial_plan,
     effective_subscription_status,
 )
+from changying.domain.growth import (
+    auto_period_window,
+    calendar_week_window_utc,
+    day_window_utc,
+    discipline_streak_from_trend,
+    period_cutoff_utc,
+    progress_streak_from_trend,
+)
 from changying.security.passwords import hash_password, password_ok, password_version, verify_password
 from changying.security.tokens import make_token as issue_token
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
@@ -44,6 +52,12 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.FEATURE_NAMES = FEATURE_NAMES
     implementation._commercial_plan = commercial_plan
     implementation._effective_subscription_status = effective_subscription_status
+    implementation.period_cutoff_utc = period_cutoff_utc
+    implementation.auto_period_window = auto_period_window
+    implementation.calendar_week_window_utc = calendar_week_window_utc
+    implementation.day_window_utc = day_window_utc
+    implementation._progress_streak_from_trend = progress_streak_from_trend
+    implementation._discipline_streak_from_trend = discipline_streak_from_trend
     implementation.hash_password = hash_password
     implementation.verify_password = verify_password
     implementation.password_ok = password_ok
