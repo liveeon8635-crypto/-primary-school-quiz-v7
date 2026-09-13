@@ -126,17 +126,12 @@ CLASSIC_UI_SNIPPET = f"""
     overflow:hidden;
     background:#fff;
   }}
-  body.cy-classic-enhanced th{{
-    background:#f3f6ff !important;
-    color:#34405a;
-  }}
+  body.cy-classic-enhanced th{{background:#f3f6ff !important;color:#34405a}}
   body.cy-classic-enhanced tr:hover td{{background:#f8faff}}
   body.cy-classic-enhanced .card,
   body.cy-classic-enhanced .panel,
   body.cy-classic-enhanced .box,
-  body.cy-classic-enhanced section{{
-    border-radius:var(--cy-radius);
-  }}
+  body.cy-classic-enhanced section{{border-radius:var(--cy-radius)}}
   @media(max-width:880px){{
     .cy-workflow-panel{{left:10px;right:10px;bottom:10px;width:auto;padding:10px}}
     .cy-workflow-panel.is-collapsed .cy-workflow-grid,
@@ -169,7 +164,7 @@ CLASSIC_UI_SNIPPET = f"""
     el._cyTimer=setTimeout(function(){{el.classList.remove('is-visible');}},2200);
   }}
 
-  function norm(text){{return (text||'').replace(/\s+/g,'').toLowerCase();}}
+  function norm(text){{return (text||'').replace(/\\s+/g,'').toLowerCase();}}
   function visible(el){{
     var style=window.getComputedStyle(el);
     return style.display!=='none' && style.visibility!=='hidden' && el.offsetParent!==null;
