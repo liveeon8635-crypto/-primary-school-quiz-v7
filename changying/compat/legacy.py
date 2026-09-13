@@ -34,6 +34,7 @@ from changying.security.passwords import hash_password, password_ok, password_ve
 from changying.security.tokens import make_token as issue_token
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
 from changying.utils.json_tools import json_list
+from changying.web.product_shell import install_product_shell
 from changying.web.pwa import build_manifest
 
 
@@ -79,6 +80,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
         )
 
     implementation.make_token = legacy_make_token
+    install_product_shell(implementation.app)
 
 
 __all__ = ["apply_legacy_compatibility"]
