@@ -12,6 +12,7 @@ import importlib
 from fastapi import FastAPI
 
 from changying.security.passwords import hash_password, password_ok, password_version, verify_password
+from changying.security.tokens import make_token as issue_token
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
 from changying.utils.json_tools import json_list
 from changying.web.pwa import build_manifest
@@ -35,6 +36,23 @@ def load_production_app() -> FastAPI:
     implementation.verify_password = verify_password
     implementation.password_ok = password_ok
     implementation.password_version = password_version
+
+    # Keep the legacy module's existing JWT configuration authoritative. The
+    # extracted signer receives that configuration explicitly, so this refactor
+    # cannot create a second secret or change token lifetimes by accident.
+    def legacy_make_token(user, security, remember=False):
+        return issue_token(
+            user,
+            security,
+            remember,
+            secret=implementation.JWT_SECRET,
+            algorithm=implementation.JWT_ALG,
+            access_hours=implementation.ACCESS_HOURS,
+            remember_days=implementation.REMEMBER_DAYS,
+            password_version_fn=password_version,
+        )
+
+    implementation.make_token = legacy_make_token
     return implementation.app
 
 
