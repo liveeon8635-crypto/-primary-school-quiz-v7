@@ -11,6 +11,7 @@ import importlib
 
 from fastapi import FastAPI
 
+from changying.security.passwords import hash_password, password_ok, password_version, verify_password
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
 from changying.utils.json_tools import json_list
 from changying.web.pwa import build_manifest
@@ -22,7 +23,7 @@ ASSET_VERSION = "924"
 def load_production_app() -> FastAPI:
     implementation = importlib.import_module(PRODUCTION_MODULE)
 
-    # Compatibility shims let us migrate low-risk helpers out of the legacy
+    # Compatibility shims let us migrate contained helpers out of the legacy
     # module without rewriting the 700KB+ production file in one dangerous
     # change. Existing route functions resolve these module globals at runtime.
     implementation.MANIFEST = build_manifest(asset_version=ASSET_VERSION)
@@ -30,6 +31,10 @@ def load_production_app() -> FastAPI:
     implementation.due_deadline_utc = due_deadline_utc
     implementation.school_local_iso = school_local_iso
     implementation._json_list = json_list
+    implementation.hash_password = hash_password
+    implementation.verify_password = verify_password
+    implementation.password_ok = password_ok
+    implementation.password_version = password_version
     return implementation.app
 
 
