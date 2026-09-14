@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.testclient import TestClient
 
@@ -76,3 +77,21 @@ def test_classic_ui_patch_install_is_idempotent():
     response = TestClient(app).get("/classic")
     assert response.status_code == 200
     assert response.text.count(CLASSIC_UI_MARKER) >= 1
+
+def test_classic_ui_middleware_preserves_gzip_encoded_html():
+    app = FastAPI()
+
+    @app.get("/classic")
+    def classic():
+        return HTMLResponse("<html><body><main>legacy-compressed</main></body></html>")
+
+    app.add_middleware(GZipMiddleware, minimum_size=1)
+    install_classic_ui_patch(app)
+
+    response = TestClient(app).get("/classic", headers={"Accept-Encoding": "gzip"})
+
+    assert response.status_code == 200
+    assert response.headers["content-encoding"] == "gzip"
+    assert "legacy-compressed" in response.text
+    assert "X-Changying-Classic-UI" not in response.headers
+

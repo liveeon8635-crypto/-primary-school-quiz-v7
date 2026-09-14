@@ -267,6 +267,13 @@ def install_classic_ui_patch(app: FastAPI) -> None:
         if "text/html" not in content_type:
             return response
 
+        # GZipMiddleware may already have encoded the streaming body before this
+        # late compatibility patch sees it. Treat encoded bodies as opaque: decoding
+        # compressed bytes as UTF-8 corrupts the gzip stream and produces a blank page.
+        content_encoding = response.headers.get("content-encoding", "").strip().lower()
+        if content_encoding and content_encoding != "identity":
+            return response
+
         raw = await _body_bytes(response)
         charset = response.charset or "utf-8"
         html = raw.decode(charset, errors="replace")
