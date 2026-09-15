@@ -3,8 +3,10 @@
 The legacy database may contain more than one student row with the same display
 name and may use teaching-project names where V1 previously said "当前班级".
 This patch deliberately does not merge, delete, or rewrite production data. It
-aggregates teaching affiliations for the same stable student id and surfaces
-same-name/different-id records as candidates for human identity review.
+aggregates teaching affiliations for the same stable student id, surfaces
+same-name/different-id records as candidates for human identity review, and
+loads visible teaching memberships in parallel so mobile entry does not wait on
+one class request after another.
 """
 
 from __future__ import annotations
@@ -39,7 +41,7 @@ def patch_v1_html(html: str) -> str:
     if count != 1:
         raise RuntimeError("V1 data-quality patch: studentPosition marker not found")
 
-    load_people = """    async function loadPeople(){if(session.role==='admin'){const users=await api('/admin/users');return users.filter(x=>x.role==='student'&&x.active!==false)}if(session.role==='teacher'){const classes=await api('/teacher/classes');const byId=new Map();for(const c of classes.slice(0,30)){try{const rows=await api('/teacher/classes/'+c.id+'/students');for(const x of rows){if(x.active===false)continue;const key=String(x.id);if(!byId.has(key))byId.set(key,{...x,teachingAffiliations:[],classIDs:[]});const p=byId.get(key);if(c.name&&!p.teachingAffiliations.includes(c.name))p.teachingAffiliations.push(c.name);if(c.id&&!p.classIDs.includes(c.id))p.classIDs.push(c.id)}}catch{}}return [...byId.values()]}if(session.role==='parent')return (await api('/parent/children')).filter(x=>x.active!==false);return[{id:session.userID||session.id,name:session.name,grade:session.grade,role:'student'}]}
+    load_people = """    async function loadPeople(){if(session.role==='admin'){const users=await api('/admin/users');return users.filter(x=>x.role==='student'&&x.active!==false)}if(session.role==='teacher'){const classes=await api('/teacher/classes');const byId=new Map();const classRows=await Promise.all(classes.slice(0,30).map(async c=>{try{return{classInfo:c,students:await api('/teacher/classes/'+c.id+'/students')}}catch{return{classInfo:c,students:[]}}}));for(const item of classRows){const c=item.classInfo;for(const x of item.students){if(x.active===false)continue;const key=String(x.id);if(!byId.has(key))byId.set(key,{...x,teachingAffiliations:[],classIDs:[]});const p=byId.get(key);if(c.name&&!p.teachingAffiliations.includes(c.name))p.teachingAffiliations.push(c.name);if(c.id&&!p.classIDs.includes(c.id))p.classIDs.push(c.id)}}return [...byId.values()]}if(session.role==='parent')return (await api('/parent/children')).filter(x=>x.active!==false);return[{id:session.userID||session.id,name:session.name,grade:session.grade,role:'student'}]}
     async function workspace()"""
     html, count = _LOAD_PEOPLE.subn(lambda _match: load_people, html, count=1)
     if count != 1:
