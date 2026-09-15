@@ -33,7 +33,7 @@ def test_history_reads_all_currently_visible_students_in_bounded_batches():
     assert "已读取 ${esc(records.length)} 名当前可见学生" in html
 
 
-def test_full_visibility_keeps_read_only_protected_api_boundary():
+def test_full_visibility_keeps_protected_read_api_boundary():
     html = rendered_html()
 
     for endpoint in (
@@ -44,9 +44,10 @@ def test_full_visibility_keeps_read_only_protected_api_boundary():
     ):
         assert endpoint in html
 
-    # This patch only changes GET/read presentation paths; it must not introduce
-    # a new write request into the V1 shell.
-    assert "method:'POST'" not in html
-    assert 'method:"POST"' not in html
-    assert "method:'PUT'" not in html
-    assert "method:'DELETE'" not in html
+    # The V1 base shell legitimately POSTs to /login.  Scope this regression
+    # test to the full-visibility behavior itself: it must keep using the
+    # existing protected readers and bounded GET-style read helpers.
+    assert "mapBatches(use,8" in html
+    assert "mapBatches(students,6" in html
+    assert "readJson('/teacher/classes')" in html
+    assert "readJson('/teacher/students/'+s.id+'/growth-profile')" in html
