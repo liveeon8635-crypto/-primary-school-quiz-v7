@@ -44,8 +44,9 @@ def v1_html() -> str:
     const screen=document.getElementById('screen'), chip=document.getElementById('identityChip'), identityButton=document.getElementById('identityButton');
     const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[ch]));
     const demoStudents=[{{id:900101,name:'演示学生·小禾',grade:3,className:'演示三年级晚托班',classID:900201}},{{id:900102,name:'演示学生·小川',grade:5,className:'演示五年级周末班',classID:900202}}];
+    const demoStudentForMode=x=>identity?.mode==='school'?{{...x,className:x.grade===3?'演示三年级二班':'演示五年级一班'}}:{{...x}};
     function demoProfile(id){{
-      const student=demoStudents.find(x=>x.id===Number(id))||demoStudents[0];
+      const student=demoStudentForMode(demoStudents.find(x=>x.id===Number(id))||demoStudents[0]);
       return {{
         student:{{...student,active:true,parents:[{{id:900301,name:'演示监护人',username:'demo-parent'}}]}},
         academic:{{
@@ -54,11 +55,11 @@ def v1_html() -> str:
           recentAssignments:[{{title:'演示作业：数学巩固',subject:'数学',dueDate:'本周五',status:'待完成'}}]
         }},
         suggestions:['演示建议：先复习小数乘法计算步骤。','演示建议：下次课检查独立完成情况。'],
-        classHistory:[{{className:'演示二年级托管班',current:false}},{{className:student.className,current:true}}],
+        classHistory:[{{className:identity?.mode==='school'?'演示二年级二班':'演示二年级托管班',current:false}},{{className:student.className,current:true}}],
         timeline:[{{time:'本周',title:'演示测验记录',detail:'数学 82 分 · 已进入同一学生档案'}},{{time:'上月',title:'演示班级变化',detail:'升年级后继续使用原学生档案'}}]
       }};
     }}
-    const demoApi=url=>{{if(url==='/teacher/classes')return[{{id:900201,name:'演示三年级晚托班',grade:3,studentCount:1}},{{id:900202,name:'演示五年级周末班',grade:5,studentCount:1}}];if(url.includes('/students/')&&url.endsWith('/growth-profile'))return demoProfile(url.split('/')[3]);if(url.includes('/teacher/classes/')&&url.endsWith('/students'))return demoStudents.filter(x=>x.classID===Number(url.split('/')[3]));if(url==='/teacher/dashboard')return{{pendingSubmissions:1,avgScore:82}};return[]}};
+    const demoApi=url=>{{if(url==='/teacher/classes')return identity?.mode==='school'?[{{id:900201,name:'演示三年级二班',grade:3,studentCount:1}},{{id:900202,name:'演示五年级一班',grade:5,studentCount:1}}]:[{{id:900201,name:'演示三年级晚托班',grade:3,studentCount:1}},{{id:900202,name:'演示五年级周末班',grade:5,studentCount:1}}];if(url.includes('/students/')&&url.endsWith('/growth-profile'))return demoProfile(url.split('/')[3]);if(url.includes('/teacher/classes/')&&url.endsWith('/students'))return demoStudents.filter(x=>x.classID===Number(url.split('/')[3])).map(demoStudentForMode);if(url==='/teacher/dashboard')return{{pendingSubmissions:1,avgScore:82}};return[]}};
     const api=async(url,options={{}})=>{{if(session?.demo)return demoApi(url);const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),10000);try{{const res=await fetch(url,{{...options,headers:{{'Content-Type':'application/json',...(token?{{Authorization:'Bearer '+token}}:{{}}),...(options.headers||{{}})}},signal:controller.signal}});let body=null;try{{body=await res.json()}}catch{{}}if(!res.ok){{const error=new Error(body?.detail||'请求失败');error.status=res.status;throw error}}return body}}finally{{clearTimeout(timer)}}}};
     const toast=message=>{{const el=document.getElementById('toast');el.textContent=message;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2200)}};
     const navigate=(path)=>{{history.pushState({{}},'',path);render()}};
