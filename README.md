@@ -1,6 +1,6 @@
 # 长缨辅学
 
-长缨辅学是面向学校、教师、学生与家长的教学与运营系统。当前生产服务运行在 Render，后端为 FastAPI + SQLAlchemy，生产数据库使用 PostgreSQL。
+长缨辅学是面向小学阶段培训机构、学校、教师、学生与家长的教学系统。当前生产服务运行在 Render，后端为 FastAPI + SQLAlchemy，生产数据库使用 PostgreSQL。
 
 ## 生产入口
 
@@ -36,6 +36,10 @@ tests/                         # 单元、smoke、契约与隔离集成测试
 docs/ARCHITECTURE.md           # 模块化状态与后续路线
 render.yaml                    # Render 部署定义
 ```
+
+## 长缨辅学 V1
+
+V1 复用现有认证、学生、家长关联、班级历史、作业、成绩与成长档案接口，新增独立的机构/学校工作台及学生连续发展视图。范围和占位能力见 [docs/V1_SCOPE.md](docs/V1_SCOPE.md)。原教学系统继续保留在 `/classic`。
 
 ## 本地运行
 

@@ -25,7 +25,7 @@ def test_inject_classic_ui_preserves_original_html_and_is_idempotent():
     twice = inject_classic_ui(once)
 
     assert "<main>legacy</main>" in once
-    assert "新版工作台" in once
+    assert "长缨辅学 V1" in once
     assert "今日教学快捷入口" in once
     assert "学生管理" in once
     assert "题库组卷" in once
@@ -55,9 +55,9 @@ def test_classic_ui_middleware_enhances_only_classic_html():
     assert classic_response.status_code == 200
     assert classic_response.headers["X-Changying-Classic-UI"] == CLASSIC_UI_MARKER
     assert "legacy-home" in classic_response.text
-    assert "长缨辅学完整系统" in classic_response.text
+    assert "长缨辅学教学系统" in classic_response.text
     assert "今日教学快捷入口" in classic_response.text
-    assert "/workbench" in classic_response.text
+    assert "/v1" in classic_response.text
 
     assert api_response.status_code == 200
     assert api_response.json() == {"students": 2}
