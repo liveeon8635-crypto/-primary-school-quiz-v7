@@ -46,6 +46,7 @@ from changying.web.product_shell import (
 from changying.web.pwa import build_manifest
 from changying.web.v1 import install_v1_routes
 from changying.web.v1_data_quality import install_v1_data_quality_patch
+from changying.web.v1_operational import install_v1_operational_patch
 
 NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -129,6 +130,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_product_visibility_routes(implementation.app)
     install_classic_ui_patch(implementation.app)
     install_v1_data_quality_patch()
+    install_v1_operational_patch()
     install_v1_routes(implementation.app)
 
 
