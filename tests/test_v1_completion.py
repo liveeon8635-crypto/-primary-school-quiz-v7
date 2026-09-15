@@ -10,7 +10,8 @@ def test_completion_patch_is_idempotent_and_read_only():
     assert V1_COMPLETION_MARKER in html
     assert "cy-cmp-student-q" in html
     assert "cy-cmp-history-project" in html
-    assert "八步衔接准备度" in html
+    assert "cy-cmp-transition-readiness" in html
+    assert "STEP ${String(i+1).padStart(2,'0')}" in html
     assert "readJson('/teacher/students/'" in html
     assert "method:'POST'" not in html
     assert "method: 'POST'" not in html
