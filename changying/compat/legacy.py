@@ -49,6 +49,7 @@ from changying.web.v1_completion import install_v1_completion_patch
 from changying.web.v1_data_quality import install_v1_data_quality_patch
 from changying.web.v1_full_visibility import install_v1_full_visibility_patch
 from changying.web.v1_mastery_evidence import install_v1_mastery_evidence_patch
+from changying.web.v1_membership_visibility import install_v1_membership_visibility_patch
 from changying.web.v1_operational import install_v1_operational_patch
 from changying.web.v1_school_facts import install_v1_school_facts_patch
 
@@ -139,6 +140,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_mastery_evidence_patch()
     install_v1_school_facts_patch()
     install_v1_full_visibility_patch()
+    install_v1_membership_visibility_patch()
     install_v1_routes(implementation.app)
 
 
