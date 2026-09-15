@@ -9,9 +9,9 @@ def test_v1_mobile_kpis_stay_compact_and_leave_nav_clearance():
     assert ".kpi{padding:14px}" in html
 
 
-def test_v1_student_position_labels_do_not_merge_grade_and_class_meanings():
+def test_v1_student_position_labels_do_not_merge_grade_and_teaching_affiliation_meanings():
     html = v1_html()
     assert "档案年级：" in html
-    assert "当前班级：" in html
+    assert "当前教学归属：" in html
     assert "studentPosition(p)" in html
     assert "studentPosition(s)" in html
