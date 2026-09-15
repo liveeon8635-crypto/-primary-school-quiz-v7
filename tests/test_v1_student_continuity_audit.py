@@ -17,6 +17,14 @@ def test_teacher_people_are_aggregated_by_stable_student_id_across_classes():
     assert "return [...byId.values()]" in html
 
 
+def test_teacher_people_load_class_memberships_in_parallel_for_mobile_speed():
+    html = patch_v1_html(v1_html())
+    assert "const classRows=await Promise.all" in html
+    assert "classes.slice(0,30).map(async c=>" in html
+    assert "students:await api('/teacher/classes/'+c.id+'/students')" in html
+    assert "for(const item of classRows)" in html
+
+
 def test_same_name_different_ids_are_audited_without_auto_merge():
     html = patch_v1_html(v1_html())
     assert "duplicateNameGroups" in html
