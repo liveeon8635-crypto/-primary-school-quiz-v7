@@ -10,7 +10,7 @@ not an automatic identity rule for normal production use.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import re
 from typing import Any
@@ -46,8 +46,8 @@ def _quote(bind, identifier: str) -> str:
     return bind.dialect.identifier_preparer.quote(identifier)
 
 
-def _student_tables(bind) -> list[str]:
-    inspector = inspect(bind)
+def _student_tables(session: Session) -> list[str]:
+    inspector = inspect(session.connection())
     out: list[str] = []
     for table in inspector.get_table_names():
         names = {column["name"] for column in inspector.get_columns(table)}
@@ -57,7 +57,7 @@ def _student_tables(bind) -> list[str]:
 
 
 def _count_refs(session: Session, table: str, student_id: int) -> int:
-    bind = session.get_bind()
+    bind = session.connection()
     qtable = _quote(bind, table)
     return int(
         session.execute(
@@ -68,7 +68,7 @@ def _count_refs(session: Session, table: str, student_id: int) -> int:
 
 
 def _unique_conflicts(session: Session, table: str, keep_id: int, merge_id: int) -> list[dict[str, Any]]:
-    bind = session.get_bind()
+    bind = session.connection()
     inspector = inspect(bind)
     qtable = _quote(bind, table)
     conflicts: list[dict[str, Any]] = []
@@ -133,7 +133,7 @@ def plan_student_merge(session: Session, keep_id: int, merge_id: int, *, expecte
     target_grade = max(grades) if grades else None
     counts: dict[str, int] = {}
     conflicts: list[dict[str, Any]] = []
-    for table in _student_tables(session.get_bind()):
+    for table in _student_tables(session):
         count = _count_refs(session, table, merge_id)
         if count:
             counts[table] = count
@@ -183,7 +183,7 @@ def merge_student_records(
         }
 
     moved: dict[str, int] = {}
-    bind = session.get_bind()
+    bind = session.connection()
     for table, expected_count in plan.reference_counts.items():
         qtable = _quote(bind, table)
         result = session.execute(
@@ -224,7 +224,7 @@ def merge_student_records(
                 "school_id": plan.school_id,
                 "actor_id": actor_id,
                 "detail": detail,
-                "created_at": datetime.utcnow(),
+                "created_at": datetime.now(timezone.utc).replace(tzinfo=None),
             },
         )
 
