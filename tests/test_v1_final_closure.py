@@ -10,11 +10,12 @@ from changying.web.v1_final_closure import (
 
 FIXTURE = """<!doctype html><body>
 <script>
-let peopleLoadWarnings=[];
-const peopleLoadWarningHtml=()=>peopleLoadWarnings.length?'warning':'';
+window.__cyV1PeopleLoadWarnings=[];
 async function studentIndex(){let people=[];try{people=await loadPeople()}catch(err){}return people}
 async function workspace(){try{await loadPeople()}catch(err){if(err.status===428){location.href='/classic';return}}}
 </script>
+<script id="changying_v1_membership_reliability_v1-script"></script>
+<!-- changying_v1_membership_reliability_v1 -->
 </body>"""
 
 
@@ -56,8 +57,8 @@ def test_top_level_roster_and_workspace_failures_are_explicit():
 
     assert "学生列表读取失败：" in html
     assert "工作台读取失败：" in html
-    assert "peopleLoadWarnings=['学生列表读取失败：'" in html
-    assert "peopleLoadWarnings=['工作台读取失败：'" in html
+    assert "window.__cyV1PeopleLoadWarnings=['学生列表读取失败：'" in html
+    assert "window.__cyV1PeopleLoadWarnings=['工作台读取失败：'" in html
 
 
 def test_unexpected_browser_read_failures_offer_a_generic_retry():
