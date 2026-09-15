@@ -45,6 +45,7 @@ from changying.web.product_shell import (
 )
 from changying.web.pwa import build_manifest
 from changying.web.v1 import install_v1_routes
+from changying.web.v1_completion import install_v1_completion_patch
 from changying.web.v1_data_quality import install_v1_data_quality_patch
 from changying.web.v1_operational import install_v1_operational_patch
 
@@ -131,6 +132,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_classic_ui_patch(implementation.app)
     install_v1_data_quality_patch()
     install_v1_operational_patch()
+    install_v1_completion_patch()
     install_v1_routes(implementation.app)
 
 
