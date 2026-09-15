@@ -11,7 +11,7 @@ from __future__ import annotations
 
 
 def test_repair_loop_ready_marker() -> None:
-    """确定性断言：初始 expected 故意与 actual 不一致以触发 CI 红灯。"""
+    """确定性断言：修复后 expected 与 actual 一致，CI 转绿。"""
     actual = "repair-loop-ready"
-    expected = "intentional-ci-failure"
+    expected = "repair-loop-ready"
     assert actual == expected
