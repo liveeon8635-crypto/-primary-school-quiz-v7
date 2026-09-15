@@ -19,5 +19,5 @@ def test_repair_loop_ready_marker():
     修复阶段：将 expected 最小修复为 "repair-loop-ready"，断言通过。
     """
     actual = "repair-loop-ready"
-    expected = "intentional-ci-failure"
+    expected = "repair-loop-ready"
     assert actual == expected
