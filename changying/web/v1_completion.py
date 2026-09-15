@@ -20,11 +20,11 @@ _COMPLETION_SNIPPET = r'''
   .cy-cmp-input{flex:1 1 230px}.cy-cmp-select{flex:0 1 240px}
   .cy-cmp-count{font-size:12px;color:#667085;margin-left:auto}
   .cy-cmp-note{padding:11px 12px;border-radius:12px;background:#fff8e8;border:1px solid #f5d79a;color:#7a4a00;font-size:12px;line-height:1.6;margin-bottom:12px}
-  .cy-cmp-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
-  .cy-cmp-step{padding:13px;border:1px solid #e4e9f2;border-radius:13px;background:#fff}
+  .cy-cmp-steps{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;margin-top:12px}
+  .cy-cmp-step{padding:13px;border:1px solid #e4e9f2;border-radius:13px;background:#fff;min-height:0}
   .cy-cmp-step.done{background:#f0f9f3;border-color:#cfe8d5}.cy-cmp-step.wait{background:#fbfcfe}
   .cy-cmp-step em{font-style:normal;font-size:10px;font-weight:900;color:#2563eb}.cy-cmp-step b{display:block;margin:5px 0 4px}.cy-cmp-step small{color:#667085;line-height:1.5}
-  @media(max-width:720px){.cy-cmp-toolbar{display:grid;grid-template-columns:1fr}.cy-cmp-input,.cy-cmp-select{width:100%;min-width:0}.cy-cmp-count{margin-left:0}.cy-cmp-steps{grid-template-columns:1fr}}
+  @media(max-width:720px){.cy-cmp-toolbar{display:grid;grid-template-columns:1fr}.cy-cmp-input,.cy-cmp-select{width:100%;min-width:0}.cy-cmp-count{margin-left:0}.cy-cmp-steps{grid-template-columns:1fr!important}}
 </style>
 <script id="changying_v1_completion_v1-script">
 (()=>{
@@ -32,6 +32,7 @@ _COMPLETION_SNIPPET = r'''
   const token=()=>localStorage.getItem('v717Token')||localStorage.getItem('v6Token')||'';
   const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   async function readJson(url){const t=token();if(!t||t==='demo')throw new Error('no-real-session');const r=await fetch(url,{headers:{Authorization:'Bearer '+t}});if(!r.ok)throw new Error('read-failed-'+r.status);return await r.json()}
+  function projectText(row){const el=[...row.children].find(x=>x.tagName==='SMALL');return(el?.textContent||'').trim()}
   function studentListFilter(){
     if(location.pathname!='/v1/student'||new URLSearchParams(location.search).get('id')||document.getElementById('cy-cmp-student-filter'))return;
     const screen=document.getElementById('screen');if(!screen)return;const list=screen.querySelector('.list');if(!list)return;
@@ -42,14 +43,14 @@ _COMPLETION_SNIPPET = r'''
   function historyFilter(){
     if(location.pathname!='/v1/history'||document.getElementById('cy-cmp-history-filter'))return;
     const block=document.getElementById('cy-op-history');if(!block)return;const list=block.querySelector('.cy-op-list');if(!list)return;const rows=[...list.querySelectorAll('a.cy-op-row')];if(!rows.length)return;
-    const projects=[...new Set(rows.map(r=>(r.querySelector('small:last-child')?.textContent||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh-CN'));
+    const projects=[...new Set(rows.map(projectText).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh-CN'));
     block.querySelector('.section-head')?.insertAdjacentHTML('afterend',`<div id="cy-cmp-history-filter"><div class="cy-cmp-note">当前历史事实还没有标准化的“学年/学期”字段；本轮先对真实可见记录提供学生与教学归属筛选，不伪造学年数据。</div><div class="cy-cmp-toolbar"><input class="cy-cmp-input" id="cy-cmp-history-q" placeholder="搜索学生或教学归属" autocomplete="off"><select class="cy-cmp-select" id="cy-cmp-history-project"><option value="">全部教学归属</option>${projects.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select><span class="cy-cmp-count" id="cy-cmp-history-count"></span></div></div>`);
     const q=document.getElementById('cy-cmp-history-q'),sel=document.getElementById('cy-cmp-history-project'),count=document.getElementById('cy-cmp-history-count');
-    const apply=()=>{const term=(q.value||'').trim().toLowerCase(),project=sel.value;let visible=0;rows.forEach(row=>{const text=row.textContent.toLowerCase(),p=(row.querySelector('small:last-child')?.textContent||'').trim();const ok=(!term||text.includes(term))&&(!project||p===project);row.hidden=!ok;if(ok)visible++});count.textContent=`显示 ${visible}/${rows.length} 条学生历史摘要`};q.addEventListener('input',apply);sel.addEventListener('change',apply);apply();
+    const apply=()=>{const term=(q.value||'').trim().toLowerCase(),project=sel.value;let visible=0;rows.forEach(row=>{const text=row.textContent.toLowerCase(),p=projectText(row);const ok=(!term||text.includes(term))&&(!project||p===project);row.hidden=!ok;if(ok)visible++});count.textContent=`显示 ${visible}/${rows.length} 条学生历史摘要`};q.addEventListener('input',apply);sel.addEventListener('change',apply);apply();
   }
   async function transitionReadiness(){
     if(location.pathname!='/v1/transition'||document.getElementById('cy-cmp-transition-readiness'))return;
-    const id=Number(new URLSearchParams(location.search).get('id')||0);if(!id)return;const facts=document.getElementById('cy-op-transition');if(!facts)return;
+    const id=Number(new URLSearchParams(location.search).get('id')||0);if(!id)return;const facts=document.getElementById('cy-op-transition');if(!facts)return;const stepsBox=document.querySelector('.steps');if(!stepsBox)return;
     try{const p=await readJson('/teacher/students/'+id+'/growth-profile'),s=p.student||{},a=p.academic||{},weak=a.weakKnowledge||[],history=p.classHistory||[],suggestions=p.suggestions||[];
       const steps=[
         ['上一阶段状态',`已读取档案 #${esc(s.id||id)}，班级历史 ${history.length} 条。`,true],
@@ -61,7 +62,9 @@ _COMPLETION_SNIPPET = r'''
         ['开学诊断','等待真实开学测验或课堂记录后更新，不预填诊断结果。',false],
         ['进入下一阶段','保持同一 student_id；年级、学校和教学归属不会被此页面自动修改。',true]
       ];
-      facts.insertAdjacentHTML('afterend',`<section class="card cy-op-card" id="cy-cmp-transition-readiness"><div class="section-head"><div><h2>八步衔接准备度</h2><p>把已有事实、教师判断与尚未落表的步骤分开显示。</p></div></div><div class="cy-cmp-steps">${steps.map((x,i)=>`<div class="cy-cmp-step ${x[2]?'done':'wait'}"><em>STEP ${String(i+1).padStart(2,'0')}</em><b>${x[0]}</b><small>${x[1]}</small></div>`).join('')}</div><div class="cy-cmp-note" style="margin-top:12px;margin-bottom:0">绿色只表示“已有事实可读取”，不代表自动诊断完成。计划保存、自动分析和年级变更仍未开放。</div></section>`)
+      stepsBox.id='cy-cmp-transition-readiness';stepsBox.classList.add('cy-cmp-steps');stepsBox.innerHTML=steps.map((x,i)=>`<div class="cy-cmp-step ${x[2]?'done':'wait'}"><em>STEP ${String(i+1).padStart(2,'0')}</em><b>${x[0]}</b><small>${x[1]}</small></div>`).join('');
+      const head=stepsBox.closest('.section')?.querySelector('.section-head p');if(head)head.textContent='已有事实、教师判断与尚未落表的步骤分开显示。';
+      stepsBox.insertAdjacentHTML('afterend','<div class="cy-cmp-note" style="margin-top:12px;margin-bottom:0">绿色只表示“已有事实可读取”，不代表自动诊断完成。计划保存、自动分析和年级变更仍未开放。</div>')
     }catch{}
   }
   let timer=null;function run(){clearTimeout(timer);timer=setTimeout(()=>{studentListFilter();historyFilter();transitionReadiness()},90)}
