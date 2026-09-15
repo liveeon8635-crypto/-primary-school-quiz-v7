@@ -1,9 +1,9 @@
 """V1 read-only fast path for mobile networks.
 
 The frozen V1 UI historically assembled a teacher roster by issuing one HTTP
-request for the class list and then one request per class.  On a mobile/VPN
+request for the class list and then one request per class. On a mobile/VPN
 connection that request fan-out is visible as UI lag even when the database is
-small.  This module adds aggregate GET endpoints and rewrites only V1 read
+small. This module adds aggregate GET endpoints and rewrites only V1 read
 paths to use them.
 
 No schema, student data, authentication rule, or write behavior changes here.
@@ -141,7 +141,7 @@ def install_v1_fast_read_routes(implementation: ModuleType) -> None:
     ):
         implementation.need(u, "teacher")
         roster, _ = _teacher_roster(implementation, db, u)
-        # Keep one mobile round-trip for the initial workspace.  These helpers
+        # Keep one mobile round-trip for the initial workspace. These helpers
         # are the same read-only facts previously requested through separate
         # endpoints.
         roster["stats"] = implementation.teacher_analytics_data(db, u)
@@ -190,7 +190,7 @@ def patch_v1_fast_path(html: str) -> str:
     if(window.__cyV1Roster)return window.__cyV1Roster;const data=await readJson('/teacher/v1-roster');window.__cyV1Roster=data;return data;
   }
   async function fastWorkbench(){
-    if(window.__cyV1Bootstrap?.workbench)return window.__cyV1Bootstrap.workbench;return await readJson('/teacher/workbench-summary');
+    if(window.__cyV1Bootstrap?.workbench)return window.__cyV1Bootstrap.workbench;return await readJson('/teacher/workbench-summary',0);
   }
   async function classesAndStudents(filter=''){
     const data=await fastRoster(),rows=data.classRows||[],needle=filter.trim();if(!needle)return rows;const selected=rows.filter(x=>String(x.class?.name||'').includes(needle));return selected.length?selected:rows;
@@ -223,7 +223,7 @@ def patch_v1_fast_path(html: str) -> str:
         "await fastWorkbench()",
     )
 
-    # The base student page already fetched this profile.  Publish it so the
+    # The base student page already fetched this profile. Publish it so the
     # operational continuity card can reuse the same payload instead of issuing
     # a duplicate request after render.
     profile_fetch = "profile=await api('/teacher/students/'+id+'/growth-profile')"
