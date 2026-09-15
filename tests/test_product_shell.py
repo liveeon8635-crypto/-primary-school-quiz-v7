@@ -11,7 +11,6 @@ from changying.web.product_shell import (
 
 def test_product_shell_html_contains_brand_and_classic_entry():
     html = teacher_workbench_html()
-
     assert "长缨辅学" in html
     assert "实践工作台" in html
     assert "V1.3" in html
@@ -22,7 +21,6 @@ def test_product_shell_html_contains_brand_and_classic_entry():
 
 def test_product_shell_reads_existing_auth_and_live_dashboard_sources():
     html = teacher_workbench_html()
-
     assert "v717Token" in html
     assert "v717Remember" in html
     assert "v6Token" in html
@@ -35,7 +33,6 @@ def test_product_shell_reads_existing_auth_and_live_dashboard_sources():
 
 def test_product_shell_v13_contains_operating_guidance():
     html = teacher_workbench_html()
-
     assert "今日上课路径" in html
     assert "运营体检" in html
     assert "首次使用建议" in html
@@ -43,15 +40,13 @@ def test_product_shell_v13_contains_operating_guidance():
     assert "移动端快捷入口" in html
 
 
-def test_product_shell_v13_frames_practice_ai_and_market_value():
+def test_product_shell_v13_frames_elementary_tutoring_scope():
     html = teacher_workbench_html()
-
-    assert "长缨实践体系" in html
-    assert "改造世界的核心实践体系" in html
-    assert "AI 对接与市场化价值" in html
-    assert "能力发展实践系统" in html
-    assert "公众号获客" in html
-    assert "会员服务" in html
+    assert "小学阶段晚托、周末课、寒暑假班" in html
+    assert "当前教学" in html
+    assert "学习动态" in html
+    assert "历史与衔接" in html
+    assert "年级/升学衔接" in html
 
 
 def test_product_shell_preserves_legacy_root_at_classic():
@@ -62,11 +57,9 @@ def test_product_shell_preserves_legacy_root_at_classic():
         return HTMLResponse("legacy-home")
 
     install_product_shell(app)
-
     client = TestClient(app)
     modern = client.get("/")
     legacy = client.get("/classic")
-
     assert modern.status_code == 200
     assert "长缨辅学" in modern.text
     assert "实践工作台" in modern.text
@@ -85,7 +78,6 @@ def test_product_shell_install_is_idempotent():
 
     install_product_shell(app)
     install_product_shell(app)
-
     client = TestClient(app)
     assert client.get("/").status_code == 200
     assert client.get("/classic").text == "legacy-home"
