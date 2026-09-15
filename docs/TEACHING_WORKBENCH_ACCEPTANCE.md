@@ -1,72 +1,71 @@
-# 长缨辅学教学工作台验收清单
+# 教学工作台验收清单（V1.3 实践工作台）
 
-本文档为教学工作台（实践工作台 V1.3）的最小验收清单，用于人工验收与回归对照。
-
-本文档只描述验收步骤与预期结果，不修改任何生产代码、依赖、数据库、权限或部署配置。
+本文档为长缨辅学“实践工作台”（Product Shell V1.3）的最小验收依据，仅用于人工验收与回归核对，不改变任何生产行为。
 
 ## 适用范围
 
-- 生产入口：`uvicorn app:app --host 0.0.0.0 --port $PORT`（见 `render.yaml`）。
-- 工作台页面由 `changying/web/product_shell.py` 提供，标记为 `changying_product_shell_v1_3`。
-- 显式入口路由由 `changying/compat/legacy.py` 的 `install_product_visibility_routes` 安装。
-- 现有自动化契约见 `tests/test_product_shell.py` 与 `tests/test_product_visibility.py`。
+- 面向对象：小学阶段晚托、周末课、寒暑假班的教学与运营场景。
+- 入口：`/`（实践工作台）、`/workbench`、`/new`；`/classic` 保留 legacy 完整系统。
+- 相关实现：`changying/web/product_shell.py`、`changying/compat/legacy.py`。
+- 相关测试：`tests/test_product_shell.py`、`tests/test_product_visibility.py`。
 
 ## 验收前置条件
 
-1. 已按 `README.md` 安装 `requirements.txt` 与 `requirements-dev.txt`。
-2. 未设置 `DATABASE_URL` 时使用本地 SQLite；验收不得连接生产 PostgreSQL。
-3. 本地启动：`uvicorn app:app --reload`。
+1. 分支已 push，GitHub Actions `smoke` job 全绿（Python 3.14，`PYTHONPATH=.`，`pytest -q`）。
+2. 未连接生产 PostgreSQL；本地或 CI 使用临时 SQLite 与测试专用 secret。
+3. 未合并 `main`，未触发 Render 生产部署。
 
 ## 验收项
 
-### A. 基础可用性
+### A. 品牌与入口
 
-| 编号 | 步骤 | 预期结果 |
-| --- | --- | --- |
-| A1 | 访问 `GET /health` | 返回 200 |
-| A2 | 访问 `GET /` | 返回 200，页面包含“长缨辅学”与“实践工作台” |
-| A3 | 访问 `GET /manifest.webmanifest` | 返回 200，`content-type` 以 `application/manifest+json` 开头，JSON 合法 |
+- [ ] `GET /` 返回 200，页面包含“长缨辅学”。
+- [ ] 页面包含“实践工作台”与版本标识 `V1.3`。
+- [ ] 页面包含 `/classic` 链接与“完整系统”文案。
+- [ ] `PRODUCT_SHELL_MARKER == "changying_product_shell_v1_3"`。
 
-### B. 工作台入口
+### B. 复用既有鉴权与实时数据源
 
-| 编号 | 步骤 | 预期结果 |
-| --- | --- | --- |
-| B1 | 访问 `GET /workbench` | 返回 200，包含“长缨辅学”与“实践工作台” |
-| B2 | 访问 `GET /new` | 返回 200，包含“长缨辅学”与“实践工作台” |
-| B3 | 检查 `/workbench`、`/new` 响应头 | `X-Changying-Product-UI` 等于 `changying_product_shell_v1_3` |
-| B4 | 检查 `/`、`/classic` 响应头 | 同样带有 `X-Changying-Product-UI` 与 `NO_CACHE_HEADERS` |
-| B5 | 访问 `GET /classic` | 返回 200，展示 legacy 首页内容 |
+- [ ] 页面引用 `v717Token`、`v717Remember`、`v6Token`。
+- [ ] 页面调用 `/session`、`/admin/overview`、`/teacher/classes`。
+- [ ] 页面包含 `kpi-students` 与 `classList` 容器。
 
-### C. 工作台内容
+### C. 运营引导
 
-| 编号 | 步骤 | 预期结果 |
-| --- | --- | --- |
-| C1 | 查看工作台页面 | 包含“今日上课路径”“运营体检”“首次使用建议”“STEP 01”“移动端快捷入口” |
-| C2 | 查看教学范围说明 | 包含“小学阶段晚托、周末课、寒暑假班” |
-| C3 | 查看教学分区 | 包含“当前教学”“学习动态”“历史与衔接”“年级/升学衔接” |
-| C4 | 查看数据来源 | 页面引用 `v717Token`、`v717Remember`、`v6Token`、`/session`、`/admin/overview`、`/teacher/classes`、`kpi-students`、`classList` |
+- [ ] 页面包含“今日上课路径”“运营体检”“首次使用建议”“STEP 01”“移动端快捷入口”。
 
-### D. 幂等与兼容
+### D. 教学范围框架
 
-| 编号 | 步骤 | 预期结果 |
-| --- | --- | --- |
-| D1 | 重复调用 `install_product_shell` | 不报错，`/` 与 `/classic` 仍返回 200 |
-| D2 | 重复调用 `install_product_visibility_routes` | 不报错，`/workbench` 与 `/new` 仍返回 200 |
+- [ ] 页面包含“小学阶段晚托、周末课、寒暑假班”。
+- [ ] 页面包含“当前教学”“学习动态”“历史与衔接”“年级/升学衔接”。
 
-## 自动化对照
+### E. 路由与缓存头
 
-以下命令应在本地与 CI 中保持一致：
+- [ ] `GET /workbench`、`GET /new` 返回 200，且包含“长缨辅学”“实践工作台”。
+- [ ] `/`、`/classic`、`/workbench`、`/new` 响应头包含 `X-Changying-Product-UI: changying_product_shell_v1_3`。
+- [ ] 上述路径响应头包含 `NO_CACHE_HEADERS` 中定义的全部键值。
+
+### F. 幂等与 legacy 保留
+
+- [ ] 重复调用 `install_product_shell(app)` 不报错，`/` 仍返回 200。
+- [ ] 重复调用 `install_product_visibility_routes(app)` 不报错。
+- [ ] `GET /classic` 返回 legacy 首页原文，未被工作台覆盖。
+
+### G. 生产约束（只读核对，不在本任务中修改）
+
+- [ ] `GET /health` 返回 200。
+- [ ] `GET /manifest.webmanifest` 返回合法 JSON，`name == "长缨辅学"`，`start_url == "/?source=pwa"`，含 `192x192` 图标。
+- [ ] `render.yaml` 启动命令保持 `uvicorn app:app --host 0.0.0.0 --port $PORT`。
+- [ ] `app.py` 保持极薄、无版本号、无业务逻辑。
+
+## 回归命令
 
 ```bash
 PYTHONPATH=. pytest -q
 ```
 
-CI 配置见 `.github/workflows/ci.yml`，使用 Python 3.14 与 Node 22。
-
 ## 不在本清单范围
 
-- 数据库迁移、权限模型、商业收费逻辑。
-- 生产部署与 Render 状态确认。
-- 前端资源拆分与 API Router 迁移。
-
-上述内容属于 `docs/ARCHITECTURE.md` 中标注的高风险区域，需单独评审。
+- 数据库、权限、商业收费相关变更。
+- 生产部署与 Render 手动触发。
+- 内嵌前端资源拆分与 API Router 迁移（见 `docs/ARCHITECTURE.md` 阶段 C1–F）。
