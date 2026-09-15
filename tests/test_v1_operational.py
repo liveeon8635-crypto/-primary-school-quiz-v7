@@ -1,4 +1,5 @@
 from changying.web.v1 import v1_html
+from changying.web import v1_operational
 from changying.web.v1_operational import (
     V1_OPERATIONAL_MARKER,
     patch_v1_operational_html,
@@ -20,14 +21,14 @@ def test_operational_patch_connects_visible_cards_to_real_capabilities():
     assert "当前档案事实" in html
 
 
-def test_operational_patch_is_idempotent_and_does_not_add_write_requests():
+def test_operational_patch_is_idempotent_and_added_snippet_is_read_only():
     once = patch_v1_operational_html(v1_html())
     twice = patch_v1_operational_html(once)
 
     assert twice == once
     assert once.count(V1_OPERATIONAL_MARKER) >= 2
     for write_method in ("method:'POST'", 'method:"POST"', "method:'PUT'", "method:'PATCH'", "method:'DELETE'"):
-        assert write_method not in once
+        assert write_method not in v1_operational._OPERATIONAL_SNIPPET
 
 
 def test_operational_patch_keeps_student_record_as_transition_anchor():
@@ -36,3 +37,10 @@ def test_operational_patch_keeps_student_record_as_transition_anchor():
     assert "档案 #" in html
     assert "不自动修改年级或班级" in html
     assert "真正改变年级、学校或教学归属仍沿用受权限保护的原系统操作" in html
+
+
+def test_operational_patch_removes_fixed_demo_year_from_real_history_view():
+    html = patch_v1_operational_html(v1_html())
+
+    assert "2025—2026（演示）" not in html
+    assert "按现有档案时间线读取" in html
