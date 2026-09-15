@@ -22,14 +22,14 @@ V1_FINAL_CLOSURE_MARKER = "changying_v1_final_closure_v1"
 _STUDENT_LIST_CATCH = "try{people=await loadPeople()}catch(err){}"
 _STUDENT_LIST_CATCH_WITH_WARNING = (
     "try{people=await loadPeople()}catch(err){"
-    "peopleLoadWarnings=['学生列表读取失败：'+(err?.message||'请刷新重试')]"
+    "window.__cyV1PeopleLoadWarnings=['学生列表读取失败：'+(err?.message||'请刷新重试')]"
     "}"
 )
 
 _WORKSPACE_CATCH = "catch(err){if(err.status===428){location.href='/classic';return}}"
 _WORKSPACE_CATCH_WITH_WARNING = (
     "catch(err){if(err.status===428){location.href='/classic';return}"
-    "peopleLoadWarnings=['工作台读取失败：'+(err?.message||'请刷新重试')]"
+    "window.__cyV1PeopleLoadWarnings=['工作台读取失败：'+(err?.message||'请刷新重试')]"
     "}"
 )
 
@@ -61,9 +61,9 @@ def patch_v1_final_closure(html: str) -> str:
         return html
 
     # This patch intentionally runs after the membership-reliability layer,
-    # which defines peopleLoadWarnings and renders that warning on the two
-    # student-roster surfaces.
-    if "peopleLoadWarningHtml" not in html:
+    # which owns the shared browser warning state and renders it on V1 roster
+    # surfaces after each screen mutation.
+    if "__cyV1PeopleLoadWarnings" not in html or "changying_v1_membership_reliability_v1" not in html:
         raise RuntimeError("V1 final closure patch: membership reliability layer not installed")
 
     if _STUDENT_LIST_CATCH not in html:
@@ -74,6 +74,8 @@ def patch_v1_final_closure(html: str) -> str:
         raise RuntimeError("V1 final closure patch: workspace catch marker not found")
     html = html.replace(_WORKSPACE_CATCH, _WORKSPACE_CATCH_WITH_WARNING, 1)
 
+    if "</body>" not in html:
+        raise RuntimeError("V1 final closure patch: closing body marker not found")
     return html.replace(
         "</body>",
         _RUNTIME_FALLBACK + f"<!-- {V1_FINAL_CLOSURE_MARKER} --></body>",
