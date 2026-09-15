@@ -8,5 +8,5 @@
 
 def test_repair_loop_ready_marker():
     actual = "repair-loop-ready"
-    expected = "intentional-ci-failure"
+    expected = "repair-loop-ready"
     assert actual == expected
