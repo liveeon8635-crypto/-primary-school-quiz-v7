@@ -1,71 +1,80 @@
 # 教学工作台验收清单（V1.3 实践工作台）
 
-本文档为长缨辅学“实践工作台”（Product Shell V1.3）的最小验收依据，仅用于人工验收与回归核对，不改变任何生产行为。
+本文档为长缨辅学「实践工作台」（产品外壳 V1.3）的最小验收依据，仅用于人工与 CI 复核，不改变任何生产代码、路由或数据库行为。
 
 ## 适用范围
 
-- 面向对象：小学阶段晚托、周末课、寒暑假班的教学与运营场景。
-- 入口：`/`（实践工作台）、`/workbench`、`/new`；`/classic` 保留 legacy 完整系统。
-- 相关实现：`changying/web/product_shell.py`、`changying/compat/legacy.py`。
-- 相关测试：`tests/test_product_shell.py`、`tests/test_product_visibility.py`。
+- 面向对象：教师端「实践工作台」入口与运营体检视图。
+- 教学场景：小学阶段晚托、周末课、寒暑假班。
+- 不涉及：数据库迁移、权限模型、商业收费逻辑。
 
 ## 验收前置条件
 
-1. 分支已 push，GitHub Actions `smoke` job 全绿（Python 3.14，`PYTHONPATH=.`，`pytest -q`）。
-2. 未连接生产 PostgreSQL；本地或 CI 使用临时 SQLite 与测试专用 secret。
-3. 未合并 `main`，未触发 Render 生产部署。
+1. 分支已通过完整 CI（`pytest -q`，Python 3.14）。
+2. 未修改 `app.py`、`changying/production.py`、`render.yaml` 等生产入口与部署契约文件。
+3. 未连接生产 PostgreSQL。
 
 ## 验收项
 
 ### A. 品牌与入口
 
-- [ ] `GET /` 返回 200，页面包含“长缨辅学”。
-- [ ] 页面包含“实践工作台”与版本标识 `V1.3`。
-- [ ] 页面包含 `/classic` 链接与“完整系统”文案。
-- [ ] `PRODUCT_SHELL_MARKER == "changying_product_shell_v1_3"`。
+- [ ] 工作台页面包含品牌名「长缨辅学」。
+- [ ] 页面包含「实践工作台」标识。
+- [ ] 页面包含版本标识「V1.3」。
+- [ ] 提供「完整系统」入口，指向 `/classic`。
 
-### B. 复用既有鉴权与实时数据源
+### B. 认证与实时数据源
 
-- [ ] 页面引用 `v717Token`、`v717Remember`、`v6Token`。
-- [ ] 页面调用 `/session`、`/admin/overview`、`/teacher/classes`。
-- [ ] 页面包含 `kpi-students` 与 `classList` 容器。
+- [ ] 复用既有 token 存储键 `v717Token`、`v717Remember`、`v6Token`。
+- [ ] 会话接口使用 `/session`。
+- [ ] 概览数据使用 `/admin/overview`。
+- [ ] 班级数据使用 `/teacher/classes`。
+- [ ] 关键渲染锚点存在：`kpi-students`、`classList`。
 
 ### C. 运营引导
 
-- [ ] 页面包含“今日上课路径”“运营体检”“首次使用建议”“STEP 01”“移动端快捷入口”。
+- [ ] 包含「今日上课路径」。
+- [ ] 包含「运营体检」。
+- [ ] 包含「首次使用建议」。
+- [ ] 包含步骤标识「STEP 01」。
+- [ ] 包含「移动端快捷入口」。
 
 ### D. 教学范围框架
 
-- [ ] 页面包含“小学阶段晚托、周末课、寒暑假班”。
-- [ ] 页面包含“当前教学”“学习动态”“历史与衔接”“年级/升学衔接”。
+- [ ] 明确「小学阶段晚托、周末课、寒暑假班」。
+- [ ] 包含「当前教学」「学习动态」「历史与衔接」「年级/升学衔接」分区。
 
-### E. 路由与缓存头
+### E. 路由与缓存行为
 
-- [ ] `GET /workbench`、`GET /new` 返回 200，且包含“长缨辅学”“实践工作台”。
-- [ ] `/`、`/classic`、`/workbench`、`/new` 响应头包含 `X-Changying-Product-UI: changying_product_shell_v1_3`。
-- [ ] 上述路径响应头包含 `NO_CACHE_HEADERS` 中定义的全部键值。
+- [ ] `/workbench` 与 `/new` 返回 200 且渲染工作台。
+- [ ] `/` 与 `/classic` 响应头包含 `X-Changying-Product-UI`，值为 `changying_product_shell_v1_3`。
+- [ ] 上述路由响应头包含 `NO_CACHE_HEADERS` 中定义的全部缓存控制头。
+- [ ] 安装函数幂等：重复调用不产生重复路由或异常。
 
-### F. 幂等与 legacy 保留
+### F. 兼容性
 
-- [ ] 重复调用 `install_product_shell(app)` 不报错，`/` 仍返回 200。
-- [ ] 重复调用 `install_product_visibility_routes(app)` 不报错。
-- [ ] `GET /classic` 返回 legacy 首页原文，未被工作台覆盖。
+- [ ] 原 `/` 首页在安装产品外壳后仍可通过 `/classic` 访问，内容不变。
+- [ ] `/health` 持续返回 200。
+- [ ] `/manifest.webmanifest` 返回合法 JSON。
 
-### G. 生产约束（只读核对，不在本任务中修改）
+## 对应自动化测试
 
-- [ ] `GET /health` 返回 200。
-- [ ] `GET /manifest.webmanifest` 返回合法 JSON，`name == "长缨辅学"`，`start_url == "/?source=pwa"`，含 `192x192` 图标。
-- [ ] `render.yaml` 启动命令保持 `uvicorn app:app --host 0.0.0.0 --port $PORT`。
-- [ ] `app.py` 保持极薄、无版本号、无业务逻辑。
+| 验收组 | 测试文件 |
+| --- | --- |
+| A / B / C / D / F | `tests/test_product_shell.py` |
+| E / F | `tests/test_product_visibility.py` |
+| F | `tests/test_smoke.py` |
+| 部署契约 | `tests/test_deployment_contract.py` |
 
-## 回归命令
+## 复核流程
 
-```bash
-PYTHONPATH=. pytest -q
-```
+1. 在独立分支执行 `PYTHONPATH=. pytest -q`，确认全绿。
+2. 逐项勾选上述验收项，记录未通过项与证据（命令输出或截图）。
+3. 未通过项须在合并 `main` 前修复或明确记录为已知限制。
+4. 合并后确认 Render 部署状态为 `live`，且 `/health` 持续返回 200。
 
-## 不在本清单范围
+## 非目标
 
-- 数据库、权限、商业收费相关变更。
-- 生产部署与 Render 手动触发。
-- 内嵌前端资源拆分与 API Router 迁移（见 `docs/ARCHITECTURE.md` 阶段 C1–F）。
+- 不新增或修改生产路由、ORM 模型、数据库迁移。
+- 不调整商业套餐、订阅状态机或收费逻辑。
+- 不拆分内嵌前端资源。
