@@ -12,6 +12,7 @@ import importlib
 from fastapi import FastAPI
 
 from changying.compat.legacy import apply_legacy_compatibility
+from changying.ops.one_time_migrations import maybe_apply_one_time_migration
 
 PRODUCTION_MODULE = "app_v924"
 ASSET_VERSION = "924"
@@ -20,6 +21,7 @@ ASSET_VERSION = "924"
 def load_production_app() -> FastAPI:
     implementation = importlib.import_module(PRODUCTION_MODULE)
     apply_legacy_compatibility(implementation, asset_version=ASSET_VERSION)
+    maybe_apply_one_time_migration(implementation)
     return implementation.app
 
 
