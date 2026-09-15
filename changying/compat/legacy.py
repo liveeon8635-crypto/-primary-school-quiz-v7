@@ -47,6 +47,7 @@ from changying.web.pwa import build_manifest
 from changying.web.v1 import install_v1_routes
 from changying.web.v1_completion import install_v1_completion_patch
 from changying.web.v1_data_quality import install_v1_data_quality_patch
+from changying.web.v1_fast_path import install_v1_fast_path_patch, install_v1_fast_read_routes
 from changying.web.v1_final_closure import install_v1_final_closure_patch
 from changying.web.v1_full_visibility import install_v1_full_visibility_patch
 from changying.web.v1_mastery_evidence import install_v1_mastery_evidence_patch
@@ -137,6 +138,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_product_shell(implementation.app)
     install_product_visibility_routes(implementation.app)
     install_classic_ui_patch(implementation.app)
+    install_v1_fast_read_routes(implementation)
     install_v1_data_quality_patch()
     install_v1_operational_patch()
     install_v1_completion_patch()
@@ -147,6 +149,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_student_detail_visibility_patch()
     install_v1_membership_reliability_patch()
     install_v1_final_closure_patch()
+    install_v1_fast_path_patch()
     install_v1_routes(implementation.app)
 
 
