@@ -181,7 +181,7 @@ CLASSIC_UI_SNIPPET = f"""
       if(terms.some(function(term){{return text.indexOf(term)>=0;}})){{best=el;break;}}
     }}
     if(best){{best.click();toast('已尝试打开：'+labels[0]);return;}}
-    toast('当前页面未找到“'+labels[0]+'”入口，可先进入完整系统首页查看。');
+    toast('当前页面未找到“'+labels[0]+'”入口，可先进入原教学系统首页查看。');
   }}
 
   function mount(){{
@@ -191,13 +191,13 @@ CLASSIC_UI_SNIPPET = f"""
     var ribbon=document.createElement('div');
     ribbon.id='{CLASSIC_UI_MARKER}-ribbon';
     ribbon.className='cy-classic-ribbon';
-    ribbon.innerHTML='<div class="cy-classic-ribbon__brand"><span class="cy-classic-ribbon__logo">长</span><span><span class="cy-classic-ribbon__text">长缨辅学完整系统</span><span class="cy-classic-ribbon__hint">内部功能已保留，正在逐步统一新版 UI</span></span></div><div class="cy-classic-ribbon__actions"><a class="cy-classic-btn cy-classic-btn--primary" href="/workbench">新版工作台</a><a class="cy-classic-btn" href="/classic">完整系统首页</a></div>';
+    ribbon.innerHTML='<div class="cy-classic-ribbon__brand"><span class="cy-classic-ribbon__logo">长</span><span><span class="cy-classic-ribbon__text">长缨辅学教学系统</span><span class="cy-classic-ribbon__hint">小学教学功能继续可用</span></span></div><div class="cy-classic-ribbon__actions"><a class="cy-classic-btn cy-classic-btn--primary" href="/v1">长缨辅学 V1</a><a class="cy-classic-btn" href="/classic">原教学系统首页</a></div>';
     document.body.insertBefore(ribbon,document.body.firstChild);
 
     var panel=document.createElement('aside');
     panel.id='{CLASSIC_UI_MARKER}-workflow';
     panel.className='cy-workflow-panel';
-    panel.innerHTML='<div class="cy-workflow-panel__head"><div><div class="cy-workflow-panel__title">今日教学快捷入口</div><div class="cy-workflow-panel__sub">按上课流程找功能：学生 → 题库/组卷 → 作业/成绩</div></div><button class="cy-panel-toggle" type="button" data-cy-collapse>收起</button></div><div class="cy-workflow-grid"><button class="cy-workflow-btn cy-workflow-btn--primary" type="button" data-cy-action="students">学生管理</button><button class="cy-workflow-btn" type="button" data-cy-action="classes">班级课程</button><button class="cy-workflow-btn" type="button" data-cy-action="questions">题库组卷</button><button class="cy-workflow-btn" type="button" data-cy-action="homework">今日作业</button><button class="cy-workflow-btn" type="button" data-cy-action="scores">成绩分析</button><button class="cy-workflow-btn" type="button" data-cy-action="points">积分奖励</button></div><div class="cy-workflow-steps"><div class="cy-workflow-step"><b>01</b><span>课前：确认学生、班级和今日任务</span></div><div class="cy-workflow-step"><b>02</b><span>课中：用题库、组卷和课堂积分组织训练</span></div><div class="cy-workflow-step"><b>03</b><span>课后：看作业、错题和成绩反馈</span></div></div>';
+    panel.innerHTML='<div class="cy-workflow-panel__head"><div><div class="cy-workflow-panel__title">今日教学快捷入口</div><div class="cy-workflow-panel__sub">按上课流程找功能：学生 → 题库/组卷 → 作业/成绩</div></div><button class="cy-panel-toggle" type="button" data-cy-collapse>收起</button></div><div class="cy-workflow-grid"><button class="cy-workflow-btn cy-workflow-btn--primary" type="button" data-cy-action="students">学生管理</button><button class="cy-workflow-btn" type="button" data-cy-action="classes">班级课程</button><button class="cy-workflow-btn" type="button" data-cy-action="questions">题库组卷</button><button class="cy-workflow-btn" type="button" data-cy-action="homework">今日作业</button><button class="cy-workflow-btn" type="button" data-cy-action="scores">成绩分析</button><button class="cy-workflow-btn" type="button" data-cy-action="points">积分奖励</button></div><div class="cy-workflow-steps"><div class="cy-workflow-step"><b>01</b><span>课前：确认学生、班级和今日任务</span></div><div class="cy-workflow-step"><b>02</b><span>课中：用题库、组卷和课堂积分组织课堂练习</span></div><div class="cy-workflow-step"><b>03</b><span>课后：看作业、错题和成绩反馈</span></div></div>';
     document.body.appendChild(panel);
 
     var actions={{
