@@ -2,7 +2,7 @@
 
 The legacy database may contain more than one student row with the same display
 name and may use teaching-project names where V1 previously said "当前班级".
-This patch deliberately does not merge, delete, or rewrite production data.  It
+This patch deliberately does not merge, delete, or rewrite production data. It
 aggregates teaching affiliations for the same stable student id and surfaces
 same-name/different-id records as candidates for human identity review.
 """
@@ -26,19 +26,22 @@ _LOAD_PEOPLE = re.compile(
 def patch_v1_html(html: str) -> str:
     """Return the V1 shell with read-only continuity auditing installed."""
 
+    if "const teachingAffiliationsFor=" in html and "const duplicateAuditHtml=" in html:
+        return html
+
     helpers = """    const teachingAffiliationsFor=p=>{const raw=Array.isArray(p?.teachingAffiliations)?p.teachingAffiliations:[p?.className||p?.currentClassName].filter(Boolean);return [...new Set(raw.map(x=>String(x||'').trim()).filter(Boolean))]};
     const studentPosition=p=>{const grade=p?.grade?`档案年级：${p.grade}年级`:'';const affiliations=teachingAffiliationsFor(p);const current=affiliations.length?`当前教学归属：${affiliations.join(' / ')}`:'当前教学归属待完善';return[grade,current].filter(Boolean).join(' · ')};
     const normalizedStudentName=p=>String(p?.name||'').replace(/\\s+/g,'').trim().toLocaleLowerCase();
     const duplicateNameGroups=people=>{const groups=new Map();for(const p of people||[]){const key=normalizedStudentName(p);if(!key)continue;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(p)}return [...groups.values()].filter(group=>new Set(group.map(p=>String(p.id))).size>1)};
     const duplicateAuditHtml=people=>{const groups=duplicateNameGroups(people);if(!groups.length)return'';return `<section class=\"section\"><div class=\"notice warn\"><b>发现 ${groups.length} 组同名多档案，暂不自动合并。</b><div style=\"margin-top:6px\">请先依据档案编号、年级与教学归属核对是否为同一名学生；确认前系统不会删除或合并真实记录。</div>${groups.map(group=>`<div style=\"margin-top:8px\"><b>${esc(group[0].name)}</b>：${group.map(p=>`档案 #${esc(p.id)}（${esc(studentPosition(p))}）`).join('；')}</div>`).join('')}</div></section>`};
 """
-    html, count = _STUDENT_POSITION.subn(helpers, html, count=1)
+    html, count = _STUDENT_POSITION.subn(lambda _match: helpers, html, count=1)
     if count != 1:
         raise RuntimeError("V1 data-quality patch: studentPosition marker not found")
 
     load_people = """    async function loadPeople(){if(session.role==='admin'){const users=await api('/admin/users');return users.filter(x=>x.role==='student')}if(session.role==='teacher'){const classes=await api('/teacher/classes');const byId=new Map();for(const c of classes.slice(0,30)){try{const rows=await api('/teacher/classes/'+c.id+'/students');for(const x of rows){const key=String(x.id);if(!byId.has(key))byId.set(key,{...x,teachingAffiliations:[],classIDs:[]});const p=byId.get(key);if(c.name&&!p.teachingAffiliations.includes(c.name))p.teachingAffiliations.push(c.name);if(c.id&&!p.classIDs.includes(c.id))p.classIDs.push(c.id)}}catch{}}return [...byId.values()]}if(session.role==='parent')return await api('/parent/children');return[{id:session.userID||session.id,name:session.name,grade:session.grade,role:'student'}]}
     async function workspace()"""
-    html, count = _LOAD_PEOPLE.subn(load_people, html, count=1)
+    html, count = _LOAD_PEOPLE.subn(lambda _match: load_people, html, count=1)
     if count != 1:
         raise RuntimeError("V1 data-quality patch: loadPeople marker not found")
 
