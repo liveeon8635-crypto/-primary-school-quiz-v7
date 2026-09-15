@@ -30,12 +30,13 @@ def teacher_workbench_html() -> str:
     .hero{display:grid;grid-template-columns:1.18fr .82fr;gap:18px;align-items:stretch;margin:18px 0}.panel,.card{background:rgba(255,255,255,.9);border:1px solid rgba(229,234,246,.95);border-radius:var(--radius);box-shadow:var(--shadow);backdrop-filter:blur(14px)}.welcome{padding:30px;position:relative;overflow:hidden}.welcome:after{content:"";position:absolute;inset:auto -90px -110px auto;width:280px;height:280px;border-radius:50%;background:linear-gradient(135deg,rgba(30,47,191,.18),rgba(16,168,116,.18))}.eyebrow{display:inline-flex;gap:8px;align-items:center;font-size:13px;font-weight:900;color:var(--brand);background:#eef2ff;border:1px solid #dbe3ff;border-radius:999px;padding:8px 12px;margin-bottom:16px}.welcome h2{font-size:clamp(30px,5vw,54px);line-height:1.03;margin:0 0 12px;letter-spacing:-.04em}.welcome p{font-size:17px;color:var(--muted);line-height:1.8;margin:0;max-width:760px}.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px;position:relative;z-index:1}.status{padding:22px;display:flex;flex-direction:column;gap:14px}.status h3,.section-title h3{margin:0;font-size:18px}.mini{display:flex;align-items:center;gap:12px;padding:14px;border-radius:18px;background:#f7f9ff;border:1px solid #e9edfb}.mini b{display:block;margin-bottom:3px}.mini span{font-size:13px;color:var(--muted);line-height:1.5}.dot{width:12px;height:12px;border-radius:50%;background:var(--brand);box-shadow:0 0 0 6px rgba(30,47,191,.12)}.dot.green{background:var(--brand2);box-shadow:0 0 0 6px rgba(16,168,116,.12)}.dot.orange{background:var(--gold);box-shadow:0 0 0 6px rgba(244,183,64,.16)}
     .grid{display:grid;gap:16px}.kpis{grid-template-columns:repeat(4,1fr);margin:18px 0}.card{padding:20px}.kpi .icon{width:42px;height:42px;border-radius:16px;display:grid;place-items:center;background:#eef2ff;color:var(--brand);font-size:22px;margin-bottom:16px}.kpi strong{font-size:32px;display:block;letter-spacing:-.04em}.kpi span{color:var(--muted);font-size:14px}.live{font-size:11px;color:var(--brand2);font-weight:900;margin-top:8px}.section{margin-top:20px}.section-title{display:flex;justify-content:space-between;align-items:end;gap:12px;margin:0 0 14px}.section-title p{margin:4px 0 0;color:var(--muted);font-size:14px}.quick{grid-template-columns:repeat(3,1fr)}.quick-card{display:flex;gap:16px;align-items:flex-start;min-height:132px;position:relative;overflow:hidden}.quick-card:after{content:"→";position:absolute;right:20px;bottom:16px;color:#b8c1d6;font-weight:900;font-size:22px}.quick-card .icon{flex:0 0 48px;width:48px;height:48px;border-radius:18px;display:grid;place-items:center;background:#f1f5ff;font-size:24px}.quick-card h4{margin:2px 0 8px;font-size:17px}.quick-card p{margin:0;color:var(--muted);line-height:1.65;font-size:14px}.work,.check{grid-template-columns:1.05fr .95fr}.list{display:grid;gap:10px}.list-item{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:13px;border-radius:16px;background:var(--soft);border:1px solid #e8edfb}.list-item b{font-size:14px}.list-item span{font-size:13px;color:var(--muted);text-align:right}.path{grid-template-columns:repeat(4,1fr)}.path-step{position:relative;min-height:154px}.path-step em{font-style:normal;color:var(--brand);font-size:12px;font-weight:900;letter-spacing:.06em}.path-step h4{margin:8px 0 8px}.path-step p{margin:0;color:var(--muted);line-height:1.7;font-size:14px}.system{grid-template-columns:repeat(5,1fr)}.system .card{min-height:168px;background:#fff}.system em{font-style:normal;display:inline-grid;place-items:center;width:34px;height:34px;border-radius:13px;background:#eef2ff;color:var(--brand);font-weight:950}.system h4{margin:14px 0 8px}.system p{margin:0;color:var(--muted);line-height:1.65;font-size:14px}.bridge{grid-template-columns:repeat(3,1fr)}.bridge .card{min-height:172px}.bridge b{display:inline-block;margin-bottom:10px;color:var(--brand)}.bridge p{margin:0;color:var(--muted);line-height:1.7;font-size:14px}.check-grid{display:grid;gap:10px}.check-item{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:16px;background:#f8faff;border:1px solid #edf1fb}.check-item i{font-style:normal}.check-item b{display:block;font-size:14px}.check-item span{display:block;margin-top:3px;color:var(--muted);font-size:13px;line-height:1.5}.brand-card{background:linear-gradient(145deg,#111a3a,#1e2fbf);color:#fff;position:relative;overflow:hidden}.brand-card p{color:rgba(255,255,255,.8);line-height:1.75}.brand-card:after{content:"实践";position:absolute;right:-18px;bottom:-24px;font-size:86px;font-weight:950;letter-spacing:-.08em;color:rgba(255,255,255,.08)}.footer{color:var(--muted);font-size:13px;text-align:center;margin-top:28px}.bottom-nav{display:none}
     @media(max-width:980px){.hero,.work,.check{grid-template-columns:1fr}.kpis,.path,.system,.bridge{grid-template-columns:repeat(2,1fr)}.quick{grid-template-columns:1fr 1fr}}@media(max-width:640px){.page{padding:18px 14px 96px}.topbar{align-items:flex-start;flex-direction:column}.pill.hide-mobile{display:none}.welcome{padding:24px 20px}.kpis,.quick,.path,.system,.bridge{grid-template-columns:1fr}.hero-actions .btn,.actions .btn{width:100%}.brand h1{font-size:20px}.bottom-nav{position:fixed;left:10px;right:10px;bottom:10px;z-index:99;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:8px;border-radius:20px;background:rgba(255,255,255,.92);box-shadow:0 18px 46px rgba(23,32,51,.18);border:1px solid var(--line);backdrop-filter:blur(12px)}.bottom-nav a{text-align:center;border-radius:15px;padding:10px 4px;background:#f7f9ff;font-size:12px;font-weight:900;color:var(--ink)}}
+    [hidden]{display:none!important}.btn:disabled{cursor:wait;opacity:.6}
   </style>
 </head>
 <body>
   <main class="page">
     <header class="topbar"><div class="brand"><div class="logo">长</div><div><h1>长缨辅学</h1><small>实践工作台 · V1.3</small></div></div><div class="actions"><span class="pill hide-mobile" id="clock">今天</span><a class="btn ghost" href="/classic">完整系统</a><a class="btn primary" href="/classic">开始上课</a></div></header>
-    <section class="hero"><div class="panel welcome"><div class="eyebrow">长缨辅学 V1.3 · 改造世界的核心实践体系</div><h2>把认识、训练、反馈和经营连成一条实践闭环。</h2><p id="heroText">新版工作台会自动读取现有登录状态；未登录时作为品牌入口，登录后显示真实学生、班级、题库、作业和教学数据概览。产品方向从“补课工具”升级为“能力发展实践系统”。</p><div class="hero-actions"><a class="btn primary" href="/classic">进入完整系统</a><a class="btn green" href="#system">查看实践体系</a><a class="btn dark" href="#market">AI 与市场化</a></div></div><aside class="panel status"><h3>当前状态</h3><div class="mini"><i class="dot" id="sessionDot"></i><div><b id="sessionTitle">正在检查登录状态</b><span id="sessionDetail">会读取旧版系统的 v717Token / v717Remember，不需要重新登录。</span></div></div><div class="mini"><i class="dot green"></i><div><b>完整功能已保留</b><span>旧版系统入口仍在 /classic，数据和业务流程不变。</span></div></div><div class="mini"><i class="dot orange"></i><div><b>只读上线策略</b><span>本页只读 /session、/admin/overview、/teacher/classes，不写入生产数据。</span></div></div></aside></section>
+    <section class="hero"><div class="panel welcome"><div class="eyebrow">长缨辅学 V1.3 · 改造世界的核心实践体系</div><h2>把认识、训练、反馈和经营连成一条实践闭环。</h2><p id="heroText">新版工作台会自动读取现有登录状态；未登录时作为品牌入口，登录后显示真实学生、班级、题库、作业和教学数据概览。产品方向从“补课工具”升级为“能力发展实践系统”。</p><div class="hero-actions"><a class="btn primary" href="/classic">进入完整系统</a><a class="btn green" href="#system">查看实践体系</a><a class="btn dark" href="#market">AI 与市场化</a></div></div><aside class="panel status"><h3>当前状态</h3><div id="sessionFeedback" role="status" aria-live="polite"><a id="loginAction" class="btn primary" href="/classic" hidden>前往登录</a><button id="retryStatus" class="btn ghost" type="button" hidden>重试</button></div><div class="mini"><i class="dot" id="sessionDot"></i><div><b id="sessionTitle" role="status" aria-live="polite">正在检查登录状态</b><span id="sessionDetail">会读取旧版系统的 v717Token / v717Remember，不需要重新登录。</span></div></div><div class="mini"><i class="dot green"></i><div><b>完整功能已保留</b><span>旧版系统入口仍在 /classic，数据和业务流程不变。</span></div></div><div class="mini"><i class="dot orange"></i><div><b>只读上线策略</b><span>本页只读 /session、/admin/overview、/teacher/classes，不写入生产数据。</span></div></div></aside></section>
     <section class="grid kpis" id="live" aria-label="运营概览"><div class="card kpi"><div class="icon">👨‍🎓</div><strong id="kpi-students">—</strong><span>学生</span><div class="live" id="students-live">等待登录后读取</div></div><div class="card kpi"><div class="icon">🏫</div><strong id="kpi-classes">—</strong><span>班级 / 课程</span><div class="live" id="classes-live">教师或管理员可见</div></div><div class="card kpi"><div class="icon">📖</div><strong id="kpi-questions">—</strong><span>题库</span><div class="live" id="questions-live">管理员概览</div></div><div class="card kpi"><div class="icon">📝</div><strong id="kpi-assignments">—</strong><span>作业</span><div class="live" id="assignments-live">管理员概览</div></div></section>
     <section class="section" id="system"><div class="section-title"><div><h3>长缨实践体系</h3><p>把长期理论转成产品结构：经验、知识、能力、行动、反馈、重构。</p></div><a class="pill" href="/classic">进入执行系统 →</a></div><div class="grid system"><div class="card"><em>1</em><h4>经验采集</h4><p>学生表现、作业、错题、到课和课堂观察进入同一实践记录。</p></div><div class="card"><em>2</em><h4>知识结构</h4><p>按年级、教材、单元、知识点和关系组织题库与讲解。</p></div><div class="card"><em>3</em><h4>能力估计</h4><p>不只看分数，还看稳定性、迁移、独立完成度和支持程度。</p></div><div class="card"><em>4</em><h4>任务干预</h4><p>通过分层练习、自动组卷、作业和课堂支持改变下一次表现。</p></div><div class="card"><em>5</em><h4>反馈重构</h4><p>用成绩、错题、家长反馈和复测结果重构教学方案。</p></div></div></section>
     <section class="section" id="path"><div class="section-title"><div><h3>今日上课路径</h3><p>按照线下辅学真实动作重排：先确认对象，再组织训练，最后看反馈。</p></div></div><div class="grid path"><a class="card path-step" href="/classic"><em>STEP 01</em><h4>看今天学生</h4><p>确认学生、班级、到课和重点关注对象。</p></a><a class="card path-step" href="/classic"><em>STEP 02</em><h4>选题与组卷</h4><p>从题库、知识点和难度进入分层练习。</p></a><a class="card path-step" href="/classic"><em>STEP 03</em><h4>布置今日作业</h4><p>把课堂练习与课后任务连接起来。</p></a><a class="card path-step" href="/classic"><em>STEP 04</em><h4>看结果反馈</h4><p>用成绩、错题和积分决定下一次干预。</p></a></div></section>
@@ -48,14 +49,34 @@ def teacher_workbench_html() -> str:
   </main>
   <nav class="bottom-nav" aria-label="移动端快捷入口"><a href="/workbench">工作台</a><a href="#system">体系</a><a href="#market">AI</a><a href="/classic">系统</a></nav>
   <script>
-    const token=localStorage.getItem('v717Token')||localStorage.getItem('v6Token')||'';
-    const remembered=localStorage.getItem('v717Remember')==='1';
-    const headers=token?{'Authorization':'Bearer '+token}:{};
+    let headers={};
+    let loading=false;
+    const retryButton=document.getElementById('retryStatus');
+    const loginAction=document.getElementById('loginAction');
     const setText=(id,text)=>{const el=document.getElementById(id);if(el)el.textContent=text;};
     const fmt=(n)=>Number.isFinite(Number(n))?String(n):'—';
     const clock=new Intl.DateTimeFormat('zh-CN',{weekday:'long',month:'long',day:'numeric'}).format(new Date());
     setText('clock',clock);
-    async function getJSON(url){const res=await fetch(url,{headers,cache:'no-store'});if(!res.ok)throw new Error(url+':'+res.status);return res.json();}
+    async function getJSON(url){
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),10000);
+      try{
+        const res=await fetch(url,{headers,cache:'no-store',signal:controller.signal});
+        if(!res.ok){const error=new Error('Request failed');error.status=res.status;throw error;}
+        return await res.json();
+      }finally{clearTimeout(timer);}
+    }
+    function failureMessage(error){
+      if(error.status===401)return '登录已过期，请重新登录';
+      if(error.status===403)return '当前账号无权查看此内容';
+      return '暂时无法读取，请重试';
+    }
+    function showFailure(error){
+      if(error.status===401)loginAction.hidden=false;
+      // A forbidden session can also require an account action in the full system.
+      if(error.status===403){loginAction.hidden=false;loginAction.textContent='进入完整系统查看';}
+      if(error.status!==401&&error.status!==403)retryButton.hidden=false;
+    }
     function applyOverview(data){
       const students=data.students ?? data.studentCount ?? data.totalStudents ?? data.user_count ?? data.users;
       const classes=data.classes ?? data.classCount ?? data.totalClasses ?? data.courses;
@@ -69,24 +90,62 @@ def teacher_workbench_html() -> str:
     }
     function applyClasses(items){
       const list=Array.isArray(items)?items:(items.classes||items.data||items.items||[]);
-      if(!Array.isArray(list)||list.length===0)return;
+      if(!Array.isArray(list))throw new Error('Invalid class list');
+      if(list.length===0){setText('classHint','尚未分配班级');setText('classList','暂无班级，请联系管理员分配或进入完整系统创建。');setText('kpi-classes','0');setText('classes-live','已读取教师班级');return;}
       setText('classHint','已读取教师班级列表，点击完整系统继续操作。');
       setText('kpi-classes',String(list.length));setText('classes-live','已读取教师班级');
       const html=list.slice(0,5).map((c,i)=>`<div class="list-item"><b>${c.name||c.title||('班级 '+(i+1))}</b><span>${c.grade||c.subject||c.status||'进入完整系统'}</span></div>`).join('');
       document.getElementById('classList').innerHTML=html;
     }
     async function boot(){
-      if(!token){setText('sessionTitle','尚未登录');setText('sessionDetail','先进入 /classic 登录，再回到工作台查看真实概览。');return;}
+      if(loading)return;
+      loading=true;retryButton.disabled=true;retryButton.hidden=true;loginAction.hidden=true;
+      loginAction.textContent='前往登录';
+      document.getElementById('sessionDot').classList.remove('green');
+      setText('sessionTitle','正在检查登录状态');setText('sessionDetail','正在读取，请稍候。');
+      for(const name of ['students','classes','questions','assignments']){
+        setText('kpi-'+name,'—');setText(name+'-live','等待读取');
+      }
+      setText('classList','');setText('classHint','等待读取班级');
       try{
+        const token=localStorage.getItem('v717Token')||localStorage.getItem('v6Token')||'';
+        const remembered=localStorage.getItem('v717Remember')==='1';
+        headers=token?{'Authorization':'Bearer '+token}:{};
+        if(!token){
+          setText('sessionTitle','尚未登录');setText('sessionDetail','请先登录，再查看工作台数据。');
+          loginAction.hidden=false;
+          for(const name of ['students','classes','questions','assignments'])setText(name+'-live','请先登录');
+          setText('classHint','请先登录');return;
+        }
         const session=await getJSON('/session');
         setText('sessionTitle',`已登录：${session.name||session.role||'当前账号'}`);
-        setText('sessionDetail',`${session.role||'账号'} · ${remembered?'已开启记住登录':'当前会话'} · 可读取工作台数据`);
+        setText('sessionDetail',`${session.role||'账号'} · ${remembered?'已开启记住登录':'当前会话'}`);
         document.getElementById('sessionDot').classList.add('green');
-        setText('heroText','已识别登录状态。你可以从工作台查看概览，再进入完整系统完成学生、题库、作业、成绩与后续 AI 辅学操作。');
-        try{applyOverview(await getJSON('/admin/overview'));}catch(e){setText('questions-live','非管理员或暂无概览');setText('assignments-live','非管理员或暂无概览');}
-        try{applyClasses(await getJSON('/teacher/classes'));}catch(e){setText('classHint','当前账号暂无教师班级列表，仍可进入完整系统操作。');}
-      }catch(e){setText('sessionTitle','登录已失效或未授权');setText('sessionDetail','请进入完整系统重新登录，然后回到工作台。');}
+        setText('heroText','已识别登录状态。你可以从工作台查看概览，再进入完整系统完成学生、题库、作业和成绩操作。');
+        if(session.role==='admin'){
+          setText('classHint','班级详情请在完整系统查看');
+          try{applyOverview(await getJSON('/admin/overview'));}
+          catch(error){
+            for(const name of ['students','classes','questions','assignments'])setText(name+'-live',failureMessage(error));
+            showFailure(error);
+          }
+        }else if(session.role==='teacher'){
+          for(const name of ['students','questions','assignments'])setText(name+'-live','请进入完整系统查看');
+          try{applyClasses(await getJSON('/teacher/classes'));}
+          catch(error){setText('classHint',failureMessage(error));setText('classes-live',failureMessage(error));showFailure(error);}
+        }else{
+          for(const name of ['students','classes','questions','assignments'])setText(name+'-live','当前账号无权查看此内容');
+          setText('classHint','当前账号无权查看此内容');
+        }
+      }catch(error){
+        const message=failureMessage(error);
+        setText('sessionTitle',message);
+        setText('sessionDetail',error.status===401?'请进入完整系统重新登录。':error.status===403?'请进入完整系统查看账号提示。':'网络或服务暂时不可用，恢复后点击重试。');
+        for(const name of ['students','classes','questions','assignments'])setText(name+'-live',message);
+        setText('classHint',message);showFailure(error);
+      }finally{loading=false;retryButton.disabled=false;}
     }
+    retryButton.addEventListener('click',boot);
     boot();
   </script>
 </body>
@@ -127,3 +186,4 @@ def install_product_shell(app: FastAPI) -> None:
 
 
 __all__ = ["PRODUCT_SHELL_MARKER", "install_product_shell", "teacher_workbench_html"]
+
