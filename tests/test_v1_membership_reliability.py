@@ -21,16 +21,19 @@ def test_partial_membership_reads_are_flagged_instead_of_silently_empty():
     assert V1_MEMBERSHIP_RELIABILITY_MARKER in html
     assert "students:[],failed:true" in html
     assert "classRows.filter(item=>item.failed)" in html
-    assert "peopleLoadWarnings=[]" in html
+    assert "window.__cyV1PeopleLoadWarnings=[]" in html
     assert "当前学生统计可能不完整" in html
     assert "不代表这些教学归属没有学生" in html
 
 
-def test_partial_read_warning_is_shown_on_workspace_and_student_index():
+def test_partial_read_warning_renders_after_workspace_student_or_history_loads():
     html = rendered_html()
 
-    assert html.count("${peopleLoadWarningHtml()}${duplicateAuditHtml(people)}") == 2
-    assert "peopleLoadWarnings.slice(0,5)" in html
+    assert "['/v1/workspace','/v1/student','/v1/history'].includes(path)" in html
+    assert 'id="cy-v1-membership-warning"' in html
+    assert "failures.slice(0,5)" in html
+    assert "new MutationObserver(schedule)" in html
+    assert "window.addEventListener('popstate',schedule)" in html
 
 
 def test_reliability_patch_keeps_bounded_full_visibility_reads():
