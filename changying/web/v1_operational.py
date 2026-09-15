@@ -57,6 +57,7 @@ def patch_v1_operational_html(html: str) -> str:
         return html
     if "</body>" not in html:
         raise RuntimeError("V1 operational patch: closing body marker not found")
+    html = html.replace("2025—2026（演示）", "按现有档案时间线读取", 1)
     return html.replace("</body>", _OPERATIONAL_SNIPPET + "\n</body>", 1)
 
 
