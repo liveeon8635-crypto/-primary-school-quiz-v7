@@ -72,6 +72,7 @@ def test_fast_path_reuses_student_detail_and_workspace_payloads():
         assert (
             "汇总当前可见学生的历史教学与时间线记录。" in html
             or "不再一次性加载所有人的完整历史" in html
+            or "这里用于查看已经结束的班级、学期或课程记录" in html
         )
         """
     )

@@ -2,7 +2,7 @@
 
 Mobile Safari repeatedly proved unreliable when the legacy application was
 started inside an iframe because Classic keeps authentication state in the
-browsing context's sessionStorage.  This module keeps Classic as the top-level
+browsing context's sessionStorage. This module keeps Classic as the top-level
 same-origin document, where its existing auth/session lifecycle works normally,
 then adds the V1 navigation chrome around it.
 """
@@ -85,7 +85,24 @@ html.cy-v1-unified .page-head{margin-top:0!important}
   var page=currentPage();picker.value=items.some(function(x){return x[0]===page})?page:(old||items[0][0]);
   identity.textContent=currentName()+' · '+({teacher:'教师',student:'学生',parent:'家长',admin:'管理员'}[role]||role);
  }
- function start(){mount();sync();var tries=0,t=setInterval(function(){sync();if(stateReady()||++tries>80){if(tries>80)clearInterval(t)}},100);}
+ function autoResume(){
+  if(window.__cyV1UnifiedAutoResume)return;
+  try{
+   var btn=document.getElementById('continueSessionBtn');
+   if(!btn||btn.classList.contains('hidden'))return;
+   window.__cyV1UnifiedAutoResume=true;
+   if(typeof markNetwork==='function')markNetwork(true);
+   btn.click();
+  }catch(_e){}
+ }
+ function start(){
+  mount();sync();autoResume();
+  var tries=0,t=setInterval(function(){
+   sync();autoResume();
+   if(stateReady()||++tries>80)clearInterval(t);
+  },100);
+  setTimeout(autoResume,250);
+ }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
 </script>
