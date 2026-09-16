@@ -129,11 +129,17 @@ def patch_v1_unified_tools(html: str) -> str:
 <script id="changying_v1_unified_tools_v1-script">
 (()=>{
   if(window.__cyV1UnifiedToolsInstalled)return;window.__cyV1UnifiedToolsInstalled=true;
-  function focusCapabilities(){
-    if(location.pathname!='/v1/workspace'||new URLSearchParams(location.search).get('focus')!=='capabilities')return;
-    let tries=0;const timer=setInterval(()=>{const target=document.getElementById('cy-capabilities');if(target){clearInterval(timer);target.scrollIntoView({block:'start'});return}if(++tries>20)clearInterval(timer)},80);
+  function unifyCapabilityLinks(){
+    const section=document.getElementById('cy-capabilities');if(!section)return false;
+    section.querySelectorAll('a[data-cy-capability]').forEach(a=>{const page=a.dataset.cyCapability;if(page)a.href='/v1/tool?page='+encodeURIComponent(page);const cta=a.querySelector('span');if(cta&&cta.textContent!=='在统一界面打开 →')cta.textContent='在统一界面打开 →'});
+    const p=section.querySelector('.cy-cap-head p');if(p)p.textContent='旧版成熟功能全部保留，但现在统一在长缨辅学工作区内打开；先统一使用界面，再根据真实使用暴露的问题逐项改造。';
+    const note=section.querySelector('.cy-cap-note');if(note)note.textContent='当前阶段不复制数据、不重写成熟业务逻辑。所有功能先进入同一界面连续验收；发现慢、重复、缺失或流程不顺后，再按优先级原生化。';
+    return true;
   }
-  window.addEventListener('popstate',focusCapabilities);focusCapabilities();
+  function settle(){
+    let tries=0;const timer=setInterval(()=>{const ok=unifyCapabilityLinks();if(location.pathname==='/v1/workspace'&&new URLSearchParams(location.search).get('focus')==='capabilities'&&ok)document.getElementById('cy-capabilities')?.scrollIntoView({block:'start'});if(ok||++tries>25)clearInterval(timer)},80);
+  }
+  window.addEventListener('popstate',settle);settle();
 })();
 </script>
 '''
