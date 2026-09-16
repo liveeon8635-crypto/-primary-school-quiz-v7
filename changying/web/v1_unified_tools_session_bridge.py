@@ -1,17 +1,11 @@
-"""Production hotfix for the V1 unified tool iframe.
+"""Session bridge for the V1 unified Classic tool surface.
 
-The V1 shell and the Classic app deliberately reuse the same backend token, but
-Classic decides whether to read auth state from localStorage or sessionStorage
-using its older ``v717Remember`` flag and also expects a cached ``v717User``.
-The first unified shell did not bridge that browser state, so the Classic frame
-could load successfully while rendering an uninitialised/blank application
-surface.  The embedded CSS also forced ``.shell`` visible even while Classic
-still marked it ``.hidden``.
-
-This patch keeps authentication semantics unchanged: it copies the already
-validated V1 token/user into whichever browser storage Classic is already
-configured to use, and only shows the Classic shell after Classic itself removes
-``hidden``.
+V1 and Classic reuse the same backend token.  The bridge mirrors the already
+validated V1 session into the legacy browser cache, preserves Classic's hidden
+state, and actively starts Classic's own saved-session validation after the
+same-origin iframe loads.  This is important on mobile Safari: Classic starts
+with its network hint false, so merely clicking its "continue session" button
+returns before making a request and leaves the embedded surface blank.
 """
 
 from __future__ import annotations
@@ -41,6 +35,12 @@ def patch_unified_tool_session_bridge(html: str) -> str:
     if session_anchor not in html:
         raise RuntimeError("V1 unified session bridge: session anchor not found")
     html = html.replace(session_anchor, session_replacement, 1)
+
+    load_anchor = """  frame.addEventListener('load',()=>{\n    try{\n      const doc=frame.contentDocument;embeddedPolish(doc);\n      const continueBtn=doc?.getElementById('continueSessionBtn');\n      if(continueBtn&&!continueBtn.classList.contains('hidden')){continueBtn.click();setTimeout(()=>embeddedPolish(frame.contentDocument),250)}\n      setTimeout(()=>embeddedPolish(frame.contentDocument),700);\n    }catch{}\n    loading.classList.add('hidden');\n  });\n"""
+    load_replacement = """  frame.addEventListener('load',()=>{\n    try{\n      const doc=frame.contentDocument,win=frame.contentWindow;embeddedPolish(doc);\n      if(win&&typeof win.markNetwork==='function')win.markNetwork(true);\n      if(win&&typeof win.validateSavedSession==='function'){\n        Promise.resolve(win.validateSavedSession()).then(ok=>{\n          if(!ok){notice.textContent='旧版功能登录状态尚未就绪，请返回后重试。';notice.classList.add('show')}\n          setTimeout(()=>embeddedPolish(frame.contentDocument),80);\n        }).catch(()=>{notice.textContent='旧版功能加载失败，请返回后重试。';notice.classList.add('show')});\n      }else{\n        const continueBtn=doc?.getElementById('continueSessionBtn');\n        if(continueBtn&&!continueBtn.classList.contains('hidden'))continueBtn.click();\n      }\n      setTimeout(()=>embeddedPolish(frame.contentDocument),700);\n    }catch{notice.textContent='旧版功能加载失败，请返回后重试。';notice.classList.add('show')}\n    loading.classList.add('hidden');\n  });\n"""
+    if load_anchor not in html:
+        raise RuntimeError("V1 unified session bridge: iframe load anchor not found")
+    html = html.replace(load_anchor, load_replacement, 1)
 
     return html.replace(
         "</body>",
