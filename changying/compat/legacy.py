@@ -58,6 +58,7 @@ from changying.web.v1_membership_visibility import install_v1_membership_visibil
 from changying.web.v1_operational import install_v1_operational_patch
 from changying.web.v1_school_facts import install_v1_school_facts_patch
 from changying.web.v1_student_detail_visibility import install_v1_student_detail_visibility_patch
+from changying.web.v1_teaching_actions import install_v1_teaching_actions_patch
 
 NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -142,6 +143,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_classic_ui_patch(implementation.app)
     install_v1_fast_read_routes(implementation)
     install_v1_data_quality_patch()
+    install_v1_teaching_actions_patch()
     install_v1_operational_patch()
     install_v1_completion_patch()
     install_v1_mastery_evidence_patch()
