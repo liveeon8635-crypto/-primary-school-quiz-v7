@@ -49,9 +49,17 @@ _TRANSITION_SELECTION_SNIPPET = r'''
   function studentName(s){return s?.name||s?.studentName||s?.student_name||`学生 ${s?.id??s?.studentID??s?.student_id??''}`}
   function studentKey(s){return s?.id??s?.studentID??s?.studentId??s?.student_id??''}
   function studentMeta(s){const grade=s?.grade?`${s.grade}年级`:'';const cls=s?.className||s?.currentClassName||s?.class_name||'';return [grade,cls].filter(Boolean).join(' · ')}
-  function closePicker(){document.getElementById('cy-student-picker-backdrop')?.remove()}
-  async function openStudentPicker(){
+  let pickerTrigger=null;
+  let pickerKeyHandler=null;
+  function closePicker(){
+    if(pickerKeyHandler){document.removeEventListener('keydown',pickerKeyHandler,true);pickerKeyHandler=null}
+    document.getElementById('cy-student-picker-backdrop')?.remove();
+    const back=pickerTrigger;pickerTrigger=null;
+    if(back&&typeof back.focus==='function')back.focus();
+  }
+  async function openStudentPicker(trigger){
     closePicker();
+    pickerTrigger=trigger||null;
     const overlay=document.createElement('div');overlay.id='cy-student-picker-backdrop';overlay.className='cy-student-picker-backdrop';
     overlay.innerHTML='<section class="cy-student-picker" role="dialog" aria-modal="true" aria-label="选择学生"><div class="cy-student-picker-head"><h2>选择学生</h2><button class="btn" type="button" data-cy-picker-close>关闭</button></div><div class="cy-student-picker-status" data-cy-picker-status>正在读取学生档案…</div><div class="cy-student-picker-list" data-cy-picker-list></div></section>';
     document.body.appendChild(overlay);
