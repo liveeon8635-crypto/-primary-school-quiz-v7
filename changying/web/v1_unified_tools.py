@@ -33,10 +33,10 @@ _TOOL_HTML = r'''<!doctype html>
   </style>
 </head>
 <body>
-  <header class="top"><a class="brand" href="/v1/workspace"><span class="mark">长</span><span>长缨辅学<small>统一功能工作区</small></span></a><div class="top-actions"><span class="chip" id="identity">正在识别身份</span><a class="back" href="/v1/workspace?focus=capabilities">全部功能</a></div></header>
+  <header class="top"><a class="brand" href="/v1/workspace"><span class="mark">长</span><span>长缨辅学<small>统一功能工作区</small></span></a><div class="top-actions"><span class="chip" id="identity">正在识别身份</span><a class="back" href="/v1/tool">全部功能</a></div></header>
   <section class="bar"><div class="tool-title"><b id="toolTitle">功能工作区</b><small>保留原有业务能力，但统一放进长缨辅学界面；这里暴露的问题再逐项原生化。</small></div><select class="picker" id="toolPicker" aria-label="切换功能"></select></section>
   <div class="frame-wrap"><div class="loading" id="loading">正在打开功能…</div><div class="notice" id="notice"></div><iframe class="frame" id="toolFrame" title="长缨辅学功能"></iframe></div>
-  <nav class="bottom"><a href="/v1/workspace"><span>▦</span>当前教学</a><a href="/v1/student"><span>◉</span>学生</a><a href="/v1/history"><span>◷</span>往期教学</a><a href="/v1/transition"><span>↗</span>升学衔接</a><a class="active" href="/v1/workspace?focus=capabilities"><span>⌘</span>全部功能</a></nav>
+  <nav class="bottom"><a href="/v1/workspace"><span>▦</span>当前教学</a><a href="/v1/student"><span>◉</span>学生</a><a href="/v1/history"><span>◷</span>往期教学</a><a href="/v1/transition"><span>↗</span>升学衔接</a><a class="active" href="/v1/tool"><span>⌘</span>全部功能</a></nav>
 <script>
 (()=>{
   const TOKEN_KEY='v717Token';
@@ -119,11 +119,11 @@ def patch_v1_unified_tools(html: str) -> str:
         return html
     html = html.replace(
         '<a href="/classic"><span>⌂</span>原教学系统</a>',
-        '<a href="/v1/workspace?focus=capabilities" data-nav><span>⌘</span>全部功能</a>',
+        '<a href="/v1/tool"><span>⌘</span>全部功能</a>',
     )
     html = html.replace(
         '<a href="/classic"><span>⌂</span>原系统</a>',
-        '<a href="/v1/workspace?focus=capabilities" data-nav><span>⌘</span>全部功能</a>',
+        '<a href="/v1/tool"><span>⌘</span>全部功能</a>',
     )
     snippet = r'''
 <script id="changying_v1_unified_tools_v1-script">
@@ -137,7 +137,7 @@ def patch_v1_unified_tools(html: str) -> str:
     return true;
   }
   function settle(){
-    let tries=0;const timer=setInterval(()=>{const ok=unifyCapabilityLinks();if(location.pathname==='/v1/workspace'&&new URLSearchParams(location.search).get('focus')==='capabilities'&&ok)document.getElementById('cy-capabilities')?.scrollIntoView({block:'start'});if(ok||++tries>25)clearInterval(timer)},80);
+    let tries=0;const timer=setInterval(()=>{const ok=unifyCapabilityLinks();if(ok||++tries>25)clearInterval(timer)},80);
   }
   window.addEventListener('popstate',settle);settle();
 })();
