@@ -228,8 +228,8 @@ def patch_v1_fast_path(html: str) -> str:
     # The base student page already fetched this profile. Publish it so the
     # operational continuity card can reuse the same payload instead of issuing
     # a duplicate request after render. Keep the original if/else chain valid
-    # by replacing the complete teacher/admin branch rather than only its body.
-    profile_fetch = "if(session.role==='teacher'||session.role==='admin')profile=await api('/teacher/students/'+id+'/growth-profile')"
+    # by replacing the complete teacher/admin branch including its semicolon.
+    profile_fetch = "if(session.role==='teacher'||session.role==='admin')profile=await api('/teacher/students/'+id+'/growth-profile');"
     if profile_fetch not in html:
         raise RuntimeError("V1 fast path: student detail marker not found")
     html = html.replace(
