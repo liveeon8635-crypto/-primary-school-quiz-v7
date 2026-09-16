@@ -7,8 +7,10 @@ from changying.web.classic_ui import CLASSIC_UI_MARKER, install_classic_ui_patch
 from changying.web.v1_classic_embed_bootstrap import V1_CLASSIC_EMBED_MARKER
 from changying.web.v1_classic_gzip_embed import (
     V1_CLASSIC_GZIP_EMBED_MARKER,
+    V1_CLASSIC_TOP_LEVEL_MARKER,
     install_v1_classic_gzip_embed,
 )
+from changying.web.v1_classic_unified_top import V1_CLASSIC_UNIFIED_MARKER
 
 
 def build_app() -> FastAPI:
@@ -17,6 +19,10 @@ def build_app() -> FastAPI:
     @app.get('/classic')
     def classic():
         return HTMLResponse('<html><body><main>legacy-tool</main></body></html>')
+
+    @app.get('/v1/tool')
+    def old_tool_shell():
+        return HTMLResponse('<html><body>old-iframe-shell</body></html>')
 
     app.add_middleware(GZipMiddleware, minimum_size=1)
     install_classic_ui_patch(app)
@@ -42,6 +48,40 @@ def test_embedded_classic_is_enhanced_even_when_upstream_is_gzipped():
     assert 'changying-classic' in response.text
 
 
+def test_v1_tool_redirects_to_same_tab_unified_classic():
+    response = TestClient(build_app(), follow_redirects=False).get('/v1/tool?page=ai')
+
+    assert response.status_code == 307
+    assert response.headers['X-Changying-V1-Tool'] == V1_CLASSIC_TOP_LEVEL_MARKER
+    assert response.headers['location'] == '/classic?legacy=1&unified=1&from=v1&page=ai'
+
+
+def test_unknown_tool_page_is_safely_normalized():
+    response = TestClient(build_app(), follow_redirects=False).get('/v1/tool?page=not-a-real-page')
+
+    assert response.status_code == 307
+    assert response.headers['location'].endswith('page=classes')
+
+
+def test_unified_classic_gets_v1_chrome_even_when_upstream_is_gzipped():
+    response = TestClient(build_app()).get(
+        '/classic?legacy=1&unified=1&from=v1&page=classes',
+        headers={'Accept-Encoding': 'gzip'},
+    )
+
+    assert response.status_code == 200
+    assert response.headers['content-encoding'] == 'gzip'
+    assert response.headers['X-Changying-Classic-UI'] == CLASSIC_UI_MARKER
+    assert response.headers['X-Changying-V1-Classic-Unified'] == V1_CLASSIC_UNIFIED_MARKER
+    assert 'legacy-tool' in response.text
+    assert V1_CLASSIC_UNIFIED_MARKER in response.text
+    assert "params.get('unified')!=='1'" in response.text
+    assert 'cy-v1-unified-picker' in response.text
+    assert '/v1/workspace' in response.text
+    assert '/v1/history' in response.text
+    assert '班级学生' in response.text
+
+
 def test_non_embedded_gzip_classic_keeps_existing_behavior():
     response = TestClient(build_app()).get(
         '/classic',
@@ -52,3 +92,4 @@ def test_non_embedded_gzip_classic_keeps_existing_behavior():
     assert response.headers['content-encoding'] == 'gzip'
     assert 'legacy-tool' in response.text
     assert 'X-Changying-V1-Classic-Embed' not in response.headers
+    assert 'X-Changying-V1-Classic-Unified' not in response.headers
