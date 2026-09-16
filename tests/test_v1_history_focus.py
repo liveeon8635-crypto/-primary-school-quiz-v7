@@ -25,6 +25,9 @@ def test_history_shell_renders_before_roster_network_wait():
     end = html.index('function transitionPage()', start)
     segment = html[start:end]
 
+    # Shell must be painted before the roster network call is awaited.
+    assert "screen.innerHTML=shell(content,'history')" in segment
+    assert 'people=await loadPeople()' in segment
     assert segment.index("screen.innerHTML=shell(content,'history')") < segment.index('people=await loadPeople()')
     assert 'historySearch' in segment
     assert 'data-student' in segment
