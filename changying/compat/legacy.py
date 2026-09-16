@@ -45,6 +45,7 @@ from changying.web.product_shell import (
 )
 from changying.web.pwa import build_manifest
 from changying.web.v1 import install_v1_routes
+from changying.web.v1_acceptance_polish import install_v1_acceptance_polish_patch
 from changying.web.v1_completion import install_v1_completion_patch
 from changying.web.v1_data_quality import install_v1_data_quality_patch
 from changying.web.v1_fast_path import install_v1_fast_path_patch, install_v1_fast_read_routes
@@ -152,6 +153,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_final_closure_patch()
     install_v1_fast_path_patch()
     install_v1_identity_clarity_patch()
+    install_v1_acceptance_polish_patch()
     install_v1_routes(implementation.app)
 
 
