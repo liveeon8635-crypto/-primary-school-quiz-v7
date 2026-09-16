@@ -14,7 +14,10 @@ def test_operational_patch_connects_visible_cards_to_native_v1_capabilities():
     assert "/teacher/classes" in html
     assert "/teacher/students/" in html
     assert "/growth-profile" in html
-    assert "/classic?legacy=1&page=" not in html
+    # The operational layer itself must remain native/read-only.  The final V1
+    # document may now also contain the separate retained-capability center,
+    # which intentionally deep-links to mature Classic workflows.
+    assert "/classic?legacy=1&page=" not in v1_operational._OPERATIONAL_SNIPPET
     assert ("在 V1 内打开" in html) or ("打开 →" in html)
     assert ("保持 V1 登录态，不再跳转旧系统" in html) or ("在当前页面查看教学信息" in html)
     assert "cy-feature-layer" in html
