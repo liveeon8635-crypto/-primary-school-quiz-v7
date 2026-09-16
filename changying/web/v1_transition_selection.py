@@ -29,7 +29,8 @@ _TRANSITION_SELECTION_SNIPPET = r'''
     const host=list[0].parentElement;if(!host)return;
     let note=document.getElementById('cy-transition-choice');
     if(!note){note=document.createElement('div');note.id='cy-transition-choice';note.className='cy-transition-choice';host.insertAdjacentElement('afterend',note)}
-    note.textContent=value?`已选择：${value}。当前仅保存在本次浏览会话，不写入学生档案；正式衔接计划数据模型将在后续版本单独建立。`:'请选择一个衔接类型。';
+    const text=value?`已选择：${value}。当前仅保存在本次浏览会话，不写入学生档案；正式衔接计划数据模型将在后续版本单独建立。`:'请选择一个衔接类型。';
+    if(note.textContent!==text)note.textContent=text;
   }
   function restore(){const list=buttons();if(!list.length)return;const saved=sessionStorage.getItem(key())||'';showChoice(saved)}
   document.addEventListener('click',e=>{
@@ -37,9 +38,9 @@ _TRANSITION_SELECTION_SNIPPET = r'''
     e.preventDefault();e.stopImmediatePropagation();
     const value=b.textContent.trim();sessionStorage.setItem(key(),value);showChoice(value);
   },true);
-  const observer=new MutationObserver(()=>restore());
   const root=document.getElementById('screen')||document.body;
-  observer.observe(root,{childList:true,subtree:true});
+  const observer=new MutationObserver(()=>restore());
+  observer.observe(root,{childList:true});
   restore();
 })();
 </script>
