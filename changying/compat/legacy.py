@@ -65,6 +65,7 @@ from changying.web.v1_unified_tools import (
     install_v1_unified_tool_route,
     install_v1_unified_tools_patch,
 )
+from changying.web.v1_unified_tools_session_bridge import install_v1_unified_tool_session_bridge
 
 NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -165,6 +166,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_acceptance_polish_patch()
     install_v1_legacy_capabilities_patch()
     install_v1_unified_tools_patch()
+    install_v1_unified_tool_session_bridge()
     install_v1_routes(implementation.app)
     install_v1_unified_tool_route(implementation.app)
 
