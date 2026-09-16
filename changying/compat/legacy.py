@@ -61,6 +61,10 @@ from changying.web.v1_school_facts import install_v1_school_facts_patch
 from changying.web.v1_student_detail_visibility import install_v1_student_detail_visibility_patch
 from changying.web.v1_teaching_actions import install_v1_teaching_actions_patch
 from changying.web.v1_transition_selection import install_v1_transition_selection_patch
+from changying.web.v1_unified_tools import (
+    install_v1_unified_tool_route,
+    install_v1_unified_tools_patch,
+)
 
 NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -160,7 +164,9 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_identity_clarity_patch()
     install_v1_acceptance_polish_patch()
     install_v1_legacy_capabilities_patch()
+    install_v1_unified_tools_patch()
     install_v1_routes(implementation.app)
+    install_v1_unified_tool_route(implementation.app)
 
 
 __all__ = ["NO_CACHE_HEADERS", "apply_legacy_compatibility", "install_product_visibility_routes"]
