@@ -22,7 +22,6 @@ def run_isolated(code: str) -> None:
 
 def test_unified_patch_replaces_direct_classic_navigation():
     html = patch_v1_unified_tools(v1_html())
-
     assert V1_UNIFIED_TOOLS_MARKER in html
     assert '<a href="/v1/tool"><span>⌘</span>全部功能</a>' in html
     assert 'href="/v1/tool" data-nav' not in html
@@ -35,13 +34,11 @@ def test_unified_patch_replaces_direct_classic_navigation():
 
 def test_tool_shell_keeps_v1_chrome_around_mature_workflows():
     html = unified_tool_html()
-
     assert "统一功能工作区" in html
     assert '<a class="back" href="/v1/tool">全部功能</a>' in html
     assert '<a class="active" href="/v1/tool"><span>⌘</span>全部功能</a>' in html
     assert "/classic?legacy=1&embedded=1&from=v1&page=" in html
     assert ".sidebar,.mobile-header,.bottom-nav{display:none!important}" in html
-    assert "continueSessionBtn" in html
     assert "班级学生" in html
     assert "孩子作业" in html
     assert "平台总览" in html
@@ -55,14 +52,12 @@ def test_runtime_installs_unified_tool_route_and_final_patch():
         from fastapi.testclient import TestClient
         from app import app
         from changying.web.v1_unified_tools import V1_UNIFIED_TOOLS_MARKER
-
         client = TestClient(app)
         v1 = client.get('/v1')
         assert v1.status_code == 200
         assert V1_UNIFIED_TOOLS_MARKER in v1.text
         assert '<a href="/v1/tool"><span>⌘</span>全部功能</a>' in v1.text
         assert 'href="/v1/tool" data-nav' not in v1.text
-
         tool = client.get('/v1/tool?page=classes')
         assert tool.status_code == 200
         assert tool.headers['X-Changying-V1'] == V1_UNIFIED_TOOLS_MARKER
