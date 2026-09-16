@@ -1,7 +1,3 @@
-import subprocess
-import sys
-import textwrap
-
 from changying.web.v1_unified_tools import unified_tool_html
 from changying.web.v1_unified_tools_session_bridge import (
     V1_UNIFIED_SESSION_BRIDGE_MARKER,
@@ -9,12 +5,8 @@ from changying.web.v1_unified_tools_session_bridge import (
 )
 
 
-def run_isolated(code: str) -> None:
-    result = subprocess.run([sys.executable, "-c", textwrap.dedent(code)], text=True, capture_output=True, timeout=45)
-    assert result.returncode == 0, result.stdout + result.stderr
-
-
 def test_bridge_preserves_hidden_state_and_prepares_validated_session_handoff():
+    """Keep the old iframe bridge unit-tested while it is no longer the live path."""
     html = patch_unified_tool_session_bridge(unified_tool_html())
     assert V1_UNIFIED_SESSION_BRIDGE_MARKER in html
     assert ".shell:not(.hidden){display:block!important" in html
@@ -36,18 +28,10 @@ def test_parent_uses_same_origin_postmessage_handshake_for_classic_session():
     assert "Promise.resolve(win.validateSavedSession())" not in html
 
 
-def test_runtime_tool_html_contains_session_handshake():
-    run_isolated(
-        """
-        from fastapi.testclient import TestClient
-        from app import app
-        from changying.web.v1_unified_tools_session_bridge import V1_UNIFIED_SESSION_BRIDGE_MARKER
-        client = TestClient(app)
-        response = client.get('/v1/tool?page=classes')
-        assert response.status_code == 200
-        assert V1_UNIFIED_SESSION_BRIDGE_MARKER in response.text
-        assert "function sendClassicSession()" in response.text
-        assert "data.type==='session-needed'" in response.text
-        assert "source:'changying-v1'" in response.text
-        """
-    )
+def test_runtime_no_longer_relies_on_iframe_session_bridge():
+    from fastapi.testclient import TestClient
+    from app import app
+
+    response = TestClient(app, follow_redirects=False).get('/v1/tool?page=classes')
+    assert response.status_code == 307
+    assert response.headers['location'] == '/classic?legacy=1&unified=1&from=v1&page=classes'
