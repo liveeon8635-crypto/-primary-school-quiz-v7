@@ -32,21 +32,16 @@ def test_unified_patch_replaces_direct_classic_navigation():
     assert "在统一界面打开 →" in html
 
 
-def test_tool_shell_keeps_v1_chrome_around_mature_workflows():
+def test_old_iframe_shell_is_kept_only_as_a_compatibility_helper():
     html = unified_tool_html()
     assert "统一功能工作区" in html
-    assert '<a class="back" href="/v1/tool">全部功能</a>' in html
-    assert '<a class="active" href="/v1/tool"><span>⌘</span>全部功能</a>' in html
     assert "/classic?legacy=1&embedded=1&from=v1&page=" in html
-    assert ".sidebar,.mobile-header,.bottom-nav{display:none!important}" in html
     assert "班级学生" in html
     assert "孩子作业" in html
     assert "平台总览" in html
-    assert "当前教学" in html
-    assert "升学衔接" in html
 
 
-def test_runtime_installs_unified_tool_route_and_final_patch():
+def test_runtime_installs_same_tab_unified_tool_route_and_final_patch():
     run_isolated(
         """
         from fastapi.testclient import TestClient
@@ -58,10 +53,13 @@ def test_runtime_installs_unified_tool_route_and_final_patch():
         assert V1_UNIFIED_TOOLS_MARKER in v1.text
         assert '<a href="/v1/tool"><span>⌘</span>全部功能</a>' in v1.text
         assert 'href="/v1/tool" data-nav' not in v1.text
-        tool = client.get('/v1/tool?page=classes')
-        assert tool.status_code == 200
-        assert tool.headers['X-Changying-V1'] == V1_UNIFIED_TOOLS_MARKER
-        assert '统一功能工作区' in tool.text
-        assert '/classic?legacy=1&embedded=1&from=v1&page=' in tool.text
+        tool = client.get('/v1/tool?page=classes', follow_redirects=False)
+        assert tool.status_code == 307
+        assert tool.headers['location'] == '/classic?legacy=1&unified=1&from=v1&page=classes'
+        assert tool.headers['X-Changying-V1-Tool'] == 'changying_v1_classic_top_level_v1'
+        unified = client.get(tool.headers['location'])
+        assert unified.status_code == 200
+        assert 'changying_v1_classic_unified_top_v1' in unified.text
+        assert 'cy-v1-unified-picker' in unified.text
         """
     )
