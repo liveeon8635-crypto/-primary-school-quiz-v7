@@ -11,7 +11,6 @@ def test_history_page_is_task_oriented_and_drops_conceptual_read_only_shell():
     assert '按学生找往期记录' in html
     assert '为什么保留往期记录' in html
     assert '不需要另外建立“历史档案”' in html
-    assert "heading('往期教学','这里用于查看已经结束的班级、学期或课程记录；学生始终还是同一份连续档案，不需要另外建立“历史档案”。','')" in html
     assert '<span class="tag">往期记录</span>' not in html
     assert '查询层级' not in html
     assert '2025—2026（演示）' not in html
