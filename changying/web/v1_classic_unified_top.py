@@ -12,7 +12,16 @@ V1_CLASSIC_UNIFIED_MARKER = "changying_v1_classic_unified_top_v1"
 
 V1_CLASSIC_UNIFIED_SNIPPET = r'''
 <style id="changying_v1_classic_unified_top_v1-style">
-html.cy-v1-unified body{background:#f3f6fb!important;padding-top:66px!important;padding-bottom:86px!important}
+html.cy-v1-unified{
+ --cy-v1-navy:#173c78;
+ --cy-v1-blue:#2563eb;
+ --cy-v1-ink:#172033;
+ --cy-v1-muted:#667085;
+ --cy-v1-line:#e4e9f2;
+ --cy-v1-soft:#f5f7fb;
+ --cy-v1-shadow:0 8px 30px rgba(23,60,120,.04);
+}
+html.cy-v1-unified body{background:#f3f6fb!important;color:var(--cy-v1-ink)!important;padding-top:66px!important;padding-bottom:86px!important;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif!important;-webkit-text-size-adjust:100%}
 html.cy-v1-unified .sidebar,
 html.cy-v1-unified .mobile-header,
 html.cy-v1-unified .bottom-nav,
@@ -21,25 +30,76 @@ html.cy-v1-unified #changying_classic_ui_v2-workflow,
 html.cy-v1-unified .cy-classic-ribbon,
 html.cy-v1-unified .cy-workflow-panel{display:none!important}
 html.cy-v1-unified .shell:not(.hidden){display:block!important;min-height:calc(100dvh - 152px)!important}
-html.cy-v1-unified .main{margin:0!important;max-width:none!important;width:100%!important;padding:14px!important;min-height:calc(100dvh - 152px)!important}
-html.cy-v1-unified .page-head{margin-top:0!important}
+html.cy-v1-unified .main{margin:0 auto!important;max-width:1180px!important;width:100%!important;padding:28px clamp(16px,3.4vw,46px) 52px!important;min-height:calc(100dvh - 152px)!important;background:transparent!important}
+html.cy-v1-unified .page-head{margin:0 0 22px!important;display:flex!important;align-items:flex-end!important;justify-content:space-between!important;gap:16px!important}
+html.cy-v1-unified .page-head h1,
+html.cy-v1-unified h1{color:var(--cy-v1-ink)!important;letter-spacing:-.035em!important;font-weight:900!important}
+html.cy-v1-unified .page-head p,
+html.cy-v1-unified .subtitle,
+html.cy-v1-unified .muted{color:var(--cy-v1-muted)!important}
+html.cy-v1-unified .card,
+html.cy-v1-unified .panel,
+html.cy-v1-unified .box,
+html.cy-v1-unified .class-card,
+html.cy-v1-unified .student-card,
+html.cy-v1-unified .list-card,
+html.cy-v1-unified .stat-card{background:#fff!important;border:1px solid var(--cy-v1-line)!important;border-radius:18px!important;box-shadow:var(--cy-v1-shadow)!important}
+html.cy-v1-unified .card,
+html.cy-v1-unified .panel,
+html.cy-v1-unified .box{padding:18px!important}
+html.cy-v1-unified button,
+html.cy-v1-unified .btn,
+html.cy-v1-unified [role="button"]{border-radius:12px!important;font-family:inherit!important;font-weight:750!important;box-shadow:none!important}
+html.cy-v1-unified .btn,
+html.cy-v1-unified button:not(.icon-btn):not(.ghost):not(.danger){border-color:var(--cy-v1-line)!important}
+html.cy-v1-unified .btn.primary,
+html.cy-v1-unified button.primary,
+html.cy-v1-unified .btn-primary,
+html.cy-v1-unified .primary-btn{background:var(--cy-v1-navy)!important;border-color:var(--cy-v1-navy)!important;color:#fff!important}
+html.cy-v1-unified .btn.secondary,
+html.cy-v1-unified button.secondary,
+html.cy-v1-unified .btn-secondary{background:#fff!important;border-color:var(--cy-v1-line)!important;color:var(--cy-v1-ink)!important}
+html.cy-v1-unified input:not([type="checkbox"]):not([type="radio"]),
+html.cy-v1-unified select,
+html.cy-v1-unified textarea{border:1px solid #cfd7e5!important;border-radius:12px!important;background:#fff!important;color:var(--cy-v1-ink)!important;font-family:inherit!important}
+html.cy-v1-unified input:focus,
+html.cy-v1-unified select:focus,
+html.cy-v1-unified textarea:focus{outline:2px solid rgba(37,99,235,.14)!important;border-color:#9db8e8!important}
+html.cy-v1-unified table{background:#fff!important;border-radius:14px!important;overflow:hidden!important;border-color:var(--cy-v1-line)!important}
+html.cy-v1-unified th{background:#f5f7fb!important;color:#465269!important}
+html.cy-v1-unified td,
+html.cy-v1-unified th{border-color:var(--cy-v1-line)!important}
+html.cy-v1-unified .badge,
+html.cy-v1-unified .pill,
+html.cy-v1-unified .chip,
+html.cy-v1-unified .tag{border-radius:999px!important}
 #cy-v1-unified-top{position:fixed;left:0;right:0;top:0;height:66px;z-index:2147483600;display:flex;align-items:center;gap:12px;padding:0 16px;background:rgba(255,255,255,.98);border-bottom:1px solid #e4e9f2;box-shadow:0 8px 24px rgba(23,60,120,.06);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
 #cy-v1-unified-top .cy-v1-brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:#172033;font-weight:900;white-space:nowrap}
 #cy-v1-unified-top .cy-v1-mark{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;background:#173c78;color:white;font-size:21px}
 #cy-v1-unified-top .cy-v1-spacer{flex:1}
 #cy-v1-unified-identity{font-size:12px;color:#173c78;background:#edf3ff;border:1px solid #dbe7ff;border-radius:999px;padding:7px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#cy-v1-unified-picker{min-width:180px;max-width:280px;border:1px solid #d5deec;border-radius:12px;background:#fff;color:#172033;padding:9px 34px 9px 11px;font:inherit}
+#cy-v1-unified-picker{min-width:180px;max-width:280px;border:1px solid #d5deec!important;border-radius:12px!important;background:#fff!important;color:#172033!important;padding:9px 34px 9px 11px!important;font:inherit!important}
 #cy-v1-unified-bottom{display:none}
 @media(max-width:720px){
  html.cy-v1-unified body{padding-top:60px!important;padding-bottom:82px!important}
- html.cy-v1-unified .main{padding:12px 10px 28px!important;min-height:calc(100dvh - 142px)!important}
- html.cy-v1-unified .card{border-radius:16px!important}
- html.cy-v1-unified .page-head h1{font-size:22px!important}
+ html.cy-v1-unified .main{padding:20px 14px calc(104px + env(safe-area-inset-bottom))!important;min-height:calc(100dvh - 142px)!important}
+ html.cy-v1-unified .page-head{align-items:flex-start!important;flex-direction:column!important;margin-bottom:20px!important}
+ html.cy-v1-unified .page-head h1{font-size:25px!important}
+ html.cy-v1-unified .card,
+ html.cy-v1-unified .panel,
+ html.cy-v1-unified .box,
+ html.cy-v1-unified .class-card,
+ html.cy-v1-unified .student-card,
+ html.cy-v1-unified .list-card,
+ html.cy-v1-unified .stat-card{border-radius:18px!important}
+ html.cy-v1-unified .card,
+ html.cy-v1-unified .panel,
+ html.cy-v1-unified .box{padding:16px!important}
  #cy-v1-unified-top{height:60px;padding:0 12px;gap:8px}
  #cy-v1-unified-top .cy-v1-mark{width:38px;height:38px}
  #cy-v1-unified-top .cy-v1-brand-text{display:none}
  #cy-v1-unified-identity{display:none}
- #cy-v1-unified-picker{flex:1;min-width:0;max-width:none;font-size:14px;padding:8px 30px 8px 10px}
+ #cy-v1-unified-picker{flex:1;min-width:0;max-width:none;font-size:14px!important;padding:8px 30px 8px 10px!important}
  #cy-v1-unified-bottom{position:fixed;display:grid;grid-template-columns:repeat(5,1fr);left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));z-index:2147483600;background:rgba(255,255,255,.98);border:1px solid #e4e9f2;border-radius:18px;padding:5px 6px;box-shadow:0 14px 40px rgba(23,60,120,.16);backdrop-filter:blur(14px);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
  #cy-v1-unified-bottom a{text-decoration:none;text-align:center;font-size:10px;color:#5f6b7e;padding:4px 1px;border-radius:10px}
  #cy-v1-unified-bottom a span{display:block;font-size:16px;margin-bottom:1px}
