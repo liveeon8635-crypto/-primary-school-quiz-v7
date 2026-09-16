@@ -14,28 +14,29 @@ def run_isolated(code: str) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_bridge_preserves_classic_hidden_state_and_copies_validated_session():
+def test_bridge_preserves_hidden_state_and_prepares_validated_session_handoff():
     html = patch_unified_tool_session_bridge(unified_tool_html())
     assert V1_UNIFIED_SESSION_BRIDGE_MARKER in html
     assert ".shell:not(.hidden){display:block!important" in html
     assert ".shell{display:block!important" not in html
+    assert "sessionStorage.getItem(TOKEN_KEY)" in html
     assert "function bridgeClassicSession(t,s)" in html
-    assert "const store=remember?localStorage:sessionStorage" in html
-    assert "store.setItem('v717Token',t)" in html
-    assert "store.setItem('v717User',JSON.stringify(legacyUser))" in html
+    assert "classicSession={token:t,user:legacyUser,remember:remember}" in html
     assert "bridgeClassicSession(t,s);role=String(s.role||'teacher')" in html
 
 
-def test_parent_waits_for_classic_readiness_message_without_direct_iframe_calls():
+def test_parent_uses_same_origin_postmessage_handshake_for_classic_session():
     html = patch_unified_tool_session_bridge(unified_tool_html())
-    assert "window.addEventListener('message',event=>" in html
+    assert "function sendClassicSession()" in html
+    assert "frame.contentWindow.postMessage({source:'changying-v1',type:'session',session:classicSession},location.origin)" in html
+    assert "data.type==='session-needed'" in html
     assert "data.source!=='changying-classic'" in html
     assert "data.type==='ready'" in html
     assert "win.markNetwork(true)" not in html
     assert "Promise.resolve(win.validateSavedSession())" not in html
 
 
-def test_runtime_tool_html_contains_session_bridge():
+def test_runtime_tool_html_contains_session_handshake():
     run_isolated(
         """
         from fastapi.testclient import TestClient
@@ -45,7 +46,8 @@ def test_runtime_tool_html_contains_session_bridge():
         response = client.get('/v1/tool?page=classes')
         assert response.status_code == 200
         assert V1_UNIFIED_SESSION_BRIDGE_MARKER in response.text
-        assert "function bridgeClassicSession(t,s)" in response.text
-        assert "window.addEventListener('message',event=>" in response.text
+        assert "function sendClassicSession()" in response.text
+        assert "data.type==='session-needed'" in response.text
+        assert "source:'changying-v1'" in response.text
         """
     )

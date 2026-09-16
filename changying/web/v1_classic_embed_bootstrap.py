@@ -23,14 +23,49 @@ html.cy-v1-embedded .page-head{margin-top:0!important}
 (function(){
  var params=new URLSearchParams(location.search);if(params.get('embedded')!=='1')return;
  document.documentElement.classList.add('cy-v1-embedded');
+ var validating=false;
  function report(type,detail){try{parent.postMessage({source:'changying-classic',type:type,detail:detail||''},location.origin)}catch(_e){}}
+ function hasState(){try{return typeof state!=='undefined'}catch(_e){return false}}
+ function requestSession(){report('session-needed','')}
  function begin(attempt){
-  if(typeof window.markNetwork!=='function'||typeof window.validateSavedSession!=='function'){
-   if(attempt<30){setTimeout(function(){begin(attempt+1)},50);return}report('error','旧版初始化函数未就绪');return;
+  if(!hasState()||typeof markNetwork!=='function'||typeof validateSavedSession!=='function'){
+   if(attempt<40){setTimeout(function(){begin(attempt+1)},50);return}report('error','旧版初始化函数未就绪');return;
   }
-  try{window.markNetwork(true);Promise.resolve(window.validateSavedSession()).then(function(ok){if(ok){setTimeout(function(){report('ready','')},80)}else{report('not-ready','登录状态未就绪')}}).catch(function(){report('error','登录状态验证失败')})}catch(_e){report('error','旧版初始化失败')}
+  if(!state.token||!state.user){requestSession();return}
+  if(validating)return;
+  validating=true;
+  try{
+   markNetwork(true);
+   Promise.resolve(validateSavedSession()).then(function(ok){
+    validating=false;
+    if(ok){setTimeout(function(){report('ready','')},80)}else{report('not-ready','登录状态未就绪')}
+   }).catch(function(){validating=false;report('error','登录状态验证失败')})
+  }catch(_e){validating=false;report('error','旧版初始化失败')}
  }
- if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){begin(0)},{once:true})}else{begin(0)}
+ function hydrateSession(session,attempt){
+  if(!session||!session.token||!session.user){report('error','统一登录状态缺失');return}
+  if(!hasState()){
+   if(attempt<40){setTimeout(function(){hydrateSession(session,attempt+1)},50);return}report('error','旧版登录状态容器未就绪');return;
+  }
+  try{
+   state.token=String(session.token);
+   state.user=session.user;
+   state.remember=!!session.remember;
+   if(typeof saveAuth==='function')saveAuth();
+   begin(0);
+  }catch(_e){report('error','旧版登录状态写入失败')}
+ }
+ window.addEventListener('message',function(event){
+  if(event.origin!==location.origin||event.source!==parent)return;
+  var data=event.data||{};
+  if(data.source!=='changying-v1'||data.type!=='session')return;
+  hydrateSession(data.session||{},0);
+ });
+ function boot(){
+  if(hasState()&&state.token&&state.user){begin(0);return}
+  requestSession();
+ }
+ if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',boot,{once:true})}else{boot()}
 })();
 </script>
 '''
