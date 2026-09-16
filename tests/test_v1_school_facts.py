@@ -2,6 +2,7 @@ from changying.web.v1 import v1_html
 from changying.web.v1_operational import _OPERATIONAL_SNIPPET
 from changying.web.v1_school_facts import (
     V1_SCHOOL_FACTS_MARKER,
+    _SCHOOL_TODAY_FUNCTION,
     patch_v1_school_facts,
 )
 
@@ -29,11 +30,10 @@ def test_today_timetable_opens_a_fact_only_overview_until_schedule_exists():
     assert "待后续真正建立学校、学年、学期、课节与时间段数据模型" in html
 
 
-def test_school_facts_patch_is_idempotent_and_read_only():
+def test_school_facts_patch_is_idempotent_and_its_own_timetable_logic_is_read_only():
     once = patch_v1_school_facts(current_operational_html())
     twice = patch_v1_school_facts(once)
 
     assert once == twice
-    assert "fetch('/" not in once or "method:'POST'" not in once
-    assert "method:'PUT'" not in once
-    assert "method:'DELETE'" not in once
+    for write_method in ("method:'POST'", "method:'PUT'", "method:'PATCH'", "method:'DELETE'"):
+        assert write_method not in _SCHOOL_TODAY_FUNCTION
