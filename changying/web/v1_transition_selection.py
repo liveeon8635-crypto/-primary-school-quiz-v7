@@ -14,6 +14,7 @@ V1_TRANSITION_SELECTION_MARKER = "changying_v1_transition_selection_v1"
 _TRANSITION_SELECTION_SNIPPET = r'''
 <style id="changying_v1_transition_selection_v1-style">
   [data-transition].cy-transition-selected{background:#173c78;color:#fff;border-color:#173c78;box-shadow:0 8px 22px rgba(23,60,120,.18)}
+  [data-cy-select-student]{cursor:pointer}
   .cy-transition-choice{margin-top:12px;padding:11px 12px;border-radius:12px;background:#eef6ff;border:1px solid #d4e7ff;color:#285078;font-size:12px;line-height:1.6}
   .cy-student-picker-backdrop{position:fixed;inset:0;z-index:120;background:rgba(17,24,39,.42);display:flex;align-items:flex-end;justify-content:center;padding:18px}
   .cy-student-picker{width:min(560px,100%);max-height:min(72dvh,620px);overflow:auto;background:#fff;border-radius:22px;padding:18px;box-shadow:0 24px 70px rgba(17,24,39,.25)}
@@ -71,8 +72,8 @@ _TRANSITION_SELECTION_SNIPPET = r'''
     const b=e.target.closest('[data-transition]');
     if(b){e.preventDefault();e.stopImmediatePropagation();const value=b.textContent.trim();sessionStorage.setItem(key(),value);showChoice(value);return}
     if(location.pathname==='/v1/transition'){
-      const target=e.target.closest('button,a');
-      if(target&&target.textContent.trim()==='请选择学生'){e.preventDefault();e.stopImmediatePropagation();openStudentPicker()}
+      const target=e.target.closest('[data-cy-select-student]');
+      if(target){e.preventDefault();e.stopImmediatePropagation();openStudentPicker()}
     }
   },true);
   const root=document.getElementById('screen')||document.body;
