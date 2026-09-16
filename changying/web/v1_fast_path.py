@@ -175,7 +175,8 @@ def patch_v1_fast_path(html: str) -> str:
     if V1_FAST_PATH_MARKER in html:
         return html
 
-    load_people = """    async function loadPeople(){window.__cyV1PeopleLoadWarnings=[];if(session.role==='admin'){const users=await api('/admin/users');return users.filter(x=>x.role==='student'&&x.active!==false)}if(session.role==='teacher'){const endpoint=location.pathname==='/v1/workspace'?'/teacher/v1-bootstrap':'/teacher/v1-roster';const data=await api(endpoint);window.__cyV1Roster=data;if(data.stats)window.__cyV1Bootstrap=data;return data.people||[]}if(session.role==='parent')return (await api('/parent/children')).filter(x=>x.active!==false);return[{id:session.userID||session.id,name:session.name,grade:session.grade,role:'student'}]}\n    async function workspace()"""
+    load_people = """    async function loadPeople(){window.__cyV1PeopleLoadWarnings=[];if(session.role==='admin'){const users=await api('/admin/users');return users.filter(x=>x.role==='student'&&x.active!==false)}if(session.role==='teacher'){const endpoint=location.pathname==='/v1/workspace'?'/teacher/v1-bootstrap':'/teacher/v1-roster';const data=await api(endpoint);window.__cyV1Roster=data;if(data.stats)window.__cyV1Bootstrap=data;return data.people||[]}if(session.role==='parent')return (await api('/parent/children')).filter(x=>x.active!==false);return[{id:session.userID||session.id,name:session.name,grade:session.grade,role:'student'}]}
+    async function workspace()"""
     html, count = _LOAD_PEOPLE.subn(lambda _match: load_people, html, count=1)
     if count != 1:
         raise RuntimeError("V1 fast path: loadPeople marker not found")
@@ -200,7 +201,8 @@ def patch_v1_fast_path(html: str) -> str:
     if count != 1:
         raise RuntimeError("V1 fast path: operational roster marker not found")
 
-    profiles = """  async function studentProfiles(){const data=await readJson('/teacher/v1-profiles');return data.records||[]}\n  function studentLink"""
+    profiles = """  async function studentProfiles(){const data=await readJson('/teacher/v1-profiles');return data.records||[]}
+  function studentLink"""
     html, count = _STUDENT_PROFILES.subn(lambda _match: profiles, html, count=1)
     if count != 1:
         raise RuntimeError("V1 fast path: studentProfiles marker not found")
