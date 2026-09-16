@@ -37,6 +37,20 @@ def test_internal_product_language_is_not_exposed_in_teacher_ui():
     )
 
 
+def test_transition_student_prompt_is_a_real_interactive_control():
+    run_isolated(
+        """
+        from fastapi.testclient import TestClient
+        from app import app
+
+        html = TestClient(app).get('/v1/transition').text
+        assert '<button class="tag" type="button" data-cy-select-student>请选择学生</button>' in html
+        assert "e.target.closest('[data-cy-select-student]')" in html
+        assert "target.textContent.trim()==='请选择学生'" not in html
+        """
+    )
+
+
 def test_read_coalescer_loads_before_v1_body_scripts_and_only_targets_get_reads():
     run_isolated(
         r"""

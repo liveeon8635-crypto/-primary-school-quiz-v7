@@ -34,7 +34,7 @@ def test_transition_observer_cannot_watch_its_own_nested_note_mutations():
 
 
 def test_transition_student_picker_reuses_read_only_v1_roster():
-    assert "target.textContent.trim()==='请选择学生'" in _TRANSITION_SELECTION_SNIPPET
+    assert "e.target.closest('[data-cy-select-student]')" in _TRANSITION_SELECTION_SNIPPET
     assert "fetch('/teacher/v1-roster',{headers})" in _TRANSITION_SELECTION_SNIPPET
     assert "q.set('id',String(id))" in _TRANSITION_SELECTION_SNIPPET
     assert "location.href=`/v1/transition?${q.toString()}`" in _TRANSITION_SELECTION_SNIPPET
