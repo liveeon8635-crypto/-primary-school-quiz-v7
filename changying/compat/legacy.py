@@ -51,6 +51,7 @@ from changying.web.v1_data_quality import install_v1_data_quality_patch
 from changying.web.v1_fast_path import install_v1_fast_path_patch, install_v1_fast_read_routes
 from changying.web.v1_final_closure import install_v1_final_closure_patch
 from changying.web.v1_full_visibility import install_v1_full_visibility_patch
+from changying.web.v1_history_focus import install_v1_history_focus_patch
 from changying.web.v1_identity_clarity import install_v1_identity_clarity_patch
 from changying.web.v1_legacy_capabilities import install_v1_legacy_capabilities_patch
 from changying.web.v1_mastery_evidence import install_v1_mastery_evidence_patch
@@ -160,6 +161,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_identity_clarity_patch()
     install_v1_acceptance_polish_patch()
     install_v1_legacy_capabilities_patch()
+    install_v1_history_focus_patch()
     install_v1_routes(implementation.app)
 
 
