@@ -84,6 +84,11 @@ def test_unified_classic_gets_v1_chrome_even_when_upstream_is_gzipped():
     assert "document.getElementById('continueSessionBtn')" in response.text
     assert "if(typeof markNetwork==='function')markNetwork(true)" in response.text
     assert 'btn.click()' in response.text
+    assert '--cy-v1-navy:#173c78' in response.text
+    assert '--cy-v1-line:#e4e9f2' in response.text
+    assert 'background:#f3f6fb!important' in response.text
+    assert 'border-radius:18px!important' in response.text
+    assert 'background:var(--cy-v1-navy)!important' in response.text
 
 
 def test_non_embedded_gzip_classic_keeps_existing_behavior():
