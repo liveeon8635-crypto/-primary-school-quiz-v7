@@ -33,6 +33,18 @@ def test_bridge_preserves_classic_hidden_state_and_copies_validated_session():
     assert "bridgeClassicSession(t,s);role=String(s.role||'teacher')" in html
 
 
+def test_bridge_actively_validates_classic_session_after_iframe_load():
+    html = patch_unified_tool_session_bridge(unified_tool_html())
+
+    assert "const doc=frame.contentDocument,win=frame.contentWindow" in html
+    assert "typeof win.markNetwork==='function'" in html
+    assert "win.markNetwork(true)" in html
+    assert "typeof win.validateSavedSession==='function'" in html
+    assert "Promise.resolve(win.validateSavedSession())" in html
+    assert html.index("win.markNetwork(true)") < html.index("win.validateSavedSession()")
+    assert "旧版功能登录状态尚未就绪" in html
+
+
 def test_runtime_tool_html_contains_session_bridge():
     run_isolated(
         """
@@ -46,5 +58,7 @@ def test_runtime_tool_html_contains_session_bridge():
         assert V1_UNIFIED_SESSION_BRIDGE_MARKER in response.text
         assert "function bridgeClassicSession(t,s)" in response.text
         assert ".shell:not(.hidden){display:block!important" in response.text
+        assert "win.markNetwork(true)" in response.text
+        assert "Promise.resolve(win.validateSavedSession())" in response.text
         """
     )
