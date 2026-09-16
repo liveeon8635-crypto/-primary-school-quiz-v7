@@ -28,12 +28,27 @@ def test_transition_selection_keeps_persistence_boundary_honest():
 
 
 def test_transition_observer_cannot_watch_its_own_nested_note_mutations():
-    # PR #66 originally observed the whole screen subtree. showChoice() inserts and
-    # rewrites a note inside that subtree, which re-triggered MutationObserver and
-    # could keep the mobile main thread in a render loop on /v1/transition.
     assert "observer.observe(root,{childList:true});" in _TRANSITION_SELECTION_SNIPPET
     assert "subtree:true" not in _TRANSITION_SELECTION_SNIPPET
     assert "if(note.textContent!==text)note.textContent=text" in _TRANSITION_SELECTION_SNIPPET
+
+
+def test_transition_student_picker_reuses_read_only_v1_roster():
+    assert "target.textContent.trim()==='请选择学生'" in _TRANSITION_SELECTION_SNIPPET
+    assert "fetch('/teacher/v1-roster',{headers})" in _TRANSITION_SELECTION_SNIPPET
+    assert "q.set('id',String(id))" in _TRANSITION_SELECTION_SNIPPET
+    assert "location.href=`/v1/transition?${q.toString()}`" in _TRANSITION_SELECTION_SNIPPET
+    assert "v717Token" in _TRANSITION_SELECTION_SNIPPET
+    assert "v6Token" in _TRANSITION_SELECTION_SNIPPET
+    for method in ("POST", "PUT", "PATCH", "DELETE"):
+        assert method not in _TRANSITION_SELECTION_SNIPPET
+
+
+def test_transition_student_picker_has_mobile_dialog_and_failure_state():
+    assert 'role="dialog"' in _TRANSITION_SELECTION_SNIPPET
+    assert "cy-student-picker-backdrop" in _TRANSITION_SELECTION_SNIPPET
+    assert "学生列表读取失败，请关闭后重试" in _TRANSITION_SELECTION_SNIPPET
+    assert "当前没有可选择的学生档案" in _TRANSITION_SELECTION_SNIPPET
 
 
 def test_transition_selection_patch_is_idempotent():
