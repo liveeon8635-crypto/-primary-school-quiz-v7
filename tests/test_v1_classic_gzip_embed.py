@@ -80,6 +80,10 @@ def test_unified_classic_gets_v1_chrome_even_when_upstream_is_gzipped():
     assert '/v1/workspace' in response.text
     assert '/v1/history' in response.text
     assert '班级学生' in response.text
+    assert 'function autoResume()' in response.text
+    assert "document.getElementById('continueSessionBtn')" in response.text
+    assert "if(typeof markNetwork==='function')markNetwork(true)" in response.text
+    assert 'btn.click()' in response.text
 
 
 def test_non_embedded_gzip_classic_keeps_existing_behavior():
