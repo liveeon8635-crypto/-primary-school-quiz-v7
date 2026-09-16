@@ -56,6 +56,11 @@ _TRANSITION_SELECTION_SNIPPET = r'''
     overlay.innerHTML='<section class="cy-student-picker" role="dialog" aria-modal="true" aria-label="选择学生"><div class="cy-student-picker-head"><h2>选择学生</h2><button class="btn" type="button" data-cy-picker-close>关闭</button></div><div class="cy-student-picker-status" data-cy-picker-status>正在读取学生档案…</div><div class="cy-student-picker-list" data-cy-picker-list></div></section>';
     document.body.appendChild(overlay);
     overlay.addEventListener('click',e=>{if(e.target===overlay||e.target.closest('[data-cy-picker-close]'))closePicker()});
+    const focusTarget=overlay.querySelector('[data-cy-picker-close]')||overlay.querySelector('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])');
+    if(focusTarget&&typeof focusTarget.focus==='function')focusTarget.focus();
+    const onKeydown=e=>{if(e.key==='Escape'||e.key==='Esc'){e.preventDefault();closePicker()}};
+    document.addEventListener('keydown',onKeydown,true);
+    overlay.__cyPickerKeydown=onKeydown;
     try{
       const headers=token()?{Authorization:`Bearer ${token()}`}:{ };
       const response=await fetch('/teacher/v1-roster',{headers});
