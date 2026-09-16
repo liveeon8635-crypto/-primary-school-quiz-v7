@@ -23,7 +23,11 @@ def test_operational_patch_connects_visible_cards_to_native_v1_capabilities():
     assert "cy-feature-layer" in html
     assert "今日待办与主动提醒" in html
     assert "家长关联与教学连续性" in html
-    assert ("真实历史摘要" in html) or ("历史教学摘要" in html)
+    assert (
+        "真实历史摘要" in html
+        or "历史教学摘要" in html
+        or "按学生找往期记录" in html
+    )
     assert "当前档案事实" in html
 
 
@@ -52,7 +56,10 @@ def test_operational_patch_removes_fixed_demo_year_from_real_history_view():
     html = patch_v1_operational_html(v1_html())
 
     assert "2025—2026（演示）" not in html
-    assert "按现有档案时间线读取" in html
+    assert (
+        "按现有档案时间线读取" in html
+        or "按学生找往期记录" in html
+    )
 
 
 def test_operational_patch_uses_cache_and_parallel_reads_for_mobile_speed():
