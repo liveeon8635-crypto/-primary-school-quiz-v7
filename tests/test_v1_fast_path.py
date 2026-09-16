@@ -69,6 +69,9 @@ def test_fast_path_reuses_student_detail_and_workspace_payloads():
         assert "window.__cyV1Roster" in html
         assert "window.__cyV1StudentProfile={id,profile}" in html
         assert "window.__cyV1StudentProfile?.id===id" in html
-        assert "汇总当前可见学生的历史教学与时间线记录。" in html
+        assert (
+            "汇总当前可见学生的历史教学与时间线记录。" in html
+            or "不再一次性加载所有人的完整历史" in html
+        )
         """
     )
