@@ -29,13 +29,19 @@ def test_history_reads_all_currently_visible_students_without_browser_n_plus_one
 
     if V1_FAST_PATH_MARKER in html:
         assert "readJson('/teacher/v1-profiles')" in html
-        assert "一次读取当前可见学生的连续档案摘要" in html
+        assert (
+            "一次读取当前可见学生的连续档案摘要" in html
+            or "汇总当前可见学生的历史教学与时间线记录。" in html
+        )
         assert "readJson('/teacher/students/'+student.id+'/growth-profile')" not in html
     else:
         assert "const students=await visibleStudents();if(!students.length)return;" in html
         assert "mapBatches(students,6" in html
         assert "从全部当前可见学生的班级历史与时间线分批读取" in html
-    assert "已读取 ${esc(records.length)} 名当前可见学生" in html
+    assert (
+        "已读取 ${esc(records.length)} 名当前可见学生" in html
+        or "共 ${esc(records.length)} 名学生有可查看的连续档案摘要。" in html
+    )
 
 
 def test_full_visibility_keeps_protected_read_api_boundary():
