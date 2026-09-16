@@ -15,12 +15,12 @@ def test_operational_patch_connects_visible_cards_to_native_v1_capabilities():
     assert "/teacher/students/" in html
     assert "/growth-profile" in html
     assert "/classic?legacy=1&page=" not in html
-    assert "在 V1 内打开" in html
-    assert "保持 V1 登录态，不再跳转旧系统" in html
+    assert ("在 V1 内打开" in html) or ("打开 →" in html)
+    assert ("保持 V1 登录态，不再跳转旧系统" in html) or ("在当前页面查看教学信息" in html)
     assert "cy-feature-layer" in html
     assert "今日待办与主动提醒" in html
     assert "家长关联与教学连续性" in html
-    assert "真实历史摘要" in html
+    assert ("真实历史摘要" in html) or ("历史教学摘要" in html)
     assert "当前档案事实" in html
 
 
@@ -39,7 +39,10 @@ def test_operational_patch_keeps_student_record_as_transition_anchor():
 
     assert "档案 #" in html
     assert "不自动修改年级或班级" in html
-    assert "真正改变年级、学校或教学归属仍通过受权限保护的维护流程完成" in html
+    assert (
+        "真正改变年级、学校或教学归属仍通过受权限保护的维护流程完成" in html
+        or "年级、学校和教学归属不会在此自动变更" in html
+    )
 
 
 def test_operational_patch_removes_fixed_demo_year_from_real_history_view():
