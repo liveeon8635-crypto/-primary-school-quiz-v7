@@ -16,12 +16,26 @@ from changying.web import v1 as v1_module
 V1_HISTORY_FOCUS_MARKER = "changying_v1_history_focus_v1"
 
 _HISTORY_PAGE = re.compile(
-    r"    async function historyPage\(\)\{.*?\n    function transitionPage\(\)",
+    r"    async function historyPage\(\)\{.*?\n    function transitionPage\(",
     re.DOTALL,
 )
 _ENHANCE_HISTORY = re.compile(
     r"  async function enhanceHistory\(\)\{.*?\n  function transitionName",
     re.DOTALL,
+)
+
+# Scoped, reversible CSS hardening for the history page on narrow screens.
+# Keeps the search field and student rows inside the viewport without
+# changing any data, routing, or product behavior.
+_HISTORY_MOBILE_CSS = (
+    "<style>"
+    "#historySearch{width:100%;max-width:100%;box-sizing:border-box}"
+    "#historyStudents{min-width:0}"
+    "#historyStudents .row{min-width:0;flex-wrap:wrap;gap:6px}"
+    "#historyStudents .row-main{min-width:0;flex:1 1 auto;overflow-wrap:anywhere;word-break:break-word}"
+    "#historyStudents .row-main b,#historyStudents .row-main small{display:block;min-width:0;overflow-wrap:anywhere;word-break:break-word}"
+    "#historyStudents .row-action{flex:0 0 auto;white-space:nowrap}"
+    "</style>"
 )
 
 
@@ -32,13 +46,14 @@ def patch_v1_history_focus(html: str) -> str:
 
     history_page = r'''    async function historyPage(){
       const content=heading('往期教学','这里用于查看已经结束的班级、学期或课程记录；学生始终还是同一份连续档案，不需要另外建立“历史档案”。','')+`<section class="card"><div class="section-head"><div><h2>按学生找往期记录</h2><p>选择学生后再读取该学生过去的班级变化、作业、成绩、课堂表现和跟进记录。</p></div></div><div class="field" style="margin-top:12px"><input id="historySearch" placeholder="搜索学生姓名或班级" autocomplete="off"></div><div class="list" id="historyStudents" style="margin-top:12px"><div class="empty">正在读取学生列表…</div></div></section><section class="section card"><div class="section-head"><div><h2>为什么保留往期记录</h2><p>换班、升年级或进入新学期后，过去发生过的教学事实继续留在原学生档案中，方便回看发展过程。</p></div></div><div class="grid cols-2"><div class="notice"><b>班级 / 教学归属</b><br>保留进入、调班、离开等历史。</div><div class="notice"><b>教学记录</b><br>作业、成绩、课堂表现和跟进继续挂在同一学生 ID 下。</div></div></section>`;
-      screen.innerHTML=shell(content,'history');bindNav();
+      screen.innerHTML=shell(content,'history')+`__HISTORY_MOBILE_CSS__`;bindNav();
       const list=document.getElementById('historyStudents'),search=document.getElementById('historySearch');let people=[];
       const draw=()=>{const q=(search?.value||'').trim().toLowerCase();const rows=people.filter(p=>!q||String(p.name||'').toLowerCase().includes(q)||String(p.className||p.currentClassName||p.teachingAffiliations?.join(' ')||'').toLowerCase().includes(q));list.innerHTML=rows.map(p=>`<a class="row" data-student href="/v1/student?id=${p.id}"><span class="row-main"><b>${esc(p.name||'学生')}</b><small>${esc((p.teachingAffiliations||[]).join(' / ')||p.className||p.currentClassName||studentPosition(p)||'学生连续档案')}</small></span><span class="row-action">查看历史 →</span></a>`).join('')||'<div class="empty">没有匹配的学生档案</div>';list.querySelectorAll('[data-student]').forEach(a=>a.onclick=e=>{e.preventDefault();navigate(a.getAttribute('href'))})};
       if(search)search.oninput=draw;
       try{people=await loadPeople();draw()}catch(err){list.innerHTML=`<div class="notice error">学生列表读取失败：${esc(err.message||'请稍后重试')}</div>`}
     }
     function transitionPage()'''
+    history_page = history_page.replace("__HISTORY_MOBILE_CSS__", _HISTORY_MOBILE_CSS)
     html, count = _HISTORY_PAGE.subn(lambda _match: history_page, html, count=1)
     if count != 1:
         raise RuntimeError("V1 history focus: historyPage marker not found")
