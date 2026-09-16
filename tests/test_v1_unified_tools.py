@@ -24,7 +24,9 @@ def test_unified_patch_replaces_direct_classic_navigation():
     html = patch_v1_unified_tools(v1_html())
 
     assert V1_UNIFIED_TOOLS_MARKER in html
-    assert "/v1/workspace?focus=capabilities" in html
+    assert '<a href="/v1/tool"><span>⌘</span>全部功能</a>' in html
+    assert 'href="/v1/tool" data-nav' not in html
+    assert "/v1/workspace?focus=capabilities" not in html
     assert "全部功能" in html
     assert "a[data-cy-capability]" in html
     assert "'/v1/tool?page='+encodeURIComponent(page)" in html
@@ -35,7 +37,8 @@ def test_tool_shell_keeps_v1_chrome_around_mature_workflows():
     html = unified_tool_html()
 
     assert "统一功能工作区" in html
-    assert "全部功能" in html
+    assert '<a class="back" href="/v1/tool">全部功能</a>' in html
+    assert '<a class="active" href="/v1/tool"><span>⌘</span>全部功能</a>' in html
     assert "/classic?legacy=1&embedded=1&from=v1&page=" in html
     assert ".sidebar,.mobile-header,.bottom-nav{display:none!important}" in html
     assert "continueSessionBtn" in html
@@ -57,7 +60,8 @@ def test_runtime_installs_unified_tool_route_and_final_patch():
         v1 = client.get('/v1')
         assert v1.status_code == 200
         assert V1_UNIFIED_TOOLS_MARKER in v1.text
-        assert '/v1/workspace?focus=capabilities' in v1.text
+        assert '<a href="/v1/tool"><span>⌘</span>全部功能</a>' in v1.text
+        assert 'href="/v1/tool" data-nav' not in v1.text
 
         tool = client.get('/v1/tool?page=classes')
         assert tool.status_code == 200
