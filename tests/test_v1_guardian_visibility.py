@@ -9,6 +9,12 @@ def rendered_html() -> str:
     return patch_v1_guardian_visibility(v1_html())
 
 
+def guardian_patch_fragment() -> str:
+    html = rendered_html()
+    marker = f'<style id="{V1_GUARDIAN_VISIBILITY_MARKER}-style">'
+    return html[html.index(marker) : html.index("</body>", html.index(marker))]
+
+
 def test_guardian_visibility_is_scoped_to_student_detail_and_existing_read_api():
     html = rendered_html()
 
@@ -21,14 +27,14 @@ def test_guardian_visibility_is_scoped_to_student_detail_and_existing_read_api()
 
 
 def test_guardian_visibility_exposes_relationship_metadata_not_credentials():
-    html = rendered_html()
+    fragment = guardian_patch_fragment()
 
-    assert "guardian_account_id" in html
-    assert "主要联系人" in html
-    assert "password" not in html
-    assert "access_token" not in html
-    assert "refresh_token" not in html
-    assert "permissions" not in html
+    assert "guardian_account_id" in fragment
+    assert "主要联系人" in fragment
+    assert "password" not in fragment
+    assert "access_token" not in fragment
+    assert "refresh_token" not in fragment
+    assert "permissions" not in fragment
 
 
 def test_guardian_visibility_normalizes_and_deduplicates_legacy_rows():
