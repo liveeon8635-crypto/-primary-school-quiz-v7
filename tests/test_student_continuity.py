@@ -1,6 +1,9 @@
 from changying.domain.student_continuity import (
     CompletionActor,
     DataDomain,
+    GuardianLink,
+    GuardianLinkStatus,
+    GuardianRelationship,
     IdentityRole,
     MasteryStage,
     StudentRecordRef,
@@ -24,6 +27,39 @@ def test_continuity_contract_keeps_one_student_key_across_cycles():
     assert len(record.guardian_ids) == 2
 
 
+def test_guardian_link_uses_durable_student_key_without_granting_auth():
+    link = GuardianLink(
+        student_id=42,
+        guardian_account_id=8,
+        relationship=GuardianRelationship.PARENT,
+        status=GuardianLinkStatus.ACTIVE,
+        is_primary_contact=True,
+    )
+
+    assert link.student_id == 42
+    assert link.guardian_account_id == 8
+    assert link.active is True
+    assert link.is_primary_contact is True
+    assert not hasattr(link, "password")
+    assert not hasattr(link, "token")
+    assert not hasattr(link, "permissions")
+
+
+def test_guardian_link_lifecycle_preserves_revoked_history():
+    pending = GuardianLink(student_id=42, guardian_account_id=11)
+    revoked = GuardianLink(
+        student_id=42,
+        guardian_account_id=11,
+        relationship=GuardianRelationship.GRANDPARENT,
+        status=GuardianLinkStatus.REVOKED,
+    )
+
+    assert pending.status is GuardianLinkStatus.PENDING
+    assert pending.active is False
+    assert revoked.status is GuardianLinkStatus.REVOKED
+    assert revoked.active is False
+
+
 def test_v1_contract_reserves_roles_domains_mastery_and_completion_actor():
     assert {x.value for x in IdentityRole} == {
         "school_admin", "school_teacher", "institution_admin",
@@ -36,6 +72,9 @@ def test_v1_contract_reserves_roles_domains_mastery_and_completion_actor():
     assert CompletionActor.PARENT_ASSISTED.value == "parent_assisted"
     assert TeachingMode.SCHOOL.value == "school"
     assert TeachingCycle.SUMMER.value == "summer"
+    assert {x.value for x in GuardianRelationship} == {
+        "parent", "grandparent", "other_guardian",
+    }
 
 
 def test_transition_plan_preserves_full_v1_path():
