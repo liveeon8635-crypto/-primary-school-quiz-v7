@@ -46,6 +46,7 @@ from changying.web.product_shell import (
 from changying.web.pwa import build_manifest
 from changying.web.v1 import install_v1_routes
 from changying.web.v1_acceptance_polish import install_v1_acceptance_polish_patch
+from changying.web.v1_audit_localization import install_v1_audit_localization
 from changying.web.v1_classic_embed_bootstrap import install_v1_classic_embed_bootstrap
 from changying.web.v1_classic_gzip_embed import install_v1_classic_gzip_embed
 from changying.web.v1_completion import install_v1_completion_patch
@@ -171,6 +172,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_legacy_capabilities_patch()
     install_v1_unified_tools_patch()
     install_v1_unified_tool_session_bridge()
+    install_v1_audit_localization()
     install_v1_history_focus_patch()
     install_v1_routes(implementation.app)
     install_v1_unified_tool_route(implementation.app)
