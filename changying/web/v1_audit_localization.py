@@ -1,4 +1,4 @@
-"""Chinese presentation layer for Classic audit records embedded in V1.
+"""Chinese presentation layer for Classic audit records used by V1.
 
 This patch changes presentation only. Raw audit event names and details remain
 untouched in storage and can still be inspected through the DOM title value.
@@ -7,6 +7,7 @@ untouched in storage and can still be inspected through the DOM title value.
 from __future__ import annotations
 
 from changying.web import v1_unified_tools
+from changying.web.v1_unified_audit_localization import install_v1_unified_audit_localization
 
 V1_AUDIT_LOCALIZATION_MARKER = "changying_v1_audit_localization_v1"
 
@@ -68,10 +69,12 @@ def patch_v1_audit_localization(html: str) -> str:
 
 
 def install_v1_audit_localization() -> None:
-    if getattr(v1_unified_tools, "_audit_localization_installed", False):
-        return
-    v1_unified_tools._TOOL_HTML = patch_v1_audit_localization(v1_unified_tools._TOOL_HTML)  # noqa: SLF001
-    v1_unified_tools._audit_localization_installed = True
+    # Keep iframe compatibility, but also patch the top-level unified surface
+    # that /v1/tool actually uses on iPhone Safari.
+    if not getattr(v1_unified_tools, "_audit_localization_installed", False):
+        v1_unified_tools._TOOL_HTML = patch_v1_audit_localization(v1_unified_tools._TOOL_HTML)  # noqa: SLF001
+        v1_unified_tools._audit_localization_installed = True
+    install_v1_unified_audit_localization()
 
 
 __all__ = [
