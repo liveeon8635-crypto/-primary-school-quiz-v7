@@ -36,8 +36,21 @@ _DETAIL_CLARITY_REPLACEMENTS = (
 )
 
 
+STUDENT_DETAIL_MOBILE_CSS_MARKER = "changying_v1_student_detail_mobile_css_v1"
+
+_MOBILE_LAYOUT_CSS = (
+    f"<style id='{STUDENT_DETAIL_MOBILE_CSS_MARKER}'>"
+    "@media (max-width:640px){"
+    "#suggestions,#assignments,#weak,#timeline{max-width:100%;overflow-x:auto;"
+    "-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}"
+    "#suggestions>*,#assignments>*,#weak>*,#timeline>*{overflow-wrap:anywhere}"
+    "}"
+    "</style>"
+)
+
+
 def patch_v1_student_detail_visibility(html: str) -> str:
-    """Remove silent caps from the already-loaded continuous student record."""
+    """Remove caps and keep the full record readable on narrow phone screens."""
 
     if V1_STUDENT_DETAIL_VISIBILITY_MARKER in html:
         return html
@@ -49,7 +62,7 @@ def patch_v1_student_detail_visibility(html: str) -> str:
 
     return html.replace(
         "</body>",
-        f"<!-- {V1_STUDENT_DETAIL_VISIBILITY_MARKER} --></body>",
+        f"{_MOBILE_LAYOUT_CSS}<!-- {V1_STUDENT_DETAIL_VISIBILITY_MARKER} --></body>",
         1,
     )
 
@@ -69,6 +82,7 @@ def install_v1_student_detail_visibility_patch() -> None:
 
 
 __all__ = [
+    "STUDENT_DETAIL_MOBILE_CSS_MARKER",
     "V1_STUDENT_DETAIL_VISIBILITY_MARKER",
     "install_v1_student_detail_visibility_patch",
     "patch_v1_student_detail_visibility",
