@@ -1,15 +1,21 @@
 import re
 import subprocess
+from types import SimpleNamespace
 
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from app import app
 from changying.web.v1 import v1_html
+from changying.web.v1_auth_handoff import (
+    V1_AUTH_HANDOFF_COOKIE,
+    V1_AUTH_HANDOFF_CONSUME_PATH,
+    V1_AUTH_HANDOFF_MAX_AGE,
+    V1_AUTH_HANDOFF_STAGE_PATH,
+    install_v1_auth_handoff_routes,
+)
 from changying.web.v1_classic_unified_top import inject_v1_classic_unified
 from changying.web.v1_legacy_capabilities import _LEGACY_CAPABILITIES_SNIPPET
-
-
-HANDOFF_KEY = "cyV1SessionHandoff"
 
 
 def _script_by_id(html: str, script_id: str) -> str:
@@ -22,17 +28,20 @@ def _script_by_id(html: str, script_id: str) -> str:
     return match.group("script")
 
 
-def test_v1_stages_short_lived_handoff_before_tool_navigation() -> None:
+def test_v1_stages_server_handoff_before_context_sensitive_navigation() -> None:
     script = _script_by_id(v1_html(), "changying_v1_20260915-script")
 
-    assert f"HANDOFF_KEY='{HANDOFF_KEY}'" in script
-    assert "const cleanupToolHandoff=()" in script
-    assert "cleanupToolHandoff();" in script
-    assert "const stageToolHandoff=()" in script
-    assert "expiresAt:Date.now()+120000" in script
-    assert "a[href^=\"/v1/tool\"]" in script
-    assert "if(tool)stageToolHandoff()" in script
-    assert "localStorage.removeItem(HANDOFF_KEY)" in script
+    assert "const stageClassicHandoff=async()" in script
+    assert "fetch('/v1/auth-handoff'" in script
+    assert "method:'POST'" in script
+    assert "Authorization:'Bearer '+token" in script
+    assert "credentials:'same-origin'" in script
+    assert 'a[href^="/v1/tool"],a[href^="/classic"]' in script
+    assert "openClassic('/v1/tool?page=account')" in script
+
+    # The temporary bridge must not use script-readable persistent storage.
+    assert "cyV1SessionHandoff" not in script
+    assert "expiresAt:Date.now()" not in script
 
 
 def test_capability_center_reads_nonremember_session_storage() -> None:
@@ -40,18 +49,18 @@ def test_capability_center_reads_nonremember_session_storage() -> None:
     assert "sessionStorage.getItem('v6Token')" in _LEGACY_CAPABILITIES_SNIPPET
 
 
-def test_unified_classic_consumes_only_live_handoff_and_clears_it() -> None:
+def test_unified_classic_consumes_server_handoff_when_storage_context_is_empty() -> None:
     html = inject_v1_classic_unified("<html><body></body></html>")
     script = _script_by_id(html, "changying_v1_classic_unified_top_v1-script")
 
-    assert "function v1HandoffToken()" in script
-    assert f"localStorage.getItem('{HANDOFF_KEY}')" in script
-    assert "Number(handoff.expiresAt||0)<=Date.now()" in script
-    assert f"localStorage.removeItem('{HANDOFF_KEY}')" in script
-    assert "var token=String(handoff.token);localStorage.removeItem('cyV1SessionHandoff');return token" in script
-    assert "function clearV1Handoff()" in script
-    assert "||v1HandoffToken()||''" in script
-    assert "clearV1Handoff();sync();return true" in script
+    assert "async function consumeV1Handoff()" in script
+    assert "fetch('/v1/auth-handoff/consume'" in script
+    assert "method:'POST'" in script
+    assert "credentials:'same-origin'" in script
+    assert "bridge&&bridge.token" in script
+    assert "state.token=t" in script
+    assert "validateSavedSession" in script
+    assert "cyV1SessionHandoff" not in script
 
 
 def test_unified_top_runtime_javascript_is_valid() -> None:
@@ -67,8 +76,90 @@ def test_unified_top_runtime_javascript_is_valid() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_real_app_unified_classic_response_contains_handoff_hydration() -> None:
+def _handoff_test_app() -> FastAPI:
+    test_app = FastAPI()
+
+    class User:
+        id = 7
+        name = "测试教师"
+        role = "teacher"
+        grade = None
+        school_id = 3
+
+    class Security:
+        must_change_password = False
+
+    def get_db():
+        yield object()
+
+    def authenticated_user(*, authorization, db):
+        if authorization != "Bearer good-token":
+            raise HTTPException(401, "登录令牌无效")
+        return User()
+
+    implementation = SimpleNamespace(
+        app=test_app,
+        get_db=get_db,
+        authenticated_user=authenticated_user,
+        security_for=lambda db, user: Security(),
+        subscription_payload=lambda db, school_id: {"status": "active"},
+    )
+    install_v1_auth_handoff_routes(implementation)
+    return test_app
+
+
+def test_server_handoff_is_httponly_strict_bounded_and_one_time() -> None:
+    client = TestClient(_handoff_test_app())
+
+    staged = client.post(
+        V1_AUTH_HANDOFF_STAGE_PATH,
+        headers={"Authorization": "Bearer good-token"},
+    )
+    assert staged.status_code == 200
+    assert staged.json() == {"ok": True, "expiresIn": V1_AUTH_HANDOFF_MAX_AGE}
+    cookie = staged.headers["set-cookie"]
+    assert V1_AUTH_HANDOFF_COOKIE in cookie
+    assert "HttpOnly" in cookie
+    assert "SameSite=strict" in cookie
+    assert f"Max-Age={V1_AUTH_HANDOFF_MAX_AGE}" in cookie
+    assert "good-token" not in staged.text
+    assert staged.headers["cache-control"].startswith("no-store")
+
+    consumed = client.post(V1_AUTH_HANDOFF_CONSUME_PATH)
+    assert consumed.status_code == 200
+    body = consumed.json()
+    assert body["token"] == "good-token"
+    assert body["role"] == "teacher"
+    assert "Max-Age=0" in consumed.headers["set-cookie"]
+    assert consumed.headers["cache-control"].startswith("no-store")
+
+    second = client.post(V1_AUTH_HANDOFF_CONSUME_PATH)
+    assert second.status_code == 401
+
+
+def test_server_handoff_rejects_cross_site_consume() -> None:
+    client = TestClient(_handoff_test_app())
+    assert client.post(
+        V1_AUTH_HANDOFF_STAGE_PATH,
+        headers={"Authorization": "Bearer good-token"},
+    ).status_code == 200
+
+    response = client.post(
+        V1_AUTH_HANDOFF_CONSUME_PATH,
+        headers={"Sec-Fetch-Site": "cross-site"},
+    )
+    assert response.status_code == 403
+    assert "Max-Age=0" in response.headers["set-cookie"]
+
+
+def test_real_app_v1_and_classic_share_one_handoff_contract() -> None:
     client = TestClient(app, follow_redirects=False)
+
+    v1 = client.get("/v1/workspace")
+    assert v1.status_code == 200
+    assert "fetch('/v1/auth-handoff'" in v1.text
+    assert "cyV1SessionHandoff" not in v1.text
+    assert "location.href='/classic'" not in v1.text
 
     tool = client.get("/v1/tool?page=classes")
     assert tool.status_code == 307
@@ -80,7 +171,6 @@ def test_real_app_unified_classic_response_contains_handoff_hydration() -> None:
     )
     assert classic.status_code == 200
     assert "changying_v1_classic_unified_top_v1" in classic.text
-    assert "function v1HandoffToken()" in classic.text
-    assert HANDOFF_KEY in classic.text
+    assert "fetch('/v1/auth-handoff/consume'" in classic.text
     assert "fetch('/session'" in classic.text
-    assert "clearV1Handoff();sync();return true" in classic.text
+    assert "cyV1SessionHandoff" not in classic.text
