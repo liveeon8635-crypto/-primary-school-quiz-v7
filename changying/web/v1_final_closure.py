@@ -26,9 +26,9 @@ _STUDENT_LIST_CATCH_WITH_WARNING = (
     "}"
 )
 
-_WORKSPACE_CATCH = "catch(err){if(err.status===428){location.href='/classic';return}}"
+_WORKSPACE_CATCH = "catch(err){if(err.status===428){await openClassic('/v1/tool?page=account');return}}"
 _WORKSPACE_CATCH_WITH_WARNING = (
-    "catch(err){if(err.status===428){location.href='/classic';return}"
+    "catch(err){if(err.status===428){await openClassic('/v1/tool?page=account');return}"
     "window.__cyV1PeopleLoadWarnings=['工作台读取失败：'+(err?.message||'请刷新重试')]"
     "}"
 )

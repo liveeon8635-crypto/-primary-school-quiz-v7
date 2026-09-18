@@ -12,7 +12,7 @@ FIXTURE = """<!doctype html><body>
 <script>
 window.__cyV1PeopleLoadWarnings=[];
 async function studentIndex(){let people=[];try{people=await loadPeople()}catch(err){}return people}
-async function workspace(){try{await loadPeople()}catch(err){if(err.status===428){location.href='/classic';return}}}
+async function workspace(){try{await loadPeople()}catch(err){if(err.status===428){await openClassic('/v1/tool?page=account');return}}}
 </script>
 <script id="changying_v1_membership_reliability_v1-script"></script>
 <!-- changying_v1_membership_reliability_v1 -->

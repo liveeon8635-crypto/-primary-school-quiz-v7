@@ -11,10 +11,11 @@ def test_unified_top_hydrates_from_existing_v1_session():
     assert "validateSavedSession" in html
 
 
-def test_unified_top_does_not_add_credentials_or_writes():
+def test_unified_top_only_posts_to_bounded_auth_handoff_and_adds_no_business_writes():
     html = inject_v1_classic_unified("<html><body></body></html>")
     assert "password" not in html.lower()
-    assert "method:'POST'" not in html
+    assert html.count("method:'POST'") == 1
+    assert "fetch('/v1/auth-handoff/consume',{method:'POST'" in html
     assert "method:'PUT'" not in html
     assert "method:'PATCH'" not in html
     assert "method:'DELETE'" not in html
