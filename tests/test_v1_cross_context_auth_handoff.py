@@ -177,3 +177,26 @@ def test_real_app_v1_and_classic_share_one_handoff_contract() -> None:
     assert "fetch('/v1/auth-handoff/consume'" in classic.text
     assert "fetch('/session'" in classic.text
     assert "cyV1SessionHandoff" not in classic.text
+
+
+def test_server_handoff_cookie_is_secure_on_https() -> None:
+    client = TestClient(_handoff_test_app(), base_url="https://example.test")
+    response = client.post(
+        V1_AUTH_HANDOFF_STAGE_PATH,
+        headers={"Authorization": "Bearer good-token"},
+    )
+    assert response.status_code == 200
+    cookie = response.headers["set-cookie"]
+    assert "Secure" in cookie
+    assert "HttpOnly" in cookie
+    assert "SameSite=strict" in cookie
+
+
+def test_invalid_bearer_never_creates_handoff_cookie() -> None:
+    client = TestClient(_handoff_test_app())
+    response = client.post(
+        V1_AUTH_HANDOFF_STAGE_PATH,
+        headers={"Authorization": "Bearer bad-token"},
+    )
+    assert response.status_code == 401
+    assert V1_AUTH_HANDOFF_COOKIE not in response.headers.get("set-cookie", "")
