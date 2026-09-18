@@ -32,6 +32,8 @@ def test_v1_stages_server_handoff_before_context_sensitive_navigation() -> None:
     script = _script_by_id(v1_html(), "changying_v1_20260915-script")
 
     assert "const stageClassicHandoff=async()" in script
+    assert "token==='demo'||authRemember()" not in script
+    assert "token!=='demo'&&!authRemember()" not in script
     assert "fetch('/v1/auth-handoff'" in script
     assert "method:'POST'" in script
     assert "Authorization:'Bearer '+token" in script
@@ -57,6 +59,7 @@ def test_unified_classic_consumes_server_handoff_when_storage_context_is_empty()
     assert "fetch('/v1/auth-handoff/consume'" in script
     assert "method:'POST'" in script
     assert "credentials:'same-origin'" in script
+    assert "params.get('from')==='v1'?await consumeV1Handoff():null" in script
     assert "bridge&&bridge.token" in script
     assert "state.token=t" in script
     assert "validateSavedSession" in script
