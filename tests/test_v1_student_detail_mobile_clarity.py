@@ -16,10 +16,11 @@ from changying.web.v1_student_detail_visibility import (
 
 _DETAIL_HTML = """
 <html><body>
+<section class="card student-head"><div class="student-meta"><span class="tag">监护人 ${s.parents?.length??'—'}</span></div></section>
 <div id="suggestions">{suggestions.slice(0,4).map(renderSuggestion)}</div>
 <div id="assignments">{assignments.slice(0,6).map(renderAssignment)}</div>
 <div id="weak">{weak.slice(0,6).map(renderWeak)}</div>
-<div id="timeline">{timeline.slice(0,10).map(renderEvent)}</div>
+<section><h2>历史时间线</h2><p>换班、换老师或升年级后仍保留在同一档案</p><div id="timeline">{timeline.slice(0,10).map(renderEvent)}</div></section>
 </body></html>
 """
 
@@ -36,6 +37,10 @@ def test_patch_removes_detail_caps() -> None:
     assert "assignments.map" in patched
     assert "weak.map" in patched
     assert "timeline.map" in patched
+    assert "家庭关联 · 监护人 ${s.parents?.length??'—'}" in patched
+    assert "成长档案时间线" in patched
+    assert "按时间倒序展示 · 最新记录在前" in patched
+    assert "<h2>历史时间线</h2>" not in patched
 
 
 def test_patch_is_idempotent() -> None:
