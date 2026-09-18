@@ -1,12 +1,9 @@
-"""Conservative V1 mastery display based only on currently available evidence.
+"""Conservative V1 evidence-status display.
 
-The production growth profile does not yet store retention, independent
-reconstruction, or transfer/novel-context evidence as standardized fields.
-Therefore V1 must not infer "稳定掌握" from a high average score alone.
-
-This patch is presentation-only: it changes the student card's display rule and
-adds an explicit evidence boundary. It does not write student data or create a
-second diagnosis model.
+V1.1 now exposes a standardized learningEvidence section. This patch makes
+that evidence state the only source for the status card. Average score,
+submission count, overdue work and weakKnowledge remain visible elsewhere but
+never promote a student into a mastery label.
 """
 
 from __future__ import annotations
@@ -24,7 +21,7 @@ _STAGE_RULE = re.compile(
 
 _OLD_MASTERY = """<div class=\"section-head\"><div><h2>掌握状态</h2><p>由事实记录逐步表达变化</p></div></div><div class=\"mastery\">${['不会','学习中','基本掌握','稳定掌握'].map((x,i)=>`<span class=\"${i<=stage?'on':''}\">${x}</span>`).join('')}</div><div class=\"notice warn\" style=\"margin-top:14px\">当前为 V1 展示规则，尚未作为智能诊断结论。</div>"""
 
-_NEW_MASTERY = """<div class=\"section-head\"><div><h2>学习证据状态</h2><p>只依据当前已记录事实给出保守提示</p></div></div><div class=\"mastery\">${['不会','学习中','基本掌握','稳定掌握'].map((x,i)=>`<span class=\"${i===stage?'on':''}\">${x}</span>`).join('')}</div><div class=\"notice\" style=\"margin-top:14px\"><b>当前提示：${esc(masteryState)}</b><br>证据摘要：记录样本 ${esc(sampleCount)} · 阶段成绩 ${hasScore?esc(scoreRaw):'—'} · 薄弱项 ${esc(weak.length)} · 逾期 ${esc(overdue)}。</div><div class=\"notice warn\" style=\"margin-top:10px\">“稳定掌握”不会仅凭一次成绩或平均分自动点亮。它还需要跨时间保留、独立完成，以及迁移或新情境中的证据。当前生产数据尚未把这些维度标准化落表，因此这里不自动判定稳定掌握。</div>"""
+_NEW_MASTERY = """<div class=\"section-head\"><div><h2>学习证据状态</h2><p>展示标准化证据覆盖程度，不等同于掌握结论</p></div></div><div class=\"mastery\">${['证据不足','单项证据','基础证据','稳定证据集'].map((x,i)=>`<span class=\"${i===evidenceStage?'on':''}\">${x}</span>`).join('')}</div><div class=\"notice\" style=\"margin-top:14px\"><b>当前状态：${esc(evidenceStateLabel)}</b><br>标准化样本 ${esc(evidenceSampleCount)} · 已记录维度 ${esc(evidenceDimensionText)}。</div><div class=\"notice warn\" style=\"margin-top:10px\">这里描述的是“系统已经记录了哪些证据”，不是“学生已经掌握到什么程度”。平均分、作业数量、逾期情况和薄弱项均不会自动提升证据状态，也不会生成掌握结论。</div>"""
 
 
 def patch_v1_mastery_evidence(html: str) -> str:
@@ -37,12 +34,17 @@ def patch_v1_mastery_evidence(html: str) -> str:
         "const s=profile.student||{},a=profile.academic||{},weak=a.weakKnowledge||[],"
         "assignments=a.recentAssignments||[],timeline=profile.timeline||[],"
         "suggestions=profile.suggestions||[];"
-        "const sampleCount=Number(a.submissionCount||0),scoreRaw=Number(a.avgScore),"
-        "hasScore=a.avgScore!==null&&a.avgScore!==undefined&&a.avgScore!==''&&Number.isFinite(scoreRaw),"
-        "hasEvidence=sampleCount>0||hasScore||assignments.length>0||weak.length>0,"
-        "overdue=Number(a.overdueAssignments||0);"
-        "const stage=!hasEvidence?-1:(sampleCount>=2&&hasScore&&scoreRaw>=75&&overdue===0?2:1);"
-        "const masteryState=stage===2?'基本掌握（当前证据）':stage===1?'学习中':'证据不足';"
+        "const evidence=profile.learningEvidence||null,"
+        "evidenceState=evidence?.state||'evidence_insufficient',"
+        "evidenceSampleCount=Number(evidence?.sampleCount||0),"
+        "evidenceDimensions=Array.isArray(evidence?.dimensions)?evidence.dimensions:[],"
+        "evidenceStage=evidenceState==='stable_evidence_available'?3:"
+        "evidenceState==='basic_evidence_available'?2:"
+        "evidenceState==='learning_evidence_available'?1:0,"
+        "evidenceStateLabel=evidenceState==='stable_evidence_available'?'稳定证据集可用':"
+        "evidenceState==='basic_evidence_available'?'基础证据可用':"
+        "evidenceState==='learning_evidence_available'?'已有学习证据':'证据不足',"
+        "evidenceDimensionText=evidenceDimensions.length?evidenceDimensions.join(' / '):'暂无标准化维度';"
     )
     html, count = _STAGE_RULE.subn(stage_rule, html, count=1)
     if count != 1:
