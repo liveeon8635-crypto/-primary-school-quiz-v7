@@ -79,7 +79,6 @@ def test_v1_student_page_fetches_evidence_only_when_missing():
     from app import app  # noqa: F401
     from changying.web import v1 as v1_module
     html = v1_module.v1_html()
-    assert "/v1/students/"+"" in "/v1/students/"
     assert "if(!profile.learningEvidence&&id)" in html
     assert "'/learning-evidence'" in html
     assert "profile.learningEvidence=await api" in html
