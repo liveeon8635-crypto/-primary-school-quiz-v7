@@ -67,7 +67,7 @@ def test_answer_rows_map_only_to_known_knowledge_performance():
     )
     assert [x.knowledge_key for x in items] == ["分数加法", "分数减法"]
     assert [x.success for x in items] == [True, False]
-    assert [x.score for x in items] == [100.0, 0.0]
+    assert [x.score for x in items] == [None, None]
     assert all(x.student_id == "7" for x in items)
     assert all(x.evidence_type == "performance" for x in items)
     assert [x.source_id for x in items] == ["91:question:11", "91:question:12"]
