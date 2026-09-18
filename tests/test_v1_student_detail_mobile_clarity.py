@@ -24,6 +24,8 @@ _DETAIL_HTML = """
 <div class="card"><h2>薄弱内容 / 错题</h2><div class="list" style="margin-top:12px">{weak.slice(0,6).map(renderWeak)}</div></div>
 <section><h2>历史时间线</h2><p>换班、换老师或升年级后仍保留在同一档案</p><div class="card"><div class="timeline">{timeline.slice(0,10).map(renderEvent)}</div></div></section>
 </body></html>
+"""
+
 
 
 
