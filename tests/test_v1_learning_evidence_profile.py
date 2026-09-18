@@ -120,3 +120,17 @@ def test_installer_keeps_mastery_conclusion_disabled(monkeypatch):
     assert result["learningEvidence"]["sampleCount"] == 1
     assert result["learningEvidence"]["masteryInferred"] is False
     assert result["learningEvidence"]["stableMasteryInferred"] is False
+
+
+def test_legacy_reader_batches_related_model_queries():
+    import inspect
+
+    from changying.web.v1_learning_evidence_profile import legacy_student_evidence
+
+    source = inspect.getsource(legacy_student_evidence)
+    loop = source.split("for sub in rows:", 1)[1]
+    assert "db.scalar(" not in loop
+    assert "db.scalars(" not in loop
+    assert "assignment_ids =" in source
+    assert "paper_ids =" in source
+    assert "all_question_ids" in source
