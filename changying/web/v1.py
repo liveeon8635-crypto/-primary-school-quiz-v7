@@ -46,8 +46,9 @@ def v1_html() -> str:
     const legacyUser=s=>({{id:s?.userID??s?.id??null,name:s?.name||'',role:s?.role||'teacher',grade:s?.grade??null,mustChangePassword:!!s?.mustChangePassword,subscription:s?.subscription||null}});
     const persistAuth=(result,remember)=>{{const store=remember?localStorage:sessionStorage,other=remember?sessionStorage:localStorage;store.setItem(TOKEN_KEY,result?.token||token||'');store.setItem(USER_KEY,JSON.stringify(legacyUser(result)));other.removeItem(TOKEN_KEY);other.removeItem(USER_KEY);localStorage.setItem(REMEMBER_KEY,remember?'1':'0')}};
     const clearAuthStorage=()=>{{localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(USER_KEY);localStorage.removeItem(REMEMBER_KEY);localStorage.removeItem(HANDOFF_KEY);sessionStorage.removeItem(TOKEN_KEY);sessionStorage.removeItem(USER_KEY);localStorage.removeItem('v6Token');localStorage.removeItem('v6User');sessionStorage.removeItem('v6Token');sessionStorage.removeItem('v6User')}};
+    const cleanupToolHandoff=()=>{{try{{const raw=localStorage.getItem(HANDOFF_KEY);if(!raw)return;const handoff=JSON.parse(raw);if(!handoff||!handoff.token||Number(handoff.expiresAt||0)<=Date.now())localStorage.removeItem(HANDOFF_KEY)}}catch{{localStorage.removeItem(HANDOFF_KEY)}}}};
     const stageToolHandoff=()=>{{if(!token||token==='demo'||authRemember())return;try{{localStorage.setItem(HANDOFF_KEY,JSON.stringify({{token,expiresAt:Date.now()+120000}}))}}catch{{}}}};
-    let session=null, identity=null, token=readToken();
+    let session=null, identity=null, token=readToken();cleanupToolHandoff();
     const screen=document.getElementById('screen'), chip=document.getElementById('identityChip'), identityButton=document.getElementById('identityButton');
     const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[ch]));
     const studentPosition=p=>{{const grade=p?.grade?`档案年级：${{p.grade}}年级`:'';const className=p?.className||p?.currentClassName||'';const current=className?`当前班级：${{className}}`:'当前教学位置待完善';return[grade,current].filter(Boolean).join(' · ')}};
