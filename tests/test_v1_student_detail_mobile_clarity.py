@@ -9,6 +9,7 @@ removes the detail caps, and that it leaves unrelated markup untouched.
 from __future__ import annotations
 
 from changying.web.v1_student_detail_visibility import (
+    STUDENT_DETAIL_MOBILE_CSS_MARKER,
     V1_STUDENT_DETAIL_VISIBILITY_MARKER,
     patch_v1_student_detail_visibility,
 )
@@ -49,6 +50,16 @@ def test_patch_is_idempotent() -> None:
 
     assert once == twice
     assert once.count(V1_STUDENT_DETAIL_VISIBILITY_MARKER) == 1
+    assert once.count(STUDENT_DETAIL_MOBILE_CSS_MARKER) == 1
+
+
+def test_patch_adds_mobile_long_record_overflow_guards() -> None:
+    patched = patch_v1_student_detail_visibility(_DETAIL_HTML)
+
+    assert "@media (max-width:640px)" in patched
+    assert "#suggestions,#assignments,#weak,#timeline{max-width:100%;overflow-x:auto;" in patched
+    assert "#suggestions>*,#assignments>*,#weak>*,#timeline>*{overflow-wrap:anywhere}" in patched
+    assert patched.count(STUDENT_DETAIL_MOBILE_CSS_MARKER) == 1
 
 
 def test_patch_preserves_unrelated_markup() -> None:
