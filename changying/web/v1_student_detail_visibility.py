@@ -24,6 +24,17 @@ _DETAIL_CAPS = (
     ("timeline.slice(0,10).map", "timeline.map"),
 )
 
+_DETAIL_CLARITY_REPLACEMENTS = (
+    (
+        '<span class="tag">监护人 ${s.parents?.length??\'—\'}</span>',
+        '<span class="tag">家庭关联 · 监护人 ${s.parents?.length??\'—\'}</span>',
+    ),
+    (
+        "<h2>历史时间线</h2><p>换班、换老师或升年级后仍保留在同一档案</p>",
+        "<h2>成长档案时间线</h2><p>按时间倒序展示 · 最新记录在前；换班、换老师或升年级后仍保留在同一档案</p>",
+    ),
+)
+
 
 def patch_v1_student_detail_visibility(html: str) -> str:
     """Remove silent caps from the already-loaded continuous student record."""
@@ -31,7 +42,7 @@ def patch_v1_student_detail_visibility(html: str) -> str:
     if V1_STUDENT_DETAIL_VISIBILITY_MARKER in html:
         return html
 
-    for old, new in _DETAIL_CAPS:
+    for old, new in (*_DETAIL_CAPS, *_DETAIL_CLARITY_REPLACEMENTS):
         if old not in html:
             raise RuntimeError(f"V1 student detail visibility patch: marker not found: {old}")
         html = html.replace(old, new, 1)
