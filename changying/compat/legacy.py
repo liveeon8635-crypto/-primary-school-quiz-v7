@@ -62,6 +62,8 @@ from changying.web.v1_legacy_capabilities import install_v1_legacy_capabilities_
 from changying.web.v1_learning_evidence_profile import install_v1_learning_evidence_profile
 from changying.web.v1_historical_teaching import install_v1_historical_teaching_routes
 from changying.web.v1_historical_teaching_view import install_v1_historical_teaching_view_patch
+from changying.web.v1_transition_snapshot import install_v1_transition_snapshot_routes
+from changying.web.v1_transition_facts_view import install_v1_transition_facts_view_patch
 from changying.web.v1_learning_evidence_view import install_v1_learning_evidence_view_patch
 from changying.web.v1_learning_evidence_access import install_v1_learning_evidence_access_patch, install_v1_learning_evidence_access_routes
 from changying.web.v1_mastery_evidence import install_v1_mastery_evidence_patch
@@ -184,6 +186,8 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_learning_evidence_profile(implementation)
     install_v1_historical_teaching_view_patch()
     install_v1_historical_teaching_routes(implementation)
+    install_v1_transition_facts_view_patch()
+    install_v1_transition_snapshot_routes(implementation)
     install_v1_parent_link_history_profile(implementation)
     install_v1_learning_evidence_view_patch()
     install_v1_learning_evidence_access_patch()
