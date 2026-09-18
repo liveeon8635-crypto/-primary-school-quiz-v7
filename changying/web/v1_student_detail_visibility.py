@@ -35,21 +35,53 @@ _DETAIL_CLARITY_REPLACEMENTS = (
     ),
 )
 
+_DETAIL_MOBILE_TARGETS = (
+    (
+        '<div class="card"><h2>需要关注 / 下一步教学</h2><div class="list" style="margin-top:12px">',
+        '<div class="card"><h2>需要关注 / 下一步教学</h2><div id="suggestions" class="list" style="margin-top:12px">',
+    ),
+    (
+        '<div class="card"><h2>作业情况</h2><div class="list" style="margin-top:12px">',
+        '<div class="card"><h2>作业情况</h2><div id="assignments" class="list" style="margin-top:12px">',
+    ),
+    (
+        '<div class="card"><h2>薄弱内容 / 错题</h2><div class="list" style="margin-top:12px">',
+        '<div class="card"><h2>薄弱内容 / 错题</h2><div id="weak" class="list" style="margin-top:12px">',
+    ),
+    (
+        '<div class="card"><div class="timeline">',
+        '<div class="card"><div id="timeline" class="timeline">',
+    ),
+)
+
+
+STUDENT_DETAIL_MOBILE_CSS_MARKER = "changying_v1_student_detail_mobile_css_v1"
+
+_MOBILE_LAYOUT_CSS = (
+    f"<style id='{STUDENT_DETAIL_MOBILE_CSS_MARKER}'>"
+    "@media (max-width:640px){"
+    "#suggestions,#assignments,#weak,#timeline{min-width:0;max-width:100%;overflow-x:auto;"
+    "-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}"
+    "#suggestions>*,#assignments>*,#weak>*,#timeline>*{min-width:0;overflow-wrap:anywhere}"
+    "}"
+    "</style>"
+)
+
 
 def patch_v1_student_detail_visibility(html: str) -> str:
-    """Remove silent caps from the already-loaded continuous student record."""
+    """Remove caps and keep the full record readable on narrow phone screens."""
 
     if V1_STUDENT_DETAIL_VISIBILITY_MARKER in html:
         return html
 
-    for old, new in (*_DETAIL_CAPS, *_DETAIL_CLARITY_REPLACEMENTS):
+    for old, new in (*_DETAIL_CAPS, *_DETAIL_CLARITY_REPLACEMENTS, *_DETAIL_MOBILE_TARGETS):
         if old not in html:
             raise RuntimeError(f"V1 student detail visibility patch: marker not found: {old}")
         html = html.replace(old, new, 1)
 
     return html.replace(
         "</body>",
-        f"<!-- {V1_STUDENT_DETAIL_VISIBILITY_MARKER} --></body>",
+        f"{_MOBILE_LAYOUT_CSS}<!-- {V1_STUDENT_DETAIL_VISIBILITY_MARKER} --></body>",
         1,
     )
 
@@ -69,6 +101,7 @@ def install_v1_student_detail_visibility_patch() -> None:
 
 
 __all__ = [
+    "STUDENT_DETAIL_MOBILE_CSS_MARKER",
     "V1_STUDENT_DETAIL_VISIBILITY_MARKER",
     "install_v1_student_detail_visibility_patch",
     "patch_v1_student_detail_visibility",
