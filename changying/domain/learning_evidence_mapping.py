@@ -109,7 +109,10 @@ def submission_answers_to_performance_evidence(
                 subject=subject,
                 knowledge_key=knowledge,
                 success=correct,
-                score=100.0 if correct else 0.0,
+                # Item correctness is a boolean observation. Do not convert it
+                # into a synthetic 0/100 score, which would pollute assignment
+                # score averages in the read model.
+                score=None,
                 context=_context(
                     assignment_id=getattr(submission, "assignment_id", None),
                     class_id=class_id,
