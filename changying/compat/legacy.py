@@ -61,6 +61,7 @@ from changying.web.v1_identity_clarity import install_v1_identity_clarity_patch
 from changying.web.v1_legacy_capabilities import install_v1_legacy_capabilities_patch
 from changying.web.v1_learning_evidence_profile import install_v1_learning_evidence_profile
 from changying.web.v1_learning_evidence_view import install_v1_learning_evidence_view_patch
+from changying.web.v1_learning_evidence_access import install_v1_learning_evidence_access_patch, install_v1_learning_evidence_access_routes
 from changying.web.v1_mastery_evidence import install_v1_mastery_evidence_patch
 from changying.web.v1_membership_reliability import install_v1_membership_reliability_patch
 from changying.web.v1_membership_visibility import install_v1_membership_visibility_patch
@@ -179,6 +180,8 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_history_focus_patch()
     install_v1_learning_evidence_profile(implementation)
     install_v1_learning_evidence_view_patch()
+    install_v1_learning_evidence_access_patch()
+    install_v1_learning_evidence_access_routes(implementation)
     install_v1_auth_handoff_routes(implementation)
     install_v1_routes(implementation.app)
     install_v1_unified_tool_route(implementation.app)
