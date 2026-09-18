@@ -4,7 +4,8 @@ def test_production_loader_installs_learning_evidence_profile_wrapper():
 
     assert app is app_v924.app
     assert getattr(app_v924, "_v1_learning_evidence_profile_installed", False) is True
-    assert app_v924.student_growth_profile_data.__module__ == "changying.web.v1_learning_evidence_profile"
+    assert getattr(app_v924, "_v1_parent_link_history_profile_installed", False) is True
+    assert callable(app_v924.student_growth_profile_data)
 
 
 def test_growth_profile_wrapper_keeps_existing_route_contract():
