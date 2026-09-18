@@ -15,7 +15,10 @@ from changying.web import v1 as v1_module
 V1_LEARNING_EVIDENCE_VIEW_MARKER = "changying_v1_learning_evidence_view_v1"
 
 _STUDENT_PAGE_ANCHOR = "    async function studentPage(){"
-_HISTORY_ANCHOR = '<section class="section"><div class="section-head"><div><h2>历史时间线</h2>'
+_HISTORY_ANCHORS = (
+    '<section class="section"><div class="section-head"><div><h2>成长档案时间线</h2>',
+    '<section class="section"><div class="section-head"><div><h2>历史时间线</h2>',
+)
 
 _HELPER = r"""
     function learningEvidenceSection(profile){
@@ -37,11 +40,12 @@ def patch_v1_learning_evidence_view(html: str) -> str:
         return html
     if _STUDENT_PAGE_ANCHOR not in html:
         raise RuntimeError("V1 evidence view patch: studentPage anchor not found")
-    if _HISTORY_ANCHOR not in html:
+    history_anchor = next((x for x in _HISTORY_ANCHORS if x in html), None)
+    if history_anchor is None:
         raise RuntimeError("V1 evidence view patch: history anchor not found")
 
     html = html.replace(_STUDENT_PAGE_ANCHOR, _HELPER + "\n" + _STUDENT_PAGE_ANCHOR, 1)
-    html = html.replace(_HISTORY_ANCHOR, "${learningEvidenceSection(profile)}" + _HISTORY_ANCHOR, 1)
+    html = html.replace(history_anchor, "${learningEvidenceSection(profile)}" + history_anchor, 1)
     return html.replace(
         "</body>",
         f"<!-- {V1_LEARNING_EVIDENCE_VIEW_MARKER} --></body>",
