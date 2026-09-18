@@ -20,19 +20,20 @@ _SNIPPET = r'''
 <script id="changying_v1_guardian_visibility_v1-script">
 (()=>{
   if(window.__cyV1GuardianVisibilityInstalled)return;window.__cyV1GuardianVisibilityInstalled=true;
-  const token=()=>localStorage.getItem('v717Token')||localStorage.getItem('v6Token')||'';
+  const token=()=>{const remember=localStorage.getItem('v717Remember')==='1';return (remember?localStorage.getItem('v717Token'):sessionStorage.getItem('v717Token'))||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||''};
   const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const accountID=row=>Number(row?.guardian_account_id||row?.account_id||row?.user_id||row?.id||0);
   const relation=row=>{const x=String(row?.relationship||row?.relation||'').trim().toLowerCase();if(['parent','父亲','母亲','家长'].includes(x))return'家长';if(['grandparent','祖父','祖母','外祖父','外祖母'].includes(x))return'祖辈监护人';return'其他监护人'};
   function normalize(rows){const seen=new Set(),out=[];for(const row of (Array.isArray(rows)?rows:[])){const id=accountID(row);if(!Number.isInteger(id)||id<=0||seen.has(id))continue;seen.add(id);out.push({id,name:String(row?.name||row?.display_name||'').trim(),relationship:relation(row),primary:Boolean(row?.is_primary_contact||row?.primary)})}return out}
   async function readProfile(id){const t=token();if(!t)throw new Error('no-session');if(t==='demo')return null;const r=await fetch('/teacher/students/'+id+'/growth-profile',{headers:{Authorization:'Bearer '+t}});if(!r.ok)throw new Error('read-failed-'+r.status);return await r.json()}
   function render(items){if(!items.length)return'<div class="empty">当前档案没有可展示的有效监护关系。</div>';return'<div class="cy-guardian-list">'+items.map(x=>`<div class="cy-guardian-row"><div><b>${esc(x.name||'监护人')}</b><small>${esc(x.relationship)} · 账号 #${esc(x.id)}</small></div>${x.primary?'<span class="cy-guardian-badge">主要联系人</span>':''}</div>`).join('')+'</div>'}
+  function renderHistory(rows){if(!Array.isArray(rows)||!rows.length)return'';return'<div style="margin-top:14px"><h3 style="margin:0 0 8px">家长关联历史</h3><div class="cy-guardian-list">'+rows.map(x=>{const start=x.startKnown?esc(x.startedAt||''):'起始时间未知',end=x.current?'当前':(x.endKnown?esc(x.endedAt||''):'结束时间未知'),badge=x.current?'当前关联':(x.endReason==='replaced'?'已换绑':'历史关联');return `<div class="cy-guardian-row"><div><b>${esc(x.parentName||'家长')}</b><small>账号 #${esc(x.parentID||'')} · ${start} → ${end}</small></div><span class="cy-guardian-badge">${badge}</span></div>`}).join('')+'</div></div>'}
   async function install(){
     if(location.pathname!='/v1/student')return;const id=Number(new URLSearchParams(location.search).get('id')||0);if(!id||document.getElementById('cy-guardian-section'))return;
     const main=document.querySelector('#screen main');if(!main)return;
     let profile=null;try{profile=await readProfile(id)}catch{return}if(!profile)return;
-    const items=normalize(profile?.student?.parents||profile?.parents||[]);
-    const section=document.createElement('section');section.className='section';section.id='cy-guardian-section';section.innerHTML='<div class="section-head"><div><h2>家庭关联</h2><p>仅展示当前账号已获准读取的监护关系，不代表新增授权。</p></div></div>'+render(items);main.appendChild(section)
+    const items=normalize(profile?.student?.parents||profile?.parents||[]),history=profile?.parentHistory||[];
+    const section=document.createElement('section');section.className='section';section.id='cy-guardian-section';section.innerHTML='<div class="section-head"><div><h2>家庭关联</h2><p>展示当前监护关系与可追溯历史；未知时间保持未知，不代表新增授权。</p></div></div>'+render(items)+renderHistory(history);main.appendChild(section)
   }
   let timer=null;const run=()=>{clearTimeout(timer);timer=setTimeout(install,100)};new MutationObserver(run).observe(document.getElementById('screen')||document.body,{childList:true,subtree:true});window.addEventListener('popstate',run);run();
 })();
