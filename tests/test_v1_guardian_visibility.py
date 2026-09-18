@@ -55,3 +55,22 @@ def test_guardian_visibility_patch_is_idempotent_and_adds_no_write_method():
     assert once == twice
     for verb in ("method:'POST'", 'method:"POST"', "method:'PUT'", "method:'PATCH'", "method:'DELETE'"):
         assert once.count(verb) == original.count(verb)
+
+
+def test_guardian_visibility_uses_shared_session_storage_contract():
+    fragment = guardian_patch_fragment()
+
+    assert "v717Remember" in fragment
+    assert "sessionStorage.getItem('v717Token')" in fragment
+    assert "localStorage.getItem('v717Token')" in fragment
+
+
+def test_guardian_visibility_renders_parent_history_without_inventing_times():
+    fragment = guardian_patch_fragment()
+
+    assert "profile?.parentHistory||[]" in fragment
+    assert "家长关联历史" in fragment
+    assert "起始时间未知" in fragment
+    assert "结束时间未知" in fragment
+    assert "当前关联" in fragment
+    assert "已换绑" in fragment
