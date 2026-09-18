@@ -26,6 +26,8 @@ def test_v1_stages_short_lived_handoff_before_tool_navigation() -> None:
     script = _script_by_id(v1_html(), "changying_v1_20260915-script")
 
     assert f"HANDOFF_KEY='{HANDOFF_KEY}'" in script
+    assert "const cleanupToolHandoff=()" in script
+    assert "cleanupToolHandoff();" in script
     assert "const stageToolHandoff=()" in script
     assert "expiresAt:Date.now()+120000" in script
     assert "a[href^=\"/v1/tool\"]" in script
@@ -46,6 +48,7 @@ def test_unified_classic_consumes_only_live_handoff_and_clears_it() -> None:
     assert f"localStorage.getItem('{HANDOFF_KEY}')" in script
     assert "Number(handoff.expiresAt||0)<=Date.now()" in script
     assert f"localStorage.removeItem('{HANDOFF_KEY}')" in script
+    assert "var token=String(handoff.token);localStorage.removeItem('cyV1SessionHandoff');return token" in script
     assert "function clearV1Handoff()" in script
     assert "||v1HandoffToken()||''" in script
     assert "clearV1Handoff();sync();return true" in script
