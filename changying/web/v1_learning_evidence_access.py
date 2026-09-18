@@ -9,6 +9,7 @@ from fastapi import Depends, HTTPException
 from changying.domain.learning_evidence_growth_profile import growth_profile_learning_evidence
 from changying.domain.learning_evidence_read_model import student_evidence_snapshot
 from changying.web.v1_learning_evidence_profile import legacy_student_evidence
+from changying.web import v1 as v1_module
 
 
 def _authorized_student(implementation: ModuleType, db, user, sid: int):
@@ -39,6 +40,43 @@ def _authorized_student(implementation: ModuleType, db, user, sid: int):
             raise HTTPException(403, "无权查看其他学生")
         return student
     raise HTTPException(403, "无权查看学生证据")
+
+
+V1_LEARNING_EVIDENCE_ACCESS_MARKER = "changying_v1_learning_evidence_access_v1"
+_PROFILE_ANCHOR = (
+    "const s=profile.student||{},a=profile.academic||{},weak=a.weakKnowledge||[],"
+    "assignments=a.recentAssignments||[],timeline=profile.timeline||[],"
+    "suggestions=profile.suggestions||[];"
+)
+
+
+def patch_v1_learning_evidence_access(html: str) -> str:
+    if V1_LEARNING_EVIDENCE_ACCESS_MARKER in html:
+        return html
+    if _PROFILE_ANCHOR not in html:
+        raise RuntimeError("V1 learning evidence access patch: profile anchor not found")
+    fetch_line = (
+        "if(!profile.learningEvidence&&id){try{profile.learningEvidence="
+        "await api('/v1/students/'+id+'/learning-evidence')}catch(_){}}"
+    )
+    html = html.replace(_PROFILE_ANCHOR, fetch_line + _PROFILE_ANCHOR, 1)
+    return html.replace(
+        "</body>",
+        f"<!-- {V1_LEARNING_EVIDENCE_ACCESS_MARKER} --></body>",
+        1,
+    )
+
+
+def install_v1_learning_evidence_access_patch() -> None:
+    if getattr(v1_module, "_learning_evidence_access_patch_installed", False):
+        return
+    original = v1_module.v1_html
+
+    def patched_v1_html() -> str:
+        return patch_v1_learning_evidence_access(original())
+
+    v1_module.v1_html = patched_v1_html
+    v1_module._learning_evidence_access_patch_installed = True
 
 
 def install_v1_learning_evidence_access_routes(implementation: ModuleType) -> None:
