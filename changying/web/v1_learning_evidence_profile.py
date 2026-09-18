@@ -20,6 +20,7 @@ from changying.domain.learning_evidence_read_model import student_evidence_snaps
 
 
 def legacy_student_evidence(implementation: ModuleType, db: Any, student_id: int, school_id: int):
+    """Read one student's legacy evidence with a bounded set of batch queries."""
     rows = db.scalars(
         implementation.select(implementation.Submission)
         .where(
@@ -32,41 +33,76 @@ def legacy_student_evidence(implementation: ModuleType, db: Any, student_id: int
         )
     ).all()
 
+    assignment_ids = {
+        int(sub.assignment_id)
+        for sub in rows
+        if getattr(sub, "assignment_id", None) is not None
+    }
+    assignments = []
+    if assignment_ids:
+        assignments = db.scalars(
+            implementation.select(implementation.Assignment).where(
+                implementation.Assignment.school_id == school_id,
+                implementation.Assignment.id.in_(assignment_ids),
+            )
+        ).all()
+    assignment_by_id = {int(row.id): row for row in assignments}
+
+    paper_ids = {
+        int(row.paper_id)
+        for row in assignments
+        if getattr(row, "paper_id", None) is not None
+    }
+    papers = []
+    if paper_ids:
+        papers = db.scalars(
+            implementation.select(implementation.Paper).where(
+                implementation.Paper.school_id == school_id,
+                implementation.Paper.id.in_(paper_ids),
+            )
+        ).all()
+    paper_by_id = {int(row.id): row for row in papers}
+
+    paper_question_ids: dict[int, list[int]] = {}
+    all_question_ids: set[int] = set()
+    for paper in papers:
+        qids = [
+            int(qid)
+            for qid in implementation._json_list(paper.question_ids_json)
+            if isinstance(qid, int) or (isinstance(qid, str) and qid.isdigit())
+        ]
+        paper_question_ids[int(paper.id)] = qids
+        all_question_ids.update(qids)
+
+    questions = []
+    if all_question_ids:
+        questions = db.scalars(
+            implementation.select(implementation.Question).where(
+                implementation.Question.school_id == school_id,
+                implementation.Question.id.in_(all_question_ids),
+            )
+        ).all()
+    knowledge_by_question = {
+        int(question.id): (question.knowledge or "")
+        for question in questions
+    }
+
     evidence = []
     for sub in rows:
         subject = ""
         class_id = None
         question_knowledge: dict[int, str] = {}
 
-        if sub.assignment_id:
-            assignment = db.scalar(
-                implementation.select(implementation.Assignment).where(
-                    implementation.Assignment.id == sub.assignment_id,
-                    implementation.Assignment.school_id == school_id,
-                )
-            )
-            if assignment is not None:
-                class_id = assignment.class_id
-                paper = db.scalar(
-                    implementation.select(implementation.Paper).where(
-                        implementation.Paper.id == assignment.paper_id,
-                        implementation.Paper.school_id == school_id,
-                    )
-                )
-                if paper is not None:
-                    subject = paper.subject or ""
-                    qids = implementation._json_list(paper.question_ids_json)
-                    if qids:
-                        questions = db.scalars(
-                            implementation.select(implementation.Question).where(
-                                implementation.Question.school_id == school_id,
-                                implementation.Question.id.in_(qids),
-                            )
-                        ).all()
-                        question_knowledge = {
-                            int(q.id): (q.knowledge or "")
-                            for q in questions
-                        }
+        assignment = assignment_by_id.get(int(sub.assignment_id)) if sub.assignment_id else None
+        if assignment is not None:
+            class_id = assignment.class_id
+            paper = paper_by_id.get(int(assignment.paper_id)) if assignment.paper_id else None
+            if paper is not None:
+                subject = paper.subject or ""
+                question_knowledge = {
+                    qid: knowledge_by_question.get(qid, "")
+                    for qid in paper_question_ids.get(int(paper.id), [])
+                }
 
         evidence.append(
             submission_to_performance_evidence(
