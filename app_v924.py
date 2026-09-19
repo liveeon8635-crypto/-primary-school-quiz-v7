@@ -6899,10 +6899,9 @@ def teacher_student_growth_timeline(sid:int,class_id:int|None=None,limit:int=80,
 def parent_child_communication_history(sid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"parent")
     if not db.scalar(select(ParentStudent.id).where(ParentStudent.parent_id==u.id,ParentStudent.student_id==sid)):raise HTTPException(403,"未绑定该学生")
-    rows=db.scalars(select(StudentFollowUpLog).join(StudentFollowUp,StudentFollowUp.id==StudentFollowUpLog.followup_id).where(
-        StudentFollowUpLog.school_id==u.school_id,StudentFollowUpLog.student_id==sid,
-        StudentFollowUpLog.log_type=="parent_contact"
-    ).order_by(StudentFollowUpLog.created_at.desc(),StudentFollowUpLog.id.desc()).limit(50)).all()
+    rows=followup_parent_contact_rows(
+        db,school_id=u.school_id,student_id=sid
+    )
     return [followup_log_json(db,x) for x in rows]
 
 @app.get("/teacher/points/classes/{cid}/followups-report.xlsx")
