@@ -63,6 +63,16 @@ def test_unknown_tool_page_is_safely_normalized():
     assert response.headers['location'].endswith('page=classes')
 
 
+def test_direct_v1_classic_link_is_normalized_through_unified_mode():
+    response = TestClient(build_app(), follow_redirects=False).get(
+        '/classic?legacy=1&page=assignments&from=v1'
+    )
+
+    assert response.status_code == 307
+    assert response.headers['X-Changying-V1-Tool'] == V1_CLASSIC_TOP_LEVEL_MARKER
+    assert response.headers['location'] == '/classic?legacy=1&unified=1&from=v1&page=assignments'
+
+
 def test_unified_classic_gets_v1_chrome_even_when_upstream_is_gzipped():
     response = TestClient(build_app()).get(
         '/classic?legacy=1&unified=1&from=v1&page=classes',
