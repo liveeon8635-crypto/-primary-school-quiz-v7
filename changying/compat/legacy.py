@@ -159,6 +159,8 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
         homework_media_model=implementation.HomeworkMedia,
         user_model=implementation.User,
         assignment_recipient_model=implementation.AssignmentRecipient,
+        assignment_model=implementation.Assignment,
+        class_model=implementation.SchoolClass,
         valid_submission_modes=ASSIGNMENT_SUBMISSION_MODES,
         assignment_mode_name=assignment_mode_name,
         school_local_iso=school_local_iso,
@@ -168,6 +170,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.assignment_submission_setting = assignment_service.submission_setting
     implementation.assignment_submission_mode = assignment_service.submission_mode
     implementation.homework_media_count = assignment_service.homework_media_count
+    implementation.teacher_assignment_for = assignment_service.teacher_assignment_for
     implementation.recipient_students = assignment_service.recipient_students
     implementation.assignment_effective_status = assignment_service.effective_status
 

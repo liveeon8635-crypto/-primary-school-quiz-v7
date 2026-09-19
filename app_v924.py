@@ -5212,7 +5212,7 @@ def tassign(u:User=Depends(current_user),db:Session=Depends(get_db)):
 
 @app.get("/teacher/assignments/{aid}/submissions")
 def tsubs(aid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"teacher");a=db.scalar(select(Assignment).join(SchoolClass,Assignment.class_id==SchoolClass.id).where(Assignment.id==aid,Assignment.school_id==u.school_id,SchoolClass.teacher_id==u.id))
+    need(u,"teacher");a=teacher_assignment_for(db,u.school_id,u.id,aid)
     if not a:raise HTTPException(404,"作业不存在或无权限")
     students=recipient_students(db,a);out=[]
     for stu in students:
@@ -5227,7 +5227,7 @@ def tsubs(aid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
 
 @app.get("/teacher/assignments/{aid}/export.xlsx")
 def export_assignment_report(aid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"teacher");a=db.scalar(select(Assignment).join(SchoolClass,Assignment.class_id==SchoolClass.id).where(Assignment.id==aid,Assignment.school_id==u.school_id,SchoolClass.teacher_id==u.id))
+    need(u,"teacher");a=teacher_assignment_for(db,u.school_id,u.id,aid)
     if not a:raise HTTPException(404,"作业不存在或无权限")
     c=db.get(SchoolClass,a.class_id);students=recipient_students(db,a);mode=assignment_submission_mode(db,a)
     from openpyxl import Workbook
@@ -5421,7 +5421,7 @@ def submit_homework_media(aid:int,b:HomeworkMediaSubmitBody,u:User=Depends(curre
 
 @app.get("/teacher/assignments/{aid}/students/{sid}/media")
 def teacher_homework_media(aid:int,sid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"teacher");a=db.scalar(select(Assignment).join(SchoolClass,Assignment.class_id==SchoolClass.id).where(Assignment.id==aid,Assignment.school_id==u.school_id,SchoolClass.teacher_id==u.id))
+    need(u,"teacher");a=teacher_assignment_for(db,u.school_id,u.id,aid)
     if not a:raise HTTPException(404,"作业不存在或无权限")
     if not db.scalar(select(AssignmentRecipient.id).where(AssignmentRecipient.assignment_id==aid,AssignmentRecipient.student_id==sid,AssignmentRecipient.school_id==u.school_id)):raise HTTPException(404,"学生不在该作业接收名单")
     rows=db.scalars(select(HomeworkMedia).where(HomeworkMedia.school_id==u.school_id,HomeworkMedia.assignment_id==aid,HomeworkMedia.student_id==sid).order_by(HomeworkMedia.id)).all();final=db.scalar(select(HomeworkMediaSubmit).where(HomeworkMediaSubmit.school_id==u.school_id,HomeworkMediaSubmit.assignment_id==aid,HomeworkMediaSubmit.student_id==sid));stu=db.get(User,sid)
