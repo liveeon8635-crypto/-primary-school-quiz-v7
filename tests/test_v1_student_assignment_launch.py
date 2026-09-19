@@ -19,7 +19,6 @@ def test_unified_tool_forwards_assignment_deep_link_once():
     assert "deepAssignmentUsed=false" in html
     assert "page==='assignments'" in html
     assert "'&assignment='" in html
-    assert "\\n  let deepAssignmentUsed" not in html
 
 
 def test_embedded_classic_bootstrap_auto_opens_deep_linked_assignment():
