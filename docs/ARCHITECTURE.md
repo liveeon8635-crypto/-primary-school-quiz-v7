@@ -138,6 +138,9 @@ changying/services/
 由兼容桥注入现有 legacy 全局函数名。既有 FastAPI 路由继续保持原 URL、请求/返回结构和 ORM 表，
 先依靠 C1 集成安全网验证行为一致，再继续迁移写侧与其他 service。
 
+作业读侧稳定后开始第二个领域：`PointService` 首先接管学生积分 summary 聚合。
+同样由兼容桥保持原 `point_summary` 调用契约，先迁移可验证的读侧计算，再逐步处理积分流水查询与写侧操作。
+
 ### 阶段 D：API Router
 
 在集成测试覆盖后，再把同领域路由迁入 `APIRouter`，保持公开 URL 和返回结构不变。
