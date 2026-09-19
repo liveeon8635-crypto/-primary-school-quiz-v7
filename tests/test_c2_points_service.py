@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from types import SimpleNamespace
 
 from sqlalchemy import Boolean, DateTime, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
@@ -131,6 +132,61 @@ def test_ledger_json_preserves_legacy_names_fallbacks_and_shape():
     assert second["ruleName"] == ""
     assert second["relatedID"] is None
     assert second["reversed"] is False
+
+
+def test_point_rule_serializers_preserve_school_class_and_inherited_contracts():
+    service = PointService(point_ledger_model=TestPointLedger)
+    school_rule = SimpleNamespace(
+        id=11,
+        name="主动回答",
+        category="activity",
+        points=2,
+        active=1,
+        require_note=0,
+        sort_order=3,
+    )
+    class_rule = SimpleNamespace(
+        id=12,
+        name="课前准备",
+        category="discipline",
+        points=1,
+        active=True,
+        require_note=True,
+        sort_order=4,
+        class_id=99,
+    )
+
+    assert service.rule_json(school_rule) == {
+        "id": 11,
+        "name": "主动回答",
+        "category": "activity",
+        "points": 2,
+        "active": True,
+        "requireNote": False,
+        "sortOrder": 3,
+    }
+    assert service.class_rule_json(class_rule) == {
+        "id": 12,
+        "name": "课前准备",
+        "category": "discipline",
+        "points": 1,
+        "active": True,
+        "requireNote": True,
+        "sortOrder": 4,
+        "scope": "class",
+        "classID": 99,
+    }
+    assert service.inherited_rule_json(school_rule) == {
+        "id": 11,
+        "name": "主动回答",
+        "category": "activity",
+        "points": 2,
+        "active": True,
+        "requireNote": False,
+        "sortOrder": 3,
+        "scope": "school",
+        "inherited": True,
+    }
 
 
 def test_recent_rows_preserve_source_school_teacher_class_and_order_contract():
@@ -290,6 +346,9 @@ def test_point_summary_service_is_installed_into_legacy_runtime():
     assert legacy.point_balance.__self__ is service
     assert legacy.point_ledger_json.__self__ is service
     assert legacy.point_metric_value.__self__ is service
+    assert legacy.point_rule_json.__self__ is service
+    assert legacy.class_point_rule_json.__self__ is service
+    assert legacy.inherited_point_rule_json.__self__ is service
     assert legacy.point_recent_rows.__self__ is service
     assert legacy.point_summary.__self__ is service
     assert legacy.point_window_summary.__self__ is service
