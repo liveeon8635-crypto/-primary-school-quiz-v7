@@ -278,7 +278,7 @@ def collect_student_learning_feedback(
             primary["knowledge"] = weak[0]["knowledge"]
 
     return {
-        "hasEvidence": bool(tests and (wrong_items or weak)),
+        "hasEvidence": bool(tests),
         "tests": tests,
         "weakKnowledge": weak,
         "wrongQuestions": wrong_items,
