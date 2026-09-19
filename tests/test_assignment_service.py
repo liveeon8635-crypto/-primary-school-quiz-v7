@@ -160,7 +160,7 @@ def test_student_assignment_for_paper_requires_matching_student_and_school():
             [
                 TestAssignment(id=30, school_id=10, class_id=1, paper_id=900, title="allowed paper"),
                 TestAssignment(id=31, school_id=10, class_id=1, paper_id=901, title="other paper"),
-                TestAssignment(id=32, school_id=20, class_id=1, paper_id=900, title="other school"),
+                TestAssignment(id=32, school_id=20, class_id=1, paper_id=902, title="other school"),
                 TestRecipient(id=30, school_id=10, assignment_id=30, student_id=300),
                 TestRecipient(id=31, school_id=10, assignment_id=31, student_id=301),
                 TestRecipient(id=32, school_id=20, assignment_id=32, student_id=300),
@@ -171,9 +171,9 @@ def test_student_assignment_for_paper_requires_matching_student_and_school():
         allowed = service.student_assignment_for_paper(db, 10, 300, 900)
         wrong_student = service.student_assignment_for_paper(db, 10, 301, 900)
         wrong_paper = service.student_assignment_for_paper(db, 10, 300, 901)
-        other_school = service.student_assignment_for_paper(db, 10, 300, 900)
+        other_school = service.student_assignment_for_paper(db, 10, 300, 902)
 
     assert allowed is not None and allowed.id == 30
     assert wrong_student is None
     assert wrong_paper is None
-    assert other_school is not None and other_school.school_id == 10
+    assert other_school is None
