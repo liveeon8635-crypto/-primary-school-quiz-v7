@@ -3151,6 +3151,7 @@ def school_backup_payload(db,school_id):
       "classHistory":rows(StudentClassHistory),"assignmentRecipients":rows(AssignmentRecipient),
       "parentStudents":[model_dict(x) for x in db.scalars(select(ParentStudent).where(ParentStudent.parent_id.in_(user_ids))).all()] if user_ids else [],
       "questions":rows(Question),"papers":rows(Paper),"assignments":rows(Assignment),"submissions":rows(Submission),
+      "learningEvidenceEvents":rows(LearningEvidenceEvent),
       "assignmentSubmissionSettings":rows(AssignmentSubmissionSetting),"homeworkMediaSubmits":rows(HomeworkMediaSubmit),
       "aiGradingReviews":rows(AIGradingReview),"wrongQuestionRecords":rows(WrongQuestionRecord),"reinforcementLinks":rows(ReinforcementLink),
       "homeworkMediaMetadata":[model_dict(x,{"file_data"}) for x in db.scalars(select(HomeworkMedia).where(HomeworkMedia.school_id==school_id).order_by(HomeworkMedia.id)).all()],
@@ -4678,7 +4679,8 @@ def admin_stability_check(u:User=Depends(current_user),db:Session=Depends(get_db
     required={
         "schools","users","user_security","classes","class_students","questions","papers","assignments","submissions",
         "point_rules","class_point_rules","point_ledger","teaching_resources","school_ai_configs","ai_usage_logs",
-        "homework_media","ai_grading_reviews","wrong_question_records","reinforcement_links","audit_logs","schema_migrations"
+        "homework_media","ai_grading_reviews","wrong_question_records","reinforcement_links","learning_evidence_events",
+        "audit_logs","schema_migrations"
     }
     missing=sorted(required-tables)
 
@@ -4688,6 +4690,7 @@ def admin_stability_check(u:User=Depends(current_user),db:Session=Depends(get_db
         "assignments":db.scalar(select(func.count()).select_from(Assignment).where(Assignment.school_id==u.school_id)) or 0,
         "teachingResources":db.scalar(select(func.count()).select_from(TeachingResource).where(TeachingResource.school_id==u.school_id)) or 0,
         "homeworkMedia":db.scalar(select(func.count()).select_from(HomeworkMedia).where(HomeworkMedia.school_id==u.school_id)) or 0,
+        "learningEvidenceEvents":db.scalar(select(func.count()).select_from(LearningEvidenceEvent).where(LearningEvidenceEvent.school_id==u.school_id)) or 0,
         "auditLogs":db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.school_id==u.school_id)) or 0
     }
     resource_bytes=db.scalar(select(func.coalesce(func.sum(TeachingResource.size_bytes),0)).where(TeachingResource.school_id==u.school_id)) or 0
