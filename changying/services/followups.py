@@ -97,3 +97,19 @@ class FollowUpService:
                 )
             ).all()
         )
+
+    def item_row(
+        self,
+        db,
+        *,
+        school_id: int,
+        class_id: int,
+        followup_id: int,
+    ) -> Any | None:
+        return db.scalar(
+            select(self.StudentFollowUp).where(
+                self.StudentFollowUp.id == followup_id,
+                self.StudentFollowUp.class_id == class_id,
+                self.StudentFollowUp.school_id == school_id,
+            )
+        )
