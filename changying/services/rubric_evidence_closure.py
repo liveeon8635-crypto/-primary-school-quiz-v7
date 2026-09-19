@@ -126,26 +126,13 @@ def _enrich_saved_non_choice_questions(
         qtype = str(getattr(body, "question_type", "") or "").strip().lower()
         if qtype != "non_choice":
             continue
-        row = db.scalar(
-            implementation.select(implementation.Question).where(
-                implementation.Question.id == int(qid),
-                implementation.Question.school_id == int(row_school_id(body, implementation, db, qid)),
-            )
-        )
-        if row is None:
-            # The ID came from a school-scoped write route. Fall back to direct
-            # primary-key lookup only when the model helper is available.
-            row = db.get(implementation.Question, int(qid))
+        # IDs are returned by the already-authorized save/assign route.
+        row = db.get(implementation.Question, int(qid))
         if row is None:
             continue
         row.question_type = "non_choice"
         row.answer_json = structured_manual_answer_json(body)
 
-
-def row_school_id(body: Any, implementation: ModuleType, db: Any, qid: Any) -> int:
-    """Resolve school id from the just-written question without trusting input."""
-    row = db.get(implementation.Question, int(qid))
-    return int(row.school_id) if row is not None else -1
 
 
 def _paper_questions(implementation: ModuleType, db: Any, assignment: Any) -> list[Any]:
@@ -240,7 +227,10 @@ def _quiz_context(implementation: ModuleType, questions: list[Any], submission: 
 
 
 def _grading_assist_call(implementation: ModuleType):
-    def grade_assist(body, u, db):
+    # Parameter names intentionally match the already-built FastAPI dependant
+    # for the legacy route (b, u, db).
+    def grade_assist(b, u, db):
+        body = b
         implementation.need(u, "teacher")
         cfg = implementation.ai_config_for(db, u.school_id, False)
         if not cfg or not cfg.allow_student_data:
