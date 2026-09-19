@@ -19,6 +19,7 @@ class AssignmentService:
         homework_media_submit_model: Any,
         homework_media_model: Any,
         valid_submission_modes: set[str],
+        assignment_mode_name: Callable[[str], str],
         school_local_iso: Callable[[Any], str],
         due_deadline_utc: Callable[[str], Any],
     ) -> None:
@@ -27,6 +28,7 @@ class AssignmentService:
         self.HomeworkMediaSubmit = homework_media_submit_model
         self.HomeworkMedia = homework_media_model
         self.valid_submission_modes = set(valid_submission_modes)
+        self.assignment_mode_name = assignment_mode_name
         self.school_local_iso = school_local_iso
         self.due_deadline_utc = due_deadline_utc
 
@@ -139,11 +141,7 @@ class AssignmentService:
             "overdue": overdue,
             "deadlinePassed": bool(deadline and now > deadline),
             "submissionMode": mode,
-            "submissionModeName": {
-                "quiz": "在线答题",
-                "media": "拍照/视频",
-                "mixed": "在线答题 + 拍照/视频",
-            }.get(mode, "在线答题"),
+            "submissionModeName": self.assignment_mode_name(mode),
             "quizSubmitted": quiz_ok,
             "mediaSubmitted": media_ok,
             "mediaCount": self.homework_media_count(
