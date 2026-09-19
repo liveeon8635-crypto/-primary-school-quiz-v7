@@ -220,10 +220,94 @@ with TestClient(app) as client:
     assert generated_body["assessmentContext"]["assessmentCount"] == 1
     assert generated_body["assessmentContext"]["primary"]["textbook"] == "人教版"
     assert generated_body["wrongIDs"]
-    assert "已关联最近 1 次综合/模块测试反馈" in generated_body["notice"]
+    assert "已关联最近 1 次测试/练习反馈" in generated_body["notice"]
     assert generated_body["items"][0]["grade"] == 5
     assert generated_body["items"][0]["subject"] == "数学"
     assert generated_body["items"][0]["textbook"] == "人教版"
+
+    assigned = client.post(
+        f"/teacher/students/{sid}/reinforcement/assign",
+        headers=th,
+        json={
+            "questions": generated_body["items"],
+            "title": "AI 针对性练习",
+            "due_date": "2026-09-30",
+            "wrong_ids": generated_body["wrongIDs"],
+            "instructions": "教师审核后的针对性练习",
+        },
+    )
+    assert assigned.status_code == 200, assigned.text
+    reinforcement_id = assigned.json()["assignment"]["id"]
+    reinforcement_pid = assigned.json()["paperID"]
+
+    reinforcement_questions = client.get(
+        f"/papers/{reinforcement_pid}/questions",
+        headers=sh,
+    )
+    assert reinforcement_questions.status_code == 200, reinforcement_questions.text
+    q = reinforcement_questions.json()[0]
+    wrong_index = 0 if q["correct_index"] != 0 else 1
+
+    reinforcement_submit = client.post(
+        f"/student/assignments/{reinforcement_id}/submit",
+        headers=sh,
+        json={
+            "answers": [
+                {
+                    "question_id": q["id"],
+                    "selected_index": wrong_index,
+                }
+            ]
+        },
+    )
+    assert reinforcement_submit.status_code == 200, reinforcement_submit.text
+    reinforcement_body = reinforcement_submit.json()
+    assert reinforcement_body["score"] == 0
+    assert reinforcement_body["learningFeedbackArchived"] == 1
+
+    with legacy.SessionLocal() as db:
+        new_wrong = list(
+            db.scalars(
+                legacy.select(legacy.WrongQuestionRecord).where(
+                    legacy.WrongQuestionRecord.school_id == 1,
+                    legacy.WrongQuestionRecord.student_id == sid,
+                    legacy.WrongQuestionRecord.assignment_id == reinforcement_id,
+                    legacy.WrongQuestionRecord.source == "assessment",
+                )
+            ).all()
+        )
+        assert len(new_wrong) == 1
+        assert new_wrong[0].knowledge == knowledge
+        assert new_wrong[0].status == "active"
+
+        link = db.scalar(
+            legacy.select(legacy.ReinforcementLink).where(
+                legacy.ReinforcementLink.assignment_id == reinforcement_id,
+                legacy.ReinforcementLink.student_id == sid,
+            )
+        )
+        assert link is not None
+        assert link.completed_at is not None
+        assert link.result_score == 0
+
+        reinforcement_context = student_assessment_context(
+            db,
+            AssignmentRecipient=legacy.AssignmentRecipient,
+            Assignment=legacy.Assignment,
+            Submission=legacy.Submission,
+            Paper=legacy.Paper,
+            Question=legacy.Question,
+            school_id=1,
+            student_id=sid,
+            assignment_id=reinforcement_id,
+            textbook_filter="人教版",
+        )
+        assert reinforcement_context["assessmentCount"] == 1
+        assert reinforcement_context["primary"]["assignmentID"] == reinforcement_id
+        assert reinforcement_context["primary"]["kind"] == "reinforcement"
+        assert reinforcement_context["primary"]["score"] == 0
+        assert reinforcement_context["weakKnowledge"][0]["knowledge"] == knowledge
+        assert reinforcement_context["weakKnowledge"][0]["accuracy"] == 0
 '''
 
     env = os.environ.copy()
