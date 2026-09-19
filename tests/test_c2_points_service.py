@@ -56,6 +56,46 @@ class TestPointLedger(Base):
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+def test_class_window_summary_preserves_scope_source_window_and_student_aggregation():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PointService(point_ledger_model=TestPointLedger)
+    start = datetime(2026, 9, 19, 0, 0, 0)
+    end = datetime(2026, 9, 20, 0, 0, 0)
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestPointLedger(id=1, school_id=10, student_id=100, class_id=20, category="activity", points=3, source="classroom", created_at=datetime(2026, 9, 19, 8, 0, 0)),
+                TestPointLedger(id=2, school_id=10, student_id=100, class_id=20, category="discipline", points=-1, source="classroom", created_at=datetime(2026, 9, 19, 9, 0, 0)),
+                TestPointLedger(id=3, school_id=10, student_id=101, class_id=20, category="activity", points=2, source="adjustment", created_at=datetime(2026, 9, 19, 10, 0, 0)),
+                TestPointLedger(id=4, school_id=10, student_id=101, class_id=20, category="activity", points=-2, source="reversal", created_at=datetime(2026, 9, 19, 11, 0, 0)),
+                TestPointLedger(id=5, school_id=10, student_id=100, class_id=20, category="adjustment", points=-20, source="redemption", created_at=datetime(2026, 9, 19, 12, 0, 0)),
+                TestPointLedger(id=6, school_id=10, student_id=100, class_id=21, category="activity", points=30, source="classroom", created_at=datetime(2026, 9, 19, 12, 0, 0)),
+                TestPointLedger(id=7, school_id=20, student_id=100, class_id=20, category="activity", points=40, source="classroom", created_at=datetime(2026, 9, 19, 12, 0, 0)),
+                TestPointLedger(id=8, school_id=10, student_id=100, class_id=20, category="activity", points=50, source="classroom", created_at=end),
+            ]
+        )
+        db.commit()
+
+        summary = service.class_window_summary(
+            db,
+            school_id=10,
+            class_id=20,
+            start_utc=start,
+            end_utc=end,
+        )
+
+    assert summary["recordCount"] == 4
+    assert summary["studentCount"] == 2
+    assert summary["activity"] == 3
+    assert summary["discipline"] == -1
+    assert summary["net"] == 2
+    by_id = {item["studentID"]: item for item in summary["students"]}
+    assert by_id[100] == {"studentID": 100, "net": 2, "activity": 3, "discipline": -1, "records": 2}
+    assert by_id[101] == {"studentID": 101, "net": 0, "activity": 0, "discipline": 0, "records": 2}
+
+
 def test_class_window_categories_preserve_scope_fallback_sort_and_limit_contract():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -389,6 +429,7 @@ def test_point_summary_service_is_installed_into_legacy_runtime():
     assert isinstance(service, PointService)
     assert legacy.point_balance.__self__ is service
     assert legacy.point_class_window_categories.__self__ is service
+    assert legacy.point_class_window_summary.__self__ is service
     assert legacy.point_ledger_json.__self__ is service
     assert legacy.point_metric_value.__self__ is service
     assert legacy.point_rule_json.__self__ is service
