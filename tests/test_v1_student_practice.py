@@ -83,6 +83,9 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     assert "textbook:body.querySelector('#cy-p-textbook').value" in once
     assert "/teacher/students/'+student.id+'/auto-practice" in once
     assert "s.role!=='teacher'" in once
+    assert "当前仅为教师审核预览，尚未布置，学生端不会看到。" in once
+    assert "审核无误，布置给该学生" in once
+    assert "已布置 AI 针对性练习，学生端现在可见。" in once
 
 
 def test_runtime_registers_student_practice_routes():
