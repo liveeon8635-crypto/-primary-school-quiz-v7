@@ -326,6 +326,46 @@ def test_point_balance_preserves_student_and_school_filtering():
     assert balance == 8
 
 
+def test_period_summary_preserves_scope_source_reason_sort_and_limit_contract():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PointService(point_ledger_model=TestPointLedger)
+    cutoff = datetime(2026, 9, 1, 0, 0, 0)
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestPointLedger(id=1, school_id=10, student_id=100, category="activity", points=5, source="classroom", reason="举手", created_at=datetime(2026, 9, 2)),
+                TestPointLedger(id=2, school_id=10, student_id=100, category="activity", points=3, source="adjustment", reason="举手", created_at=datetime(2026, 9, 3)),
+                TestPointLedger(id=3, school_id=10, student_id=100, category="activity", points=-2, source="reversal", reason="举手", created_at=datetime(2026, 9, 4)),
+                TestPointLedger(id=4, school_id=10, student_id=100, category="discipline", points=-7, source="classroom", reason=None, created_at=datetime(2026, 9, 5)),
+                TestPointLedger(id=5, school_id=10, student_id=100, category="adjustment", points=-20, source="redemption", reason="兑换", created_at=datetime(2026, 9, 5)),
+                TestPointLedger(id=6, school_id=10, student_id=100, category="activity", points=50, source="classroom", reason="窗口外", created_at=datetime(2026, 8, 31)),
+                TestPointLedger(id=7, school_id=10, student_id=101, category="activity", points=60, source="classroom", reason="其他学生", created_at=datetime(2026, 9, 2)),
+                TestPointLedger(id=8, school_id=20, student_id=100, category="activity", points=70, source="classroom", reason="其他学校", created_at=datetime(2026, 9, 2)),
+            ]
+        )
+        db.commit()
+
+        summary = service.period_summary(
+            db,
+            student_id=100,
+            school_id=10,
+            cutoff=cutoff,
+            reason_limit=1,
+        )
+
+    assert summary == {
+        "earned": 8,
+        "net": -1,
+        "activity": 6,
+        "discipline": -7,
+        "topReasons": [
+            {"reason": "积分记录", "count": 1, "points": -7},
+        ],
+    }
+
+
 def test_metric_value_preserves_cutoff_source_scope_and_metric_contract():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -432,6 +472,7 @@ def test_point_summary_service_is_installed_into_legacy_runtime():
     assert legacy.point_class_window_summary.__self__ is service
     assert legacy.point_ledger_json.__self__ is service
     assert legacy.point_metric_value.__self__ is service
+    assert legacy.point_period_summary.__self__ is service
     assert legacy.point_rule_json.__self__ is service
     assert legacy.class_point_rule_json.__self__ is service
     assert legacy.inherited_point_rule_json.__self__ is service
