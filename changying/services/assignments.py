@@ -250,4 +250,30 @@ def student_assignment_rows(
     return list(db.scalars(statement).all())
 
 
-__all__ = ["AssignmentService", "teacher_assignment_rows", "student_assignment_rows"]
+def student_assignment_for_paper(
+    db: Any,
+    *,
+    assignment_model: Any,
+    assignment_recipient_model: Any,
+    school_id: int,
+    student_id: int,
+    paper_id: int,
+):
+    """Return one recipient assignment that grants a student access to a paper."""
+    return db.scalar(
+        select(assignment_model)
+        .join(
+            assignment_recipient_model,
+            assignment_recipient_model.assignment_id == assignment_model.id,
+        )
+        .where(
+            assignment_model.paper_id == paper_id,
+            assignment_model.school_id == school_id,
+            assignment_recipient_model.school_id == school_id,
+            assignment_recipient_model.student_id == student_id,
+        )
+        .limit(1)
+    )
+
+
+__all__ = ["AssignmentService", "teacher_assignment_rows", "student_assignment_rows", "student_assignment_for_paper"]
