@@ -271,6 +271,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_rubric_evidence_closure(implementation)
     install_canonical_submission_evidence(implementation)
     install_reinforcement_figure_fallback(implementation)
+    install_rubric_review_ui(implementation)
     install_product_shell(implementation.app)
     install_product_visibility_routes(implementation.app)
     install_classic_ui_patch(implementation.app)
