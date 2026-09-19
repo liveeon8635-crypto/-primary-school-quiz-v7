@@ -8,11 +8,20 @@ from changying.web.v1_student_practice import (
 )
 
 
-def q(qid, knowledge, unit="第一单元", *, options=None, correct_index=0):
+def q(
+    qid,
+    knowledge,
+    unit="第一单元",
+    *,
+    options=None,
+    correct_index=0,
+    textbook="人教版",
+):
     return SimpleNamespace(
         id=qid,
         knowledge=knowledge,
         unit=unit,
+        textbook=textbook,
         options_json=__import__("json").dumps(options or ["A", "B"], ensure_ascii=False),
         correct_index=correct_index,
     )
@@ -63,6 +72,10 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     assert "＋ 添加测试 / 练习" in once
     assert "该科目综合测试" in once
     assert "知识模块练习" in once
+    assert "教材版本" in once
+    assert "cy-p-textbook" in once
+    assert "selectedTextbook" in once
+    assert "textbook:body.querySelector('#cy-p-textbook').value" in once
     assert "/teacher/students/'+student.id+'/auto-practice" in once
     assert "s.role!=='teacher'" in once
 
@@ -79,3 +92,22 @@ def test_runtime_registers_student_practice_routes():
         "/teacher/students/{sid}/auto-practice",
         ("POST",),
     ) in routes
+
+
+def test_selector_never_mixes_textbook_versions():
+    rows = [
+        q(1, "小数乘法", textbook="人教版"),
+        q(2, "小数乘法", textbook="北师大版"),
+        q(3, "位置", textbook="人教版"),
+        q(4, "位置", textbook="北师大版"),
+    ]
+
+    chosen = select_student_practice_questions(
+        rows,
+        kind="comprehensive",
+        count=10,
+        textbook="北师大版",
+    )
+
+    assert {row.id for row in chosen} == {2, 4}
+    assert {row.textbook for row in chosen} == {"北师大版"}

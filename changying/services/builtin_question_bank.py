@@ -405,8 +405,23 @@ def built_in_subjects(grade: int) -> list[str]:
     return ["数学"] if int(grade) == 5 else []
 
 
-def built_in_question_specs(grade: int, subject: str) -> list[dict[str, Any]]:
+def built_in_textbooks(grade: int, subject: str) -> list[str]:
     if int(grade) == 5 and (subject or "").strip() == "数学":
+        return ["人教版"]
+    return []
+
+
+def built_in_question_specs(
+    grade: int,
+    subject: str,
+    textbook: str = "",
+) -> list[dict[str, Any]]:
+    requested_textbook = (textbook or "").strip()
+    if (
+        int(grade) == 5
+        and (subject or "").strip() == "数学"
+        and (not requested_textbook or requested_textbook == "人教版")
+    ):
         return _grade5_math_specs()
     return []
 
@@ -416,12 +431,16 @@ def potential_question_catalog(
     *,
     grade: int,
     subject: str,
+    textbook: str = "",
 ) -> tuple[list[dict[str, Any]], int]:
-    """Return existing + not-yet-materialized built-in inventory without writing."""
+    """Return version-matched existing + built-in inventory without writing."""
+    selected_textbook = (textbook or "").strip()
     counts: dict[tuple[str, str], int] = defaultdict(int)
     existing_keys: set[tuple[str, str]] = set()
     total = 0
     for row in existing_rows:
+        if selected_textbook and str(row.textbook or "").strip() != selected_textbook:
+            continue
         try:
             options = json.loads(row.options_json or "[]")
             valid = (
@@ -440,7 +459,7 @@ def potential_question_catalog(
         existing_keys.add((str(row.text or "").strip(), knowledge))
         total += 1
 
-    for spec in built_in_question_specs(grade, subject):
+    for spec in built_in_question_specs(grade, subject, selected_textbook):
         key = (str(spec["text"]).strip(), str(spec["knowledge"]).strip())
         if key in existing_keys:
             continue
@@ -462,21 +481,24 @@ def ensure_built_in_questions(
     creator_id: int,
     grade: int,
     subject: str,
+    textbook: str = "",
 ) -> int:
-    """Materialize only missing built-in questions during an explicit create action."""
-    specs = built_in_question_specs(grade, subject)
+    """Materialize only missing built-in questions for the selected textbook."""
+    selected_textbook = (textbook or "").strip()
+    specs = built_in_question_specs(grade, subject, selected_textbook)
     if not specs:
         return 0
 
-    existing = list(
-        db.scalars(
-            select(Question).where(
-                Question.school_id == school_id,
-                Question.grade == int(grade),
-                Question.subject == (subject or "").strip(),
-            )
-        ).all()
+    existing_statement = select(Question).where(
+        Question.school_id == school_id,
+        Question.grade == int(grade),
+        Question.subject == (subject or "").strip(),
     )
+    if selected_textbook:
+        existing_statement = existing_statement.where(
+            Question.textbook == selected_textbook
+        )
+    existing = list(db.scalars(existing_statement).all())
     keys = {
         (str(row.text or "").strip(), str(row.knowledge or "").strip())
         for row in existing
@@ -512,6 +534,7 @@ def ensure_built_in_questions(
 __all__ = [
     "built_in_question_specs",
     "built_in_subjects",
+    "built_in_textbooks",
     "ensure_built_in_questions",
     "potential_question_catalog",
 ]
