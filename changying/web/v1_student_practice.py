@@ -139,7 +139,7 @@ def _practice_patch_html() -> str:
  function renderForm(layer,data){
    const body=layer.querySelector('#cy-practice-body');const student=data.student||{};const grade=data.selectedGrade||student.grade||5;const subject=data.selectedSubject||data.subjects?.[0]||'数学';const textbooks=data.textbooks||[];const textbook=data.selectedTextbook||textbooks[0]||'';
    const modules=data.modules||[];const classes=data.classes||[];
-   body.innerHTML='<div class="cy-practice-note">综合测试和知识模块练习都会严格按所选教材版本筛题，不会混用不同版本。当前 '+esc(grade)+'年级'+esc(subject)+(textbook?' · '+esc(textbook):'')+' 可用约 '+esc(data.availableQuestionCount||0)+' 题；系统标准题只会在你确认添加时补入现有题库。</div>'+
+   body.innerHTML='<div class="cy-practice-note">综合测试和知识模块练习都会严格按所选教材版本筛题，不会混用不同版本。当前年级科目可用约 '+esc(data.availableQuestionCount||0)+' 题'+(textbook?'（教材版本：'+esc(textbook)+'）':'')+'；系统标准题只会在你确认添加时补入现有题库。</div>'+
    '<form id="cy-practice-form"><div class="cy-practice-grid">'+
    '<div class="cy-practice-field"><label>学生</label><input value="'+esc(student.name||'学生')+'" disabled></div>'+
    '<div class="cy-practice-field"><label>教学班级</label><select id="cy-p-class">'+classes.map(c=>'<option value="'+c.id+'" '+(Number(c.id)===Number(data.defaultClassID)?'selected':'')+'>'+esc(c.name)+' · '+esc(c.grade)+'年级</option>').join('')+'</select></div>'+
