@@ -51,7 +51,8 @@ _SNIPPET = r'''
   }
   async function install(){
     if(location.pathname!='/v1/student')return;
-    const sid=new URLSearchParams(location.search).get('id');if(!sid)return;
+    const params=new URLSearchParams(location.search),sid=params.get('id');if(!sid)return;
+    const requestedType=params.get('evidenceType')||'',focusEvidence=params.get('focus')==='evidence';
     const key=sid+'|'+location.search;
     if(lastKey===key&&document.getElementById('cy-evidence-recorder'))return;
     const t=token();if(!t||t==='demo')return;
@@ -69,7 +70,8 @@ _SNIPPET = r'''
     box.innerHTML='<div class="section-head"><div><h3>教师学习证据记录</h3><p>手工只记录“独立完成、跨时保持、迁移应用”；学习表现继续由作业/测验自动形成。</p></div><span class="tag">追加式记录</span></div><form id="cyEvidenceForm" class="cy-evidence-form"><label>证据类型<select name="evidenceType" id="cyEvidenceType" required><option value="independent">独立完成</option><option value="retention">跨时保持</option><option value="transfer">迁移应用</option></select></label><label>发生时间<input name="occurredAt" type="datetime-local" required value="'+now.toISOString().slice(0,16)+'"></label><label>学科<input name="subject" maxlength="80" placeholder="如：数学"></label><label>知识点<input name="knowledgeKey" maxlength="160" placeholder="如：异分母分数加法"></label><label>观察结果<select name="success"><option value="">不记录成功/失败</option><option value="true">观察到成功表现</option><option value="false">本次未观察到成功表现</option></select></label><label>情境<input name="context" maxlength="500" placeholder="如：周末课 / 新题型 / 一周后复测"></label><div class="cy-evidence-help" id="cyEvidenceHelp"></div><label class="full">观察记录<textarea name="note" maxlength="1000" required placeholder="描述学生实际完成了什么、是否有提示、材料或情境有什么变化。"></textarea></label><div class="full cy-evidence-actions"><button class="btn primary" type="submit">保存学习证据</button><span id="cyEvidenceStatus" class="muted"></span></div></form><div style="margin-top:18px"><h3>当前有效的教师记录</h3><div id="cyEvidenceManualList" class="cy-evidence-manual-list">'+((manual.records||[]).map(x=>recordHtml(x,session)).join('')||'<div class="empty">尚无教师手工证据。</div>')+'</div></div>';
     host.appendChild(box);
     const form=box.querySelector('#cyEvidenceForm'),status=box.querySelector('#cyEvidenceStatus'),typeSelect=box.querySelector('#cyEvidenceType'),typeHelp=box.querySelector('#cyEvidenceHelp');
-    const updateHelp=()=>{typeHelp.textContent=help[typeSelect.value]||''};typeSelect.addEventListener('change',updateHelp);updateHelp();
+    const updateHelp=()=>{typeHelp.textContent=help[typeSelect.value]||''};typeSelect.addEventListener('change',updateHelp);if(['independent','retention','transfer'].includes(requestedType))typeSelect.value=requestedType;updateHelp();
+    if(focusEvidence)setTimeout(()=>{box.scrollIntoView({behavior:'smooth',block:'start'});box.querySelector('textarea[name="note"]')?.focus()},240);
     const studentHead=document.querySelector('.student-head');
     if(studentHead&&!document.getElementById('cyEvidenceJump')){
       const jump=document.createElement('button');jump.id='cyEvidenceJump';jump.type='button';jump.className='btn primary cy-evidence-jump';jump.textContent='记录学习证据';
