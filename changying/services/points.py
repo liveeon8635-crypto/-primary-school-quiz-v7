@@ -59,6 +59,31 @@ class PointService:
             "createdAt": self.school_local_iso(row.created_at),
         }
 
+    def rule_json(self, row) -> dict[str, Any]:
+        return {
+            "id": row.id,
+            "name": row.name,
+            "category": row.category,
+            "points": row.points,
+            "active": bool(row.active),
+            "requireNote": bool(row.require_note),
+            "sortOrder": row.sort_order,
+        }
+
+    def class_rule_json(self, row) -> dict[str, Any]:
+        return {
+            **self.rule_json(row),
+            "scope": "class",
+            "classID": row.class_id,
+        }
+
+    def inherited_rule_json(self, row) -> dict[str, Any]:
+        return {
+            **self.rule_json(row),
+            "scope": "school",
+            "inherited": True,
+        }
+
     def recent_rows(
         self,
         db,
