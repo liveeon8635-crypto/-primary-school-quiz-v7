@@ -1208,7 +1208,7 @@ def seed(db):
 # ---------------- API helpers ----------------
 def uj(u): return {"id":u.id,"username":u.username,"name":u.name,"role":u.role,"grade":u.grade,"active":bool(u.active)}
 
-AUTO_GRADED_QUESTION_TYPES={"single_choice","true_false","fill_blank","calculation"}
+AUTO_GRADED_QUESTION_TYPES={"single_choice","true_false","fill_blank","calculation","short_answer"}
 
 def _json_object(raw):
     try:value=json.loads(raw or "{}")
@@ -1268,7 +1268,7 @@ def _sanitize_figure(value):
                 if not isinstance(row,dict):continue
                 clean={}
                 for k,v in row.items():
-                    if k in {"x","y","value","count","ratio"}:
+                    if k in {"x","y","x1","y1","x2","y2","value","count","ratio","start","end"}:
                         try:clean[k]=float(v)
                         except Exception:continue
                     elif k in {"label","name","symbol"}:clean[k]=str(v)[:40]
@@ -1432,7 +1432,7 @@ def normalized_answer_stats(db,answers,school_id):
                 selected=a.get("selected_index")
                 if not isinstance(selected,int):continue
                 ok=(selected==q.correct_index)
-            elif qt in ("fill_blank","calculation"):
+            elif qt in ("fill_blank","calculation","short_answer"):
                 meta=question_answer_meta(q)
                 answer=str(a.get("text_answer") or "")
                 if not answer.strip():continue
@@ -1481,7 +1481,7 @@ def grade_answers(db,u,answers,allowed_question_ids=None,require_all=False):
                 raise HTTPException(400,"答案选项无效")
             ok=(a.selected_index==q.correct_index)
             normalized_item={"question_id":qid,"selected_index":a.selected_index,"text_answer":"","correct":ok}
-        elif qt in ("fill_blank","calculation"):
+        elif qt in ("fill_blank","calculation","short_answer"):
             text_answer=str(a.text_answer or "").strip()
             if not text_answer:raise HTTPException(400,"请填写答案后再提交")
             meta=question_answer_meta(q)
@@ -4713,8 +4713,8 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
 2. 如果反馈中有教材版本、年级和科目，生成题必须保持同一教材版本、年级和科目，不得跨教材混题或超纲。
 3. 不复制原题原数字，要用同知识点但不同数字、情境或问法进行迁移巩固。
 4. 不要泄露学生姓名等身份信息；只使用上面的教学反馈。
-5. 题型允许：single_choice（四选一）、true_false（判断）、fill_blank（填空）、calculation（计算）。当生成 4 题以上时至少使用 2 种题型，不要全部都是单选题。
-6. single_choice 必须给4个 options 和 correct_index 0-3；true_false 的 options 固定为["正确","错误"]并给 correct_index 0-1；fill_blank/calculation 不给选项，必须给 answer（简洁、可自动判分，可另给 accepted_answers）。
+5. 题型允许：single_choice（四选一）、true_false（判断）、fill_blank（填空）、calculation（计算）、short_answer（应用简答，答案必须简短且可自动判分）。当生成 5 题以上时至少使用 3 种题型，且至少包含 1 道非选择题；不要全部都是单选题。
+6. single_choice 必须给4个 options 和 correct_index 0-3；true_false 的 options 固定为["正确","错误"]并给 correct_index 0-1；fill_blank/calculation/short_answer 不给选项，必须给 answer（简洁、可自动判分，可另给 accepted_answers；应用题可把“10”“10棵”等等价形式放入 accepted_answers）。
 7. 只有题意确实需要时才提供 figure。figure.type 只允许 coordinate_grid、geometry、line_segment、bar_chart、object_group；不需要图时返回 {{}}。数学图只提供结构参数，不要用图片 URL。
 8. 坐标/位置、平面图形面积、植树/线段关系、统计图、数量比较等适合图示的知识点，应优先给必要图示；纯计算题不要为了装饰强行加图。
 9. 只返回 JSON，不要 Markdown：
@@ -4800,7 +4800,7 @@ def teacher_reinforcement_assign(sid:int,b:AIReinforcementAssignBody,u:User=Depe
         qt=(q.question_type or "single_choice").strip().lower()
         if qt=="choice":qt="single_choice"
         if qt not in AUTO_GRADED_QUESTION_TYPES:
-            raise HTTPException(400,"针对性练习暂只支持单选、判断、填空和计算题")
+            raise HTTPException(400,"针对性练习暂只支持单选、判断、填空、计算和应用简答题")
         opts=[str(x) for x in (q.options or [])];ci=int(q.correct_index)
         answer=(q.answer or q.reference_answer or "").strip()
         accepted=[str(x).strip() for x in (q.accepted_answers or []) if str(x).strip()][:8]
@@ -4813,7 +4813,7 @@ def teacher_reinforcement_assign(sid:int,b:AIReinforcementAssignBody,u:User=Depe
             answer="";accepted=[]
         else:
             opts=[];ci=-1
-            if not answer:raise HTTPException(400,"填空/计算题必须有可自动判分的标准答案")
+            if not answer:raise HTTPException(400,"填空/计算/应用简答题必须有可自动判分的标准答案")
         row=Question(school_id=u.school_id,grade=q.grade,subject=q.subject[:30],textbook=q.textbook[:80],
                      semester=q.semester[:20],unit=q.unit[:100],knowledge=q.knowledge[:120],text=q.text,
                      options_json=json.dumps(opts,ensure_ascii=False),correct_index=ci,
