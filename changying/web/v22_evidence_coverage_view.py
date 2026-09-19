@@ -14,7 +14,9 @@ _SNIPPET = r'''
   .cy-coverage-row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
   .cy-coverage-dims{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
   .cy-coverage-missing{font-size:12px;color:#667085;margin-top:6px}
-  @media(max-width:720px){.cy-coverage-controls,.cy-coverage-summary{grid-template-columns:1fr}.cy-coverage-row{flex-direction:column}}
+  .cy-coverage-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center;max-width:340px}
+  .cy-coverage-actions small{color:#667085;max-width:180px;text-align:right}
+  @media(max-width:720px){.cy-coverage-controls,.cy-coverage-summary{grid-template-columns:1fr}.cy-coverage-row{flex-direction:column}.cy-coverage-actions{justify-content:flex-start;max-width:none}.cy-coverage-actions small{text-align:left;max-width:none}}
 </style>
 <script id="changying_v22_evidence_coverage_v1-script">
 (()=>{
@@ -26,10 +28,14 @@ _SNIPPET = r'''
   const dimName={performance:'学习表现',independent:'独立完成',retention:'跨时保持',transfer:'迁移应用'};
   function rowHtml(x){
     const dims=(x.availableDimensions||[]).map(d=>'<span class="tag">'+esc(dimName[d]||d)+'</span>').join('');
-    const missing=(x.missingDimensions||[]).map(d=>dimName[d]||d).join('、');
+    const missingDims=x.missingDimensions||[],missing=missingDims.map(d=>dimName[d]||d).join('、');
     const classes=(x.classNames||[]).join(' / ')||'未标注班级';
     const latest=x.latestEvidenceAt?('最近记录 '+x.latestEvidenceAt):'暂无标准化证据记录';
-    return '<a class="row cy-coverage-row" href="/v1/student?id='+encodeURIComponent(x.studentID)+'"><span class="row-main"><b>'+esc(x.studentName||'学生')+'</b><small>'+esc(classes)+' · '+esc(latest)+' · 来源事件 '+esc(x.sourceEventCount||0)+'</small><span class="cy-coverage-dims">'+(dims||'<span class="tag">暂无维度</span>')+'</span><span class="cy-coverage-missing">'+(missing?'尚无记录：'+esc(missing):'四类证据维度均已有记录')+'</span></span><span class="row-action">打开连续档案 →</span></a>';
+    const sid=encodeURIComponent(x.studentID);
+    const manual=missingDims.filter(d=>['independent','retention','transfer'].includes(d));
+    const manualLinks=manual.map(d=>'<a class="btn secondary" href="/v1/student?id='+sid+'&focus=evidence&evidenceType='+encodeURIComponent(d)+'">记录'+esc(dimName[d]||d)+'</a>').join('');
+    const performanceNote=missingDims.includes('performance')?'<small>学习表现：等待作业/测验自动形成</small>':'';
+    return '<div class="row cy-coverage-row"><span class="row-main"><b>'+esc(x.studentName||'学生')+'</b><small>'+esc(classes)+' · '+esc(latest)+' · 来源事件 '+esc(x.sourceEventCount||0)+'</small><span class="cy-coverage-dims">'+(dims||'<span class="tag">暂无维度</span>')+'</span><span class="cy-coverage-missing">'+(missing?'待补充记录：'+esc(missing):'四类证据维度均已有记录')+'</span></span><span class="cy-coverage-actions"><a class="btn secondary" href="/v1/student?id='+sid+'">打开连续档案</a>'+manualLinks+performanceNote+'</span></div>';
   }
   function draw(section,data){
     const q=(section.querySelector('#cyCoverageQ')?.value||'').trim().toLowerCase();
