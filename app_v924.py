@@ -4449,7 +4449,7 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
         WrongQuestionRecord.school_id==u.school_id,WrongQuestionRecord.student_id==sid,WrongQuestionRecord.status=="active"
     )
     if b.assignment_id:q=q.where(WrongQuestionRecord.assignment_id==b.assignment_id)
-    wrong=db.scalars(q.order_by(WrongQuestionRecord.id.desc()).limit(20)).all()
+    wrong=db.scalars(q.order_by(WrongQuestionRecord.id.desc()).limit(60)).all()
     assessment_context=student_assessment_context(
         db,
         AssignmentRecipient=AssignmentRecipient,
@@ -4461,7 +4461,13 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
         student_id=sid,
         assignment_id=b.assignment_id,
         limit=6,
+        textbook_filter="人教版",
     )
+    allowed_assessment_ids=set(assessment_context.get("sourceAssignmentIDs") or [])
+    wrong=[
+        x for x in wrong
+        if x.source!="assessment" or int(x.assignment_id or 0) in allowed_assessment_ids
+    ][:20]
     if not wrong and not assessment_context.get("assessmentCount"):
         raise HTTPException(400,"该学生暂无可用于生成针对性练习的测试反馈或未掌握错题")
     count=max(1,min(int(b.count or 5),12));difficulty=(b.difficulty or "中等")[:20]
@@ -4494,7 +4500,7 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
     primary=assessment_context.get("primary") or {}
     forced_grade=int(primary.get("grade") or fallback_grade)
     forced_subject=str(primary.get("subject") or (wrong[0].subject if wrong else "数学"))[:30]
-    forced_textbook=str(primary.get("textbook") or "")[:80]
+    forced_textbook=str(primary.get("textbook") or "人教版")[:80]
     weak_names=[str(x.get("knowledge") or "") for x in (assessment_context.get("weakKnowledge") or []) if str(x.get("knowledge") or "").strip()]
     default_knowledge=(weak_names[0] if weak_names else (wrong[0].knowledge if wrong else ""))
     for item in items[:count]:
