@@ -2319,28 +2319,18 @@ def class_homeroom_dashboard_data(db,c:SchoolClass,school_id:int):
     today_start,today_end,today_key=day_window_utc(0)
     week_start,week_end,week_s,week_e=calendar_week_window_utc(0)
     month_start,month_end,month_key=month_window_utc()
-    today_rows=db.scalars(select(PointLedger).where(
-        PointLedger.school_id==school_id,PointLedger.class_id==c.id,
-        PointLedger.created_at>=today_start,PointLedger.created_at<today_end,
-        PointLedger.source.in_(("classroom","adjustment","reversal"))
-    ).order_by(PointLedger.id.desc())).all()
-    by_student={}
-    for row in today_rows:
-        z=by_student.setdefault(row.student_id,{"studentID":row.student_id,"net":0,"activity":0,"discipline":0,"records":0})
-        z["net"]+=int(row.points or 0);z["records"]+=1
-        if row.category=="activity":z["activity"]+=int(row.points or 0)
-        if row.category=="discipline":z["discipline"]+=int(row.points or 0)
+    today_points=point_class_window_summary(db,school_id=school_id,class_id=c.id,start_utc=today_start,end_utc=today_end)
     name_by_id={x.id:x.name for x in students}
     today_students=[]
-    for sid,z in by_student.items():
+    for z in today_points["students"]:
+        sid=z["studentID"]
         if sid in name_by_id:today_students.append({**z,"studentName":name_by_id[sid]})
     today_students.sort(key=lambda x:(x["net"],x["activity"],x["studentName"]),reverse=True)
-    today={"date":today_key,"recordCount":len(today_rows),"studentCount":len(by_student),
+    today={"date":today_key,"recordCount":today_points["recordCount"],"studentCount":today_points["studentCount"],
            "positiveStudents":sum(1 for x in today_students if x["net"]>0),
            "negativeStudents":sum(1 for x in today_students if x["net"]<0),
-           "activity":sum(int(x.points or 0) for x in today_rows if x.category=="activity"),
-           "discipline":sum(int(x.points or 0) for x in today_rows if x.category=="discipline"),
-           "net":sum(int(x.points or 0) for x in today_rows),"students":today_students[:12]}
+           "activity":today_points["activity"],"discipline":today_points["discipline"],
+           "net":today_points["net"],"students":today_students[:12]}
     snapshots=[student_homeroom_snapshot(db,stu,school_id) for stu in students]
     focus=[x for x in snapshots if x["riskFlags"]]
     focus.sort(key=lambda x:(len(x["riskFlags"]),-x["weekly"]["net"]),reverse=True)
