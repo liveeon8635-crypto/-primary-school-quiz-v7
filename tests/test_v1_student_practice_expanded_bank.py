@@ -43,3 +43,19 @@ def test_practice_ui_uses_real_inventory_limits_and_clears_old_result():
     assert "countEl.max=String(max)" in html
     assert "const clearResult=()=>{resultBox.innerHTML=''}" in html
     assert "moduleEl.onchange=syncCount" in html
+
+
+def test_chinese_options_preview_exposes_real_module_inventory():
+    modules, total = potential_question_catalog(
+        [],
+        grade=5,
+        subject="语文",
+        textbook="人教版",
+    )
+    counts = {row["knowledge"]: row["count"] for row in modules}
+
+    assert total >= 120
+    assert counts["字音辨析"] >= 8
+    assert counts["病句辨析"] >= 8
+    assert counts["提取关键信息"] >= 8
+    assert counts["资料整合"] >= 8
