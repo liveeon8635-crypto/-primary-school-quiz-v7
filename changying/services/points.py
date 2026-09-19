@@ -10,8 +10,9 @@ from sqlalchemy import func, select
 class PointService:
     """Read-side point aggregation with injected legacy ORM models."""
 
-    def __init__(self, *, point_ledger_model: Any) -> None:
+    def __init__(self, *, point_ledger_model: Any, school_class_model: Any | None = None) -> None:
         self.PointLedger = point_ledger_model
+        self.SchoolClass = school_class_model
 
     def balance(self, db, student_id: int, school_id: int) -> int:
         return int(
@@ -22,6 +23,36 @@ class PointService:
                 )
             )
             or 0
+        )
+
+    def recent_rows(
+        self,
+        db,
+        *,
+        school_id: int,
+        teacher_id: int | None = None,
+        class_id: int | None = None,
+        limit: int = 40,
+    ) -> list[Any]:
+        limit = max(1, min(int(limit or 40), 200))
+        statement = select(self.PointLedger).where(
+            self.PointLedger.school_id == school_id,
+            self.PointLedger.source.in_(("classroom", "reversal", "adjustment")),
+        )
+        if class_id is not None:
+            statement = statement.where(self.PointLedger.class_id == class_id)
+        elif teacher_id is not None:
+            if self.SchoolClass is None:
+                raise RuntimeError("school_class_model is required for teacher filtering")
+            own_class_ids = select(self.SchoolClass.id).where(
+                self.SchoolClass.school_id == school_id,
+                self.SchoolClass.teacher_id == teacher_id,
+            )
+            statement = statement.where(self.PointLedger.class_id.in_(own_class_ids))
+        return list(
+            db.scalars(
+                statement.order_by(self.PointLedger.id.desc()).limit(limit)
+            ).all()
         )
 
     def window_summary(self, db, student_id: int, school_id: int, start_utc, end_utc) -> dict[str, int]:
