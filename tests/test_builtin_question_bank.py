@@ -55,7 +55,8 @@ def test_generated_questions_have_valid_unique_multiple_choice_payloads():
 def test_unsupported_pack_does_not_invent_other_grades_or_subjects():
     assert built_in_question_specs(4, "数学") == []
     assert built_in_question_specs(4, "语文") == []
-    assert built_in_question_specs(5, "英语") == []
+    assert built_in_question_specs(4, "英语") == []
+    assert built_in_question_specs(5, "科学") == []
     assert built_in_subjects(4) == []
 
 
@@ -103,3 +104,18 @@ def test_grade5_math_pack_uses_current_pep_textbook_only():
     assert len(built_in_question_specs(5, "语文", "统编版（人民教育出版社）")) >= 120
     for other_publisher in ("北师大版", "苏教版"):
         assert built_in_question_specs(5, "语文", other_publisher) == []
+
+
+
+def test_grade5_english_pack_uses_current_pep_textbook_only():
+    textbook = "人教版（PEP·当前最新版）"
+    assert built_in_textbooks(5, "英语") == [textbook]
+    assert len(built_in_question_specs(5, "英语", textbook)) == 128
+    for legacy_or_other in (
+        "人教PEP",
+        "人教版",
+        "外研版",
+        "译林版",
+        "人教版（PEP·旧版）",
+    ):
+        assert built_in_question_specs(5, "英语", legacy_or_other) == []

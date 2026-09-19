@@ -64,6 +64,21 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
     if str(feature or "") != "reinforcement_generate":
         return prompt
     subject = reinforcement_subject_from_prompt(prompt)
+    if subject == "英语":
+        return (
+            str(prompt)
+            + """
+
+【英语学科附加约束】
+1. 当前科目是英语。所有题目必须是小学英语内容，不得生成数学计算题、数学数量关系题或数学图示。
+2. 教材必须保持“人教版（PEP·当前最新版）”五年级上册语境；当前六个单元为 Different friends、My feelings、Work and play、Healthy habits、Food we eat、Nature and us。不得回退到旧版单元标题。
+3. 自动判分题只使用 single_choice、true_false、fill_blank；不要使用 calculation 或开放式 short_answer。5题以上尽量覆盖至少3种题型。
+4. fill_blank 仅用于答案明确的单词、短语、be/do/can/should 等语法形式；若存在多种合理表达，改成 single_choice/true_false，或完整列入 accepted_answers。
+5. 阅读或情境题所需材料必须在题干内完整给出，材料简短、原创、信息充分；不得假定学生能看到教材原文，也不要复制教材对话。
+6. figure 必须返回 {}。英语题不得使用 coordinate_grid、geometry、line_segment 等数学图示。
+7. 题目优先围绕当前测试反馈中的词汇、句型、语法、情境理解、短文信息提取与健康/自然主题语言运用，不得跨科。
+"""
+        )
     if subject and subject != "语文":
         return (
             str(prompt)
@@ -158,6 +173,20 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
             ).all()
             payload = dict(result)
             payload["wrongIDs"] = [int(x) for x in valid]
+            if subject == "英语":
+                normalized_items = []
+                for item in items:
+                    row = dict(item)
+                    row["textbook"] = "人教版（PEP·当前最新版）"
+                    row["figure"] = {}
+                    normalized_items.append(row)
+                payload["items"] = normalized_items
+                primary = dict((payload.get("assessmentContext") or {}).get("primary") or {})
+                if primary and not str(primary.get("textbook") or "").strip():
+                    primary["textbook"] = "人教版（PEP·当前最新版）"
+                    ctx = dict(payload.get("assessmentContext") or {})
+                    ctx["primary"] = primary
+                    payload["assessmentContext"] = ctx
             return payload
 
         route.dependant.call = subject_scoped_route
