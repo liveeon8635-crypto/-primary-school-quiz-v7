@@ -63,8 +63,28 @@ with TestClient(app) as client:
                 legacy.User.role == "teacher",
             )
         )
+        parent = db.scalar(
+            legacy.select(legacy.User).where(
+                legacy.User.username == "parent1",
+                legacy.User.role == "parent",
+            )
+        )
         student = db.get(legacy.User, sid)
-        assert teacher and student
+        assert teacher and parent and student
+
+        parent_link = db.scalar(
+            legacy.select(legacy.ParentStudent).where(
+                legacy.ParentStudent.parent_id == parent.id,
+                legacy.ParentStudent.student_id == student.id,
+            )
+        )
+        if parent_link is None:
+            db.add(
+                legacy.ParentStudent(
+                    parent_id=parent.id,
+                    student_id=student.id,
+                )
+            )
 
         linked = db.scalar(
             legacy.select(legacy.ClassStudent.id)
@@ -179,6 +199,20 @@ with TestClient(app) as client:
     assert body["state"] == "stable_evidence_available"
     assert body["masteryInferred"] is False
     assert body["stableMasteryInferred"] is False
+
+    student_read = client.get(
+        f"/v1/students/{sid}/learning-evidence",
+        headers=sh,
+    )
+    parent_read = client.get(
+        f"/v1/students/{sid}/learning-evidence",
+        headers=ph,
+    )
+    assert student_read.status_code == parent_read.status_code == 200
+    assert student_read.json()["dimensions"] == body["dimensions"]
+    assert parent_read.json()["dimensions"] == body["dimensions"]
+    assert student_read.json()["state"] == "stable_evidence_available"
+    assert parent_read.json()["state"] == "stable_evidence_available"
 
     profile = client.get(
         f"/teacher/students/{sid}/growth-profile",
