@@ -1949,21 +1949,7 @@ def period_cutoff_utc(days:int=7):
 
 def student_period_points(db,student_id,school_id,days:int=7):
     cutoff,days=period_cutoff_utc(days)
-    rows=db.scalars(select(PointLedger).where(
-        PointLedger.school_id==school_id,PointLedger.student_id==student_id,
-        PointLedger.created_at>=cutoff
-    ).order_by(PointLedger.id.desc())).all()
-    classroom=[x for x in rows if x.source in ("classroom","adjustment","reversal")]
-    positive=sum(int(x.points or 0) for x in rows if (x.points or 0)>0 and x.source in ("classroom","adjustment"))
-    net=sum(int(x.points or 0) for x in classroom)
-    activity=sum(int(x.points or 0) for x in classroom if x.category=="activity")
-    discipline=sum(int(x.points or 0) for x in classroom if x.category=="discipline")
-    reason_map={}
-    for x in classroom:
-        key=x.reason or "积分记录"
-        item=reason_map.setdefault(key,{"reason":key,"count":0,"points":0})
-        item["count"]+=1;item["points"]+=int(x.points or 0)
-    reasons=sorted(reason_map.values(),key=lambda z:(abs(z["points"]),z["count"]),reverse=True)[:5]
+    point_stats=point_period_summary(db,student_id=student_id,school_id=school_id,cutoff=cutoff,reason_limit=5)
     red=db.scalars(select(RewardRedemption).where(
         RewardRedemption.school_id==school_id,RewardRedemption.student_id==student_id,
         RewardRedemption.requested_at>=cutoff
@@ -1974,11 +1960,11 @@ def student_period_points(db,student_id,school_id,days:int=7):
         AutoRewardGrant.created_at>=cutoff
     ).order_by(AutoRewardGrant.id.desc())).all()
     active_auto=[x for x in auto_rows if x.status!="canceled"]
-    return {"days":days,"earned":positive,"net":net,"activity":activity,"discipline":discipline,
+    return {"days":days,"earned":point_stats["earned"],"net":point_stats["net"],"activity":point_stats["activity"],"discipline":point_stats["discipline"],
             "redemptionCount":len(active_red),"redeemedPoints":sum(x.cost_points for x in active_red),
             "autoRewardCount":len(active_auto),
             "autoRewardFulfilled":sum(1 for x in active_auto if x.status=="fulfilled"),
-            "topReasons":reasons}
+            "topReasons":point_stats["topReasons"]}
 
 
 def student_weekly_trend(db,student_id:int,school_id:int,weeks:int=4):
