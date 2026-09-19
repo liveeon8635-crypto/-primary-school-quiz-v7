@@ -1588,6 +1588,7 @@ AUDIT_ACTION_NAMES={
     "student.archive":"学生毕业归档",
     "student.create":"创建学生",
     "student.grade.repair":"修复学生年级",
+    "reinforcement.feedback.backfill":"回填 AI 针对性练习反馈",
     "student.export":"导出学生成绩单",
     "student.restore":"恢复学生入班",
     "student.transfer":"学生调班",
@@ -2491,7 +2492,7 @@ def validate_class_grade(name,grade):
 
 
 APP_VERSION="10.7"
-SCHEMA_VERSION="10.6.3"
+SCHEMA_VERSION="10.6.4"
 RELEASE_CHANNEL="stable"
 RELEASE_NAME="小学教学版"
 
@@ -3093,7 +3094,8 @@ def run_schema_migrations(db):
         ("10.5","商业正式版 C3.5：AI题目审核编辑、勾选保存题库与一键组卷布置作业"),
         ("10.6","商业正式版 C3.6：AI批改确认、错题归档、个性化巩固生成与掌握闭环"),
         ("10.6.2","课堂积分班级自定义规则"),
-        ("10.6.3","修复明确年级班级的名称/年级字段不一致，并同步当前学生年级")
+        ("10.6.3","修复明确年级班级的名称/年级字段不一致，并同步当前学生年级"),
+        ("10.6.4","将已完成的 AI 针对性练习错题回填到连续学习反馈，并纳入后续针对性练习")
     ]
     changed=False
     for version,description in migrations:
@@ -3149,6 +3151,42 @@ def run_schema_migrations(db):
                     db.add(AuditLog(
                         school_id=student.school_id,user_id=None,action="student.grade.repair",
                         detail=f"student={student.id}:{student.name}:{old}->{inferred}"
+                    ))
+        elif version=="10.6.4":
+            recipients=db.scalars(
+                select(AssignmentRecipient).where(
+                    AssignmentRecipient.source=="ai_reinforcement"
+                ).order_by(AssignmentRecipient.id)
+            ).all()
+            for recipient in recipients:
+                submission=db.scalar(
+                    select(Submission).where(
+                        Submission.school_id==recipient.school_id,
+                        Submission.assignment_id==recipient.assignment_id,
+                        Submission.student_id==recipient.student_id,
+                    ).order_by(Submission.submitted_at.desc(),Submission.id.desc()).limit(1)
+                )
+                if not submission:
+                    continue
+                try:
+                    answers=json.loads(submission.answers_json or "[]")
+                except Exception:
+                    answers=[]
+                archived=archive_objective_assessment_wrong_answers(
+                    db,
+                    AssignmentRecipient=AssignmentRecipient,
+                    Question=Question,
+                    WrongQuestionRecord=WrongQuestionRecord,
+                    school_id=recipient.school_id,
+                    student_id=recipient.student_id,
+                    assignment_id=recipient.assignment_id,
+                    answers=answers,
+                )
+                if archived:
+                    db.add(AuditLog(
+                        school_id=recipient.school_id,user_id=None,
+                        action="reinforcement.feedback.backfill",
+                        detail=f"assignment={recipient.assignment_id}:student={recipient.student_id}:wrong={len(archived)}"
                     ))
         db.add(SchemaMigration(version=version,description=description));changed=True
     if changed:db.commit()
@@ -4543,7 +4581,7 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
     if len(context_text)>24000:context_text=context_text[:24000]
     prompt=f'''你是中国小学教师的个性化巩固出题助手。请结合学生最近的综合测试、知识模块练习反馈和未掌握错题，生成 {count} 道真正针对当前薄弱点的新题。
 难度：{difficulty}。教师补充：{b.notes or '无'}。
-最近综合/模块测试反馈：{context_text}
+最近测试/练习反馈（含已完成的 AI 针对性练习）：{context_text}
 待巩固错题：{json.dumps(source,ensure_ascii=False)}
 要求：
 1. 优先覆盖测试反馈中正确率较低、答错较多的知识点；若指定了某次测试，优先针对该次测试反馈。
@@ -5447,7 +5485,8 @@ def ssubmit(aid:int,b:SubmitBody,u:User=Depends(current_user),db:Session=Depends
             "status":state["status"],"late":state["late"],"completed":state["completed"],
             "submissionMode":mode,"mediaSubmitted":state["mediaSubmitted"],
             "reinforcementClosed":mastery_changed if score>=80 else 0,
-            "assessmentFeedbackArchived":len(feedback_wrong)}
+            "assessmentFeedbackArchived":len(feedback_wrong),
+            "learningFeedbackArchived":len(feedback_wrong)}
 
 @app.get("/student/assignments/{aid}/media")
 def student_homework_media(aid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
