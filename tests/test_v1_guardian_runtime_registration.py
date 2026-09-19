@@ -19,8 +19,9 @@ def test_legacy_runtime_registers_guardian_visibility_after_student_detail_patch
 
 def test_registered_guardian_patch_remains_read_only_and_student_scoped():
     html = patch_v1_guardian_visibility(v1_html())
-    marker = f'<style id="{V1_GUARDIAN_VISIBILITY_MARKER}-style">'
-    fragment = html[html.index(marker) : html.index("</body>", html.index(marker))]
+    marker = f'<script id="{V1_GUARDIAN_VISIBILITY_MARKER}-script">'
+    start = html.index(marker)
+    fragment = html[start : html.index("</script>", start)]
 
     assert "location.pathname!='/v1/student'" in fragment
     assert "growth-profile" in fragment
