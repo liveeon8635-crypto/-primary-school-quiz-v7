@@ -4713,10 +4713,16 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
 2. 如果反馈中有教材版本、年级和科目，生成题必须保持同一教材版本、年级和科目，不得跨教材混题或超纲。
 3. 不复制原题原数字，要用同知识点但不同数字、情境或问法进行迁移巩固。
 4. 不要泄露学生姓名等身份信息；只使用上面的教学反馈。
-5. 每题必须是四选一单选题，适合小学阶段。
-6. 只返回 JSON，不要 Markdown：
-{{"items":[{{"grade":5,"subject":"数学","textbook":"","semester":"","unit":"","knowledge":"","text":"","options":["","","",""],"correct_index":0,"explanation":""}}]}}
-7. correct_index 为 0-3；答案和解析必须准确。'''
+5. 题型允许：single_choice（四选一）、true_false（判断）、fill_blank（填空）、calculation（计算）。当生成 4 题以上时至少使用 2 种题型，不要全部都是单选题。
+6. single_choice 必须给4个 options 和 correct_index 0-3；true_false 的 options 固定为["正确","错误"]并给 correct_index 0-1；fill_blank/calculation 不给选项，必须给 answer（简洁、可自动判分，可另给 accepted_answers）。
+7. 只有题意确实需要时才提供 figure。figure.type 只允许 coordinate_grid、geometry、line_segment、bar_chart、object_group；不需要图时返回 {{}}。数学图只提供结构参数，不要用图片 URL。
+8. 坐标/位置、平面图形面积、植树/线段关系、统计图、数量比较等适合图示的知识点，应优先给必要图示；纯计算题不要为了装饰强行加图。
+9. 只返回 JSON，不要 Markdown：
+{{"items":[
+  {{"question_type":"single_choice","grade":5,"subject":"数学","textbook":"","semester":"上册","unit":"","knowledge":"","text":"","options":["","","",""],"correct_index":0,"answer":"","accepted_answers":[],"figure":{{}},"explanation":""}},
+  {{"question_type":"fill_blank","grade":5,"subject":"数学","textbook":"","semester":"上册","unit":"","knowledge":"","text":"","options":[],"correct_index":-1,"answer":"14.8","accepted_answers":[],"figure":{{"type":"line_segment","segments":[{{"label":"总数","ratio":3}}]}},"explanation":""}}
+]}}
+10. 答案、图示参数和解析必须准确；图示只能帮助理解，不能泄露答案。'''
     data=_ai_json(_ai_call(db,u,"reinforcement_generate",prompt));items=data.get("items") if isinstance(data,dict) else None
     if not isinstance(items,list):raise HTTPException(502,"AI 返回缺少巩固题 items 数组")
     out=[];cc=current_class_for(db,stu.id,u.school_id);fallback_grade=stu.grade or (cc.grade if cc else 5)
@@ -4728,17 +4734,35 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
     default_knowledge=(weak_names[0] if weak_names else (wrong[0].knowledge if wrong else ""))
     for item in items[:count]:
         if not isinstance(item,dict):continue
-        opts=item.get("options") or [];ci=item.get("correct_index")
-        try:ci=int(ci)
+        text_value=str(item.get("text") or "").strip()
+        if not text_value:continue
+        qt=str(item.get("question_type") or "single_choice").strip().lower()
+        if qt=="choice":qt="single_choice"
+        if qt not in AUTO_GRADED_QUESTION_TYPES:continue
+        opts=[str(x) for x in (item.get("options") or [])]
+        try:ci=int(item.get("correct_index",-1))
         except Exception:ci=-1
-        if len(opts)!=4 or ci not in range(4) or not str(item.get("text") or "").strip():continue
+        answer=str(item.get("answer") or "").strip()
+        accepted=[str(x).strip() for x in (item.get("accepted_answers") or []) if str(x).strip()][:8]
+        if qt=="single_choice":
+            if len(opts)!=4 or ci not in range(4):continue
+            answer="";accepted=[]
+        elif qt=="true_false":
+            opts=["正确","错误"]
+            if ci not in range(2):continue
+            answer="";accepted=[]
+        else:
+            opts=[];ci=-1
+            if not answer:continue
         item_subject=forced_subject or str(item.get("subject") or "数学")[:30]
         item_textbook=forced_textbook or str(item.get("textbook") or "")[:80]
         out.append({"grade":forced_grade,"subject":item_subject,
                     "textbook":item_textbook,"semester":str(item.get("semester") or "上册")[:20],
                     "unit":str(item.get("unit") or primary.get("unit") or "")[:100],
                     "knowledge":str(item.get("knowledge") or default_knowledge or "")[:120],
-                    "text":str(item.get("text") or "").strip(),"options":[str(x) for x in opts],"correct_index":ci,
+                    "text":text_value,"options":opts,"correct_index":ci,
+                    "question_type":qt,"answer":answer,"accepted_answers":accepted,
+                    "figure":_sanitize_figure(item.get("figure") or {}),
                     "explanation":str(item.get("explanation") or "").strip()})
     if not out:raise HTTPException(502,"AI 未返回有效巩固题")
     notice=assessment_context_notice(assessment_context)
@@ -4771,12 +4795,32 @@ def teacher_reinforcement_assign(sid:int,b:AIReinforcementAssignBody,u:User=Depe
         wrong_ids=[int(x) for x in valid]
     qids=[]
     for q in b.questions:
-        if q.grade<1 or q.grade>9 or len(q.options)!=4 or q.correct_index not in range(4) or not q.text.strip():
+        if q.grade<1 or q.grade>9 or not q.text.strip():
             raise HTTPException(400,"巩固题格式不完整，请先审核")
+        qt=(q.question_type or "single_choice").strip().lower()
+        if qt=="choice":qt="single_choice"
+        if qt not in AUTO_GRADED_QUESTION_TYPES:
+            raise HTTPException(400,"针对性练习暂只支持单选、判断、填空和计算题")
+        opts=[str(x) for x in (q.options or [])];ci=int(q.correct_index)
+        answer=(q.answer or q.reference_answer or "").strip()
+        accepted=[str(x).strip() for x in (q.accepted_answers or []) if str(x).strip()][:8]
+        if qt=="single_choice":
+            if len(opts)!=4 or ci not in range(4):raise HTTPException(400,"单选题必须有4个选项和1个正确答案")
+            answer="";accepted=[]
+        elif qt=="true_false":
+            opts=["正确","错误"]
+            if ci not in range(2):raise HTTPException(400,"判断题必须标明正确或错误")
+            answer="";accepted=[]
+        else:
+            opts=[];ci=-1
+            if not answer:raise HTTPException(400,"填空/计算题必须有可自动判分的标准答案")
         row=Question(school_id=u.school_id,grade=q.grade,subject=q.subject[:30],textbook=q.textbook[:80],
                      semester=q.semester[:20],unit=q.unit[:100],knowledge=q.knowledge[:120],text=q.text,
-                     options_json=json.dumps(q.options,ensure_ascii=False),correct_index=q.correct_index,
-                     explanation=q.explanation,creator_id=u.id)
+                     options_json=json.dumps(opts,ensure_ascii=False),correct_index=ci,
+                     explanation=q.explanation,question_type=qt,
+                     answer_json=json.dumps({"answer":answer,"accepted":accepted},ensure_ascii=False),
+                     figure_json=json.dumps(_sanitize_figure(q.figure),ensure_ascii=False),
+                     creator_id=u.id)
         db.add(row);db.flush();qids.append(row.id)
     first=b.questions[0];title=(b.title or f"{stu.name} · 错题巩固").strip()[:160]
     p=Paper(school_id=u.school_id,title=title,grade=first.grade,subject=first.subject[:30],
