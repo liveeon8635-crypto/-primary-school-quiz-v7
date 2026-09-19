@@ -238,12 +238,14 @@ class PointService:
         db,
         *,
         school_id: int,
+        descending: bool = True,
     ) -> list[Any]:
+        ordering = self.PointLedger.id.desc() if descending else self.PointLedger.id
         return list(
             db.scalars(
                 select(self.PointLedger)
                 .where(self.PointLedger.school_id == school_id)
-                .order_by(self.PointLedger.id.desc())
+                .order_by(ordering)
             ).all()
         )
 
