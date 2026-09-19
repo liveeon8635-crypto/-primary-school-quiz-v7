@@ -18,6 +18,8 @@ class AssignmentService:
         submission_model: Any,
         homework_media_submit_model: Any,
         homework_media_model: Any,
+        user_model: Any,
+        assignment_recipient_model: Any,
         valid_submission_modes: set[str],
         assignment_mode_name: Callable[[str], str],
         school_local_iso: Callable[[Any], str],
@@ -27,6 +29,8 @@ class AssignmentService:
         self.Submission = submission_model
         self.HomeworkMediaSubmit = homework_media_submit_model
         self.HomeworkMedia = homework_media_model
+        self.User = user_model
+        self.AssignmentRecipient = assignment_recipient_model
         self.valid_submission_modes = set(valid_submission_modes)
         self.assignment_mode_name = assignment_mode_name
         self.school_local_iso = school_local_iso
@@ -46,6 +50,25 @@ class AssignmentService:
             row.mode
             if row and row.mode in self.valid_submission_modes
             else "quiz"
+        )
+
+    def recipient_students(self, db, assignment) -> list[Any]:
+        """Return assignment recipients using the existing role/school/order contract."""
+        return list(
+            db.scalars(
+                select(self.User)
+                .join(
+                    self.AssignmentRecipient,
+                    self.AssignmentRecipient.student_id == self.User.id,
+                )
+                .where(
+                    self.AssignmentRecipient.assignment_id == assignment.id,
+                    self.AssignmentRecipient.school_id == assignment.school_id,
+                    self.User.school_id == assignment.school_id,
+                    self.User.role == "student",
+                )
+                .order_by(self.User.name, self.User.id)
+            ).all()
         )
 
     def homework_media_count(

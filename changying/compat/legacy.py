@@ -157,6 +157,8 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
         submission_model=implementation.Submission,
         homework_media_submit_model=implementation.HomeworkMediaSubmit,
         homework_media_model=implementation.HomeworkMedia,
+        user_model=implementation.User,
+        assignment_recipient_model=implementation.AssignmentRecipient,
         valid_submission_modes=ASSIGNMENT_SUBMISSION_MODES,
         assignment_mode_name=assignment_mode_name,
         school_local_iso=school_local_iso,
@@ -166,6 +168,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.assignment_submission_setting = assignment_service.submission_setting
     implementation.assignment_submission_mode = assignment_service.submission_mode
     implementation.homework_media_count = assignment_service.homework_media_count
+    implementation.recipient_students = assignment_service.recipient_students
     implementation.assignment_effective_status = assignment_service.effective_status
 
     def legacy_make_token(user, security, remember=False):
