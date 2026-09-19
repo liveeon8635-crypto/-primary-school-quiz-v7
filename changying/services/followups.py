@@ -333,3 +333,28 @@ class FollowUpService:
                 )
             ).all()
         )
+
+
+    def workbench_stale_rows(
+        self,
+        db,
+        *,
+        school_id: int,
+        class_id: int,
+        updated_before: Any,
+    ) -> list[Any]:
+        return list(
+            db.scalars(
+                select(self.StudentFollowUp)
+                .where(
+                    self.StudentFollowUp.school_id == school_id,
+                    self.StudentFollowUp.class_id == class_id,
+                    self.StudentFollowUp.status != "done",
+                    self.StudentFollowUp.updated_at <= updated_before,
+                )
+                .order_by(
+                    self.StudentFollowUp.updated_at,
+                    self.StudentFollowUp.id,
+                )
+            ).all()
+        )
