@@ -15,6 +15,11 @@ from sqlalchemy import create_engine, String, Integer, ForeignKey, Text, DateTim
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
 from cryptography.fernet import Fernet, InvalidToken
 from changying.services.assignments import student_assignment_rows, teacher_assignment_rows
+from changying.services.assessment_feedback import (
+    archive_objective_assessment_wrong_answers,
+    assessment_context_notice,
+    student_assessment_context,
+)
 
 # ---------------- Database ----------------
 BASE = Path(__file__).resolve().parent
@@ -4445,37 +4450,80 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
     )
     if b.assignment_id:q=q.where(WrongQuestionRecord.assignment_id==b.assignment_id)
     wrong=db.scalars(q.order_by(WrongQuestionRecord.id.desc()).limit(20)).all()
-    if not wrong:raise HTTPException(400,"该学生暂无可用于生成巩固练习的未掌握错题")
+    assessment_context=student_assessment_context(
+        db,
+        AssignmentRecipient=AssignmentRecipient,
+        Assignment=Assignment,
+        Submission=Submission,
+        Paper=Paper,
+        Question=Question,
+        school_id=u.school_id,
+        student_id=sid,
+        assignment_id=b.assignment_id,
+        limit=6,
+    )
+    if not wrong and not assessment_context.get("assessmentCount"):
+        raise HTTPException(400,"该学生暂无可用于生成针对性练习的测试反馈或未掌握错题")
     count=max(1,min(int(b.count or 5),12));difficulty=(b.difficulty or "中等")[:20]
     source=[{"id":x.id,"subject":x.subject,"knowledge":x.knowledge,"problem":x.problem_text,
              "wrongAnswer":x.wrong_answer,"correctAnswer":x.correct_answer,"analysis":x.analysis} for x in wrong]
-    prompt=f'''你是中国小学教师的错题巩固出题助手。根据学生最近的错题信息，生成 {count} 道“同知识点、不同数字/语境”的新题，帮助确认是否真正掌握。
+    context_for_prompt={
+        "assessmentCount":assessment_context.get("assessmentCount",0),
+        "primary":assessment_context.get("primary") or {},
+        "weakKnowledge":assessment_context.get("weakKnowledge") or [],
+        "assessments":assessment_context.get("assessments") or [],
+    }
+    context_text=json.dumps(context_for_prompt,ensure_ascii=False)
+    if len(context_text)>24000:context_text=context_text[:24000]
+    prompt=f'''你是中国小学教师的个性化巩固出题助手。请结合学生最近的综合测试、知识模块练习反馈和未掌握错题，生成 {count} 道真正针对当前薄弱点的新题。
 难度：{difficulty}。教师补充：{b.notes or '无'}。
-错题资料：{json.dumps(source,ensure_ascii=False)}
+最近综合/模块测试反馈：{context_text}
+待巩固错题：{json.dumps(source,ensure_ascii=False)}
 要求：
-1. 不复制原题原数字；不要泄露学生身份信息。
-2. 每题必须是四选一单选题，适合小学阶段。
-3. 只返回 JSON，不要 Markdown：
+1. 优先覆盖测试反馈中正确率较低、答错较多的知识点；若指定了某次测试，优先针对该次测试反馈。
+2. 如果反馈中有教材版本、年级和科目，生成题必须保持同一教材版本、年级和科目，不得跨教材混题或超纲。
+3. 不复制原题原数字，要用同知识点但不同数字、情境或问法进行迁移巩固。
+4. 不要泄露学生姓名等身份信息；只使用上面的教学反馈。
+5. 每题必须是四选一单选题，适合小学阶段。
+6. 只返回 JSON，不要 Markdown：
 {{"items":[{{"grade":5,"subject":"数学","textbook":"","semester":"","unit":"","knowledge":"","text":"","options":["","","",""],"correct_index":0,"explanation":""}}]}}
-4. correct_index 为 0-3；答案和解析必须准确。'''
+7. correct_index 为 0-3；答案和解析必须准确。'''
     data=_ai_json(_ai_call(db,u,"reinforcement_generate",prompt));items=data.get("items") if isinstance(data,dict) else None
     if not isinstance(items,list):raise HTTPException(502,"AI 返回缺少巩固题 items 数组")
     out=[];cc=current_class_for(db,stu.id,u.school_id);fallback_grade=stu.grade or (cc.grade if cc else 5)
+    primary=assessment_context.get("primary") or {}
+    forced_grade=int(primary.get("grade") or fallback_grade)
+    forced_subject=str(primary.get("subject") or (wrong[0].subject if wrong else "数学"))[:30]
+    forced_textbook=str(primary.get("textbook") or "")[:80]
+    weak_names=[str(x.get("knowledge") or "") for x in (assessment_context.get("weakKnowledge") or []) if str(x.get("knowledge") or "").strip()]
+    default_knowledge=(weak_names[0] if weak_names else (wrong[0].knowledge if wrong else ""))
     for item in items[:count]:
         if not isinstance(item,dict):continue
         opts=item.get("options") or [];ci=item.get("correct_index")
         try:ci=int(ci)
         except Exception:ci=-1
         if len(opts)!=4 or ci not in range(4) or not str(item.get("text") or "").strip():continue
-        out.append({"grade":int(item.get("grade") or fallback_grade),"subject":str(item.get("subject") or wrong[0].subject or "数学")[:30],
-                    "textbook":str(item.get("textbook") or "")[:80],"semester":str(item.get("semester") or "")[:20],
-                    "unit":str(item.get("unit") or "")[:100],"knowledge":str(item.get("knowledge") or wrong[0].knowledge or "")[:120],
+        item_subject=forced_subject or str(item.get("subject") or "数学")[:30]
+        item_textbook=forced_textbook or str(item.get("textbook") or "")[:80]
+        out.append({"grade":forced_grade,"subject":item_subject,
+                    "textbook":item_textbook,"semester":str(item.get("semester") or "上册")[:20],
+                    "unit":str(item.get("unit") or primary.get("unit") or "")[:100],
+                    "knowledge":str(item.get("knowledge") or default_knowledge or "")[:120],
                     "text":str(item.get("text") or "").strip(),"options":[str(x) for x in opts],"correct_index":ci,
                     "explanation":str(item.get("explanation") or "").strip()})
     if not out:raise HTTPException(502,"AI 未返回有效巩固题")
-    audit(db,u,"ai.reinforcement.generate",f"student={sid}:wrong={len(wrong)}:questions={len(out)}");db.commit()
+    notice=assessment_context_notice(assessment_context)
+    if notice:notice+="；AI 已据此生成针对性练习，请教师审核答案与难度后再布置。"
+    else:notice="巩固题已根据待掌握错题生成，请教师审核答案与难度后再布置。"
+    audit(db,u,"ai.reinforcement.generate",f"student={sid}:wrong={len(wrong)}:assessments={assessment_context.get('assessmentCount',0)}:questions={len(out)}");db.commit()
     return {"studentID":sid,"studentName":stu.name,"wrongIDs":[x.id for x in wrong],"items":out,
-            "reviewRequired":True,"notice":"巩固题由 AI 生成，请教师审核答案与难度后再布置。"}
+            "assessmentContext":{
+                "assessmentCount":assessment_context.get("assessmentCount",0),
+                "sourceAssignmentIDs":assessment_context.get("sourceAssignmentIDs") or [],
+                "primary":primary,
+                "weakKnowledge":assessment_context.get("weakKnowledge") or [],
+            },
+            "reviewRequired":True,"notice":notice}
 
 @app.post("/teacher/students/{sid}/reinforcement/assign")
 def teacher_reinforcement_assign(sid:int,b:AIReinforcementAssignBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -5302,13 +5350,33 @@ def ssubmit(aid:int,b:SubmitBody,u:User=Depends(current_user),db:Session=Depends
     if not a:raise HTTPException(403,"不能提交")
     mode=assignment_submission_mode(db,a)
     if mode=="media":raise HTTPException(400,"此作业使用拍照/视频提交")
-    recipient=db.scalar(select(AssignmentRecipient.id).where(AssignmentRecipient.assignment_id==aid,AssignmentRecipient.student_id==u.id,AssignmentRecipient.school_id==u.school_id))
+    recipient=db.scalar(select(AssignmentRecipient).where(AssignmentRecipient.assignment_id==aid,AssignmentRecipient.student_id==u.id,AssignmentRecipient.school_id==u.school_id))
     if not recipient:raise HTTPException(403,"你不是此作业的接收学生")
     old=db.scalar(select(Submission.id).where(Submission.assignment_id==aid,Submission.student_id==u.id,Submission.school_id==u.school_id).limit(1))
     if old:raise HTTPException(409,"在线答题已提交，不能重复提交")
     p=db.scalar(select(Paper).where(Paper.id==a.paper_id,Paper.school_id==u.school_id))
     if not p:raise HTTPException(400,"作业试卷不存在")
-    expected=json.loads(p.question_ids_json or "[]");normalized,correct,total,score=grade_answers(db,u,b.answers,expected,require_all=True);sub=save_sub(db,u,aid,a.title,normalized,correct,total,score);mastery_changed=_reinforcement_mastery_update(db,aid,u.id,score);state=assignment_effective_status(db,a,u.id);db.commit();return {"id":sub.id,"score":sub.score,"correct":sub.correct,"total":sub.total,"status":state["status"],"late":state["late"],"completed":state["completed"],"submissionMode":mode,"mediaSubmitted":state["mediaSubmitted"],"reinforcementClosed":mastery_changed if score>=80 else 0}
+    expected=json.loads(p.question_ids_json or "[]")
+    normalized,correct,total,score=grade_answers(db,u,b.answers,expected,require_all=True)
+    sub=save_sub(db,u,aid,a.title,normalized,correct,total,score)
+    feedback_wrong=archive_objective_assessment_wrong_answers(
+        db,
+        AssignmentRecipient=AssignmentRecipient,
+        Question=Question,
+        WrongQuestionRecord=WrongQuestionRecord,
+        school_id=u.school_id,
+        student_id=u.id,
+        assignment_id=aid,
+        answers=normalized,
+    )
+    mastery_changed=_reinforcement_mastery_update(db,aid,u.id,score)
+    state=assignment_effective_status(db,a,u.id)
+    db.commit()
+    return {"id":sub.id,"score":sub.score,"correct":sub.correct,"total":sub.total,
+            "status":state["status"],"late":state["late"],"completed":state["completed"],
+            "submissionMode":mode,"mediaSubmitted":state["mediaSubmitted"],
+            "reinforcementClosed":mastery_changed if score>=80 else 0,
+            "assessmentFeedbackArchived":len(feedback_wrong)}
 
 @app.get("/student/assignments/{aid}/media")
 def student_homework_media(aid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
