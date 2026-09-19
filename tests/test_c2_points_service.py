@@ -290,9 +290,11 @@ def test_school_history_rows_preserve_school_all_sources_and_descending_order():
         db.commit()
 
         rows = service.school_history_rows(db, school_id=10)
+        ascending_rows = service.school_history_rows(db, school_id=10, descending=False)
 
     assert [row.id for row in rows] == [3, 2, 1]
     assert [row.source for row in rows] == ["refund", "redemption", "classroom"]
+    assert [row.id for row in ascending_rows] == [1, 2, 3]
 
 
 def test_student_history_rows_preserve_school_student_all_sources_and_ascending_order():

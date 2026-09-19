@@ -3107,7 +3107,7 @@ def school_backup_payload(db,school_id):
       "assignmentSubmissionSettings":rows(AssignmentSubmissionSetting),"homeworkMediaSubmits":rows(HomeworkMediaSubmit),
       "aiGradingReviews":rows(AIGradingReview),"wrongQuestionRecords":rows(WrongQuestionRecord),"reinforcementLinks":rows(ReinforcementLink),
       "homeworkMediaMetadata":[model_dict(x,{"file_data"}) for x in db.scalars(select(HomeworkMedia).where(HomeworkMedia.school_id==school_id).order_by(HomeworkMedia.id)).all()],
-      "pointRules":rows(PointRule),"classPointRules":rows(ClassPointRule),"pointLedger":rows(PointLedger),"rewardItems":rows(RewardItem),"rewardRedemptions":rows(RewardRedemption),
+      "pointRules":rows(PointRule),"classPointRules":rows(ClassPointRule),"pointLedger":[model_dict(x) for x in point_school_history_rows(db,school_id=school_id,descending=False)],"rewardItems":rows(RewardItem),"rewardRedemptions":rows(RewardRedemption),
       "autoRewardRules":rows(AutoRewardRule),"autoRewardGrants":rows(AutoRewardGrant),
       "classroomGroups":[model_dict(x) for x in groups],
       "classroomGroupMembers":[model_dict(x) for x in db.scalars(select(ClassroomGroupMember).where(ClassroomGroupMember.group_id.in_(group_ids))).all()] if group_ids else [],
