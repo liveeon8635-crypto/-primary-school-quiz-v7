@@ -37,6 +37,7 @@ from changying.security.passwords import hash_password, password_ok, password_ve
 from changying.security.tokens import make_token as issue_token
 from changying.services.assignments import AssignmentService
 from changying.services.points import PointService
+from changying.services.teaching import TeachingService
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
 from changying.utils.json_tools import json_list
 from changying.web.classic_ui import install_classic_ui_patch
@@ -176,6 +177,12 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.teacher_assignment_for = assignment_service.teacher_assignment_for
     implementation.recipient_students = assignment_service.recipient_students
     implementation.assignment_effective_status = assignment_service.effective_status
+
+    teaching_service = TeachingService(
+        adaptive_session_model=implementation.TeachingAdaptiveSession,
+    )
+    implementation.teaching_service = teaching_service
+    implementation.latest_teaching_session = teaching_service.latest_session
 
     point_service = PointService(
         point_ledger_model=implementation.PointLedger,
