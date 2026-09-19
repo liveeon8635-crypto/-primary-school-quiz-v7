@@ -24,6 +24,30 @@ class PointService:
             or 0
         )
 
+    def window_summary(self, db, student_id: int, school_id: int, start_utc, end_utc) -> dict[str, int]:
+        rows = db.scalars(
+            select(self.PointLedger).where(
+                self.PointLedger.school_id == school_id,
+                self.PointLedger.student_id == student_id,
+                self.PointLedger.created_at >= start_utc,
+                self.PointLedger.created_at < end_utc,
+                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+            )
+        ).all()
+
+        earned = sum(
+            int(row.points or 0)
+            for row in rows
+            if (row.points or 0) > 0 and row.source in ("classroom", "adjustment")
+        )
+        return {
+            "earned": earned,
+            "net": sum(int(row.points or 0) for row in rows),
+            "activity": sum(int(row.points or 0) for row in rows if row.category == "activity"),
+            "discipline": sum(int(row.points or 0) for row in rows if row.category == "discipline"),
+            "records": len(rows),
+        }
+
     def summary(self, db, student_id: int, school_id: int) -> dict[str, int]:
         rows = db.execute(
             select(

@@ -181,6 +181,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.point_service = point_service
     implementation.point_balance = point_service.balance
     implementation.point_summary = point_service.summary
+    implementation.point_window_summary = point_service.window_summary
 
     def legacy_make_token(user, security, remember=False):
         return issue_token(
