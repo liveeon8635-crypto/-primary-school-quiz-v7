@@ -4687,9 +4687,12 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
         textbook_filter="人教版",
     )
     allowed_assessment_ids=set(assessment_context.get("sourceAssignmentIDs") or [])
+    context_primary=assessment_context.get("primary") or {}
+    context_subject=str(context_primary.get("subject") or "").strip()
     wrong=[
         x for x in wrong
-        if x.source!="assessment" or int(x.assignment_id or 0) in allowed_assessment_ids
+        if (x.source!="assessment" or int(x.assignment_id or 0) in allowed_assessment_ids)
+        and (not context_subject or str(x.subject or "").strip()==context_subject)
     ][:20]
     if not wrong and not assessment_context.get("assessmentCount"):
         raise HTTPException(400,"该学生暂无可用于生成针对性练习的测试反馈或未掌握错题")
@@ -4713,7 +4716,7 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
 2. 如果反馈中有教材版本、年级和科目，生成题必须保持同一教材版本、年级和科目，不得跨教材混题或超纲。
 3. 不复制原题原数字，要用同知识点但不同数字、情境或问法进行迁移巩固。
 4. 不要泄露学生姓名等身份信息；只使用上面的教学反馈。
-5. 题型允许：single_choice（四选一）、true_false（判断）、fill_blank（填空）、calculation（计算）、short_answer（应用简答，答案必须简短且可自动判分）。当生成 5 题以上时至少使用 3 种题型，且至少包含 1 道非选择题；不要全部都是单选题。
+5. 题型允许：single_choice（四选一）、true_false（判断）、fill_blank（填空）、calculation（计算）、short_answer（应用简答，答案必须简短且可自动判分）。当生成 5 题以上时至少使用 3 种题型，且至少包含 1 道非选择题；不要全部都是单选题。对于语文等非数学学科，只生成答案唯一、可稳定自动判分的单选、判断或明确短语填空，不生成开放性简答、作文式回答或计算题。
 6. single_choice 必须给4个 options 和 correct_index 0-3；true_false 的 options 固定为["正确","错误"]并给 correct_index 0-1；fill_blank/calculation/short_answer 不给选项，必须给 answer（简洁、可自动判分，可另给 accepted_answers；应用题可把“10”“10棵”等等价形式放入 accepted_answers）。
 7. 只有题意确实需要时才提供 figure。figure.type 只允许 coordinate_grid、geometry、line_segment、bar_chart、object_group；不需要图时返回 {{}}。数学图只提供结构参数，不要用图片 URL。
 8. 坐标/位置、平面图形面积、植树/线段关系、统计图、数量比较等适合图示的知识点，应优先给必要图示；纯计算题不要为了装饰强行加图。
@@ -4739,6 +4742,7 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
         qt=str(item.get("question_type") or "single_choice").strip().lower()
         if qt=="choice":qt="single_choice"
         if qt not in AUTO_GRADED_QUESTION_TYPES:continue
+        if forced_subject!="数学" and qt in {"calculation","short_answer"}:continue
         opts=[str(x) for x in (item.get("options") or [])]
         try:ci=int(item.get("correct_index",-1))
         except Exception:ci=-1
