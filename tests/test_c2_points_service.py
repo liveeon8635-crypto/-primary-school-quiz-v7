@@ -296,6 +296,48 @@ def test_student_recent_rows_preserve_school_student_order_limit_and_all_sources
     assert [row.source for row in rows] == ["refund", "redemption"]
 
 
+def test_student_recent_rows_support_optional_class_and_created_at_order_without_changing_default():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PointService(point_ledger_model=TestPointLedger)
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestPointLedger(id=1, school_id=10, student_id=100, class_id=20, category="activity", points=1, source="classroom", created_at=datetime(2026, 9, 2, 8, 0, 0)),
+                TestPointLedger(id=2, school_id=10, student_id=100, class_id=21, category="activity", points=2, source="classroom", created_at=datetime(2026, 9, 4, 8, 0, 0)),
+                TestPointLedger(id=3, school_id=10, student_id=100, class_id=20, category="activity", points=3, source="classroom", created_at=datetime(2026, 9, 3, 8, 0, 0)),
+                TestPointLedger(id=4, school_id=10, student_id=100, class_id=20, category="activity", points=4, source="classroom", created_at=datetime(2026, 9, 3, 8, 0, 0)),
+                TestPointLedger(id=5, school_id=10, student_id=101, class_id=20, category="activity", points=5, source="classroom", created_at=datetime(2026, 9, 5, 8, 0, 0)),
+            ]
+        )
+        db.commit()
+
+        default_rows = service.student_recent_rows(db, student_id=100, school_id=10, limit=3)
+        timeline_rows = service.student_recent_rows(
+            db,
+            student_id=100,
+            school_id=10,
+            class_id=20,
+            limit=3,
+            order_by_created_at=True,
+        )
+        snapshot_rows = service.student_recent_rows(
+            db,
+            student_id=100,
+            school_id=10,
+            class_id=20,
+            limit=3,
+            order_by_created_at=True,
+            id_tiebreak=True,
+        )
+
+    assert [row.id for row in default_rows] == [4, 3, 2]
+    assert {row.id for row in timeline_rows} == {1, 3, 4}
+    assert timeline_rows[-1].id == 1
+    assert [row.id for row in snapshot_rows] == [4, 3, 1]
+
+
 def test_recent_rows_preserve_source_school_teacher_class_and_order_contract():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
