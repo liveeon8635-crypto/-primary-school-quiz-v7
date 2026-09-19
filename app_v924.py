@@ -6943,11 +6943,8 @@ def teacher_followups_report(cid:int,u:User=Depends(current_user),db:Session=Dep
 @app.get("/admin/points/dashboard")
 def admin_points_dashboard(days:int=30,u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"admin");cutoff,days=period_cutoff_utc(days)
-    ledgers=db.scalars(select(PointLedger).where(PointLedger.school_id==u.school_id,PointLedger.created_at>=cutoff)).all()
-    classroom=[x for x in ledgers if x.source in ("classroom","adjustment","reversal")]
-    earned=sum(int(x.points or 0) for x in ledgers if (x.points or 0)>0 and x.source in ("classroom","adjustment"))
-    activity=sum(int(x.points or 0) for x in classroom if x.category=="activity")
-    discipline=sum(int(x.points or 0) for x in classroom if x.category=="discipline")
+    point_stats=point_school_period_summary(db,school_id=u.school_id,cutoff=cutoff)
+    earned=point_stats["earned"];activity=point_stats["activity"];discipline=point_stats["discipline"]
     reds=db.scalars(select(RewardRedemption).where(RewardRedemption.school_id==u.school_id,RewardRedemption.requested_at>=cutoff)).all()
     active=[x for x in reds if x.status!="rejected"]
     by_reward={}
