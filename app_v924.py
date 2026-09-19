@@ -1976,31 +1976,27 @@ def student_weekly_trend(db,student_id:int,school_id:int,weeks:int=4):
     final_end=current_start+timedelta(days=7)
     first_utc=first_start.astimezone(timezone.utc).replace(tzinfo=None)
     final_utc=final_end.astimezone(timezone.utc).replace(tzinfo=None)
-    ledgers=db.scalars(select(PointLedger).where(
-        PointLedger.school_id==school_id,PointLedger.student_id==student_id,
-        PointLedger.created_at>=first_utc,PointLedger.created_at<final_utc,
-        PointLedger.source.in_(("classroom","adjustment","reversal"))
-    ).order_by(PointLedger.created_at)).all()
     autos=db.scalars(select(AutoRewardGrant).where(
         AutoRewardGrant.school_id==school_id,AutoRewardGrant.student_id==student_id,
         AutoRewardGrant.created_at>=first_utc,AutoRewardGrant.created_at<final_utc
     ).order_by(AutoRewardGrant.created_at)).all()
-    out=[]
+    week_windows=[]
     for idx in range(weeks):
         start_local=first_start+timedelta(weeks=idx)
         end_local=start_local+timedelta(days=7)
         start_utc=start_local.astimezone(timezone.utc).replace(tzinfo=None)
         end_utc=end_local.astimezone(timezone.utc).replace(tzinfo=None)
-        rows=[x for x in ledgers if start_utc<=x.created_at<end_utc]
+        week_windows.append((start_local,end_local,start_utc,end_utc))
+    point_weeks=point_window_series(db,student_id=student_id,school_id=school_id,
+                                    windows=[(x[2],x[3]) for x in week_windows])
+    out=[]
+    for idx,(start_local,end_local,start_utc,end_utc) in enumerate(week_windows):
         week_autos=[x for x in autos if start_utc<=x.created_at<end_utc and x.status!="canceled"]
-        earned=sum(int(x.points or 0) for x in rows if (x.points or 0)>0 and x.source in ("classroom","adjustment"))
-        net=sum(int(x.points or 0) for x in rows)
-        activity=sum(int(x.points or 0) for x in rows if x.category=="activity")
-        discipline=sum(int(x.points or 0) for x in rows if x.category=="discipline")
+        point_week=point_weeks[idx]
         label="本周" if idx==weeks-1 else f"{start_local.month}/{start_local.day}-{(end_local-timedelta(days=1)).month}/{(end_local-timedelta(days=1)).day}"
         iso=start_local.isocalendar()
         out.append({"label":label,"periodKey":f"{iso.year}-W{iso.week:02d}","startDate":start_local.date().isoformat(),
-                    "earned":earned,"net":net,"activity":activity,"discipline":discipline,
+                    "earned":point_week["earned"],"net":point_week["net"],"activity":point_week["activity"],"discipline":point_week["discipline"],
                     "autoRewardCount":len(week_autos),"autoRewardFulfilled":sum(1 for x in week_autos if x.status=="fulfilled")})
     return out
 
