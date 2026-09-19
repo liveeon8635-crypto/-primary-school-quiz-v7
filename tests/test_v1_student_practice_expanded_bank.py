@@ -50,7 +50,7 @@ def test_chinese_options_preview_exposes_real_module_inventory():
         [],
         grade=5,
         subject="语文",
-        textbook="人教版",
+        textbook="统编版（人民教育出版社）",
     )
     counts = {row["knowledge"]: row["count"] for row in modules}
 
