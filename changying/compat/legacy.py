@@ -94,6 +94,7 @@ from changying.web.v1_unified_tools import (
     install_v1_unified_tools_patch,
 )
 from changying.web.v1_unified_tools_session_bridge import install_v1_unified_tool_session_bridge
+from changying.web.reinforcement_quality import install_reinforcement_figure_fallback
 
 NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -258,6 +259,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
         )
 
     implementation.make_token = legacy_make_token
+    install_reinforcement_figure_fallback(implementation)
     install_product_shell(implementation.app)
     install_product_visibility_routes(implementation.app)
     install_classic_ui_patch(implementation.app)
