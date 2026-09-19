@@ -225,4 +225,29 @@ def teacher_assignment_rows(
     return list(db.scalars(statement).all())
 
 
-__all__ = ["AssignmentService", "teacher_assignment_rows"]
+def student_assignment_rows(
+    db: Any,
+    *,
+    assignment_model: Any,
+    assignment_recipient_model: Any,
+    school_id: int,
+    student_id: int,
+) -> list[Any]:
+    """Return assignments addressed to one student using the legacy query contract."""
+    statement = (
+        select(assignment_model)
+        .join(
+            assignment_recipient_model,
+            assignment_recipient_model.assignment_id == assignment_model.id,
+        )
+        .where(
+            assignment_model.school_id == school_id,
+            assignment_recipient_model.school_id == school_id,
+            assignment_recipient_model.student_id == student_id,
+        )
+        .order_by(assignment_model.id.desc())
+    )
+    return list(db.scalars(statement).all())
+
+
+__all__ = ["AssignmentService", "teacher_assignment_rows", "student_assignment_rows"]
