@@ -240,19 +240,25 @@ class PointService:
         student_id: int,
         school_id: int,
         limit: int,
+        class_id: int | None = None,
+        order_by_created_at: bool = False,
+        id_tiebreak: bool = False,
     ) -> list[Any]:
         limit = max(1, int(limit))
-        return list(
-            db.scalars(
-                select(self.PointLedger)
-                .where(
-                    self.PointLedger.school_id == school_id,
-                    self.PointLedger.student_id == student_id,
-                )
-                .order_by(self.PointLedger.id.desc())
-                .limit(limit)
-            ).all()
+        statement = select(self.PointLedger).where(
+            self.PointLedger.school_id == school_id,
+            self.PointLedger.student_id == student_id,
         )
+        if class_id is not None:
+            statement = statement.where(self.PointLedger.class_id == class_id)
+        if order_by_created_at:
+            ordering = [self.PointLedger.created_at.desc()]
+            if id_tiebreak:
+                ordering.append(self.PointLedger.id.desc())
+            statement = statement.order_by(*ordering)
+        else:
+            statement = statement.order_by(self.PointLedger.id.desc())
+        return list(db.scalars(statement.limit(limit)).all())
 
     def recent_rows(
         self,
