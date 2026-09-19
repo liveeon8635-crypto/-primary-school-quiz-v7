@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine, String, Integer, ForeignKey, Text, DateTime, Boolean, LargeBinary, UniqueConstraint, select, func, inspect as sa_inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
 from cryptography.fernet import Fernet, InvalidToken
-from changying.services.assignments import teacher_assignment_rows
+from changying.services.assignments import student_assignment_rows, teacher_assignment_rows
 
 # ---------------- Database ----------------
 BASE = Path(__file__).resolve().parent
@@ -5327,7 +5327,7 @@ def tanalytics(u:User=Depends(current_user),db:Session=Depends(get_db)):
 
 @app.get("/student/assignments")
 def sassign(u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"student");rows=db.scalars(select(Assignment).join(AssignmentRecipient,AssignmentRecipient.assignment_id==Assignment.id).where(Assignment.school_id==u.school_id,AssignmentRecipient.school_id==u.school_id,AssignmentRecipient.student_id==u.id).order_by(Assignment.id.desc())).all();out=[]
+    need(u,"student");rows=student_assignment_rows(db,assignment_model=Assignment,assignment_recipient_model=AssignmentRecipient,school_id=u.school_id,student_id=u.id);out=[]
     for a in rows:
         d=aj(db,a);state=assignment_effective_status(db,a,u.id);sub=state.pop("quizSubmission");media_sub=state.pop("mediaSubmission");r=db.scalar(select(AssignmentRecipient).where(AssignmentRecipient.assignment_id==a.id,AssignmentRecipient.student_id==u.id));c=db.get(SchoolClass,r.class_id) if r else None
         d.update({**state,"score":sub.score if sub else None,"quizSubmittedAt":school_local_iso(sub.submitted_at) if sub else None,"mediaSubmittedAt":school_local_iso(media_sub.submitted_at) if media_sub else None,"assignedClassName":c.name if c else ""});out.append(d)
