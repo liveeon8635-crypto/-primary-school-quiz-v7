@@ -6646,6 +6646,7 @@ def teacher_student_growth_report(sid:int,class_id:int|None=None,u:User=Depends(
     from openpyxl import Workbook
     from openpyxl.styles import Font,PatternFill,Alignment,Border,Side
     from openpyxl.utils import get_column_letter
+    from changying.domain.learning_evidence_export import learning_evidence_export_payload
 
     wb=Workbook()
     ws=wb.active
@@ -6704,6 +6705,7 @@ def teacher_student_growth_report(sid:int,class_id:int|None=None,u:User=Depends(
         sheet.freeze_panes="A2"
 
     s=data["student"];a=data["academic"];p=data["points"];f=data["followup"]
+    evidence_export=learning_evidence_export_payload(data.get("learningEvidence") or {})
 
     # ---------- 成长摘要 ----------
     title(ws,f"{s['name']}｜学生成长报告")
@@ -6792,11 +6794,76 @@ def teacher_student_growth_report(sid:int,class_id:int|None=None,u:User=Depends(
         wa.append([clean_text(x.get("title","")),clean_text(x.get("subject","")),x.get("score",""),x.get("correct",""),x.get("total",""),x.get("submittedAt","")])
 
     r=wa.max_row+2
-    r=section(wa,r,"知识点掌握")
-    r=header(wa,r,["知识点","正确率","已答题数","","",""])
+    r=section(wa,r,"知识点作答观测")
+    r=header(wa,r,["知识点","观测正确率","已答题数","","",""])
     for x in a.get("weakKnowledge",[]) or []:
         wa.append([x.get("knowledge",""),f"{x.get('accuracy',0)}%",x.get("answered",0),"","",""])
     fit(wa,{1:28,2:16,3:16,4:14,5:14,6:22})
+
+    # ---------- 学习证据 ----------
+    we=wb.create_sheet("学习证据")
+    title(we,f"{s['name']}｜标准化学习证据")
+    r=3
+    r=section(we,r,"证据概览")
+    we.append([
+        "证据状态",evidence_export.get("stateName","证据不足"),
+        "标准化样本",evidence_export.get("sampleCount",0),
+        "已记录维度","、".join(evidence_export.get("dimensionNames",[]) or []) or "暂无"
+    ])
+
+    r=we.max_row+2
+    r=section(we,r,"学科观测")
+    r=header(we,r,["学科","样本数","观测均分","观测成功率","最近时间",""])
+    for x in evidence_export.get("subjects",[]) or []:
+        avg=x.get("averageObservedScore")
+        success=x.get("observedSuccessRate")
+        we.append([
+            clean_text(x.get("subject")) or "未标注学科",
+            x.get("sampleCount",0),
+            "—" if avg is None else avg,
+            "—" if success is None else f"{success}%",
+            x.get("latestAt",""),
+            ""
+        ])
+
+    r=we.max_row+2
+    r=section(we,r,"知识点观测")
+    r=header(we,r,["知识点","学科","样本数","观测均分","观测成功率","最近时间"])
+    for x in evidence_export.get("knowledge",[]) or []:
+        avg=x.get("averageObservedScore")
+        success=x.get("observedSuccessRate")
+        we.append([
+            clean_text(x.get("knowledgeKey")) or "未标注知识点",
+            clean_text(x.get("subject")),
+            x.get("sampleCount",0),
+            "—" if avg is None else avg,
+            "—" if success is None else f"{success}%",
+            x.get("latestAt","")
+        ])
+
+    r=we.max_row+2
+    r=section(we,r,"最近证据事实")
+    r=header(we,r,["时间","证据类型","学科","知识点","观测结果","来源/分数"])
+    for x in evidence_export.get("recentEvidence",[]) or []:
+        score=x.get("score")
+        source_score=clean_text(x.get("sourceName")) or "学习记录"
+        if score is not None:
+            source_score += f" / {score}分"
+        we.append([
+            x.get("occurredAt",""),
+            clean_text(x.get("evidenceTypeName")),
+            clean_text(x.get("subject")),
+            clean_text(x.get("knowledgeKey")),
+            clean_text(x.get("successName")),
+            source_score
+        ])
+
+    note_row=we.max_row+2
+    we.merge_cells(start_row=note_row,start_column=1,end_row=note_row+1,end_column=6)
+    we.cell(note_row,1,evidence_export.get("note",""))
+    we.cell(note_row,1).fill=PatternFill("solid",fgColor=amber)
+    we.cell(note_row,1).font=Font(color="7B5719")
+    fit(we,{1:24,2:18,3:18,4:28,5:24,6:24})
 
     # ---------- 课堂表现 ----------
     wp=wb.create_sheet("课堂表现")
