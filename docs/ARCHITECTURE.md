@@ -121,7 +121,7 @@ GitHub Actions 使用 Python 3.14，在分支 push 和 `main` PR 上执行完整
 
 以上测试全部使用临时 SQLite / 测试专用配置，不连接生产 PostgreSQL。阶段 C1 完成后，后续服务层抽离必须保持这些契约继续全绿。
 
-### 阶段 C2：服务层
+### 阶段 C2：服务层（进行中）
 
 优先把“数据库查询 + 业务计算”迁到 service 层，但路由 URL 和 ORM 表保持不变：
 
@@ -133,6 +133,10 @@ changying/services/
   homeroom.py
   commercial.py
 ```
+
+第一步从作业读侧开始：`AssignmentService` 接管提交方式、媒体计数和作业有效状态读取，
+由兼容桥注入现有 legacy 全局函数名。既有 FastAPI 路由继续保持原 URL、请求/返回结构和 ORM 表，
+先依靠 C1 集成安全网验证行为一致，再继续迁移写侧与其他 service。
 
 ### 阶段 D：API Router
 
