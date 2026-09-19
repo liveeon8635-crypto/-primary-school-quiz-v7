@@ -158,6 +158,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
         homework_media_submit_model=implementation.HomeworkMediaSubmit,
         homework_media_model=implementation.HomeworkMedia,
         valid_submission_modes=ASSIGNMENT_SUBMISSION_MODES,
+        assignment_mode_name=assignment_mode_name,
         school_local_iso=school_local_iso,
         due_deadline_utc=due_deadline_utc,
     )
