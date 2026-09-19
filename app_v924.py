@@ -4687,9 +4687,12 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
         textbook_filter="人教版",
     )
     allowed_assessment_ids=set(assessment_context.get("sourceAssignmentIDs") or [])
+    context_primary=assessment_context.get("primary") or {}
+    context_subject=str(context_primary.get("subject") or "").strip()
     wrong=[
         x for x in wrong
-        if x.source!="assessment" or int(x.assignment_id or 0) in allowed_assessment_ids
+        if (x.source!="assessment" or int(x.assignment_id or 0) in allowed_assessment_ids)
+        and (not context_subject or str(x.subject or "").strip()==context_subject)
     ][:20]
     if not wrong and not assessment_context.get("assessmentCount"):
         raise HTTPException(400,"该学生暂无可用于生成针对性练习的测试反馈或未掌握错题")
@@ -4729,7 +4732,8 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
     primary=assessment_context.get("primary") or {}
     forced_grade=int(primary.get("grade") or fallback_grade)
     forced_subject=str(primary.get("subject") or (wrong[0].subject if wrong else "数学"))[:30]
-    forced_textbook=str(primary.get("textbook") or "人教版")[:80]
+    fallback_textbook="统编版（人民教育出版社）" if forced_subject=="语文" else "人教版"
+    forced_textbook=str(primary.get("textbook") or fallback_textbook)[:80]
     weak_names=[str(x.get("knowledge") or "") for x in (assessment_context.get("weakKnowledge") or []) if str(x.get("knowledge") or "").strip()]
     default_knowledge=(weak_names[0] if weak_names else (wrong[0].knowledge if wrong else ""))
     for item in items[:count]:
@@ -4739,6 +4743,7 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
         qt=str(item.get("question_type") or "single_choice").strip().lower()
         if qt=="choice":qt="single_choice"
         if qt not in AUTO_GRADED_QUESTION_TYPES:continue
+        if forced_subject!="数学" and qt in {"calculation","short_answer"}:continue
         opts=[str(x) for x in (item.get("options") or [])]
         try:ci=int(item.get("correct_index",-1))
         except Exception:ci=-1
@@ -4762,7 +4767,7 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
                     "knowledge":str(item.get("knowledge") or default_knowledge or "")[:120],
                     "text":text_value,"options":opts,"correct_index":ci,
                     "question_type":qt,"answer":answer,"accepted_answers":accepted,
-                    "figure":_sanitize_figure(item.get("figure") or {}),
+                    "figure":_sanitize_figure(item.get("figure") or {}) if forced_subject=="数学" else {},
                     "explanation":str(item.get("explanation") or "").strip()})
     if not out:raise HTTPException(502,"AI 未返回有效巩固题")
     notice=assessment_context_notice(assessment_context)
