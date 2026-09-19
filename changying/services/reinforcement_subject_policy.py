@@ -11,6 +11,8 @@ import re
 from types import ModuleType
 from typing import Any
 
+from sqlalchemy import select
+
 
 def reinforcement_subject_from_prompt(prompt: str) -> str:
     text = str(prompt or "")
@@ -26,10 +28,51 @@ def reinforcement_subject_from_prompt(prompt: str) -> str:
     return source.group(1).strip() if source else ""
 
 
+
+
+
+def scope_context_to_primary_subject(context: dict[str, Any]) -> dict[str, Any]:
+    """Keep one reinforcement generation cycle inside a single school subject."""
+    if not isinstance(context, dict):
+        return context
+    primary = dict(context.get("primary") or {})
+    subject = str(primary.get("subject") or "").strip()
+    if not subject:
+        return context
+    assessments = [
+        x for x in (context.get("assessments") or [])
+        if str((x or {}).get("subject") or "").strip() == subject
+    ]
+    weak = [
+        x for x in (context.get("weakKnowledge") or [])
+        if str((x or {}).get("subject") or "").strip() == subject
+    ]
+    out = dict(context)
+    out["assessments"] = assessments
+    out["weakKnowledge"] = weak[:10]
+    out["assessmentCount"] = len(assessments)
+    out["sourceAssignmentIDs"] = [
+        int(x.get("assignmentID"))
+        for x in assessments
+        if int(x.get("assignmentID") or 0) > 0
+    ]
+    out["primary"] = primary
+    return out
+
+
 def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
     if str(feature or "") != "reinforcement_generate":
         return prompt
     subject = reinforcement_subject_from_prompt(prompt)
+    if subject and subject != "语文":
+        return (
+            str(prompt)
+            + f"""
+
+【学科隔离约束】
+当前科目是{subject}。待巩固错题中如意外混入其他学科记录，必须忽略；所有生成题必须保持当前科目，不得跨科。
+"""
+        )
     if subject != "语文":
         return prompt
     return (
@@ -51,7 +94,9 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
 def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
     if getattr(implementation, "_reinforcement_subject_policy_installed", False):
         return
-    original = implementation._ai_call
+
+    original_ai_call = implementation._ai_call
+    original_context = implementation.student_assessment_context
 
     def subject_aware_ai_call(
         db: Any,
@@ -61,7 +106,7 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
         images=None,
         timeout: int = 90,
     ):
-        return original(
+        return original_ai_call(
             db,
             u,
             feature,
@@ -70,7 +115,55 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
             timeout=timeout,
         )
 
+    def subject_scoped_assessment_context(*args: Any, **kwargs: Any):
+        return scope_context_to_primary_subject(original_context(*args, **kwargs))
+
     implementation._ai_call = subject_aware_ai_call
+    implementation.student_assessment_context = subject_scoped_assessment_context
+
+    # The route returns wrongIDs which are later stored in ReinforcementLink.
+    # Keep those IDs in the same subject as the generated practice, including
+    # teacher-authored historical wrong records that are not assessment-scoped.
+    target = "/teacher/students/{sid}/reinforcement/generate"
+    for route in implementation.app.routes:
+        if getattr(route, "path", None) != target or "POST" not in getattr(route, "methods", set()):
+            continue
+        original_route = route.dependant.call
+
+        def subject_scoped_route(*args: Any, __original=original_route, **kwargs: Any):
+            result = __original(*args, **kwargs)
+            if not isinstance(result, dict):
+                return result
+            items = [x for x in (result.get("items") or []) if isinstance(x, dict)]
+            subjects = {
+                str(x.get("subject") or "").strip()
+                for x in items
+                if str(x.get("subject") or "").strip()
+            }
+            if len(subjects) != 1:
+                return result
+            subject = next(iter(subjects))
+            wrong_ids = [
+                int(x) for x in (result.get("wrongIDs") or [])
+                if int(x or 0) > 0
+            ]
+            db = kwargs.get("db")
+            if db is None or not wrong_ids:
+                return result
+            valid = db.scalars(
+                select(implementation.WrongQuestionRecord.id).where(
+                    implementation.WrongQuestionRecord.id.in_(wrong_ids),
+                    implementation.WrongQuestionRecord.subject == subject,
+                )
+            ).all()
+            payload = dict(result)
+            payload["wrongIDs"] = [int(x) for x in valid]
+            return payload
+
+        route.dependant.call = subject_scoped_route
+        route.endpoint = subject_scoped_route
+        break
+
     implementation._reinforcement_subject_policy_installed = True
 
 
@@ -78,4 +171,5 @@ __all__ = [
     "augment_reinforcement_prompt",
     "install_reinforcement_subject_policy",
     "reinforcement_subject_from_prompt",
+    "scope_context_to_primary_subject",
 ]
