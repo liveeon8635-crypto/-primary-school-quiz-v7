@@ -16,6 +16,7 @@ from changying.domain.learning_evidence_growth_profile import (
     growth_profile_learning_evidence,
 )
 from changying.domain.learning_evidence_read_model import student_evidence_snapshot
+from changying.domain.learning_evidence_visibility import learning_evidence_for_role
 from changying.web.v1_learning_evidence_profile import legacy_student_evidence
 
 
@@ -62,6 +63,7 @@ def transition_snapshot(
     db,
     student,
     school_id: int,
+    viewer_role: str = "teacher",
 ):
     history = implementation.class_history_rows(db, int(student.id), school_id)
     current, previous = _stage_from_history(history)
@@ -75,6 +77,7 @@ def transition_snapshot(
     evidence = growth_profile_learning_evidence(
         student_evidence_snapshot(items)
     )
+    evidence = learning_evidence_for_role(evidence, viewer_role)
     available = set(evidence.get("dimensions") or [])
     missing = sorted(set(EVIDENCE_TYPES) - available)
 
@@ -129,6 +132,7 @@ def install_v1_transition_snapshot_routes(implementation: ModuleType) -> None:
             db,
             student,
             int(user.school_id),
+            user.role,
         )
 
     app.state.v1_transition_snapshot_routes_installed = True
