@@ -39,6 +39,7 @@ from changying.services.assignments import AssignmentService
 from changying.services.assessment_reliability import install_assessment_reliability
 from changying.services.followups import FollowUpService
 from changying.services.points import PointService
+from changying.services.reinforcement_subject_policy import install_reinforcement_subject_policy
 from changying.services.teaching import TeachingService
 from changying.services.wrong_questions import WrongQuestionService
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
@@ -261,6 +262,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
 
     implementation.make_token = legacy_make_token
     install_assessment_reliability(implementation)
+    install_reinforcement_subject_policy(implementation)
     install_reinforcement_figure_fallback(implementation)
     install_product_shell(implementation.app)
     install_product_visibility_routes(implementation.app)
