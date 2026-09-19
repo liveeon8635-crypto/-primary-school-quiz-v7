@@ -37,6 +37,7 @@ from changying.security.passwords import hash_password, password_ok, password_ve
 from changying.security.tokens import make_token as issue_token
 from changying.services.assignments import AssignmentService
 from changying.services.assessment_reliability import install_assessment_reliability
+from changying.services.assessment_context_policy import install_subject_aware_assessment_context
 from changying.services.followups import FollowUpService
 from changying.services.points import PointService
 from changying.services.teaching import TeachingService
@@ -261,6 +262,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
 
     implementation.make_token = legacy_make_token
     install_assessment_reliability(implementation)
+    install_subject_aware_assessment_context(implementation)
     install_reinforcement_figure_fallback(implementation)
     install_product_shell(implementation.app)
     install_product_visibility_routes(implementation.app)
