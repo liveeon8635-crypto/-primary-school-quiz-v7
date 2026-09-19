@@ -25,3 +25,13 @@ def test_unified_top_keeps_chinese_navigation():
     html = inject_v1_classic_unified("<html><body></body></html>")
     for label in ("当前教学", "学生", "往期教学", "升学衔接", "全部功能", "操作记录"):
         assert label in html
+
+
+def test_unified_top_fallback_respects_remember_storage_contract():
+    html = inject_v1_classic_unified("<html><body></body></html>")
+    assert "v717Remember" in html
+    assert "remember?localStorage.getItem('v717Token'):sessionStorage.getItem('v717Token')" in html
+    assert "sessionStorage.getItem('v717Token')" in html
+    assert "localStorage.getItem('v717Token')" in html
+    assert "sessionStorage.getItem('v6Token')" in html
+    assert "localStorage.getItem('v6Token')" in html
