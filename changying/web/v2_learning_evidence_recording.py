@@ -82,7 +82,9 @@ def active_manual_record_rows(
     return [
         row
         for row in rows
-        if row.event_kind == "record" and int(row.id) not in retracted
+        if row.event_kind == "record"
+        and (row.source_type or "") == "teacher_observation"
+        and int(row.id) not in retracted
     ]
 
 
@@ -191,12 +193,16 @@ def install_v2_learning_evidence_routes(implementation: ModuleType) -> None:
         db=Depends(implementation.get_db),
     ):
         _write_student(implementation, db, user, sid)
-        rows = _event_rows(
-            implementation,
-            db,
-            sid,
-            int(user.school_id),
-        )
+        rows = [
+            row
+            for row in _event_rows(
+                implementation,
+                db,
+                sid,
+                int(user.school_id),
+            )
+            if (row.source_type or "").startswith("teacher_observation")
+        ]
         actor_ids = {int(row.actor_id) for row in rows}
         actors = {}
         if actor_ids:

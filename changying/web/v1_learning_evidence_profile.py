@@ -17,6 +17,10 @@ from changying.domain.learning_evidence_mapping import (
     submission_to_performance_evidence,
 )
 from changying.domain.learning_evidence_read_model import student_evidence_snapshot
+from changying.domain.stored_learning_evidence import (
+    explicit_student_evidence,
+    teacher_confirmed_assignment_ids,
+)
 from changying.web.v2_learning_evidence_recording import manual_student_evidence
 
 
@@ -88,6 +92,13 @@ def legacy_student_evidence(implementation: ModuleType, db: Any, student_id: int
         for question in questions
     }
 
+    confirmed_assignment_ids = teacher_confirmed_assignment_ids(
+        implementation,
+        db,
+        student_id,
+        school_id,
+    )
+
     evidence = []
     for sub in rows:
         subject = ""
@@ -105,13 +116,17 @@ def legacy_student_evidence(implementation: ModuleType, db: Any, student_id: int
                     for qid in paper_question_ids.get(int(paper.id), [])
                 }
 
-        evidence.append(
-            submission_to_performance_evidence(
-                sub,
-                subject=subject,
-                class_id=class_id,
+        if not (
+            sub.assignment_id is not None
+            and int(sub.assignment_id) in confirmed_assignment_ids
+        ):
+            evidence.append(
+                submission_to_performance_evidence(
+                    sub,
+                    subject=subject,
+                    class_id=class_id,
+                )
             )
-        )
         evidence.extend(
             submission_answers_to_performance_evidence(
                 sub,
@@ -121,6 +136,14 @@ def legacy_student_evidence(implementation: ModuleType, db: Any, student_id: int
             )
         )
 
+    evidence.extend(
+        explicit_student_evidence(
+            implementation,
+            db,
+            student_id,
+            school_id,
+        )
+    )
     evidence.extend(manual_student_evidence(implementation, db, student_id, school_id))
     return evidence
 
