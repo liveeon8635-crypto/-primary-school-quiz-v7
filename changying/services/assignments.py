@@ -20,6 +20,8 @@ class AssignmentService:
         homework_media_model: Any,
         user_model: Any,
         assignment_recipient_model: Any,
+        assignment_model: Any,
+        class_model: Any,
         valid_submission_modes: set[str],
         assignment_mode_name: Callable[[str], str],
         school_local_iso: Callable[[Any], str],
@@ -31,6 +33,8 @@ class AssignmentService:
         self.HomeworkMedia = homework_media_model
         self.User = user_model
         self.AssignmentRecipient = assignment_recipient_model
+        self.Assignment = assignment_model
+        self.SchoolClass = class_model
         self.valid_submission_modes = set(valid_submission_modes)
         self.assignment_mode_name = assignment_mode_name
         self.school_local_iso = school_local_iso
@@ -50,6 +54,24 @@ class AssignmentService:
             row.mode
             if row and row.mode in self.valid_submission_modes
             else "quiz"
+        )
+
+    def teacher_assignment_for(
+        self,
+        db,
+        school_id: int,
+        teacher_id: int,
+        assignment_id: int,
+    ):
+        """Return one assignment only when it belongs to the requesting teacher."""
+        return db.scalar(
+            select(self.Assignment)
+            .join(self.SchoolClass, self.Assignment.class_id == self.SchoolClass.id)
+            .where(
+                self.Assignment.id == assignment_id,
+                self.Assignment.school_id == school_id,
+                self.SchoolClass.teacher_id == teacher_id,
+            )
         )
 
     def recipient_students(self, db, assignment) -> list[Any]:
