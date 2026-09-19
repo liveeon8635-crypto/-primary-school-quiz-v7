@@ -6917,9 +6917,9 @@ def teacher_followups_report(cid:int,u:User=Depends(current_user),db:Session=Dep
     wt=wb.create_sheet("班级待办");wt.append(["事项","优先级","状态","截止日期","到期状态","备注","创建时间"])
     for x in data["todos"]:wt.append([x["title"],x["priorityName"],x["statusName"],x["dueDate"],x["dueLabel"],x["note"],x["createdAt"]])
     wc=wb.create_sheet("家校沟通记录");wc.append(["学生","沟通内容","教师","时间"])
-    rows=db.scalars(select(StudentFollowUpLog).join(StudentFollowUp,StudentFollowUp.id==StudentFollowUpLog.followup_id).where(
-        StudentFollowUp.school_id==u.school_id,StudentFollowUp.class_id==c.id,StudentFollowUpLog.log_type=="parent_contact"
-    ).order_by(StudentFollowUpLog.created_at.desc())).all()
+    rows=followup_class_parent_contact_rows(
+        db,school_id=u.school_id,class_id=c.id
+    )
     for x in rows:
         j=followup_log_json(db,x);stu=db.get(User,x.student_id)
         wc.append([stu.name if stu else x.student_id,j["content"],j["actorName"],j["createdAt"]])
