@@ -37,6 +37,7 @@ from changying.security.passwords import hash_password, password_ok, password_ve
 from changying.security.tokens import make_token as issue_token
 from changying.services.assignments import AssignmentService
 from changying.services.points import PointService
+from changying.services.wrong_questions import WrongQuestionService
 from changying.services.teaching import TeachingService
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
 from changying.utils.json_tools import json_list
@@ -209,6 +210,14 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.point_summary = point_service.summary
     implementation.point_window_series = point_service.window_series
     implementation.point_window_summary = point_service.window_summary
+
+    wrong_question_service = WrongQuestionService(
+        wrong_question_model=implementation.WrongQuestionRecord,
+    )
+    implementation.wrong_question_service = wrong_question_service
+    implementation.wrong_question_assignment_rows = wrong_question_service.assignment_rows
+    implementation.wrong_question_teacher_student_rows = wrong_question_service.teacher_student_rows
+    implementation.wrong_question_student_rows = wrong_question_service.student_rows
 
     def legacy_make_token(user, security, remember=False):
         return issue_token(
