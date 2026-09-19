@@ -21,3 +21,10 @@ def test_v1_teacher_ai_preview_renders_question_types_answers_and_figures():
     assert "accepted_answers" in html
     assert "q.figure" in html
     assert "5题以上至少使用3种题型" in html
+
+
+def test_v1_teacher_ai_preview_retries_transient_generation_fetch():
+    html = patch_v1_student_practice_html(v1_html())
+    assert "retrySafe=method==='GET'||url.includes('/reinforcement/generate')" in html
+    assert "attempt<(retrySafe?2:1)" in html
+    assert "网络连接刚刚中断，请稍后再试" in html
