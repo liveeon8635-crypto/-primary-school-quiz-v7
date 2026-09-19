@@ -5928,12 +5928,9 @@ def teacher_record_points(b:PointRecordBody,u:User=Depends(current_user),db:Sess
 @app.get("/teacher/points/recent")
 def teacher_points_recent(class_id:int|None=None,limit:int=40,u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"teacher","admin");limit=max(1,min(limit,200))
-    q=select(PointLedger).where(PointLedger.school_id==u.school_id,PointLedger.source.in_(("classroom","reversal","adjustment")))
-    if class_id:
-        current_teacher_class(db,u,class_id);q=q.where(PointLedger.class_id==class_id)
-    elif u.role=="teacher":
-        own_ids=select(SchoolClass.id).where(SchoolClass.school_id==u.school_id,SchoolClass.teacher_id==u.id);q=q.where(PointLedger.class_id.in_(own_ids))
-    rows=db.scalars(q.order_by(PointLedger.id.desc()).limit(limit)).all();return [point_ledger_json(db,x) for x in rows]
+    if class_id:current_teacher_class(db,u,class_id)
+    rows=point_recent_rows(db,school_id=u.school_id,teacher_id=u.id if u.role=="teacher" else None,class_id=class_id,limit=limit)
+    return [point_ledger_json(db,x) for x in rows]
 
 @app.post("/teacher/points/ledger/{lid}/undo")
 def teacher_points_undo(lid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
