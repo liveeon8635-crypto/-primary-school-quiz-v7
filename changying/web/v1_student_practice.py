@@ -129,7 +129,7 @@ def _practice_patch_html() -> str:
  function renderForm(layer,data){
    const body=layer.querySelector('#cy-practice-body');const student=data.student||{};const grade=data.selectedGrade||student.grade||5;const subject=data.selectedSubject||data.subjects?.[0]||'数学';
    const modules=data.modules||[];const classes=data.classes||[];
-   body.innerHTML='<div class="cy-practice-note">综合测试会尽量跨知识模块均衡选题，用于形成该学科的阶段性掌握反馈；知识模块练习只从指定知识点选题。生成内容继续写入原题库 / 试卷 / 作业链，并只添加给当前学生。</div>'+
+   body.innerHTML='<div class="cy-practice-note">综合测试会尽量跨知识模块均衡选题；知识模块练习只从指定知识点选题。当前年级科目可用约 '+esc(data.availableQuestionCount||0)+' 题；系统标准题只会在你确认添加时补入现有题库。</div>'+
    '<form id="cy-practice-form"><div class="cy-practice-grid">'+
    '<div class="cy-practice-field"><label>学生</label><input value="'+esc(student.name||'学生')+'" disabled></div>'+
    '<div class="cy-practice-field"><label>教学班级</label><select id="cy-p-class">'+classes.map(c=>'<option value="'+c.id+'" '+(Number(c.id)===Number(data.defaultClassID)?'selected':'')+'>'+esc(c.name)+' · '+esc(c.grade)+'年级</option>').join('')+'</select></div>'+
@@ -137,12 +137,14 @@ def _practice_patch_html() -> str:
    '<div class="cy-practice-field"><label>科目</label><select id="cy-p-subject">'+optionRows(data.subjects||[],subject)+'</select></div>'+
    '<div class="cy-practice-field"><label>内容类型</label><select id="cy-p-kind"><option value="comprehensive">该科目综合测试</option><option value="module">知识模块练习</option></select></div>'+
    '<div class="cy-practice-field" id="cy-p-module-wrap" style="display:none"><label>知识模块</label><select id="cy-p-module">'+modules.map(m=>'<option value="'+esc(m.knowledge)+'">'+esc((m.unit?m.unit+' · ':'')+m.knowledge+'（'+m.count+'题）')+'</option>').join('')+'</select></div>'+
-   '<div class="cy-practice-field"><label>题数</label><input id="cy-p-count" type="number" min="1" max="30" value="10"></div>'+
+   '<div class="cy-practice-field"><label>题数</label><input id="cy-p-count" type="number" min="1" max="50" value="20"></div>'+
    '<div class="cy-practice-field"><label>截止日期</label><input id="cy-p-due" type="date" value="'+dueDefault()+'"></div>'+
    '</div><button class="cy-practice-submit" type="submit">自动添加给学生</button><div id="cy-practice-result"></div></form>';
-   const kind=body.querySelector('#cy-p-kind'),moduleWrap=body.querySelector('#cy-p-module-wrap');
-   kind.onchange=()=>{moduleWrap.style.display=kind.value==='module'?'grid':'none'};
-   async function refreshOptions(){try{const next=await loadOptions(student.id,body.querySelector('#cy-p-grade').value,body.querySelector('#cy-p-subject').value);renderForm(layer,next)}catch(err){body.querySelector('#cy-practice-result').innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}}
+   const kind=body.querySelector('#cy-p-kind'),moduleWrap=body.querySelector('#cy-p-module-wrap'),moduleEl=body.querySelector('#cy-p-module'),countEl=body.querySelector('#cy-p-count'),resultBox=body.querySelector('#cy-practice-result');
+   const clearResult=()=>{resultBox.innerHTML=''};
+   const syncCount=()=>{moduleWrap.style.display=kind.value==='module'?'grid':'none';const selected=modules.find(m=>m.knowledge===moduleEl?.value);const available=kind.value==='module'?Number(selected?.count||0):Number(data.availableQuestionCount||0);const max=Math.max(1,Math.min(50,available||50));countEl.max=String(max);const current=Number(countEl.value)||0;if(current<1||current>max)countEl.value=String(Math.min(kind.value==='module'?10:20,max));clearResult()};
+   kind.onchange=syncCount;if(moduleEl)moduleEl.onchange=syncCount;countEl.oninput=clearResult;body.querySelector('#cy-p-due').onchange=clearResult;body.querySelector('#cy-p-class').onchange=clearResult;syncCount();
+   async function refreshOptions(){try{const next=await loadOptions(student.id,body.querySelector('#cy-p-grade').value,body.querySelector('#cy-p-subject').value);renderForm(layer,next)}catch(err){resultBox.innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}}
    body.querySelector('#cy-p-grade').onchange=async()=>{try{const next=await loadOptions(student.id,body.querySelector('#cy-p-grade').value,'');renderForm(layer,next)}catch(err){body.querySelector('#cy-practice-result').innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}};
    body.querySelector('#cy-p-subject').onchange=refreshOptions;
    body.querySelector('#cy-practice-form').onsubmit=async e=>{e.preventDefault();const btn=e.submitter;btn.disabled=true;btn.textContent='正在自动组卷…';const result=body.querySelector('#cy-practice-result');try{const payload={grade:Number(body.querySelector('#cy-p-grade').value),subject:body.querySelector('#cy-p-subject').value,kind:kind.value,knowledge:kind.value==='module'?(body.querySelector('#cy-p-module')?.value||''):'',question_count:Number(body.querySelector('#cy-p-count').value)||10,due_date:body.querySelector('#cy-p-due').value,class_id:Number(body.querySelector('#cy-p-class').value)||null};const created=await api('/teacher/students/'+student.id+'/auto-practice',{method:'POST',body:JSON.stringify(payload)});result.innerHTML='<div class="cy-practice-ok"><b>已添加：</b>'+esc(created.assignment?.title||'测试/练习')+' · '+esc(created.questionCount)+'题。学生完成后，成绩和知识点作答会继续进入现有学习记录。<br><button type="button" class="cy-practice-close" id="cy-practice-refresh" style="margin-top:9px">返回学生档案</button></div>';body.querySelector('#cy-practice-refresh').onclick=()=>location.reload()}catch(err){result.innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}finally{btn.disabled=false;btn.textContent='自动添加给学生'}};
