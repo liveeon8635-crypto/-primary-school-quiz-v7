@@ -1,6 +1,7 @@
 from changying.services.reinforcement_subject_policy import (
     augment_reinforcement_prompt,
     reinforcement_subject_from_prompt,
+    scope_context_to_primary_subject,
 )
 from changying.web.reinforcement_quality import infer_reinforcement_figure
 
@@ -53,3 +54,34 @@ def test_math_item_still_preserves_valid_figure():
     figure = infer_reinforcement_figure(item)
     assert figure["type"] == "coordinate_grid"
     assert figure["points"][0]["x"] == 2
+
+
+def test_context_is_scoped_to_primary_subject():
+    context = {
+        "primary": {"assignmentID": 9, "subject": "语文", "textbook": "人教版"},
+        "assessmentCount": 3,
+        "sourceAssignmentIDs": [9, 8, 7],
+        "assessments": [
+            {"assignmentID": 9, "subject": "语文", "score": 70},
+            {"assignmentID": 8, "subject": "数学", "score": 80},
+            {"assignmentID": 7, "subject": "语文", "score": 90},
+        ],
+        "weakKnowledge": [
+            {"subject": "数学", "knowledge": "梯形的面积", "accuracy": 20},
+            {"subject": "语文", "knowledge": "病句辨析", "accuracy": 50},
+            {"subject": "语文", "knowledge": "提取关键信息", "accuracy": 60},
+        ],
+    }
+    scoped = scope_context_to_primary_subject(context)
+    assert scoped["assessmentCount"] == 2
+    assert scoped["sourceAssignmentIDs"] == [9, 7]
+    assert {x["subject"] for x in scoped["assessments"]} == {"语文"}
+    assert {x["subject"] for x in scoped["weakKnowledge"]} == {"语文"}
+    assert scoped["primary"]["assignmentID"] == 9
+
+
+def test_non_chinese_subject_gets_cross_subject_ignore_instruction():
+    base = '''最近测试/练习反馈：{"primary":{"grade":5,"subject":"数学","textbook":"人教版"}}'''
+    prompt = augment_reinforcement_prompt("reinforcement_generate", base)
+    assert "当前科目是数学" in prompt
+    assert "必须忽略" in prompt
