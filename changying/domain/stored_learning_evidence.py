@@ -33,12 +33,21 @@ def teacher_confirmed_assignment_ids(
         implementation.select(implementation.LearningEvidenceEvent).where(
             implementation.LearningEvidenceEvent.school_id == school_id,
             implementation.LearningEvidenceEvent.student_id == student_id,
-            implementation.LearningEvidenceEvent.event_kind == "record",
-            implementation.LearningEvidenceEvent.source_type == "teacher_confirmed_grading",
         )
     ).all()
+    retracted = {
+        int(row.target_event_id)
+        for row in rows
+        if row.event_kind == "retract" and row.target_event_id is not None
+    }
     result = set()
     for row in rows:
+        if (
+            row.event_kind != "record"
+            or row.source_type != "teacher_confirmed_grading"
+            or int(row.id) in retracted
+        ):
+            continue
         value = _context_json(row.context or "").get("assignmentID")
         try:
             result.add(int(value))
@@ -58,16 +67,25 @@ def explicit_student_evidence(
         .where(
             implementation.LearningEvidenceEvent.school_id == school_id,
             implementation.LearningEvidenceEvent.student_id == student_id,
-            implementation.LearningEvidenceEvent.event_kind == "record",
-            implementation.LearningEvidenceEvent.source_type.in_(EXPLICIT_PERFORMANCE_SOURCES),
         )
         .order_by(
             implementation.LearningEvidenceEvent.occurred_at.asc(),
             implementation.LearningEvidenceEvent.id.asc(),
         )
     ).all()
+    retracted = {
+        int(row.target_event_id)
+        for row in rows
+        if row.event_kind == "retract" and row.target_event_id is not None
+    }
     result = []
     for row in rows:
+        if (
+            row.event_kind != "record"
+            or row.source_type not in EXPLICIT_PERFORMANCE_SOURCES
+            or int(row.id) in retracted
+        ):
+            continue
         context = _context_json(row.context or "")
         score = None
         if row.source_type == "teacher_confirmed_grading":
