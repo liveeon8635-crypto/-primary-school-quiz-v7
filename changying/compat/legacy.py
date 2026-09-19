@@ -51,6 +51,7 @@ from changying.web.product_shell import (
 from changying.web.pwa import build_manifest
 from changying.web.v1 import install_v1_routes
 from changying.web.v1_acceptance_polish import install_v1_acceptance_polish_patch
+from changying.web.v1_auto_practice import install_v1_auto_practice
 from changying.web.v1_auth_handoff import install_v1_auth_handoff_routes
 from changying.web.v1_audit_localization import install_v1_audit_localization
 from changying.web.v1_classic_embed_bootstrap import install_v1_classic_embed_bootstrap
@@ -273,6 +274,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_full_visibility_patch()
     install_v1_membership_visibility_patch()
     install_v1_student_detail_visibility_patch()
+    install_v1_auto_practice(implementation)
     install_v1_guardian_visibility_patch()
     install_v1_membership_reliability_patch()
     install_v1_final_closure_patch()
