@@ -1421,12 +1421,24 @@ def normalized_answer_stats(db,answers,school_id):
     know={}
     valid=0
     for a in answers:
+        if not isinstance(a,dict):continue
         qid=a.get("question_id")
-        selected=a.get("selected_index")
         q=db.scalar(select(Question).where(Question.id==qid,Question.school_id==school_id)) if qid is not None else None
-        if not q or not isinstance(selected,int):
-            continue
-        ok=(selected==q.correct_index)
+        if not q:continue
+        ok=a.get("correct")
+        if not isinstance(ok,bool):
+            qt=question_type_of(q)
+            if qt in ("single_choice","true_false"):
+                selected=a.get("selected_index")
+                if not isinstance(selected,int):continue
+                ok=(selected==q.correct_index)
+            elif qt in ("fill_blank","calculation"):
+                meta=question_answer_meta(q)
+                answer=str(a.get("text_answer") or "")
+                if not answer.strip():continue
+                ok=_text_answer_matches(answer,meta["answer"],meta["accepted"])
+            else:
+                continue
         hit,total=know.get(q.knowledge,(0,0))
         know[q.knowledge]=(hit+(1 if ok else 0),total+1)
         valid+=1
@@ -1458,12 +1470,28 @@ def grade_answers(db,u,answers,allowed_question_ids=None,require_all=False):
         if allowed is not None and qid not in allowed: raise HTTPException(400,"答题记录包含不属于本试卷的题目")
         q=db.scalar(select(Question).where(Question.id==qid,Question.school_id==u.school_id))
         if not q: raise HTTPException(400,"题目不存在或无权限")
-        try: option_count=len(json.loads(q.options_json))
-        except Exception: option_count=0
-        if a.selected_index<0 or a.selected_index>=option_count: raise HTTPException(400,"答案选项无效")
-        ok=(a.selected_index==q.correct_index)
+        qt=question_type_of(q)
+        if qt in ("single_choice","true_false"):
+            try:
+                opts=json.loads(q.options_json or "[]")
+                option_count=len(opts) if isinstance(opts,list) else 0
+            except Exception:
+                option_count=0
+            if a.selected_index is None or a.selected_index<0 or a.selected_index>=option_count:
+                raise HTTPException(400,"答案选项无效")
+            ok=(a.selected_index==q.correct_index)
+            normalized_item={"question_id":qid,"selected_index":a.selected_index,"text_answer":"","correct":ok}
+        elif qt in ("fill_blank","calculation"):
+            text_answer=str(a.text_answer or "").strip()
+            if not text_answer:raise HTTPException(400,"请填写答案后再提交")
+            meta=question_answer_meta(q)
+            if not meta["answer"]:raise HTTPException(500,"题目标准答案缺失")
+            ok=_text_answer_matches(text_answer,meta["answer"],meta["accepted"])
+            normalized_item={"question_id":qid,"selected_index":None,"text_answer":text_answer,"correct":ok}
+        else:
+            raise HTTPException(400,"该题型不支持在线自动判分")
         correct+=1 if ok else 0
-        normalized.append({"question_id":qid,"selected_index":a.selected_index,"correct":ok})
+        normalized.append(normalized_item)
     if require_all and allowed is not None and seen!=allowed:
         raise HTTPException(400,"请完成试卷全部题目后再提交")
     total=len(normalized);score=round(correct/total*100) if total else 0
