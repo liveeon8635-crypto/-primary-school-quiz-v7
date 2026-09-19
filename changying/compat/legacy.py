@@ -177,9 +177,13 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.recipient_students = assignment_service.recipient_students
     implementation.assignment_effective_status = assignment_service.effective_status
 
-    point_service = PointService(point_ledger_model=implementation.PointLedger)
+    point_service = PointService(
+        point_ledger_model=implementation.PointLedger,
+        school_class_model=implementation.SchoolClass,
+    )
     implementation.point_service = point_service
     implementation.point_balance = point_service.balance
+    implementation.point_recent_rows = point_service.recent_rows
     implementation.point_summary = point_service.summary
     implementation.point_window_summary = point_service.window_summary
 
