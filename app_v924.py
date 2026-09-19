@@ -6474,22 +6474,17 @@ def student_growth_profile_data(db,stu:User,school_id:int,class_id:int|None=None
     recent_points=[point_ledger_json(db,x) for x in ledgers]
 
     # 跟进与家校沟通
-    fq=select(StudentFollowUp).where(StudentFollowUp.school_id==school_id,StudentFollowUp.student_id==stu.id)
-    if c:fq=fq.where(StudentFollowUp.class_id==c.id)
-    follow_rows=db.scalars(fq.order_by(StudentFollowUp.updated_at.desc(),StudentFollowUp.id.desc())).all()
+    follow_rows=followup_profile_rows(
+        db,school_id=school_id,student_id=stu.id,class_id=(c.id if c else None)
+    )
     followups=[followup_json(db,x) for x in follow_rows[:8]]
     open_followups=[x for x in followups if x["status"]!="done"]
     overdue_followups=[x for x in open_followups if x.get("overdue")]
     fids=[x.id for x in follow_rows]
-    contacts=[]
-    if fids:
-        contact_rows=db.scalars(select(StudentFollowUpLog).where(
-            StudentFollowUpLog.school_id==school_id,
-            StudentFollowUpLog.student_id==stu.id,
-            StudentFollowUpLog.followup_id.in_(fids),
-            StudentFollowUpLog.log_type=="parent_contact"
-        ).order_by(StudentFollowUpLog.created_at.desc(),StudentFollowUpLog.id.desc()).limit(8)).all()
-        contacts=[followup_log_json(db,x) for x in contact_rows]
+    contact_rows=followup_profile_parent_contact_rows(
+        db,school_id=school_id,student_id=stu.id,followup_ids=fids,limit=8
+    )
+    contacts=[followup_log_json(db,x) for x in contact_rows]
 
     # 事实型亮点与教学提示，不做自动处分/高风险决策
     highlights=[]

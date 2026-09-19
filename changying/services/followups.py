@@ -257,3 +257,55 @@ class FollowUpService:
             )
             or 0
         )
+
+
+    def profile_rows(
+        self,
+        db,
+        *,
+        school_id: int,
+        student_id: int,
+        class_id: int | None = None,
+    ) -> list[Any]:
+        query = select(self.StudentFollowUp).where(
+            self.StudentFollowUp.school_id == school_id,
+            self.StudentFollowUp.student_id == student_id,
+        )
+        if class_id:
+            query = query.where(self.StudentFollowUp.class_id == class_id)
+        return list(
+            db.scalars(
+                query.order_by(
+                    self.StudentFollowUp.updated_at.desc(),
+                    self.StudentFollowUp.id.desc(),
+                )
+            ).all()
+        )
+
+    def profile_parent_contact_rows(
+        self,
+        db,
+        *,
+        school_id: int,
+        student_id: int,
+        followup_ids: list[int],
+        limit: int = 8,
+    ) -> list[Any]:
+        if not followup_ids:
+            return []
+        return list(
+            db.scalars(
+                select(self.StudentFollowUpLog)
+                .where(
+                    self.StudentFollowUpLog.school_id == school_id,
+                    self.StudentFollowUpLog.student_id == student_id,
+                    self.StudentFollowUpLog.followup_id.in_(followup_ids),
+                    self.StudentFollowUpLog.log_type == "parent_contact",
+                )
+                .order_by(
+                    self.StudentFollowUpLog.created_at.desc(),
+                    self.StudentFollowUpLog.id.desc(),
+                )
+                .limit(limit)
+            ).all()
+        )
