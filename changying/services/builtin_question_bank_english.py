@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 
-ENGLISH_G5_TEXTBOOK = "人教版（PEP·当前最新版）"
+ENGLISH_G5_TEXTBOOK = "人教版英语（PEP）（三年级起点·当前新版）"
 
 
 def _spec(
