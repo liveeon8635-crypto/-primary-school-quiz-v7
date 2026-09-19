@@ -1548,6 +1548,7 @@ AUDIT_ACTION_NAMES={
     "auto.reward.rule.update":"更新自动奖励规则",
     "backup.export":"导出学校备份",
     "class.create":"新建班级",
+    "class.grade.repair":"修复班级年级",
     "class.export":"导出班级报表",
     "class.todo.create":"新建班级待办",
     "class.todo.status":"更新班级待办状态",
@@ -1586,6 +1587,7 @@ AUDIT_ACTION_NAMES={
     "reward.update":"更新奖品",
     "student.archive":"学生毕业归档",
     "student.create":"创建学生",
+    "student.grade.repair":"修复学生年级",
     "student.export":"导出学生成绩单",
     "student.restore":"恢复学生入班",
     "student.transfer":"学生调班",
@@ -2469,8 +2471,27 @@ def can_manage_student_points(db,u,student_id,class_id=None):
     return stu
 
 
+CLASS_NAME_GRADE_TOKENS={
+    1:("一年级","1年级"),2:("二年级","2年级"),3:("三年级","3年级"),
+    4:("四年级","4年级"),5:("五年级","5年级"),6:("六年级","6年级"),
+}
+
+def class_name_grade(name):
+    text=str(name or "").strip()
+    matches={grade for grade,tokens in CLASS_NAME_GRADE_TOKENS.items() if any(token in text for token in tokens)}
+    return next(iter(matches)) if len(matches)==1 else None
+
+def validate_class_grade(name,grade):
+    if int(grade) not in range(1,7):
+        raise HTTPException(400,"年级必须为1-6")
+    inferred=class_name_grade(name)
+    if inferred and inferred!=int(grade):
+        raise HTTPException(400,f"班级名称显示为{inferred}年级，但当前选择的是{int(grade)}年级，请统一后再保存")
+    return inferred
+
+
 APP_VERSION="10.7"
-SCHEMA_VERSION="10.6.2"
+SCHEMA_VERSION="10.6.3"
 RELEASE_CHANNEL="stable"
 RELEASE_NAME="小学教学版"
 
@@ -3071,7 +3092,8 @@ def run_schema_migrations(db):
         ("10.4","商业正式版 C3.4：AI教案工作台、结构化预览编辑、一键保存定制教学与课堂练习生成"),
         ("10.5","商业正式版 C3.5：AI题目审核编辑、勾选保存题库与一键组卷布置作业"),
         ("10.6","商业正式版 C3.6：AI批改确认、错题归档、个性化巩固生成与掌握闭环"),
-        ("10.6.2","课堂积分班级自定义规则")
+        ("10.6.2","课堂积分班级自定义规则"),
+        ("10.6.3","修复明确年级班级的名称/年级字段不一致，并同步当前学生年级")
     ]
     changed=False
     for version,description in migrations:
@@ -3090,6 +3112,44 @@ def run_schema_migrations(db):
         elif version=="9.2.5":
             for renewal in db.scalars(select(CommercialRenewal).order_by(CommercialRenewal.id)).all():
                 create_order_for_renewal(db,renewal)
+        elif version=="10.6.3":
+            named_class_grades={}
+            for c in db.scalars(select(SchoolClass).order_by(SchoolClass.id)).all():
+                inferred=class_name_grade(c.name)
+                if not inferred:
+                    continue
+                named_class_grades[c.id]=inferred
+                if int(c.grade or 0)!=inferred:
+                    old=c.grade
+                    c.grade=inferred
+                    db.add(AuditLog(
+                        school_id=c.school_id,user_id=None,action="class.grade.repair",
+                        detail=f"class={c.id}:{c.name}:{old}->{inferred}"
+                    ))
+            students=db.scalars(select(User).where(User.role=="student").order_by(User.id)).all()
+            for student in students:
+                class_ids=[
+                    int(x) for x in db.scalars(
+                        select(ClassStudent.class_id).join(
+                            SchoolClass,SchoolClass.id==ClassStudent.class_id
+                        ).where(
+                            ClassStudent.student_id==student.id,
+                            SchoolClass.school_id==student.school_id,
+                        )
+                    ).all()
+                ]
+                explicit={named_class_grades.get(cid) for cid in class_ids}
+                explicit.discard(None)
+                if len(explicit)!=1:
+                    continue
+                inferred=next(iter(explicit))
+                if int(student.grade or 0)!=inferred:
+                    old=student.grade
+                    student.grade=inferred
+                    db.add(AuditLog(
+                        school_id=student.school_id,user_id=None,action="student.grade.repair",
+                        detail=f"student={student.id}:{student.name}:{old}->{inferred}"
+                    ))
         db.add(SchemaMigration(version=version,description=description));changed=True
     if changed:db.commit()
 
@@ -5074,7 +5134,12 @@ def tclasses(u:User=Depends(current_user),db:Session=Depends(get_db)):
 
 @app.post("/teacher/classes")
 def addclass(b:ClassCreate,u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"teacher");require_plan_capacity(db,u.school_id,"classes");c=SchoolClass(school_id=u.school_id,name=b.name,grade=b.grade,teacher_id=u.id);db.add(c);db.flush();audit(db,u,"class.create",f"{c.id}:{c.name}");db.commit();db.refresh(c);return {"id":c.id,"name":c.name,"grade":c.grade,"teacherID":c.teacher_id,"studentCount":0}
+    need(u,"teacher");require_plan_capacity(db,u.school_id,"classes")
+    name=(b.name or "").strip() or "新班级"
+    validate_class_grade(name,b.grade)
+    c=SchoolClass(school_id=u.school_id,name=name,grade=b.grade,teacher_id=u.id)
+    db.add(c);db.flush();audit(db,u,"class.create",f"{c.id}:{c.name}");db.commit();db.refresh(c)
+    return {"id":c.id,"name":c.name,"grade":c.grade,"teacherID":c.teacher_id,"studentCount":0}
 
 @app.get("/teacher/classes/{cid}/students")
 def cstudents(cid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
