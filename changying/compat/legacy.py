@@ -242,6 +242,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.followup_profile_rows = followup_service.profile_rows
     implementation.followup_profile_parent_contact_rows = followup_service.profile_parent_contact_rows
     implementation.followup_teacher_search_rows = followup_service.teacher_search_rows
+    implementation.followup_workbench_stale_rows = followup_service.workbench_stale_rows
 
     def legacy_make_token(user, security, remember=False):
         return issue_token(
