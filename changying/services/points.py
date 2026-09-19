@@ -310,6 +310,46 @@ class PointService:
             value = sum(int(row.points or 0) for row in rows)
         return int(value), metric
 
+    def window_series(
+        self,
+        db,
+        *,
+        student_id: int,
+        school_id: int,
+        windows,
+    ) -> list[dict[str, int]]:
+        windows = list(windows)
+        if not windows:
+            return []
+        first_utc = min(start_utc for start_utc, _ in windows)
+        final_utc = max(end_utc for _, end_utc in windows)
+        rows = db.scalars(
+            select(self.PointLedger).where(
+                self.PointLedger.school_id == school_id,
+                self.PointLedger.student_id == student_id,
+                self.PointLedger.created_at >= first_utc,
+                self.PointLedger.created_at < final_utc,
+                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+            ).order_by(self.PointLedger.created_at)
+        ).all()
+
+        result: list[dict[str, int]] = []
+        for start_utc, end_utc in windows:
+            current = [row for row in rows if start_utc <= row.created_at < end_utc]
+            result.append(
+                {
+                    "earned": sum(
+                        int(row.points or 0)
+                        for row in current
+                        if (row.points or 0) > 0 and row.source in ("classroom", "adjustment")
+                    ),
+                    "net": sum(int(row.points or 0) for row in current),
+                    "activity": sum(int(row.points or 0) for row in current if row.category == "activity"),
+                    "discipline": sum(int(row.points or 0) for row in current if row.category == "discipline"),
+                }
+            )
+        return result
+
     def window_summary(self, db, student_id: int, school_id: int, start_utc, end_utc) -> dict[str, int]:
         rows = db.scalars(
             select(self.PointLedger).where(

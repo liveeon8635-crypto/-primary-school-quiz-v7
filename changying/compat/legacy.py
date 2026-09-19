@@ -198,6 +198,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.point_recent_rows = point_service.recent_rows
     implementation.point_student_recent_rows = point_service.student_recent_rows
     implementation.point_summary = point_service.summary
+    implementation.point_window_series = point_service.window_series
     implementation.point_window_summary = point_service.window_summary
 
     def legacy_make_token(user, security, remember=False):
