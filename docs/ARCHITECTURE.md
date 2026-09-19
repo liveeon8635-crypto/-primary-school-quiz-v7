@@ -109,16 +109,17 @@ GitHub Actions 使用 Python 3.14，在分支 push 和 `main` PR 上执行完整
 
 ### 阶段 C1：数据库回归安全网（已完成）
 
-在移动 ORM/Session 之前，当前 main 已建立：
+在真正移动 ORM/Session 之前，当前 main 已建立以下隔离安全网：
 
-- 临时 SQLite 启动/迁移与幂等测试。
-- 关键表存在性与字段契约测试。
-- 多角色（admin/teacher/student/parent）权限集成测试。
-- 题库 → 试卷 → 作业 → 提交最小 CRUD 集成测试。
-- 课堂积分记录 → 读取 → 撤销 CRUD 集成测试。
-- 商业订单 → 收款 → 退款 → 作废 CRUD 集成测试。
+- 临时 SQLite 真实 startup / migration 测试，并验证连续启动幂等。
+- 核心教学、连续档案、积分与迁移表的存在性和关键字段契约测试。
+- admin / teacher / student / parent 多角色权限矩阵集成测试。
+- 题库 → 试卷 → 作业 → 学生提交 → 教师复核的最小教学 CRUD 闭环。
+- 课堂积分记录 → 学生读取 → 撤销补偿流水的最小积分 CRUD 闭环。
+- 商业订单 → 收款 → 退款 → 作废与商业操作日志的隔离 CRUD 闭环。
+- 原有认证生命周期测试继续覆盖登录、首次改密、旧 token 失效与重新登录。
 
-以上测试均使用隔离 SQLite，不连接 Render 生产 PostgreSQL。
+以上测试全部使用临时 SQLite / 测试专用配置，不连接生产 PostgreSQL。阶段 C1 完成后，后续服务层抽离必须保持这些契约继续全绿。
 
 ### 阶段 C2：服务层（进行中）
 
@@ -134,8 +135,8 @@ changying/services/
 ```
 
 第一步从作业读侧开始：`AssignmentService` 接管提交方式、媒体计数和作业有效状态读取，
-由兼容桥注入现有 legacy 全局函数名。既有 FastAPI 路由仍保持原 URL、请求/返回结构和 ORM 表，
-先用现有 C1 集成安全网验证行为一致，再继续迁移写侧与其他 service。
+由兼容桥注入现有 legacy 全局函数名。既有 FastAPI 路由继续保持原 URL、请求/返回结构和 ORM 表，
+先依靠 C1 集成安全网验证行为一致，再继续迁移写侧与其他 service。
 
 ### 阶段 D：API Router
 
