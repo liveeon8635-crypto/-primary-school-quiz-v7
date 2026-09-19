@@ -184,13 +184,13 @@ def _practice_patch_html() -> str:
      (fig.segments||[]).forEach(seg=>{if(['x1','y1','x2','y2'].every(k=>Number.isFinite(+seg[k])))body+='<line x1="'+(m+num(seg.x1)*sx)+'" y1="'+(h-m-num(seg.y1)*sy)+'" x2="'+(m+num(seg.x2)*sx)+'" y2="'+(h-m-num(seg.y2)*sy)+'" stroke="#4b5563" stroke-width="2"/>'});
      (fig.points||[]).forEach(p=>{const px=m+num(p.x)*sx,py=h-m-num(p.y)*sy;body+='<circle cx="'+px+'" cy="'+py+'" r="4" fill="#111827"/><text x="'+(px+7)+'" y="'+(py-7)+'" font-size="12">'+esc(p.label||p.name||'')+'</text>'});
    }else if(type==='geometry'){
-     const shape=String(fig.shape||'rectangle').toLowerCase();
-     if(shape==='triangle')body='<polygon points="65,170 255,170 160,45" fill="none" stroke="#374151" stroke-width="3"/>';
-     else if(shape==='trapezoid')body='<polygon points="85,55 225,55 270,170 45,170" fill="none" stroke="#374151" stroke-width="3"/>';
-     else if(shape==='parallelogram')body='<polygon points="90,55 260,55 225,170 55,170" fill="none" stroke="#374151" stroke-width="3"/>';
-     else if(shape==='composite_rect')body='<path d="M55 45 H265 V170 H145 V110 H55 Z" fill="none" stroke="#374151" stroke-width="3"/>';
-     else body='<rect x="55" y="50" width="210" height="120" fill="none" stroke="#374151" stroke-width="3"/>';
-     const labels=fig.labels||{};let y=198;Object.keys(labels).slice(0,5).forEach(k=>{body+='<text x="'+m+'" y="'+y+'" font-size="12">'+esc(k)+'：'+esc(labels[k])+'</text>';y-=16});
+     const shape=String(fig.shape||'rectangle').toLowerCase(),labels=fig.labels||{};
+     const txt=(key,x,y,anchor='middle')=>{if(labels[key])body+='<text x="'+x+'" y="'+y+'" text-anchor="'+anchor+'" font-size="12" font-weight="600">'+esc(labels[key])+'</text>'};
+     if(shape==='triangle'){body='<polygon points="65,170 255,170 160,45" fill="none" stroke="#374151" stroke-width="3"/>';txt('底',160,190);if(labels['高']){body+='<line x1="160" y1="45" x2="160" y2="170" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 4"/>';txt('高',170,112,'start')}}
+     else if(shape==='trapezoid'){body='<polygon points="85,55 225,55 270,170 45,170" fill="none" stroke="#374151" stroke-width="3"/>';txt('上底',155,45);txt('下底',155,190);if(labels['高']){body+='<line x1="155" y1="55" x2="155" y2="170" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 4"/>';txt('高',165,116,'start')}}
+     else if(shape==='parallelogram'){body='<polygon points="90,55 260,55 225,170 55,170" fill="none" stroke="#374151" stroke-width="3"/>';txt('底',140,190);if(labels['高']){body+='<line x1="90" y1="55" x2="90" y2="170" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 4"/>';txt('高',100,116,'start')}}
+     else if(shape==='composite_rect'){body='<path d="M55 45 H265 V170 H145 V110 H55 Z" fill="none" stroke="#374151" stroke-width="3"/>';let y=198;Object.keys(labels).slice(0,4).forEach(k=>{body+='<text x="'+m+'" y="'+y+'" font-size="11">'+esc(k)+'：'+esc(labels[k])+'</text>';y-=15})}
+     else {body='<rect x="55" y="50" width="210" height="120" fill="none" stroke="#374151" stroke-width="3"/>';txt('长',160,42);txt('宽',276,114,'start')}
    }else if(type==='line_segment'){
      const segs=(fig.segments||[]).length?fig.segments:[{label:'线段',ratio:1}],total=segs.reduce((sum,x)=>sum+Math.max(.1,num(x.ratio,1)),0);let x=m;
      segs.forEach((seg,idx)=>{const ww=(w-2*m)*Math.max(.1,num(seg.ratio,1))/total;body+='<line x1="'+x+'" y1="105" x2="'+(x+ww)+'" y2="105" stroke="#374151" stroke-width="4"/><line x1="'+x+'" y1="96" x2="'+x+'" y2="114" stroke="#374151" stroke-width="2"/><text x="'+(x+ww/2)+'" y="88" text-anchor="middle" font-size="12">'+esc(seg.label||('第'+(idx+1)+'段'))+'</text>';x+=ww});body+='<line x1="'+x+'" y1="96" x2="'+x+'" y2="114" stroke="#374151" stroke-width="2"/>';

@@ -28,3 +28,13 @@ def test_v1_teacher_ai_preview_retries_transient_generation_fetch():
     assert "retrySafe=method==='GET'||url.includes('/reinforcement/generate')" in html
     assert "attempt<(retrySafe?2:1)" in html
     assert "网络连接刚刚中断，请稍后再试" in html
+
+
+def test_v1_geometry_figures_place_dimensions_semantically():
+    student_html = v1_html()
+    teacher_html = patch_v1_student_practice_html(student_html)
+    for html in (student_html, teacher_html):
+        assert "stroke-dasharray=\"5 4\"" in html
+        assert "txt('上底',155,45)" in html
+        assert "txt('下底',155,190)" in html
+        assert "txt('高',165,116,'start')" in html
