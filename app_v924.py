@@ -4713,14 +4713,14 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
 2. 如果反馈中有教材版本、年级和科目，生成题必须保持同一教材版本、年级和科目，不得跨教材混题或超纲。
 3. 不复制原题原数字，要用同知识点但不同数字、情境或问法进行迁移巩固。
 4. 不要泄露学生姓名等身份信息；只使用上面的教学反馈。
-5. 题型允许：single_choice（四选一）、true_false（判断）、fill_blank（填空）、calculation（计算）、short_answer（应用简答，答案必须简短且可自动判分）。当生成 5 题以上时至少使用 3 种题型，且至少包含 1 道非选择题；不要全部都是单选题。
-6. single_choice 必须给4个 options 和 correct_index 0-3；true_false 的 options 固定为["正确","错误"]并给 correct_index 0-1；fill_blank/calculation/short_answer 不给选项，必须给 answer（简洁、可自动判分，可另给 accepted_answers；应用题可把“10”“10棵”等等价形式放入 accepted_answers）。
+5. 题型允许：single_choice（四选一）、true_false（判断）、fill_blank（填空）、calculation（计算）、short_answer（简短作答，答案必须明确且可自动判分）。当生成 5 题以上时至少使用 3 种题型，且至少包含 1 道非选择题；不要全部都是单选题。
+6. single_choice 必须给4个 options 和 correct_index 0-3；true_false 的 options 固定为["正确","错误"]并给 correct_index 0-1；fill_blank/calculation/short_answer 不给选项，必须给 answer（简洁、可自动判分，可另给 accepted_answers）。数学应用题可把“10”“10棵”等等价形式放入 accepted_answers。语文若答案可能有多种合理表述，必须改成 single_choice/true_false，或把所有常见等价答案列入 accepted_answers；不得把开放阅读赏析、作文、长篇主观表达作为自动判分题。
 7. 只有题意确实需要时才提供 figure。figure.type 只允许 coordinate_grid、geometry、line_segment、bar_chart、object_group；不需要图时返回 {{}}。数学图只提供结构参数，不要用图片 URL。
 8. 坐标/位置、平面图形面积、植树/线段关系、统计图、数量比较等适合图示的知识点，应优先给必要图示；纯计算题不要为了装饰强行加图。
 9. 只返回 JSON，不要 Markdown：
 {{"items":[
-  {{"question_type":"single_choice","grade":5,"subject":"数学","textbook":"","semester":"上册","unit":"","knowledge":"","text":"","options":["","","",""],"correct_index":0,"answer":"","accepted_answers":[],"figure":{{}},"explanation":""}},
-  {{"question_type":"fill_blank","grade":5,"subject":"数学","textbook":"","semester":"上册","unit":"","knowledge":"","text":"","options":[],"correct_index":-1,"answer":"14.8","accepted_answers":[],"figure":{{"type":"line_segment","segments":[{{"label":"总数","ratio":3}}]}},"explanation":""}}
+  {{"question_type":"single_choice","grade":5,"subject":"","textbook":"","semester":"上册","unit":"","knowledge":"","text":"","options":["","","",""],"correct_index":0,"answer":"","accepted_answers":[],"figure":{{}},"explanation":""}},
+  {{"question_type":"fill_blank","grade":5,"subject":"","textbook":"","semester":"上册","unit":"","knowledge":"","text":"","options":[],"correct_index":-1,"answer":"示例短答案","accepted_answers":[],"figure":{{}},"explanation":""}}
 ]}}
 10. 答案、图示参数和解析必须准确；图示只能帮助理解，不能泄露答案。'''
     data=_ai_json(_ai_call(db,u,"reinforcement_generate",prompt));items=data.get("items") if isinstance(data,dict) else None
