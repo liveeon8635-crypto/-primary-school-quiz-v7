@@ -21,6 +21,7 @@ _SNIPPET = r'''
   .cy-evidence-manual-list{display:grid;gap:8px;margin-top:12px}
   .cy-evidence-manual-row{border:1px solid #e4e9f2;border-radius:12px;padding:10px 12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
   .cy-evidence-manual-row small{display:block;color:#667085;margin-top:4px}
+  .cy-evidence-history{margin-top:16px;border-top:1px solid #eef1f6;padding-top:14px}.cy-evidence-history summary{cursor:pointer;font-weight:700}.cy-evidence-history-list{display:grid;gap:8px;margin-top:10px}.cy-evidence-history-row{border:1px solid #eef1f6;border-radius:10px;padding:10px 12px}.cy-evidence-history-row small{display:block;color:#667085;margin-top:4px}
   @media(max-width:720px){.cy-evidence-form{grid-template-columns:1fr}.cy-evidence-manual-row{flex-direction:column}}
 </style>
 <script id="changying_v2_evidence_recorder_v1-script">
@@ -49,6 +50,16 @@ _SNIPPET = r'''
     const canRetract=session.role==='admin'||Number(x.actorID)===Number(session.userID);
     return '<div class="cy-evidence-manual-row"><div><b>'+esc(x.note||'教师学习证据')+'</b><small>'+esc(meta)+'</small><small>'+esc(successText(x.success))+(x.context?' · '+esc(x.context):'')+(x.actorName?' · 记录人 '+esc(x.actorName):'')+'</small></div>'+(canRetract?'<button class="btn secondary" type="button" data-retract="'+esc(x.id)+'">撤回记录</button>':'')+'</div>';
   }
+  function historyHtml(x){
+    const when=(x.createdAt||x.occurredAt||'').slice(0,16).replace('T',' ');
+    if(x.eventKind==='retract'){
+      return '<div class="cy-evidence-history-row"><b>撤回记录 #'+esc(x.targetEventID||'')+'</b><span class="tag" style="margin-left:8px">撤回事件</span><small>'+esc(x.note||'未填写撤回原因')+(x.actorName?' · 操作人 '+esc(x.actorName):'')+(when?' · '+esc(when):'')+'</small></div>';
+    }
+    const status=x.effectiveStatus==='retracted'?'已撤回':'当前有效';
+    const meta=[names[x.evidenceType]||x.evidenceType,x.subject||'',x.knowledgeKey||'',when].filter(Boolean).join(' · ');
+    const retractInfo=x.effectiveStatus==='retracted'&&x.retractReason?'<small>撤回原因：'+esc(x.retractReason)+'</small>':'';
+    return '<div class="cy-evidence-history-row"><b>记录：'+esc(names[x.evidenceType]||x.evidenceType||'学习证据')+'</b><span class="tag" style="margin-left:8px">'+esc(status)+'</span><small>'+esc(meta)+'</small><small>'+esc(x.note||'')+(x.actorName?' · 记录人 '+esc(x.actorName):'')+'</small>'+retractInfo+'</div>';
+  }
   async function install(){
     if(location.pathname!='/v1/student')return;
     const params=new URLSearchParams(location.search),sid=params.get('id');if(!sid)return;
@@ -59,15 +70,16 @@ _SNIPPET = r'''
     let session;
     try{session=await api('/session')}catch(_){return}
     if(!['teacher','admin'].includes(session.role))return;
-    let manual;
+    let manual,history={events:[],count:0};
     try{manual=await api('/v2/students/'+encodeURIComponent(sid)+'/learning-evidence/manual')}catch(_){return}
+    try{history=await api('/v2/students/'+encodeURIComponent(sid)+'/learning-evidence/events')}catch(_){}
     const host=document.getElementById('learningEvidence')||document.querySelector('#screen main');
     if(!host||document.getElementById('cy-evidence-recorder'))return;
     const now=new Date();now.setMinutes(now.getMinutes()-now.getTimezoneOffset());
     const box=document.createElement('div');
     box.id='cy-evidence-recorder';
     box.className='card cy-evidence-recorder';
-    box.innerHTML='<div class="section-head"><div><h3>教师学习证据记录</h3><p>手工只记录“独立完成、跨时保持、迁移应用”；学习表现继续由作业/测验自动形成。</p></div><span class="tag">追加式记录</span></div><form id="cyEvidenceForm" class="cy-evidence-form"><label>证据类型<select name="evidenceType" id="cyEvidenceType" required><option value="independent">独立完成</option><option value="retention">跨时保持</option><option value="transfer">迁移应用</option></select></label><label>发生时间<input name="occurredAt" type="datetime-local" required value="'+now.toISOString().slice(0,16)+'"></label><label>学科<input name="subject" maxlength="80" placeholder="如：数学"></label><label>知识点<input name="knowledgeKey" maxlength="160" placeholder="如：异分母分数加法"></label><label>观察结果<select name="success"><option value="">不记录成功/失败</option><option value="true">观察到成功表现</option><option value="false">本次未观察到成功表现</option></select></label><label>情境<input name="context" maxlength="500" placeholder="如：周末课 / 新题型 / 一周后复测"></label><div class="cy-evidence-help" id="cyEvidenceHelp"></div><label class="full">观察记录<textarea name="note" maxlength="1000" required placeholder="描述学生实际完成了什么、是否有提示、材料或情境有什么变化。"></textarea></label><div class="full cy-evidence-actions"><button class="btn primary" type="submit">保存学习证据</button><span id="cyEvidenceStatus" class="muted"></span></div></form><div style="margin-top:18px"><h3>当前有效的教师记录</h3><div id="cyEvidenceManualList" class="cy-evidence-manual-list">'+((manual.records||[]).map(x=>recordHtml(x,session)).join('')||'<div class="empty">尚无教师手工证据。</div>')+'</div></div>';
+    box.innerHTML='<div class="section-head"><div><h3>教师学习证据记录</h3><p>手工只记录“独立完成、跨时保持、迁移应用”；学习表现继续由作业/测验自动形成。</p></div><span class="tag">追加式记录</span></div><form id="cyEvidenceForm" class="cy-evidence-form"><label>证据类型<select name="evidenceType" id="cyEvidenceType" required><option value="independent">独立完成</option><option value="retention">跨时保持</option><option value="transfer">迁移应用</option></select></label><label>发生时间<input name="occurredAt" type="datetime-local" required value="'+now.toISOString().slice(0,16)+'"></label><label>学科<input name="subject" maxlength="80" placeholder="如：数学"></label><label>知识点<input name="knowledgeKey" maxlength="160" placeholder="如：异分母分数加法"></label><label>观察结果<select name="success"><option value="">不记录成功/失败</option><option value="true">观察到成功表现</option><option value="false">本次未观察到成功表现</option></select></label><label>情境<input name="context" maxlength="500" placeholder="如：周末课 / 新题型 / 一周后复测"></label><div class="cy-evidence-help" id="cyEvidenceHelp"></div><label class="full">观察记录<textarea name="note" maxlength="1000" required placeholder="描述学生实际完成了什么、是否有提示、材料或情境有什么变化。"></textarea></label><div class="full cy-evidence-actions"><button class="btn primary" type="submit">保存学习证据</button><span id="cyEvidenceStatus" class="muted"></span></div></form><div style="margin-top:18px"><h3>当前有效的教师记录</h3><div id="cyEvidenceManualList" class="cy-evidence-manual-list">'+((manual.records||[]).map(x=>recordHtml(x,session)).join('')||'<div class="empty">尚无教师手工证据。</div>')+'</div></div><details class="cy-evidence-history"><summary>查看完整记录历史（'+esc(history.count||0)+' 个事件）</summary><div class="notice" style="margin-top:10px">历史只用于追溯记录与撤回；已撤回记录不会重新参与当前学习证据状态。</div><div class="cy-evidence-history-list">'+((history.events||[]).map(historyHtml).join('')||'<div class="empty">暂无历史事件。</div>')+'</div></details>';
     host.appendChild(box);
     const form=box.querySelector('#cyEvidenceForm'),status=box.querySelector('#cyEvidenceStatus'),typeSelect=box.querySelector('#cyEvidenceType'),typeHelp=box.querySelector('#cyEvidenceHelp');
     const updateHelp=()=>{typeHelp.textContent=help[typeSelect.value]||''};typeSelect.addEventListener('change',updateHelp);if(['independent','retention','transfer'].includes(requestedType))typeSelect.value=requestedType;updateHelp();
