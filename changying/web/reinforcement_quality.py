@@ -12,6 +12,8 @@ from functools import wraps
 import re
 from typing import Any
 
+from changying.services.answer_semantics import enrich_generated_item
+
 
 VISUAL_FIGURE_TYPES = {"coordinate_grid", "geometry", "line_segment", "bar_chart", "object_group"}
 
@@ -179,7 +181,7 @@ def install_reinforcement_figure_fallback(implementation: Any) -> None:
                 if not isinstance(raw, dict):
                     patched_items.append(raw)
                     continue
-                item = dict(raw)
+                item = enrich_generated_item(dict(raw))
                 item["figure"] = infer_reinforcement_figure(item)
                 patched_items.append(item)
             payload = dict(result)
