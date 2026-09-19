@@ -113,3 +113,30 @@ class FollowUpService:
                 self.StudentFollowUp.school_id == school_id,
             )
         )
+
+    def parent_contact_rows(
+        self,
+        db,
+        *,
+        school_id: int,
+        student_id: int,
+    ) -> list[Any]:
+        return list(
+            db.scalars(
+                select(self.StudentFollowUpLog)
+                .join(
+                    self.StudentFollowUp,
+                    self.StudentFollowUp.id == self.StudentFollowUpLog.followup_id,
+                )
+                .where(
+                    self.StudentFollowUpLog.school_id == school_id,
+                    self.StudentFollowUpLog.student_id == student_id,
+                    self.StudentFollowUpLog.log_type == "parent_contact",
+                )
+                .order_by(
+                    self.StudentFollowUpLog.created_at.desc(),
+                    self.StudentFollowUpLog.id.desc(),
+                )
+                .limit(50)
+            ).all()
+        )
