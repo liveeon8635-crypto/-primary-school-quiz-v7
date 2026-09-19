@@ -5380,8 +5380,8 @@ def student_homework_media(aid:int,u:User=Depends(current_user),db:Session=Depen
 
 @app.post("/student/assignments/{aid}/media")
 async def upload_homework_media(aid:int,file:UploadFile=File(...),u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"student");a=db.scalar(select(Assignment).where(Assignment.id==aid,Assignment.school_id==u.school_id))
-    if not a or not db.scalar(select(AssignmentRecipient.id).where(AssignmentRecipient.assignment_id==aid,AssignmentRecipient.student_id==u.id,AssignmentRecipient.school_id==u.school_id)):raise HTTPException(403,"无权提交此作业")
+    need(u,"student");a=student_assignment_for(db,u.school_id,u.id,aid)
+    if not a:raise HTTPException(403,"无权提交此作业")
     if assignment_submission_mode(db,a) not in ("media","mixed"):raise HTTPException(400,"此作业不需要照片/视频附件")
     if db.scalar(select(HomeworkMediaSubmit.id).where(HomeworkMediaSubmit.school_id==u.school_id,HomeworkMediaSubmit.assignment_id==aid,HomeworkMediaSubmit.student_id==u.id)):raise HTTPException(409,"照片/视频作业已正式提交，不能继续增删附件")
     count=homework_media_count(db,aid,u.id,u.school_id)
