@@ -128,6 +128,32 @@ def test_class_rows_keep_school_class_and_status_updated_id_order():
     assert [row.id for row in rows] == [3, 6, 2, 1]
 
 
+def test_item_row_keeps_school_class_and_followup_scope():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = FollowUpService(
+        followup_model=TestFollowUp,
+        followup_log_model=TestFollowUpLog,
+    )
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestFollowUp(id=1, school_id=10, student_id=100, class_id=7),
+                TestFollowUp(id=2, school_id=10, student_id=101, class_id=8),
+                TestFollowUp(id=3, school_id=20, student_id=102, class_id=7),
+            ]
+        )
+        db.commit()
+        row = service.item_row(db, school_id=10, class_id=7, followup_id=1)
+        wrong_class = service.item_row(db, school_id=10, class_id=7, followup_id=2)
+        wrong_school = service.item_row(db, school_id=10, class_id=7, followup_id=3)
+
+    assert row is not None and row.id == 1
+    assert wrong_class is None
+    assert wrong_school is None
+
+
 def test_followup_service_is_installed_into_legacy_runtime():
     import app_v924 as legacy
     from app import app  # noqa: F401
@@ -139,3 +165,4 @@ def test_followup_service_is_installed_into_legacy_runtime():
     assert legacy.followup_student_log_history_rows.__self__ is service
     assert legacy.followup_item_log_rows.__self__ is service
     assert legacy.followup_class_rows.__self__ is service
+    assert legacy.followup_item_row.__self__ is service
