@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import create_engine, String, Integer, ForeignKey, Text, DateTime, Boolean, LargeBinary, UniqueConstraint, select, func, inspect as sa_inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
 from cryptography.fernet import Fernet, InvalidToken
+from changying.services.assignments import teacher_assignment_rows
 
 # ---------------- Database ----------------
 BASE = Path(__file__).resolve().parent
@@ -5199,7 +5200,15 @@ def addassignment(b:AssignmentCreate,u:User=Depends(current_user),db:Session=Dep
 
 @app.get("/teacher/assignments")
 def tassign(u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"teacher");rows=db.scalars(select(Assignment).join(SchoolClass,Assignment.class_id==SchoolClass.id).where(Assignment.school_id==u.school_id,SchoolClass.teacher_id==u.id).order_by(Assignment.id.desc())).all();return [aj(db,a) for a in rows]
+    need(u,"teacher")
+    rows=teacher_assignment_rows(
+        db,
+        assignment_model=Assignment,
+        class_model=SchoolClass,
+        school_id=u.school_id,
+        teacher_id=u.id,
+    )
+    return [aj(db,a) for a in rows]
 
 @app.get("/teacher/assignments/{aid}/submissions")
 def tsubs(aid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
