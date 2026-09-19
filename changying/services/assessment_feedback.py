@@ -19,6 +19,10 @@ AUTO_ASSESSMENT_SOURCES = {
     "student_comprehensive_test": "comprehensive",
     "student_module_practice": "module",
 }
+LEARNING_FEEDBACK_SOURCES = {
+    **AUTO_ASSESSMENT_SOURCES,
+    "ai_reinforcement": "reinforcement",
+}
 
 
 def _json_list(raw: Any) -> list[Any]:
@@ -61,11 +65,12 @@ def archive_objective_assessment_wrong_answers(
     assignment_id: int,
     answers: list[dict[str, Any]],
 ) -> list[Any]:
-    """Persist objectively wrong answers from auto tests as reinforcement evidence.
+    """Persist objectively wrong answers from supported learning-feedback quizzes.
 
-    Only assignments created by the V1 comprehensive/module test workflow are
-    eligible.  The helper is idempotent per assignment/question and never
-    touches teacher-confirmed wrong-question records from other workflows.
+    Comprehensive tests, module practice and teacher-approved AI reinforcement
+    all feed the same continuous student record. The helper is idempotent per
+    assignment/question and never touches teacher-confirmed wrong-question
+    records from other workflows.
     """
 
     recipient = db.scalar(
@@ -75,7 +80,7 @@ def archive_objective_assessment_wrong_answers(
             AssignmentRecipient.student_id == student_id,
         )
     )
-    if not recipient or recipient.source not in AUTO_ASSESSMENT_SOURCES:
+    if not recipient or recipient.source not in LEARNING_FEEDBACK_SOURCES:
         return []
 
     wrong_answers = [
@@ -171,17 +176,17 @@ def student_assessment_context(
     limit: int = 6,
     textbook_filter: str | None = None,
 ) -> dict[str, Any]:
-    """Build recent comprehensive/module-test evidence for AI reinforcement.
+    """Build recent test/practice/reinforcement evidence for AI reinforcement.
 
-    When a textbook filter is set, only assessments from that exact textbook
-    line are eligible. This prevents historical tests from another publisher
-    from contaminating current targeted-practice feedback.
+    When a textbook filter is set, only feedback from that exact textbook line
+    is eligible. This prevents historical work from another publisher from
+    contaminating current targeted-practice feedback.
     """
 
     query = select(AssignmentRecipient).where(
         AssignmentRecipient.school_id == school_id,
         AssignmentRecipient.student_id == student_id,
-        AssignmentRecipient.source.in_(tuple(AUTO_ASSESSMENT_SOURCES)),
+        AssignmentRecipient.source.in_(tuple(LEARNING_FEEDBACK_SOURCES)),
     )
     if assignment_id:
         query = query.where(AssignmentRecipient.assignment_id == assignment_id)
@@ -304,7 +309,7 @@ def student_assessment_context(
             {
                 "assignmentID": int(assignment.id),
                 "title": str(assignment.title or ""),
-                "kind": AUTO_ASSESSMENT_SOURCES.get(recipient.source, "assessment"),
+                "kind": LEARNING_FEEDBACK_SOURCES.get(recipient.source, "assessment"),
                 "source": str(recipient.source or ""),
                 "grade": int(paper.grade or 0),
                 "subject": str(paper.subject or ""),
@@ -377,7 +382,7 @@ def assessment_context_notice(context: dict[str, Any]) -> str:
         for item in weak
     )
     primary = context.get("primary") or {}
-    prefix = f"已关联最近 {count} 次综合/模块测试反馈"
+    prefix = f"已关联最近 {count} 次测试/练习反馈"
     if primary.get("textbook"):
         prefix += f"（{primary['textbook']}）"
     return prefix + (f"；优先关注：{focus}" if focus else "")
@@ -385,6 +390,7 @@ def assessment_context_notice(context: dict[str, Any]) -> str:
 
 __all__ = [
     "AUTO_ASSESSMENT_SOURCES",
+    "LEARNING_FEEDBACK_SOURCES",
     "archive_objective_assessment_wrong_answers",
     "assessment_context_notice",
     "student_assessment_context",
