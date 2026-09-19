@@ -14,7 +14,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from changying.services.builtin_question_bank_chinese import grade5_chinese_specs
+from changying.services.builtin_question_bank_chinese import CHINESE_G5_TEXTBOOK, grade5_chinese_specs
 
 PEP_CURRENT_TEXTBOOK = "人教版"
 PEP_CURRENT_TEXTBOOK_LABEL = "人教版（当前最新版）"
@@ -419,8 +419,13 @@ def built_in_textbooks(grade: int, subject: str) -> list[str]:
     this selector.
     """
 
-    if int(grade) == 5 and (subject or "").strip() in {"数学", "语文"}:
+    if int(grade) != 5:
+        return []
+    selected_subject = (subject or "").strip()
+    if selected_subject == "数学":
         return [PEP_CURRENT_TEXTBOOK]
+    if selected_subject == "语文":
+        return [CHINESE_G5_TEXTBOOK]
     return []
 
 
@@ -433,11 +438,13 @@ def built_in_question_specs(
     selected_subject = (subject or "").strip()
     if int(grade) != 5:
         return []
-    if requested_textbook and requested_textbook != PEP_CURRENT_TEXTBOOK:
-        return []
     if selected_subject == "数学":
+        if requested_textbook and requested_textbook != PEP_CURRENT_TEXTBOOK:
+            return []
         return _grade5_math_specs()
     if selected_subject == "语文":
+        if requested_textbook and requested_textbook != CHINESE_G5_TEXTBOOK:
+            return []
         return grade5_chinese_specs()
     return []
 
