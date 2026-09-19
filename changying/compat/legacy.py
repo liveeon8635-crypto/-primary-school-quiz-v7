@@ -180,9 +180,13 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     point_service = PointService(
         point_ledger_model=implementation.PointLedger,
         school_class_model=implementation.SchoolClass,
+        user_model=implementation.User,
+        point_rule_model=implementation.PointRule,
+        school_local_iso_fn=school_local_iso,
     )
     implementation.point_service = point_service
     implementation.point_balance = point_service.balance
+    implementation.point_ledger_json = point_service.ledger_json
     implementation.point_metric_value = point_service.metric_value
     implementation.point_recent_rows = point_service.recent_rows
     implementation.point_summary = point_service.summary

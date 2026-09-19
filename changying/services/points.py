@@ -10,9 +10,20 @@ from sqlalchemy import func, select
 class PointService:
     """Read-side point aggregation with injected legacy ORM models."""
 
-    def __init__(self, *, point_ledger_model: Any, school_class_model: Any | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        point_ledger_model: Any,
+        school_class_model: Any | None = None,
+        user_model: Any | None = None,
+        point_rule_model: Any | None = None,
+        school_local_iso_fn: Any | None = None,
+    ) -> None:
         self.PointLedger = point_ledger_model
         self.SchoolClass = school_class_model
+        self.User = user_model
+        self.PointRule = point_rule_model
+        self.school_local_iso = school_local_iso_fn
 
     def balance(self, db, student_id: int, school_id: int) -> int:
         return int(
@@ -24,6 +35,29 @@ class PointService:
             )
             or 0
         )
+
+    def ledger_json(self, db, row) -> dict[str, Any]:
+        if self.User is None or self.PointRule is None or self.school_local_iso is None:
+            raise RuntimeError("user_model, point_rule_model and school_local_iso_fn are required for ledger serialization")
+        student = db.get(self.User, row.student_id)
+        actor = db.get(self.User, row.actor_id) if row.actor_id else None
+        rule = db.get(self.PointRule, row.rule_id) if row.rule_id else None
+        return {
+            "id": row.id,
+            "studentID": row.student_id,
+            "studentName": student.name if student else "",
+            "classID": row.class_id,
+            "actorName": actor.name if actor else "系统",
+            "ruleName": rule.name if rule else "",
+            "category": row.category,
+            "points": row.points,
+            "reason": row.reason,
+            "note": row.note,
+            "source": row.source,
+            "relatedID": row.related_id,
+            "reversed": bool(row.reversed),
+            "createdAt": self.school_local_iso(row.created_at),
+        }
 
     def recent_rows(
         self,

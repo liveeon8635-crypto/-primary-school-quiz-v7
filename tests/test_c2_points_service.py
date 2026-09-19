@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, create_engine
+from sqlalchemy import Boolean, DateTime, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 import app_v924 as legacy
@@ -22,6 +22,20 @@ class TestSchoolClass(Base):
     teacher_id: Mapped[int] = mapped_column(Integer)
 
 
+class TestUser(Base):
+    __tablename__ = "c2_test_point_users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+
+
+class TestPointRule(Base):
+    __tablename__ = "c2_test_point_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+
+
 class TestPointLedger(Base):
     __tablename__ = "c2_test_point_ledger"
 
@@ -32,7 +46,91 @@ class TestPointLedger(Base):
     category: Mapped[str] = mapped_column(String(40))
     points: Mapped[int] = mapped_column(Integer)
     source: Mapped[str] = mapped_column(String(40))
+    actor_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rule_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reason: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    related_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reversed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+def test_ledger_json_preserves_legacy_names_fallbacks_and_shape():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PointService(
+        point_ledger_model=TestPointLedger,
+        user_model=TestUser,
+        point_rule_model=TestPointRule,
+        school_local_iso_fn=lambda value: f"local:{value.isoformat()}" if value else None,
+    )
+
+    created_at = datetime(2026, 9, 19, 7, 30, 0)
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestUser(id=100, name="学生甲"),
+                TestUser(id=200, name="王老师"),
+                TestPointRule(id=300, name="主动回答"),
+                TestPointLedger(
+                    id=1,
+                    school_id=10,
+                    student_id=100,
+                    class_id=20,
+                    actor_id=200,
+                    rule_id=300,
+                    category="activity",
+                    points=2,
+                    reason="课堂表现",
+                    note="回答完整",
+                    source="classroom",
+                    related_id=999,
+                    reversed=True,
+                    created_at=created_at,
+                ),
+                TestPointLedger(
+                    id=2,
+                    school_id=10,
+                    student_id=100,
+                    class_id=20,
+                    actor_id=None,
+                    rule_id=None,
+                    category="adjustment",
+                    points=1,
+                    reason="补录",
+                    note="",
+                    source="adjustment",
+                    related_id=None,
+                    reversed=False,
+                    created_at=created_at,
+                ),
+            ]
+        )
+        db.commit()
+
+        first = service.ledger_json(db, db.get(TestPointLedger, 1))
+        second = service.ledger_json(db, db.get(TestPointLedger, 2))
+
+    assert first == {
+        "id": 1,
+        "studentID": 100,
+        "studentName": "学生甲",
+        "classID": 20,
+        "actorName": "王老师",
+        "ruleName": "主动回答",
+        "category": "activity",
+        "points": 2,
+        "reason": "课堂表现",
+        "note": "回答完整",
+        "source": "classroom",
+        "relatedID": 999,
+        "reversed": True,
+        "createdAt": "local:2026-09-19T07:30:00",
+    }
+    assert second["actorName"] == "系统"
+    assert second["ruleName"] == ""
+    assert second["relatedID"] is None
+    assert second["reversed"] is False
 
 
 def test_recent_rows_preserve_source_school_teacher_class_and_order_contract():
@@ -190,6 +288,7 @@ def test_point_summary_service_is_installed_into_legacy_runtime():
 
     assert isinstance(service, PointService)
     assert legacy.point_balance.__self__ is service
+    assert legacy.point_ledger_json.__self__ is service
     assert legacy.point_metric_value.__self__ is service
     assert legacy.point_recent_rows.__self__ is service
     assert legacy.point_summary.__self__ is service
