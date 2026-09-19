@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Integer, String, create_engine
+from sqlalchemy import Boolean, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 import app_v924 as legacy
@@ -12,6 +12,17 @@ class Base(DeclarativeBase):
     pass
 
 
+class TestTeachingLesson(Base):
+    __tablename__ = "c2_test_teaching_lessons"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    program_id: Mapped[int] = mapped_column(Integer)
+    school_id: Mapped[int] = mapped_column(Integer)
+    subject: Mapped[str] = mapped_column(String(20))
+    lesson_no: Mapped[int] = mapped_column(Integer)
+    published: Mapped[bool] = mapped_column(Boolean)
+
+
 class TestTeachingAdaptiveSession(Base):
     __tablename__ = "c2_test_teaching_adaptive_sessions"
 
@@ -21,6 +32,37 @@ class TestTeachingAdaptiveSession(Base):
     student_id: Mapped[int] = mapped_column(Integer)
     stage: Mapped[str] = mapped_column(String(20))
     subject: Mapped[str] = mapped_column(String(20))
+
+
+def test_program_lessons_preserves_scope_filters_and_subject_lesson_order():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = TeachingService(
+        adaptive_session_model=TestTeachingAdaptiveSession,
+        lesson_model=TestTeachingLesson,
+    )
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestTeachingLesson(id=1, program_id=10, school_id=100, subject="数学", lesson_no=2, published=True),
+                TestTeachingLesson(id=2, program_id=10, school_id=100, subject="数学", lesson_no=1, published=False),
+                TestTeachingLesson(id=3, program_id=10, school_id=100, subject="语文", lesson_no=1, published=True),
+                TestTeachingLesson(id=4, program_id=10, school_id=200, subject="数学", lesson_no=0, published=True),
+                TestTeachingLesson(id=5, program_id=11, school_id=100, subject="数学", lesson_no=1, published=True),
+            ]
+        )
+        db.commit()
+
+        teacher_rows = service.program_lessons(
+            db, program_id=10, school_id=100, subject="数学"
+        )
+        published_rows = service.program_lessons(
+            db, program_id=10, school_id=100, published_only=True
+        )
+
+    assert [row.id for row in teacher_rows] == [2, 1]
+    assert [row.id for row in published_rows] == [1, 3]
 
 
 def test_latest_session_preserves_lesson_scope_and_latest_id_order():
@@ -74,3 +116,4 @@ def test_teaching_service_is_installed_into_legacy_runtime():
 
     assert isinstance(service, TeachingService)
     assert legacy.latest_teaching_session.__self__ is service
+    assert legacy.teaching_program_lessons.__self__ is service

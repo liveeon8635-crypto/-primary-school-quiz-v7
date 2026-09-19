@@ -1809,7 +1809,7 @@ def teaching_question_counts(db,p):
     return out
 
 def teaching_program_json(db,p):
-    lessons=db.scalars(select(TeachingLesson).where(TeachingLesson.program_id==p.id).order_by(TeachingLesson.subject,TeachingLesson.lesson_no)).all()
+    lessons=teaching_program_lessons(db,program_id=p.id)
     return {"id":p.id,"title":p.title,"academicYear":p.academic_year,"term":p.term,"grade":p.grade,"semester":p.semester,
             "chineseTextbook":p.chinese_textbook,"mathTextbook":p.math_textbook,"passThreshold":p.pass_threshold,"active":bool(p.active),
             "lessonCounts":{"语文":sum(1 for x in lessons if x.subject=="语文"),"数学":sum(1 for x in lessons if x.subject=="数学")},
@@ -5472,9 +5472,10 @@ def update_teaching_program(b:TeachingProgramUpdate,u:User=Depends(current_user)
 def get_teaching_lessons(subject:str|None=None,u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"admin","teacher");p=teaching_program_for(db,u.school_id)
     if not p:return []
-    q=select(TeachingLesson).where(TeachingLesson.program_id==p.id,TeachingLesson.school_id==u.school_id)
-    if subject:q=q.where(TeachingLesson.subject==subject)
-    return [teaching_lesson_json(x,True) for x in db.scalars(q.order_by(TeachingLesson.subject,TeachingLesson.lesson_no)).all()]
+    rows=teaching_program_lessons(
+        db,program_id=p.id,school_id=u.school_id,subject=subject
+    )
+    return [teaching_lesson_json(x,True) for x in rows]
 
 @app.get("/teaching/lessons/{lid}")
 def get_teaching_lesson(lid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -5649,7 +5650,7 @@ def delete_teaching_resource(rid:int,u:User=Depends(current_user),db:Session=Dep
 def student_teaching_overview(u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"student");p=teaching_program_for(db,u.school_id)
     if not p:raise HTTPException(404,"教学方案不存在")
-    lessons=db.scalars(select(TeachingLesson).where(TeachingLesson.program_id==p.id,TeachingLesson.published==True).order_by(TeachingLesson.subject,TeachingLesson.lesson_no)).all();items=[]
+    lessons=teaching_program_lessons(db,program_id=p.id,published_only=True);items=[]
     for l in lessons:
         ses=latest_teaching_session(db,u.id,p.id,l.id,"lesson",l.subject)
         items.append({**teaching_lesson_json(l,False),"studyStatus":ses.status if ses else "not_started","bestLevel":(ses.final_level or ses.current_level) if ses else None,"score":ses.final_score if ses else None})
@@ -5735,7 +5736,7 @@ def parent_child_teaching(sid:int,u:User=Depends(current_user),db:Session=Depend
     if not link:raise HTTPException(403,"未绑定该学生")
     stu=db.scalar(select(User).where(User.id==sid,User.school_id==u.school_id,User.role=="student"));p=teaching_program_for(db,u.school_id)
     if not stu or not p:raise HTTPException(404,"学生或教学方案不存在")
-    lessons=db.scalars(select(TeachingLesson).where(TeachingLesson.program_id==p.id,TeachingLesson.published==True).order_by(TeachingLesson.subject,TeachingLesson.lesson_no)).all();items=[]
+    lessons=teaching_program_lessons(db,program_id=p.id,published_only=True);items=[]
     for l in lessons:
         ses=latest_teaching_session(db,sid,p.id,l.id,"lesson",l.subject)
         essay=db.scalar(select(TeachingEssay).where(TeachingEssay.lesson_id==l.id,TeachingEssay.student_id==sid)) if l.subject=="语文" else None

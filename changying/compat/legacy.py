@@ -182,9 +182,11 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
 
     teaching_service = TeachingService(
         adaptive_session_model=implementation.TeachingAdaptiveSession,
+        lesson_model=implementation.TeachingLesson,
     )
     implementation.teaching_service = teaching_service
     implementation.latest_teaching_session = teaching_service.latest_session
+    implementation.teaching_program_lessons = teaching_service.program_lessons
 
     point_service = PointService(
         point_ledger_model=implementation.PointLedger,

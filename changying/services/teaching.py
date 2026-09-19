@@ -10,8 +10,45 @@ from sqlalchemy import select
 class TeachingService:
     """Read-side teaching queries with injected legacy ORM models."""
 
-    def __init__(self, *, adaptive_session_model: Any) -> None:
+    def __init__(
+        self,
+        *,
+        adaptive_session_model: Any,
+        lesson_model: Any | None = None,
+    ) -> None:
         self.TeachingAdaptiveSession = adaptive_session_model
+        self.TeachingLesson = lesson_model
+
+    def program_lessons(
+        self,
+        db,
+        *,
+        program_id: int,
+        school_id: int | None = None,
+        subject: str | None = None,
+        published_only: bool = False,
+    ) -> list[Any]:
+        if self.TeachingLesson is None:
+            raise RuntimeError("TeachingLesson model is not configured")
+
+        statement = select(self.TeachingLesson).where(
+            self.TeachingLesson.program_id == program_id,
+        )
+        if school_id is not None:
+            statement = statement.where(self.TeachingLesson.school_id == school_id)
+        if subject:
+            statement = statement.where(self.TeachingLesson.subject == subject)
+        if published_only:
+            statement = statement.where(self.TeachingLesson.published == True)
+
+        return list(
+            db.scalars(
+                statement.order_by(
+                    self.TeachingLesson.subject,
+                    self.TeachingLesson.lesson_no,
+                )
+            ).all()
+        )
 
     def latest_session(
         self,
