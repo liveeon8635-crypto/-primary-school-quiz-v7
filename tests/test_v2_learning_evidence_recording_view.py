@@ -84,3 +84,26 @@ def test_production_v1_contains_v2_teacher_recorder():
     assert V2_EVIDENCE_RECORDER_MARKER in html
     assert "教师学习证据记录" in html
     assert "/v2/students/" in html
+
+
+def test_v21_mobile_quick_entry_and_evidence_guidance():
+    html = patch_v2_learning_evidence_recorder(v1_html())
+
+    assert "记录学习证据" in html
+    assert "cyEvidenceJump" in html
+    assert "scrollIntoView" in html
+    assert "textarea[name=\"note\"]" in html
+    assert "cyEvidenceHelp" in html
+    assert "独立完成：没有直接提示" in html
+    assert "跨时保持：与首次学习有时间间隔后" in html
+    assert "迁移应用：材料、题型或情境发生变化后" in html
+
+
+def test_v21_quick_entry_does_not_add_new_write_endpoints():
+    html = patch_v2_learning_evidence_recorder(v1_html())
+    marker = f'<script id="{V2_EVIDENCE_RECORDER_MARKER}-script">'
+    fragment = html[html.index(marker):html.index("</script>", html.index(marker))]
+
+    assert fragment.count("method:'POST'") == 2
+    assert "/v2/students/" in fragment
+    assert "/retract" in fragment
