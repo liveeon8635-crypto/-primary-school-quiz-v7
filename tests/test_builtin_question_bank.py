@@ -52,9 +52,9 @@ def test_generated_questions_have_valid_unique_multiple_choice_payloads():
         keys.add(key)
 
 
-def test_unsupported_pack_does_not_invent_other_subjects_or_grades():
+def test_unsupported_pack_does_not_invent_other_grades():
     assert built_in_question_specs(4, "数学") == []
-    assert built_in_question_specs(5, "语文") == []
+    assert built_in_question_specs(4, "语文") == []
     assert built_in_subjects(4) == []
 
 
@@ -63,4 +63,27 @@ def test_grade5_math_pack_uses_current_pep_textbook_only():
     assert len(built_in_question_specs(5, "数学", "人教版")) >= 180
     for other_publisher in ("北师大版", "苏教版", "冀教版", "青岛版", "西师大版"):
         assert built_in_question_specs(5, "数学", other_publisher) == []
-    assert built_in_textbooks(5, "语文") == []
+    assert built_in_textbooks(5, "语文") == ["统编版（人民教育出版社）"]
+
+
+def test_grade5_chinese_pack_covers_all_eight_units_with_original_objective_items():
+    specs = built_in_question_specs(5, "语文", "统编版（人民教育出版社）")
+    assert "语文" in built_in_subjects(5)
+    assert len(specs) >= 64
+    assert {row["subject"] for row in specs} == {"语文"}
+    assert {row["textbook"] for row in specs} == {"统编版（人民教育出版社）"}
+    units = {row["unit"].split(" · ", 1)[0] for row in specs}
+    assert units == {"第一单元", "第二单元", "第三单元", "第四单元", "第五单元", "第六单元", "第七单元", "第八单元"}
+    knowledge = {row["knowledge"] for row in specs}
+    assert "提高阅读速度" in knowledge
+    assert "创造性复述民间故事" in knowledge
+    assert "说明方法与说明性文章" in knowledge
+    assert "静态描写与动态描写" in knowledge
+    for row in specs:
+        assert len(row["options"]) == 4
+        assert len(set(row["options"])) == 4
+        assert 0 <= row["correct_index"] < 4
+
+
+def test_grade5_chinese_pack_rejects_other_publishers():
+    assert built_in_question_specs(5, "语文", "北师大版") == []
