@@ -145,7 +145,7 @@ def archive_objective_assessment_wrong_answers(
             continue
         qtype = _question_type(question)
         options = _json_list(question.options_json)
-        if qtype in ("fill_blank", "calculation"):
+        if qtype in ("fill_blank", "calculation", "short_answer"):
             wrong_text = str(answer.get("text_answer") or "").strip() or "未答"
             meta = _answer_meta(question)
             correct_text = meta["answer"]
