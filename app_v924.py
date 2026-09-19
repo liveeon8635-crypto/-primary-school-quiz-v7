@@ -4981,9 +4981,9 @@ def global_search(q:str="",limit:int=24,u:User=Depends(current_user),db:Session=
                     c=class_map.get(a.class_id)
                     add("assignment",a.title,f"{c.name if c else ''} · 截止 {a.due_date}",assignmentID=a.id,classID=a.class_id,target="papers")
 
-            followups=db.scalars(select(StudentFollowUp).where(
-                StudentFollowUp.school_id==u.school_id,StudentFollowUp.class_id.in_(cids)
-            ).order_by(StudentFollowUp.updated_at.desc(),StudentFollowUp.id.desc())).all()
+            followups=followup_teacher_search_rows(
+                db,school_id=u.school_id,class_ids=cids
+            )
             student_ids=list({f.student_id for f in followups})
             student_names={x.id:x.name for x in db.scalars(select(User).where(
                 User.school_id==u.school_id,User.id.in_(student_ids)
