@@ -259,7 +259,7 @@ async function openAutoPractice(studentID,studentName,defaultGrade){
 }
 """
 
-_FUNCTION_ANCHOR = "async function studentPage(){"
+_FUNCTION_ANCHOR = "    async function studentPage(){"
 _BIND_ANCHOR = (
     "screen.innerHTML=shell(content,'students');bindNav();"
     "document.getElementById('transitionLink').onclick="
