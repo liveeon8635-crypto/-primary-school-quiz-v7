@@ -165,6 +165,31 @@ class PointService:
             "inherited": True,
         }
 
+    def school_period_summary(
+        self,
+        db,
+        *,
+        school_id: int,
+        cutoff,
+    ) -> dict[str, int]:
+        rows = db.scalars(
+            select(self.PointLedger).where(
+                self.PointLedger.school_id == school_id,
+                self.PointLedger.created_at >= cutoff,
+                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+            )
+        ).all()
+
+        return {
+            "earned": sum(
+                int(row.points or 0)
+                for row in rows
+                if (row.points or 0) > 0 and row.source in ("classroom", "adjustment")
+            ),
+            "activity": sum(int(row.points or 0) for row in rows if row.category == "activity"),
+            "discipline": sum(int(row.points or 0) for row in rows if row.category == "discipline"),
+        }
+
     def period_summary(
         self,
         db,
