@@ -309,3 +309,27 @@ class FollowUpService:
                 .limit(limit)
             ).all()
         )
+
+
+    def teacher_search_rows(
+        self,
+        db,
+        *,
+        school_id: int,
+        class_ids: list[int],
+    ) -> list[Any]:
+        if not class_ids:
+            return []
+        return list(
+            db.scalars(
+                select(self.StudentFollowUp)
+                .where(
+                    self.StudentFollowUp.school_id == school_id,
+                    self.StudentFollowUp.class_id.in_(class_ids),
+                )
+                .order_by(
+                    self.StudentFollowUp.updated_at.desc(),
+                    self.StudentFollowUp.id.desc(),
+                )
+            ).all()
+        )
