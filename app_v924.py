@@ -2409,9 +2409,8 @@ def class_followup_dashboard_data(db,c:SchoolClass,school_id:int):
 
 def student_growth_timeline_data(db,student_id:int,school_id:int,class_id:int|None=None,limit:int=80):
     events=[]
-    q=select(PointLedger).where(PointLedger.school_id==school_id,PointLedger.student_id==student_id)
-    if class_id:q=q.where(PointLedger.class_id==class_id)
-    for x in db.scalars(q.order_by(PointLedger.created_at.desc()).limit(30)).all():
+    point_rows=point_student_timeline_rows(db,student_id=student_id,school_id=school_id,class_id=class_id,limit=30)
+    for x in point_rows:
         events.append({"type":"point","icon":"⭐" if int(x.points or 0)>=0 else "📝","title":x.reason or "课堂积分",
                        "detail":f"{'+' if int(x.points or 0)>0 else ''}{int(x.points or 0)} 分"+(f" · {x.note}" if x.note else ""),
                        "time":school_local_iso(x.created_at),"ts":x.created_at})
