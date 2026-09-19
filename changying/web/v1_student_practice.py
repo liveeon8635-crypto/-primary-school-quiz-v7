@@ -406,7 +406,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
         if textbook not in allowed_textbooks:
             raise HTTPException(
                 400,
-                "当前自动测试按科目使用已核定的人民教育出版社教材体系，不支持混用其他出版社教材",
+                "当前自动测试按科目使用已核定教材（数学：人教版；语文：统编版〔人民教育出版社〕），不支持混用其他出版社教材",
             )
         kind = (body.kind or "comprehensive").strip().lower()
         if kind not in {"comprehensive", "module"}:
