@@ -409,6 +409,33 @@ def test_profile_parent_contact_rows_keep_scope_order_and_limit():
     assert empty == []
 
 
+
+def test_teacher_search_rows_keep_school_class_scope_and_updated_id_order():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = FollowUpService(
+        followup_model=TestFollowUp,
+        followup_log_model=TestFollowUpLog,
+    )
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestFollowUp(id=1, school_id=10, student_id=100, class_id=7, updated_at=10),
+                TestFollowUp(id=2, school_id=10, student_id=101, class_id=8, updated_at=20),
+                TestFollowUp(id=3, school_id=10, student_id=102, class_id=9, updated_at=30),
+                TestFollowUp(id=4, school_id=20, student_id=103, class_id=7, updated_at=40),
+                TestFollowUp(id=5, school_id=10, student_id=104, class_id=7, updated_at=20),
+            ]
+        )
+        db.commit()
+        rows = service.teacher_search_rows(db, school_id=10, class_ids=[7, 8])
+        empty = service.teacher_search_rows(db, school_id=10, class_ids=[])
+
+    assert [row.id for row in rows] == [5, 2, 1]
+    assert empty == []
+
+
 def test_followup_service_is_installed_into_legacy_runtime():
     import app_v924 as legacy
     from app import app  # noqa: F401
@@ -429,3 +456,4 @@ def test_followup_service_is_installed_into_legacy_runtime():
     assert legacy.followup_class_parent_contact_count.__self__ is service
     assert legacy.followup_profile_rows.__self__ is service
     assert legacy.followup_profile_parent_contact_rows.__self__ is service
+    assert legacy.followup_teacher_search_rows.__self__ is service
