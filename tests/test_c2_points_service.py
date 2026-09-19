@@ -273,6 +273,28 @@ def test_point_rule_serializers_preserve_school_class_and_inherited_contracts():
     }
 
 
+def test_school_history_rows_preserve_school_all_sources_and_descending_order():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PointService(point_ledger_model=TestPointLedger)
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestPointLedger(id=1, school_id=10, student_id=100, category="activity", points=2, source="classroom"),
+                TestPointLedger(id=3, school_id=10, student_id=101, category="reward", points=5, source="refund"),
+                TestPointLedger(id=2, school_id=10, student_id=100, category="reward", points=-5, source="redemption"),
+                TestPointLedger(id=4, school_id=20, student_id=100, category="activity", points=9, source="classroom"),
+            ]
+        )
+        db.commit()
+
+        rows = service.school_history_rows(db, school_id=10)
+
+    assert [row.id for row in rows] == [3, 2, 1]
+    assert [row.source for row in rows] == ["refund", "redemption", "classroom"]
+
+
 def test_student_history_rows_preserve_school_student_all_sources_and_ascending_order():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -632,6 +654,7 @@ def test_point_summary_service_is_installed_into_legacy_runtime():
     assert legacy.class_point_rule_json.__self__ is service
     assert legacy.inherited_point_rule_json.__self__ is service
     assert legacy.point_recent_rows.__self__ is service
+    assert legacy.point_school_history_rows.__self__ is service
     assert legacy.point_student_history_rows.__self__ is service
     assert legacy.point_student_recent_rows.__self__ is service
     assert legacy.point_summary.__self__ is service
