@@ -72,6 +72,7 @@ from changying.web.v1_transition_snapshot import install_v1_transition_snapshot_
 from changying.web.v1_transition_facts_view import install_v1_transition_facts_view_patch
 from changying.web.v27_stage_evidence_comparison import install_v27_stage_evidence_routes
 from changying.web.v27_stage_evidence_view import install_v27_stage_evidence_view_patch
+from changying.web.v28_real_workspace_cleanup import install_v28_real_workspace_cleanup_patch
 from changying.web.v1_learning_evidence_view import install_v1_learning_evidence_view_patch
 from changying.web.v1_learning_evidence_access import install_v1_learning_evidence_access_patch, install_v1_learning_evidence_access_routes
 from changying.web.v1_mastery_evidence import install_v1_mastery_evidence_patch
@@ -204,6 +205,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_transition_snapshot_routes(implementation)
     install_v27_stage_evidence_view_patch()
     install_v27_stage_evidence_routes(implementation)
+    install_v28_real_workspace_cleanup_patch()
     install_v1_parent_link_history_profile(implementation)
     install_v1_learning_evidence_view_patch()
     install_v1_learning_evidence_access_patch()
