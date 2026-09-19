@@ -304,7 +304,7 @@ def student_assessment_context(
             if not is_correct and len(wrong_items) < 12:
                 qtype = _question_type(question)
                 options = _json_list(question.options_json)
-                if qtype in ("fill_blank", "calculation"):
+                if qtype in ("fill_blank", "calculation", "short_answer"):
                     wrong_value = str(item.get("text_answer") or "").strip() or "未答"
                     correct_value = _answer_meta(question)["answer"]
                 else:
