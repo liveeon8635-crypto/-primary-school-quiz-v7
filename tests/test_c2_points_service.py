@@ -273,6 +273,36 @@ def test_point_rule_serializers_preserve_school_class_and_inherited_contracts():
     }
 
 
+def test_student_timeline_rows_preserve_scope_class_time_order_limit_and_all_sources():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PointService(point_ledger_model=TestPointLedger)
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestPointLedger(id=1, school_id=10, student_id=100, class_id=20, category="activity", points=2, source="classroom", created_at=datetime(2026, 9, 1, 8, 0)),
+                TestPointLedger(id=2, school_id=10, student_id=100, class_id=20, category="reward", points=-5, source="redemption", created_at=datetime(2026, 9, 3, 8, 0)),
+                TestPointLedger(id=3, school_id=10, student_id=100, class_id=21, category="activity", points=4, source="adjustment", created_at=datetime(2026, 9, 4, 8, 0)),
+                TestPointLedger(id=4, school_id=10, student_id=101, class_id=20, category="activity", points=9, source="classroom", created_at=datetime(2026, 9, 5, 8, 0)),
+                TestPointLedger(id=5, school_id=20, student_id=100, class_id=20, category="activity", points=10, source="classroom", created_at=datetime(2026, 9, 6, 8, 0)),
+                TestPointLedger(id=6, school_id=10, student_id=100, class_id=20, category="discipline", points=-1, source="reversal", created_at=datetime(2026, 9, 2, 8, 0)),
+            ]
+        )
+        db.commit()
+
+        class_rows = service.student_timeline_rows(
+            db, student_id=100, school_id=10, class_id=20, limit=2
+        )
+        all_rows = service.student_timeline_rows(
+            db, student_id=100, school_id=10, limit=2
+        )
+
+    assert [row.id for row in class_rows] == [2, 6]
+    assert [row.source for row in class_rows] == ["redemption", "reversal"]
+    assert [row.id for row in all_rows] == [3, 2]
+
+
 def test_student_recent_rows_preserve_school_student_order_limit_and_all_sources():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -568,6 +598,7 @@ def test_point_summary_service_is_installed_into_legacy_runtime():
     assert legacy.inherited_point_rule_json.__self__ is service
     assert legacy.point_recent_rows.__self__ is service
     assert legacy.point_student_recent_rows.__self__ is service
+    assert legacy.point_student_timeline_rows.__self__ is service
     assert legacy.point_summary.__self__ is service
     assert legacy.point_window_series.__self__ is service
     assert legacy.point_window_summary.__self__ is service
