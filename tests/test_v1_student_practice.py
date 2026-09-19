@@ -70,6 +70,10 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     assert once == twice
     assert V1_STUDENT_PRACTICE_MARKER in once
     assert "＋ 添加测试 / 练习" in once
+    assert "AI 针对性练习" in once
+    assert "/teacher/students/'+sid+'/reinforcement/generate" in once
+    assert "/teacher/students/'+sid+'/reinforcement/assign" in once
+    assert "assessmentContext" in once
     assert "该科目综合测试" in once
     assert "知识模块练习" in once
     assert "教材版本" in once
