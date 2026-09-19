@@ -22,6 +22,7 @@ class TestAssignment(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     school_id: Mapped[int] = mapped_column(Integer)
     class_id: Mapped[int] = mapped_column(Integer)
+    paper_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     title: Mapped[str] = mapped_column(String(80))
 
 
@@ -133,3 +134,44 @@ def test_student_assignment_for_requires_matching_recipient_and_school():
     assert wrong_student is None
     assert not_addressed is None
     assert other_school is None
+
+
+def test_student_assignment_for_paper_requires_matching_recipient_and_school():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+
+    service = AssignmentService(
+        assignment_submission_setting_model=object,
+        submission_model=object,
+        homework_media_submit_model=object,
+        homework_media_model=object,
+        user_model=object,
+        assignment_recipient_model=TestRecipient,
+        assignment_model=TestAssignment,
+        class_model=TestClass,
+        valid_submission_modes={"quiz", "media", "mixed"},
+        assignment_mode_name=lambda mode: mode,
+        school_local_iso=lambda value: str(value),
+        due_deadline_utc=lambda value: None,
+    )
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestAssignment(id=30, school_id=10, class_id=1, paper_id=900, title="allowed"),
+                TestAssignment(id=31, school_id=10, class_id=1, paper_id=901, title="other student"),
+                TestAssignment(id=32, school_id=20, class_id=1, paper_id=900, title="other school"),
+                TestRecipient(id=30, school_id=10, assignment_id=30, student_id=300),
+                TestRecipient(id=31, school_id=10, assignment_id=31, student_id=301),
+                TestRecipient(id=32, school_id=20, assignment_id=32, student_id=300),
+            ]
+        )
+        db.commit()
+
+        allowed = service.student_assignment_for_paper(db, 10, 300, 900)
+        denied_student = service.student_assignment_for_paper(db, 10, 300, 901)
+        denied_school = service.student_assignment_for_paper(db, 20, 301, 900)
+
+    assert allowed is not None and allowed.id == 30
+    assert denied_student is None
+    assert denied_school is None
