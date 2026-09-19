@@ -96,12 +96,14 @@ def _merge_semantic_figure(item: dict[str, Any], existing: dict[str, Any]) -> di
 
 def infer_reinforcement_figure(item: dict[str, Any]) -> dict[str, Any]:
     """Return a conservative structured figure for clearly visual math items."""
+    if str(item.get("subject") or "").strip() not in {"数学", ""}:
+        # Do not preserve accidental mathematical figures on Chinese or other
+        # subjects. Subject-specific visual schemas can be introduced later.
+        return {}
+
     existing = _existing_figure(item)
     if existing:
         return _merge_semantic_figure(item, existing)
-
-    if str(item.get("subject") or "").strip() not in {"数学", ""}:
-        return {}
 
     knowledge = str(item.get("knowledge") or "")
     text = str(item.get("text") or "")

@@ -14,6 +14,8 @@ from typing import Any
 
 from sqlalchemy import select
 
+from changying.services.builtin_question_bank_chinese import CHINESE_G5_TEXTBOOK, grade5_chinese_specs
+
 PEP_CURRENT_TEXTBOOK = "人教版"
 PEP_CURRENT_TEXTBOOK_LABEL = "人教版（当前最新版）"
 
@@ -405,20 +407,25 @@ def _grade5_math_specs() -> list[dict[str, Any]]:
 
 
 def built_in_subjects(grade: int) -> list[str]:
-    return ["数学"] if int(grade) == 5 else []
+    return ["数学", "语文"] if int(grade) == 5 else []
 
 
 def built_in_textbooks(grade: int, subject: str) -> list[str]:
     """Return the currently supported school textbook line.
 
-    Changying currently standardizes automatic Grade 5 math tests/practice on
-    the People's Education Press (PEP) textbook. Other publishers are not
+    Changying currently standardizes automatic Grade 5 Chinese and math
+    tests/practice on the People's Education Press (PEP) textbook. Other publishers are not
     interchangeable "versions" of the same textbook and must not be mixed into
     this selector.
     """
 
-    if int(grade) == 5 and (subject or "").strip() == "数学":
+    if int(grade) != 5:
+        return []
+    selected_subject = (subject or "").strip()
+    if selected_subject == "数学":
         return [PEP_CURRENT_TEXTBOOK]
+    if selected_subject == "语文":
+        return [CHINESE_G5_TEXTBOOK]
     return []
 
 
@@ -428,10 +435,17 @@ def built_in_question_specs(
     textbook: str = "",
 ) -> list[dict[str, Any]]:
     requested_textbook = (textbook or "").strip()
-    if int(grade) != 5 or (subject or "").strip() != "数学":
+    selected_subject = (subject or "").strip()
+    if int(grade) != 5:
         return []
-    if not requested_textbook or requested_textbook == PEP_CURRENT_TEXTBOOK:
+    if selected_subject == "数学":
+        if requested_textbook and requested_textbook != PEP_CURRENT_TEXTBOOK:
+            return []
         return _grade5_math_specs()
+    if selected_subject == "语文":
+        if requested_textbook and requested_textbook != CHINESE_G5_TEXTBOOK:
+            return []
+        return grade5_chinese_specs()
     return []
 
 
@@ -445,7 +459,7 @@ def potential_question_catalog(
     """Return version-matched existing + built-in inventory without writing."""
     selected_textbook = (textbook or "").strip()
     counts: dict[tuple[str, str], int] = defaultdict(int)
-    existing_keys: set[tuple[str, str]] = set()
+    existing_keys: set[tuple[str, str, tuple[str, ...]]] = set()
     total = 0
     for row in existing_rows:
         if selected_textbook and str(row.textbook or "").strip() != selected_textbook:
@@ -458,6 +472,7 @@ def potential_question_catalog(
                 and 0 <= int(row.correct_index) < len(options)
             )
         except Exception:
+            options = []
             valid = False
         if not valid:
             continue
@@ -465,11 +480,21 @@ def potential_question_catalog(
         knowledge = str(row.knowledge or "").strip()
         if knowledge:
             counts[(unit, knowledge)] += 1
-        existing_keys.add((str(row.text or "").strip(), knowledge))
+        existing_keys.add(
+            (
+                str(row.text or "").strip(),
+                knowledge,
+                tuple(str(x) for x in options),
+            )
+        )
         total += 1
 
     for spec in built_in_question_specs(grade, subject, selected_textbook):
-        key = (str(spec["text"]).strip(), str(spec["knowledge"]).strip())
+        key = (
+            str(spec["text"]).strip(),
+            str(spec["knowledge"]).strip(),
+            tuple(str(x) for x in spec["options"]),
+        )
         if key in existing_keys:
             continue
         counts[(str(spec["unit"]), str(spec["knowledge"]))] += 1
@@ -508,13 +533,26 @@ def ensure_built_in_questions(
             Question.textbook == selected_textbook
         )
     existing = list(db.scalars(existing_statement).all())
-    keys = {
-        (str(row.text or "").strip(), str(row.knowledge or "").strip())
-        for row in existing
-    }
+    keys: set[tuple[str, str, tuple[str, ...]]] = set()
+    for row in existing:
+        try:
+            row_options = json.loads(row.options_json or "[]")
+        except Exception:
+            row_options = []
+        keys.add(
+            (
+                str(row.text or "").strip(),
+                str(row.knowledge or "").strip(),
+                tuple(str(x) for x in row_options) if isinstance(row_options, list) else (),
+            )
+        )
     added = 0
     for spec in specs:
-        key = (str(spec["text"]).strip(), str(spec["knowledge"]).strip())
+        key = (
+            str(spec["text"]).strip(),
+            str(spec["knowledge"]).strip(),
+            tuple(str(x) for x in spec["options"]),
+        )
         if key in keys:
             continue
         db.add(
