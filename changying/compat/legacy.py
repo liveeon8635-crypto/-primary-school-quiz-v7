@@ -186,6 +186,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     )
     implementation.point_service = point_service
     implementation.point_balance = point_service.balance
+    implementation.point_class_window_categories = point_service.class_window_categories
     implementation.point_ledger_json = point_service.ledger_json
     implementation.point_metric_value = point_service.metric_value
     implementation.point_rule_json = point_service.rule_json
