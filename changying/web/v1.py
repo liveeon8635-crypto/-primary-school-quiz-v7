@@ -110,6 +110,7 @@ def v1_html() -> str:
         if(shape==='triangle')body='<polygon points="65,170 255,170 160,45" fill="none" stroke="#374151" stroke-width="3"/>';
         else if(shape==='trapezoid')body='<polygon points="85,55 225,55 270,170 45,170" fill="none" stroke="#374151" stroke-width="3"/>';
         else if(shape==='parallelogram')body='<polygon points="90,55 260,55 225,170 55,170" fill="none" stroke="#374151" stroke-width="3"/>';
+        else if(shape==='composite_rect')body='<path d="M55 45 H265 V170 H145 V110 H55 Z" fill="none" stroke="#374151" stroke-width="3"/>';
         else body='<rect x="55" y="50" width="210" height="120" fill="none" stroke="#374151" stroke-width="3"/>';
         const labels=fig.labels||{{}};let y=198;Object.keys(labels).slice(0,5).forEach(k=>{{body+='<text x="'+m+'" y="'+y+'" font-size="12">'+esc(k)+'：'+esc(labels[k])+'</text>';y-=16}});
       }}else if(type==='line_segment'){{
