@@ -233,6 +233,27 @@ class PointService:
             "topReasons": top_reasons,
         }
 
+    def student_timeline_rows(
+        self,
+        db,
+        *,
+        student_id: int,
+        school_id: int,
+        class_id: int | None = None,
+        limit: int = 30,
+    ) -> list[Any]:
+        statement = select(self.PointLedger).where(
+            self.PointLedger.school_id == school_id,
+            self.PointLedger.student_id == student_id,
+        )
+        if class_id:
+            statement = statement.where(self.PointLedger.class_id == class_id)
+        return list(
+            db.scalars(
+                statement.order_by(self.PointLedger.created_at.desc()).limit(max(1, int(limit)))
+            ).all()
+        )
+
     def student_recent_rows(
         self,
         db,
