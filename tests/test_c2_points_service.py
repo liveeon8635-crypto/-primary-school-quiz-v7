@@ -326,6 +326,36 @@ def test_point_balance_preserves_student_and_school_filtering():
     assert balance == 8
 
 
+def test_school_period_summary_preserves_school_cutoff_and_source_contract():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PointService(point_ledger_model=TestPointLedger)
+    cutoff = datetime(2026, 9, 1, 0, 0, 0)
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestPointLedger(id=1, school_id=10, student_id=100, category="activity", points=5, source="classroom", created_at=datetime(2026, 9, 2)),
+                TestPointLedger(id=2, school_id=10, student_id=101, category="activity", points=3, source="adjustment", created_at=datetime(2026, 9, 3)),
+                TestPointLedger(id=3, school_id=10, student_id=101, category="activity", points=-2, source="reversal", created_at=datetime(2026, 9, 4)),
+                TestPointLedger(id=4, school_id=10, student_id=102, category="discipline", points=-4, source="classroom", created_at=datetime(2026, 9, 5)),
+                TestPointLedger(id=5, school_id=10, student_id=102, category="discipline", points=1, source="adjustment", created_at=datetime(2026, 9, 5)),
+                TestPointLedger(id=6, school_id=10, student_id=100, category="activity", points=-20, source="redemption", created_at=datetime(2026, 9, 5)),
+                TestPointLedger(id=7, school_id=20, student_id=100, category="activity", points=50, source="classroom", created_at=datetime(2026, 9, 2)),
+                TestPointLedger(id=8, school_id=10, student_id=100, category="activity", points=60, source="classroom", created_at=datetime(2026, 8, 31)),
+            ]
+        )
+        db.commit()
+
+        summary = service.school_period_summary(db, school_id=10, cutoff=cutoff)
+
+    assert summary == {
+        "earned": 9,
+        "activity": 6,
+        "discipline": -3,
+    }
+
+
 def test_period_summary_preserves_scope_source_reason_sort_and_limit_contract():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -473,6 +503,7 @@ def test_point_summary_service_is_installed_into_legacy_runtime():
     assert legacy.point_ledger_json.__self__ is service
     assert legacy.point_metric_value.__self__ is service
     assert legacy.point_period_summary.__self__ is service
+    assert legacy.point_school_period_summary.__self__ is service
     assert legacy.point_rule_json.__self__ is service
     assert legacy.class_point_rule_json.__self__ is service
     assert legacy.inherited_point_rule_json.__self__ is service
