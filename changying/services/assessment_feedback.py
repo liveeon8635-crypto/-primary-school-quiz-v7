@@ -33,6 +33,28 @@ def _json_list(raw: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
+def _question_type(question: Any) -> str:
+    raw = str(getattr(question, "question_type", "") or "").strip().lower()
+    if raw:
+        return raw
+    options = _json_list(getattr(question, "options_json", "[]"))
+    return "single_choice" if options and int(getattr(question, "correct_index", -1)) >= 0 else "non_choice"
+
+
+def _answer_meta(question: Any) -> dict[str, Any]:
+    raw = getattr(question, "answer_json", "{}")
+    try:
+        value = json.loads(raw or "{}")
+    except Exception:
+        value = {}
+    if not isinstance(value, dict):
+        value = {}
+    return {
+        "answer": str(value.get("answer") or ""),
+        "accepted": [str(x) for x in (value.get("accepted") or []) if str(x).strip()],
+    }
+
+
 def _question_map(
     db: Any,
     Question: Any,
@@ -121,19 +143,26 @@ def archive_objective_assessment_wrong_answers(
         question = qmap.get(qid)
         if not question:
             continue
+        qtype = _question_type(question)
         options = _json_list(question.options_json)
-        selected_index = int(answer.get("selected_index", -1))
-        wrong_text = (
-            str(options[selected_index])
-            if 0 <= selected_index < len(options)
-            else "未答"
-        )
-        correct_index = int(question.correct_index)
-        correct_text = (
-            str(options[correct_index])
-            if 0 <= correct_index < len(options)
-            else ""
-        )
+        if qtype in ("fill_blank", "calculation"):
+            wrong_text = str(answer.get("text_answer") or "").strip() or "未答"
+            meta = _answer_meta(question)
+            correct_text = meta["answer"]
+        else:
+            selected_raw = answer.get("selected_index")
+            selected_index = int(selected_raw) if isinstance(selected_raw, int) else -1
+            wrong_text = (
+                str(options[selected_index])
+                if 0 <= selected_index < len(options)
+                else "未答"
+            )
+            correct_index = int(question.correct_index)
+            correct_text = (
+                str(options[correct_index])
+                if 0 <= correct_index < len(options)
+                else ""
+            )
 
         row = existing_by_question.get(qid)
         if row is None:
@@ -273,24 +302,32 @@ def student_assessment_context(
                 aggregate[agg_key][0] += 1
 
             if not is_correct and len(wrong_items) < 12:
+                qtype = _question_type(question)
                 options = _json_list(question.options_json)
-                selected_index = int(item.get("selected_index", -1))
-                correct_index = int(question.correct_index)
+                if qtype in ("fill_blank", "calculation"):
+                    wrong_value = str(item.get("text_answer") or "").strip() or "未答"
+                    correct_value = _answer_meta(question)["answer"]
+                else:
+                    selected_raw = item.get("selected_index")
+                    selected_index = int(selected_raw) if isinstance(selected_raw, int) else -1
+                    correct_index = int(question.correct_index)
+                    wrong_value = (
+                        str(options[selected_index])
+                        if 0 <= selected_index < len(options)
+                        else "未答"
+                    )
+                    correct_value = (
+                        str(options[correct_index])
+                        if 0 <= correct_index < len(options)
+                        else ""
+                    )
                 wrong_items.append(
                     {
                         "questionID": qid,
                         "knowledge": knowledge,
                         "problem": str(question.text or ""),
-                        "wrongAnswer": (
-                            str(options[selected_index])
-                            if 0 <= selected_index < len(options)
-                            else "未答"
-                        ),
-                        "correctAnswer": (
-                            str(options[correct_index])
-                            if 0 <= correct_index < len(options)
-                            else ""
-                        ),
+                        "wrongAnswer": wrong_value,
+                        "correctAnswer": correct_value,
                         "analysis": str(question.explanation or ""),
                     }
                 )
