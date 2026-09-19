@@ -36,6 +36,45 @@ class PointService:
             or 0
         )
 
+    def class_window_categories(
+        self,
+        db,
+        *,
+        school_id: int,
+        class_id: int,
+        start_utc,
+        end_utc,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        rows = db.scalars(
+            select(self.PointLedger).where(
+                self.PointLedger.school_id == school_id,
+                self.PointLedger.class_id == class_id,
+                self.PointLedger.created_at >= start_utc,
+                self.PointLedger.created_at < end_utc,
+                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+            )
+        ).all()
+
+        categories: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            key = row.reason or ("课堂活动" if row.category == "activity" else "守纪情况")
+            item = categories.setdefault(
+                key,
+                {"reason": key, "category": row.category, "count": 0, "points": 0},
+            )
+            item["count"] += 1
+            item["points"] += int(row.points or 0)
+
+        result = sorted(
+            categories.values(),
+            key=lambda item: (abs(item["points"]), item["count"]),
+            reverse=True,
+        )
+        if limit is not None:
+            result = result[: max(0, int(limit))]
+        return result
+
     def ledger_json(self, db, row) -> dict[str, Any]:
         if self.User is None or self.PointRule is None or self.school_local_iso is None:
             raise RuntimeError("user_model, point_rule_model and school_local_iso_fn are required for ledger serialization")
