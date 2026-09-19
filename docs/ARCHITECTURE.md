@@ -107,16 +107,20 @@ GitHub Actions 使用 Python 3.14，在分支 push 和 `main` PR 上执行完整
 
 ## 下一阶段顺序
 
-### 阶段 C1：数据库回归安全网
+### 阶段 C1：数据库回归安全网（已完成）
 
-在真正移动 ORM/Session 之前增加：
+在移动 ORM/Session 之前，当前 main 已建立：
 
-- 临时 SQLite 启动/迁移测试。
+- 临时 SQLite 启动/迁移与幂等测试。
 - 关键表存在性与字段契约测试。
 - 多角色（admin/teacher/student/parent）权限集成测试。
-- 题库、作业、积分和商业数据的最小 CRUD 集成测试。
+- 题库 → 试卷 → 作业 → 提交最小 CRUD 集成测试。
+- 课堂积分记录 → 读取 → 撤销 CRUD 集成测试。
+- 商业订单 → 收款 → 退款 → 作废 CRUD 集成测试。
 
-### 阶段 C2：服务层
+以上测试均使用隔离 SQLite，不连接 Render 生产 PostgreSQL。
+
+### 阶段 C2：服务层（进行中）
 
 优先把“数据库查询 + 业务计算”迁到 service 层，但路由 URL 和 ORM 表保持不变：
 
@@ -128,6 +132,10 @@ changying/services/
   homeroom.py
   commercial.py
 ```
+
+第一步从作业读侧开始：`AssignmentService` 接管提交方式、媒体计数和作业有效状态读取，
+由兼容桥注入现有 legacy 全局函数名。既有 FastAPI 路由仍保持原 URL、请求/返回结构和 ORM 表，
+先用现有 C1 集成安全网验证行为一致，再继续迁移写侧与其他 service。
 
 ### 阶段 D：API Router
 
