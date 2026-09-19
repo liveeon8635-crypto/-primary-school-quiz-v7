@@ -69,3 +69,10 @@ def test_operational_patch_uses_cache_and_parallel_reads_for_mobile_speed():
     assert "Promise.all" in html
     assert "requestIdleCallback" in html
     assert "cache:'no-store'" in html
+
+
+def test_operational_view_uses_shared_remember_aware_auth_storage():
+    snippet = v1_operational._OPERATIONAL_SNIPPET
+    assert "v717Remember" in snippet
+    assert "sessionStorage.getItem('v717Token')" in snippet
+    assert "localStorage.getItem('v717Token')" in snippet

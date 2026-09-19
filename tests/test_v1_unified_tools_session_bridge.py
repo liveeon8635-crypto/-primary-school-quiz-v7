@@ -35,3 +35,9 @@ def test_runtime_no_longer_relies_on_iframe_session_bridge():
     response = TestClient(app, follow_redirects=False).get('/v1/tool?page=classes')
     assert response.status_code == 307
     assert response.headers['location'] == '/classic?legacy=1&unified=1&from=v1&page=classes'
+
+
+def test_unified_tool_bridge_uses_remember_aware_token_priority():
+    html = patch_unified_tool_session_bridge(unified_tool_html())
+    assert "v717Remember" in html
+    assert "remember?localStorage.getItem(TOKEN_KEY):sessionStorage.getItem(TOKEN_KEY)" in html

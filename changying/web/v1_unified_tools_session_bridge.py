@@ -24,7 +24,7 @@ def patch_unified_tool_session_bridge(html: str) -> str:
     )
     html = html.replace(
         "const token=()=>localStorage.getItem(TOKEN_KEY)||localStorage.getItem('v6Token')||'';",
-        "const token=()=>localStorage.getItem(TOKEN_KEY)||sessionStorage.getItem(TOKEN_KEY)||localStorage.getItem('v6Token')||sessionStorage.getItem('v6Token')||'';",
+        "const token=()=>{const remember=localStorage.getItem('v717Remember')==='1';return (remember?localStorage.getItem(TOKEN_KEY):sessionStorage.getItem(TOKEN_KEY))||sessionStorage.getItem(TOKEN_KEY)||localStorage.getItem(TOKEN_KEY)||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||''};",
         1,
     )
 

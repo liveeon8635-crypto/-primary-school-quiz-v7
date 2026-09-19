@@ -50,3 +50,10 @@ def test_assignment_bridge_keeps_write_scope_on_existing_apis():
     assert "submission_mode:mode" in snippet
     assert "teacherConfirmed" in snippet
     assert "wrongCount" in snippet
+
+
+def test_teaching_actions_use_shared_remember_aware_auth_storage():
+    snippet = v1_teaching_actions._TEACHING_ACTIONS_SNIPPET
+    assert "v717Remember" in snippet
+    assert "sessionStorage.getItem('v717Token')" in snippet
+    assert "localStorage.getItem('v717Token')" in snippet

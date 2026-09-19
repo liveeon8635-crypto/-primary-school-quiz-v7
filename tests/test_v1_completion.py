@@ -34,3 +34,11 @@ def test_completion_patch_requires_body_marker():
         assert "closing body marker" in str(exc)
     else:
         raise AssertionError("expected RuntimeError")
+
+
+def test_completion_view_uses_shared_remember_aware_auth_storage():
+    from changying.web import v1_completion
+    snippet = v1_completion._COMPLETION_SNIPPET
+    assert "v717Remember" in snippet
+    assert "sessionStorage.getItem('v717Token')" in snippet
+    assert "localStorage.getItem('v717Token')" in snippet

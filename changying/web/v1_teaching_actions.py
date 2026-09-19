@@ -22,7 +22,7 @@ _TEACHING_ACTIONS_SNIPPET = r'''
 (()=>{
   if(window.__cyV1TeachingActionsInstalled)return;window.__cyV1TeachingActionsInstalled=true;
   const ACTION_FEATURES=new Set(['作业与错题','作业/练习','作业','批改/订正','备课','今日课程','今日课表','测验']);
-  const token=()=>localStorage.getItem('v717Token')||localStorage.getItem('v6Token')||'';
+  const token=()=>{const remember=localStorage.getItem('v717Remember')==='1';return (remember?localStorage.getItem('v717Token'):sessionStorage.getItem('v717Token'))||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||''};
   const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   async function api(url,opt={}){
     const t=token();if(!t||t==='demo')throw new Error('演示会话不会写入真实教学数据');

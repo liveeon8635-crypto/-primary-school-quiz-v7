@@ -29,7 +29,7 @@ _COMPLETION_SNIPPET = r'''
 <script id="changying_v1_completion_v1-script">
 (()=>{
   if(window.__cyV1CompletionInstalled)return;window.__cyV1CompletionInstalled=true;
-  const token=()=>localStorage.getItem('v717Token')||localStorage.getItem('v6Token')||'';
+  const token=()=>{const remember=localStorage.getItem('v717Remember')==='1';return (remember?localStorage.getItem('v717Token'):sessionStorage.getItem('v717Token'))||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||''};
   const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   async function readJson(url){const t=token();if(!t||t==='demo')throw new Error('no-real-session');const r=await fetch(url,{headers:{Authorization:'Bearer '+t}});if(!r.ok)throw new Error('read-failed-'+r.status);return await r.json()}
   function projectText(row){const el=[...row.children].find(x=>x.tagName==='SMALL');return(el?.textContent||'').trim()}

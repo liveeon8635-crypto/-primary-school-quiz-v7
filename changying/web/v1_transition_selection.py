@@ -30,7 +30,7 @@ _TRANSITION_SELECTION_SNIPPET = r'''
   const studentId=()=>params().get('id')||'';
   const key=()=>`changying.v1.transition.${studentId()||'general'}`;
   const buttons=()=>[...document.querySelectorAll('[data-transition]')];
-  const token=()=>localStorage.getItem('v717Token')||localStorage.getItem('v6Token')||'';
+  const token=()=>{const remember=localStorage.getItem('v717Remember')==='1';return (remember?localStorage.getItem('v717Token'):sessionStorage.getItem('v717Token'))||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||''};
   function showChoice(value){
     const list=buttons();if(!list.length)return;
     list.forEach(b=>{const active=b.textContent.trim()===value;b.classList.toggle('cy-transition-selected',active);b.setAttribute('aria-pressed',active?'true':'false')});

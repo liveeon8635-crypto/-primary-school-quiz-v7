@@ -22,7 +22,7 @@ _OPERATIONAL_SNIPPET = r'''
 <script id="changying_v1_operational_v2-script">
 (()=>{
   if(window.__cyV1OperationalV2Installed)return;window.__cyV1OperationalV2Installed=true;
-  const token=()=>localStorage.getItem('v717Token')||localStorage.getItem('v6Token')||'';
+  const token=()=>{const remember=localStorage.getItem('v717Remember')==='1';return (remember?localStorage.getItem('v717Token'):sessionStorage.getItem('v717Token'))||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||''};
   const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const cache=new Map();
   async function readJson(url,ttl=30000){
