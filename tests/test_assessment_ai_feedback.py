@@ -245,8 +245,13 @@ with TestClient(app) as client:
         headers=sh,
     )
     assert reinforcement_questions.status_code == 200, reinforcement_questions.text
-    q = reinforcement_questions.json()[0]
-    wrong_index = 0 if q["correct_index"] != 0 else 1
+    public_q = reinforcement_questions.json()[0]
+    assert "correct_index" not in public_q
+
+    with legacy.SessionLocal() as db:
+        internal_q = db.get(legacy.Question, public_q["id"])
+        assert internal_q is not None
+        wrong_index = 0 if int(internal_q.correct_index) != 0 else 1
 
     reinforcement_submit = client.post(
         f"/student/assignments/{reinforcement_id}/submit",
@@ -254,7 +259,7 @@ with TestClient(app) as client:
         json={
             "answers": [
                 {
-                    "question_id": q["id"],
+                    "question_id": public_q["id"],
                     "selected_index": wrong_index,
                 }
             ]
