@@ -14,10 +14,8 @@ from typing import Any
 
 from sqlalchemy import select
 
-from changying.services.grade5_math_textbook_packs import (
-    SUPPORTED_GRADE5_MATH_TEXTBOOKS,
-    supplemental_grade5_math_specs,
-)
+PEP_CURRENT_TEXTBOOK = "人教版"
+PEP_CURRENT_TEXTBOOK_LABEL = "人教版（当前最新版）"
 
 
 def _dec(value: Any) -> Decimal:
@@ -411,8 +409,16 @@ def built_in_subjects(grade: int) -> list[str]:
 
 
 def built_in_textbooks(grade: int, subject: str) -> list[str]:
+    """Return the currently supported school textbook line.
+
+    Changying currently standardizes automatic Grade 5 math tests/practice on
+    the People's Education Press (PEP) textbook. Other publishers are not
+    interchangeable "versions" of the same textbook and must not be mixed into
+    this selector.
+    """
+
     if int(grade) == 5 and (subject or "").strip() == "数学":
-        return list(SUPPORTED_GRADE5_MATH_TEXTBOOKS)
+        return [PEP_CURRENT_TEXTBOOK]
     return []
 
 
@@ -424,9 +430,9 @@ def built_in_question_specs(
     requested_textbook = (textbook or "").strip()
     if int(grade) != 5 or (subject or "").strip() != "数学":
         return []
-    if not requested_textbook or requested_textbook == "人教版":
+    if not requested_textbook or requested_textbook == PEP_CURRENT_TEXTBOOK:
         return _grade5_math_specs()
-    return supplemental_grade5_math_specs(requested_textbook)
+    return []
 
 
 def potential_question_catalog(

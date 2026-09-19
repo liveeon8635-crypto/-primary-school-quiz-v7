@@ -142,13 +142,13 @@ def _practice_patch_html() -> str:
  function renderForm(layer,data){
    const body=layer.querySelector('#cy-practice-body');const student=data.student||{};const grade=data.selectedGrade||student.grade||5;const subject=data.selectedSubject||data.subjects?.[0]||'数学';const textbooks=data.textbooks||[];const textbook=data.selectedTextbook||textbooks[0]||'';
    const modules=data.modules||[];const classes=data.classes||[];
-   body.innerHTML='<div class="cy-practice-note">综合测试和知识模块练习都会严格按所选教材版本筛题，不会混用不同版本。当前年级科目可用约 '+esc(data.availableQuestionCount||0)+' 题'+(textbook?'（教材版本：'+esc(textbook)+'）':'')+'；系统标准题只会在你确认添加时补入现有题库。</div>'+
+   body.innerHTML='<div class="cy-practice-note">综合测试和知识模块练习统一使用人民教育出版社人教版当前最新版，不把北师大版、苏教版等其他出版社教材当作“版本”混用。当前年级科目可用约 '+esc(data.availableQuestionCount||0)+' 题；系统标准题只会在你确认添加时补入现有题库。</div>'+
    '<form id="cy-practice-form"><div class="cy-practice-grid">'+
    '<div class="cy-practice-field"><label>学生</label><input value="'+esc(student.name||'学生')+'" disabled></div>'+
    '<div class="cy-practice-field"><label>教学班级</label><select id="cy-p-class">'+classes.map(c=>'<option value="'+c.id+'" '+(Number(c.id)===Number(data.defaultClassID)?'selected':'')+'>'+esc(c.name)+' · '+esc(c.grade)+'年级</option>').join('')+'</select></div>'+
    '<div class="cy-practice-field"><label>年级</label><select id="cy-p-grade">'+[1,2,3,4,5,6].map(g=>'<option value="'+g+'" '+(Number(g)===Number(grade)?'selected':'')+'>'+g+'年级</option>').join('')+'</select></div>'+
    '<div class="cy-practice-field"><label>科目</label><select id="cy-p-subject">'+optionRows(data.subjects||[],subject)+'</select></div>'+
-   '<div class="cy-practice-field"><label>教材版本</label><select id="cy-p-textbook">'+optionRows(textbooks,textbook)+'</select></div>'+
+   '<div class="cy-practice-field"><label>教材</label><input value="'+esc(textbook==='人教版'?'人教版（当前最新版）':textbook||'暂无可用教材')+'" disabled><input id="cy-p-textbook" type="hidden" value="'+esc(textbook)+'"></div>'+
    '<div class="cy-practice-field"><label>内容类型</label><select id="cy-p-kind"><option value="comprehensive">该科目综合测试</option><option value="module">知识模块练习</option></select></div>'+
    '<div class="cy-practice-field" id="cy-p-module-wrap" style="display:none"><label>知识模块</label><select id="cy-p-module">'+modules.map(m=>'<option value="'+esc(m.knowledge)+'">'+esc((m.unit?m.unit+' · ':'')+m.knowledge+'（'+m.count+'题）')+'</option>').join('')+'</select></div>'+
    '<div class="cy-practice-field"><label>题数</label><input id="cy-p-count" type="number" min="1" max="50" value="20"></div>'+
@@ -161,10 +161,9 @@ def _practice_patch_html() -> str:
    async function refreshOptions(){try{const next=await loadOptions(student.id,body.querySelector('#cy-p-grade').value,body.querySelector('#cy-p-subject').value,body.querySelector('#cy-p-textbook')?.value||'');renderForm(layer,next)}catch(err){resultBox.innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}}
    body.querySelector('#cy-p-grade').onchange=async()=>{try{const next=await loadOptions(student.id,body.querySelector('#cy-p-grade').value,'','');renderForm(layer,next)}catch(err){body.querySelector('#cy-practice-result').innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}};
    body.querySelector('#cy-p-subject').onchange=async()=>{try{const next=await loadOptions(student.id,body.querySelector('#cy-p-grade').value,body.querySelector('#cy-p-subject').value,'');renderForm(layer,next)}catch(err){resultBox.innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}};
-   body.querySelector('#cy-p-textbook').onchange=refreshOptions;
    body.querySelector('#cy-practice-form').onsubmit=async e=>{e.preventDefault();const btn=e.submitter;btn.disabled=true;btn.textContent='正在自动组卷…';const result=body.querySelector('#cy-practice-result');try{const payload={grade:Number(body.querySelector('#cy-p-grade').value),subject:body.querySelector('#cy-p-subject').value,textbook:body.querySelector('#cy-p-textbook').value,kind:kind.value,knowledge:kind.value==='module'?(body.querySelector('#cy-p-module')?.value||''):'',question_count:Number(body.querySelector('#cy-p-count').value)||10,due_date:body.querySelector('#cy-p-due').value,class_id:Number(body.querySelector('#cy-p-class').value)||null};const created=await api('/teacher/students/'+student.id+'/auto-practice',{method:'POST',body:JSON.stringify(payload)});result.innerHTML='<div class="cy-practice-ok"><b>已添加：</b>'+esc(created.assignment?.title||'测试/练习')+' · '+esc(created.questionCount)+'题。学生完成后，成绩和知识点作答会继续进入现有学习记录。<br><button type="button" class="cy-practice-close" id="cy-practice-refresh" style="margin-top:9px">返回学生档案</button></div>';body.querySelector('#cy-practice-refresh').onclick=()=>location.reload()}catch(err){result.innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}finally{btn.disabled=false;btn.textContent='自动添加给学生'}};
  }
- async function open(sid){close();const layer=document.createElement('div');layer.id='cy-practice-layer';layer.className='cy-practice-layer';layer.innerHTML='<section class="cy-practice-sheet"><div class="cy-practice-head"><div><h2>添加测试 / 练习</h2><small style="color:#667085">按学生、年级和科目自动从现有题库组卷</small></div><button class="cy-practice-close" type="button">关闭</button></div><div id="cy-practice-body">正在读取题库与学生信息…</div></section>';document.body.appendChild(layer);document.body.style.overflow='hidden';layer.querySelector('.cy-practice-close').onclick=close;layer.onclick=e=>{if(e.target===layer)close()};try{renderForm(layer,await loadOptions(sid,'','',''))}catch(err){layer.querySelector('#cy-practice-body').innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}}
+ async function open(sid){close();const layer=document.createElement('div');layer.id='cy-practice-layer';layer.className='cy-practice-layer';layer.innerHTML='<section class="cy-practice-sheet"><div class="cy-practice-head"><div><h2>添加测试 / 练习</h2><small style="color:#667085">按学生、年级和科目从当前人教版教材题库组卷</small></div><button class="cy-practice-close" type="button">关闭</button></div><div id="cy-practice-body">正在读取题库与学生信息…</div></section>';document.body.appendChild(layer);document.body.style.overflow='hidden';layer.querySelector('.cy-practice-close').onclick=close;layer.onclick=e=>{if(e.target===layer)close()};try{renderForm(layer,await loadOptions(sid,'','',''))}catch(err){layer.querySelector('#cy-practice-body').innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}}
  async function openAIPractice(sid){
    close();const layer=document.createElement('div');layer.id='cy-practice-layer';layer.className='cy-practice-layer';
    layer.innerHTML='<section class="cy-practice-sheet"><div class="cy-practice-head"><div><h2>AI 针对性练习</h2><small style="color:#667085">自动关联最近综合测试、模块练习、知识点正确率与错题</small></div><button class="cy-practice-close" type="button">关闭</button></div><div id="cy-practice-body"><div class="cy-practice-note">AI 只读取该学生已有教学反馈；生成结果必须由教师审核后才会布置。</div><form id="cy-ai-practice-form"><div class="cy-practice-grid"><div class="cy-practice-field"><label>生成题数</label><input id="cy-ai-count" type="number" min="1" max="12" value="8"></div><div class="cy-practice-field"><label>难度</label><select id="cy-ai-difficulty"><option>基础</option><option selected>中等</option><option>提高</option></select></div></div><button class="cy-practice-submit" type="submit">读取反馈并生成针对性练习</button><div id="cy-ai-result"></div></form></div></section>';
@@ -288,29 +287,13 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
         textbooks: list[str] = []
         selected_textbook = ""
         if selected_subject:
-            textbooks = list(
-                db.scalars(
-                    select(Question.textbook)
-                    .where(
-                        Question.school_id == u.school_id,
-                        Question.grade == selected_grade,
-                        Question.subject == selected_subject,
-                    )
-                    .distinct()
-                    .order_by(Question.textbook)
-                ).all()
-            )
-            textbooks = [
-                str(x).strip()
-                for x in textbooks
-                if str(x or "").strip()
-            ]
-            textbooks = sorted(
-                set(textbooks)
-                | set(built_in_textbooks(selected_grade, selected_subject))
-            )
-            selected_textbook = (textbook or "").strip()
-            if not selected_textbook or selected_textbook not in textbooks:
+            # Automatic tests/practice use the school's current PEP line only.
+            # Other publishers are distinct教材体系, not alternate "versions".
+            textbooks = built_in_textbooks(selected_grade, selected_subject)
+            requested_textbook = (textbook or "").strip()
+            if requested_textbook in textbooks:
+                selected_textbook = requested_textbook
+            else:
                 selected_textbook = textbooks[0] if textbooks else ""
 
         modules: list[dict[str, Any]] = []
@@ -369,8 +352,14 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
         if not subject:
             raise HTTPException(400, "请选择科目")
         textbook = (body.textbook or "").strip()
+        allowed_textbooks = built_in_textbooks(body.grade, subject)
         if not textbook:
-            raise HTTPException(400, "请选择教材版本")
+            raise HTTPException(400, "当前自动测试尚未匹配到可用的人教版教材")
+        if textbook not in allowed_textbooks:
+            raise HTTPException(
+                400,
+                "当前自动测试统一使用人民教育出版社人教版（当前最新版），不支持混用其他出版社教材",
+            )
         kind = (body.kind or "comprehensive").strip().lower()
         if kind not in {"comprehensive", "module"}:
             raise HTTPException(400, "内容类型无效")

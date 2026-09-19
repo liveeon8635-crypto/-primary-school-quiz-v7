@@ -66,11 +66,12 @@ with TestClient(app) as client:
     )
     assert options.status_code == 200, options.text
     options_body = options.json()
-    assert options_body["selectedTextbook"] == "北师大版"
+    assert options_body["textbooks"] == ["人教版"]
+    assert options_body["selectedTextbook"] == "人教版"
     assert options_body["modules"]
     knowledge = options_body["modules"][0]["knowledge"]
 
-    created = client.post(
+    rejected = client.post(
         f"/teacher/students/{sid}/auto-practice",
         headers=th,
         json={
@@ -84,11 +85,28 @@ with TestClient(app) as client:
             "class_id": class_id,
         },
     )
+    assert rejected.status_code == 400, rejected.text
+    assert "人教版" in rejected.text
+
+    created = client.post(
+        f"/teacher/students/{sid}/auto-practice",
+        headers=th,
+        json={
+            "grade": 5,
+            "subject": "数学",
+            "textbook": "人教版",
+            "kind": "module",
+            "knowledge": knowledge,
+            "question_count": 4,
+            "due_date": "2026-09-30",
+            "class_id": class_id,
+        },
+    )
     assert created.status_code == 200, created.text
     created_body = created.json()
     aid = created_body["assignment"]["id"]
     pid = created_body["paper"]["id"]
-    assert created_body["textbook"] == "北师大版"
+    assert created_body["textbook"] == "人教版"
 
     questions = client.get(f"/papers/{pid}/questions", headers=sh)
     assert questions.status_code == 200, questions.text
@@ -150,9 +168,10 @@ with TestClient(app) as client:
             school_id=1,
             student_id=sid,
             assignment_id=aid,
+            textbook_filter="人教版",
         )
         assert context["assessmentCount"] == 1
-        assert context["primary"]["textbook"] == "北师大版"
+        assert context["primary"]["textbook"] == "人教版"
         assert context["primary"]["subject"] == "数学"
         assert context["weakKnowledge"]
         assert context["weakKnowledge"][0]["accuracy"] == 0
@@ -163,7 +182,7 @@ with TestClient(app) as client:
 
     def fake_ai_call(db, user, feature, prompt, images=None, timeout=90):
         assert feature == "reinforcement_generate"
-        assert "北师大版" in prompt
+        assert "人教版" in prompt
         assert knowledge in prompt
         return json.dumps(
             {
@@ -199,12 +218,12 @@ with TestClient(app) as client:
     assert generated.status_code == 200, generated.text
     generated_body = generated.json()
     assert generated_body["assessmentContext"]["assessmentCount"] == 1
-    assert generated_body["assessmentContext"]["primary"]["textbook"] == "北师大版"
+    assert generated_body["assessmentContext"]["primary"]["textbook"] == "人教版"
     assert generated_body["wrongIDs"]
     assert "已关联最近 1 次综合/模块测试反馈" in generated_body["notice"]
     assert generated_body["items"][0]["grade"] == 5
     assert generated_body["items"][0]["subject"] == "数学"
-    assert generated_body["items"][0]["textbook"] == "北师大版"
+    assert generated_body["items"][0]["textbook"] == "人教版"
 '''
 
     env = os.environ.copy()
