@@ -29,6 +29,7 @@ class TestFollowUpLog(Base):
     student_id: Mapped[int] = mapped_column(Integer)
     followup_id: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[int] = mapped_column(Integer, default=0)
+    log_type: Mapped[str] = mapped_column(String(40), default="note")
 
 
 def test_student_history_rows_keep_school_student_and_ascending_order():
@@ -154,6 +155,40 @@ def test_item_row_keeps_school_class_and_followup_scope():
     assert wrong_school is None
 
 
+def test_parent_contact_rows_keep_join_scope_type_order_and_limit():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = FollowUpService(
+        followup_model=TestFollowUp,
+        followup_log_model=TestFollowUpLog,
+    )
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestFollowUp(id=50, school_id=10, student_id=100, class_id=7),
+                TestFollowUp(id=51, school_id=10, student_id=100, class_id=7),
+            ]
+        )
+        db.add_all(
+            [
+                TestFollowUpLog(id=1, school_id=10, student_id=100, followup_id=50, created_at=10, log_type="parent_contact"),
+                TestFollowUpLog(id=2, school_id=10, student_id=100, followup_id=50, created_at=20, log_type="parent_contact"),
+                TestFollowUpLog(id=3, school_id=10, student_id=100, followup_id=51, created_at=20, log_type="parent_contact"),
+                TestFollowUpLog(id=4, school_id=10, student_id=100, followup_id=51, created_at=30, log_type="note"),
+                TestFollowUpLog(id=5, school_id=20, student_id=100, followup_id=50, created_at=40, log_type="parent_contact"),
+                TestFollowUpLog(id=6, school_id=10, student_id=101, followup_id=50, created_at=50, log_type="parent_contact"),
+                TestFollowUpLog(id=7, school_id=10, student_id=100, followup_id=999, created_at=60, log_type="parent_contact"),
+            ]
+        )
+        db.commit()
+        rows = service.parent_contact_rows(
+            db, school_id=10, student_id=100, limit=2
+        )
+
+    assert [row.id for row in rows] == [3, 2]
+
+
 def test_followup_service_is_installed_into_legacy_runtime():
     import app_v924 as legacy
     from app import app  # noqa: F401
@@ -166,3 +201,4 @@ def test_followup_service_is_installed_into_legacy_runtime():
     assert legacy.followup_item_log_rows.__self__ is service
     assert legacy.followup_class_rows.__self__ is service
     assert legacy.followup_item_row.__self__ is service
+    assert legacy.followup_parent_contact_rows.__self__ is service
