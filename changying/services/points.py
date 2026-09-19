@@ -55,6 +55,32 @@ class PointService:
             ).all()
         )
 
+    def metric_value(self, db, *, student_id: int, school_id: int, cutoff, metric: str) -> tuple[int, str]:
+        rows = db.scalars(
+            select(self.PointLedger).where(
+                self.PointLedger.school_id == school_id,
+                self.PointLedger.student_id == student_id,
+                self.PointLedger.created_at >= cutoff,
+                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+            )
+        ).all()
+
+        metric = (metric or "net").strip().lower()
+        if metric == "issued":
+            value = sum(
+                int(row.points or 0)
+                for row in rows
+                if (row.points or 0) > 0 and row.source in ("classroom", "adjustment")
+            )
+        elif metric == "activity":
+            value = sum(int(row.points or 0) for row in rows if row.category == "activity")
+        elif metric == "discipline":
+            value = sum(int(row.points or 0) for row in rows if row.category == "discipline")
+        else:
+            metric = "net"
+            value = sum(int(row.points or 0) for row in rows)
+        return int(value), metric
+
     def window_summary(self, db, student_id: int, school_id: int, start_utc, end_utc) -> dict[str, int]:
         rows = db.scalars(
             select(self.PointLedger).where(
