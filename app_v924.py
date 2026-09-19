@@ -7087,7 +7087,7 @@ def export_points_report(u:User=Depends(current_user),db:Session=Depends(get_db)
         c=current_class_for(db,stu.id,u.school_id);sm=point_summary(db,stu.id,u.school_id);ws.append([stu.name,stu.username,stu.grade or "",c.name if c else "",sm["earned"],sm["balance"],sm["activity"],sm["discipline"],sm["redeemed"]])
     for cell in ws[header]:cell.font=Font(bold=True);cell.fill=PatternFill("solid",fgColor="5362E8");cell.font=Font(bold=True,color="FFFFFF")
     ws2=wb.create_sheet("积分流水");ws2.append(["时间","学生","账号","类别","积分","原因","备注","来源","记录人"])
-    rows=db.scalars(select(PointLedger).where(PointLedger.school_id==u.school_id).order_by(PointLedger.id.desc())).all()
+    rows=point_school_history_rows(db,school_id=u.school_id)
     for x in rows:
         stu=db.get(User,x.student_id);actor=db.get(User,x.actor_id) if x.actor_id else None;ws2.append([school_local_iso(x.created_at),stu.name if stu else "",stu.username if stu else "",x.category,x.points,x.reason,x.note,x.source,actor.name if actor else "系统"])
     for cell in ws2[1]:cell.font=Font(bold=True,color="FFFFFF");cell.fill=PatternFill("solid",fgColor="5362E8")
