@@ -187,6 +187,39 @@ def test_parent_contact_rows_keep_join_scope_type_order_and_limit_contract():
     assert [row.id for row in rows] == [3, 2, 1]
 
 
+def test_class_parent_contact_rows_keep_join_school_class_type_and_created_order():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = FollowUpService(
+        followup_model=TestFollowUp,
+        followup_log_model=TestFollowUpLog,
+    )
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestFollowUp(id=50, school_id=10, student_id=100, class_id=7),
+                TestFollowUp(id=51, school_id=10, student_id=101, class_id=7),
+                TestFollowUp(id=52, school_id=10, student_id=102, class_id=8),
+                TestFollowUp(id=53, school_id=20, student_id=103, class_id=7),
+            ]
+        )
+        db.add_all(
+            [
+                TestFollowUpLog(id=1, school_id=10, student_id=100, followup_id=50, created_at=10, log_type="parent_contact"),
+                TestFollowUpLog(id=2, school_id=10, student_id=101, followup_id=51, created_at=30, log_type="parent_contact"),
+                TestFollowUpLog(id=3, school_id=10, student_id=100, followup_id=50, created_at=20, log_type="note"),
+                TestFollowUpLog(id=4, school_id=10, student_id=102, followup_id=52, created_at=40, log_type="parent_contact"),
+                TestFollowUpLog(id=5, school_id=20, student_id=103, followup_id=53, created_at=50, log_type="parent_contact"),
+                TestFollowUpLog(id=6, school_id=99, student_id=100, followup_id=50, created_at=60, log_type="parent_contact"),
+            ]
+        )
+        db.commit()
+        rows = service.class_parent_contact_rows(db, school_id=10, class_id=7)
+
+    assert [row.id for row in rows] == [6, 2, 1]
+
+
 def test_followup_service_is_installed_into_legacy_runtime():
     import app_v924 as legacy
     from app import app  # noqa: F401
@@ -200,3 +233,4 @@ def test_followup_service_is_installed_into_legacy_runtime():
     assert legacy.followup_class_rows.__self__ is service
     assert legacy.followup_item_row.__self__ is service
     assert legacy.followup_parent_contact_rows.__self__ is service
+    assert legacy.followup_class_parent_contact_rows.__self__ is service
