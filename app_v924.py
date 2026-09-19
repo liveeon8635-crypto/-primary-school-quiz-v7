@@ -5362,8 +5362,8 @@ def ssubmit(aid:int,b:SubmitBody,u:User=Depends(current_user),db:Session=Depends
 
 @app.get("/student/assignments/{aid}/media")
 def student_homework_media(aid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"student");a=db.scalar(select(Assignment).where(Assignment.id==aid,Assignment.school_id==u.school_id))
-    if not a or not db.scalar(select(AssignmentRecipient.id).where(AssignmentRecipient.assignment_id==aid,AssignmentRecipient.student_id==u.id,AssignmentRecipient.school_id==u.school_id)):raise HTTPException(403,"无权查看此作业")
+    need(u,"student");a=student_assignment_for(db,u.school_id,u.id,aid)
+    if not a:raise HTTPException(403,"无权查看此作业")
     mode=assignment_submission_mode(db,a)
     if mode not in ("media","mixed"):raise HTTPException(400,"此作业不需要照片/视频附件")
     rows=db.scalars(select(HomeworkMedia).where(HomeworkMedia.school_id==u.school_id,HomeworkMedia.assignment_id==aid,HomeworkMedia.student_id==u.id).order_by(HomeworkMedia.id)).all();final=db.scalar(select(HomeworkMediaSubmit).where(HomeworkMediaSubmit.school_id==u.school_id,HomeworkMediaSubmit.assignment_id==aid,HomeworkMediaSubmit.student_id==u.id))
