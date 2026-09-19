@@ -7,7 +7,7 @@ from changying.web.reinforcement_quality import infer_reinforcement_figure
 
 
 def test_chinese_reinforcement_prompt_adds_subject_specific_contract():
-    base = '''最近测试/练习反馈：{"primary":{"grade":5,"subject":"语文","textbook":"人教版"}}
+    base = '''最近测试/练习反馈：{"primary":{"grade":5,"subject":"语文","textbook":"统编版（人民教育出版社）"}}
 要求：生成针对性练习。'''
     assert reinforcement_subject_from_prompt(base) == "语文"
     prompt = augment_reinforcement_prompt("reinforcement_generate", base)
@@ -85,3 +85,24 @@ def test_non_chinese_subject_gets_cross_subject_ignore_instruction():
     prompt = augment_reinforcement_prompt("reinforcement_generate", base)
     assert "当前科目是数学" in prompt
     assert "必须忽略" in prompt
+
+
+def test_runtime_context_policy_precedes_subject_scope_and_route_filters_wrong_subject():
+    import inspect
+    import app  # noqa: F401
+    import app_v924 as legacy
+
+    # Reinforcement policy wraps the subject-aware textbook selector; both must be active.
+    assert legacy.student_assessment_context.__name__ == "subject_scoped_assessment_context"
+    closure_names = {
+        getattr(cell.cell_contents, "__name__", "")
+        for cell in (legacy.student_assessment_context.__closure__ or ())
+        if callable(getattr(cell, "cell_contents", None))
+    }
+    assert "subject_aware_context" in closure_names
+
+    source = inspect.getsource(legacy.teacher_reinforcement_generate)
+    assert "context_subject" in source
+    assert 'str(x.subject or "").strip()==context_subject' in source
+    assert 'forced_subject!="数学"' in source
+    assert 'if forced_subject=="数学" else {}' in source
