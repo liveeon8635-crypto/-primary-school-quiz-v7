@@ -14,16 +14,57 @@ class Base(DeclarativeBase):
     pass
 
 
+class TestSchoolClass(Base):
+    __tablename__ = "c2_test_point_classes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(Integer)
+    teacher_id: Mapped[int] = mapped_column(Integer)
+
+
 class TestPointLedger(Base):
     __tablename__ = "c2_test_point_ledger"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     school_id: Mapped[int] = mapped_column(Integer)
     student_id: Mapped[int] = mapped_column(Integer)
+    class_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     category: Mapped[str] = mapped_column(String(40))
     points: Mapped[int] = mapped_column(Integer)
     source: Mapped[str] = mapped_column(String(40))
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+def test_recent_rows_preserve_source_school_teacher_class_and_order_contract():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PointService(
+        point_ledger_model=TestPointLedger,
+        school_class_model=TestSchoolClass,
+    )
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestSchoolClass(id=1, school_id=10, teacher_id=100),
+                TestSchoolClass(id=2, school_id=10, teacher_id=200),
+                TestSchoolClass(id=3, school_id=20, teacher_id=100),
+                TestPointLedger(id=1, school_id=10, student_id=300, class_id=1, category="activity", points=2, source="classroom"),
+                TestPointLedger(id=2, school_id=10, student_id=300, class_id=1, category="activity", points=-2, source="reversal"),
+                TestPointLedger(id=3, school_id=10, student_id=301, class_id=2, category="activity", points=5, source="adjustment"),
+                TestPointLedger(id=4, school_id=20, student_id=300, class_id=3, category="activity", points=9, source="classroom"),
+                TestPointLedger(id=5, school_id=10, student_id=300, class_id=1, category="adjustment", points=-1, source="redemption"),
+            ]
+        )
+        db.commit()
+
+        teacher_rows = service.recent_rows(db, school_id=10, teacher_id=100)
+        class_rows = service.recent_rows(db, school_id=10, class_id=2)
+        admin_rows = service.recent_rows(db, school_id=10, limit=2)
+
+    assert [row.id for row in teacher_rows] == [2, 1]
+    assert [row.id for row in class_rows] == [3]
+    assert [row.id for row in admin_rows] == [3, 2]
 
 
 def test_point_balance_preserves_student_and_school_filtering():
@@ -117,5 +158,6 @@ def test_point_summary_service_is_installed_into_legacy_runtime():
 
     assert isinstance(service, PointService)
     assert legacy.point_balance.__self__ is service
+    assert legacy.point_recent_rows.__self__ is service
     assert legacy.point_summary.__self__ is service
     assert legacy.point_window_summary.__self__ is service
