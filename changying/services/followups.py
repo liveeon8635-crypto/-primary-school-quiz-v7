@@ -75,3 +75,25 @@ class FollowUpService:
                 )
             ).all()
         )
+
+    def class_rows(
+        self,
+        db,
+        *,
+        school_id: int,
+        class_id: int,
+    ) -> list[Any]:
+        return list(
+            db.scalars(
+                select(self.StudentFollowUp)
+                .where(
+                    self.StudentFollowUp.school_id == school_id,
+                    self.StudentFollowUp.class_id == class_id,
+                )
+                .order_by(
+                    self.StudentFollowUp.status,
+                    self.StudentFollowUp.updated_at.desc(),
+                    self.StudentFollowUp.id.desc(),
+                )
+            ).all()
+        )
