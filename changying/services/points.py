@@ -36,6 +36,48 @@ class PointService:
             or 0
         )
 
+    def class_window_summary(
+        self,
+        db,
+        *,
+        school_id: int,
+        class_id: int,
+        start_utc,
+        end_utc,
+    ) -> dict[str, Any]:
+        rows = db.scalars(
+            select(self.PointLedger).where(
+                self.PointLedger.school_id == school_id,
+                self.PointLedger.class_id == class_id,
+                self.PointLedger.created_at >= start_utc,
+                self.PointLedger.created_at < end_utc,
+                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+            ).order_by(self.PointLedger.id.desc())
+        ).all()
+
+        by_student: dict[int, dict[str, int]] = {}
+        for row in rows:
+            item = by_student.setdefault(
+                row.student_id,
+                {"studentID": row.student_id, "net": 0, "activity": 0, "discipline": 0, "records": 0},
+            )
+            points = int(row.points or 0)
+            item["net"] += points
+            item["records"] += 1
+            if row.category == "activity":
+                item["activity"] += points
+            if row.category == "discipline":
+                item["discipline"] += points
+
+        return {
+            "recordCount": len(rows),
+            "studentCount": len(by_student),
+            "activity": sum(int(row.points or 0) for row in rows if row.category == "activity"),
+            "discipline": sum(int(row.points or 0) for row in rows if row.category == "discipline"),
+            "net": sum(int(row.points or 0) for row in rows),
+            "students": list(by_student.values()),
+        }
+
     def class_window_categories(
         self,
         db,
