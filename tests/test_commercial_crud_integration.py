@@ -28,7 +28,7 @@ with TestClient(app) as client:
     schools = client.get("/operator/schools", headers=operator_headers)
     assert schools.status_code == 200, schools.text
     assert schools.json(), "expected seeded school"
-    school_id = schools.json()[0]["id"]
+    school_id = schools.json()[0]["schoolID"]
 
     created = client.post(
         f"/operator/schools/{school_id}/orders",
