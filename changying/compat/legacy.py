@@ -36,6 +36,7 @@ from changying.domain.growth import (
 from changying.security.passwords import hash_password, password_ok, password_version, verify_password
 from changying.security.tokens import make_token as issue_token
 from changying.services.assignments import AssignmentService
+from changying.services.followups import FollowUpService
 from changying.services.points import PointService
 from changying.services.teaching import TeachingService
 from changying.services.wrong_questions import WrongQuestionService
@@ -218,6 +219,14 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.wrong_question_assignment_rows = wrong_question_service.assignment_rows
     implementation.wrong_question_teacher_student_rows = wrong_question_service.teacher_student_rows
     implementation.wrong_question_student_rows = wrong_question_service.student_rows
+
+    followup_service = FollowUpService(
+        followup_model=implementation.StudentFollowUp,
+        followup_log_model=implementation.StudentFollowUpLog,
+    )
+    implementation.followup_service = followup_service
+    implementation.followup_student_history_rows = followup_service.student_history_rows
+    implementation.followup_student_log_history_rows = followup_service.student_log_history_rows
 
     def legacy_make_token(user, security, remember=False):
         return issue_token(

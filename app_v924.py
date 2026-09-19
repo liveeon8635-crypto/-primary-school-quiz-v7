@@ -3162,8 +3162,8 @@ def account_export_payload(db,u):
         data["submissions"]=[model_dict(x) for x in db.scalars(select(Submission).where(Submission.school_id==u.school_id,Submission.student_id==u.id).order_by(Submission.id)).all()]
         data["pointLedger"]=[model_dict(x) for x in point_student_history_rows(db,student_id=u.id,school_id=u.school_id)]
         data["rewards"]=[model_dict(x) for x in db.scalars(select(RewardRedemption).where(RewardRedemption.school_id==u.school_id,RewardRedemption.student_id==u.id).order_by(RewardRedemption.id)).all()]
-        data["followups"]=[model_dict(x) for x in db.scalars(select(StudentFollowUp).where(StudentFollowUp.school_id==u.school_id,StudentFollowUp.student_id==u.id).order_by(StudentFollowUp.id)).all()]
-        data["followupLogs"]=[model_dict(x) for x in db.scalars(select(StudentFollowUpLog).where(StudentFollowUpLog.school_id==u.school_id,StudentFollowUpLog.student_id==u.id).order_by(StudentFollowUpLog.id)).all()]
+        data["followups"]=[model_dict(x) for x in followup_student_history_rows(db,school_id=u.school_id,student_id=u.id)]
+        data["followupLogs"]=[model_dict(x) for x in followup_student_log_history_rows(db,school_id=u.school_id,student_id=u.id)]
     elif u.role=="parent":
         links=db.scalars(select(ParentStudent).where(ParentStudent.parent_id==u.id)).all();data["linkedStudents"]=[{"studentID":x.student_id,"studentName":(db.get(User,x.student_id).name if db.get(User,x.student_id) else "")} for x in links]
     elif u.role=="teacher":
