@@ -4392,10 +4392,9 @@ def teacher_grading_review(aid:int,sid:int,u:User=Depends(current_user),db:Sessi
     review=db.scalar(select(AIGradingReview).where(
         AIGradingReview.school_id==u.school_id,AIGradingReview.assignment_id==aid,AIGradingReview.student_id==sid
     ))
-    wrong=db.scalars(select(WrongQuestionRecord).where(
-        WrongQuestionRecord.school_id==u.school_id,WrongQuestionRecord.student_id==sid,
-        WrongQuestionRecord.assignment_id==aid
-    ).order_by(WrongQuestionRecord.id)).all()
+    wrong=wrong_question_assignment_rows(
+        db,school_id=u.school_id,student_id=sid,assignment_id=aid
+    )
     return {"assignmentID":aid,"assignmentTitle":a.title,"studentID":sid,"studentName":stu.name,
             "review":_grading_review_payload(review),"wrongQuestions":[_wrong_payload(x) for x in wrong]}
 
@@ -4423,17 +4422,17 @@ def teacher_grading_confirm(aid:int,sid:int,b:AIGradingConfirmBody,u:User=Depend
 @app.get("/teacher/students/{sid}/wrong-questions")
 def teacher_student_wrong_questions(sid:int,status:str="active",u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"teacher");stu=can_manage_student_points(db,u,sid)
-    q=select(WrongQuestionRecord).where(WrongQuestionRecord.school_id==u.school_id,WrongQuestionRecord.student_id==stu.id)
-    if status in ("active","mastered"):q=q.where(WrongQuestionRecord.status==status)
-    rows=db.scalars(q.order_by(WrongQuestionRecord.id.desc())).all()
+    rows=wrong_question_teacher_student_rows(
+        db,school_id=u.school_id,student_id=stu.id,status=status
+    )
     return {"studentID":stu.id,"studentName":stu.name,"status":status,"items":[_wrong_payload(x) for x in rows]}
 
 @app.get("/student/wrong-questions")
 def student_wrong_questions(u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"student")
-    rows=db.scalars(select(WrongQuestionRecord).where(
-        WrongQuestionRecord.school_id==u.school_id,WrongQuestionRecord.student_id==u.id
-    ).order_by(WrongQuestionRecord.status,WrongQuestionRecord.id.desc())).all()
+    rows=wrong_question_student_rows(
+        db,school_id=u.school_id,student_id=u.id
+    )
     return {"activeCount":sum(1 for x in rows if x.status=="active"),
             "masteredCount":sum(1 for x in rows if x.status=="mastered"),
             "items":[_wrong_payload(x) for x in rows]}
