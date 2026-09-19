@@ -2569,7 +2569,7 @@ def validate_class_grade(name,grade):
 
 
 APP_VERSION="10.7"
-SCHEMA_VERSION="10.6.4"
+SCHEMA_VERSION="10.6.5"
 RELEASE_CHANNEL="stable"
 RELEASE_NAME="小学教学版"
 
@@ -3154,6 +3154,18 @@ def _ai_images_for_homework(db,school_id,assignment_id,student_id):
     return out
 
 def run_schema_migrations(db):
+    # Existing production databases need these additive columns before any
+    # ORM query touches Question. Fresh databases already get them via create_all.
+    question_columns={x["name"] for x in sa_inspect(engine).get_columns("questions")} if "questions" in sa_inspect(engine).get_table_names() else set()
+    additive=[
+        ("question_type","VARCHAR(30)","''"),
+        ("answer_json","TEXT","'{}'"),
+        ("figure_json","TEXT","'{}'"),
+    ]
+    for name,sql_type,default_sql in additive:
+        if name not in question_columns:
+            db.execute(sa_text(f"ALTER TABLE questions ADD COLUMN {name} {sql_type} DEFAULT {default_sql}"))
+    db.commit()
     migrations=[
         ("8.3.0","上线基础：迁移登记、系统健康、数据导出、注销申请与安全基线"),
         ("9.1.0","商业版 C1：学校套餐、试用/到期状态、容量限制与功能权限"),
@@ -3172,7 +3184,8 @@ def run_schema_migrations(db):
         ("10.6","商业正式版 C3.6：AI批改确认、错题归档、个性化巩固生成与掌握闭环"),
         ("10.6.2","课堂积分班级自定义规则"),
         ("10.6.3","修复明确年级班级的名称/年级字段不一致，并同步当前学生年级"),
-        ("10.6.4","将已完成的 AI 针对性练习错题回填到连续学习反馈，并纳入后续针对性练习")
+        ("10.6.4","将已完成的 AI 针对性练习错题回填到连续学习反馈，并纳入后续针对性练习"),
+        ("10.6.5","AI 针对性练习支持多题型、文本自动判分与按需规则图示")
     ]
     changed=False
     for version,description in migrations:
@@ -3265,6 +3278,13 @@ def run_schema_migrations(db):
                         action="reinforcement.feedback.backfill",
                         detail=f"assignment={recipient.assignment_id}:student={recipient.student_id}:wrong={len(archived)}"
                     ))
+        elif version=="10.6.5":
+            # Keep legacy choice questions backward-compatible; non-choice rows
+            # continue to infer their old behavior when question_type is blank.
+            db.execute(sa_text(
+                "UPDATE questions SET question_type='single_choice' "
+                "WHERE COALESCE(question_type,'')='' AND correct_index>=0"
+            ))
         db.add(SchemaMigration(version=version,description=description));changed=True
     if changed:db.commit()
 
