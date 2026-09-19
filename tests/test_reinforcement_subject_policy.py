@@ -112,3 +112,17 @@ def test_runtime_context_policy_precedes_subject_scope_and_route_filters_wrong_s
     assert 'str(x.subject or "").strip()==context_subject' in source
     assert 'forced_subject!="数学"' in source
     assert 'if forced_subject=="数学" else {}' in source
+
+
+
+def test_english_reinforcement_prompt_locks_current_pep_and_objective_types():
+    base = '''最近测试/练习反馈：{"primary":{"grade":5,"subject":"英语","textbook":"人教版（PEP·当前最新版）"}}'''
+    assert reinforcement_subject_from_prompt(base) == "英语"
+    prompt = augment_reinforcement_prompt("reinforcement_generate", base)
+    assert "当前科目是英语" in prompt
+    assert "PEP·当前最新版" in prompt
+    assert "Different friends" in prompt
+    assert "Nature and us" in prompt
+    assert "不要使用 calculation" in prompt
+    assert "figure 必须返回 {}" in prompt
+    assert "不得回退到旧版单元标题" in prompt
