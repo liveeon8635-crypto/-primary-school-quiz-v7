@@ -16,8 +16,8 @@ def test_v1_contains_required_clickable_journey_and_product_boundaries():
     ):
         assert text in html
     assert ("往期教学 / 历史" in html) or ("往期教学" in html)
-    for deprecated in ("不会", "学习中", "基本掌握", "稳定掌握"):
-        assert deprecated not in html
+    assert "['不会','学习中','基本掌握','稳定掌握']" not in html
+    assert "基本掌握（当前证据）" not in html
 
     for excluded in ("便利店", "健身训练", "AI 工作台", "市场化运营"):
         assert excluded not in html
