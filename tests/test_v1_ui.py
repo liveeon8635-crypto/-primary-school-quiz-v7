@@ -49,3 +49,12 @@ def test_v1_routes_install_without_replacing_existing_routes():
         assert response.status_code == 200
         assert response.headers["X-Changying-V1"] == V1_UI_MARKER
         assert "长缨辅学 V1" in response.text
+
+
+def test_v1_student_workspace_uses_real_assignment_and_progress_summary():
+    html = v1_html()
+    assert "api('/student/assignments')" in html
+    assert "api('/student/progress')" in html
+    assert "studentAssignments.filter(x=>!x.completed).length" in html
+    assert "studentProgress.avgScore??null" in html
+    assert "assignedClassName" in html
