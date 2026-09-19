@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 
 class FollowUpService:
@@ -15,9 +15,11 @@ class FollowUpService:
         *,
         followup_model: Any,
         followup_log_model: Any,
+        class_todo_model: Any | None = None,
     ) -> None:
         self.StudentFollowUp = followup_model
         self.StudentFollowUpLog = followup_log_model
+        self.ClassTodo = class_todo_model
 
     def student_history_rows(
         self,
@@ -205,4 +207,53 @@ class FollowUpService:
                 .order_by(self.StudentFollowUpLog.created_at.desc())
                 .limit(limit)
             ).all()
+        )
+
+
+    def class_todo_rows(
+        self,
+        db,
+        *,
+        school_id: int,
+        class_id: int,
+    ) -> list[Any]:
+        if self.ClassTodo is None:
+            raise RuntimeError("class_todo_model is not configured")
+        return list(
+            db.scalars(
+                select(self.ClassTodo)
+                .where(
+                    self.ClassTodo.school_id == school_id,
+                    self.ClassTodo.class_id == class_id,
+                )
+                .order_by(
+                    self.ClassTodo.status,
+                    self.ClassTodo.created_at.desc(),
+                    self.ClassTodo.id.desc(),
+                )
+            ).all()
+        )
+
+    def class_parent_contact_count(
+        self,
+        db,
+        *,
+        school_id: int,
+        class_id: int,
+    ) -> int:
+        return int(
+            db.scalar(
+                select(func.count())
+                .select_from(self.StudentFollowUpLog)
+                .join(
+                    self.StudentFollowUp,
+                    self.StudentFollowUp.id == self.StudentFollowUpLog.followup_id,
+                )
+                .where(
+                    self.StudentFollowUp.school_id == school_id,
+                    self.StudentFollowUp.class_id == class_id,
+                    self.StudentFollowUpLog.log_type == "parent_contact",
+                )
+            )
+            or 0
         )

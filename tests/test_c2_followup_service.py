@@ -33,6 +33,16 @@ class TestFollowUpLog(Base):
     log_type: Mapped[str] = mapped_column(String(40), default="note")
 
 
+class TestClassTodo(Base):
+    __tablename__ = "c2_test_class_todos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    school_id: Mapped[int] = mapped_column(Integer)
+    class_id: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    created_at: Mapped[int] = mapped_column(Integer, default=0)
+
+
 def test_student_history_rows_keep_school_student_and_ascending_order():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -281,6 +291,64 @@ def test_timeline_log_rows_keep_school_followup_ids_order_and_limit():
     assert empty == []
 
 
+
+def test_class_todo_rows_keep_school_class_and_status_created_id_order():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = FollowUpService(
+        followup_model=TestFollowUp,
+        followup_log_model=TestFollowUpLog,
+        class_todo_model=TestClassTodo,
+    )
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestClassTodo(id=1, school_id=10, class_id=7, status="open", created_at=10),
+                TestClassTodo(id=2, school_id=10, class_id=7, status="open", created_at=20),
+                TestClassTodo(id=3, school_id=10, class_id=7, status="done", created_at=30),
+                TestClassTodo(id=4, school_id=10, class_id=7, status="open", created_at=20),
+                TestClassTodo(id=5, school_id=10, class_id=8, status="open", created_at=40),
+                TestClassTodo(id=6, school_id=20, class_id=7, status="open", created_at=50),
+            ]
+        )
+        db.commit()
+        rows = service.class_todo_rows(db, school_id=10, class_id=7)
+
+    assert [row.id for row in rows] == [3, 4, 2, 1]
+
+
+def test_class_parent_contact_count_keeps_join_school_class_and_type_scope():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = FollowUpService(
+        followup_model=TestFollowUp,
+        followup_log_model=TestFollowUpLog,
+    )
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestFollowUp(id=50, school_id=10, student_id=100, class_id=7),
+                TestFollowUp(id=51, school_id=10, student_id=101, class_id=8),
+                TestFollowUp(id=52, school_id=20, student_id=102, class_id=7),
+            ]
+        )
+        db.add_all(
+            [
+                TestFollowUpLog(id=1, school_id=10, student_id=100, followup_id=50, created_at=10, log_type="parent_contact"),
+                TestFollowUpLog(id=2, school_id=99, student_id=100, followup_id=50, created_at=20, log_type="parent_contact"),
+                TestFollowUpLog(id=3, school_id=10, student_id=100, followup_id=50, created_at=30, log_type="note"),
+                TestFollowUpLog(id=4, school_id=10, student_id=101, followup_id=51, created_at=40, log_type="parent_contact"),
+                TestFollowUpLog(id=5, school_id=20, student_id=102, followup_id=52, created_at=50, log_type="parent_contact"),
+            ]
+        )
+        db.commit()
+        count = service.class_parent_contact_count(db, school_id=10, class_id=7)
+
+    assert count == 2
+
+
 def test_followup_service_is_installed_into_legacy_runtime():
     import app_v924 as legacy
     from app import app  # noqa: F401
@@ -297,3 +365,5 @@ def test_followup_service_is_installed_into_legacy_runtime():
     assert legacy.followup_class_parent_contact_rows.__self__ is service
     assert legacy.followup_timeline_rows.__self__ is service
     assert legacy.followup_timeline_log_rows.__self__ is service
+    assert legacy.followup_class_todo_rows.__self__ is service
+    assert legacy.followup_class_parent_contact_count.__self__ is service

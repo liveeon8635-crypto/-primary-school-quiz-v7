@@ -225,6 +225,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     followup_service = FollowUpService(
         followup_model=implementation.StudentFollowUp,
         followup_log_model=implementation.StudentFollowUpLog,
+        class_todo_model=implementation.ClassTodo,
     )
     implementation.followup_service = followup_service
     implementation.followup_student_history_rows = followup_service.student_history_rows
@@ -236,6 +237,8 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.followup_class_parent_contact_rows = followup_service.class_parent_contact_rows
     implementation.followup_timeline_rows = followup_service.timeline_rows
     implementation.followup_timeline_log_rows = followup_service.timeline_log_rows
+    implementation.followup_class_todo_rows = followup_service.class_todo_rows
+    implementation.followup_class_parent_contact_count = followup_service.class_parent_contact_count
 
     def legacy_make_token(user, security, remember=False):
         return issue_token(
