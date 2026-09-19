@@ -1323,7 +1323,7 @@ def aj(db,a):
 
 def protected_question_ids_for_student(db,u):
     if u.role!="student": return set()
-    assignments=db.scalars(select(Assignment).join(AssignmentRecipient,AssignmentRecipient.assignment_id==Assignment.id).where(Assignment.school_id==u.school_id,AssignmentRecipient.student_id==u.id)).all()
+    assignments=student_assignment_rows(db,assignment_model=Assignment,assignment_recipient_model=AssignmentRecipient,school_id=u.school_id,student_id=u.id)
     protected=set()
     for a in assignments:
         if assignment_submission_mode(db,a)=="media":continue
