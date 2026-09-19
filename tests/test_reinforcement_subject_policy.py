@@ -19,10 +19,14 @@ def test_chinese_reinforcement_prompt_adds_subject_specific_contract():
     assert "figure 必须返回 {}" in prompt
 
 
-def test_math_reinforcement_prompt_is_not_rewritten_by_chinese_policy():
+def test_math_reinforcement_prompt_gets_only_generic_subject_isolation():
     base = '''最近测试/练习反馈：{"primary":{"grade":5,"subject":"数学","textbook":"人教版"}}'''
     assert reinforcement_subject_from_prompt(base) == "数学"
-    assert augment_reinforcement_prompt("reinforcement_generate", base) == base
+    prompt = augment_reinforcement_prompt("reinforcement_generate", base)
+    assert "当前科目是数学" in prompt
+    assert "必须忽略" in prompt
+    assert "不要使用 calculation" not in prompt
+    assert "开放性阅读感受、习作、长篇表达不得自动判分" not in prompt
 
 
 def test_unrelated_ai_features_are_untouched():
