@@ -25,7 +25,7 @@ _LEGACY_CAPABILITIES_SNIPPET = r'''
 <script id="changying_v1_legacy_capabilities_v1-script">
 (()=>{
   if(window.__cyV1LegacyCapabilitiesInstalled)return;window.__cyV1LegacyCapabilitiesInstalled=true;
-  const token=()=>localStorage.getItem('v717Token')||sessionStorage.getItem('v717Token')||localStorage.getItem('v6Token')||sessionStorage.getItem('v6Token')||'';
+  const token=()=>{const remember=localStorage.getItem('v717Remember')==='1';return (remember?localStorage.getItem('v717Token'):sessionStorage.getItem('v717Token'))||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||''};
   const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const capabilities={
     teacher:[
