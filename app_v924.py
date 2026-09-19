@@ -2409,9 +2409,8 @@ def class_followup_dashboard_data(db,c:SchoolClass,school_id:int):
 
 def student_growth_timeline_data(db,student_id:int,school_id:int,class_id:int|None=None,limit:int=80):
     events=[]
-    q=select(PointLedger).where(PointLedger.school_id==school_id,PointLedger.student_id==student_id)
-    if class_id:q=q.where(PointLedger.class_id==class_id)
-    for x in db.scalars(q.order_by(PointLedger.created_at.desc()).limit(30)).all():
+    point_rows=point_student_recent_rows(db,student_id=student_id,school_id=school_id,class_id=class_id,limit=30,order_by_created_at=True)
+    for x in point_rows:
         events.append({"type":"point","icon":"⭐" if int(x.points or 0)>=0 else "📝","title":x.reason or "课堂积分",
                        "detail":f"{'+' if int(x.points or 0)>0 else ''}{int(x.points or 0)} 分"+(f" · {x.note}" if x.note else ""),
                        "time":school_local_iso(x.created_at),"ts":x.created_at})
@@ -6470,9 +6469,7 @@ def student_growth_profile_data(db,stu:User,school_id:int,class_id:int|None=None
     points=point_summary(db,stu.id,school_id)
     weekly=student_period_points(db,stu.id,school_id,7)
     monthly=student_period_points(db,stu.id,school_id,30)
-    lq=select(PointLedger).where(PointLedger.school_id==school_id,PointLedger.student_id==stu.id)
-    if c:lq=lq.where(PointLedger.class_id==c.id)
-    ledgers=db.scalars(lq.order_by(PointLedger.created_at.desc(),PointLedger.id.desc()).limit(10)).all()
+    ledgers=point_student_recent_rows(db,student_id=stu.id,school_id=school_id,class_id=(c.id if c else None),limit=10,order_by_created_at=True,id_tiebreak=True)
     recent_points=[point_ledger_json(db,x) for x in ledgers]
 
     # 跟进与家校沟通
