@@ -16,6 +16,11 @@ from fastapi import Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from changying.services.builtin_question_bank import (
+    built_in_subjects,
+    ensure_built_in_questions,
+    potential_question_catalog,
+)
 from changying.web import v1 as v1_module
 
 
@@ -58,7 +63,7 @@ def select_student_practice_questions(
     cannot crowd out the rest.  Module practice keeps the exact knowledge key.
     """
 
-    limit = max(1, min(int(count or 10), 30))
+    limit = max(1, min(int(count or 10), 50))
     eligible = [row for row in rows if _is_online_question(row)]
     eligible.sort(key=lambda row: int(row.id))
 
@@ -240,6 +245,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
             ).all()
         )
         subjects = [str(x).strip() for x in subjects if str(x or "").strip()]
+        subjects = sorted(set(subjects) | set(built_in_subjects(selected_grade)))
         selected_subject = (subject or "").strip()
         if not selected_subject or selected_subject not in subjects:
             selected_subject = subjects[0] if subjects else ""
@@ -258,18 +264,11 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
                     .order_by(Question.unit, Question.knowledge, Question.id)
                 ).all()
             )
-            counts: dict[tuple[str, str], int] = defaultdict(int)
-            for row in rows:
-                if not _is_online_question(row):
-                    continue
-                available_count += 1
-                knowledge = (row.knowledge or "").strip()
-                if knowledge:
-                    counts[((row.unit or "").strip(), knowledge)] += 1
-            modules = [
-                {"unit": unit, "knowledge": knowledge, "count": count}
-                for (unit, knowledge), count in sorted(counts.items())
-            ]
+            modules, available_count = potential_question_catalog(
+                rows,
+                grade=selected_grade,
+                subject=selected_subject,
+            )
 
         default_class = next(
             (c for c in classes if int(c.grade or 0) == int(student.grade or 0)),
@@ -305,7 +304,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
         kind = (body.kind or "comprehensive").strip().lower()
         if kind not in {"comprehensive", "module"}:
             raise HTTPException(400, "内容类型无效")
-        count = max(1, min(int(body.question_count or 10), 30))
+        count = max(1, min(int(body.question_count or 10), 50))
 
         class_row = None
         if body.class_id:
@@ -318,6 +317,14 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
                 classes[0],
             )
 
+        ensure_built_in_questions(
+            db,
+            Question,
+            school_id=u.school_id,
+            creator_id=u.id,
+            grade=body.grade,
+            subject=subject,
+        )
         rows = list(
             db.scalars(
                 select(Question)
