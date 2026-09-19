@@ -66,6 +66,11 @@ RUBRIC_REVIEW_UI_SNIPPET = r'''
 def inject_rubric_review_ui(html: str) -> str:
     if RUBRIC_REVIEW_UI_MARKER in html:
         return html
+    # Surface the server's authoritative closure notice after teacher confirm.
+    html = html.replace(
+        'toast("教师确认已保存，错题已归档")',
+        'toast(x.notice||"教师确认已保存，错题与学习证据已更新")',
+    )
     marker = RUBRIC_REVIEW_UI_SNIPPET + f"\n<!-- {RUBRIC_REVIEW_UI_MARKER} -->"
     if "</body>" in html:
         return html.replace("</body>", marker + "\n</body>", 1)
