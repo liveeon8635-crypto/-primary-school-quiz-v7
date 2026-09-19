@@ -40,7 +40,7 @@ _TOOL_HTML = r'''<!doctype html>
 <script>
 (()=>{
   const TOKEN_KEY='v717Token';
-  const token=()=>localStorage.getItem(TOKEN_KEY)||localStorage.getItem('v6Token')||'';
+  const token=()=>{const remember=localStorage.getItem('v717Remember')==='1';return (remember?localStorage.getItem(TOKEN_KEY):sessionStorage.getItem(TOKEN_KEY))||sessionStorage.getItem(TOKEN_KEY)||localStorage.getItem(TOKEN_KEY)||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||''};
   const menus={
     teacher:[['classes','班级学生'],['classPoints','课堂积分'],['ai','AI 助手'],['teaching','定制教学'],['resources','教材教案'],['catalog','教材题库'],['papers','组卷作业'],['analytics','学情分析'],['audit','操作记录'],['leaderboard','排行榜'],['account','我的']],
     student:[['syncLearning','同步课堂'],['rewards','积分奖励'],['assignments','我的作业'],['wrongbook','我的错题'],['practice','自主练习'],['progress','我的学情'],['leaderboard','班级排行'],['account','我的']],
