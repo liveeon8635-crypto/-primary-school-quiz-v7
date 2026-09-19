@@ -404,15 +404,97 @@ def _evidence_context(marker: str, **payload: Any) -> str:
     return json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def _existing_event(implementation: ModuleType, db: Any, school_id: int, source_type: str, context: str):
-    return db.scalar(
-        implementation.select(implementation.LearningEvidenceEvent.id).where(
+def _active_event_for_key(
+    implementation: ModuleType,
+    db: Any,
+    *,
+    school_id: int,
+    student_id: int,
+    source_type: str,
+    marker: str,
+    review_id: int,
+    question_id: int | None = None,
+):
+    rows = db.scalars(
+        implementation.select(implementation.LearningEvidenceEvent).where(
             implementation.LearningEvidenceEvent.school_id == school_id,
-            implementation.LearningEvidenceEvent.source_type == source_type,
-            implementation.LearningEvidenceEvent.context == context,
-            implementation.LearningEvidenceEvent.event_kind == "record",
+            implementation.LearningEvidenceEvent.student_id == student_id,
+        )
+    ).all()
+    retracted = {
+        int(row.target_event_id)
+        for row in rows
+        if row.event_kind == "retract" and row.target_event_id is not None
+    }
+    for row in reversed(rows):
+        if (
+            row.event_kind != "record"
+            or row.source_type != source_type
+            or int(row.id) in retracted
+        ):
+            continue
+        data = _json_object(row.context)
+        if data.get("marker") != marker:
+            continue
+        try:
+            if int(data.get("reviewID")) != int(review_id):
+                continue
+        except Exception:
+            continue
+        if question_id is not None:
+            try:
+                if int(data.get("questionID")) != int(question_id):
+                    continue
+            except Exception:
+                continue
+        return row
+    return None
+
+
+def _replace_event_if_needed(
+    implementation: ModuleType,
+    db: Any,
+    teacher: Any,
+    *,
+    student_id: int,
+    source_type: str,
+    marker: str,
+    review_id: int,
+    context: str,
+    question_id: int | None = None,
+) -> bool:
+    existing = _active_event_for_key(
+        implementation,
+        db,
+        school_id=int(teacher.school_id),
+        student_id=int(student_id),
+        source_type=source_type,
+        marker=marker,
+        review_id=review_id,
+        question_id=question_id,
+    )
+    if existing is None:
+        return True
+    if (existing.context or "") == context:
+        return False
+    db.add(
+        implementation.LearningEvidenceEvent(
+            school_id=int(teacher.school_id),
+            student_id=int(student_id),
+            actor_id=int(teacher.id),
+            event_kind="retract",
+            target_event_id=int(existing.id),
+            evidence_type=existing.evidence_type,
+            subject=existing.subject or "",
+            knowledge_key=existing.knowledge_key or "",
+            success=existing.success,
+            note="教师重新确认评分，旧学习证据失效",
+            context=existing.context or "",
+            source_type=source_type + "_retraction",
+            occurred_at=datetime.utcnow(),
         )
     )
+    return True
 
 
 def _append_teacher_confirmed_evidence(
@@ -432,12 +514,15 @@ def _append_teacher_confirmed_evidence(
         score=review.confirmed_score,
     )
     added = 0
-    if not _existing_event(
+    if _replace_event_if_needed(
         implementation,
         db,
-        int(teacher.school_id),
-        "teacher_confirmed_grading",
-        review_context,
+        teacher,
+        student_id=int(student_id),
+        source_type="teacher_confirmed_grading",
+        marker="teacher_confirmed_grading",
+        review_id=int(review.id),
+        context=review_context,
     ):
         db.add(
             implementation.LearningEvidenceEvent(
@@ -489,12 +574,16 @@ def _append_teacher_confirmed_evidence(
             met=raw.get("met_points") or [],
             missed=raw.get("missed_points") or [],
         )
-        if _existing_event(
+        if not _replace_event_if_needed(
             implementation,
             db,
-            int(teacher.school_id),
-            "teacher_confirmed_rubric",
-            context,
+            teacher,
+            student_id=int(student_id),
+            source_type="teacher_confirmed_rubric",
+            marker="teacher_confirmed_rubric",
+            review_id=int(review.id),
+            context=context,
+            question_id=qid,
         ):
             continue
         db.add(
