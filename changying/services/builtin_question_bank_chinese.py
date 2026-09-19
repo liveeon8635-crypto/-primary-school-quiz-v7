@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 
-PEP_CURRENT_TEXTBOOK = "人教版"
+CHINESE_G5_TEXTBOOK = "统编版（人民教育出版社）"
 
 
 def _spec(
@@ -42,7 +42,7 @@ def _spec(
     return {
         "grade": 5,
         "subject": "语文",
-        "textbook": PEP_CURRENT_TEXTBOOK,
+        "textbook": CHINESE_G5_TEXTBOOK,
         "semester": "上册",
         "unit": unit,
         "knowledge": knowledge,
@@ -395,4 +395,4 @@ def grade5_chinese_specs() -> list[dict[str, Any]]:
     return rows
 
 
-__all__ = ["grade5_chinese_specs"]
+__all__ = ["CHINESE_G5_TEXTBOOK", "grade5_chinese_specs"]
