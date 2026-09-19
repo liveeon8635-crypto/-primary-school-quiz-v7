@@ -77,7 +77,8 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     assert "该科目综合测试" in once
     assert "知识模块练习" in once
     assert "人教版（当前最新版）" in once
-    assert "当前人教版教材题库" in once
+    assert "当前核定教材题库" in once
+    assert "语文使用统编版（人民教育出版社）" in once
     assert "cy-p-textbook" in once
     assert "selectedTextbook" in once
     assert "textbook:body.querySelector('#cy-p-textbook').value" in once
