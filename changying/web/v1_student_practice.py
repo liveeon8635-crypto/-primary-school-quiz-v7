@@ -18,6 +18,7 @@ from sqlalchemy import select
 
 from changying.services.builtin_question_bank import (
     built_in_subjects,
+    built_in_textbooks,
     ensure_built_in_questions,
     potential_question_catalog,
 )
@@ -30,6 +31,7 @@ V1_STUDENT_PRACTICE_MARKER = "changying_v1_student_practice_v1"
 class StudentPracticeCreateBody(BaseModel):
     grade: int
     subject: str
+    textbook: str = ""
     kind: str = "comprehensive"
     knowledge: str = ""
     question_count: int = 10
@@ -56,6 +58,7 @@ def select_student_practice_questions(
     kind: str,
     knowledge: str = "",
     count: int = 10,
+    textbook: str = "",
 ) -> list[Any]:
     """Choose deterministic, valid quiz questions for one student activity.
 
@@ -64,7 +67,14 @@ def select_student_practice_questions(
     """
 
     limit = max(1, min(int(count or 10), 50))
+    selected_textbook = (textbook or "").strip()
     eligible = [row for row in rows if _is_online_question(row)]
+    if selected_textbook:
+        eligible = [
+            row
+            for row in eligible
+            if str(row.textbook or "").strip() == selected_textbook
+        ]
     eligible.sort(key=lambda row: int(row.id))
 
     if kind == "module":
@@ -124,17 +134,18 @@ def _practice_patch_html() -> str:
  async function api(url,opt={}){const t=token();if(!t||t==='demo')throw new Error('演示会话不会写入真实教学数据');const headers={Authorization:'Bearer '+t,...(opt.headers||{})};if(opt.body&&!headers['Content-Type'])headers['Content-Type']='application/json';const r=await fetch(url,{...opt,headers,cache:'no-store'});if(!r.ok){let msg='操作失败 '+r.status;try{const d=await r.json();msg=d.detail||d.message||msg}catch{}throw new Error(msg)}return r.status===204?null:await r.json()}
  function close(){document.getElementById('cy-practice-layer')?.remove();document.body.style.overflow=''}
  function dueDefault(){return new Date(Date.now()+7*86400000).toISOString().slice(0,10)}
- async function loadOptions(sid,grade,subject){const p=new URLSearchParams();if(grade)p.set('grade',grade);if(subject)p.set('subject',subject);return api('/teacher/students/'+sid+'/practice-options?'+p.toString())}
+ async function loadOptions(sid,grade,subject,textbook){const p=new URLSearchParams();if(grade)p.set('grade',grade);if(subject)p.set('subject',subject);if(textbook)p.set('textbook',textbook);return api('/teacher/students/'+sid+'/practice-options?'+p.toString())}
  function optionRows(values,current){return values.map(v=>'<option value="'+esc(v)+'" '+(String(v)===String(current)?'selected':'')+'>'+esc(v)+'</option>').join('')}
  function renderForm(layer,data){
-   const body=layer.querySelector('#cy-practice-body');const student=data.student||{};const grade=data.selectedGrade||student.grade||5;const subject=data.selectedSubject||data.subjects?.[0]||'数学';
+   const body=layer.querySelector('#cy-practice-body');const student=data.student||{};const grade=data.selectedGrade||student.grade||5;const subject=data.selectedSubject||data.subjects?.[0]||'数学';const textbooks=data.textbooks||[];const textbook=data.selectedTextbook||textbooks[0]||'';
    const modules=data.modules||[];const classes=data.classes||[];
-   body.innerHTML='<div class="cy-practice-note">综合测试会尽量跨知识模块均衡选题；知识模块练习只从指定知识点选题。当前年级科目可用约 '+esc(data.availableQuestionCount||0)+' 题；系统标准题只会在你确认添加时补入现有题库。</div>'+
+   body.innerHTML='<div class="cy-practice-note">综合测试和知识模块练习都会严格按所选教材版本筛题，不会混用不同版本。当前 '+esc(grade)+'年级'+esc(subject)+(textbook?' · '+esc(textbook):'')+' 可用约 '+esc(data.availableQuestionCount||0)+' 题；系统标准题只会在你确认添加时补入现有题库。</div>'+
    '<form id="cy-practice-form"><div class="cy-practice-grid">'+
    '<div class="cy-practice-field"><label>学生</label><input value="'+esc(student.name||'学生')+'" disabled></div>'+
    '<div class="cy-practice-field"><label>教学班级</label><select id="cy-p-class">'+classes.map(c=>'<option value="'+c.id+'" '+(Number(c.id)===Number(data.defaultClassID)?'selected':'')+'>'+esc(c.name)+' · '+esc(c.grade)+'年级</option>').join('')+'</select></div>'+
    '<div class="cy-practice-field"><label>年级</label><select id="cy-p-grade">'+[1,2,3,4,5,6].map(g=>'<option value="'+g+'" '+(Number(g)===Number(grade)?'selected':'')+'>'+g+'年级</option>').join('')+'</select></div>'+
    '<div class="cy-practice-field"><label>科目</label><select id="cy-p-subject">'+optionRows(data.subjects||[],subject)+'</select></div>'+
+   '<div class="cy-practice-field"><label>教材版本</label><select id="cy-p-textbook">'+optionRows(textbooks,textbook)+'</select></div>'+
    '<div class="cy-practice-field"><label>内容类型</label><select id="cy-p-kind"><option value="comprehensive">该科目综合测试</option><option value="module">知识模块练习</option></select></div>'+
    '<div class="cy-practice-field" id="cy-p-module-wrap" style="display:none"><label>知识模块</label><select id="cy-p-module">'+modules.map(m=>'<option value="'+esc(m.knowledge)+'">'+esc((m.unit?m.unit+' · ':'')+m.knowledge+'（'+m.count+'题）')+'</option>').join('')+'</select></div>'+
    '<div class="cy-practice-field"><label>题数</label><input id="cy-p-count" type="number" min="1" max="50" value="20"></div>'+
@@ -144,9 +155,10 @@ def _practice_patch_html() -> str:
    const clearResult=()=>{resultBox.innerHTML=''};
    const syncCount=()=>{moduleWrap.style.display=kind.value==='module'?'grid':'none';const selected=modules.find(m=>m.knowledge===moduleEl?.value);const available=kind.value==='module'?Number(selected?.count||0):Number(data.availableQuestionCount||0);const max=Math.max(1,Math.min(50,available||50));countEl.max=String(max);const current=Number(countEl.value)||0;if(current<1||current>max)countEl.value=String(Math.min(kind.value==='module'?10:20,max));clearResult()};
    kind.onchange=syncCount;if(moduleEl)moduleEl.onchange=syncCount;countEl.oninput=clearResult;body.querySelector('#cy-p-due').onchange=clearResult;body.querySelector('#cy-p-class').onchange=clearResult;syncCount();
-   async function refreshOptions(){try{const next=await loadOptions(student.id,body.querySelector('#cy-p-grade').value,body.querySelector('#cy-p-subject').value);renderForm(layer,next)}catch(err){resultBox.innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}}
-   body.querySelector('#cy-p-grade').onchange=async()=>{try{const next=await loadOptions(student.id,body.querySelector('#cy-p-grade').value,'');renderForm(layer,next)}catch(err){body.querySelector('#cy-practice-result').innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}};
-   body.querySelector('#cy-p-subject').onchange=refreshOptions;
+   async function refreshOptions(){try{const next=await loadOptions(student.id,body.querySelector('#cy-p-grade').value,body.querySelector('#cy-p-subject').value,body.querySelector('#cy-p-textbook')?.value||'');renderForm(layer,next)}catch(err){resultBox.innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}}
+   body.querySelector('#cy-p-grade').onchange=async()=>{try{const next=await loadOptions(student.id,body.querySelector('#cy-p-grade').value,'','');renderForm(layer,next)}catch(err){body.querySelector('#cy-practice-result').innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}};
+   body.querySelector('#cy-p-subject').onchange=async()=>{try{const next=await loadOptions(student.id,body.querySelector('#cy-p-grade').value,body.querySelector('#cy-p-subject').value,'');renderForm(layer,next)}catch(err){resultBox.innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}};
+   body.querySelector('#cy-p-textbook').onchange=refreshOptions;
    body.querySelector('#cy-practice-form').onsubmit=async e=>{e.preventDefault();const btn=e.submitter;btn.disabled=true;btn.textContent='正在自动组卷…';const result=body.querySelector('#cy-practice-result');try{const payload={grade:Number(body.querySelector('#cy-p-grade').value),subject:body.querySelector('#cy-p-subject').value,kind:kind.value,knowledge:kind.value==='module'?(body.querySelector('#cy-p-module')?.value||''):'',question_count:Number(body.querySelector('#cy-p-count').value)||10,due_date:body.querySelector('#cy-p-due').value,class_id:Number(body.querySelector('#cy-p-class').value)||null};const created=await api('/teacher/students/'+student.id+'/auto-practice',{method:'POST',body:JSON.stringify(payload)});result.innerHTML='<div class="cy-practice-ok"><b>已添加：</b>'+esc(created.assignment?.title||'测试/练习')+' · '+esc(created.questionCount)+'题。学生完成后，成绩和知识点作答会继续进入现有学习记录。<br><button type="button" class="cy-practice-close" id="cy-practice-refresh" style="margin-top:9px">返回学生档案</button></div>';body.querySelector('#cy-practice-refresh').onclick=()=>location.reload()}catch(err){result.innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}finally{btn.disabled=false;btn.textContent='自动添加给学生'}};
  }
  async function open(sid){close();const layer=document.createElement('div');layer.id='cy-practice-layer';layer.className='cy-practice-layer';layer.innerHTML='<section class="cy-practice-sheet"><div class="cy-practice-head"><div><h2>添加测试 / 练习</h2><small style="color:#667085">按学生、年级和科目自动从现有题库组卷</small></div><button class="cy-practice-close" type="button">关闭</button></div><div id="cy-practice-body">正在读取题库与学生信息…</div></section>';document.body.appendChild(layer);document.body.style.overflow='hidden';layer.querySelector('.cy-practice-close').onclick=close;layer.onclick=e=>{if(e.target===layer)close()};try{renderForm(layer,await loadOptions(sid,'',''))}catch(err){layer.querySelector('#cy-practice-body').innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}}
@@ -227,6 +239,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
         sid: int,
         grade: int | None = None,
         subject: str | None = None,
+        textbook: str | None = None,
         u: Any = Depends(current_user),
         db: Any = Depends(get_db),
     ):
@@ -252,9 +265,38 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
         if not selected_subject or selected_subject not in subjects:
             selected_subject = subjects[0] if subjects else ""
 
+        textbooks: list[str] = []
+        selected_textbook = ""
+        if selected_subject:
+            textbooks = list(
+                db.scalars(
+                    select(Question.textbook)
+                    .where(
+                        Question.school_id == u.school_id,
+                        Question.grade == selected_grade,
+                        Question.subject == selected_subject,
+                        Question.textbook == selected_textbook,
+                    )
+                    .distinct()
+                    .order_by(Question.textbook)
+                ).all()
+            )
+            textbooks = [
+                str(x).strip()
+                for x in textbooks
+                if str(x or "").strip()
+            ]
+            textbooks = sorted(
+                set(textbooks)
+                | set(built_in_textbooks(selected_grade, selected_subject))
+            )
+            selected_textbook = (textbook or "").strip()
+            if not selected_textbook or selected_textbook not in textbooks:
+                selected_textbook = textbooks[0] if textbooks else ""
+
         modules: list[dict[str, Any]] = []
         available_count = 0
-        if selected_subject:
+        if selected_subject and selected_textbook:
             rows = list(
                 db.scalars(
                     select(Question)
@@ -270,6 +312,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
                 rows,
                 grade=selected_grade,
                 subject=selected_subject,
+                textbook=selected_textbook,
             )
 
         default_class = next(
@@ -286,6 +329,8 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
             "selectedGrade": selected_grade,
             "subjects": subjects,
             "selectedSubject": selected_subject,
+            "textbooks": textbooks,
+            "selectedTextbook": selected_textbook,
             "modules": modules,
             "availableQuestionCount": available_count,
         }
@@ -303,6 +348,9 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
         subject = (body.subject or "").strip()
         if not subject:
             raise HTTPException(400, "请选择科目")
+        textbook = (body.textbook or "").strip()
+        if not textbook:
+            raise HTTPException(400, "请选择教材版本")
         kind = (body.kind or "comprehensive").strip().lower()
         if kind not in {"comprehensive", "module"}:
             raise HTTPException(400, "内容类型无效")
@@ -326,6 +374,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
             creator_id=u.id,
             grade=body.grade,
             subject=subject,
+            textbook=textbook,
         )
         rows = list(
             db.scalars(
@@ -334,6 +383,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
                     Question.school_id == u.school_id,
                     Question.grade == body.grade,
                     Question.subject == subject,
+                    Question.textbook == textbook,
                 )
                 .order_by(Question.id)
             ).all()
@@ -343,6 +393,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
             kind=kind,
             knowledge=body.knowledge,
             count=count,
+            textbook=textbook,
         )
         if not chosen:
             if kind == "module":
@@ -351,11 +402,11 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
 
         if kind == "module":
             knowledge = (body.knowledge or "").strip()
-            title = f"{body.grade}年级{subject} · {knowledge}专项练习"
+            title = f"{body.grade}年级{subject}（{textbook}）· {knowledge}专项练习"
             unit = knowledge
             source = "student_module_practice"
         else:
-            title = f"{body.grade}年级{subject}综合测试"
+            title = f"{body.grade}年级{subject}（{textbook}）综合测试"
             unit = "综合"
             source = "student_comprehensive_test"
 
@@ -368,7 +419,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
             title=title[:160],
             grade=body.grade,
             subject=subject[:30],
-            textbook=(chosen[0].textbook or "")[:80],
+            textbook=textbook[:80],
             unit=unit[:100],
             question_ids_json=json.dumps(question_ids),
             teacher_id=u.id,
@@ -415,6 +466,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
             (
                 f"student={student.id}:assignment={assignment.id}:"
                 f"kind={kind}:grade={body.grade}:subject={subject}:"
+                f"textbook={textbook}:"
                 f"questions={len(question_ids)}"
             ),
         )
@@ -426,6 +478,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
             "assignment": implementation.aj(db, assignment),
             "paper": implementation.pj(paper),
             "kind": kind,
+            "textbook": textbook,
             "questionCount": len(question_ids),
             "knowledgeCovered": covered,
             "recipientCount": 1,
