@@ -88,6 +88,38 @@ def test_point_balance_preserves_student_and_school_filtering():
     assert balance == 8
 
 
+def test_metric_value_preserves_cutoff_source_scope_and_metric_contract():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PointService(point_ledger_model=TestPointLedger)
+    cutoff = datetime(2026, 9, 1, 0, 0, 0)
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestPointLedger(id=1, school_id=10, student_id=100, category="activity", points=5, source="classroom", created_at=datetime(2026, 9, 2)),
+                TestPointLedger(id=2, school_id=10, student_id=100, category="activity", points=3, source="adjustment", created_at=datetime(2026, 9, 3)),
+                TestPointLedger(id=3, school_id=10, student_id=100, category="activity", points=-2, source="reversal", created_at=datetime(2026, 9, 4)),
+                TestPointLedger(id=4, school_id=10, student_id=100, category="discipline", points=-4, source="classroom", created_at=datetime(2026, 9, 5)),
+                TestPointLedger(id=5, school_id=10, student_id=100, category="adjustment", points=-20, source="redemption", created_at=datetime(2026, 9, 5)),
+                TestPointLedger(id=6, school_id=10, student_id=100, category="activity", points=50, source="classroom", created_at=datetime(2026, 8, 31)),
+                TestPointLedger(id=7, school_id=10, student_id=101, category="activity", points=60, source="classroom", created_at=datetime(2026, 9, 2)),
+                TestPointLedger(id=8, school_id=20, student_id=100, category="activity", points=70, source="classroom", created_at=datetime(2026, 9, 2)),
+            ]
+        )
+        db.commit()
+
+        issued = service.metric_value(db, student_id=100, school_id=10, cutoff=cutoff, metric="issued")
+        activity = service.metric_value(db, student_id=100, school_id=10, cutoff=cutoff, metric="activity")
+        discipline = service.metric_value(db, student_id=100, school_id=10, cutoff=cutoff, metric="discipline")
+        fallback = service.metric_value(db, student_id=100, school_id=10, cutoff=cutoff, metric="unknown")
+
+    assert issued == (8, "issued")
+    assert activity == (6, "activity")
+    assert discipline == (-4, "discipline")
+    assert fallback == (2, "net")
+
+
 def test_point_window_summary_preserves_period_source_and_scope_contract():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -158,6 +190,7 @@ def test_point_summary_service_is_installed_into_legacy_runtime():
 
     assert isinstance(service, PointService)
     assert legacy.point_balance.__self__ is service
+    assert legacy.point_metric_value.__self__ is service
     assert legacy.point_recent_rows.__self__ is service
     assert legacy.point_summary.__self__ is service
     assert legacy.point_window_summary.__self__ is service
