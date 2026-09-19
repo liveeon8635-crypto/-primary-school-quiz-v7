@@ -163,3 +163,46 @@ class FollowUpService:
                 .order_by(self.StudentFollowUpLog.created_at.desc())
             ).all()
         )
+
+    def timeline_rows(
+        self,
+        db,
+        *,
+        school_id: int,
+        student_id: int,
+        class_id: int | None = None,
+        limit: int = 20,
+    ) -> list[Any]:
+        query = select(self.StudentFollowUp).where(
+            self.StudentFollowUp.school_id == school_id,
+            self.StudentFollowUp.student_id == student_id,
+        )
+        if class_id:
+            query = query.where(self.StudentFollowUp.class_id == class_id)
+        return list(
+            db.scalars(
+                query.order_by(self.StudentFollowUp.created_at.desc()).limit(limit)
+            ).all()
+        )
+
+    def timeline_log_rows(
+        self,
+        db,
+        *,
+        school_id: int,
+        followup_ids: list[int],
+        limit: int = 40,
+    ) -> list[Any]:
+        if not followup_ids:
+            return []
+        return list(
+            db.scalars(
+                select(self.StudentFollowUpLog)
+                .where(
+                    self.StudentFollowUpLog.followup_id.in_(followup_ids),
+                    self.StudentFollowUpLog.school_id == school_id,
+                )
+                .order_by(self.StudentFollowUpLog.created_at.desc())
+                .limit(limit)
+            ).all()
+        )
