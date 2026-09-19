@@ -44,10 +44,21 @@ def test_infers_coordinate_grid_for_position_problem():
     assert figure["points"][0]["y"] == 4.0
 
 
-def test_existing_valid_figure_is_preserved():
-    existing = {"type": "geometry", "shape": "triangle"}
-    item = {"subject": "数学", "knowledge": "三角形的面积", "text": "求面积", "figure": existing}
-    assert infer_reinforcement_figure(item) is existing
+def test_existing_valid_figure_is_preserved_and_enriched():
+    existing = {"type": "geometry", "shape": "trapezoid"}
+    item = {
+        "subject": "数学",
+        "knowledge": "梯形的面积",
+        "text": "一个梯形的上底是5.6厘米，下底是8.4厘米，高是6厘米，求面积。",
+        "figure": existing,
+    }
+    figure = infer_reinforcement_figure(item)
+    assert figure["type"] == "geometry"
+    assert figure["shape"] == "trapezoid"
+    assert figure["labels"]["上底"] == "5.6厘米"
+    assert figure["labels"]["下底"] == "8.4厘米"
+    assert figure["labels"]["高"] == "6厘米"
+    assert "底" not in figure["labels"]
 
 
 def test_route_patch_adds_missing_figure_and_preserves_answer():
