@@ -169,8 +169,14 @@ def student_assessment_context(
     student_id: int,
     assignment_id: int | None = None,
     limit: int = 6,
+    textbook_filter: str | None = None,
 ) -> dict[str, Any]:
-    """Build recent comprehensive/module-test evidence for AI reinforcement."""
+    """Build recent comprehensive/module-test evidence for AI reinforcement.
+
+    When a textbook filter is set, only assessments from that exact textbook
+    line are eligible. This prevents historical tests from another publisher
+    from contaminating current targeted-practice feedback.
+    """
 
     query = select(AssignmentRecipient).where(
         AssignmentRecipient.school_id == school_id,
@@ -179,12 +185,14 @@ def student_assessment_context(
     )
     if assignment_id:
         query = query.where(AssignmentRecipient.assignment_id == assignment_id)
+    requested_limit = max(1, min(int(limit or 6), 12))
+    scan_limit = min(48, max(requested_limit, requested_limit * 4))
     recipients = list(
         db.scalars(
             query.order_by(
                 AssignmentRecipient.assigned_at.desc(),
                 AssignmentRecipient.id.desc(),
-            ).limit(max(1, min(int(limit or 6), 12)))
+            ).limit(scan_limit)
         ).all()
     )
 
@@ -218,6 +226,8 @@ def student_assessment_context(
             )
         )
         if not paper:
+            continue
+        if textbook_filter and str(paper.textbook or "").strip() != str(textbook_filter).strip():
             continue
 
         answers = _json_list(submission.answers_json)
@@ -312,6 +322,8 @@ def student_assessment_context(
                 "wrongItems": wrong_items,
             }
         )
+        if len(assessments) >= requested_limit:
+            break
 
     assessments.sort(key=lambda x: x.get("submittedAt", ""), reverse=True)
     weak_knowledge = [
