@@ -2387,9 +2387,9 @@ def class_todo_json(db,row:ClassTodo):
             **_due_meta(row.due_date,row.status)}
 
 def class_followup_dashboard_data(db,c:SchoolClass,school_id:int):
-    rows=db.scalars(select(StudentFollowUp).where(
-        StudentFollowUp.school_id==school_id,StudentFollowUp.class_id==c.id
-    ).order_by(StudentFollowUp.status,StudentFollowUp.updated_at.desc(),StudentFollowUp.id.desc())).all()
+    rows=followup_class_rows(
+        db,school_id=school_id,class_id=c.id
+    )
     todos=db.scalars(select(ClassTodo).where(
         ClassTodo.school_id==school_id,ClassTodo.class_id==c.id
     ).order_by(ClassTodo.status,ClassTodo.created_at.desc(),ClassTodo.id.desc())).all()
