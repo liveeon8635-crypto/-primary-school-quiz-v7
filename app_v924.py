@@ -2390,16 +2390,15 @@ def class_followup_dashboard_data(db,c:SchoolClass,school_id:int):
     rows=followup_class_rows(
         db,school_id=school_id,class_id=c.id
     )
-    todos=db.scalars(select(ClassTodo).where(
-        ClassTodo.school_id==school_id,ClassTodo.class_id==c.id
-    ).order_by(ClassTodo.status,ClassTodo.created_at.desc(),ClassTodo.id.desc())).all()
+    todos=followup_class_todo_rows(
+        db,school_id=school_id,class_id=c.id
+    )
     cases=[followup_json(db,x) for x in rows];todo_rows=[class_todo_json(db,x) for x in todos]
     open_rows=[x for x in cases if x["status"]!="done"]
     done_rows=[x for x in cases if x["status"]=="done"]
-    communications=int(db.scalar(select(func.count()).select_from(StudentFollowUpLog).join(
-        StudentFollowUp,StudentFollowUp.id==StudentFollowUpLog.followup_id
-    ).where(StudentFollowUp.school_id==school_id,StudentFollowUp.class_id==c.id,
-            StudentFollowUpLog.log_type=="parent_contact")) or 0)
+    communications=followup_class_parent_contact_count(
+        db,school_id=school_id,class_id=c.id
+    )
     return {"class":{"id":c.id,"name":c.name,"grade":c.grade},
             "summary":{"open":len(open_rows),"inProgress":sum(1 for x in open_rows if x["status"]=="in_progress"),
                        "overdue":sum(1 for x in open_rows if x["overdue"]),"done":len(done_rows),
