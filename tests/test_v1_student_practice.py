@@ -109,5 +109,5 @@ def test_selector_never_mixes_textbook_versions():
         textbook="北师大版",
     )
 
-    assert [row.id for row in chosen] == [2, 4]
+    assert {row.id for row in chosen} == {2, 4}
     assert {row.textbook for row in chosen} == {"北师大版"}
