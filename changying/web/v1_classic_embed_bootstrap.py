@@ -24,9 +24,19 @@ html.cy-v1-embedded .page-head{margin-top:0!important}
  var params=new URLSearchParams(location.search);if(params.get('embedded')!=='1')return;
  document.documentElement.classList.add('cy-v1-embedded');
  var validating=false;
+ var deepAssignment=Number(params.get('assignment')||0),deepAssignmentOpened=false;
  function report(type,detail){try{parent.postMessage({source:'changying-classic',type:type,detail:detail||''},location.origin)}catch(_e){}}
  function hasState(){try{return typeof state!=='undefined'}catch(_e){return false}}
  function requestSession(){report('session-needed','')}
+ function openDeepAssignment(attempt){
+  if(!deepAssignment||deepAssignmentOpened)return;
+  if(typeof startAssignment!=='function'){
+   if(attempt<40){setTimeout(function(){openDeepAssignment(attempt+1)},50);return}
+   report('error','测试入口未就绪');return;
+  }
+  deepAssignmentOpened=true;
+  Promise.resolve(startAssignment(deepAssignment)).catch(function(){report('error','测试打开失败')});
+ }
  function begin(attempt){
   if(!hasState()||typeof markNetwork!=='function'||typeof validateSavedSession!=='function'){
    if(attempt<40){setTimeout(function(){begin(attempt+1)},50);return}report('error','旧版初始化函数未就绪');return;
@@ -38,7 +48,7 @@ html.cy-v1-embedded .page-head{margin-top:0!important}
    markNetwork(true);
    Promise.resolve(validateSavedSession()).then(function(ok){
     validating=false;
-    if(ok){setTimeout(function(){report('ready','')},80)}else{report('not-ready','登录状态未就绪')}
+    if(ok){setTimeout(function(){report('ready','');openDeepAssignment(0)},80)}else{report('not-ready','登录状态未就绪')}
    }).catch(function(){validating=false;report('error','登录状态验证失败')})
   }catch(_e){validating=false;report('error','旧版初始化失败')}
  }
