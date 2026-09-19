@@ -5901,7 +5901,7 @@ def teacher_points_undo(lid:int,u:User=Depends(current_user),db:Session=Depends(
 @app.get("/student/points")
 def student_points(u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"student");summary=point_summary(db,u.id,u.school_id)
-    rows=db.scalars(select(PointLedger).where(PointLedger.school_id==u.school_id,PointLedger.student_id==u.id).order_by(PointLedger.id.desc()).limit(120)).all()
+    rows=point_student_recent_rows(db,student_id=u.id,school_id=u.school_id,limit=120)
     red=db.scalars(select(RewardRedemption).where(RewardRedemption.school_id==u.school_id,RewardRedemption.student_id==u.id).order_by(RewardRedemption.id.desc()).limit(50)).all()
     auto_rows=db.scalars(select(AutoRewardGrant).where(AutoRewardGrant.school_id==u.school_id,AutoRewardGrant.student_id==u.id).order_by(AutoRewardGrant.id.desc()).limit(50)).all()
     return {"summary":summary,"weekly":student_period_points(db,u.id,u.school_id,7),
@@ -5994,7 +5994,7 @@ def parent_child_points(sid:int,u:User=Depends(current_user),db:Session=Depends(
     if not link:raise HTTPException(403,"未绑定该学生")
     stu=db.scalar(select(User).where(User.id==sid,User.school_id==u.school_id,User.role=="student"))
     if not stu:raise HTTPException(404,"学生不存在")
-    rows=db.scalars(select(PointLedger).where(PointLedger.school_id==u.school_id,PointLedger.student_id==sid).order_by(PointLedger.id.desc()).limit(80)).all()
+    rows=point_student_recent_rows(db,student_id=sid,school_id=u.school_id,limit=80)
     red=db.scalars(select(RewardRedemption).where(RewardRedemption.school_id==u.school_id,RewardRedemption.student_id==sid).order_by(RewardRedemption.id.desc()).limit(50)).all()
     auto_rows=db.scalars(select(AutoRewardGrant).where(AutoRewardGrant.school_id==u.school_id,AutoRewardGrant.student_id==sid).order_by(AutoRewardGrant.id.desc()).limit(50)).all()
     return {"student":{"id":stu.id,"name":stu.name,"grade":stu.grade},
