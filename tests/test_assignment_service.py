@@ -1,7 +1,7 @@
 from sqlalchemy import Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-from changying.services.assignments import student_assignment_rows, teacher_assignment_rows
+from changying.services.assignments import AssignmentService, student_assignment_rows, teacher_assignment_rows
 
 
 class Base(DeclarativeBase):
@@ -91,3 +91,45 @@ def test_student_assignment_rows_keeps_recipient_school_and_desc_order():
         )
 
     assert [row.id for row in rows] == [12, 10]
+
+
+def test_student_assignment_for_requires_matching_recipient_and_school():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+
+    service = AssignmentService(
+        assignment_submission_setting_model=object,
+        submission_model=object,
+        homework_media_submit_model=object,
+        homework_media_model=object,
+        user_model=object,
+        assignment_recipient_model=TestRecipient,
+        assignment_model=TestAssignment,
+        class_model=TestClass,
+        valid_submission_modes={"quiz", "media", "mixed"},
+        assignment_mode_name=lambda mode: mode,
+        school_local_iso=lambda value: str(value),
+        due_deadline_utc=lambda value: None,
+    )
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestAssignment(id=20, school_id=10, class_id=1, title="allowed"),
+                TestAssignment(id=21, school_id=10, class_id=1, title="not addressed"),
+                TestAssignment(id=22, school_id=20, class_id=1, title="other school"),
+                TestRecipient(id=20, school_id=10, assignment_id=20, student_id=300),
+                TestRecipient(id=21, school_id=20, assignment_id=22, student_id=300),
+            ]
+        )
+        db.commit()
+
+        allowed = service.student_assignment_for(db, 10, 300, 20)
+        wrong_student = service.student_assignment_for(db, 10, 301, 20)
+        not_addressed = service.student_assignment_for(db, 10, 300, 21)
+        other_school = service.student_assignment_for(db, 10, 300, 22)
+
+    assert allowed is not None and allowed.id == 20
+    assert wrong_student is None
+    assert not_addressed is None
+    assert other_school is None
