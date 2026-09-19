@@ -6231,10 +6231,9 @@ def class_workbench_data(db,c:SchoolClass,school_id:int):
     urgent.sort(key=lambda x:(state_order.get(x.get("dueState"),9),priority_order.get(x.get("priority"),9),x.get("dueDate") or "9999"))
 
     cutoff=datetime.utcnow()-timedelta(days=7)
-    stale_rows=db.scalars(select(StudentFollowUp).where(
-        StudentFollowUp.school_id==school_id,StudentFollowUp.class_id==c.id,
-        StudentFollowUp.status!="done",StudentFollowUp.updated_at<=cutoff
-    ).order_by(StudentFollowUp.updated_at,StudentFollowUp.id)).all()
+    stale_rows=followup_workbench_stale_rows(
+        db,school_id=school_id,class_id=c.id,updated_before=cutoff
+    )
     stale=[]
     for row in stale_rows:
         j=followup_json(db,row)
