@@ -183,6 +183,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     )
     implementation.point_service = point_service
     implementation.point_balance = point_service.balance
+    implementation.point_metric_value = point_service.metric_value
     implementation.point_recent_rows = point_service.recent_rows
     implementation.point_summary = point_service.summary
     implementation.point_window_summary = point_service.window_summary

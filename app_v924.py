@@ -2032,21 +2032,8 @@ def auto_period_window(period:str):
 
 def auto_metric_value(db,student_id:int,school_id:int,period:str,metric:str):
     cutoff,key,period=auto_period_window(period)
-    rows=db.scalars(select(PointLedger).where(
-        PointLedger.school_id==school_id,PointLedger.student_id==student_id,
-        PointLedger.created_at>=cutoff,
-        PointLedger.source.in_(("classroom","adjustment","reversal"))
-    )).all()
-    metric=(metric or "net").strip().lower()
-    if metric=="issued":
-        value=sum(int(x.points or 0) for x in rows if (x.points or 0)>0 and x.source in ("classroom","adjustment"))
-    elif metric=="activity":
-        value=sum(int(x.points or 0) for x in rows if x.category=="activity")
-    elif metric=="discipline":
-        value=sum(int(x.points or 0) for x in rows if x.category=="discipline")
-    else:
-        metric="net";value=sum(int(x.points or 0) for x in rows)
-    return int(value),key,period,metric
+    value,metric=point_metric_value(db,student_id=student_id,school_id=school_id,cutoff=cutoff,metric=metric)
+    return value,key,period,metric
 
 def auto_rule_json(db,row):
     reward=db.get(RewardItem,row.reward_id)
