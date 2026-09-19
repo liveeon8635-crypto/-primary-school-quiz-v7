@@ -3,6 +3,7 @@ from collections import Counter
 from changying.services.builtin_question_bank import (
     built_in_question_specs,
     built_in_subjects,
+    built_in_textbooks,
 )
 
 
@@ -55,3 +56,10 @@ def test_unsupported_pack_does_not_invent_other_subjects_or_grades():
     assert built_in_question_specs(4, "数学") == []
     assert built_in_question_specs(5, "语文") == []
     assert built_in_subjects(4) == []
+
+
+def test_grade5_math_pack_is_textbook_aware():
+    assert built_in_textbooks(5, "数学") == ["人教版"]
+    assert len(built_in_question_specs(5, "数学", "人教版")) >= 180
+    assert built_in_question_specs(5, "数学", "北师大版") == []
+    assert built_in_textbooks(5, "语文") == []
