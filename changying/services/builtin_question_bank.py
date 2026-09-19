@@ -238,7 +238,7 @@ def _grade5_math_specs() -> list[dict[str, Any]]:
         rows.append(_spec(
             unit="第三单元 · 小数除法",
             knowledge="循环小数",
-            text="下面哪个分数化成小数后是循环小数？",
+            text=f"在 {answer}、{distractors[0]}、{distractors[1]}、{distractors[2]} 中，哪个分数化成小数后是循环小数？",
             answer=answer,
             distractors=distractors,
             explanation="分数化成最简分数后，分母含有除2、5以外的质因数时，小数通常是循环小数。",
