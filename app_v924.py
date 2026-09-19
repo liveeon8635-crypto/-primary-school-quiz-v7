@@ -2420,18 +2420,18 @@ def student_growth_timeline_data(db,student_id:int,school_id:int,class_id:int|No
         events.append({"type":"reward","icon":"🎁","title":x.reward_name,
                        "detail":f"自动奖励 · {x.status} · 达标 {x.metric_value}/{x.threshold}",
                        "time":school_local_iso(x.created_at),"ts":x.created_at})
-    fq=select(StudentFollowUp).where(StudentFollowUp.school_id==school_id,StudentFollowUp.student_id==student_id)
-    if class_id:fq=fq.where(StudentFollowUp.class_id==class_id)
-    follows=db.scalars(fq.order_by(StudentFollowUp.created_at.desc()).limit(20)).all()
+    follows=followup_timeline_rows(
+        db,school_id=school_id,student_id=student_id,class_id=class_id,limit=20
+    )
     ids=[x.id for x in follows]
     for x in follows:
         events.append({"type":"followup","icon":"📌","title":f"跟进事项：{x.title}",
                        "detail":f"{FOLLOWUP_CATEGORY_NAMES.get(x.category,x.category)} · {FOLLOWUP_STATUS_NAMES.get(x.status,x.status)}",
                        "time":school_local_iso(x.created_at),"ts":x.created_at})
     if ids:
-        for x in db.scalars(select(StudentFollowUpLog).where(
-            StudentFollowUpLog.followup_id.in_(ids),StudentFollowUpLog.school_id==school_id
-        ).order_by(StudentFollowUpLog.created_at.desc()).limit(40)).all():
+        for x in followup_timeline_log_rows(
+            db,school_id=school_id,followup_ids=ids,limit=40
+        ):
             events.append({"type":"followup_log","icon":"💬" if x.log_type=="parent_contact" else "🗒️",
                            "title":FOLLOWUP_LOG_NAMES.get(x.log_type,x.log_type),"detail":x.content,
                            "time":school_local_iso(x.created_at),"ts":x.created_at})
