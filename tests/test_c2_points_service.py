@@ -23,6 +23,27 @@ class TestPointLedger(Base):
     source: Mapped[str] = mapped_column(String(40))
 
 
+def test_point_balance_preserves_student_and_school_filtering():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PointService(point_ledger_model=TestPointLedger)
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestPointLedger(id=1, school_id=10, student_id=100, category="activity", points=12, source="classroom"),
+                TestPointLedger(id=2, school_id=10, student_id=100, category="discipline", points=-4, source="classroom"),
+                TestPointLedger(id=3, school_id=10, student_id=101, category="activity", points=50, source="classroom"),
+                TestPointLedger(id=4, school_id=20, student_id=100, category="activity", points=60, source="classroom"),
+            ]
+        )
+        db.commit()
+
+        balance = service.balance(db, student_id=100, school_id=10)
+
+    assert balance == 8
+
+
 def test_point_summary_preserves_legacy_aggregation_contract():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -59,4 +80,5 @@ def test_point_summary_service_is_installed_into_legacy_runtime():
     service = legacy.point_service
 
     assert isinstance(service, PointService)
+    assert legacy.point_balance.__self__ is service
     assert legacy.point_summary.__self__ is service

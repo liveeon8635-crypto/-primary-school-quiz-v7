@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 
 class PointService:
@@ -12,6 +12,17 @@ class PointService:
 
     def __init__(self, *, point_ledger_model: Any) -> None:
         self.PointLedger = point_ledger_model
+
+    def balance(self, db, student_id: int, school_id: int) -> int:
+        return int(
+            db.scalar(
+                select(func.coalesce(func.sum(self.PointLedger.points), 0)).where(
+                    self.PointLedger.student_id == student_id,
+                    self.PointLedger.school_id == school_id,
+                )
+            )
+            or 0
+        )
 
     def summary(self, db, student_id: int, school_id: int) -> dict[str, int]:
         rows = db.execute(
