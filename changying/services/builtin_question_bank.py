@@ -14,6 +14,11 @@ from typing import Any
 
 from sqlalchemy import select
 
+from changying.services.grade5_chinese_question_bank import (
+    CHINESE_G5_TEXTBOOK,
+    grade5_chinese_specs,
+)
+
 PEP_CURRENT_TEXTBOOK = "人教版"
 PEP_CURRENT_TEXTBOOK_LABEL = "人教版（当前最新版）"
 
@@ -405,20 +410,19 @@ def _grade5_math_specs() -> list[dict[str, Any]]:
 
 
 def built_in_subjects(grade: int) -> list[str]:
-    return ["数学"] if int(grade) == 5 else []
+    return ["数学", "语文"] if int(grade) == 5 else []
 
 
 def built_in_textbooks(grade: int, subject: str) -> list[str]:
-    """Return the currently supported school textbook line.
+    """Return the currently supported PEP textbook line for each subject."""
 
-    Changying currently standardizes automatic Grade 5 math tests/practice on
-    the People's Education Press (PEP) textbook. Other publishers are not
-    interchangeable "versions" of the same textbook and must not be mixed into
-    this selector.
-    """
-
-    if int(grade) == 5 and (subject or "").strip() == "数学":
+    if int(grade) != 5:
+        return []
+    selected_subject = (subject or "").strip()
+    if selected_subject == "数学":
         return [PEP_CURRENT_TEXTBOOK]
+    if selected_subject == "语文":
+        return [CHINESE_G5_TEXTBOOK]
     return []
 
 
@@ -428,10 +432,17 @@ def built_in_question_specs(
     textbook: str = "",
 ) -> list[dict[str, Any]]:
     requested_textbook = (textbook or "").strip()
-    if int(grade) != 5 or (subject or "").strip() != "数学":
+    selected_subject = (subject or "").strip()
+    if int(grade) != 5:
         return []
-    if not requested_textbook or requested_textbook == PEP_CURRENT_TEXTBOOK:
-        return _grade5_math_specs()
+    if selected_subject == "数学":
+        if not requested_textbook or requested_textbook == PEP_CURRENT_TEXTBOOK:
+            return _grade5_math_specs()
+        return []
+    if selected_subject == "语文":
+        if not requested_textbook or requested_textbook == CHINESE_G5_TEXTBOOK:
+            return grade5_chinese_specs()
+        return []
     return []
 
 
