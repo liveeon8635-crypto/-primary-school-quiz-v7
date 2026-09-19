@@ -17,6 +17,7 @@ from changying.domain.learning_evidence_mapping import (
     submission_to_performance_evidence,
 )
 from changying.domain.learning_evidence_read_model import student_evidence_snapshot
+from changying.web.v2_learning_evidence_recording import manual_student_evidence
 
 
 def legacy_student_evidence(implementation: ModuleType, db: Any, student_id: int, school_id: int):
@@ -120,6 +121,7 @@ def legacy_student_evidence(implementation: ModuleType, db: Any, student_id: int
             )
         )
 
+    evidence.extend(manual_student_evidence(implementation, db, student_id, school_id))
     return evidence
 
 

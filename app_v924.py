@@ -204,6 +204,24 @@ class ImportJob(Base):
     created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
     user_id:Mapped[int]=mapped_column(ForeignKey("users.id"))
 
+class LearningEvidenceEvent(Base):
+    __tablename__="learning_evidence_events"
+    id:Mapped[int]=mapped_column(primary_key=True)
+    school_id:Mapped[int]=mapped_column(ForeignKey("schools.id"),index=True)
+    student_id:Mapped[int]=mapped_column(ForeignKey("users.id"),index=True)
+    actor_id:Mapped[int]=mapped_column(ForeignKey("users.id"),index=True)
+    event_kind:Mapped[str]=mapped_column(String(20),index=True)
+    target_event_id:Mapped[int|None]=mapped_column(ForeignKey("learning_evidence_events.id"),nullable=True,index=True)
+    evidence_type:Mapped[str]=mapped_column(String(30),default="",index=True)
+    subject:Mapped[str]=mapped_column(String(80),default="")
+    knowledge_key:Mapped[str]=mapped_column(String(160),default="")
+    success:Mapped[bool|None]=mapped_column(Boolean,nullable=True)
+    note:Mapped[str]=mapped_column(Text,default="")
+    context:Mapped[str]=mapped_column(Text,default="")
+    source_type:Mapped[str]=mapped_column(String(40),default="teacher_observation")
+    occurred_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,index=True)
+    created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,index=True)
+
 class AuditLog(Base):
     __tablename__="audit_logs"
     id:Mapped[int]=mapped_column(primary_key=True)
@@ -1512,6 +1530,8 @@ AUDIT_ACTION_NAMES={
     "ai.questions.save":"保存 AI 生成题",
     "ai.reinforcement.assign":"布置个性化巩固",
     "ai.reinforcement.generate":"生成个性化巩固",
+    "learning.evidence.record":"记录学习证据",
+    "learning.evidence.retract":"撤回学习证据",
     "assignment.create":"布置作业",
     "assignment.export":"导出作业成绩",
     "auto.reward.bulk_fulfill":"批量发放自动奖励",
@@ -3264,7 +3284,7 @@ def production_readiness_payload(db):
         if remain>0:
             outstanding+=remain;unpaid_orders+=1
     tables=set(sa_inspect(engine).get_table_names())
-    required_tables={"schools","users","school_subscriptions","commercial_customers","commercial_operation_logs","commercial_renewals","commercial_orders","commercial_payments","teaching_resources","school_ai_configs","ai_usage_logs","class_point_rules","homework_media","ai_grading_reviews","wrong_question_records","reinforcement_links","schema_migrations"}
+    required_tables={"schools","users","school_subscriptions","commercial_customers","commercial_operation_logs","commercial_renewals","commercial_orders","commercial_payments","teaching_resources","school_ai_configs","ai_usage_logs","class_point_rules","homework_media","ai_grading_reviews","wrong_question_records","reinforcement_links","learning_evidence_events","schema_migrations"}
     missing_tables=sorted(required_tables-tables)
     blockers=[];advisories=[]
     if db_backend!="PostgreSQL":blockers.append("正式商业环境必须使用托管 PostgreSQL。")

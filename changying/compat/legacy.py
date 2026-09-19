@@ -60,6 +60,8 @@ from changying.web.v1_history_focus import install_v1_history_focus_patch
 from changying.web.v1_identity_clarity import install_v1_identity_clarity_patch
 from changying.web.v1_legacy_capabilities import install_v1_legacy_capabilities_patch
 from changying.web.v1_learning_evidence_profile import install_v1_learning_evidence_profile
+from changying.web.v2_learning_evidence_recording import install_v2_learning_evidence_routes
+from changying.web.v2_learning_evidence_recording_view import install_v2_learning_evidence_recorder_patch
 from changying.web.v1_historical_teaching import install_v1_historical_teaching_routes
 from changying.web.v1_historical_teaching_view import install_v1_historical_teaching_view_patch
 from changying.web.v1_transition_snapshot import install_v1_transition_snapshot_routes
@@ -184,6 +186,8 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_audit_localization()
     install_v1_history_focus_patch()
     install_v1_learning_evidence_profile(implementation)
+    install_v2_learning_evidence_recorder_patch()
+    install_v2_learning_evidence_routes(implementation)
     install_v1_historical_teaching_view_patch()
     install_v1_historical_teaching_routes(implementation)
     install_v1_transition_facts_view_patch()
