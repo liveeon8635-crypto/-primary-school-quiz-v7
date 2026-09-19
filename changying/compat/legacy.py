@@ -171,6 +171,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.assignment_submission_mode = assignment_service.submission_mode
     implementation.homework_media_count = assignment_service.homework_media_count
     implementation.student_assignment_for = assignment_service.student_assignment_for
+    implementation.student_assignment_for_paper = assignment_service.student_assignment_for_paper
     implementation.teacher_assignment_for = assignment_service.teacher_assignment_for
     implementation.recipient_students = assignment_service.recipient_students
     implementation.assignment_effective_status = assignment_service.effective_status
