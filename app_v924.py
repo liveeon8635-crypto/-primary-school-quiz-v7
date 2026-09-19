@@ -5339,7 +5339,7 @@ def paperq(pid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
     if not p:raise HTTPException(404,"试卷不存在")
     if u.role=="teacher" and p.teacher_id!=u.id:raise HTTPException(403,"无权查看此试卷")
     if u.role=="student":
-        allowed_assignment=db.scalar(select(Assignment).join(AssignmentRecipient,AssignmentRecipient.assignment_id==Assignment.id).where(Assignment.paper_id==pid,Assignment.school_id==u.school_id,AssignmentRecipient.student_id==u.id).limit(1))
+        allowed_assignment=student_assignment_for_paper(db,u.school_id,u.id,pid)
         if not allowed_assignment:raise HTTPException(403,"无权查看此试卷")
         if assignment_submission_mode(db,allowed_assignment)=="media":raise HTTPException(400,"此作业使用拍照/视频提交，无需在线答题")
     elif u.role not in ("admin","teacher"):raise HTTPException(403,"无权查看此试卷")
