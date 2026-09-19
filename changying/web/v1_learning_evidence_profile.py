@@ -18,6 +18,7 @@ from changying.domain.learning_evidence_mapping import (
 )
 from changying.domain.learning_evidence_read_model import student_evidence_snapshot
 from changying.domain.stored_learning_evidence import (
+    canonical_submission_ids,
     explicit_student_evidence,
     teacher_confirmed_assignment_ids,
 )
@@ -98,6 +99,12 @@ def legacy_student_evidence(implementation: ModuleType, db: Any, student_id: int
         student_id,
         school_id,
     )
+    explicit_submission_ids = canonical_submission_ids(
+        implementation,
+        db,
+        student_id,
+        school_id,
+    )
 
     evidence = []
     for sub in rows:
@@ -116,7 +123,8 @@ def legacy_student_evidence(implementation: ModuleType, db: Any, student_id: int
                     for qid in paper_question_ids.get(int(paper.id), [])
                 }
 
-        if not (
+        has_canonical_submission = int(sub.id) in explicit_submission_ids
+        if not has_canonical_submission and not (
             sub.assignment_id is not None
             and int(sub.assignment_id) in confirmed_assignment_ids
         ):
@@ -127,14 +135,15 @@ def legacy_student_evidence(implementation: ModuleType, db: Any, student_id: int
                     class_id=class_id,
                 )
             )
-        evidence.extend(
-            submission_answers_to_performance_evidence(
-                sub,
-                question_knowledge=question_knowledge,
-                subject=subject,
-                class_id=class_id,
+        if not has_canonical_submission:
+            evidence.extend(
+                submission_answers_to_performance_evidence(
+                    sub,
+                    question_knowledge=question_knowledge,
+                    subject=subject,
+                    class_id=class_id,
+                )
             )
-        )
 
     evidence.extend(
         explicit_student_evidence(

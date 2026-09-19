@@ -11,7 +11,12 @@ from changying.domain.learning_evidence import LearningEvidence
 
 
 EXPLICIT_PERFORMANCE_SOURCES = frozenset(
-    {"teacher_confirmed_grading", "teacher_confirmed_rubric"}
+    {
+        "submission",
+        "submission_answer",
+        "teacher_confirmed_grading",
+        "teacher_confirmed_rubric",
+    }
 )
 
 
@@ -21,6 +26,34 @@ def _context_json(raw: str) -> dict[str, Any]:
     except Exception:
         return {}
     return value if isinstance(value, dict) else {}
+
+
+
+
+
+def canonical_submission_ids(
+    implementation: ModuleType,
+    db: Any,
+    student_id: int,
+    school_id: int,
+) -> set[int]:
+    """Return submissions already represented by explicit canonical events."""
+    rows = db.scalars(
+        implementation.select(implementation.LearningEvidenceEvent).where(
+            implementation.LearningEvidenceEvent.school_id == school_id,
+            implementation.LearningEvidenceEvent.student_id == student_id,
+            implementation.LearningEvidenceEvent.event_kind == "record",
+            implementation.LearningEvidenceEvent.source_type == "submission",
+        )
+    ).all()
+    result: set[int] = set()
+    for row in rows:
+        value = _context_json(row.context or "").get("submissionID")
+        try:
+            result.add(int(value))
+        except Exception:
+            continue
+    return result
 
 
 def teacher_confirmed_assignment_ids(
@@ -88,7 +121,7 @@ def explicit_student_evidence(
             continue
         context = _context_json(row.context or "")
         score = None
-        if row.source_type == "teacher_confirmed_grading":
+        if row.source_type in {"submission", "teacher_confirmed_grading"}:
             try:
                 score = float(context.get("score")) if context.get("score") is not None else None
             except Exception:
@@ -96,11 +129,20 @@ def explicit_student_evidence(
         occurred = row.occurred_at
         if occurred.tzinfo is None:
             occurred = occurred.replace(tzinfo=timezone.utc)
-        source_id = (
-            f"grading-review:{context.get('reviewID')}"
-            if row.source_type == "teacher_confirmed_grading"
-            else f"grading-review:{context.get('reviewID')}:question:{context.get('questionID')}"
-        )
+        if row.source_type == "submission":
+            source_id = f"submission:{context.get('submissionID')}"
+        elif row.source_type == "submission_answer":
+            source_id = (
+                f"submission:{context.get('submissionID')}:question:"
+                f"{context.get('questionID')}"
+            )
+        elif row.source_type == "teacher_confirmed_grading":
+            source_id = f"grading-review:{context.get('reviewID')}"
+        else:
+            source_id = (
+                f"grading-review:{context.get('reviewID')}:question:"
+                f"{context.get('questionID')}"
+            )
         result.append(
             LearningEvidence(
                 student_id=str(row.student_id),
@@ -120,6 +162,7 @@ def explicit_student_evidence(
 
 __all__ = [
     "EXPLICIT_PERFORMANCE_SOURCES",
+    "canonical_submission_ids",
     "explicit_student_evidence",
     "teacher_confirmed_assignment_ids",
 ]
