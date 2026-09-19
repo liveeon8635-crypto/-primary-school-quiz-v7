@@ -87,6 +87,44 @@ def v1_html() -> str:
       const content=heading(title,isSchool?'按学校 → 学年 → 学期 → 年级 → 班级 → 学科组织教学。':'首页只展示当前教学周期，结束后统一进入往期教学。',phase)+`<div class="notice${{session.demo?' warn':''}}">${{session.demo?'演示数据 · ':''}}当前身份：${{esc(identity.label)}} · ${{esc(session.name||'')}}。${{session.demo?'页面操作不会写入数据库。':'现有数据按账号原有权限读取。'}}</div><section class="section grid cols-4"><div class="card kpi"><span>当前学生</span><strong>${{people.length}}</strong><small>${{session.demo?'演示学生':'来自现有学生关系'}}</small></div><div class="card kpi"><span>当前班级</span><strong>${{classes.length}}</strong><small>按当前账号权限</small></div><div class="card kpi"><span>待完成作业</span><strong>${{stats.pendingSubmissions??stats.assignments??'—'}}</strong><small>${{session.demo?'演示数据':'现有作业数据'}}</small></div><div class="card kpi"><span>平均成绩</span><strong>${{stats.avgScore??'—'}}</strong><small>有记录时显示</small></div></section><section class="section"><div class="section-head"><div><h2>${{isSchool?'教师工作台':'当前教学：'+cycleNames[cycle]}}</h2><p>${{isSchool?'学校模式拥有独立入口布局':'晚托、周末课与寒暑假班按周期切换显示'}}</p></div></div><div class="grid cols-3">${{cards}}</div></section><section class="section"><div class="section-head"><div><h2>当前学生</h2><p>每位学生始终指向同一份长期档案</p></div><button class="btn" id="allStudents">查看全部</button></div><div class="list">${{people.slice(0,6).map(p=>`<a class="row" data-student href="/v1/student?id=${{p.id}}"><span class="row-main"><b>${{esc(p.name)}}</b><small>${{esc(studentPosition(p))}}</small></span><span class="row-action">查看动态 →</span></a>`).join('')||'<div class="empty">当前账号暂无可见学生。可进入原教学系统维护真实学生与班级关系。</div>'}}</div></section>`;
       screen.innerHTML=shell(content,'workspace');bindNav();document.querySelectorAll('[data-cycle]').forEach(b=>b.onclick=()=>{{localStorage.setItem(CYCLE_KEY,b.dataset.cycle);workspace()}});document.querySelectorAll('[data-student]').forEach(a=>a.onclick=e=>{{e.preventDefault();navigate(a.getAttribute('href'))}});document.querySelectorAll('[data-feature]').forEach(b=>b.onclick=()=>toast(b.dataset.feature+'：V1 入口已预留'));document.getElementById('allStudents').onclick=()=>navigate('/v1/student');
     }}
+
+    function v1QuestionTypeLabel(q){{
+      const t=String(q?.questionType||q?.question_type||'').toLowerCase();
+      return ({{single_choice:'单选题',choice:'单选题',true_false:'判断题',fill_blank:'填空题',calculation:'计算题',short_answer:'应用简答题'}})[t]||(((q?.options||[]).length>0)?'选择题':'练习题');
+    }}
+    function v1ChoiceLike(q){{
+      const t=String(q?.questionType||q?.question_type||'').toLowerCase();
+      return ['single_choice','choice','true_false'].includes(t)||(((q?.options||[]).length>0)&&!['fill_blank','calculation','short_answer'].includes(t));
+    }}
+    function v1RenderQuestionFigure(fig){{
+      if(!fig||!fig.type)return '';
+      const type=String(fig.type||'').toLowerCase(),w=320,h=210,m=28,num=(v,d=0)=>Number.isFinite(+v)?+v:d;let body='';
+      if(type==='coordinate_grid'){{
+        const xm=Math.max(1,Math.min(12,num(fig.xMax,8))),ym=Math.max(1,Math.min(12,num(fig.yMax,8))),sx=(w-2*m)/xm,sy=(h-2*m)/ym;
+        for(let x=0;x<=xm;x++){{const px=m+x*sx;body+='<line x1="'+px+'" y1="'+m+'" x2="'+px+'" y2="'+(h-m)+'" stroke="#d8dee9" stroke-width="1"/><text x="'+px+'" y="'+(h-m+17)+'" text-anchor="middle" font-size="10">'+x+'</text>'}}
+        for(let y=0;y<=ym;y++){{const py=h-m-y*sy;body+='<line x1="'+m+'" y1="'+py+'" x2="'+(w-m)+'" y2="'+py+'" stroke="#d8dee9" stroke-width="1"/><text x="'+(m-9)+'" y="'+(py+3)+'" text-anchor="middle" font-size="10">'+y+'</text>'}}
+        (fig.segments||[]).forEach(seg=>{{if(['x1','y1','x2','y2'].every(k=>Number.isFinite(+seg[k])))body+='<line x1="'+(m+num(seg.x1)*sx)+'" y1="'+(h-m-num(seg.y1)*sy)+'" x2="'+(m+num(seg.x2)*sx)+'" y2="'+(h-m-num(seg.y2)*sy)+'" stroke="#4b5563" stroke-width="2"/>'}});
+        (fig.points||[]).forEach(p=>{{const px=m+num(p.x)*sx,py=h-m-num(p.y)*sy;body+='<circle cx="'+px+'" cy="'+py+'" r="4" fill="#111827"/><text x="'+(px+7)+'" y="'+(py-7)+'" font-size="12">'+esc(p.label||p.name||'')+'</text>'}});
+      }}else if(type==='geometry'){{
+        const shape=String(fig.shape||'rectangle').toLowerCase();
+        if(shape==='triangle')body='<polygon points="65,170 255,170 160,45" fill="none" stroke="#374151" stroke-width="3"/>';
+        else if(shape==='trapezoid')body='<polygon points="85,55 225,55 270,170 45,170" fill="none" stroke="#374151" stroke-width="3"/>';
+        else if(shape==='parallelogram')body='<polygon points="90,55 260,55 225,170 55,170" fill="none" stroke="#374151" stroke-width="3"/>';
+        else body='<rect x="55" y="50" width="210" height="120" fill="none" stroke="#374151" stroke-width="3"/>';
+        const labels=fig.labels||{{}};let y=198;Object.keys(labels).slice(0,5).forEach(k=>{{body+='<text x="'+m+'" y="'+y+'" font-size="12">'+esc(k)+'：'+esc(labels[k])+'</text>';y-=16}});
+      }}else if(type==='line_segment'){{
+        const segs=(fig.segments||[]).length?fig.segments:[{{label:'线段',ratio:1}}],total=segs.reduce((sum,x)=>sum+Math.max(.1,num(x.ratio,1)),0);let x=m;
+        segs.forEach((seg,idx)=>{{const ww=(w-2*m)*Math.max(.1,num(seg.ratio,1))/total;body+='<line x1="'+x+'" y1="105" x2="'+(x+ww)+'" y2="105" stroke="#374151" stroke-width="4"/><line x1="'+x+'" y1="96" x2="'+x+'" y2="114" stroke="#374151" stroke-width="2"/><text x="'+(x+ww/2)+'" y="88" text-anchor="middle" font-size="12">'+esc(seg.label||('第'+(idx+1)+'段'))+'</text>';x+=ww}});body+='<line x1="'+x+'" y1="96" x2="'+x+'" y2="114" stroke="#374151" stroke-width="2"/>';
+      }}else if(type==='bar_chart'){{
+        const bars=(fig.bars||[]).slice(0,8),max=Math.max(1,...bars.map(x=>num(x.value,0))),bw=Math.max(18,(w-2*m)/Math.max(1,bars.length)-10);
+        body+='<line x1="'+m+'" y1="'+(h-m)+'" x2="'+(w-m)+'" y2="'+(h-m)+'" stroke="#374151"/>';
+        bars.forEach((bar,idx)=>{{const bh=(h-2*m)*num(bar.value,0)/max,x=m+idx*((w-2*m)/Math.max(1,bars.length))+5,y=h-m-bh;body+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" fill="#9ca3af"/><text x="'+(x+bw/2)+'" y="'+(h-m+15)+'" text-anchor="middle" font-size="10">'+esc(bar.name||bar.label||'')+'</text><text x="'+(x+bw/2)+'" y="'+(y-5)+'" text-anchor="middle" font-size="10">'+num(bar.value,0)+'</text>'}});
+      }}else if(type==='object_group'){{
+        const groups=(fig.groups||[]).slice(0,6);let y=48;groups.forEach(g=>{{const count=Math.max(0,Math.min(12,Math.round(num(g.count,0)))),symbol=esc(g.symbol||'●');body+='<text x="25" y="'+y+'" font-size="13">'+esc(g.label||g.name||'')+'：</text><text x="105" y="'+y+'" font-size="18">'+Array(count).fill(symbol).join(' ')+'</text>';y+=28}});
+      }}else return '';
+      const title=fig.title?'<div style="text-align:center;color:#667085;font-size:12px;margin-bottom:4px">'+esc(fig.title)+'</div>':'';
+      return '<div style="margin:12px 0;padding:10px;border:1px solid #e5e7eb;border-radius:12px;background:#fff">'+title+'<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;max-width:420px;display:block;margin:auto" role="img" aria-label="题目图示">'+body+'</svg></div>';
+    }}
     async function openV1StudentAssignment(aid){{
       try{{
         const rows=await api('/student/assignments');const a=rows.find(x=>Number(x.id)===Number(aid));
@@ -99,21 +137,24 @@ def v1_html() -> str:
         let index=0;const answers=new Map();
         const backToProfile=()=>navigate('/v1/student?id='+(session.userID||session.id||''));
         const renderQuestion=()=>{{
-          const q=questions[index],selected=answers.get(q.id);const answered=answers.size;
-          const meta=[q.textbook,q.unit,q.knowledge].filter(Boolean).map(esc).join(' · ');
-          const options=(q.options||[]).map((option,i)=>`<button class="btn v1-quiz-option" data-option="${{i}}" style="width:100%;text-align:left;justify-content:flex-start;border-color:${{selected===i?'#2563eb':'#e4e9f2'}};background:${{selected===i?'#eaf1ff':'#fff'}}"><b style="margin-right:8px">${{String.fromCharCode(65+i)}}.</b> ${{esc(option)}}</button>`).join('');
-          const body=heading(esc(a.title||'在线测试'),`第 ${{index+1}} / ${{questions.length}} 题 · 已答 ${{answered}} / ${{questions.length}}`,`<button class="btn" id="v1QuizExit">退出测试</button>`)+
-            `<section class="card"><div class="notice" style="margin-bottom:14px">${{meta||'在线答题'}}</div><h2 style="line-height:1.6;margin-bottom:16px">${{esc(q.text||'题目')}}</h2><div class="grid" style="gap:10px">${{options}}</div></section><section class="section" style="display:flex;gap:10px;justify-content:space-between"><button class="btn" id="v1QuizPrev" ${{index===0?'disabled':''}}>上一题</button><div style="display:flex;gap:10px"><button class="btn" id="v1QuizNext" ${{index===questions.length-1?'style="display:none"':''}}>下一题</button><button class="btn primary" id="v1QuizSubmit" ${{index===questions.length-1?'':'style="display:none"'}} ${{answers.size===questions.length?'':'disabled'}}>提交测试</button></div></section>`;
+          const q=questions[index],saved=answers.get(q.id)||{{}},isChoice=v1ChoiceLike(q),selected=Number.isInteger(saved.selected_index)?saved.selected_index:null,textAnswer=String(saved.text_answer||''),answered=answers.size;
+          const meta=[q.textbook,q.unit,q.knowledge].filter(Boolean).map(esc).join(' · '),typeName=v1QuestionTypeLabel(q),figure=v1RenderQuestionFigure(q.figure||{{}});
+          const options=isChoice?(q.options||[]).map((option,i)=>'<button class="btn v1-quiz-option" data-option="'+i+'" style="width:100%;text-align:left;justify-content:flex-start;border-color:'+(selected===i?'#2563eb':'#e4e9f2')+';background:'+(selected===i?'#eaf1ff':'#fff')+'"><b style="margin-right:8px">'+String.fromCharCode(65+i)+'.</b> '+esc(option)+'</button>').join(''):'';
+          const textInput=isChoice?'':(String(q.questionType||q.question_type||'').toLowerCase()==='short_answer'?'<textarea id="v1QuizTextAnswer" rows="4" style="width:100%;border:1px solid #cfd7e5;border-radius:12px;padding:12px 13px;font:inherit" placeholder="请输入简短答案">'+esc(textAnswer)+'</textarea>':'<input id="v1QuizTextAnswer" inputmode="'+(String(q.questionType||q.question_type||'').toLowerCase()==='calculation'?'decimal':'text')+'" style="width:100%;border:1px solid #cfd7e5;border-radius:12px;padding:12px 13px;font:inherit" value="'+esc(textAnswer)+'" placeholder="请输入答案">');
+          const body=heading(esc(a.title||'在线测试'),'第 '+(index+1)+' / '+questions.length+' 题 · 已答 '+answered+' / '+questions.length,'<button class="btn" id="v1QuizExit">退出测试</button>')+
+            '<section class="card"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><span class="tag">'+esc(typeName)+'</span><span class="tag">'+(meta||'在线答题')+'</span></div><h2 style="line-height:1.6;margin-bottom:16px">'+esc(q.text||'题目')+'</h2>'+figure+'<div class="grid" style="gap:10px">'+options+textInput+'</div><div class="notice" style="margin-top:14px">正式作业不会在提交前显示正确答案或解析。</div></section><section class="section" style="display:flex;gap:10px;justify-content:space-between"><button class="btn" id="v1QuizPrev" '+(index===0?'disabled':'')+'>上一题</button><div style="display:flex;gap:10px"><button class="btn" id="v1QuizNext" '+(index===questions.length-1?'style="display:none"':'')+'>下一题</button><button class="btn primary" id="v1QuizSubmit" '+(index===questions.length-1?'':'style="display:none"')+' '+(answers.size===questions.length?'':'disabled')+'>提交测试</button></div></section>';
           screen.innerHTML=shell(body,'students');bindNav();
-          document.querySelectorAll('.v1-quiz-option').forEach(btn=>btn.onclick=()=>{{answers.set(q.id,Number(btn.dataset.option));renderQuestion()}});
+          document.querySelectorAll('.v1-quiz-option').forEach(btn=>btn.onclick=()=>{{answers.set(q.id,{{selected_index:Number(btn.dataset.option)}});renderQuestion()}});
+          const input=document.getElementById('v1QuizTextAnswer');if(input)input.oninput=()=>{{const value=input.value;if(value.trim())answers.set(q.id,{{text_answer:value}});else answers.delete(q.id);const submit=document.getElementById('v1QuizSubmit');if(submit)submit.disabled=answers.size!==questions.length}};
           document.getElementById('v1QuizPrev').onclick=()=>{{if(index>0){{index--;renderQuestion()}}}};
           document.getElementById('v1QuizNext').onclick=()=>{{if(index<questions.length-1){{index++;renderQuestion()}}}};
           document.getElementById('v1QuizExit').onclick=()=>{{if(!answers.size||confirm('确定退出测试吗？当前未提交答案不会保存。'))backToProfile()}};
-          const submit=document.getElementById('v1QuizSubmit');if(submit)submit.onclick=async()=>{{if(answers.size!==questions.length){{toast('请完成全部题目后再提交');return}}submit.disabled=true;submit.textContent='正在提交…';try{{const payload={{answers:questions.map(item=>({{question_id:item.id,selected_index:answers.get(item.id)}}))}};const result=await api('/student/assignments/'+a.id+'/submit',{{method:'POST',body:JSON.stringify(payload)}});const resultBody=heading('测试已完成','成绩已经写入当前学生的连续学习记录。')+`<section class="card" style="text-align:center"><span class="tag">在线测试</span><strong style="display:block;font-size:48px;margin:18px 0 8px">${{esc(result.score)}} 分</strong><p>答对 ${{esc(result.correct)}} / ${{esc(result.total)}} 题</p><button class="btn primary" id="v1QuizBackProfile" style="margin-top:18px">返回学生档案</button></section>`;screen.innerHTML=shell(resultBody,'students');bindNav();document.getElementById('v1QuizBackProfile').onclick=backToProfile}}catch(err){{toast(err.message);submit.disabled=false;submit.textContent='提交测试'}}}};
+          const submit=document.getElementById('v1QuizSubmit');if(submit)submit.onclick=async()=>{{if(answers.size!==questions.length){{toast('请完成全部题目后再提交');return}}submit.disabled=true;submit.textContent='正在提交…';try{{const payload={{answers:questions.map(item=>{{const saved=answers.get(item.id)||{{}};return v1ChoiceLike(item)?{{question_id:item.id,selected_index:saved.selected_index}}:{{question_id:item.id,text_answer:String(saved.text_answer||'').trim()}}}})}};const result=await api('/student/assignments/'+a.id+'/submit',{{method:'POST',body:JSON.stringify(payload)}});const resultBody=heading('测试已完成','成绩已经写入当前学生的连续学习记录。')+'<section class="card" style="text-align:center"><span class="tag">在线测试</span><strong style="display:block;font-size:48px;margin:18px 0 8px">'+esc(result.score)+' 分</strong><p>答对 '+esc(result.correct)+' / '+esc(result.total)+' 题</p><button class="btn primary" id="v1QuizBackProfile" style="margin-top:18px">返回学生档案</button></section>';screen.innerHTML=shell(resultBody,'students');bindNav();document.getElementById('v1QuizBackProfile').onclick=backToProfile}}catch(err){{toast(err.message);submit.disabled=false;submit.textContent='提交测试'}}}};
         }};
         renderQuestion();
       }}catch(err){{toast(err.message||'无法打开测试')}}
     }}
+
     function bindV1StudentAssignments(assignments){{
       if(session.role!=='student')return;
       const card=[...document.querySelectorAll('.card')].find(node=>node.querySelector('h2')?.textContent.trim()==='作业情况');if(!card)return;
