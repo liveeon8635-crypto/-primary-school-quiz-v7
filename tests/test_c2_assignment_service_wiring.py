@@ -13,6 +13,7 @@ def test_assignment_read_service_is_installed_into_legacy_runtime():
     assert legacy.assignment_submission_setting.__self__ is service
     assert legacy.assignment_submission_mode.__self__ is service
     assert legacy.homework_media_count.__self__ is service
+    assert legacy.student_assignment_for.__self__ is service
     assert legacy.teacher_assignment_for.__self__ is service
     assert legacy.recipient_students.__self__ is service
     assert legacy.assignment_effective_status.__self__ is service
