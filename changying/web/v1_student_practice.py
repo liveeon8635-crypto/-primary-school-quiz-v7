@@ -115,7 +115,7 @@ def _practice_patch_html() -> str:
 .cy-student-practice-launch,.cy-student-ai-practice-launch{margin-top:14px;margin-right:8px;border:1px solid rgba(255,255,255,.55);background:#fff;color:#173c78;border-radius:12px;padding:10px 13px;font-weight:900}
 .cy-student-ai-practice-launch{background:#173c78;color:#fff;border-color:#173c78}
 .cy-ai-feedback{display:grid;gap:8px;margin-top:12px}.cy-ai-feedback-row{display:flex;justify-content:space-between;gap:12px;padding:9px 10px;border-radius:10px;background:#fff;border:1px solid #dce5f0;font-size:12px}
-.cy-ai-question{margin-top:10px;padding:12px;border-radius:12px;background:#fff;border:1px solid #dce5f0}.cy-ai-question b{display:block;line-height:1.55}.cy-ai-question small{display:block;color:#667085;line-height:1.55;margin-top:6px}
+.cy-ai-question{margin-top:10px;padding:12px;border-radius:12px;background:#fff;border:1px solid #dce5f0}.cy-ai-question b{display:block;line-height:1.55}.cy-ai-question small{display:block;color:#667085;line-height:1.55;margin-top:6px}.cy-ai-qmeta{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px}.cy-ai-qtag{display:inline-flex;padding:4px 7px;border:1px solid #d9e3f2;border-radius:999px;background:#f7f9fc;color:#526178;font-size:11px;font-weight:800}.cy-ai-figure{margin:10px 0;padding:8px;border:1px solid #e5e7eb;border-radius:12px;background:#fff}.cy-ai-figure svg{width:100%;max-width:420px;display:block;margin:auto}
 .cy-practice-layer{position:fixed;inset:0;z-index:96;background:rgba(15,23,42,.42);display:flex;align-items:flex-end;justify-content:center;padding:18px}
 .cy-practice-sheet{width:min(760px,100%);max-height:min(90dvh,920px);overflow:auto;background:#f7f9fc;border-radius:24px;padding:18px;box-shadow:0 30px 90px rgba(15,23,42,.3)}
 .cy-practice-head{position:sticky;top:-18px;z-index:2;display:flex;justify-content:space-between;gap:12px;align-items:center;background:rgba(247,249,252,.96);padding:18px 0 12px}
@@ -164,6 +164,46 @@ def _practice_patch_html() -> str:
    body.querySelector('#cy-practice-form').onsubmit=async e=>{e.preventDefault();const btn=e.submitter;btn.disabled=true;btn.textContent='正在自动组卷…';const result=body.querySelector('#cy-practice-result');try{const payload={grade:Number(body.querySelector('#cy-p-grade').value),subject:body.querySelector('#cy-p-subject').value,textbook:body.querySelector('#cy-p-textbook').value,kind:kind.value,knowledge:kind.value==='module'?(body.querySelector('#cy-p-module')?.value||''):'',question_count:Number(body.querySelector('#cy-p-count').value)||10,due_date:body.querySelector('#cy-p-due').value,class_id:Number(body.querySelector('#cy-p-class').value)||null};const created=await api('/teacher/students/'+student.id+'/auto-practice',{method:'POST',body:JSON.stringify(payload)});result.innerHTML='<div class="cy-practice-ok"><b>已添加：</b>'+esc(created.assignment?.title||'测试/练习')+' · '+esc(created.questionCount)+'题。学生完成后，成绩和知识点作答会继续进入现有学习记录。<br><button type="button" class="cy-practice-close" id="cy-practice-refresh" style="margin-top:9px">返回学生档案</button></div>';body.querySelector('#cy-practice-refresh').onclick=()=>location.reload()}catch(err){result.innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}finally{btn.disabled=false;btn.textContent='自动添加给学生'}};
  }
  async function open(sid){close();const layer=document.createElement('div');layer.id='cy-practice-layer';layer.className='cy-practice-layer';layer.innerHTML='<section class="cy-practice-sheet"><div class="cy-practice-head"><div><h2>添加测试 / 练习</h2><small style="color:#667085">按学生、年级和科目从当前人教版教材题库组卷</small></div><button class="cy-practice-close" type="button">关闭</button></div><div id="cy-practice-body">正在读取题库与学生信息…</div></section>';document.body.appendChild(layer);document.body.style.overflow='hidden';layer.querySelector('.cy-practice-close').onclick=close;layer.onclick=e=>{if(e.target===layer)close()};try{renderForm(layer,await loadOptions(sid,'','',''))}catch(err){layer.querySelector('#cy-practice-body').innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}}
+
+ function cyQuestionTypeLabel(type){
+   const t=String(type||'').toLowerCase();
+   return ({single_choice:'单选题',choice:'单选题',true_false:'判断题',fill_blank:'填空题',calculation:'计算题',short_answer:'应用简答题'})[t]||'练习题';
+ }
+ function cyChoiceLike(q){
+   const t=String(q?.question_type||'').toLowerCase();
+   return ['single_choice','choice','true_false'].includes(t)||(((q?.options||[]).length>0)&&!['fill_blank','calculation','short_answer'].includes(t));
+ }
+ function cyRenderQuestionFigure(fig){
+   if(!fig||!fig.type)return '';
+   const type=String(fig.type||'').toLowerCase(),w=320,h=210,m=28,num=(v,d=0)=>Number.isFinite(+v)?+v:d;
+   let body='';
+   if(type==='coordinate_grid'){
+     const xm=Math.max(1,Math.min(12,num(fig.xMax,8))),ym=Math.max(1,Math.min(12,num(fig.yMax,8))),sx=(w-2*m)/xm,sy=(h-2*m)/ym;
+     for(let x=0;x<=xm;x++){const px=m+x*sx;body+='<line x1="'+px+'" y1="'+m+'" x2="'+px+'" y2="'+(h-m)+'" stroke="#d8dee9" stroke-width="1"/><text x="'+px+'" y="'+(h-m+17)+'" text-anchor="middle" font-size="10">'+x+'</text>'}
+     for(let y=0;y<=ym;y++){const py=h-m-y*sy;body+='<line x1="'+m+'" y1="'+py+'" x2="'+(w-m)+'" y2="'+py+'" stroke="#d8dee9" stroke-width="1"/><text x="'+(m-9)+'" y="'+(py+3)+'" text-anchor="middle" font-size="10">'+y+'</text>'}
+     (fig.segments||[]).forEach(seg=>{if(['x1','y1','x2','y2'].every(k=>Number.isFinite(+seg[k])))body+='<line x1="'+(m+num(seg.x1)*sx)+'" y1="'+(h-m-num(seg.y1)*sy)+'" x2="'+(m+num(seg.x2)*sx)+'" y2="'+(h-m-num(seg.y2)*sy)+'" stroke="#4b5563" stroke-width="2"/>'});
+     (fig.points||[]).forEach(p=>{const px=m+num(p.x)*sx,py=h-m-num(p.y)*sy;body+='<circle cx="'+px+'" cy="'+py+'" r="4" fill="#111827"/><text x="'+(px+7)+'" y="'+(py-7)+'" font-size="12">'+esc(p.label||p.name||'')+'</text>'});
+   }else if(type==='geometry'){
+     const shape=String(fig.shape||'rectangle').toLowerCase();
+     if(shape==='triangle')body='<polygon points="65,170 255,170 160,45" fill="none" stroke="#374151" stroke-width="3"/>';
+     else if(shape==='trapezoid')body='<polygon points="85,55 225,55 270,170 45,170" fill="none" stroke="#374151" stroke-width="3"/>';
+     else if(shape==='parallelogram')body='<polygon points="90,55 260,55 225,170 55,170" fill="none" stroke="#374151" stroke-width="3"/>';
+     else body='<rect x="55" y="50" width="210" height="120" fill="none" stroke="#374151" stroke-width="3"/>';
+     const labels=fig.labels||{};let y=198;Object.keys(labels).slice(0,5).forEach(k=>{body+='<text x="'+m+'" y="'+y+'" font-size="12">'+esc(k)+'：'+esc(labels[k])+'</text>';y-=16});
+   }else if(type==='line_segment'){
+     const segs=(fig.segments||[]).length?fig.segments:[{label:'线段',ratio:1}],total=segs.reduce((sum,x)=>sum+Math.max(.1,num(x.ratio,1)),0);let x=m;
+     segs.forEach((seg,idx)=>{const ww=(w-2*m)*Math.max(.1,num(seg.ratio,1))/total;body+='<line x1="'+x+'" y1="105" x2="'+(x+ww)+'" y2="105" stroke="#374151" stroke-width="4"/><line x1="'+x+'" y1="96" x2="'+x+'" y2="114" stroke="#374151" stroke-width="2"/><text x="'+(x+ww/2)+'" y="88" text-anchor="middle" font-size="12">'+esc(seg.label||('第'+(idx+1)+'段'))+'</text>';x+=ww});body+='<line x1="'+x+'" y1="96" x2="'+x+'" y2="114" stroke="#374151" stroke-width="2"/>';
+   }else if(type==='bar_chart'){
+     const bars=(fig.bars||[]).slice(0,8),max=Math.max(1,...bars.map(x=>num(x.value,0))),bw=Math.max(18,(w-2*m)/Math.max(1,bars.length)-10);
+     body+='<line x1="'+m+'" y1="'+(h-m)+'" x2="'+(w-m)+'" y2="'+(h-m)+'" stroke="#374151"/>';
+     bars.forEach((bar,idx)=>{const bh=(h-2*m)*num(bar.value,0)/max,x=m+idx*((w-2*m)/Math.max(1,bars.length))+5,y=h-m-bh;body+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" fill="#9ca3af"/><text x="'+(x+bw/2)+'" y="'+(h-m+15)+'" text-anchor="middle" font-size="10">'+esc(bar.name||bar.label||'')+'</text><text x="'+(x+bw/2)+'" y="'+(y-5)+'" text-anchor="middle" font-size="10">'+num(bar.value,0)+'</text>'});
+   }else if(type==='object_group'){
+     const groups=(fig.groups||[]).slice(0,6);let y=48;groups.forEach(g=>{const count=Math.max(0,Math.min(12,Math.round(num(g.count,0)))),symbol=esc(g.symbol||'●');body+='<text x="25" y="'+y+'" font-size="13">'+esc(g.label||g.name||'')+'：</text><text x="105" y="'+y+'" font-size="18">'+Array(count).fill(symbol).join(' ')+'</text>';y+=28});
+   }else{return ''}
+   const title=fig.title?'<div style="text-align:center;color:#667085;font-size:12px;margin-bottom:4px">'+esc(fig.title)+'</div>':'';
+   return '<div class="cy-ai-figure">'+title+'<svg viewBox="0 0 '+w+' '+h+'" role="img" aria-label="题目图示">'+body+'</svg></div>';
+ }
+
  async function openAIPractice(sid){
    close();const layer=document.createElement('div');layer.id='cy-practice-layer';layer.className='cy-practice-layer';
    layer.innerHTML='<section class="cy-practice-sheet"><div class="cy-practice-head"><div><h2>AI 针对性练习</h2><small style="color:#667085">自动关联最近综合测试、模块练习、知识点正确率与错题</small></div><button class="cy-practice-close" type="button">关闭</button></div><div id="cy-practice-body"><div class="cy-practice-note">AI 只读取该学生已有教学反馈；生成结果必须由教师审核后才会布置。</div><form id="cy-ai-practice-form"><div class="cy-practice-grid"><div class="cy-practice-field"><label>生成题数</label><input id="cy-ai-count" type="number" min="1" max="12" value="8"></div><div class="cy-practice-field"><label>难度</label><select id="cy-ai-difficulty"><option>基础</option><option selected>中等</option><option>提高</option></select></div></div><button class="cy-practice-submit" type="submit">读取反馈并生成针对性练习</button><div id="cy-ai-result"></div></form></div></section>';
@@ -171,10 +211,16 @@ def _practice_patch_html() -> str:
    const form=layer.querySelector('#cy-ai-practice-form'),result=layer.querySelector('#cy-ai-result');
    form.onsubmit=async e=>{e.preventDefault();const btn=e.submitter;btn.disabled=true;btn.textContent='正在关联测试反馈并生成…';result.innerHTML='';
      try{
-       const draft=await api('/teacher/students/'+sid+'/reinforcement/generate',{method:'POST',body:JSON.stringify({count:Number(layer.querySelector('#cy-ai-count').value)||8,difficulty:layer.querySelector('#cy-ai-difficulty').value,notes:'综合关联该学生最近综合测试与知识模块练习反馈，优先针对薄弱知识点；保持年级、科目和教材版本一致'})});
+       const draft=await api('/teacher/students/'+sid+'/reinforcement/generate',{method:'POST',body:JSON.stringify({count:Number(layer.querySelector('#cy-ai-count').value)||8,difficulty:layer.querySelector('#cy-ai-difficulty').value,notes:'综合关联该学生最近综合测试与知识模块练习反馈，优先针对薄弱知识点；保持年级、科目和教材版本一致；5题以上至少使用3种题型并包含非选择题；坐标位置、平面图形面积、植树线段关系、统计图等确实需要图示时必须返回结构化figure'})});
        const ctx=draft.assessmentContext||{},weak=(ctx.weakKnowledge||[]).slice(0,6);
        const feedback=weak.length?'<div class="cy-ai-feedback">'+weak.map(x=>'<div class="cy-ai-feedback-row"><span>'+esc((x.textbook?x.textbook+' · ':'')+(x.knowledge||'知识点'))+'</span><b>'+esc(x.accuracy)+'% · '+esc(x.answered)+'题</b></div>').join('')+'</div>':'';
-       const questions=(draft.items||[]).map((q,i)=>'<div class="cy-ai-question"><b>'+(i+1)+'. '+esc(q.text)+'</b><small>'+esc((q.textbook? q.textbook+' · ':'')+(q.knowledge||''))+'<br>'+q.options.map((x,j)=>'ABCD'[j]+'. '+esc(x)).join('<br>')+'<br>答案：'+esc('ABCD'[q.correct_index]||'')+' · '+esc(q.explanation||'')+'</small></div>').join('');
+       const questions=(draft.items||[]).map((q,i)=>{
+         const options=q.options||[],choice=cyChoiceLike(q),type=cyQuestionTypeLabel(q.question_type),fig=cyRenderQuestionFigure(q.figure||{});
+         const optionHtml=choice&&options.length?'<div style="margin-top:7px;color:#667085;line-height:1.65">'+options.map((x,j)=>String.fromCharCode(65+j)+'. '+esc(x)).join('<br>')+'</div>':'';
+         const answer=choice?(String.fromCharCode(65+Number(q.correct_index||0))+' · '+esc(options[Number(q.correct_index||0)]||'')):esc(q.answer||'');
+         const accepted=(q.accepted_answers||[]).length?' <span style="color:#667085">可接受：'+esc((q.accepted_answers||[]).join(' / '))+'</span>':'';
+         return '<div class="cy-ai-question"><div class="cy-ai-qmeta"><span class="cy-ai-qtag">'+esc(type)+'</span><span class="cy-ai-qtag">'+esc(q.knowledge||'知识点')+'</span></div><b>'+(i+1)+'. '+esc(q.text)+'</b>'+fig+optionHtml+'<small>'+esc(q.textbook||'')+(q.textbook&&q.knowledge?' · ':'')+esc(q.knowledge||'')+'<br><b style="display:inline">参考答案：</b>'+answer+accepted+(q.explanation?' · '+esc(q.explanation):'')+'</small></div>';
+       }).join('');
        result.innerHTML='<div class="cy-practice-ok"><b>反馈关联完成：</b>'+esc(draft.notice||'已根据学习反馈生成。')+'</div>'+feedback+questions+'<div class="cy-practice-grid" style="margin-top:12px"><div class="cy-practice-field"><label>截止日期</label><input id="cy-ai-due" type="date" value="'+dueDefault()+'"></div></div><button type="button" class="cy-practice-submit" id="cy-ai-assign">审核后布置给该学生</button>';
        layer.querySelector('#cy-ai-assign').onclick=async ev=>{const ab=ev.currentTarget;ab.disabled=true;ab.textContent='正在布置…';try{const assigned=await api('/teacher/students/'+sid+'/reinforcement/assign',{method:'POST',body:JSON.stringify({questions:draft.items,title:'AI 针对性练习',due_date:layer.querySelector('#cy-ai-due').value,wrong_ids:draft.wrongIDs||[],instructions:'根据最近综合测试、知识模块练习和知识点反馈生成的针对性练习。完成后结果继续进入学生连续学习档案。'})});result.innerHTML='<div class="cy-practice-ok"><b>已布置 AI 针对性练习。</b>共 '+esc(assigned.questionIDs?.length||draft.items?.length||0)+' 题，只发送给当前学生。<br><button type="button" class="cy-practice-close" id="cy-ai-back" style="margin-top:9px">返回学生档案</button></div>';layer.querySelector('#cy-ai-back').onclick=()=>location.reload()}catch(err){result.insertAdjacentHTML('afterbegin','<div class="cy-practice-error">'+esc(err.message)+'</div>');ab.disabled=false;ab.textContent='审核后布置给该学生'}};
      }catch(err){result.innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}
