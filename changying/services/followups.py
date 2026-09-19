@@ -54,3 +54,24 @@ class FollowUpService:
                 .order_by(self.StudentFollowUpLog.id)
             ).all()
         )
+
+    def item_log_rows(
+        self,
+        db,
+        *,
+        school_id: int,
+        followup_id: int,
+    ) -> list[Any]:
+        return list(
+            db.scalars(
+                select(self.StudentFollowUpLog)
+                .where(
+                    self.StudentFollowUpLog.school_id == school_id,
+                    self.StudentFollowUpLog.followup_id == followup_id,
+                )
+                .order_by(
+                    self.StudentFollowUpLog.created_at.desc(),
+                    self.StudentFollowUpLog.id.desc(),
+                )
+            ).all()
+        )

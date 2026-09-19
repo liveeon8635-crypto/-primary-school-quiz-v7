@@ -2361,9 +2361,9 @@ def followup_log_json(db,row:StudentFollowUpLog):
 
 def followup_json(db,row:StudentFollowUp,include_logs:bool=False):
     stu=db.get(User,row.student_id);actor=db.get(User,row.created_by) if row.created_by else None
-    logs=db.scalars(select(StudentFollowUpLog).where(
-        StudentFollowUpLog.followup_id==row.id,StudentFollowUpLog.school_id==row.school_id
-    ).order_by(StudentFollowUpLog.created_at.desc(),StudentFollowUpLog.id.desc())).all()
+    logs=followup_item_log_rows(
+        db,school_id=row.school_id,followup_id=row.id
+    )
     out={"id":row.id,"classID":row.class_id,"studentID":row.student_id,
          "studentName":stu.name if stu else f"学生{row.student_id}","title":row.title,
          "category":row.category,"categoryName":FOLLOWUP_CATEGORY_NAMES.get(row.category,row.category),
