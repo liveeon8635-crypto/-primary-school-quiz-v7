@@ -13,7 +13,9 @@ def test_chinese_reinforcement_prompt_adds_subject_specific_contract():
     prompt = augment_reinforcement_prompt("reinforcement_generate", base)
     assert "当前科目是语文" in prompt
     assert "不要使用 calculation" in prompt
-    assert "开放性阅读感受、习作、长篇表达不得自动判分" in prompt
+    assert "不要使用 calculation 或 short_answer" in prompt
+    assert "开放性阅读感受" in prompt
+    assert "不得自动判分" in prompt
     assert "figure 必须返回 {}" in prompt
 
 
