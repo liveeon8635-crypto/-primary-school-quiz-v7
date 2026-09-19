@@ -3160,7 +3160,7 @@ def account_export_payload(db,u):
     if u.role=="student":
         data["classHistory"]=[model_dict(x) for x in db.scalars(select(StudentClassHistory).where(StudentClassHistory.school_id==u.school_id,StudentClassHistory.student_id==u.id).order_by(StudentClassHistory.id)).all()]
         data["submissions"]=[model_dict(x) for x in db.scalars(select(Submission).where(Submission.school_id==u.school_id,Submission.student_id==u.id).order_by(Submission.id)).all()]
-        data["pointLedger"]=[model_dict(x) for x in db.scalars(select(PointLedger).where(PointLedger.school_id==u.school_id,PointLedger.student_id==u.id).order_by(PointLedger.id)).all()]
+        data["pointLedger"]=[model_dict(x) for x in point_student_history_rows(db,student_id=u.id,school_id=u.school_id)]
         data["rewards"]=[model_dict(x) for x in db.scalars(select(RewardRedemption).where(RewardRedemption.school_id==u.school_id,RewardRedemption.student_id==u.id).order_by(RewardRedemption.id)).all()]
         data["followups"]=[model_dict(x) for x in db.scalars(select(StudentFollowUp).where(StudentFollowUp.school_id==u.school_id,StudentFollowUp.student_id==u.id).order_by(StudentFollowUp.id)).all()]
         data["followupLogs"]=[model_dict(x) for x in db.scalars(select(StudentFollowUpLog).where(StudentFollowUpLog.school_id==u.school_id,StudentFollowUpLog.student_id==u.id).order_by(StudentFollowUpLog.id)).all()]

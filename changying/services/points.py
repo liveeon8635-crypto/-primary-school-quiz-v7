@@ -233,6 +233,24 @@ class PointService:
             "topReasons": top_reasons,
         }
 
+    def student_history_rows(
+        self,
+        db,
+        *,
+        student_id: int,
+        school_id: int,
+    ) -> list[Any]:
+        return list(
+            db.scalars(
+                select(self.PointLedger)
+                .where(
+                    self.PointLedger.school_id == school_id,
+                    self.PointLedger.student_id == student_id,
+                )
+                .order_by(self.PointLedger.id)
+            ).all()
+        )
+
     def student_recent_rows(
         self,
         db,
