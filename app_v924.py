@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
-from sqlalchemy import create_engine, String, Integer, ForeignKey, Text, DateTime, Boolean, LargeBinary, UniqueConstraint, select, func, inspect as sa_inspect
+from sqlalchemy import create_engine, String, Integer, ForeignKey, Text, DateTime, Boolean, LargeBinary, UniqueConstraint, select, func, inspect as sa_inspect, text as sa_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
 from cryptography.fernet import Fernet, InvalidToken
 from changying.services.assignments import student_assignment_rows, teacher_assignment_rows
@@ -126,6 +126,9 @@ class Question(Base):
     options_json:Mapped[str]=mapped_column(Text)
     correct_index:Mapped[int]=mapped_column(Integer)
     explanation:Mapped[str]=mapped_column(Text,default="")
+    question_type:Mapped[str]=mapped_column(String(30),default="")
+    answer_json:Mapped[str]=mapped_column(Text,default="{}")
+    figure_json:Mapped[str]=mapped_column(Text,default="{}")
     creator_id:Mapped[int|None]=mapped_column(ForeignKey("users.id"),nullable=True)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
 
@@ -967,7 +970,7 @@ class ParentBindBody(BaseModel): parent_id:Optional[int]=None
 class UserCreate(BaseModel): name:str;username:str;password:str;role:str
 class ClassCreate(BaseModel): name:str;grade:int
 class StudentCreate(BaseModel): name:str;username:str;password:str;grade:int;class_id:int;parent_username:Optional[str]=None
-class QuestionCreate(BaseModel): grade:int;subject:str;textbook:str;semester:str;unit:str;knowledge:str;text:str;options:list[str]=[];correct_index:int=-1;explanation:str="";question_type:str="choice";reference_answer:str="";scoring_points:list[str]=[]
+class QuestionCreate(BaseModel): grade:int;subject:str;textbook:str;semester:str;unit:str;knowledge:str;text:str;options:list[str]=[];correct_index:int=-1;explanation:str="";question_type:str="single_choice";reference_answer:str="";scoring_points:list[str]=[];answer:str="";accepted_answers:list[str]=[];figure:dict={}
 class AIConfigBody(BaseModel):
     provider:str="openai_responses"
     base_url:str="https://api.openai.com/v1"
@@ -1048,7 +1051,7 @@ class AssignmentCreate(BaseModel):
     unit:str=""
     instructions:str=""
 class HomeworkMediaSubmitBody(BaseModel): note:str=""
-class AnswerItem(BaseModel): question_id:int;selected_index:int;correct:Optional[bool]=None
+class AnswerItem(BaseModel): question_id:int;selected_index:Optional[int]=None;text_answer:str="";correct:Optional[bool]=None
 class SubmitBody(BaseModel): title:Optional[str]=None;correct:Optional[int]=None;total:Optional[int]=None;score:Optional[int]=None;answers:list[AnswerItem]=[]
 
 class TeachingProgramUpdate(BaseModel):
@@ -1204,12 +1207,86 @@ def seed(db):
 
 # ---------------- API helpers ----------------
 def uj(u): return {"id":u.id,"username":u.username,"name":u.name,"role":u.role,"grade":u.grade,"active":bool(u.active)}
+
+AUTO_GRADED_QUESTION_TYPES={"single_choice","true_false","fill_blank","calculation"}
+
+def _json_object(raw):
+    try:value=json.loads(raw or "{}")
+    except Exception:return {}
+    return value if isinstance(value,dict) else {}
+
+def question_type_of(q):
+    raw=str(getattr(q,"question_type","") or "").strip().lower()
+    if raw in AUTO_GRADED_QUESTION_TYPES:return raw
+    try:opts=json.loads(q.options_json or "[]")
+    except Exception:opts=[]
+    return "single_choice" if isinstance(opts,list) and opts and int(q.correct_index)>=0 else "non_choice"
+
+def question_answer_meta(q):
+    data=_json_object(getattr(q,"answer_json","{}"))
+    return {"answer":str(data.get("answer") or ""),"accepted":[str(x) for x in (data.get("accepted") or []) if str(x).strip()]}
+
+def question_figure(q):
+    data=_json_object(getattr(q,"figure_json","{}"))
+    return data if str(data.get("type") or "").strip() else {}
+
+def _normalize_text_answer(value):
+    s=str(value or "").strip().lower()
+    table=str.maketrans({"，":",","。":".","（":"(", "）":")","：":":","－":"-","—":"-","＋":"+","×":"*","÷":"/","％":"%"})
+    return "".join(s.translate(table).split())
+
+def _text_answer_matches(value,answer,accepted=None):
+    got=_normalize_text_answer(value)
+    candidates=[answer]+list(accepted or [])
+    for expected in candidates:
+        want=_normalize_text_answer(expected)
+        if got==want and want:return True
+        try:
+            if got and want and abs(float(got)-float(want))<1e-9:return True
+        except Exception:
+            pass
+    return False
+
+def _sanitize_figure(value):
+    if not isinstance(value,dict):return {}
+    kind=str(value.get("type") or "").strip().lower()
+    if kind not in {"coordinate_grid","geometry","line_segment","bar_chart","object_group"}:return {}
+    safe={"type":kind}
+    for key in ("shape","title","xLabel","yLabel"):
+        if key in value:safe[key]=str(value.get(key) or "")[:80]
+    for key in ("xMax","yMax","width","height"):
+        if key in value:
+            try:safe[key]=max(1,min(float(value[key]),1000))
+            except Exception:pass
+    if isinstance(value.get("labels"),dict):
+        safe["labels"]={str(k)[:30]:str(v)[:40] for k,v in list(value["labels"].items())[:12]}
+    for key in ("points","bars","segments","groups"):
+        rows=value.get(key)
+        if isinstance(rows,list):
+            out=[]
+            for row in rows[:12]:
+                if not isinstance(row,dict):continue
+                clean={}
+                for k,v in row.items():
+                    if k in {"x","y","value","count","ratio"}:
+                        try:clean[k]=float(v)
+                        except Exception:continue
+                    elif k in {"label","name","symbol"}:clean[k]=str(v)[:40]
+                out.append(clean)
+            safe[key]=out
+    return safe
+
 def qj(q):
-    opts=json.loads(q.options_json or "[]")
-    return {"id":q.id,"grade":q.grade,"subject":q.subject,"textbook":q.textbook,"semester":q.semester,"unit":q.unit,"knowledge":q.knowledge,"text":q.text,"options":opts,"correctIndex":q.correct_index,"explanation":q.explanation,"questionType":"choice" if opts and q.correct_index>=0 else "non_choice"}
+    try:opts=json.loads(q.options_json or "[]")
+    except Exception:opts=[]
+    if not isinstance(opts,list):opts=[]
+    qt=question_type_of(q);ans=question_answer_meta(q)
+    return {"id":q.id,"grade":q.grade,"subject":q.subject,"textbook":q.textbook,"semester":q.semester,"unit":q.unit,"knowledge":q.knowledge,"text":q.text,"options":opts,"correctIndex":q.correct_index,"explanation":q.explanation,"questionType":qt,"answer":ans["answer"],"acceptedAnswers":ans["accepted"],"figure":question_figure(q)}
 def qj_public(q):
-    opts=json.loads(q.options_json or "[]")
-    return {"id":q.id,"grade":q.grade,"subject":q.subject,"textbook":q.textbook,"semester":q.semester,"unit":q.unit,"knowledge":q.knowledge,"text":q.text,"options":opts,"questionType":"choice" if opts and q.correct_index>=0 else "non_choice"}
+    try:opts=json.loads(q.options_json or "[]")
+    except Exception:opts=[]
+    if not isinstance(opts,list):opts=[]
+    return {"id":q.id,"grade":q.grade,"subject":q.subject,"textbook":q.textbook,"semester":q.semester,"unit":q.unit,"knowledge":q.knowledge,"text":q.text,"options":opts,"questionType":question_type_of(q),"figure":question_figure(q)}
 def pj(p): return {"id":p.id,"title":p.title,"grade":p.grade,"subject":p.subject,"textbook":p.textbook,"unit":p.unit,"questionIDs":json.loads(p.question_ids_json)}
 def audit(db,u,action,detail=""):
     db.add(AuditLog(school_id=u.school_id,user_id=u.id,action=action,detail=detail))
