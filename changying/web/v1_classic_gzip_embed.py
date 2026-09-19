@@ -116,6 +116,26 @@ def install_v1_classic_gzip_embed(app: FastAPI) -> None:
                 },
             )
 
+        # Old V1 capability links can still point directly at Classic.  Normalize
+        # every V1-originated top-level Classic navigation through unified mode
+        # so the one-time auth handoff is always consumed before Classic renders.
+        if (
+            request.method == "GET"
+            and request.url.path == "/classic"
+            and request.query_params.get("from") == "v1"
+            and request.query_params.get("unified") != "1"
+            and request.query_params.get("embedded") != "1"
+        ):
+            page = _safe_tool_page(request.query_params.get("page"))
+            return RedirectResponse(
+                _unified_tool_url(page),
+                status_code=307,
+                headers={
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "X-Changying-V1-Tool": V1_CLASSIC_TOP_LEVEL_MARKER,
+                },
+            )
+
         response = await call_next(request)
         if request.method != "GET" or request.url.path != "/classic":
             return response
