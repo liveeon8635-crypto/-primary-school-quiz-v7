@@ -2199,13 +2199,7 @@ def class_growth_dashboard_data(db,c:SchoolClass,school_id:int):
                          "badges":student_growth_badges(db,stu.id,school_id)})
     progress.sort(key=lambda x:(x["change"],x["currentNet"],x["studentName"]),reverse=True)
     for i,x in enumerate(progress,1):x["rank"]=i
-    category={}
-    rows=db.scalars(select(PointLedger).where(PointLedger.school_id==school_id,PointLedger.class_id==c.id,
-        PointLedger.created_at>=cur_start,PointLedger.created_at<cur_end,PointLedger.source.in_(("classroom","adjustment","reversal")))).all()
-    for row in rows:
-        key=row.reason or ("课堂活动" if row.category=="activity" else "守纪情况")
-        z=category.setdefault(key,{"reason":key,"category":row.category,"count":0,"points":0});z["count"]+=1;z["points"]+=int(row.points or 0)
-    categories=sorted(category.values(),key=lambda x:(abs(x["points"]),x["count"]),reverse=True)[:12]
+    categories=point_class_window_categories(db,school_id=school_id,class_id=c.id,start_utc=cur_start,end_utc=cur_end,limit=12)
     return {"class":{"id":c.id,"name":c.name,"grade":c.grade},"currentWeek":{"start":cur_s,"end":cur_e},
             "previousWeek":{"start":prev_s,"end":prev_e},"groups":sorted(class_groups_json(db,c,school_id),key=lambda x:(x["rank"] or 999,x["name"])),
             "progressRanking":progress,"categoryStats":categories}
@@ -6169,13 +6163,9 @@ def teacher_growth_monthly_export(cid:int,month:str|None=None,u:User=Depends(cur
         month_groups.append({"name":g.name,"memberCount":len(ids),**total})
     month_groups.sort(key=lambda x:(x["net"],x["earned"],x["activity"],x["name"]),reverse=True)
     for i,x in enumerate(month_groups,1):wg.append([i,x["name"],x["memberCount"],x["net"],x["earned"],x["activity"],x["discipline"]])
-    category={}
-    for row in db.scalars(select(PointLedger).where(PointLedger.school_id==u.school_id,PointLedger.class_id==c.id,
-        PointLedger.created_at>=start,PointLedger.created_at<end,PointLedger.source.in_(("classroom","adjustment","reversal")))).all():
-        rkey=row.reason or ("课堂活动" if row.category=="activity" else "守纪情况")
-        z=category.setdefault(rkey,{"reason":rkey,"category":row.category,"count":0,"points":0});z["count"]+=1;z["points"]+=int(row.points or 0)
+    categories=point_class_window_categories(db,school_id=u.school_id,class_id=c.id,start_utc=start,end_utc=end)
     wc=wb.create_sheet("月度表现分类");wc.append(["表现项目","类别","次数","净积分"])
-    for x in sorted(category.values(),key=lambda z:(abs(z["points"]),z["count"]),reverse=True):wc.append([x["reason"],"课堂活动" if x["category"]=="activity" else "守纪情况",x["count"],x["points"]])
+    for x in categories:wc.append([x["reason"],"课堂活动" if x["category"]=="activity" else "守纪情况",x["count"],x["points"]])
     for sh in wb.worksheets:
         sh.freeze_panes="A2"
         for cell in sh[1]:cell.font=Font(bold=True,color="FFFFFF");cell.fill=PatternFill("solid",fgColor="5362E8");cell.alignment=Alignment(horizontal="center")
