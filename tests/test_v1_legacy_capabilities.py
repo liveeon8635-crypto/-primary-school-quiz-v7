@@ -89,3 +89,11 @@ def test_capability_links_keep_existing_classic_permission_boundary():
     assert "requestedDeepPage" not in _LEGACY_CAPABILITIES_SNIPPET
     assert "method:'POST'" not in _LEGACY_CAPABILITIES_SNIPPET
     assert 'method:"POST"' not in _LEGACY_CAPABILITIES_SNIPPET
+
+
+def test_capability_center_uses_remember_aware_auth_storage():
+    assert "v717Remember" in _LEGACY_CAPABILITIES_SNIPPET
+    assert "sessionStorage.getItem('v717Token')" in _LEGACY_CAPABILITIES_SNIPPET
+    assert "localStorage.getItem('v717Token')" in _LEGACY_CAPABILITIES_SNIPPET
+    assert "sessionStorage.getItem('v6Token')" in _LEGACY_CAPABILITIES_SNIPPET
+    assert "localStorage.getItem('v6Token')" in _LEGACY_CAPABILITIES_SNIPPET
