@@ -140,13 +140,23 @@ def _numeric_equal(left: str, right: str) -> bool:
 
 def _units_in_text(text: str) -> list[str]:
     raw = str(text or "")
-    found: list[tuple[int, str]] = []
+    # Find longest aliases first and discard overlapping shorter matches, e.g.
+    # “平方厘米” must not also be read as “厘米” + “米”.
+    candidates: list[tuple[int, int, str]] = []
     for alias in sorted(_ALIAS_TO_UNIT, key=len, reverse=True):
         for match in re.finditer(re.escape(alias), raw, flags=re.IGNORECASE):
-            found.append((match.start(), _ALIAS_TO_UNIT[alias.lower()]))
-    found.sort()
+            candidates.append(
+                (match.start(), match.end(), _ALIAS_TO_UNIT[alias.lower()])
+            )
+    candidates.sort(key=lambda x: (-(x[1] - x[0]), x[0]))
+    accepted: list[tuple[int, int, str]] = []
+    for start, end, unit in candidates:
+        if any(not (end <= a_start or start >= a_end) for a_start, a_end, _ in accepted):
+            continue
+        accepted.append((start, end, unit))
+    accepted.sort(key=lambda x: x[0])
     result: list[str] = []
-    for _, unit in found:
+    for _, _, unit in accepted:
         if unit not in result:
             result.append(unit)
     return result
