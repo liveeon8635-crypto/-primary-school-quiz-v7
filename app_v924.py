@@ -1497,9 +1497,88 @@ def save_sub(db,u,aid,title,normalized,correct,total,score):
             old.title=title;old.score=score;old.correct=correct;old.total=total;old.answers_json=answers;old.submitted_at=datetime.utcnow();return old
     sub=Submission(school_id=u.school_id,assignment_id=aid,student_id=u.id,title=title,score=score,correct=correct,total=total,answers_json=answers);db.add(sub);db.flush();return sub
 
+AUDIT_ACTION_NAMES={
+    "account.deletion.cancel":"取消注销申请",
+    "account.deletion.request":"提交账号注销申请",
+    "account.deletion.resolve":"处理账号注销申请",
+    "account.export":"导出个人数据",
+    "ai.config.update":"更新 AI 配置",
+    "ai.grade.assist":"生成 AI 批改建议",
+    "ai.grade.confirm":"确认 AI 批改结果",
+    "ai.lesson.generate":"生成 AI 教案",
+    "ai.lesson.practice":"生成 AI 课堂练习",
+    "ai.questions.assign":"布置 AI 生成题",
+    "ai.questions.generate":"生成 AI 题目",
+    "ai.questions.save":"保存 AI 生成题",
+    "ai.reinforcement.assign":"布置个性化巩固",
+    "ai.reinforcement.generate":"生成个性化巩固",
+    "assignment.create":"布置作业",
+    "assignment.export":"导出作业成绩",
+    "auto.reward.bulk_fulfill":"批量发放自动奖励",
+    "auto.reward.cancel":"取消自动奖励",
+    "auto.reward.fulfill":"发放自动奖励",
+    "auto.reward.grant":"触发自动奖励",
+    "auto.reward.rule.create":"新增自动奖励规则",
+    "auto.reward.rule.update":"更新自动奖励规则",
+    "backup.export":"导出学校备份",
+    "class.create":"新建班级",
+    "class.export":"导出班级报表",
+    "class.todo.create":"新建班级待办",
+    "class.todo.status":"更新班级待办状态",
+    "followup.create":"新建学生跟进",
+    "followup.export":"导出学生跟进",
+    "followup.log":"新增跟进记录",
+    "followup.status":"更新跟进状态",
+    "growth_report.export":"导出学生成长报告",
+    "homework.media.delete":"删除作业附件",
+    "homework.media.submit":"提交照片/视频作业",
+    "homework.media.upload":"上传作业照片/视频",
+    "import.xlsx":"批量导入",
+    "paper.create":"创建试卷",
+    "parent.bind":"绑定家长",
+    "parent.unbind":"解除家长绑定",
+    "points.class_rule.create":"新增班级积分规则",
+    "points.class_rule.initialize":"初始化班级积分规则",
+    "points.class_rule.reset":"重置班级积分规则",
+    "points.class_rule.update":"更新班级积分规则",
+    "points.export":"导出积分奖励报表",
+    "points.group.create":"新建积分小组",
+    "points.group.delete":"删除积分小组",
+    "points.group.members":"更新积分小组成员",
+    "points.growth.monthly.export":"导出学生月度成长积分",
+    "points.homeroom.export":"导出班主任积分报表",
+    "points.record":"记录课堂积分",
+    "points.rule.create":"新增积分规则",
+    "points.rule.update":"更新积分规则",
+    "points.undo":"撤销积分记录",
+    "points.weekly.export":"导出班级积分周报",
+    "question.create":"新增题目",
+    "reward.create":"新增奖品",
+    "reward.fulfill":"发放奖品",
+    "reward.redeem":"兑换奖品",
+    "reward.reject":"拒绝兑换并退款",
+    "reward.update":"更新奖品",
+    "student.archive":"学生毕业归档",
+    "student.create":"创建学生",
+    "student.export":"导出学生成绩单",
+    "student.restore":"恢复学生入班",
+    "student.transfer":"学生调班",
+    "teaching.essay.feedback":"作文批改",
+    "teaching.lesson.update":"更新定制课时",
+    "teaching.program.update":"更新教学方案",
+    "teaching.question.create":"新增分层题",
+    "teaching.question.delete":"删除分层题",
+    "teaching.resource.delete":"删除教学资源",
+    "teaching.resource.upload":"上传教学资源",
+    "user.active":"更新账号状态",
+    "user.create":"创建账号",
+    "user.reset_password":"重置密码",
+    "wrong_question.status":"更新错题状态",
+}
+
 def audit_readable(db,row):
     action=row.action;detail=row.detail or ""
-    names={"class.create":"新建班级","student.create":"创建学生","student.transfer":"学生调班","student.archive":"毕业归档","student.restore":"恢复学生","paper.create":"创建试卷","assignment.create":"布置作业","assignment.export":"导出成绩","class.export":"导出班级报表","student.export":"导出学生成绩单","growth_report.export":"导出学生成长报告","question.create":"新增题目","user.create":"创建账号","user.reset_password":"重置密码","user.active":"账号状态变更","import.xlsx":"批量导入","points.rule.create":"新增积分规则","points.rule.update":"修改积分规则","points.record":"课堂积分记录","points.undo":"撤销积分","reward.create":"新增奖品","reward.update":"修改奖品","reward.redeem":"积分兑换","reward.fulfill":"奖品发放","reward.reject":"兑换拒绝退款","points.export":"导出积分奖励报表","points.weekly.export":"导出班级积分周报","parent.bind":"绑定家长","parent.unbind":"解除家长绑定","auto.reward.rule.create":"新增自动奖励规则","auto.reward.rule.update":"修改自动奖励规则","auto.reward.grant":"自动奖励触发","auto.reward.fulfill":"自动奖励发放","auto.reward.cancel":"自动奖励取消","account.export":"个人数据导出","account.deletion.request":"账号注销申请","account.deletion.cancel":"取消注销申请","account.deletion.resolve":"处理注销申请","backup.export":"学校数据备份"}
+    names=AUDIT_ACTION_NAMES
     try:
         if action=="student.transfer":
             sid_name,move=detail.rsplit(":",1);parts=sid_name.split(":",1);name=parts[1] if len(parts)>1 else f"学生#{parts[0]}";old,new=move.split("->",1)
@@ -1530,7 +1609,7 @@ def audit_readable(db,row):
         if action=="student.export":return f"导出学生成绩单：{detail.split(':',1)[-1]}"
         if action=="growth_report.export":return f"导出学生成长报告：{detail.split(':',1)[-1]}"
     except Exception:pass
-    return detail or names.get(action,action)
+    return names.get(action) or detail or action
 
 
 # ---------------- V7.4 customized teaching module ----------------
@@ -5064,7 +5143,7 @@ def teacher_student_history(sid:int,u:User=Depends(current_user),db:Session=Depe
 @app.get("/teacher/audit-logs")
 def teacher_audit_logs(limit:int=120,u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"teacher");limit=max(1,min(limit,250));rows=db.scalars(select(AuditLog).where(AuditLog.school_id==u.school_id,AuditLog.user_id==u.id).order_by(AuditLog.id.desc()).limit(limit)).all()
-    names={"class.create":"新建班级","student.create":"创建学生","student.transfer":"学生调班","student.archive":"毕业归档","paper.create":"创建试卷","assignment.create":"布置作业","assignment.export":"导出成绩","class.export":"导出班级报表","student.export":"导出学生成绩单","question.create":"新增题目","teaching.program.update":"教学方案设置","teaching.lesson.update":"更新定制课时","teaching.question.create":"新增分层题","teaching.question.delete":"删除分层题","teaching.essay.feedback":"作文批改","homework.media.upload":"上传作业照片/视频","homework.media.delete":"删除作业附件","homework.media.submit":"提交照片/视频作业"}
+    names=AUDIT_ACTION_NAMES
     return [{"id":x.id,"action":x.action,"actionName":names.get(x.action,x.action),"detail":x.detail,"summary":audit_readable(db,x),"createdAt":school_local_iso(x.created_at)} for x in rows]
 
 @app.post("/teacher/papers")
