@@ -95,6 +95,15 @@ with TestClient(app) as client:
         for link in links:
             db.delete(link)
 
+        history_rows = db.scalars(
+            legacy.select(legacy.StudentClassHistory).where(
+                legacy.StudentClassHistory.student_id == student.id,
+                legacy.StudentClassHistory.school_id == student.school_id,
+            )
+        ).all()
+        for history_row in history_rows:
+            db.delete(history_row)
+
         old_class = legacy.SchoolClass(
             school_id=student.school_id,
             name="五年级阶段",
