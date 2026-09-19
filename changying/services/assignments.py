@@ -56,6 +56,29 @@ class AssignmentService:
             else "quiz"
         )
 
+    def student_assignment_for(
+        self,
+        db,
+        school_id: int,
+        student_id: int,
+        assignment_id: int,
+    ):
+        """Return one assignment only when it was addressed to the student."""
+        return db.scalar(
+            select(self.Assignment)
+            .join(
+                self.AssignmentRecipient,
+                self.AssignmentRecipient.assignment_id == self.Assignment.id,
+            )
+            .where(
+                self.Assignment.id == assignment_id,
+                self.Assignment.school_id == school_id,
+                self.AssignmentRecipient.school_id == school_id,
+                self.AssignmentRecipient.student_id == student_id,
+            )
+            .limit(1)
+        )
+
     def teacher_assignment_for(
         self,
         db,
