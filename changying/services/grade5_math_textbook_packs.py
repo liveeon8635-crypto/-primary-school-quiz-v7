@@ -273,7 +273,7 @@ def _factors(textbook: str, unit: str) -> list[dict[str, Any]]:
     for i,(ans,ds) in enumerate(primes):
         rows.append(_spec(
             textbook=textbook, unit=unit, knowledge="质数与合数",
-            text="下面哪个数是质数？", answer=str(ans),
+            text=f"在 {ans}、{ds[0]}、{ds[1]}、{ds[2]} 中，哪个数是质数？", answer=str(ans),
             distractors=[str(x) for x in ds],
             explanation="质数只有1和它本身两个因数。",
             seed=i+2,
