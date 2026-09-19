@@ -142,7 +142,7 @@ def _practice_patch_html() -> str:
  function renderForm(layer,data){
    const body=layer.querySelector('#cy-practice-body');const student=data.student||{};const grade=data.selectedGrade||student.grade||5;const subject=data.selectedSubject||data.subjects?.[0]||'数学';const textbooks=data.textbooks||[];const textbook=data.selectedTextbook||textbooks[0]||'';
    const modules=data.modules||[];const classes=data.classes||[];
-   body.innerHTML='<div class="cy-practice-note">综合测试和知识模块练习按科目使用当前核定教材：数学使用人教版，语文使用统编版（人民教育出版社）；不把其他出版社教材当作同一“版本”混用。当前年级科目可用约 '+esc(data.availableQuestionCount||0)+' 题；系统标准题只会在你确认添加时补入现有题库。</div>'+
+   body.innerHTML='<div class="cy-practice-note">综合测试和知识模块练习按科目使用当前核定教材：数学使用人教版，语文使用统编版（人民教育出版社），英语使用人教PEP；不把其他出版社教材当作同一“版本”混用。当前年级科目可用约 '+esc(data.availableQuestionCount||0)+' 题；系统标准题只会在你确认添加时补入现有题库。</div>'+
    '<form id="cy-practice-form"><div class="cy-practice-grid">'+
    '<div class="cy-practice-field"><label>学生</label><input value="'+esc(student.name||'学生')+'" disabled></div>'+
    '<div class="cy-practice-field"><label>教学班级</label><select id="cy-p-class">'+classes.map(c=>'<option value="'+c.id+'" '+(Number(c.id)===Number(data.defaultClassID)?'selected':'')+'>'+esc(c.name)+' · '+esc(c.grade)+'年级</option>').join('')+'</select></div>'+
@@ -406,7 +406,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
         if textbook not in allowed_textbooks:
             raise HTTPException(
                 400,
-                "当前自动测试按科目使用已核定教材（数学：人教版；语文：统编版〔人民教育出版社〕），不支持混用其他出版社教材",
+                "当前自动测试按科目使用已核定教材（数学：人教版；语文：统编版〔人民教育出版社〕；英语：人教PEP），不支持混用其他出版社教材",
             )
         kind = (body.kind or "comprehensive").strip().lower()
         if kind not in {"comprehensive", "module"}:
