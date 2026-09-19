@@ -35,6 +35,7 @@ from changying.domain.growth import (
 )
 from changying.security.passwords import hash_password, password_ok, password_version, verify_password
 from changying.security.tokens import make_token as issue_token
+from changying.services.assignments import AssignmentService
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
 from changying.utils.json_tools import json_list
 from changying.web.classic_ui import install_classic_ui_patch
@@ -150,6 +151,22 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.verify_password = verify_password
     implementation.password_ok = password_ok
     implementation.password_version = password_version
+
+    assignment_service = AssignmentService(
+        assignment_submission_setting_model=implementation.AssignmentSubmissionSetting,
+        submission_model=implementation.Submission,
+        homework_media_submit_model=implementation.HomeworkMediaSubmit,
+        homework_media_model=implementation.HomeworkMedia,
+        valid_submission_modes=ASSIGNMENT_SUBMISSION_MODES,
+        assignment_mode_name=assignment_mode_name,
+        school_local_iso=school_local_iso,
+        due_deadline_utc=due_deadline_utc,
+    )
+    implementation.assignment_service = assignment_service
+    implementation.assignment_submission_setting = assignment_service.submission_setting
+    implementation.assignment_submission_mode = assignment_service.submission_mode
+    implementation.homework_media_count = assignment_service.homework_media_count
+    implementation.assignment_effective_status = assignment_service.effective_status
 
     def legacy_make_token(user, security, remember=False):
         return issue_token(
