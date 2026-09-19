@@ -56,6 +56,50 @@ class TestPointLedger(Base):
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+def test_class_window_categories_preserve_scope_fallback_sort_and_limit_contract():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = PointService(point_ledger_model=TestPointLedger)
+    start = datetime(2026, 9, 1, 0, 0, 0)
+    end = datetime(2026, 9, 8, 0, 0, 0)
+
+    with Session(engine) as db:
+        db.add_all(
+            [
+                TestPointLedger(id=1, school_id=10, student_id=100, class_id=20, category="activity", points=3, source="classroom", reason="举手", created_at=datetime(2026, 9, 2)),
+                TestPointLedger(id=2, school_id=10, student_id=101, class_id=20, category="activity", points=2, source="adjustment", reason="举手", created_at=datetime(2026, 9, 3)),
+                TestPointLedger(id=3, school_id=10, student_id=100, class_id=20, category="discipline", points=-6, source="classroom", reason=None, created_at=datetime(2026, 9, 4)),
+                TestPointLedger(id=4, school_id=10, student_id=100, class_id=20, category="activity", points=20, source="redemption", reason="应排除", created_at=datetime(2026, 9, 5)),
+                TestPointLedger(id=5, school_id=10, student_id=100, class_id=21, category="activity", points=30, source="classroom", reason="其他班", created_at=datetime(2026, 9, 2)),
+                TestPointLedger(id=6, school_id=20, student_id=100, class_id=20, category="activity", points=40, source="classroom", reason="其他学校", created_at=datetime(2026, 9, 2)),
+                TestPointLedger(id=7, school_id=10, student_id=100, class_id=20, category="activity", points=50, source="classroom", reason="窗口外", created_at=datetime(2026, 9, 8)),
+            ]
+        )
+        db.commit()
+
+        full = service.class_window_categories(
+            db,
+            school_id=10,
+            class_id=20,
+            start_utc=start,
+            end_utc=end,
+        )
+        limited = service.class_window_categories(
+            db,
+            school_id=10,
+            class_id=20,
+            start_utc=start,
+            end_utc=end,
+            limit=1,
+        )
+
+    assert full == [
+        {"reason": "守纪情况", "category": "discipline", "count": 1, "points": -6},
+        {"reason": "举手", "category": "activity", "count": 2, "points": 5},
+    ]
+    assert limited == [full[0]]
+
+
 def test_ledger_json_preserves_legacy_names_fallbacks_and_shape():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -344,6 +388,7 @@ def test_point_summary_service_is_installed_into_legacy_runtime():
 
     assert isinstance(service, PointService)
     assert legacy.point_balance.__self__ is service
+    assert legacy.point_class_window_categories.__self__ is service
     assert legacy.point_ledger_json.__self__ is service
     assert legacy.point_metric_value.__self__ is service
     assert legacy.point_rule_json.__self__ is service
