@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException
 
 from changying.domain.learning_evidence_growth_profile import growth_profile_learning_evidence
 from changying.domain.learning_evidence_read_model import student_evidence_snapshot
+from changying.domain.learning_evidence_visibility import learning_evidence_for_role
 from changying.web.v1_learning_evidence_profile import legacy_student_evidence
 from changying.web import v1 as v1_module
 
@@ -97,7 +98,10 @@ def install_v1_learning_evidence_access_routes(implementation: ModuleType) -> No
             int(student.id),
             int(user.school_id),
         )
-        return growth_profile_learning_evidence(student_evidence_snapshot(items))
+        evidence = growth_profile_learning_evidence(
+            student_evidence_snapshot(items)
+        )
+        return learning_evidence_for_role(evidence, user.role)
 
     app.state.v1_learning_evidence_access_installed = True
 
