@@ -14,6 +14,11 @@ from typing import Any
 
 from sqlalchemy import select
 
+from changying.services.grade5_math_textbook_packs import (
+    SUPPORTED_GRADE5_MATH_TEXTBOOKS,
+    supplemental_grade5_math_specs,
+)
+
 
 def _dec(value: Any) -> Decimal:
     return Decimal(str(value))
@@ -407,7 +412,7 @@ def built_in_subjects(grade: int) -> list[str]:
 
 def built_in_textbooks(grade: int, subject: str) -> list[str]:
     if int(grade) == 5 and (subject or "").strip() == "数学":
-        return ["人教版"]
+        return list(SUPPORTED_GRADE5_MATH_TEXTBOOKS)
     return []
 
 
@@ -417,13 +422,11 @@ def built_in_question_specs(
     textbook: str = "",
 ) -> list[dict[str, Any]]:
     requested_textbook = (textbook or "").strip()
-    if (
-        int(grade) == 5
-        and (subject or "").strip() == "数学"
-        and (not requested_textbook or requested_textbook == "人教版")
-    ):
+    if int(grade) != 5 or (subject or "").strip() != "数学":
+        return []
+    if not requested_textbook or requested_textbook == "人教版":
         return _grade5_math_specs()
-    return []
+    return supplemental_grade5_math_specs(requested_textbook)
 
 
 def potential_question_catalog(

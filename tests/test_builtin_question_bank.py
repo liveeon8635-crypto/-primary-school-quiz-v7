@@ -59,7 +59,14 @@ def test_unsupported_pack_does_not_invent_other_subjects_or_grades():
 
 
 def test_grade5_math_pack_is_textbook_aware():
-    assert built_in_textbooks(5, "数学") == ["人教版"]
+    assert built_in_textbooks(5, "数学") == [
+        "人教版",
+        "北师大版",
+        "苏教版",
+        "冀教版",
+        "青岛版",
+    ]
     assert len(built_in_question_specs(5, "数学", "人教版")) >= 180
-    assert built_in_question_specs(5, "数学", "北师大版") == []
+    assert len(built_in_question_specs(5, "数学", "北师大版")) >= 120
+    assert built_in_question_specs(5, "数学", "西师大版") == []
     assert built_in_textbooks(5, "语文") == []
