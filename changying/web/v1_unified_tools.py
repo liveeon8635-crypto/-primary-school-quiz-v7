@@ -47,11 +47,11 @@ _TOOL_HTML = r'''<!doctype html>
     parent:[['childLearning','孩子课程'],['childRewards','课堂表现'],['childProgress','孩子学情'],['childAssignments','孩子作业'],['account','我的']],
     admin:[['admin','平台总览'],['subscription','套餐授权'],['users','账号管理'],['pointsAdmin','积分奖励'],['ai','AI 设置'],['teaching','定制教学'],['resources','教材教案'],['imports','批量导入'],['catalog','教材题库'],['adminAudit','全校审计'],['system','系统设置']]
   };
-  const params=new URLSearchParams(location.search),requested=params.get('page')||'';
+  const params=new URLSearchParams(location.search),requested=params.get('page')||'',deepAssignment=params.get('assignment')||'';\n  let deepAssignmentUsed=false;
   const picker=document.getElementById('toolPicker'),title=document.getElementById('toolTitle'),frame=document.getElementById('toolFrame'),loading=document.getElementById('loading'),identity=document.getElementById('identity'),notice=document.getElementById('notice');
   let role='teacher',items=menus.teacher;
   function find(page){return items.find(x=>x[0]===page)||items[0]}
-  function classicUrl(page){return '/classic?legacy=1&embedded=1&from=v1&page='+encodeURIComponent(page)}
+  function classicUrl(page){const deep=page==='assignments'&&deepAssignment&&!deepAssignmentUsed?'&assignment='+encodeURIComponent(deepAssignment):'';if(deep)deepAssignmentUsed=true;return '/classic?legacy=1&embedded=1&from=v1&page='+encodeURIComponent(page)+deep}
   function embeddedPolish(doc){
     if(!doc||doc.getElementById('cy-v1-embedded-style'))return;
     const style=doc.createElement('style');style.id='cy-v1-embedded-style';style.textContent=`
