@@ -165,6 +165,49 @@ class PointService:
             "inherited": True,
         }
 
+    def period_summary(
+        self,
+        db,
+        *,
+        student_id: int,
+        school_id: int,
+        cutoff,
+        reason_limit: int = 5,
+    ) -> dict[str, Any]:
+        rows = db.scalars(
+            select(self.PointLedger).where(
+                self.PointLedger.school_id == school_id,
+                self.PointLedger.student_id == student_id,
+                self.PointLedger.created_at >= cutoff,
+                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+            ).order_by(self.PointLedger.id.desc())
+        ).all()
+
+        earned = sum(
+            int(row.points or 0)
+            for row in rows
+            if (row.points or 0) > 0 and row.source in ("classroom", "adjustment")
+        )
+        reasons: dict[str, dict[str, int | str]] = {}
+        for row in rows:
+            key = row.reason or "积分记录"
+            item = reasons.setdefault(key, {"reason": key, "count": 0, "points": 0})
+            item["count"] = int(item["count"]) + 1
+            item["points"] = int(item["points"]) + int(row.points or 0)
+        top_reasons = sorted(
+            reasons.values(),
+            key=lambda item: (abs(int(item["points"])), int(item["count"])),
+            reverse=True,
+        )[: max(0, int(reason_limit))]
+
+        return {
+            "earned": earned,
+            "net": sum(int(row.points or 0) for row in rows),
+            "activity": sum(int(row.points or 0) for row in rows if row.category == "activity"),
+            "discipline": sum(int(row.points or 0) for row in rows if row.category == "discipline"),
+            "topReasons": top_reasons,
+        }
+
     def recent_rows(
         self,
         db,
