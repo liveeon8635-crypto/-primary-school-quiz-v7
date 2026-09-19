@@ -56,3 +56,11 @@ def test_transition_selection_patch_is_idempotent():
     twice = patch_v1_transition_selection(once)
 
     assert once == twice
+
+
+def test_transition_student_picker_uses_remember_aware_auth_storage():
+    assert "v717Remember" in _TRANSITION_SELECTION_SNIPPET
+    assert "sessionStorage.getItem('v717Token')" in _TRANSITION_SELECTION_SNIPPET
+    assert "localStorage.getItem('v717Token')" in _TRANSITION_SELECTION_SNIPPET
+    assert "sessionStorage.getItem('v6Token')" in _TRANSITION_SELECTION_SNIPPET
+    assert "localStorage.getItem('v6Token')" in _TRANSITION_SELECTION_SNIPPET
