@@ -231,6 +231,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.followup_student_log_history_rows = followup_service.student_log_history_rows
     implementation.followup_item_log_rows = followup_service.item_log_rows
     implementation.followup_class_rows = followup_service.class_rows
+    implementation.followup_item_row = followup_service.item_row
 
     def legacy_make_token(user, security, remember=False):
         return issue_token(

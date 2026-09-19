@@ -6339,7 +6339,9 @@ def teacher_create_followup(cid:int,b:FollowUpCreateBody,u:User=Depends(current_
 @app.get("/teacher/points/classes/{cid}/followups/{fid}")
 def teacher_followup_detail(cid:int,fid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"teacher","admin");c=current_teacher_class(db,u,cid)
-    row=db.scalar(select(StudentFollowUp).where(StudentFollowUp.id==fid,StudentFollowUp.class_id==c.id,StudentFollowUp.school_id==u.school_id))
+    row=followup_item_row(
+        db,school_id=u.school_id,class_id=c.id,followup_id=fid
+    )
     if not row:raise HTTPException(404,"跟进事项不存在")
     return followup_json(db,row,True)
 
