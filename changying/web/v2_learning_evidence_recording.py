@@ -184,6 +184,64 @@ def install_v2_learning_evidence_routes(implementation: ModuleType) -> None:
             "appendOnly": True,
         }
 
+    @app.get("/v2/students/{sid}/learning-evidence/events", include_in_schema=False)
+    def list_manual_evidence_events(
+        sid: int,
+        user=Depends(implementation.current_user),
+        db=Depends(implementation.get_db),
+    ):
+        _write_student(implementation, db, user, sid)
+        rows = _event_rows(
+            implementation,
+            db,
+            sid,
+            int(user.school_id),
+        )
+        actor_ids = {int(row.actor_id) for row in rows}
+        actors = {}
+        if actor_ids:
+            actor_rows = db.scalars(
+                implementation.select(implementation.User).where(
+                    implementation.User.school_id == user.school_id,
+                    implementation.User.id.in_(actor_ids),
+                )
+            ).all()
+            actors = {int(row.id): row.name for row in actor_rows}
+
+        retraction_by_target = {
+            int(row.target_event_id): row
+            for row in rows
+            if row.event_kind == "retract" and row.target_event_id is not None
+        }
+
+        events = []
+        for row in reversed(rows):
+            item = _record_json(row, actors.get(int(row.actor_id), ""))
+            if row.event_kind == "record":
+                retract = retraction_by_target.get(int(row.id))
+                item["effectiveStatus"] = "retracted" if retract is not None else "active"
+                item["retractEventID"] = int(retract.id) if retract is not None else None
+                item["retractReason"] = (retract.note or "") if retract is not None else ""
+                item["retractedAt"] = (
+                    _aware_utc(retract.created_at).isoformat()
+                    if retract is not None
+                    else None
+                )
+            else:
+                item["effectiveStatus"] = "retraction"
+                item["retractEventID"] = int(row.id)
+                item["retractReason"] = row.note or ""
+                item["retractedAt"] = _aware_utc(row.created_at).isoformat()
+            events.append(item)
+
+        return {
+            "studentID": sid,
+            "events": events,
+            "count": len(events),
+            "appendOnly": True,
+            "includesRetracted": True,
+        }
+
     @app.post("/v2/students/{sid}/learning-evidence", include_in_schema=False)
     def create_manual_evidence(
         sid: int,
