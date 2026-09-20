@@ -2,7 +2,12 @@ from types import SimpleNamespace
 import json
 
 from changying.services.builtin_question_bank import built_in_question_specs
-from changying.services.language_question_quality import chinese_choice_repair, language_choice_repair, language_question_text
+from changying.services.language_question_quality import (
+    chinese_choice_repair,
+    language_choice_repair,
+    language_question_text,
+    language_semantic_family_fields,
+)
 
 
 def _q(*, text, subject="英语", question_type="fill_blank", answer="", knowledge=""):
@@ -13,6 +18,90 @@ def _q(*, text, subject="英语", question_type="fill_blank", answer="", knowled
         knowledge=knowledge,
         answer_json=json.dumps({"answer": answer}, ensure_ascii=False),
     )
+
+
+def test_semantic_family_keeps_generic_stem_questions_with_different_options_distinct():
+    stem = "下列词语书写完全正确的一项是？"
+    first = language_semantic_family_fields(
+        subject="语文",
+        knowledge="字形辨析",
+        text=stem,
+        options=["爱幕　恩惠　协调", "爱慕　恩惠　协调", "爱慕　恩慧　协调", "爱慕　恩惠　协凋"],
+        correct_index=1,
+        question_type="",
+    )
+    second = language_semantic_family_fields(
+        subject="语文",
+        knowledge="字形辨析",
+        text=stem,
+        options=["胆却　允诺　典礼", "胆怯　允若　典礼", "胆怯　允诺　典礼", "胆怯　允诺　典里"],
+        correct_index=2,
+        question_type="",
+    )
+    assert first != second
+
+
+def test_semantic_family_maps_derived_judgement_to_exact_source_question():
+    stem = "下列词语书写完全正确的一项是？"
+    first = language_semantic_family_fields(
+        subject="语文",
+        knowledge="字形辨析",
+        text=stem,
+        options=["爱幕　恩惠　协调", "爱慕　恩惠　协调", "爱慕　恩慧　协调", "爱慕　恩惠　协凋"],
+        correct_index=1,
+        question_type="",
+    )
+    second = language_semantic_family_fields(
+        subject="语文",
+        knowledge="字形辨析",
+        text=stem,
+        options=["胆却　允诺　典礼", "胆怯　允若　典礼", "胆怯　允诺　典礼", "胆怯　允诺　典里"],
+        correct_index=2,
+        question_type="",
+    )
+    derived = language_semantic_family_fields(
+        subject="语文",
+        knowledge="字形辨析",
+        text="判断下面的作答是否正确：下列词语书写完全正确的一项是 —— 胆却　允诺　典礼",
+        options=["正确", "错误"],
+        correct_index=1,
+        question_type="true_false",
+    )
+    assert derived == second
+    assert derived != first
+
+
+def test_semantic_family_maps_materialized_fill_to_its_source_options():
+    stem = "下列句子没有语病的一项是？"
+    source = language_semantic_family_fields(
+        subject="语文",
+        knowledge="病句辨析",
+        text=stem,
+        options=[
+            "经过努力，小组终于完成了实验记录。",
+            "公园里到处是盛开的花朵和清脆的鸟鸣。",
+            "我们必须认真改正并发现学习中的问题。",
+            "这篇文章的内容和插图都很丰富。",
+        ],
+        correct_index=0,
+        question_type="",
+    )
+    derived = language_semantic_family_fields(
+        subject="语文",
+        knowledge="病句辨析",
+        text=(
+            "请从备选答案中选择，并输入完整答案：下列句子没有语病的一项是？ "
+            "备选答案：A. 经过努力，小组终于完成了实验记录。；"
+            "B. 公园里到处是盛开的花朵和清脆的鸟鸣。；"
+            "C. 我们必须认真改正并发现学习中的问题。；"
+            "D. 这篇文章的内容和插图都很丰富。"
+        ),
+        options=[],
+        correct_index=-1,
+        question_type="fill_blank",
+        answer="经过努力，小组终于完成了实验记录。",
+    )
+    assert derived == source
 
 
 def test_existing_ambiguous_english_fill_is_repaired_to_real_cloze():
