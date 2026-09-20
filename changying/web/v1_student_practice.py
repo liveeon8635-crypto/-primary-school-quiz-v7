@@ -87,7 +87,18 @@ def _online_question_type(row: Any) -> str:
 
 
 def _is_online_question(row: Any) -> bool:
-    return bool(_online_question_type(row))
+    question_type = _online_question_type(row)
+    if not question_type:
+        return False
+    # Existing Chinese fill_blank rows created from multiple-choice items can
+    # contain open semantic prompts or "choose one" wording while the student
+    # UI exposes a free-text input. Keep them out of future automatic papers.
+    # Only explicit-cloze Chinese fills are objective enough for exact
+    # auto-grading. Historical assignments remain readable and unchanged.
+    if question_type == "fill_blank" and str(getattr(row, "subject", "") or "").strip() == "语文":
+        text = str(getattr(row, "text", "") or "")
+        return "____" in text
+    return True
 
 
 def _select_type_diverse_questions(rows: list[Any], limit: int) -> list[Any]:
