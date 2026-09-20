@@ -47,8 +47,12 @@ with TestClient(app) as client:
         wrong_answers = []
         for qid in qids:
             q = qmap[qid]
-            options = json.loads(q.options_json)
-            wrong_answers.append({"question_id": qid, "selected_index": (q.correct_index + 1) % len(options)})
+            question_type = legacy.question_type_of(q)
+            if question_type in {"single_choice", "true_false"}:
+                options = json.loads(q.options_json)
+                wrong_answers.append({"question_id": qid, "selected_index": (q.correct_index + 1) % len(options)})
+            else:
+                wrong_answers.append({"question_id": qid, "text_answer": "__definitely_wrong__"})
 
     submitted = client.post(f"/student/assignments/{aid}/submit", headers=sh, json={"answers": wrong_answers})
     assert submitted.status_code == 200, submitted.text
