@@ -56,6 +56,14 @@ def test_v1_tool_redirects_to_same_tab_unified_classic():
     assert response.headers['location'] == '/classic?legacy=1&unified=1&from=v1&page=ai'
 
 
+
+
+def test_v1_tool_without_page_opens_role_aware_hub_instead_of_classes():
+    response = TestClient(build_app(), follow_redirects=False).get('/v1/tool')
+
+    assert response.status_code == 307
+    assert response.headers['location'].endswith('page=__hub__')
+
 def test_unknown_tool_page_is_safely_normalized():
     response = TestClient(build_app(), follow_redirects=False).get('/v1/tool?page=not-a-real-page')
 
