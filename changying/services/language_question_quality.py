@@ -93,6 +93,22 @@ def _inline_candidates(options: list[str]) -> str:
         f"{labels[i]}. {value}" for i, value in enumerate(options[: len(labels)])
     )
 
+def chinese_fill_candidates(question: Any) -> list[str]:
+    subject = str(getattr(question, "subject", "") or "").strip()
+    qtype = str(getattr(question, "question_type", "") or "").strip().lower()
+    text = str(getattr(question, "text", "") or "").strip()
+    if subject != "语文" or qtype != "fill_blank":
+        return []
+    prefix = "请直接填写答案："
+    core = text[len(prefix):].strip() if text.startswith(prefix) else text
+    if not _option_dependent_chinese_stem(core):
+        return []
+    return _chinese_source_options(
+        core,
+        str(getattr(question, "knowledge", "") or ""),
+    )
+
+
 def language_question_text(question: Any) -> str:
     text = str(getattr(question, "text", "") or "").strip()
     subject = str(getattr(question, "subject", "") or "").strip()
@@ -156,12 +172,20 @@ def install_language_question_quality(implementation: ModuleType) -> None:
     def public_question(question):
         payload = dict(original_public(question))
         payload["text"] = language_question_text(question)
+        candidates = chinese_fill_candidates(question)
+        if candidates:
+            payload["options"] = candidates
+            payload["answerMode"] = "candidate_text"
         return payload
 
     @wraps(original_teacher)
     def teacher_question(question):
         payload = dict(original_teacher(question))
         payload["text"] = language_question_text(question)
+        candidates = chinese_fill_candidates(question)
+        if candidates:
+            payload["options"] = candidates
+            payload["answerMode"] = "candidate_text"
         return payload
 
     implementation.qj_public = public_question
@@ -169,4 +193,4 @@ def install_language_question_quality(implementation: ModuleType) -> None:
     app.state.language_question_quality_installed = True
 
 
-__all__ = ["install_language_question_quality", "language_question_text"]
+__all__ = ["install_language_question_quality", "language_question_text", "chinese_fill_candidates"]
