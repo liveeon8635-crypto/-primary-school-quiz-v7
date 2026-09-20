@@ -152,9 +152,13 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     assert "textbook:body.querySelector('#cy-p-textbook').value" in once
     assert "/teacher/students/'+student.id+'/auto-practice" in once
     assert "s.role!=='teacher'" in once
-    assert "当前仅为教师审核预览，尚未布置，学生端不会看到。" in once
+    assert "状态：未布置 · 当前仅为教师审核预览，学生端不会看到。" in once
     assert "审核无误，布置给该学生" in once
-    assert "已布置 AI 针对性练习，学生端现在可见。" in once
+    assert "状态：已布置 · AI 针对性练习已在学生端可见。" in once
+    assert "cy-ai-assign-box" in once
+    assert "bottom:calc(8px + env(safe-area-inset-bottom))" in once
+    assert "function dueDefault(){const d=new Date();d.setDate(d.getDate()+7);" in once
+    assert "return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())" in once
     assert "if(btn.disabled)return" in once
     assert "已添加成功" in once
     assert "请勿重复添加" in once
@@ -261,3 +265,12 @@ def test_current_chinese_comprehensive_test_is_mixed_type():
 
     assert len(chosen) == 10
     assert {"single_choice", "true_false", "fill_blank"} <= types
+
+
+def test_auto_practice_server_fallback_uses_school_local_date():
+    import inspect
+    import changying.web.v1_student_practice as module
+
+    source = inspect.getsource(module.install_v1_student_practice_routes)
+    assert "datetime.now(implementation.SCHOOL_TZ)" in source
+    assert "datetime.utcnow() + timedelta(days=7)" not in source

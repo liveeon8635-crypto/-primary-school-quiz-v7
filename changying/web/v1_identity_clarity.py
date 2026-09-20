@@ -1,9 +1,9 @@
-"""Clarify V1 identity UX when a real account has only one usable identity.
+"""Clarify V1 identity UX while keeping account switching one tap away.
 
-V1 currently maps each real account to one authorized identity. Demo accounts may
-show multiple modes, but real accounts should not be forced through a redundant
-identity picker or see a misleading "switch identity" button when there is
-nothing to switch to.
+A real account currently maps to one authorized product identity, so the
+redundant identity picker remains skipped.  The header action must still offer
+"切换账号" because teachers and students routinely share the same device during
+acceptance and classroom use.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ def patch_v1_identity_clarity(html: str) -> str:
     choose_replacement = (
         "function chooseIdentity(){const choices=identitiesFor(session);"
         "if(choices.length===1){identity=choices[0];localStorage.setItem(IDENTITY_KEY,identity.key);"
-        "chip.textContent=identity.label+' · '+(session.name||'');identityButton.hidden=true;"
+        "chip.textContent=identity.label+' · '+(session.name||'');identityButton.hidden=false;identityButton.textContent='切换账号';"
         "navigate(identity.mode==='family'||identity.mode==='student'?'/v1/student':'/v1/workspace?mode='+identity.mode);return}"
         "identity=null;"
     )
@@ -31,10 +31,26 @@ def patch_v1_identity_clarity(html: str) -> str:
     html = html.replace(choose_marker, choose_replacement, 1)
 
     button_marker = "identityButton.hidden=false;const path=location.pathname;"
-    button_replacement = "identityButton.hidden=choices.length<=1;const path=location.pathname;"
+    button_replacement = (
+        "identityButton.hidden=false;"
+        "identityButton.textContent=choices.length<=1?'切换账号':'切换身份';"
+        "const path=location.pathname;"
+    )
     if button_marker not in html:
         raise RuntimeError("V1 identity clarity: identity button marker not found")
     html = html.replace(button_marker, button_replacement, 1)
+
+    click_marker = "identityButton.onclick=chooseIdentity;"
+    click_replacement = (
+        "identityButton.onclick=()=>{"
+        "const choices=identitiesFor(session);"
+        "if(choices.length<=1){clearAuthStorage();token='';session=null;identity=null;"
+        "localStorage.removeItem(IDENTITY_KEY);loginView();return}"
+        "chooseIdentity()};"
+    )
+    if click_marker not in html:
+        raise RuntimeError("V1 identity clarity: identity click marker not found")
+    html = html.replace(click_marker, click_replacement, 1)
 
     return html.replace(
         "</body>", f"<!-- {V1_IDENTITY_CLARITY_MARKER} --></body>", 1

@@ -33,7 +33,7 @@ html.cy-v1-unified input:not([type="checkbox"]):not([type="radio"]),html.cy-v1-u
 #cy-v1-tool-hub-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}#cy-v1-tool-hub-head h2{margin:0;font-size:22px}#cy-v1-tool-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 #cy-v1-tool-grid button{min-height:48px;background:#f7f9fd!important;border:1px solid #e1e7f0!important;color:#172033!important;text-align:left;padding:11px 13px!important}
 #cy-v1-tool-grid button strong{display:block;font-size:14px}#cy-v1-tool-account{margin-top:14px;padding-top:14px;border-top:1px solid #e4e9f2;display:flex;gap:10px;align-items:center;justify-content:space-between}#cy-v1-tool-account small{color:#667085;line-height:1.45}
-@media(max-width:720px){html.cy-v1-unified body{padding-top:60px!important;padding-bottom:82px!important}html.cy-v1-unified .main{padding:20px 14px calc(104px + env(safe-area-inset-bottom))!important;min-height:calc(100dvh - 142px)!important}html.cy-v1-unified .page-head{align-items:flex-start!important;flex-direction:column!important;margin-bottom:20px!important}html.cy-v1-unified .page-head h1{font-size:25px!important}#cy-v1-unified-top{height:60px;padding:0 12px;gap:8px}#cy-v1-unified-top .cy-v1-mark{width:38px;height:38px}#cy-v1-unified-top .cy-v1-brand-text,#cy-v1-unified-identity{display:none}#cy-v1-unified-picker{flex:1;min-width:0;max-width:none;font-size:14px!important;padding:8px 30px 8px 10px!important}#cy-v1-switch-account{font-size:12px!important;padding:8px!important}#cy-v1-tool-hub{padding:8px}#cy-v1-tool-hub-card{border-radius:20px;padding:15px;max-height:82dvh}#cy-v1-tool-grid{grid-template-columns:1fr}#cy-v1-unified-bottom{position:fixed;display:grid;grid-template-columns:repeat(5,1fr);left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));z-index:2147483600;background:rgba(255,255,255,.98);border:1px solid #e4e9f2;border-radius:18px;padding:5px 6px;box-shadow:0 14px 40px rgba(23,60,120,.16);backdrop-filter:blur(14px);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}#cy-v1-unified-bottom a{text-decoration:none;text-align:center;font-size:10px;color:#5f6b7e;padding:4px 1px;border-radius:10px}#cy-v1-unified-bottom a span{display:block;font-size:16px;margin-bottom:1px}#cy-v1-unified-bottom a.active{background:#eaf1ff;color:#173c78;font-weight:800}}
+@media(max-width:720px){html.cy-v1-unified body{padding-top:60px!important;padding-bottom:82px!important}html.cy-v1-unified .main{padding:20px 14px calc(104px + env(safe-area-inset-bottom))!important;min-height:calc(100dvh - 142px)!important}html.cy-v1-unified .page-head{align-items:flex-start!important;flex-direction:column!important;margin-bottom:20px!important}html.cy-v1-unified .page-head h1{font-size:25px!important}#cy-v1-unified-top{height:60px;padding:0 12px;gap:8px}#cy-v1-unified-top .cy-v1-mark{width:38px;height:38px}#cy-v1-unified-top .cy-v1-brand-text{display:none}#cy-v1-unified-identity{display:inline-flex;max-width:118px;padding:6px 8px;font-size:11px}#cy-v1-unified-picker{display:none!important}#cy-v1-switch-account{font-size:11px!important;padding:7px 8px!important}#cy-v1-tool-hub{padding:8px}#cy-v1-tool-hub-card{border-radius:20px;padding:15px;max-height:82dvh}#cy-v1-tool-grid{grid-template-columns:1fr}#cy-v1-unified-bottom{position:fixed;display:grid;grid-template-columns:repeat(5,1fr);left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));z-index:2147483600;background:rgba(255,255,255,.98);border:1px solid #e4e9f2;border-radius:18px;padding:5px 6px;box-shadow:0 14px 40px rgba(23,60,120,.16);backdrop-filter:blur(14px);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}#cy-v1-unified-bottom a{text-decoration:none;text-align:center;font-size:10px;color:#5f6b7e;padding:4px 1px;border-radius:10px}#cy-v1-unified-bottom a span{display:block;font-size:16px;margin-bottom:1px}#cy-v1-unified-bottom a.active{background:#eaf1ff;color:#173c78;font-weight:800}}
 </style>
 <script id="changying_v1_classic_unified_top_v1-script">
 (function(){
@@ -42,7 +42,7 @@ html.cy-v1-unified input:not([type="checkbox"]):not([type="radio"]),html.cy-v1-u
  var menus={teacher:[['classes','班级学生'],['classPoints','课堂积分'],['ai','AI 助手'],['teaching','定制教学'],['resources','教材教案'],['catalog','教材题库'],['papers','组卷作业'],['analytics','学情分析'],['audit','操作记录'],['leaderboard','排行榜'],['account','我的']],student:[['syncLearning','同步课堂'],['rewards','积分奖励'],['assignments','我的作业'],['wrongbook','我的错题'],['practice','自主练习'],['progress','我的学情'],['leaderboard','班级排行'],['account','我的']],parent:[['childLearning','孩子课程'],['childRewards','课堂表现'],['childProgress','孩子学情'],['childAssignments','孩子作业'],['account','我的']],admin:[['admin','平台总览'],['subscription','套餐授权'],['users','账号管理'],['pointsAdmin','积分奖励'],['ai','AI 设置'],['teaching','定制教学'],['resources','教材教案'],['imports','批量导入'],['catalog','教材题库'],['adminAudit','全校审计'],['system','系统设置']]};
  var quickMenus={
   teacher:[['workspace','▦','当前教学','/v1/workspace'],['students','◉','学生','/v1/student'],['history','◷','往期教学','/v1/history'],['transition','↗','升学衔接','/v1/transition'],['tools','⌘','全部功能','/v1/tool']],
-  student:[['syncLearning','▦','同步课堂','syncLearning'],['assignments','✓','我的作业','assignments'],['practice','✎','自主练习','practice'],['progress','◉','我的学情','progress'],['rewards','★','积分奖励','rewards']],
+  student:[['syncLearning','▦','课堂','syncLearning'],['assignments','✓','作业','assignments'],['practice','✎','练习','practice'],['progress','◉','学情','progress'],['tools','☰','更多','#']],
   parent:[['childLearning','▦','孩子课程','childLearning'],['childAssignments','✓','孩子作业','childAssignments'],['childProgress','◉','孩子学情','childProgress'],['childRewards','★','课堂表现','childRewards'],['account','⌘','我的','account']],
   admin:[['admin','▦','平台总览','admin'],['users','◉','账号管理','users'],['pointsAdmin','★','积分奖励','pointsAdmin'],['adminAudit','◷','全校审计','adminAudit'],['system','⌘','系统设置','system']]
  };
@@ -77,9 +77,24 @@ html.cy-v1-unified input:not([type="checkbox"]):not([type="radio"]),html.cy-v1-u
 '''
 
 
+
+
+_ASSIGNMENT_RECORD_OLD = r'''<small>${esc(a.assignedClassName||"")} · ${esc(a.submissionModeName||"在线答题")} · 截止 ${esc(a.dueDate)}${a.score!==null?` · 成绩 ${a.score}分`:""}</small>'''
+_ASSIGNMENT_RECORD_NEW = r'''<small>${esc(a.paper?.subject||"未标科目")} · ${esc(a.paper?.textbook||"")} · ${esc(a.assignedClassName||"")} · ${(a.paper?.questionIDs||[]).length}题</small><small style="display:block;margin-top:4px">布置 ${esc(a.assignedAt||"时间未记录")} · 截止 ${esc(a.dueDate||"未设置")}${a.quizSubmittedAt?` · 提交 ${esc(a.quizSubmittedAt)}`:""}${a.score!==null?` · 成绩 ${a.score}分`:""}</small>'''
+
+_PROGRESS_RECORD_OLD = r'''<p>${esc(latest.title||"最近练习")} · ${esc(latest.submittedAt||"")}</p>'''
+_PROGRESS_RECORD_NEW = r'''<p>${[latest.subject,latest.textbook,latest.title].filter(Boolean).map(esc).join(" · ")} · 提交 ${esc(latest.submittedAt||"时间未记录")}</p>'''
+
+
+def _polish_student_record_detail(html: str) -> str:
+    html = html.replace(_ASSIGNMENT_RECORD_OLD, _ASSIGNMENT_RECORD_NEW, 1)
+    html = html.replace(_PROGRESS_RECORD_OLD, _PROGRESS_RECORD_NEW, 1)
+    return html
+
 def inject_v1_classic_unified(html: str) -> str:
     if V1_CLASSIC_UNIFIED_MARKER in html:
         return html
+    html = _polish_student_record_detail(html)
     marker = V1_CLASSIC_UNIFIED_SNIPPET + f"\n<!-- {V1_CLASSIC_UNIFIED_MARKER} -->"
     return html.replace("</body>", marker + "</body>", 1) if "</body>" in html else html + marker
 
