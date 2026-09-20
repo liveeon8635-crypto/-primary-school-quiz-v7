@@ -124,14 +124,14 @@ def test_grade5_chinese_pack_has_mixed_auto_gradable_question_shapes():
     assert types["single_choice"] == 128
     assert types["true_false"] == 16
     assert types["fill_blank"] == 16
-    assert types["short_answer"] == 16
+    assert types.get("short_answer", 0) == 0
     for row in specs:
         question_type = row.get("question_type") or "single_choice"
         if question_type in {"single_choice", "true_false"}:
             assert len(row["options"]) >= 2
             assert 0 <= int(row["correct_index"]) < len(row["options"])
         else:
-            assert question_type in {"fill_blank", "short_answer"}
+            assert question_type == "fill_blank"
             assert row["options"] == []
             assert row["correct_index"] == -1
             assert row["answer_json"]["answer"]
@@ -144,7 +144,7 @@ def test_grade5_english_pack_has_mixed_auto_gradable_question_shapes():
     assert types["single_choice"] == 128
     assert types["true_false"] == 16
     assert types["fill_blank"] == 16
-    assert types["short_answer"] == 16
+    assert types.get("short_answer", 0) == 0
 
 
 def test_grade5_math_pack_uses_current_pep_textbook_only():
