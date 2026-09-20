@@ -157,7 +157,8 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     assert "状态：已布置 · AI 针对性练习已在学生端可见。" in once
     assert "cy-ai-assign-box" in once
     assert "bottom:calc(8px + env(safe-area-inset-bottom))" in once
-    assert ".toISOString().slice(0,10)" not in once
+    assert "function dueDefault(){const d=new Date();d.setDate(d.getDate()+7);" in once
+    assert "return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())" in once
     assert "if(btn.disabled)return" in once
     assert "已添加成功" in once
     assert "请勿重复添加" in once
