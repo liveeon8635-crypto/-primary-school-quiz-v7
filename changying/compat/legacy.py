@@ -96,6 +96,7 @@ from changying.web.v1_parent_link_history import install_v1_parent_link_history_
 from changying.web.v1_school_facts import install_v1_school_facts_patch
 from changying.web.v1_student_detail_visibility import install_v1_student_detail_visibility_patch
 from changying.web.v1_student_practice import install_v1_student_practice_patch, install_v1_student_practice_routes
+from changying.web.v1_student_mobile_polish import install_v1_student_mobile_polish_patch
 from changying.web.v1_teaching_actions import install_v1_teaching_actions_patch
 from changying.web.v1_transition_selection import install_v1_transition_selection_patch
 from changying.web.v1_unified_tools import (
@@ -309,6 +310,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_fast_path_patch()
     install_v1_identity_clarity_patch()
     install_v1_acceptance_polish_patch()
+    install_v1_student_mobile_polish_patch()
     install_v1_legacy_capabilities_patch()
     install_v1_unified_tools_patch()
     install_v1_unified_tool_session_bridge()
