@@ -60,6 +60,120 @@ with TestClient(app) as client:
     assert points_before.status_code == 200, points_before.text
     balance = points_before.json()["summary"]["balance"]
 
+    with legacy.SessionLocal() as db:
+        cfg = legacy.ai_config_for(db, 1, True)
+        cfg.allow_student_data = True
+        db.commit()
+
+    def fake_ai_call(db, user, feature, prompt, images=None, timeout=90):
+        assert feature == "reinforcement_generate"
+        subject = "英语" if '"subject": "英语"' in prompt else "语文"
+        if subject == "英语":
+            items = [
+                {
+                    "question_type": "single_choice",
+                    "grade": 5,
+                    "subject": "错误学科",
+                    "textbook": "错误版",
+                    "semester": "上册",
+                    "unit": "Unit 1",
+                    "knowledge": "人物特征词汇",
+                    "text": "Which word means '友善的'?",
+                    "options": ["kind", "sad", "tired", "empty"],
+                    "correct_index": 0,
+                    "answer": "",
+                    "accepted_answers": [],
+                    "figure": {},
+                    "explanation": "kind means 友善的。",
+                },
+                {
+                    "question_type": "true_false",
+                    "grade": 5,
+                    "subject": "错误学科",
+                    "textbook": "错误版",
+                    "semester": "上册",
+                    "unit": "Unit 1",
+                    "knowledge": "人物描述句型",
+                    "text": "True or false: 'She is kind.' is correct English.",
+                    "options": ["X", "Y"],
+                    "correct_index": 0,
+                    "answer": "",
+                    "accepted_answers": [],
+                    "figure": {},
+                    "explanation": "The sentence is correct.",
+                },
+                {
+                    "question_type": "fill_blank",
+                    "grade": 5,
+                    "subject": "错误学科",
+                    "textbook": "错误版",
+                    "semester": "上册",
+                    "unit": "Unit 1",
+                    "knowledge": "人物特征词汇",
+                    "text": "Complete: She is _____. (友善的)",
+                    "options": [],
+                    "correct_index": -1,
+                    "answer": "kind",
+                    "accepted_answers": ["Kind"],
+                    "figure": {},
+                    "explanation": "kind",
+                },
+            ]
+        else:
+            items = [
+                {
+                    "question_type": "single_choice",
+                    "grade": 5,
+                    "subject": "错误学科",
+                    "textbook": "错误版",
+                    "semester": "上册",
+                    "unit": "全册基础",
+                    "knowledge": "词语理解",
+                    "text": "“镇定自若”的意思最接近哪一项？",
+                    "options": ["沉着不慌张", "十分兴奋", "非常害怕", "故意回避"],
+                    "correct_index": 0,
+                    "answer": "",
+                    "accepted_answers": [],
+                    "figure": {},
+                    "explanation": "结合语境理解词义。",
+                },
+                {
+                    "question_type": "true_false",
+                    "grade": 5,
+                    "subject": "错误学科",
+                    "textbook": "错误版",
+                    "semester": "上册",
+                    "unit": "全册基础",
+                    "knowledge": "关联词运用",
+                    "text": "判断：“虽然天气很冷，但是同学们仍按计划观察。”关联词使用恰当。",
+                    "options": ["X", "Y"],
+                    "correct_index": 0,
+                    "answer": "",
+                    "accepted_answers": [],
+                    "figure": {},
+                    "explanation": "前后是转折关系。",
+                },
+                {
+                    "question_type": "fill_blank",
+                    "grade": 5,
+                    "subject": "错误学科",
+                    "textbook": "错误版",
+                    "semester": "上册",
+                    "unit": "全册基础",
+                    "knowledge": "关联词运用",
+                    "text": "填写关联词：_____天气很冷，_____同学们仍按计划观察。",
+                    "options": [],
+                    "correct_index": -1,
+                    "answer": "虽然……但是……",
+                    "accepted_answers": ["虽然...但是..."],
+                    "figure": {},
+                    "explanation": "表示转折关系。",
+                },
+            ]
+        return json.dumps({"items": items}, ensure_ascii=False)
+
+    legacy._ai_call = fake_ai_call
+
     subjects = [
         ("英语", "人教版（PEP·当前最新版）"),
         ("语文", "统编版（人民教育出版社）"),
@@ -153,6 +267,98 @@ with TestClient(app) as client:
                 )
             )
             assert int(wrong_count or 0) == 4
+
+        generated = client.post(
+            f"/teacher/students/{sid}/reinforcement/generate",
+            headers=th,
+            json={"assignment_id": aid, "count": 3, "difficulty": "中等", "notes": ""},
+        )
+        assert generated.status_code == 200, generated.text
+        generated_body = generated.json()
+        context = generated_body["assessmentContext"]
+        assert context["primary"]["assignmentID"] == aid
+        assert context["primary"]["subject"] == subject
+        assert context["primary"]["textbook"] == textbook
+        assert len(generated_body["wrongIDs"]) == 4
+        assert {item["question_type"] for item in generated_body["items"]} == {
+            "single_choice",
+            "true_false",
+            "fill_blank",
+        }
+        assert all(item["subject"] == subject for item in generated_body["items"])
+        assert all(item["textbook"] == textbook for item in generated_body["items"])
+        assert all(item["figure"] == {} for item in generated_body["items"])
+        truth_item = next(
+            item for item in generated_body["items"]
+            if item["question_type"] == "true_false"
+        )
+        assert truth_item["options"] == (
+            ["True", "False"] if subject == "英语" else ["正确", "错误"]
+        )
+
+        assigned = client.post(
+            f"/teacher/students/{sid}/reinforcement/assign",
+            headers=th,
+            json={
+                "questions": generated_body["items"],
+                "title": f"{subject}针对性练习",
+                "due_date": "2026-09-30",
+                "wrong_ids": generated_body["wrongIDs"],
+                "instructions": "针对本次测试反馈完成巩固。",
+            },
+        )
+        assert assigned.status_code == 200, assigned.text
+        rid = assigned.json()["assignment"]["id"]
+        rpid = assigned.json()["paperID"]
+
+        with legacy.SessionLocal() as db:
+            reinforcement_paper = db.get(legacy.Paper, rpid)
+            rqids = json.loads(reinforcement_paper.question_ids_json)
+            reinforcement_questions = [db.get(legacy.Question, qid) for qid in rqids]
+            reinforcement_answers = [
+                answer_for(question, True)
+                for question in reinforcement_questions
+            ]
+
+        reinforcement_submit = client.post(
+            f"/student/assignments/{rid}/submit",
+            headers=sh,
+            json={"answers": reinforcement_answers},
+        )
+        assert reinforcement_submit.status_code == 200, reinforcement_submit.text
+        reinforcement_result = reinforcement_submit.json()
+        assert reinforcement_result["correct"] == 3
+        assert reinforcement_result["total"] == 3
+        assert reinforcement_result["score"] == 100
+        assert reinforcement_result["learningPointsAwarded"] == 3
+        assert reinforcement_result["reinforcementClosed"] == 4
+
+        balance += 3
+        points = client.get("/student/points", headers=sh)
+        assert points.status_code == 200, points.text
+        assert points.json()["summary"]["balance"] == balance
+
+        with legacy.SessionLocal() as db:
+            remaining_active = db.scalar(
+                legacy.select(legacy.func.count())
+                .select_from(legacy.WrongQuestionRecord)
+                .where(
+                    legacy.WrongQuestionRecord.assignment_id == aid,
+                    legacy.WrongQuestionRecord.student_id == sid,
+                    legacy.WrongQuestionRecord.status == "active",
+                )
+            )
+            mastered = db.scalar(
+                legacy.select(legacy.func.count())
+                .select_from(legacy.WrongQuestionRecord)
+                .where(
+                    legacy.WrongQuestionRecord.assignment_id == aid,
+                    legacy.WrongQuestionRecord.student_id == sid,
+                    legacy.WrongQuestionRecord.status == "mastered",
+                )
+            )
+            assert int(remaining_active or 0) == 0
+            assert int(mastered or 0) == 4
 '''
 
     env = os.environ.copy()
