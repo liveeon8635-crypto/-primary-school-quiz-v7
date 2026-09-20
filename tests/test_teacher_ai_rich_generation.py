@@ -34,7 +34,8 @@ with TestClient(app) as client:
 
     def fake_ai_call(db, user, feature, prompt, images=None, timeout=90):
         assert feature in {"question_generation", "question_generation_repair"}
-        assert "single_choice / true_false / fill_blank / calculation / short_answer / non_choice" in prompt or "标准混合题型" in prompt
+        assert "标准题型协议" in prompt
+        assert "single_choice" in prompt and "non_choice" in prompt
         return json.dumps({
             "questions": [
                 {
@@ -108,7 +109,7 @@ with TestClient(app) as client:
     )
     assert generated.status_code == 200, generated.text
     body = generated.json()
-    assert body["qualityGuard"] == "authentic-school-exam-v3"
+    assert body["qualityGuard"] == "canonical-rich-types-v1"
     assert body["questionType"] == "mixed"
     assert [x["question_type"] for x in body["items"]] == [
         "single_choice", "true_false", "fill_blank", "calculation", "short_answer", "non_choice"
@@ -140,20 +141,20 @@ with TestClient(app) as client:
     assert science.status_code == 400
     assert "科学" in science.json()["detail"]
 
-source = (ROOT / "app_v924.py").read_text(encoding="utf-8")
+assert legacy.app.state.teacher_ai_rich_generation_installed is True
+html = legacy.INDEX_HTML
+assert "changying_teacher_ai_rich_generation_v1" in html
 for value in (
-    'value="single_choice">单选题',
-    'value="true_false">判断题',
-    'value="fill_blank">填空题',
-    'value="calculation">计算题（数学）',
-    'value="short_answer">应用简答题（数学·可自动判分）',
-    'value="non_choice">教师审核主观题',
+    "['single_choice','单选题']",
+    "['true_false','判断题']",
+    "['fill_blank','填空题']",
+    "['calculation','计算题']",
+    "['short_answer','简短应用题']",
+    "['non_choice','教师审核主观题']",
 ):
-    assert value in source
-assert 'function aiQuestionTextAuto(q)' in source
-assert 'function aiQuestionTypeName(q)' in source
-assert '只有“教师审核主观题”会使用拍照/视频提交' in source
-assert '全部题目可在线作答并由服务器判分' in source
+    assert value in html
+assert "只有“教师审核主观题”会走拍照/教师确认" in html
+assert "全部题目可在线作答并由服务器判分" in html
 '''
 
     env = os.environ.copy()
