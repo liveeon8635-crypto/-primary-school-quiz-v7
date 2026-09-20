@@ -92,8 +92,8 @@ def test_class_window_summary_preserves_scope_source_window_and_student_aggregat
     assert summary["discipline"] == -1
     assert summary["net"] == 2
     by_id = {item["studentID"]: item for item in summary["students"]}
-    assert by_id[100] == {"studentID": 100, "net": 2, "activity": 3, "discipline": -1, "records": 2}
-    assert by_id[101] == {"studentID": 101, "net": 0, "activity": 0, "discipline": 0, "records": 2}
+    assert by_id[100] == {"studentID": 100, "net": 2, "activity": 3, "discipline": -1, "learning": 0, "records": 2}
+    assert by_id[101] == {"studentID": 101, "net": 0, "activity": 0, "discipline": 0, "learning": 0, "records": 2}
 
 
 def test_class_window_categories_preserve_scope_fallback_sort_and_limit_contract():
@@ -465,6 +465,7 @@ def test_school_period_summary_preserves_school_cutoff_and_source_contract():
         "earned": 9,
         "activity": 6,
         "discipline": -3,
+        "learning": 0,
     }
 
 
@@ -502,6 +503,7 @@ def test_period_summary_preserves_scope_source_reason_sort_and_limit_contract():
         "net": -1,
         "activity": 6,
         "discipline": -7,
+        "learning": 0,
         "topReasons": [
             {"reason": "积分记录", "count": 1, "points": -7},
         ],
@@ -571,8 +573,8 @@ def test_window_series_preserves_scope_source_and_right_open_windows():
         )
 
     assert series == [
-        {"earned": 5, "net": 3, "activity": 5, "discipline": -2},
-        {"earned": 3, "net": -1, "activity": 3, "discipline": -4},
+        {"earned": 5, "net": 3, "activity": 5, "discipline": -2, "learning": 0},
+        {"earned": 3, "net": -1, "activity": 3, "discipline": -4, "learning": 0},
     ]
 
 
@@ -605,6 +607,7 @@ def test_point_window_summary_preserves_period_source_and_scope_contract():
         "net": 2,
         "activity": 6,
         "discipline": -4,
+        "learning": 0,
         "records": 4,
     }
 
@@ -637,6 +640,7 @@ def test_point_summary_preserves_legacy_aggregation_contract():
         "earned": 15,
         "activity": 10,
         "discipline": -3,
+        "learning": 0,
         "redeemed": 16,
     }
 
