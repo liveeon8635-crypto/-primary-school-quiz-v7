@@ -1,5 +1,6 @@
 from changying.services.reinforcement_subject_policy import (
     augment_reinforcement_prompt,
+    normalize_science_reinforcement_items,
     reinforcement_subject_from_prompt,
     scope_context_to_primary_subject,
 )
@@ -126,3 +127,59 @@ def test_english_reinforcement_prompt_locks_current_pep_and_objective_types():
     assert "不要使用 calculation" in prompt
     assert "figure 必须返回 {}" in prompt
     assert "不得回退到旧版单元标题" in prompt
+
+
+
+def test_science_reinforcement_prompt_preserves_context_and_does_not_guess_publisher():
+    base = '''最近测试/练习反馈：{"primary":{"grade":5,"subject":"科学","textbook":"教师明确的科学教材","unit":"观察与实验"}}'''
+    assert reinforcement_subject_from_prompt(base) == "科学"
+    prompt = augment_reinforcement_prompt("reinforcement_generate", base)
+    assert "当前科目是科学" in prompt
+    assert "不得自行猜测" in prompt
+    assert "single_choice、true_false、fill_blank" in prompt
+    assert "不要使用 calculation" in prompt
+    assert "figure 必须返回 {}" in prompt
+    assert "明火、强电、危险化学品" in prompt
+    assert "人教/鄂教版" not in prompt
+    assert "青岛版" not in prompt
+
+
+def test_science_reinforcement_normalizer_keeps_only_objective_safe_types():
+    rows = normalize_science_reinforcement_items(
+        [
+            {
+                "question_type": "choice",
+                "subject": "科学",
+                "text": "观察现象后选择正确解释。",
+                "figure": {"type": "coordinate_grid"},
+            },
+            {
+                "question_type": "true_false",
+                "subject": "科学",
+                "text": "根据实验记录判断。",
+                "figure": {"type": "geometry"},
+            },
+            {
+                "question_type": "fill_blank",
+                "subject": "科学",
+                "text": "填写唯一科学术语。",
+                "figure": {},
+            },
+            {
+                "question_type": "calculation",
+                "subject": "科学",
+                "text": "不应进入自动科学练习。",
+            },
+            {
+                "question_type": "short_answer",
+                "subject": "科学",
+                "text": "解释证据，应由教师审核。",
+            },
+        ]
+    )
+    assert [row["question_type"] for row in rows] == [
+        "single_choice",
+        "true_false",
+        "fill_blank",
+    ]
+    assert all(row["figure"] == {} for row in rows)
