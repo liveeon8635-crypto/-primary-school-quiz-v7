@@ -578,9 +578,7 @@ def _rich_language_variants(
                         "选择最",
                     )
                 )
-                if "____" in stem:
-                    fill_text = stem
-                elif option_dependent and fill_source.get("options"):
+                if option_dependent and fill_source.get("options"):
                     labels = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                     candidates = "；".join(
                         f"{labels[i]}. {value}"
@@ -590,6 +588,8 @@ def _rich_language_variants(
                         f"请从备选答案中选择，并输入完整答案：{stem} "
                         f"备选答案：{candidates}"
                     )
+                elif "____" in stem:
+                    fill_text = stem
                 else:
                     fill_text = "请直接填写答案：" + stem
             fill.update(
