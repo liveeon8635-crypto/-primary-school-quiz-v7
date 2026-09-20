@@ -21,6 +21,48 @@ from typing import Any
 from changying.services.builtin_question_bank_chinese import grade5_chinese_specs
 
 
+_CHINESE_CHOICE_LIKE_KNOWLEDGE = {
+    "字形辨析",
+    "病句辨析",
+    "标点符号",
+    "句子衔接",
+    "概括主要内容",
+    "阅读推断",
+    "资料整合",
+    "习作修改",
+}
+
+
+def chinese_choice_repair(question: Any) -> dict[str, Any] | None:
+    """Restore choice controls for Chinese variants whose stems still ask for a choice."""
+
+    if str(getattr(question, "subject", "") or "").strip() != "语文":
+        return None
+    if str(getattr(question, "question_type", "") or "").strip().lower() != "fill_blank":
+        return None
+    knowledge = str(getattr(question, "knowledge", "") or "").strip()
+    if knowledge not in _CHINESE_CHOICE_LIKE_KNOWLEDGE:
+        return None
+
+    text = str(getattr(question, "text", "") or "").strip()
+    prefix = "请直接填写答案："
+    core = text[len(prefix):].strip() if text.startswith(prefix) else text
+    for row in grade5_chinese_specs():
+        if str(row.get("knowledge") or "").strip() != knowledge:
+            continue
+        if str(row.get("text") or "").strip() != core:
+            continue
+        options = [str(x) for x in (row.get("options") or [])]
+        correct_index = int(row.get("correct_index", -1))
+        if len(options) >= 2 and 0 <= correct_index < len(options):
+            return {
+                "text": core,
+                "options": options,
+                "correct_index": correct_index,
+            }
+    return None
+
+
 _ENGLISH_AUX = {
     "am", "is", "are", "was", "were", "do", "does", "did",
     "have", "has", "had", "can", "could", "should", "would",
@@ -155,18 +197,67 @@ def install_language_question_quality(implementation: ModuleType) -> None:
     @wraps(original_public)
     def public_question(question):
         payload = dict(original_public(question))
-        payload["text"] = language_question_text(question)
+        repaired = chinese_choice_repair(question)
+        if repaired:
+            payload["text"] = repaired["text"]
+            payload["options"] = repaired["options"]
+            payload["questionType"] = "single_choice"
+        else:
+            payload["text"] = language_question_text(question)
         return payload
 
     @wraps(original_teacher)
     def teacher_question(question):
         payload = dict(original_teacher(question))
-        payload["text"] = language_question_text(question)
+        repaired = chinese_choice_repair(question)
+        if repaired:
+            payload["text"] = repaired["text"]
+            payload["options"] = repaired["options"]
+            payload["questionType"] = "single_choice"
+            payload["correctIndex"] = repaired["correct_index"]
+        else:
+            payload["text"] = language_question_text(question)
         return payload
+
+    original_grade_answers = implementation.grade_answers
+
+    @wraps(original_grade_answers)
+    def grade_answers(db, user, answers, allowed_question_ids=None, require_all=False):
+        transformed = []
+        for answer in answers:
+            question = db.scalar(
+                implementation.select(implementation.Question).where(
+                    implementation.Question.id == answer.question_id,
+                    implementation.Question.school_id == user.school_id,
+                )
+            )
+            repaired = chinese_choice_repair(question) if question is not None else None
+            if repaired and answer.selected_index is not None:
+                idx = int(answer.selected_index)
+                if idx < 0 or idx >= len(repaired["options"]):
+                    raise implementation.HTTPException(400, "答案选项无效")
+                transformed.append(
+                    answer.model_copy(
+                        update={
+                            "selected_index": None,
+                            "text_answer": repaired["options"][idx],
+                        }
+                    )
+                )
+            else:
+                transformed.append(answer)
+        return original_grade_answers(
+            db,
+            user,
+            transformed,
+            allowed_question_ids=allowed_question_ids,
+            require_all=require_all,
+        )
 
     implementation.qj_public = public_question
     implementation.qj = teacher_question
+    implementation.grade_answers = grade_answers
     app.state.language_question_quality_installed = True
 
 
-__all__ = ["install_language_question_quality", "language_question_text"]
+__all__ = ["chinese_choice_repair", "install_language_question_quality", "language_question_text"]
