@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from changying.web.classic_ui import (
     CLASSIC_UI_MARKER,
     inject_classic_ui,
+    patch_classic_local_due_dates,
     install_classic_ui_patch,
     is_classic_html_path,
 )
@@ -95,3 +96,40 @@ def test_classic_ui_middleware_preserves_gzip_encoded_html():
     assert "legacy-compressed" in response.text
     assert "X-Changying-Classic-UI" not in response.headers
 
+
+
+def test_classic_assignment_defaults_use_local_calendar_dates():
+    html = """
+    <script>
+    const a=new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+    const b=new Date(Date.now()+3*86400000).toISOString().slice(0,10);
+    </script>
+    """
+    patched = patch_classic_local_due_dates(html)
+    assert "Date.now()+7*86400000" not in patched
+    assert "Date.now()+3*86400000" not in patched
+    assert "toISOString().slice(0,10)" not in patched
+    assert "d.setDate(d.getDate()+7)" in patched
+    assert "d.setDate(d.getDate()+3)" in patched
+    assert "d.getFullYear()" in patched
+
+
+def test_classic_local_date_patch_runs_even_after_ui_marker_is_present():
+    html = f"<html><body>{CLASSIC_UI_MARKER}<script>const due=new Date(Date.now()+7*86400000).toISOString().slice(0,10)</script></body></html>"
+    patched = inject_classic_ui(html)
+    assert "Date.now()+7*86400000" not in patched
+    assert "d.setDate(d.getDate()+7)" in patched
+
+
+def test_production_classic_html_has_no_utc_assignment_default_expressions():
+    from app import app as production_app
+
+    response = TestClient(production_app).get(
+        "/classic?legacy=1&unified=1&page=papers",
+        headers={"Accept-Encoding": "identity"},
+    )
+    assert response.status_code == 200
+    assert "Date.now()+7*86400000).toISOString().slice(0,10)" not in response.text
+    assert "Date.now()+3*86400000).toISOString().slice(0,10)" not in response.text
+    assert "d.setDate(d.getDate()+7)" in response.text
+    assert "d.setDate(d.getDate()+3)" in response.text

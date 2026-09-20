@@ -16,6 +16,24 @@ from fastapi import FastAPI, Request, Response
 CLASSIC_UI_MARKER = "changying_classic_ui_v2"
 CLASSIC_UI_PATHS = {"/classic"}
 
+_LOCAL_DATE_PLUS_7 = "(d=>{d.setDate(d.getDate()+7);const p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())})(new Date())"
+_LOCAL_DATE_PLUS_3 = "(d=>{d.setDate(d.getDate()+3);const p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())})(new Date())"
+
+
+def patch_classic_local_due_dates(html: str) -> str:
+    """Keep assignment default dates in the browser/school local calendar day."""
+
+    return (
+        html.replace(
+            "new Date(Date.now()+7*86400000).toISOString().slice(0,10)",
+            _LOCAL_DATE_PLUS_7,
+        )
+        .replace(
+            "new Date(Date.now()+3*86400000).toISOString().slice(0,10)",
+            _LOCAL_DATE_PLUS_3,
+        )
+    )
+
 CLASSIC_UI_SNIPPET = f"""
 <style id="{CLASSIC_UI_MARKER}-style">
   :root{{
@@ -232,6 +250,7 @@ def is_classic_html_path(path: str) -> bool:
 
 def inject_classic_ui(html: str) -> str:
     """Inject the classic UI enhancement into an HTML document once."""
+    html = patch_classic_local_due_dates(html)
     if CLASSIC_UI_MARKER in html:
         return html
     if "</body>" in html:
@@ -295,6 +314,7 @@ __all__ = [
     "CLASSIC_UI_MARKER",
     "CLASSIC_UI_PATHS",
     "inject_classic_ui",
+    "patch_classic_local_due_dates",
     "install_classic_ui_patch",
     "is_classic_html_path",
 ]
