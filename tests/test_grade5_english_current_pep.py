@@ -62,7 +62,7 @@ def test_english_practice_catalog_exposes_balanced_modules():
     counts = {row["knowledge"]: row["count"] for row in modules}
     assert total == 160
     assert len(counts) == 16
-    assert set(counts.values()) == {11}
+    assert set(counts.values()) == {10}
     assert counts["人物信息理解"] == 10
     assert counts["情绪原因与建议"] == 10
     assert counts["一般现在时"] == 10
