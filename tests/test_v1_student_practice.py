@@ -18,10 +18,14 @@ def q(
     textbook="人教版",
     question_type="",
     answer="",
+    subject="数学",
+    text=None,
 ):
     values = ["A", "B"] if options is None else options
     return SimpleNamespace(
         id=qid,
+        subject=subject,
+        text=text or f"题目{qid}",
         knowledge=knowledge,
         unit=unit,
         textbook=textbook,
@@ -105,6 +109,84 @@ def test_selector_round_robins_supported_question_types():
         row.question_type or "single_choice"
         for row in chosen
     } >= {"single_choice", "true_false", "fill_blank", "calculation"}
+
+
+def test_module_selector_dedupes_same_chinese_source_across_question_types():
+    source = "______认真观察，______能发现植物每天都有细微变化。"
+    rows = [
+        q(
+            1,
+            "关联词运用",
+            subject="语文",
+            text=source,
+            options=["虽然……但是……", "只要……就……", "即使……也……", "不是……而是……"],
+            correct_index=1,
+        ),
+        q(
+            2,
+            "关联词运用",
+            subject="语文",
+            text="判断下面的作答是否正确：" + source + " —— 只要……就……",
+            options=["正确", "错误"],
+            correct_index=0,
+            question_type="true_false",
+        ),
+        q(3, "关联词运用", subject="语文", text="这本书______内容有趣，______插图也很清楚。"),
+        q(4, "关联词运用", subject="语文", text="______今天下雨，运动会______延期了。"),
+        q(5, "关联词运用", subject="语文", text="______遇到困难，我们______不能轻易放弃。"),
+        q(6, "关联词运用", subject="语文", text="______努力练习，______能熟练掌握。"),
+    ]
+
+    chosen = select_student_practice_questions(
+        rows,
+        kind="module",
+        knowledge="关联词运用",
+        count=5,
+    )
+
+    chosen_ids = {row.id for row in chosen}
+    assert len(chosen) == 5
+    assert not ({1, 2} <= chosen_ids)
+    assert 2 in chosen_ids  # keep the scarce judgement shape; skip its single-choice twin
+
+
+def test_english_derived_judgement_does_not_repeat_source_content():
+    source = "Eric studies carefully and finishes every task on time. What is Eric like?"
+    rows = [
+        q(
+            1,
+            "人物信息理解",
+            subject="英语",
+            textbook="人教版（PEP·当前最新版）",
+            text=source,
+            options=["He is thirsty.", "He is empty.", "He is hard-working.", "He is rainy."],
+            correct_index=2,
+        ),
+        q(
+            2,
+            "人物信息理解",
+            subject="英语",
+            textbook="人教版（PEP·当前最新版）",
+            text="Is this answer correct? " + source.rstrip("?") + " — He is thirsty.",
+            options=["True", "False"],
+            correct_index=1,
+            question_type="true_false",
+        ),
+        q(3, "人物信息理解", subject="英语", textbook="人教版（PEP·当前最新版）", text="Lina always helps new students. What is Lina like?"),
+        q(4, "人物信息理解", subject="英语", textbook="人教版（PEP·当前最新版）", text="Nora always says please and thank you. What is Nora like?"),
+    ]
+
+    chosen = select_student_practice_questions(
+        rows,
+        kind="module",
+        knowledge="人物信息理解",
+        count=3,
+        textbook="人教版（PEP·当前最新版）",
+    )
+
+    ids = {row.id for row in chosen}
+    assert len(chosen) == 3
+    assert not ({1, 2} <= ids)
 
 
 def test_selector_skips_text_questions_without_server_answer_metadata():
@@ -218,6 +300,8 @@ def _materialized_rows_from_specs(specs):
         rows.append(
             SimpleNamespace(
                 id=i,
+                subject=spec["subject"],
+                text=spec["text"],
                 knowledge=spec["knowledge"],
                 unit=spec["unit"],
                 textbook=spec["textbook"],
