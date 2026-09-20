@@ -271,6 +271,11 @@ def _rich_generate_call(implementation: ModuleType):
             requested = resolve_requested_type(b.question_type, b.notes, b.count, b.subject)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+        if requested in {"calculation", "short_answer"} and "数学" not in str(b.subject or ""):
+            raise HTTPException(
+                400,
+                "科学及其他非数学科目当前不使用计算题或应用简答自动判分；请改用单选、判断、填空或教师审核主观题",
+            )
 
         count = max(1, min(int(b.count or 5), 20))
         difficulty = str(b.difficulty or "中等")[:20]
