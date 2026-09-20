@@ -4446,7 +4446,7 @@ def ai_questions_assign(b:AIQuestionAssignmentBody,u:User=Depends(current_user),
     default_instruction="含教师审核主观题：请在作业本/答题纸完成后拍照上传，教师审核评分。" if has_non_choice else "AI生成题目，已由教师审核后布置；在线完成并由服务器判分。"
     db.add(AssignmentSubmissionSetting(school_id=u.school_id,assignment_id=a.id,mode=mode,instructions=(b.instructions or default_instruction)[:2000]))
     sids=db.scalars(select(ClassStudent.student_id).join(User,User.id==ClassStudent.student_id).where(ClassStudent.class_id==c.id,User.school_id==u.school_id,User.role=="student",User.active==True)).all()
-    for sid in sids:ensure_recipient(db,a,sid,"assignment")
+    for sid in sids:ensure_recipient(db,a,sid,"teacher_ai_practice")
     audit(db,u,"ai.questions.assign",f"assignment={a.id}:paper={p.id}:questions={len(qids)}:mode={mode}:class={c.id}:recipients={len(sids)}")
     db.commit();db.refresh(a)
     return {"ok":True,"assignment":aj(db,a),"paperID":p.id,"questionIDs":qids,"items":saved,"recipientCount":len(sids),"submissionMode":mode}
