@@ -37,3 +37,17 @@ def test_student_detail_visibility_patch_is_idempotent_and_read_only():
     assert once == twice
     for verb in ("method:'POST'", 'method:"POST"', "method:'PUT'", "method:'DELETE'"):
         assert once.count(verb) == original.count(verb)
+
+
+def test_native_student_detail_shows_learning_context_dates_scores_and_real_timeline():
+    html = rendered_html()
+
+    assert "const learningTimeline=assignments.map" in html
+    assert "title:(x.completed?'完成：':'布置：')" in html
+    assert "x.subject||paper.subject" in html
+    assert "x.textbook||paper.textbook" in html
+    assert "assigned?'布置 '+assigned" in html
+    assert "x.dueDate?'截止 '+x.dueDate" in html
+    assert "submitted?'提交 '+submitted" in html
+    assert "x.score!==null&&x.score!==undefined?'成绩 '+x.score+'分'" in html
+    assert "qn?'题量 '+qn+'题'" in html

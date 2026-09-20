@@ -154,7 +154,8 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     assert "s.role!=='teacher'" in once
     assert "状态：未布置 · 当前仅为教师审核预览，学生端不会看到。" in once
     assert "审核无误，布置给该学生" in once
-    assert "状态：已布置 · AI 针对性练习已在学生端可见。" in once
+    assert "draftSubject?draftSubject+' AI 针对性练习':'AI 针对性练习'" in once
+    assert "状态：已布置 · " in once
     assert "cy-ai-assign-box" in once
     assert "bottom:calc(8px + env(safe-area-inset-bottom))" in once
     assert "function dueDefault(){const d=new Date();d.setDate(d.getDate()+7);" in once
