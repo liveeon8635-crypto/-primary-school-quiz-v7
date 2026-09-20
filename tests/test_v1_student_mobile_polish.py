@@ -37,6 +37,8 @@ def test_student_record_polish_reads_real_assignment_metadata_and_submission_tim
     assert "x.submittedAt||x.quizSubmittedAt||x.mediaSubmittedAt" in html
     assert "questionCount" in html
     assert "AI 针对性练习" in html
+    assert "<b>布置：</b>" in html
+    assert "<b>提交：</b>" in html
 
 
 def test_student_assignment_api_exposes_detail_needed_by_mobile_record():
