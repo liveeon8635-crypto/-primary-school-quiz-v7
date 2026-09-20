@@ -15,7 +15,9 @@ def test_infers_composite_geometry_for_obvious_area_problem():
     }
     figure = infer_reinforcement_figure(item)
     assert figure["type"] == "geometry"
-    assert figure["shape"] == "composite_rect"
+    assert figure["shape"] == "nested_rect"
+    assert figure["labels"]["外长"] == "12米"
+    assert figure["labels"]["内长"] == "5米"
     assert figure["title"] == "组合图形示意图"
 
 
@@ -28,7 +30,8 @@ def test_infers_line_segment_for_tree_planting_problem():
     }
     figure = infer_reinforcement_figure(item)
     assert figure["type"] == "line_segment"
-    assert len(figure["segments"]) >= 2
+    assert len(figure["segments"]) == 12
+    assert "84÷7=12" in figure["title"]
 
 
 def test_infers_coordinate_grid_for_position_problem():
@@ -89,3 +92,51 @@ def test_route_patch_adds_missing_figure_and_preserves_answer():
     assert result["items"][0]["answer"] == "13"
     assert result["items"][0]["figure"]["type"] == "line_segment"
     assert result["figureFallback"] is True
+
+
+
+def test_repairs_incomplete_ai_coordinate_point_from_question_text():
+    item = {
+        "subject": "数学",
+        "knowledge": "用数对确定位置",
+        "text": "在方格图中，点A的位置用数对表示是(2,3)。如果点A向右平移4格，求新位置。",
+        "figure": {"type": "coordinate_grid", "points": [{"label": "A"}]},
+    }
+    figure = infer_reinforcement_figure(item)
+    assert figure["points"] == [{"label": "A", "x": 2.0, "y": 3.0}]
+
+
+def test_repairs_existing_tree_figure_to_stem_interval_count():
+    item = {
+        "subject": "数学",
+        "knowledge": "植树问题",
+        "text": "在一条长90米的小路一旁栽树，每隔9米栽一棵，两端都栽。",
+        "figure": {
+            "type": "line_segment",
+            "segments": [{"label": "间隔", "ratio": 1} for _ in range(6)],
+        },
+    }
+    figure = infer_reinforcement_figure(item)
+    assert len(figure["segments"]) == 10
+    assert figure["title"] == "90÷9=10 个间隔"
+
+
+def test_repairs_nested_rectangle_figure_from_stem_dimensions():
+    item = {
+        "subject": "数学",
+        "knowledge": "组合图形的面积",
+        "text": "一个长方形花坛长16米，宽9米，中间修一个长7米、宽4米的长方形水池，其余部分种花。",
+        "figure": {
+            "type": "geometry",
+            "shape": "rectangle_with_inner_rectangle",
+            "labels": {"长": "16米", "宽": "9米"},
+        },
+    }
+    figure = infer_reinforcement_figure(item)
+    assert figure["shape"] == "nested_rect"
+    assert figure["labels"] == {
+        "外长": "16米",
+        "外宽": "9米",
+        "内长": "7米",
+        "内宽": "4米",
+    }
