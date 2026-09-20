@@ -15,6 +15,8 @@ def test_rubric_review_ui_injection_is_idempotent():
     assert "已达到" in once
     assert "未达到" in once
     assert "需教师确认" in once
+    assert "步骤部分得分" in once
+    assert "评分点等权折算" in once
     assert "window.aiIssueRows=function" in once
 
 
@@ -33,3 +35,4 @@ def test_runtime_classic_html_contains_rubric_review_ui():
     assert "评分要点核对" in html
     assert "rubric_results" in html
     assert "最终分数仍由教师确认" in html
+    assert "步骤部分得分" in html
