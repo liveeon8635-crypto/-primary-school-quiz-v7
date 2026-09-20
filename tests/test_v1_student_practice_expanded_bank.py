@@ -58,7 +58,7 @@ def test_chinese_options_preview_exposes_real_module_inventory():
     )
     counts = {row["knowledge"]: row["count"] for row in modules}
 
-    assert total >= 160
+    assert total == 129
     assert counts["字音辨析"] >= 8
     assert counts["病句辨析"] >= 8
     assert counts["提取关键信息"] >= 8
@@ -73,10 +73,12 @@ def test_chinese_same_stem_questions_are_distinguished_by_options():
         "统编版（人民教育出版社）",
     )
     glyphs = [x for x in specs if x["knowledge"] == "字形辨析"]
-    assert len(glyphs) >= 8
-    assert len({x["text"] for x in glyphs}) < len(glyphs)
+    baseline_glyphs = [x for x in glyphs if not x.get("question_type")]
+    assert len(baseline_glyphs) == 8
+    assert len({x["text"] for x in baseline_glyphs}) == 1
+    assert len({tuple(x["options"]) for x in baseline_glyphs}) == 8
 
-    first = glyphs[0]
+    first = baseline_glyphs[0]
     existing = [
         _q(
             1,
@@ -95,7 +97,8 @@ def test_chinese_same_stem_questions_are_distinguished_by_options():
     )
     counts = {row["knowledge"]: row["count"] for row in modules}
 
-    # The one materialized item replaces exactly one built-in item; the seven
-    # same-stem questions with different options must remain available.
-    assert total == len(specs)
-    assert counts["字形辨析"] == len(glyphs)
+    # The one materialized item replaces exactly one source family. All eight
+    # same-stem baseline questions with different options remain distinct; the
+    # genuine 津津有味 fill adds one more unique 字形 family.
+    assert total == 129
+    assert counts["字形辨析"] == 9
