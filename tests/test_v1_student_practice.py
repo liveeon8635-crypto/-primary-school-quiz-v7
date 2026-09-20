@@ -16,14 +16,22 @@ def q(
     options=None,
     correct_index=0,
     textbook="人教版",
+    question_type="",
+    answer="",
 ):
+    values = ["A", "B"] if options is None else options
     return SimpleNamespace(
         id=qid,
         knowledge=knowledge,
         unit=unit,
         textbook=textbook,
-        options_json=__import__("json").dumps(options or ["A", "B"], ensure_ascii=False),
+        options_json=__import__("json").dumps(values, ensure_ascii=False),
         correct_index=correct_index,
+        question_type=question_type,
+        answer_json=__import__("json").dumps(
+            {"answer": answer, "accepted": []} if answer else {},
+            ensure_ascii=False,
+        ),
     )
 
 
@@ -63,6 +71,65 @@ def test_module_selector_keeps_exact_knowledge_and_skips_invalid_online_question
     assert [row.id for row in chosen] == [1, 4]
 
 
+def test_selector_round_robins_supported_question_types():
+    rows = [
+        q(1, "A"),
+        q(2, "B", options=["正确", "错误"], question_type="true_false"),
+        q(
+            3,
+            "C",
+            options=[],
+            correct_index=-1,
+            question_type="fill_blank",
+            answer="3.5",
+        ),
+        q(
+            4,
+            "D",
+            options=[],
+            correct_index=-1,
+            question_type="calculation",
+            answer="12",
+        ),
+        q(5, "E"),
+    ]
+
+    chosen = select_student_practice_questions(
+        rows,
+        kind="comprehensive",
+        count=5,
+    )
+
+    assert [row.id for row in chosen[:4]] == [1, 2, 3, 4]
+    assert {
+        row.question_type or "single_choice"
+        for row in chosen
+    } >= {"single_choice", "true_false", "fill_blank", "calculation"}
+
+
+def test_selector_skips_text_questions_without_server_answer_metadata():
+    rows = [
+        q(
+            1,
+            "A",
+            options=[],
+            correct_index=-1,
+            question_type="fill_blank",
+            answer="",
+        ),
+        q(2, "A"),
+    ]
+
+    chosen = select_student_practice_questions(
+        rows,
+        kind="module",
+        knowledge="A",
+        count=10,
+    )
+
+    assert [row.id for row in chosen] == [2]
+
+
 def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     once = patch_v1_student_practice_html(v1_html())
     twice = patch_v1_student_practice_html(once)
@@ -78,6 +145,7 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     assert "知识模块练习" in once
     assert "人教版（当前最新版）" in once
     assert "当前核定教材题库" in once
+    assert "主动混排可自动判分的单选、判断、填空、计算等题型" in once
     assert "语文使用统编版（人民教育出版社）" in once
     assert "cy-p-textbook" in once
     assert "selectedTextbook" in once

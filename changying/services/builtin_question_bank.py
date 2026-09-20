@@ -93,6 +93,109 @@ def _numeric_distractors(answer: Decimal) -> list[str]:
     return [_fmt(x) for x in candidates]
 
 
+_RICH_CALCULATION_KNOWLEDGE = {
+    "小数乘整数",
+    "小数乘小数",
+    "积的近似数",
+    "小数乘法简便运算",
+    "除数是整数的小数除法",
+    "一个数除以小数",
+    "商的近似数",
+    "解方程",
+    "实际问题与方程",
+    "平行四边形的面积",
+    "三角形的面积",
+    "梯形的面积",
+    "组合图形的面积",
+    "植树问题",
+}
+
+def _correct_answer(spec: dict[str, Any]) -> str:
+    options = list(spec.get("options") or [])
+    index = int(spec.get("correct_index", -1))
+    if 0 <= index < len(options):
+        return str(options[index])
+    return ""
+
+
+def _rich_math_variants(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Add deterministic auto-gradable non-choice variants without mutating legacy rows.
+
+    Existing materialized multiple-choice questions may already be referenced by
+    historical papers, so rich variants are appended as new questions instead
+    of rewriting those rows in place.
+    """
+
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped[str(row.get("knowledge") or "综合")].append(row)
+
+    variants: list[dict[str, Any]] = []
+    for knowledge_index, (knowledge, items) in enumerate(grouped.items()):
+        if not items:
+            continue
+
+        fill_source = items[0]
+        fill_answer = _correct_answer(fill_source)
+        if fill_answer:
+            fill = dict(fill_source)
+            fill.update(
+                {
+                    "text": f"请直接填写答案：{str(fill_source['text']).strip()}",
+                    "options": [],
+                    "correct_index": -1,
+                    "question_type": "fill_blank",
+                    "answer_json": {"answer": fill_answer, "accepted": []},
+                    "figure_json": {},
+                }
+            )
+            variants.append(fill)
+
+        if len(items) >= 2:
+            judge_source = items[1]
+            judge_answer = _correct_answer(judge_source)
+            judge_options = list(judge_source.get("options") or [])
+            distractors = [
+                str(value)
+                for i, value in enumerate(judge_options)
+                if i != int(judge_source.get("correct_index", -1))
+            ]
+            use_correct = knowledge_index % 2 == 0 or not distractors
+            claimed_answer = judge_answer if use_correct else distractors[0]
+            judge = dict(judge_source)
+            stem = str(judge_source["text"]).strip().rstrip("?？")
+            judge.update(
+                {
+                    "text": f"判断下面结论是否正确：题目“{stem}”的答案是“{claimed_answer}”。",
+                    "options": ["正确", "错误"],
+                    "correct_index": 0 if use_correct else 1,
+                    "question_type": "true_false",
+                    "answer_json": {},
+                    "figure_json": {},
+                }
+            )
+            variants.append(judge)
+
+        if knowledge in _RICH_CALCULATION_KNOWLEDGE and len(items) >= 3:
+            calc_source = items[2]
+            calc_answer = _correct_answer(calc_source)
+            if calc_answer:
+                calc = dict(calc_source)
+                calc.update(
+                    {
+                        "text": f"请计算并填写答案：{str(calc_source['text']).strip()}",
+                        "options": [],
+                        "correct_index": -1,
+                        "question_type": "calculation",
+                        "answer_json": {"answer": calc_answer, "accepted": []},
+                        "figure_json": {},
+                    }
+                )
+                variants.append(calc)
+
+    return variants
+
+
 def _grade5_math_specs() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
 
@@ -414,6 +517,7 @@ def _grade5_math_specs() -> list[dict[str, Any]]:
             seed=i + 1,
         ))
 
+    rows.extend(_rich_math_variants(list(rows)))
     return rows
 
 
@@ -452,6 +556,62 @@ def built_in_question_specs(
     return []
 
 
+def _answer_object(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, dict):
+        return raw
+    try:
+        value = json.loads(raw or "{}")
+    except Exception:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _online_shape(
+    question_type: Any,
+    options: Any,
+    correct_index: Any,
+    answer_json: Any,
+) -> tuple[str, bool, str]:
+    values = options if isinstance(options, list) else []
+    raw_type = str(question_type or "").strip().lower()
+    if not raw_type:
+        try:
+            valid_legacy_choice = len(values) >= 2 and 0 <= int(correct_index) < len(values)
+        except Exception:
+            valid_legacy_choice = False
+        raw_type = "single_choice" if valid_legacy_choice else ""
+
+    if raw_type in {"single_choice", "true_false"}:
+        try:
+            valid = len(values) >= 2 and 0 <= int(correct_index) < len(values)
+        except Exception:
+            valid = False
+        return raw_type, valid, ""
+
+    if raw_type in {"fill_blank", "calculation", "short_answer"}:
+        answer = str(_answer_object(answer_json).get("answer") or "").strip()
+        return raw_type, bool(answer), answer
+
+    return raw_type, False, ""
+
+
+def _inventory_key(
+    *,
+    text: Any,
+    knowledge: Any,
+    question_type: str,
+    options: list[Any],
+    answer: str,
+) -> tuple[str, str, str, tuple[str, ...], str]:
+    return (
+        str(text or "").strip(),
+        str(knowledge or "").strip(),
+        question_type,
+        tuple(str(x) for x in options),
+        answer,
+    )
+
+
 def potential_question_catalog(
     existing_rows: list[Any],
     *,
@@ -462,21 +622,21 @@ def potential_question_catalog(
     """Return version-matched existing + built-in inventory without writing."""
     selected_textbook = (textbook or "").strip()
     counts: dict[tuple[str, str], int] = defaultdict(int)
-    existing_keys: set[tuple[str, str, tuple[str, ...]]] = set()
+    existing_keys: set[tuple[str, str, str, tuple[str, ...], str]] = set()
     total = 0
     for row in existing_rows:
         if selected_textbook and str(row.textbook or "").strip() != selected_textbook:
             continue
         try:
             options = json.loads(row.options_json or "[]")
-            valid = (
-                isinstance(options, list)
-                and len(options) >= 2
-                and 0 <= int(row.correct_index) < len(options)
-            )
         except Exception:
             options = []
-            valid = False
+        question_type, valid, answer = _online_shape(
+            getattr(row, "question_type", ""),
+            options,
+            getattr(row, "correct_index", -1),
+            getattr(row, "answer_json", "{}"),
+        )
         if not valid:
             continue
         unit = str(row.unit or "").strip()
@@ -484,19 +644,32 @@ def potential_question_catalog(
         if knowledge:
             counts[(unit, knowledge)] += 1
         existing_keys.add(
-            (
-                str(row.text or "").strip(),
-                knowledge,
-                tuple(str(x) for x in options),
+            _inventory_key(
+                text=getattr(row, "text", ""),
+                knowledge=knowledge,
+                question_type=question_type,
+                options=options,
+                answer=answer,
             )
         )
         total += 1
 
     for spec in built_in_question_specs(grade, subject, selected_textbook):
-        key = (
-            str(spec["text"]).strip(),
-            str(spec["knowledge"]).strip(),
-            tuple(str(x) for x in spec["options"]),
+        options = list(spec.get("options") or [])
+        question_type, valid, answer = _online_shape(
+            spec.get("question_type", ""),
+            options,
+            spec.get("correct_index", -1),
+            spec.get("answer_json", {}),
+        )
+        if not valid:
+            continue
+        key = _inventory_key(
+            text=spec.get("text", ""),
+            knowledge=spec.get("knowledge", ""),
+            question_type=question_type,
+            options=options,
+            answer=answer,
         )
         if key in existing_keys:
             continue
@@ -536,25 +709,46 @@ def ensure_built_in_questions(
             Question.textbook == selected_textbook
         )
     existing = list(db.scalars(existing_statement).all())
-    keys: set[tuple[str, str, tuple[str, ...]]] = set()
+    keys: set[tuple[str, str, str, tuple[str, ...], str]] = set()
     for row in existing:
         try:
             row_options = json.loads(row.options_json or "[]")
         except Exception:
             row_options = []
+        row_type, valid, row_answer = _online_shape(
+            getattr(row, "question_type", ""),
+            row_options,
+            getattr(row, "correct_index", -1),
+            getattr(row, "answer_json", "{}"),
+        )
+        if not valid:
+            continue
         keys.add(
-            (
-                str(row.text or "").strip(),
-                str(row.knowledge or "").strip(),
-                tuple(str(x) for x in row_options) if isinstance(row_options, list) else (),
+            _inventory_key(
+                text=getattr(row, "text", ""),
+                knowledge=getattr(row, "knowledge", ""),
+                question_type=row_type,
+                options=row_options,
+                answer=row_answer,
             )
         )
     added = 0
     for spec in specs:
-        key = (
-            str(spec["text"]).strip(),
-            str(spec["knowledge"]).strip(),
-            tuple(str(x) for x in spec["options"]),
+        spec_options = list(spec.get("options") or [])
+        spec_type, valid, spec_answer = _online_shape(
+            spec.get("question_type", ""),
+            spec_options,
+            spec.get("correct_index", -1),
+            spec.get("answer_json", {}),
+        )
+        if not valid:
+            continue
+        key = _inventory_key(
+            text=spec.get("text", ""),
+            knowledge=spec.get("knowledge", ""),
+            question_type=spec_type,
+            options=spec_options,
+            answer=spec_answer,
         )
         if key in keys:
             continue
@@ -568,9 +762,12 @@ def ensure_built_in_questions(
                 unit=str(spec["unit"]),
                 knowledge=str(spec["knowledge"]),
                 text=str(spec["text"]),
-                options_json=json.dumps(spec["options"], ensure_ascii=False),
-                correct_index=int(spec["correct_index"]),
+                options_json=json.dumps(spec_options, ensure_ascii=False),
+                correct_index=int(spec.get("correct_index", -1)),
                 explanation=str(spec["explanation"]),
+                question_type=str(spec.get("question_type") or ""),
+                answer_json=json.dumps(spec.get("answer_json") or {}, ensure_ascii=False),
+                figure_json=json.dumps(spec.get("figure_json") or {}, ensure_ascii=False),
                 creator_id=creator_id,
             )
         )
