@@ -119,3 +119,17 @@ def test_classic_local_date_patch_runs_even_after_ui_marker_is_present():
     patched = inject_classic_ui(html)
     assert "Date.now()+7*86400000" not in patched
     assert "d.setDate(d.getDate()+7)" in patched
+
+
+def test_production_classic_html_has_no_utc_assignment_default_expressions():
+    from app import app as production_app
+
+    response = TestClient(production_app).get(
+        "/classic?legacy=1&unified=1&page=papers",
+        headers={"Accept-Encoding": "identity"},
+    )
+    assert response.status_code == 200
+    assert "Date.now()+7*86400000).toISOString().slice(0,10)" not in response.text
+    assert "Date.now()+3*86400000).toISOString().slice(0,10)" not in response.text
+    assert "d.setDate(d.getDate()+7)" in response.text
+    assert "d.setDate(d.getDate()+3)" in response.text
