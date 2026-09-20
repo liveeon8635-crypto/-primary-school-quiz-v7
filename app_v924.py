@@ -4416,7 +4416,7 @@ def _ai_question_storage_parts(q):
         if len(opts)!=4 or ci not in range(4):raise HTTPException(400,"单选题必须有4个选项和1个正确答案")
         answer_json=json.dumps({"answer":"","accepted":[]},ensure_ascii=False)
     elif qt=="true_false":
-        opts=["正确","错误"]
+        opts=["True","False"] if str(q.subject or "").strip()=="英语" else ["正确","错误"]
         if ci not in range(2):raise HTTPException(400,"判断题必须标明正确或错误")
         answer_json=json.dumps({"answer":"","accepted":[]},ensure_ascii=False)
     else:
@@ -4803,7 +4803,7 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
             if len(opts)!=4 or ci not in range(4):continue
             answer="";accepted=[]
         elif qt=="true_false":
-            opts=["正确","错误"]
+            opts=["True","False"] if forced_subject=="英语" else ["正确","错误"]
             if ci not in range(2):continue
             answer="";accepted=[]
         else:
@@ -4863,7 +4863,7 @@ def teacher_reinforcement_assign(sid:int,b:AIReinforcementAssignBody,u:User=Depe
             if len(opts)!=4 or ci not in range(4):raise HTTPException(400,"单选题必须有4个选项和1个正确答案")
             answer="";accepted=[]
         elif qt=="true_false":
-            opts=["正确","错误"]
+            opts=["True","False"] if str(q.subject or "").strip()=="英语" else ["正确","错误"]
             if ci not in range(2):raise HTTPException(400,"判断题必须标明正确或错误")
             answer="";accepted=[]
         else:
