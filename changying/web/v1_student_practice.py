@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timedelta
 import json
+import re
 from typing import Any
 
 from fastapi import Depends, HTTPException
@@ -97,8 +98,60 @@ def _is_online_question(row: Any) -> bool:
     return bool(_online_question_type(row))
 
 
+def _semantic_question_family(row: Any) -> str:
+    """Return the source-content family used to prevent same-content re-skins.
+
+    Language packs intentionally contain derived fill / judgement variants of
+    reviewed source questions.  Those variants are useful across different
+    papers, but the same source content must not appear twice inside one paper
+    merely because the answer control changed.
+    """
+
+    subject = str(getattr(row, "subject", "") or "").strip()
+    qtype = str(getattr(row, "question_type", "") or "").strip().lower()
+    text = str(getattr(row, "text", "") or "").strip()
+
+    repaired = language_choice_repair(row)
+    if repaired:
+        text = str(repaired.get("text") or text).strip()
+
+    if qtype == "true_false":
+        if subject == "语文":
+            prefix = "判断下面的作答是否正确："
+            if text.startswith(prefix) and "——" in text[len(prefix):]:
+                text = text[len(prefix):].rsplit("——", 1)[0].strip()
+            else:
+                match = re.fullmatch(r"判断正误：题目“(.+)”的答案是“(.+)”。", text)
+                if match:
+                    text = match.group(1).strip()
+        elif subject == "英语":
+            prefix = "Is this answer correct?"
+            if text.startswith(prefix) and "—" in text[len(prefix):]:
+                text = text[len(prefix):].rsplit("—", 1)[0].strip()
+            else:
+                match = re.fullmatch(
+                    r'True or false:\s*For\s+"(.+)",\s*the answer is\s*"(.+)"\.',
+                    text,
+                    flags=re.IGNORECASE,
+                )
+                if match:
+                    text = match.group(1).strip()
+
+    normalized = re.sub(r"\s+", "", text).rstrip("。.!?！？")
+    if not normalized:
+        return f"id:{int(getattr(row, 'id', 0) or 0)}"
+    return f"{subject}|{normalized}"
+
+
 def _select_type_diverse_questions(rows: list[Any], limit: int) -> list[Any]:
-    """Round-robin question types while keeping knowledge coverage broad."""
+    """Round-robin types while prioritizing unique source content.
+
+    Knowledge coverage remains the primary ordering goal.  Within the same
+    knowledge pressure, a question whose semantic family is unique to its type
+    is preferred, leaving shared source families available for scarcer types.
+    Once a family is selected, all re-skinned variants of that same content are
+    excluded from the current paper.
+    """
 
     buckets: dict[str, list[Any]] = defaultdict(list)
     for row in rows:
@@ -113,26 +166,39 @@ def _select_type_diverse_questions(rows: list[Any], limit: int) -> list[Any]:
         for question_type in _ONLINE_QUESTION_TYPE_ORDER
         if buckets.get(question_type)
     ]
+    family_types: dict[str, set[str]] = defaultdict(set)
+    for question_type in active_types:
+        for row in buckets[question_type]:
+            family_types[_semantic_question_family(row)].add(question_type)
+
     knowledge_hits: dict[str, int] = defaultdict(int)
+    used_families: set[str] = set()
     chosen: list[Any] = []
     while len(chosen) < limit:
         added = False
         for question_type in active_types:
             bucket = buckets[question_type]
-            if not bucket:
+            candidates = [
+                row
+                for row in bucket
+                if _semantic_question_family(row) not in used_families
+            ]
+            if not candidates:
                 continue
             row = min(
-                bucket,
+                candidates,
                 key=lambda item: (
                     knowledge_hits[
                         (getattr(item, "knowledge", "") or getattr(item, "unit", "") or "综合").strip()
                         or "综合"
                     ],
+                    1 if len(family_types[_semantic_question_family(item)]) > 1 else 0,
                     int(item.id),
                 ),
             )
             bucket.remove(row)
             chosen.append(row)
+            used_families.add(_semantic_question_family(row))
             knowledge_key = (
                 (getattr(row, "knowledge", "") or getattr(row, "unit", "") or "综合").strip()
                 or "综合"
