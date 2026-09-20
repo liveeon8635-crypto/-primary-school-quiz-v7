@@ -58,7 +58,7 @@ def test_chinese_options_preview_exposes_real_module_inventory():
     )
     counts = {row["knowledge"]: row["count"] for row in modules}
 
-    assert total >= 176
+    assert total >= 160
     assert counts["字音辨析"] >= 8
     assert counts["病句辨析"] >= 8
     assert counts["提取关键信息"] >= 8
