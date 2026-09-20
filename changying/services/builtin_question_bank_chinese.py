@@ -10,8 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-
-CHINESE_G5_TEXTBOOK = "统编版（人民教育出版社）"
+from changying.services.textbook_registry import CHINESE_G5_TEXTBOOK
 
 
 def _spec(
