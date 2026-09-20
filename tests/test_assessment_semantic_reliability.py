@@ -106,6 +106,8 @@ def test_runtime_grade_answers_is_semantic_wrapper_after_production_install():
     import app  # noqa: F401
     import app_v924 as legacy
 
-    assert legacy.grade_answers.__name__ == "grade_answers"
-    wrapped_source = inspect.getsource(legacy.grade_answers.__wrapped__)
-    assert "semantic_grade_answers" in wrapped_source or "implementation.half_up_percent" in wrapped_source
+    assert legacy.grade_answers.__name__ == "semantic_grade_answers"
+    runtime_grader = inspect.unwrap(legacy.grade_answers)
+    wrapped_source = inspect.getsource(runtime_grader)
+    assert "implementation.half_up_percent(correct, total)" in wrapped_source
+    assert "round(correct / total * 100)" not in wrapped_source
