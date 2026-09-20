@@ -1458,7 +1458,7 @@ def progress_for(db,sid,school_id):
         for k,(hit,total) in sub_know.items():
             old_hit,old_total=know.get(k,(0,0));know[k]=(old_hit+hit,old_total+total)
         if idx==0:
-            latest_items=[{"knowledge":k,"accuracy":round(hit/total*100) if total else 0,"answered":total} for k,(hit,total) in sub_know.items()]
+            latest_items=[{"knowledge":k,"accuracy":half_up_percent(hit,total),"answered":total} for k,(hit,total) in sub_know.items()]
             latest_items.sort(key=lambda x:(x["accuracy"],x["knowledge"]))
             paper=None
             if sub.assignment_id:
@@ -1468,7 +1468,7 @@ def progress_for(db,sid,school_id):
             latest={"id":sub.id,"assignmentID":sub.assignment_id,"title":sub.title,"score":sub.score,"correct":sub.correct,"total":sub.total,
                     "submittedAt":school_local_iso(sub.submitted_at),"subject":paper.subject if paper else "","textbook":paper.textbook if paper else "",
                     "knowledge":latest_items}
-    items=[{"knowledge":k,"accuracy":round(v[0]/v[1]*100) if v[1] else 0,"answered":v[1]} for k,v in know.items()]
+    items=[{"knowledge":k,"accuracy":half_up_percent(v[0],v[1]),"answered":v[1]} for k,v in know.items()]
     items.sort(key=lambda x:x["accuracy"])
     return {"avgScore":avg,"totalAnswered":total_answered,"submissions":len(subs),"knowledge":items,"latestSubmission":latest}
 
@@ -5645,7 +5645,7 @@ def teacher_analytics_data(db,u):
         except Exception:answers=[]
         part,_=normalized_answer_stats(db,answers,u.school_id)
         for k,(hit,total) in part.items():old_hit,old_total=know.get(k,(0,0));know[k]=(old_hit+hit,old_total+total)
-    knowledge=[{"knowledge":k,"accuracy":round(v[0]/v[1]*100) if v[1] else 0,"answered":v[1]} for k,v in know.items()];knowledge.sort(key=lambda x:(x["accuracy"],-x["answered"],x["knowledge"]))
+    knowledge=[{"knowledge":k,"accuracy":half_up_percent(v[0],v[1]),"answered":v[1]} for k,v in know.items()];knowledge.sort(key=lambda x:(x["accuracy"],-x["answered"],x["knowledge"]))
     class_stats=[];student_rollup={};all_student_ids=set()
     for c in classes:
         class_a=by_class.get(c.id,[]);recipient_pairs=[]
@@ -5658,12 +5658,12 @@ def teacher_analytics_data(db,u):
                 if state["completed"]:rec["completed"]+=1
                 if sub:rec["scores"].append(sub.score)
         expected=len(recipient_pairs);class_subs=[latest[(a.id,sid)] for a,sid in recipient_pairs if (a.id,sid) in latest];completed=sum(1 for a,sid in recipient_pairs if assignment_effective_status(db,a,sid)["completed"]);avg_score=round(sum(x.score for x in class_subs)/len(class_subs)) if class_subs else 0;c_correct=sum(x.correct or 0 for x in class_subs);c_total=sum(x.total or 0 for x in class_subs);current_students=db.scalar(select(func.count()).select_from(ClassStudent).where(ClassStudent.class_id==c.id)) or 0
-        class_stats.append({"classID":c.id,"className":c.name,"grade":c.grade,"students":current_students,"assignments":len(class_a),"expectedSubmissions":expected,"completedSubmissions":completed,"pendingSubmissions":max(expected-completed,0),"completionRate":round(completed/expected*100) if expected else 0,"avgScore":avg_score,"accuracy":round(c_correct/c_total*100) if c_total else 0})
+        class_stats.append({"classID":c.id,"className":c.name,"grade":c.grade,"students":current_students,"assignments":len(class_a),"expectedSubmissions":expected,"completedSubmissions":completed,"pendingSubmissions":max(expected-completed,0),"completionRate":round(completed/expected*100) if expected else 0,"avgScore":avg_score,"accuracy":half_up_percent(c_correct,c_total)})
     weak=[]
     for rec in student_rollup.values():
         assigned=rec["assigned"];completed=rec["completed"];avg=round(sum(rec["scores"])/len(rec["scores"])) if rec["scores"] else 0;completion=round(completed/assigned*100) if assigned else 0
         if assigned and (completed<assigned or avg<70):weak.append({"studentID":rec["studentID"],"studentName":rec["studentName"],"className":" / ".join(sorted(rec["classes"])),"avgScore":avg,"assigned":assigned,"completed":completed,"pending":max(assigned-completed,0),"completionRate":completion})
-    weak.sort(key=lambda x:(x["completionRate"],x["avgScore"],x["studentName"]));formal=list(latest.values());avg_score=round(sum(x.score for x in formal)/len(formal)) if formal else 0;avg_accuracy=round(correct_sum/total_sum*100) if total_sum else 0;expected_total=sum(x["expectedSubmissions"] for x in class_stats);completed_total=sum(x["completedSubmissions"] for x in class_stats)
+    weak.sort(key=lambda x:(x["completionRate"],x["avgScore"],x["studentName"]));formal=list(latest.values());avg_score=round(sum(x.score for x in formal)/len(formal)) if formal else 0;avg_accuracy=half_up_percent(correct_sum,total_sum);expected_total=sum(x["expectedSubmissions"] for x in class_stats);completed_total=sum(x["completedSubmissions"] for x in class_stats)
     return {"classes":len(classes),"students":len(all_student_ids),"assignments":len(assignments),"submissions":completed_total,"expectedSubmissions":expected_total,"pendingSubmissions":max(expected_total-completed_total,0),"completionRate":round(completed_total/expected_total*100) if expected_total else 0,"avgScore":avg_score,"avgAccuracy":avg_accuracy,"weakKnowledge":knowledge[:5],"knowledge":knowledge,"classStats":class_stats,"weakStudents":weak[:8]}
 
 @app.get("/teacher/dashboard")
@@ -6838,7 +6838,7 @@ def student_growth_profile_data(db,stu:User,school_id:int,class_id:int|None=None
     ).order_by(Submission.submitted_at.desc(),Submission.id.desc())).all()
     total_correct=sum(int(x.correct or 0) for x in all_subs)
     total_questions=sum(int(x.total or 0) for x in all_subs)
-    accuracy=round(total_correct/total_questions*100) if total_questions else 0
+    accuracy=half_up_percent(total_correct,total_questions)
 
     recent_submissions=[]
     for sub in all_subs[:8]:
