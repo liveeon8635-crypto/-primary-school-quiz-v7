@@ -87,6 +87,10 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     assert "当前仅为教师审核预览，尚未布置，学生端不会看到。" in once
     assert "审核无误，布置给该学生" in once
     assert "已布置 AI 针对性练习，学生端现在可见。" in once
+    assert "if(btn.disabled)return" in once
+    assert "已添加成功" in once
+    assert "请勿重复添加" in once
+    assert "scrollIntoView" in once
 
 
 def test_runtime_registers_student_practice_routes():
