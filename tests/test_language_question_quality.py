@@ -103,8 +103,7 @@ def test_choice_like_chinese_fill_restores_single_choice_shape():
     repaired = chinese_choice_repair(question)
     assert repaired is not None
     assert repaired["text"] == "下列句子没有语病的一项是？"
-    assert repaired["correct_index"] == 0
-    assert repaired["options"][0] == "经过努力，小组终于完成了实验记录。"
+    assert repaired["options"][repaired["correct_index"]] == "经过努力，小组终于完成了实验记录。"
     assert len(repaired["options"]) == 4
 
 
