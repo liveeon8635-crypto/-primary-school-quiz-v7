@@ -63,3 +63,31 @@ def test_unified_top_opens_requested_hub_after_session_hydration():
     html = inject_v1_classic_unified("<html><body></body></html>")
     assert "params.get('page')==='__hub__'" in html
     assert "showToolHub()" in html
+
+
+def test_mobile_student_nav_keeps_core_learning_tabs_and_moves_secondary_tools_to_more():
+    html = inject_v1_classic_unified("<html><body></body></html>")
+    assert "student:[['syncLearning','▦','课堂','syncLearning']" in html
+    assert "['assignments','✓','作业','assignments']" in html
+    assert "['practice','✎','练习','practice']" in html
+    assert "['progress','◉','学情','progress']" in html
+    assert "['tools','☰','更多','#']" in html
+    assert "#cy-v1-unified-picker{display:none!important}" in html
+    assert "#cy-v1-unified-identity{display:inline-flex" in html
+
+
+def test_unified_student_assignment_cards_show_assigned_due_submit_and_learning_context():
+    legacy = """<html><body>
+    <small>${esc(a.assignedClassName||"")} · ${esc(a.submissionModeName||"在线答题")} · 截止 ${esc(a.dueDate)}${a.score!==null?` · 成绩 ${a.score}分`:""}</small>
+    <p>${esc(latest.title||"最近练习")} · ${esc(latest.submittedAt||"")}</p>
+    </body></html>"""
+    html = inject_v1_classic_unified(legacy)
+    assert "布置 ${esc(a.assignedAt||\"时间未记录\")}" in html
+    assert "截止 ${esc(a.dueDate||\"未设置\")}" in html
+    assert "提交 ${esc(a.quizSubmittedAt)}" in html
+    assert "a.paper?.subject" in html
+    assert "a.paper?.textbook" in html
+    assert "a.paper?.questionIDs" in html
+    assert "latest.subject" in html
+    assert "latest.textbook" in html
+    assert "提交 ${esc(latest.submittedAt||\"时间未记录\")}" in html
