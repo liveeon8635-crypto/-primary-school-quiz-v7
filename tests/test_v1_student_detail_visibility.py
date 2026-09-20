@@ -51,3 +51,15 @@ def test_native_student_detail_shows_learning_context_dates_scores_and_real_time
     assert "submitted?'提交 '+submitted" in html
     assert "x.score!==null&&x.score!==undefined?'成绩 '+x.score+'分'" in html
     assert "qn?'题量 '+qn+'题'" in html
+
+
+def test_native_v1_completion_shows_assignment_context_and_learning_points():
+    html = rendered_html()
+
+    assert "heading(esc(a.title||'测试已完成')" in html
+    assert "a.subject||paper.subject" in html
+    assert "a.textbook||paper.textbook" in html
+    assert "learning=Number(result.learningPointsAwarded||0)" in html
+    assert "答错 '+esc(wrong)+' 题" in html
+    assert "本次获得 +'+esc(learning)+' 学习积分" in html
+    assert "String(a.title||'').includes('AI')?'AI 针对性练习'" in html
