@@ -23,7 +23,10 @@ from changying.services.builtin_question_bank import (
     ensure_built_in_questions,
     potential_question_catalog,
 )
-from changying.services.language_question_quality import language_choice_repair
+from changying.services.language_question_quality import (
+    language_choice_repair,
+    language_semantic_family,
+)
 from changying.services.textbook_registry import (
     TextbookRegistryError,
     normalize_textbook,
@@ -99,49 +102,32 @@ def _is_online_question(row: Any) -> bool:
 
 
 def _semantic_question_family(row: Any) -> str:
-    """Return the source-content family used to prevent same-content re-skins.
-
-    Language packs intentionally contain derived fill / judgement variants of
-    reviewed source questions.  Those variants are useful across different
-    papers, but the same source content must not appear twice inside one paper
-    merely because the answer control changed.
-    """
-
+    """Return a source-aware content family for one selectable question."""
     subject = str(getattr(row, "subject", "") or "").strip()
-    qtype = str(getattr(row, "question_type", "") or "").strip().lower()
-    text = str(getattr(row, "text", "") or "").strip()
+    if subject in {"语文", "英语"}:
+        return language_semantic_family(row)
 
-    repaired = language_choice_repair(row)
-    if repaired:
-        text = str(repaired.get("text") or text).strip()
-
-    if qtype == "true_false":
-        if subject == "语文":
-            prefix = "判断下面的作答是否正确："
-            if text.startswith(prefix) and "——" in text[len(prefix):]:
-                text = text[len(prefix):].rsplit("——", 1)[0].strip()
-            else:
-                match = re.fullmatch(r"判断正误：题目“(.+)”的答案是“(.+)”。", text)
-                if match:
-                    text = match.group(1).strip()
-        elif subject == "英语":
-            prefix = "Is this answer correct?"
-            if text.startswith(prefix) and "—" in text[len(prefix):]:
-                text = text[len(prefix):].rsplit("—", 1)[0].strip()
-            else:
-                match = re.fullmatch(
-                    r'True or false:\s*For\s+"(.+)",\s*the answer is\s*"(.+)"\.',
-                    text,
-                    flags=re.IGNORECASE,
-                )
-                if match:
-                    text = match.group(1).strip()
-
-    normalized = re.sub(r"\s+", "", text).rstrip("。.!?！？")
-    if not normalized:
-        return f"id:{int(getattr(row, 'id', 0) or 0)}"
-    return f"{subject}|{normalized}"
-
+    try:
+        options = json.loads(getattr(row, "options_json", "[]") or "[]")
+    except Exception:
+        options = []
+    if not isinstance(options, list):
+        options = []
+    try:
+        meta = json.loads(getattr(row, "answer_json", "{}") or "{}")
+    except Exception:
+        meta = {}
+    answer = str(meta.get("answer") or "").strip() if isinstance(meta, dict) else ""
+    text = re.sub(r"\s+", "", str(getattr(row, "text", "") or "")).rstrip("。.!?！？")
+    return "|".join(
+        [
+            subject,
+            str(getattr(row, "knowledge", "") or "").strip(),
+            text,
+            json.dumps([str(x) for x in options], ensure_ascii=False),
+            answer,
+        ]
+    )
 
 def _select_type_diverse_questions(rows: list[Any], limit: int) -> list[Any]:
     """Round-robin types while prioritizing unique source content.
