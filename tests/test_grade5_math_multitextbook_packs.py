@@ -20,9 +20,16 @@ def test_current_pep_pack_has_substantial_valid_inventory():
         assert row["unit"]
         assert row["knowledge"]
         assert row["text"]
-        assert len(row["options"]) == 4
-        assert len(set(row["options"])) == 4
-        assert 0 <= row["correct_index"] < 4
+        question_type = row.get("question_type") or "single_choice"
+        if question_type in {"single_choice", "true_false"}:
+            assert len(row["options"]) >= 2
+            assert len(set(row["options"])) == len(row["options"])
+            assert 0 <= row["correct_index"] < len(row["options"])
+        else:
+            assert question_type in {"fill_blank", "calculation", "short_answer"}
+            assert row["options"] == []
+            assert row["correct_index"] == -1
+            assert row["answer_json"]["answer"]
         key = (row["unit"], row["knowledge"], row["text"])
         assert key not in keys
         keys.add(key)
