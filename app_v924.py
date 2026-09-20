@@ -5677,7 +5677,8 @@ def sassign(u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"student");rows=student_assignment_rows(db,assignment_model=Assignment,assignment_recipient_model=AssignmentRecipient,school_id=u.school_id,student_id=u.id);out=[]
     for a in rows:
         d=aj(db,a);state=assignment_effective_status(db,a,u.id);sub=state.pop("quizSubmission");media_sub=state.pop("mediaSubmission");r=db.scalar(select(AssignmentRecipient).where(AssignmentRecipient.assignment_id==a.id,AssignmentRecipient.student_id==u.id));c=db.get(SchoolClass,r.class_id) if r else None
-        d.update({**state,"score":sub.score if sub else None,"quizSubmittedAt":school_local_iso(sub.submitted_at) if sub else None,"mediaSubmittedAt":school_local_iso(media_sub.submitted_at) if media_sub else None,"assignedClassName":c.name if c else ""});out.append(d)
+        paper=d.get("paper") or {};assigned_at=(r.assigned_at if r and getattr(r,"assigned_at",None) else a.created_at)
+        d.update({**state,"score":sub.score if sub else None,"quizSubmittedAt":school_local_iso(sub.submitted_at) if sub else None,"mediaSubmittedAt":school_local_iso(media_sub.submitted_at) if media_sub else None,"assignedClassName":c.name if c else "","assignedAt":school_local_iso(assigned_at),"createdAt":school_local_iso(a.created_at),"subject":paper.get("subject",""),"textbook":paper.get("textbook",""),"grade":paper.get("grade"),"unit":paper.get("unit",""),"questionCount":len(paper.get("questionIDs") or [])});out.append(d)
     return out
 
 @app.get("/papers/{pid}/questions")
