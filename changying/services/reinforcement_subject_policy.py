@@ -31,6 +31,27 @@ def reinforcement_subject_from_prompt(prompt: str) -> str:
 
 
 
+SCIENCE_AUTO_TYPES = frozenset({"single_choice", "true_false", "fill_blank"})
+
+
+def normalize_science_reinforcement_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep science reinforcement auto-gradable and free of math-only figures."""
+    result: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        qtype = str(item.get("question_type") or "").strip().lower()
+        if qtype == "choice":
+            qtype = "single_choice"
+        if qtype not in SCIENCE_AUTO_TYPES:
+            continue
+        row = dict(item)
+        row["question_type"] = qtype
+        row["figure"] = {}
+        result.append(row)
+    return result
+
+
 def scope_context_to_primary_subject(context: dict[str, Any]) -> dict[str, Any]:
     """Keep one reinforcement generation cycle inside a single school subject."""
     if not isinstance(context, dict):
@@ -64,6 +85,21 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
     if str(feature or "") != "reinforcement_generate":
         return prompt
     subject = reinforcement_subject_from_prompt(prompt)
+    if subject == "科学":
+        return (
+            str(prompt)
+            + """
+
+【科学学科附加约束】
+1. 当前科目是科学。所有题目必须围绕当前学生已有科学学习证据，不得生成纯数学计算题、语文阅读题或英语语言题。
+2. 教材名称、年级、册次和单元必须原样沿用 assessmentContext 中已有信息；如果上下文没有明确教材版本，不得自行猜测、替换或声称来自某一出版社教材。
+3. 本轮自动判分只使用 single_choice、true_false、fill_blank；不要使用 calculation 或开放式 short_answer。fill_blank 只用于存在唯一或明确等价答案的科学术语、现象或结论。
+4. 题干必须给足观察对象、实验条件、数据或现象，考查“观察—证据—解释”、结构与功能、变化与因果、系统与模型等真实科学理解，不能把教学目标直接改成题目。
+5. 涉及实验时必须明确变量和条件；不得要求学生自行实施明火、强电、危险化学品等有风险操作。
+6. figure 必须返回 {}。当前渲染器的坐标图、几何图、线段图等属于数学图示，在专门的科学结构化图示规范上线前不得冒充科学实验图。
+7. answer / accepted_answers 只能放可自动判分的标准答案或明确等价表达；需要解释证据、设计实验或开放推理的内容应留给教师审核型主观题，而不是伪装成自动判分。
+"""
+        )
     if subject == "英语":
         return (
             str(prompt)
@@ -162,17 +198,15 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
                 int(x) for x in (result.get("wrongIDs") or [])
                 if int(x or 0) > 0
             ]
-            db = kwargs.get("db")
-            if db is None or not wrong_ids:
-                return result
-            valid = db.scalars(
-                select(implementation.WrongQuestionRecord.id).where(
-                    implementation.WrongQuestionRecord.id.in_(wrong_ids),
-                    implementation.WrongQuestionRecord.subject == subject,
-                )
-            ).all()
             payload = dict(result)
-            payload["wrongIDs"] = [int(x) for x in valid]
+            if subject == "科学":
+                normalized_items = normalize_science_reinforcement_items(items)
+                payload["items"] = normalized_items
+                if len(normalized_items) != len(items):
+                    payload["notice"] = (
+                        str(payload.get("notice") or "")
+                        + "；科学针对性练习已移除不适合自动判分的开放题型。"
+                    ).strip("；")
             if subject == "英语":
                 normalized_items = []
                 for item in items:
@@ -187,6 +221,16 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
                     ctx = dict(payload.get("assessmentContext") or {})
                     ctx["primary"] = primary
                     payload["assessmentContext"] = ctx
+
+            db = kwargs.get("db")
+            if db is not None and wrong_ids:
+                valid = db.scalars(
+                    select(implementation.WrongQuestionRecord.id).where(
+                        implementation.WrongQuestionRecord.id.in_(wrong_ids),
+                        implementation.WrongQuestionRecord.subject == subject,
+                    )
+                ).all()
+                payload["wrongIDs"] = [int(x) for x in valid]
             return payload
 
         route.dependant.call = subject_scoped_route
@@ -199,6 +243,7 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
 __all__ = [
     "augment_reinforcement_prompt",
     "install_reinforcement_subject_policy",
+    "normalize_science_reinforcement_items",
     "reinforcement_subject_from_prompt",
     "scope_context_to_primary_subject",
 ]
