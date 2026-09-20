@@ -10,8 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-
-ENGLISH_G5_TEXTBOOK = "人教版（PEP·当前最新版）"
+from changying.services.textbook_registry import ENGLISH_G5_TEXTBOOK
 
 
 def _spec(
