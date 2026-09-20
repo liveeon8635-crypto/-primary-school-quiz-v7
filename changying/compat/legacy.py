@@ -195,6 +195,17 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.recipient_students = assignment_service.recipient_students
     implementation.assignment_effective_status = assignment_service.effective_status
 
+    original_assignment_json = implementation.aj
+
+    def assignment_json_with_local_timeline(db, assignment):
+        payload = dict(original_assignment_json(db, assignment))
+        payload["assignedAt"] = school_local_iso(
+            getattr(assignment, "created_at", None)
+        )
+        return payload
+
+    implementation.aj = assignment_json_with_local_timeline
+
     teaching_service = TeachingService(
         adaptive_session_model=implementation.TeachingAdaptiveSession,
         lesson_model=implementation.TeachingLesson,
