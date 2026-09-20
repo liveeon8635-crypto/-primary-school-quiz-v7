@@ -83,6 +83,7 @@ def test_runtime_installs_textbook_registry_guard_on_write_routes():
 
     targets = {
         ("/ai/questions/generate", "POST"),
+        ("/ai/questions/save", "POST"),
         ("/ai/questions/assign", "POST"),
         ("/teacher/students/{sid}/reinforcement/assign", "POST"),
         ("/teacher/papers", "POST"),
