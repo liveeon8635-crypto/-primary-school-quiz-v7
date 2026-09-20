@@ -700,6 +700,16 @@ def _ensure_media_score_submission(
     return row
 
 
+def _archive_wrong_requested(body: Any) -> bool:
+    """Respect the teacher's explicit archive-wrong choice.
+
+    Missing/legacy bodies keep the historical default (archive enabled), while
+    an explicit archive_wrong=False must never be overridden by the rubric
+    evidence closure.
+    """
+    return bool(getattr(body, "archive_wrong", True))
+
+
 def _archive_rubric_gaps(
     implementation: ModuleType,
     db: Any,
@@ -839,14 +849,18 @@ def install_rubric_evidence_closure(implementation: ModuleType) -> None:
             student,
             review.confirmed_score,
         )
-        rubric_wrong = _archive_rubric_gaps(
-            implementation,
-            db,
-            teacher,
-            assignment,
-            student,
-            review,
-        )
+        confirmation_body = kwargs.get("b")
+        archive_wrong = _archive_wrong_requested(confirmation_body)
+        rubric_wrong = 0
+        if archive_wrong:
+            rubric_wrong = _archive_rubric_gaps(
+                implementation,
+                db,
+                teacher,
+                assignment,
+                student,
+                review,
+            )
         evidence_added = _append_teacher_confirmed_evidence(
             implementation,
             db,
@@ -869,6 +883,8 @@ def install_rubric_evidence_closure(implementation: ModuleType) -> None:
             payload["scoreRecordedInProgress"] = submission is not None
             payload["notice"] = (
                 "教师确认已保存；主观题评分点、成绩和薄弱知识已进入学生连续学习记录。"
+                if archive_wrong
+                else "教师确认已保存；主观题评分点和成绩已进入学生连续学习记录，按教师选择未归档错题。"
             )
             return payload
         return result
