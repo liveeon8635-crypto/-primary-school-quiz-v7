@@ -102,14 +102,12 @@ def normalize_question_figure(question: Any, figure: Any) -> dict[str, Any]:
         return out
 
     if kind == "line_segment" and ("植树" in combined or "每隔" in text):
-        values = _length_spacing(text)
-        if values is not None:
-            length, spacing = values
-            intervals = length / spacing
-            rounded = int(round(intervals))
-            if abs(intervals - rounded) < 1e-9 and 1 <= rounded <= 12:
-                out["segments"] = [{"label": "间隔", "ratio": 1} for _ in range(rounded)]
-                out["title"] = f"{_fmt_number(length)}÷{_fmt_number(spacing)}={rounded} 个间隔"
+        # Formal assignments must not leak an intermediate solution such as
+        # "90÷9=10". Keep the diagram explicitly schematic instead of drawing
+        # the computed number of intervals.
+        if _length_spacing(text) is not None:
+            out["segments"] = [{"label": "间隔", "ratio": 1} for _ in range(4)]
+            out["title"] = "植树间隔示意图（不按间隔数量绘制）"
         return out
 
     if kind == "geometry":
