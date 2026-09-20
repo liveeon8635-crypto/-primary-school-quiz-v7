@@ -5,11 +5,12 @@ from changying.services.builtin_question_bank import built_in_question_specs
 from changying.services.language_question_quality import language_question_text
 
 
-def _q(*, text, subject="英语", question_type="fill_blank", answer=""):
+def _q(*, text, subject="英语", question_type="fill_blank", answer="", knowledge=""):
     return SimpleNamespace(
         text=text,
         subject=subject,
         question_type=question_type,
+        knowledge=knowledge,
         answer_json=json.dumps({"answer": answer}, ensure_ascii=False),
     )
 
@@ -53,3 +54,39 @@ def test_new_language_judgement_variants_use_direct_wording():
     assert english_tf and chinese_tf
     assert all(row["text"].startswith("Is this answer correct?") for row in english_tf)
     assert all(row["text"].startswith("判断下面的作答是否正确：") for row in chinese_tf)
+
+
+
+def test_existing_option_dependent_chinese_fill_restores_candidates():
+    question = _q(
+        subject="语文",
+        knowledge="病句辨析",
+        text="请直接填写答案：下列句子没有语病的一项是？",
+        answer="同学们认真讨论并记录了观察结果。",
+    )
+    rendered = language_question_text(question)
+    assert rendered.startswith("请从备选答案中选择，并输入完整答案：")
+    assert "A. 通过这次活动，使我学会了合作。" in rendered
+    assert "B. 同学们认真讨论并记录了观察结果。" in rendered
+    assert "备选答案：" in rendered
+
+
+def test_existing_direct_chinese_fill_stays_direct():
+    question = _q(
+        subject="语文",
+        knowledge="词语理解",
+        text="请直接填写答案：“这条小路十分僻静。”句中“僻静”的意思是？",
+        answer="偏僻而安静",
+    )
+    assert language_question_text(question) == question.text
+
+
+def test_new_option_dependent_chinese_fills_embed_candidates():
+    rows = built_in_question_specs(5, "语文", "统编版（人民教育出版社）")
+    fills = [row for row in rows if row.get("question_type") == "fill_blank"]
+    risky = [
+        row for row in fills
+        if any(marker in row["text"] for marker in ("下列", "哪项", "哪一项", "一项是", "最恰当的一项", "最符合", "选择最"))
+    ]
+    assert risky
+    assert all("备选答案：" in row["text"] for row in risky)
