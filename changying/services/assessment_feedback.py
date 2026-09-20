@@ -205,6 +205,7 @@ def student_assessment_context(
     assignment_id: int | None = None,
     limit: int = 6,
     textbook_filter: str | None = None,
+    subject_filter: str | None = None,
 ) -> dict[str, Any]:
     """Build recent test/practice/reinforcement evidence for AI reinforcement.
 
@@ -261,6 +262,8 @@ def student_assessment_context(
             )
         )
         if not paper:
+            continue
+        if subject_filter and str(paper.subject or "").strip() != str(subject_filter).strip():
             continue
         if textbook_filter and str(paper.textbook or "").strip() != str(textbook_filter).strip():
             continue
