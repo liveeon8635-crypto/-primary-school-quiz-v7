@@ -566,7 +566,32 @@ def _rich_language_variants(
             if english:
                 fill_text = stem if "____" in stem else "Write the answer: " + stem
             else:
-                fill_text = stem if "____" in stem else "请直接填写答案：" + stem
+                option_dependent = any(
+                    marker in stem
+                    for marker in (
+                        "下列",
+                        "哪项",
+                        "哪一项",
+                        "一项是",
+                        "最恰当的一项",
+                        "最符合",
+                        "选择最",
+                    )
+                )
+                if "____" in stem:
+                    fill_text = stem
+                elif option_dependent and fill_source.get("options"):
+                    labels = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                    candidates = "；".join(
+                        f"{labels[i]}. {value}"
+                        for i, value in enumerate(list(fill_source.get("options") or [])[: len(labels)])
+                    )
+                    fill_text = (
+                        f"请从备选答案中选择，并输入完整答案：{stem} "
+                        f"备选答案：{candidates}"
+                    )
+                else:
+                    fill_text = "请直接填写答案：" + stem
             fill.update(
                 {
                     "text": fill_text,
