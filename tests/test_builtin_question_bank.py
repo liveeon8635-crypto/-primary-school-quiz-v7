@@ -4,6 +4,7 @@ from changying.services.builtin_question_bank import (
     built_in_question_specs,
     built_in_subjects,
     built_in_textbooks,
+    potential_question_catalog,
 )
 
 
@@ -157,6 +158,33 @@ def test_grade5_math_pack_uses_current_pep_textbook_only():
     for other_publisher in ("北师大版", "苏教版"):
         assert built_in_question_specs(5, "语文", other_publisher) == []
 
+
+
+def test_language_catalog_reports_unique_content_not_re_skinned_variant_count():
+    chinese_textbook = "统编版（人民教育出版社）"
+    chinese_modules, chinese_total = potential_question_catalog(
+        [],
+        grade=5,
+        subject="语文",
+        textbook=chinese_textbook,
+    )
+    chinese = {row["knowledge"]: row["count"] for row in chinese_modules}
+    # Eight reviewed “没有语病” source questions share one generic stem but
+    # different option sets. They must all remain available, while their
+    # fill/judgement re-skins do not inflate the count.
+    assert chinese["病句辨析"] == 8
+    assert chinese_total < len(built_in_question_specs(5, "语文", chinese_textbook))
+
+    english_textbook = "人教版（PEP·当前最新版）"
+    english_modules, english_total = potential_question_catalog(
+        [],
+        grade=5,
+        subject="英语",
+        textbook=english_textbook,
+    )
+    english = {row["knowledge"]: row["count"] for row in english_modules}
+    assert english["人物信息理解"] >= 8
+    assert english_total < len(built_in_question_specs(5, "英语", english_textbook))
 
 
 def test_grade5_english_pack_uses_current_pep_textbook_only():

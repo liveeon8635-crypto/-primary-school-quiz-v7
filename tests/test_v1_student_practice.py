@@ -111,6 +111,64 @@ def test_selector_round_robins_supported_question_types():
     } >= {"single_choice", "true_false", "fill_blank", "calculation"}
 
 
+def test_selector_keeps_same_generic_stem_when_option_sets_are_different():
+    stem = "下列句子没有语病的一项是？"
+    rows = [
+        q(
+            1,
+            "病句辨析",
+            subject="语文",
+            text=stem,
+            options=["A句", "B句", "C句", "D句"],
+            correct_index=1,
+        ),
+        q(
+            2,
+            "病句辨析",
+            subject="语文",
+            text=stem,
+            options=["甲句", "乙句", "丙句", "丁句"],
+            correct_index=2,
+        ),
+    ]
+    chosen = select_student_practice_questions(
+        rows,
+        kind="module",
+        knowledge="病句辨析",
+        count=2,
+    )
+    assert {row.id for row in chosen} == {1, 2}
+
+
+def test_selector_only_dedupes_judgement_against_its_exact_generic_stem_source():
+    stem = "下列词语书写完全正确的一项是？"
+    first_options = ["爱幕　恩惠　协调", "爱慕　恩惠　协调", "爱慕　恩慧　协调", "爱慕　恩惠　协凋"]
+    second_options = ["胆却　允诺　典礼", "胆怯　允若　典礼", "胆怯　允诺　典礼", "胆怯　允诺　典里"]
+    rows = [
+        q(1, "字形辨析", subject="语文", text=stem, options=first_options, correct_index=1),
+        q(2, "字形辨析", subject="语文", text=stem, options=second_options, correct_index=2),
+        q(
+            3,
+            "字形辨析",
+            subject="语文",
+            text="判断下面的作答是否正确：下列词语书写完全正确的一项是 —— 胆却　允诺　典礼",
+            options=["正确", "错误"],
+            correct_index=1,
+            question_type="true_false",
+        ),
+    ]
+    chosen = select_student_practice_questions(
+        rows,
+        kind="module",
+        knowledge="字形辨析",
+        count=3,
+    )
+    ids = {row.id for row in chosen}
+    assert 1 in ids
+    assert len(chosen) == 2
+    assert not ({2, 3} <= ids)
+
+
 def test_module_selector_dedupes_same_chinese_source_across_question_types():
     source = "______认真观察，______能发现植物每天都有细微变化。"
     rows = [

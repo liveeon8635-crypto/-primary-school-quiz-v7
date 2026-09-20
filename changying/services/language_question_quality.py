@@ -118,6 +118,165 @@ def _answer(question: Any) -> str:
     return str(data.get("answer") or "").strip() if isinstance(data, dict) else ""
 
 
+def _normalized_family_text(value: Any) -> str:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    return text.rstrip("?？").strip()
+
+
+def _family_signature(
+    subject: str,
+    knowledge: str,
+    text: str,
+    options: list[str],
+) -> str:
+    return "|".join(
+        [
+            str(subject or "").strip(),
+            str(knowledge or "").strip(),
+            _normalized_family_text(text),
+            json.dumps([str(x).strip() for x in options], ensure_ascii=False),
+        ]
+    )
+
+
+def _baseline_rows(subject: str) -> list[dict[str, Any]]:
+    if subject == "语文":
+        return grade5_chinese_specs()
+    if subject == "英语":
+        return grade5_english_specs()
+    return []
+
+
+def language_semantic_family_fields(
+    *,
+    subject: str,
+    knowledge: str,
+    text: str,
+    options: list[str] | None = None,
+    correct_index: int = -1,
+    question_type: str = "",
+    answer: str = "",
+) -> str:
+    """Return a source-aware content family for language-practice de-duplication.
+
+    Generic stems such as “下列句子没有语病的一项是？” are not enough to identify
+    content: different option sets are genuinely different questions. Derived
+    fill / true-false variants are mapped back to the exact reviewed source item
+    when possible, so only re-skinned copies of the same source are mutually
+    exclusive inside one paper.
+    """
+
+    subject = str(subject or "").strip()
+    knowledge = str(knowledge or "").strip()
+    text = str(text or "").strip()
+    values = [str(x) for x in (options or [])]
+    qtype = str(question_type or "").strip().lower()
+    try:
+        correct_index = int(correct_index)
+    except Exception:
+        correct_index = -1
+
+    if subject not in {"语文", "英语"}:
+        suffix = values or ([f"answer:{str(answer or '').strip()}"] if str(answer or "").strip() else [])
+        return _family_signature(subject, knowledge, text, suffix)
+
+    baseline = _baseline_rows(subject)
+
+    if qtype == "fill_blank":
+        core = _derived_fill_core(subject, text)
+        stored = str(answer or "").strip()
+        for row in baseline:
+            if str(row.get("knowledge") or "").strip() != knowledge:
+                continue
+            if _normalized_family_text(row.get("text")) != _normalized_family_text(core):
+                continue
+            source_options = [str(x) for x in (row.get("options") or [])]
+            source_correct = int(row.get("correct_index", -1))
+            if not (0 <= source_correct < len(source_options)):
+                continue
+            if stored and source_options[source_correct].strip() != stored:
+                continue
+            return _family_signature(subject, knowledge, str(row.get("text") or ""), source_options)
+
+    claimed = ""
+    source_stem = ""
+    if qtype == "true_false":
+        if subject == "语文":
+            prefix = "判断下面的作答是否正确："
+            if text.startswith(prefix) and "——" in text[len(prefix):]:
+                source_stem, claimed = text[len(prefix):].rsplit("——", 1)
+            else:
+                match = re.fullmatch(r"判断正误：题目“(.+)”的答案是“(.+)”。", text)
+                if match:
+                    source_stem, claimed = match.group(1), match.group(2)
+        else:
+            prefix = "Is this answer correct?"
+            if text.startswith(prefix) and "—" in text[len(prefix):]:
+                source_stem, claimed = text[len(prefix):].rsplit("—", 1)
+            else:
+                match = re.fullmatch(
+                    r'True or false:\s*For\s+"(.+)",\s*the answer is\s*"(.+)"\.',
+                    text,
+                    flags=re.IGNORECASE,
+                )
+                if match:
+                    source_stem, claimed = match.group(1), match.group(2)
+
+        if source_stem and claimed:
+            source_stem = source_stem.strip()
+            claimed = claimed.strip().rstrip("。")
+            truth_is_correct = None
+            if correct_index in (0, 1):
+                truth_is_correct = correct_index == 0
+            for row in baseline:
+                if str(row.get("knowledge") or "").strip() != knowledge:
+                    continue
+                if _normalized_family_text(row.get("text")) != _normalized_family_text(source_stem):
+                    continue
+                source_options = [str(x) for x in (row.get("options") or [])]
+                source_correct = int(row.get("correct_index", -1))
+                for index, value in enumerate(source_options):
+                    if value.strip().rstrip("。") != claimed:
+                        continue
+                    claim_is_correct = index == source_correct
+                    if truth_is_correct is not None and claim_is_correct != truth_is_correct:
+                        continue
+                    return _family_signature(
+                        subject,
+                        knowledge,
+                        str(row.get("text") or ""),
+                        source_options,
+                    )
+
+    if values:
+        return _family_signature(subject, knowledge, text, values)
+    stored = str(answer or "").strip()
+    return _family_signature(
+        subject,
+        knowledge,
+        text,
+        [f"answer:{stored}"] if stored else [],
+    )
+
+
+def language_semantic_family(question: Any) -> str:
+    try:
+        options = json.loads(getattr(question, "options_json", "[]") or "[]")
+    except Exception:
+        options = []
+    if not isinstance(options, list):
+        options = []
+    return language_semantic_family_fields(
+        subject=str(getattr(question, "subject", "") or ""),
+        knowledge=str(getattr(question, "knowledge", "") or ""),
+        text=str(getattr(question, "text", "") or ""),
+        options=[str(x) for x in options],
+        correct_index=int(getattr(question, "correct_index", -1) or -1),
+        question_type=str(getattr(question, "question_type", "") or ""),
+        answer=_answer(question),
+    )
+
+
 def _english_cloze_from_answer(answer: str) -> str:
     words = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?|[^A-Za-z\s]+", answer)
     alpha_positions = [i for i, token in enumerate(words) if re.fullmatch(r"[A-Za-z]+(?:'[A-Za-z]+)?", token)]
@@ -369,4 +528,11 @@ def install_language_question_quality(implementation: ModuleType) -> None:
     app.state.language_question_quality_installed = True
 
 
-__all__ = ["chinese_choice_repair", "language_choice_repair", "install_language_question_quality", "language_question_text"]
+__all__ = [
+    "chinese_choice_repair",
+    "language_choice_repair",
+    "language_semantic_family",
+    "language_semantic_family_fields",
+    "install_language_question_quality",
+    "language_question_text",
+]

@@ -17,6 +17,7 @@ from sqlalchemy import select
 
 from changying.services.builtin_question_bank_chinese import grade5_chinese_specs
 from changying.services.builtin_question_bank_english import grade5_english_specs
+from changying.services.language_question_quality import language_semantic_family_fields
 from changying.services.textbook_registry import (
     CHINESE_G5_TEXTBOOK,
     ENGLISH_G5_TEXTBOOK,
@@ -748,6 +749,38 @@ def _inventory_key(
     )
 
 
+def _practice_content_family(
+    *,
+    subject: str,
+    knowledge: str,
+    text: Any,
+    question_type: str,
+    options: list[Any],
+    correct_index: int,
+    answer: str,
+) -> str:
+    selected_subject = str(subject or "").strip()
+    if selected_subject in {"语文", "英语"}:
+        return language_semantic_family_fields(
+            subject=selected_subject,
+            knowledge=str(knowledge or "").strip(),
+            text=str(text or ""),
+            options=[str(x) for x in options],
+            correct_index=int(correct_index),
+            question_type=question_type,
+            answer=answer,
+        )
+    return repr(
+        _inventory_key(
+            text=text,
+            knowledge=knowledge,
+            question_type=question_type,
+            options=options,
+            answer=answer,
+        )
+    )
+
+
 def potential_question_catalog(
     existing_rows: list[Any],
     *,
@@ -759,6 +792,7 @@ def potential_question_catalog(
     selected_textbook = (textbook or "").strip()
     counts: dict[tuple[str, str], int] = defaultdict(int)
     existing_keys: set[tuple[str, str, str, tuple[str, ...], str]] = set()
+    content_families: set[str] = set()
     total = 0
     for row in existing_rows:
         if selected_textbook and str(row.textbook or "").strip() != selected_textbook:
@@ -777,8 +811,6 @@ def potential_question_catalog(
             continue
         unit = str(row.unit or "").strip()
         knowledge = str(row.knowledge or "").strip()
-        if knowledge:
-            counts[(unit, knowledge)] += 1
         existing_keys.add(
             _inventory_key(
                 text=getattr(row, "text", ""),
@@ -788,7 +820,20 @@ def potential_question_catalog(
                 answer=answer,
             )
         )
-        total += 1
+        family = _practice_content_family(
+            subject=str(getattr(row, "subject", subject) or subject),
+            knowledge=knowledge,
+            text=getattr(row, "text", ""),
+            question_type=question_type,
+            options=options,
+            correct_index=int(getattr(row, "correct_index", -1)),
+            answer=answer,
+        )
+        if family not in content_families:
+            content_families.add(family)
+            if knowledge:
+                counts[(unit, knowledge)] += 1
+            total += 1
 
     for spec in built_in_question_specs(grade, subject, selected_textbook):
         options = list(spec.get("options") or [])
@@ -809,6 +854,18 @@ def potential_question_catalog(
         )
         if key in existing_keys:
             continue
+        family = _practice_content_family(
+            subject=str(spec.get("subject") or subject),
+            knowledge=str(spec.get("knowledge") or ""),
+            text=spec.get("text", ""),
+            question_type=question_type,
+            options=options,
+            correct_index=int(spec.get("correct_index", -1)),
+            answer=answer,
+        )
+        if family in content_families:
+            continue
+        content_families.add(family)
         counts[(str(spec["unit"]), str(spec["knowledge"]))] += 1
         total += 1
 
