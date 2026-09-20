@@ -850,6 +850,8 @@ def install_rubric_evidence_closure(implementation: ModuleType) -> None:
             review.confirmed_score,
         )
         confirmation_body = kwargs.get("b")
+        if confirmation_body is None and len(args) > 2:
+            confirmation_body = args[2]
         archive_wrong = _archive_wrong_requested(confirmation_body)
         rubric_wrong = 0
         if archive_wrong:
