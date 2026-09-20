@@ -225,8 +225,9 @@ def install_textbook_registry_guard(implementation: ModuleType) -> None:
     generate_route.dependant.call = guarded_generate
     generate_route.endpoint = guarded_generate
 
-    # Both AI paper assignment paths must stay inside one curriculum line.
+    # Reviewed AI saves and both assignment paths must stay inside one curriculum line.
     for path in (
+        "/ai/questions/save",
         "/ai/questions/assign",
         "/teacher/students/{sid}/reinforcement/assign",
     ):
