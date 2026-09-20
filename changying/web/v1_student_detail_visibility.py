@@ -6,7 +6,7 @@ growth-profile response had already delivered the full visible arrays.  Silent
 truncation is misleading on a page whose purpose is the student's continuous
 record, so this presentation-only patch removes those detail caps.
 
-Homepage previews remain intentionally compact.  This patch adds no API calls,
+Homepage previews intentionally remain compact.  This patch adds no API calls,
 writes no data, and changes no authorization behavior.
 """
 
