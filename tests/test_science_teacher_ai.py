@@ -14,6 +14,7 @@ def test_science_textbook_requires_school_specific_label():
         "人教版",
         "人教版（当前最新版）",
         "人教版（PEP·当前最新版）",
+        "统编版",
         "统编版（人民教育出版社）",
     ):
         with pytest.raises(ValueError):
@@ -78,6 +79,7 @@ def test_runtime_installs_science_teacher_ai_workflow_on_classic_ai_routes():
     assert "科学：请填写学校实际使用的出版社/版本" in legacy.INDEX_HTML
 
     targets = {
+        ("/ai/questions/generate", "POST"),
         ("/ai/lesson-plan/generate", "POST"),
         ("/ai/lesson-plan/practice", "POST"),
     }
