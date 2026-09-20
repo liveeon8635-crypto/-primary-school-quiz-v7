@@ -4227,6 +4227,13 @@ def test_admin_ai(u:User=Depends(current_user),db:Session=Depends(get_db)):
 def ai_generate_questions(b:AIQuestionGenerateBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"admin","teacher")
     if b.grade<1 or b.grade>9:raise HTTPException(400,"年级须为 1-9")
+    if "科学" in (b.subject or ""):
+        science_textbook=(b.textbook or "").strip()
+        if not science_textbook or science_textbook=="人教版":
+            raise HTTPException(
+                400,
+                "科学教材必须明确填写学校实际使用的出版社/版本；当前系统不会把通用默认“人教版”自动当作科学教材",
+            )
     count=max(1,min(int(b.count or 5),20));difficulty=(b.difficulty or "中等")[:20];refs=_resource_context(db,u.school_id,b.resource_ids)
 
     requested=(b.question_type or "auto").strip().lower()
