@@ -153,11 +153,14 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     assert "/teacher/students/'+student.id+'/auto-practice" in once
     assert "s.role!=='teacher'" in once
     assert "当前仅为教师审核预览，尚未布置，学生端不会看到。" in once
-    assert "审核无误，布置给该学生" in once
+    assert "第 2 步：审核无误并布置给学生" in once
     assert "已布置 AI 针对性练习，学生端现在可见。" in once
     assert "if(btn.disabled)return" in once
     assert "已添加成功" in once
     assert "请勿重复添加" in once
+    assert "d.getFullYear()" in once
+    assert ".toISOString().slice(0,10)" not in once
+    assert "draftSubject+\' AI 针对性练习\'" in once
     assert "scrollIntoView" in once
 
 
