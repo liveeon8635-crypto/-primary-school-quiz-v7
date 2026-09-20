@@ -14,34 +14,10 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from changying.services.science_textbook_policy import require_explicit_science_textbook
+
 
 SCIENCE_TEACHER_AI_MARKER = "changying_science_teacher_ai_v1"
-_AMBIGUOUS_SCIENCE_TEXTBOOKS = frozenset(
-    {
-        "",
-        "人教版",
-        "人教版（当前最新版）",
-        "人教版（PEP·当前最新版）",
-        "PEP·当前最新版",
-        "统编版",
-        "统编版（人民教育出版社）",
-    }
-)
-
-
-def require_explicit_science_textbook(subject: str, textbook: str) -> str:
-    """Require a science-specific school textbook label without guessing."""
-    raw_subject = str(subject or "").strip()
-    raw_textbook = str(textbook or "").strip()
-    if "科学" not in raw_subject:
-        return raw_textbook
-    if raw_textbook in _AMBIGUOUS_SCIENCE_TEXTBOOKS:
-        raise ValueError(
-            "科学教材必须明确填写学校实际使用的出版社/版本；"
-            "不要使用数学、语文或英语界面的通用默认教材名"
-        )
-    return raw_textbook
-
 
 def augment_science_teacher_prompt(feature: str, prompt: str) -> str:
     """Add science-specific lesson constraints without altering other subjects."""
