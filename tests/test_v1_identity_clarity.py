@@ -7,11 +7,14 @@ def rendered_v1() -> str:
     return TestClient(app).get('/v1').text
 
 
-def test_single_real_identity_skips_redundant_picker_and_hides_switch_button():
+def test_single_real_identity_skips_redundant_picker_but_keeps_account_switch():
     html = rendered_v1()
     assert 'changying_v1_identity_clarity_v1' in html
     assert "if(choices.length===1){identity=choices[0]" in html
-    assert "identityButton.hidden=choices.length<=1" in html
+    assert "identityButton.hidden=false" in html
+    assert "identityButton.textContent=choices.length<=1?'切换账号':'切换身份'" in html
+    assert "clearAuthStorage();token='';session=null;identity=null" in html
+    assert "localStorage.removeItem(IDENTITY_KEY)" in html
     assert "localStorage.setItem(IDENTITY_KEY,identity.key)" in html
 
 
