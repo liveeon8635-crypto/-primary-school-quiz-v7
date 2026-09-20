@@ -811,11 +811,13 @@ def install_rubric_evidence_closure(implementation: ModuleType) -> None:
     def confirmed(*args: Any, __original=original_confirm, **kwargs: Any):
         aid = int(kwargs.get("aid") if "aid" in kwargs else args[0])
         sid = int(kwargs.get("sid") if "sid" in kwargs else args[1])
+        body = kwargs.get("b") or (args[2] if len(args) > 2 else None)
         teacher = kwargs.get("u")
         db = kwargs.get("db")
         result = __original(*args, **kwargs)
         if db is None or teacher is None:
             return result
+        archive_wrong = bool(getattr(body, "archive_wrong", True))
         assignment, student = implementation._teacher_assignment_student(
             db,
             teacher,
@@ -839,14 +841,16 @@ def install_rubric_evidence_closure(implementation: ModuleType) -> None:
             student,
             review.confirmed_score,
         )
-        rubric_wrong = _archive_rubric_gaps(
-            implementation,
-            db,
-            teacher,
-            assignment,
-            student,
-            review,
-        )
+        rubric_wrong = 0
+        if archive_wrong:
+            rubric_wrong = _archive_rubric_gaps(
+                implementation,
+                db,
+                teacher,
+                assignment,
+                student,
+                review,
+            )
         evidence_added = _append_teacher_confirmed_evidence(
             implementation,
             db,
@@ -859,7 +863,7 @@ def install_rubric_evidence_closure(implementation: ModuleType) -> None:
             db,
             teacher,
             "grading.evidence.close",
-            f"assignment={aid}:student={sid}:submission={getattr(submission,'id',None)}:rubricWrong={rubric_wrong}:evidence={evidence_added}",
+            f"assignment={aid}:student={sid}:submission={getattr(submission,'id',None)}:archiveWrong={int(archive_wrong)}:rubricWrong={rubric_wrong}:evidence={evidence_added}",
         )
         db.commit()
         if isinstance(result, dict):
@@ -869,6 +873,8 @@ def install_rubric_evidence_closure(implementation: ModuleType) -> None:
             payload["scoreRecordedInProgress"] = submission is not None
             payload["notice"] = (
                 "教师确认已保存；主观题评分点、成绩和薄弱知识已进入学生连续学习记录。"
+                if archive_wrong
+                else "教师确认已保存；主观题评分点和成绩已进入学生连续学习记录，按教师选择未归档错题。"
             )
             return payload
         return result
