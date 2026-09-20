@@ -18,6 +18,8 @@ from functools import wraps
 from types import ModuleType
 from typing import Any
 
+from changying.services.builtin_question_bank_chinese import grade5_chinese_specs
+
 
 _ENGLISH_AUX = {
     "am", "is", "are", "was", "were", "do", "does", "did",
@@ -54,10 +56,62 @@ def _english_cloze_from_answer(answer: str) -> str:
     return text
 
 
+
+
+
+def _option_dependent_chinese_stem(stem: str) -> bool:
+    text = str(stem or "").strip()
+    markers = (
+        "下列",
+        "哪项",
+        "哪一项",
+        "一项是",
+        "最恰当的一项",
+        "最符合",
+        "选择最",
+    )
+    return any(marker in text for marker in markers)
+
+
+def _chinese_source_options(stem: str, knowledge: str = "") -> list[str]:
+    target = str(stem or "").strip()
+    target_knowledge = str(knowledge or "").strip()
+    for row in grade5_chinese_specs():
+        if str(row.get("text") or "").strip() != target:
+            continue
+        if target_knowledge and str(row.get("knowledge") or "").strip() != target_knowledge:
+            continue
+        options = row.get("options")
+        if isinstance(options, list) and len(options) >= 2:
+            return [str(x) for x in options]
+    return []
+
+
+def _inline_candidates(options: list[str]) -> str:
+    labels = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    return "；".join(
+        f"{labels[i]}. {value}" for i, value in enumerate(options[: len(labels)])
+    )
+
 def language_question_text(question: Any) -> str:
     text = str(getattr(question, "text", "") or "").strip()
     subject = str(getattr(question, "subject", "") or "").strip()
     qtype = str(getattr(question, "question_type", "") or "").strip().lower()
+
+    if subject == "语文" and qtype == "fill_blank":
+        prefix = "请直接填写答案："
+        if text.startswith(prefix):
+            core = text[len(prefix):].strip()
+            if _option_dependent_chinese_stem(core):
+                options = _chinese_source_options(
+                    core,
+                    str(getattr(question, "knowledge", "") or ""),
+                )
+                if options:
+                    return (
+                        f"请从备选答案中选择，并输入完整答案：{core} "
+                        f"备选答案：{_inline_candidates(options)}"
+                    )
 
     if subject == "英语" and qtype == "fill_blank":
         prefix = "Complete with the correct answer:"
