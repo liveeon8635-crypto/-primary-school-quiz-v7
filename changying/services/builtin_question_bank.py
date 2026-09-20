@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 import json
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -544,14 +545,31 @@ def _rich_language_variants(
         if not items:
             continue
 
-        fill_source = items[0]
+        def fill_quality(item: dict[str, Any]) -> tuple[int, int]:
+            stem = str(item.get("text") or "").strip()
+            low = stem.lower().rstrip(".")
+            if english and low in {"choose the correct sentence", "choose the correct answer"}:
+                return (9, int(item.get("correct_index", -1)))
+            if "____" in stem:
+                return (0, int(item.get("correct_index", -1)))
+            if english and re.match(r"^(which|what|where|who|how)\b", stem, flags=re.IGNORECASE):
+                return (1, int(item.get("correct_index", -1)))
+            if english and stem.startswith("—"):
+                return (1, int(item.get("correct_index", -1)))
+            return (2, int(item.get("correct_index", -1)))
+
+        fill_source = min(items, key=fill_quality)
         fill_answer = _correct_answer(fill_source)
         if fill_answer:
             fill = dict(fill_source)
-            prompt = "Complete with the correct answer: " if english else "请直接填写正确答案："
+            stem = str(fill_source["text"]).strip()
+            if english:
+                fill_text = stem if "____" in stem else "Write the answer: " + stem
+            else:
+                fill_text = stem if "____" in stem else "请直接填写答案：" + stem
             fill.update(
                 {
-                    "text": prompt + str(fill_source["text"]).strip(),
+                    "text": fill_text,
                     "options": [],
                     "correct_index": -1,
                     "question_type": "fill_blank",
@@ -575,10 +593,10 @@ def _rich_language_variants(
             stem = str(judge_source["text"]).strip().rstrip("?？")
             judge = dict(judge_source)
             if english:
-                judge_text = f'True or false: For "{stem}", the answer is "{claimed}".'
+                judge_text = f"Is this answer correct? {stem} — {claimed}"
                 judge_options_out = ["True", "False"]
             else:
-                judge_text = f'判断正误：题目“{stem}”的答案是“{claimed}”。'
+                judge_text = f"判断下面的作答是否正确：{stem} —— {claimed}"
                 judge_options_out = ["正确", "错误"]
             judge.update(
                 {
