@@ -81,12 +81,16 @@ def test_existing_direct_chinese_fill_stays_direct():
     assert language_question_text(question) == question.text
 
 
-def test_new_option_dependent_chinese_fills_embed_candidates():
+def test_new_chinese_fill_variants_are_only_explicit_cloze_items():
     rows = built_in_question_specs(5, "语文", "统编版（人民教育出版社）")
     fills = [row for row in rows if row.get("question_type") == "fill_blank"]
-    risky = [
-        row for row in fills
-        if any(marker in row["text"] for marker in ("下列", "哪项", "哪一项", "一项是", "最恰当的一项", "最符合", "选择最"))
-    ]
-    assert risky
-    assert all("备选答案：" in row["text"] for row in risky)
+
+    assert len(fills) == 3
+    assert all("____" in row["text"] for row in fills)
+    assert all(
+        not any(
+            marker in row["text"]
+            for marker in ("下列", "哪项", "哪一项", "一项是", "最恰当的一项", "最符合", "选择最")
+        )
+        for row in fills
+    )
