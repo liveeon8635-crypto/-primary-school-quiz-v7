@@ -13,6 +13,7 @@ import re
 from typing import Any
 
 from changying.services.answer_semantics import enrich_generated_item
+from changying.services.question_figure_quality import normalize_question_figure
 
 
 VISUAL_FIGURE_TYPES = {"coordinate_grid", "geometry", "line_segment", "bar_chart", "object_group"}
@@ -103,7 +104,7 @@ def infer_reinforcement_figure(item: dict[str, Any]) -> dict[str, Any]:
 
     existing = _existing_figure(item)
     if existing:
-        return _merge_semantic_figure(item, existing)
+        return normalize_question_figure(item, _merge_semantic_figure(item, existing))
 
     knowledge = str(item.get("knowledge") or "")
     text = str(item.get("text") or "")
@@ -114,28 +115,28 @@ def infer_reinforcement_figure(item: dict[str, Any]) -> dict[str, Any]:
         points = _coordinate_points(text)
         xmax = max([8.0] + [float(p["x"]) + 1 for p in points if float(p["x"]) >= 0])
         ymax = max([8.0] + [float(p["y"]) + 1 for p in points if float(p["y"]) >= 0])
-        return {
+        return normalize_question_figure(item, {
             "type": "coordinate_grid",
             "title": "位置示意图",
             "xMax": min(12, xmax),
             "yMax": min(12, ymax),
             "points": points,
-        }
+        })
 
     if "植树" in combined or ("每隔" in text and any(unit in text for unit in ("米", "厘米", "分米"))):
-        return {
+        return normalize_question_figure(item, {
             "type": "line_segment",
             "title": "植树间隔示意图（端点是否栽树按题意判断）",
             "segments": [{"label": "间隔", "ratio": 1} for _ in range(6)],
-        }
+        })
 
-    if "组合图形" in combined or ("长方形" in text and any(key in text for key in ("剪去", "剩余", "挖去", "去掉"))):
-        return {
+    if "组合图形" in combined or ("长方形" in text and any(key in text for key in ("剪去", "剩余", "挖去", "去掉", "中间"))):
+        return normalize_question_figure(item, {
             "type": "geometry",
             "shape": "composite_rect",
             "title": "组合图形示意图",
             "labels": labels,
-        }
+        })
 
     shape = ""
     if "平行四边形" in combined:
