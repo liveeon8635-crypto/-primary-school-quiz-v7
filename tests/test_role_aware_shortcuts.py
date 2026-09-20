@@ -47,6 +47,9 @@ def test_classic_top_level_shortcuts_follow_hydrated_role():
     assert "parent:[['childLearning','▦','孩子课程','childLearning']" in html
     assert "admin:[['admin','▦','平台总览','admin']" in html
     assert "bottom.innerHTML=quick.map" in html
+    assert "data-classic-page" in html
+    assert "u.searchParams.delete('from')" in html
+    assert "/classic?legacy=1&unified=1&from=v1&page=" not in html
 
 
 def test_unified_tool_shortcuts_use_same_role_contract():
