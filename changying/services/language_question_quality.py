@@ -47,6 +47,7 @@ def chinese_choice_repair(question: Any) -> dict[str, Any] | None:
     text = str(getattr(question, "text", "") or "").strip()
     prefix = "请直接填写答案："
     core = text[len(prefix):].strip() if text.startswith(prefix) else text
+    stored_answer = _answer(question)
     for row in grade5_chinese_specs():
         if str(row.get("knowledge") or "").strip() != knowledge:
             continue
@@ -54,12 +55,15 @@ def chinese_choice_repair(question: Any) -> dict[str, Any] | None:
             continue
         options = [str(x) for x in (row.get("options") or [])]
         correct_index = int(row.get("correct_index", -1))
-        if len(options) >= 2 and 0 <= correct_index < len(options):
-            return {
-                "text": core,
-                "options": options,
-                "correct_index": correct_index,
-            }
+        if len(options) < 2 or not (0 <= correct_index < len(options)):
+            continue
+        if stored_answer and options[correct_index].strip() != stored_answer:
+            continue
+        return {
+            "text": core,
+            "options": options,
+            "correct_index": correct_index,
+        }
     return None
 
 
