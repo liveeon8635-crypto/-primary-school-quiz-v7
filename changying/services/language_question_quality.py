@@ -19,27 +19,59 @@ from types import ModuleType
 from typing import Any
 
 from changying.services.builtin_question_bank_chinese import grade5_chinese_specs
+from changying.services.builtin_question_bank_english import grade5_english_specs
 
 
-def chinese_choice_repair(question: Any) -> dict[str, Any] | None:
-    """Restore choice controls for Chinese fills mechanically derived from the reviewed choice bank.
+def _derived_fill_core(subject: str, text: str) -> str:
+    raw = str(text or "").strip()
+    prefixes = (
+        ("请直接填写答案：",) if subject == "语文"
+        else ("Write the answer:", "Complete with the correct answer:")
+    )
+    for prefix in prefixes:
+        if raw.lower().startswith(prefix.lower()):
+            return raw[len(prefix):].strip()
+    return raw
 
-    Matching requires the same knowledge key, source stem and stored correct
-    answer, so genuine teacher/AI free-text fills that do not come from the
-    baseline choice bank remain text inputs.
+
+def _safe_exact_english_fill(stem: str, answer: str) -> bool:
+    """Allow free typing only when the missing token has an objective boundary."""
+    text = str(stem or "").strip()
+    value = str(answer or "").strip()
+    if "____" not in text:
+        return False
+    if text.startswith("—"):
+        return False
+    return bool(re.fullmatch(r"[A-Za-z]+(?:'[A-Za-z]+)?", value))
+
+
+def language_choice_repair(question: Any) -> dict[str, Any] | None:
+    """Restore choice controls for unsafe fills mechanically derived from language MCQs.
+
+    A mechanically-derived language fill must not become exact-string grading
+    when the original item was reviewed as multiple choice. Chinese baseline
+    fills are therefore restored to their original choice shape. English keeps
+    only objective one-token cloze items as free text; semantic responses,
+    dialogue completions and sentence-level answers are restored to choices.
+    Genuine teacher/AI free-text questions that do not match the reviewed bank
+    remain untouched.
     """
 
-    if str(getattr(question, "subject", "") or "").strip() != "语文":
+    subject = str(getattr(question, "subject", "") or "").strip()
+    if subject not in {"语文", "英语"}:
         return None
     if str(getattr(question, "question_type", "") or "").strip().lower() != "fill_blank":
         return None
-    knowledge = str(getattr(question, "knowledge", "") or "").strip()
 
-    text = str(getattr(question, "text", "") or "").strip()
-    prefix = "请直接填写答案："
-    core = text[len(prefix):].strip() if text.startswith(prefix) else text
+    knowledge = str(getattr(question, "knowledge", "") or "").strip()
+    core = _derived_fill_core(
+        subject,
+        str(getattr(question, "text", "") or "").strip(),
+    )
     stored_answer = _answer(question)
-    for row in grade5_chinese_specs():
+    specs = grade5_chinese_specs() if subject == "语文" else grade5_english_specs()
+
+    for row in specs:
         if str(row.get("knowledge") or "").strip() != knowledge:
             continue
         if str(row.get("text") or "").strip() != core:
@@ -50,12 +82,21 @@ def chinese_choice_repair(question: Any) -> dict[str, Any] | None:
             continue
         if stored_answer and options[correct_index].strip() != stored_answer:
             continue
+        if subject == "英语" and _safe_exact_english_fill(core, stored_answer):
+            return None
         return {
             "text": core,
             "options": options,
             "correct_index": correct_index,
         }
     return None
+
+
+def chinese_choice_repair(question: Any) -> dict[str, Any] | None:
+    """Backward-compatible Chinese-only wrapper used by existing tests/callers."""
+    if str(getattr(question, "subject", "") or "").strip() != "语文":
+        return None
+    return language_choice_repair(question)
 
 
 _ENGLISH_AUX = {
@@ -192,7 +233,7 @@ def install_language_question_quality(implementation: ModuleType) -> None:
     @wraps(original_public)
     def public_question(question):
         payload = dict(original_public(question))
-        repaired = chinese_choice_repair(question)
+        repaired = language_choice_repair(question)
         if repaired:
             payload["text"] = repaired["text"]
             payload["options"] = repaired["options"]
@@ -204,7 +245,7 @@ def install_language_question_quality(implementation: ModuleType) -> None:
     @wraps(original_teacher)
     def teacher_question(question):
         payload = dict(original_teacher(question))
-        repaired = chinese_choice_repair(question)
+        repaired = language_choice_repair(question)
         if repaired:
             payload["text"] = repaired["text"]
             payload["options"] = repaired["options"]
@@ -226,7 +267,7 @@ def install_language_question_quality(implementation: ModuleType) -> None:
                     implementation.Question.school_id == user.school_id,
                 )
             )
-            repaired = chinese_choice_repair(question) if question is not None else None
+            repaired = language_choice_repair(question) if question is not None else None
             if repaired and answer.selected_index is not None:
                 idx = int(answer.selected_index)
                 if idx < 0 or idx >= len(repaired["options"]):
@@ -255,4 +296,4 @@ def install_language_question_quality(implementation: ModuleType) -> None:
     app.state.language_question_quality_installed = True
 
 
-__all__ = ["chinese_choice_repair", "install_language_question_quality", "language_question_text"]
+__all__ = ["chinese_choice_repair", "language_choice_repair", "install_language_question_quality", "language_question_text"]

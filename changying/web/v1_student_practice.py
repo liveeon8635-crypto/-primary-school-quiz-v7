@@ -22,6 +22,7 @@ from changying.services.builtin_question_bank import (
     ensure_built_in_questions,
     potential_question_catalog,
 )
+from changying.services.language_question_quality import language_choice_repair
 from changying.services.textbook_registry import (
     TextbookRegistryError,
     normalize_textbook,
@@ -54,6 +55,12 @@ _ONLINE_QUESTION_TYPE_ORDER = (
 
 
 def _online_question_type(row: Any) -> str:
+    # Selection must use the effective student-facing control, not only the
+    # historical database tag. Unsafe language fills restored to choices by the
+    # serializer belong in the choice bucket during mixed-type composition too.
+    if language_choice_repair(row):
+        return "single_choice"
+
     try:
         options = json.loads(getattr(row, "options_json", "[]") or "[]")
     except Exception:

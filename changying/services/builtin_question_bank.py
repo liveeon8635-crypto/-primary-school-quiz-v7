@@ -563,7 +563,23 @@ def _rich_language_variants(
         if fill_answer:
             fill = dict(fill_source)
             stem = str(fill_source["text"]).strip()
-            if english:
+            explanation = str(fill_source.get("explanation") or "")
+
+            # The first visible language fill must be a genuinely exact-answer
+            # item, not a multiple-choice question with its options removed.
+            # This keeps mixed-type tests real while avoiding semantic-string
+            # grading traps such as “僻静”的意思是？.
+            if knowledge_index == 0 and english:
+                fill_text = 'Complete the spelling: k___ (“友善的”).'
+                fill_answer = "kind"
+                explanation = "根据本单元人物特征词汇补全单词 kind。"
+            elif knowledge_index == 0:
+                fill_text = "补全词语：津津有____。"
+                fill_answer = "味"
+                fill["unit"] = "全册基础 · 字词积累"
+                fill["knowledge"] = "字形辨析"
+                explanation = "根据固定词语“津津有味”填写缺失的字。"
+            elif english:
                 fill_text = stem if "____" in stem else "Write the answer: " + stem
             else:
                 option_dependent = any(
@@ -600,6 +616,7 @@ def _rich_language_variants(
                     "question_type": "fill_blank",
                     "answer_json": {"answer": fill_answer, "accepted": []},
                     "figure_json": {},
+                    "explanation": explanation,
                 }
             )
             variants.append(fill)

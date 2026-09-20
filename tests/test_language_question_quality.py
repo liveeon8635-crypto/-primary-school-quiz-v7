@@ -2,7 +2,7 @@ from types import SimpleNamespace
 import json
 
 from changying.services.builtin_question_bank import built_in_question_specs
-from changying.services.language_question_quality import chinese_choice_repair, language_question_text
+from changying.services.language_question_quality import chinese_choice_repair, language_choice_repair, language_question_text
 
 
 def _q(*, text, subject="英语", question_type="fill_blank", answer="", knowledge=""):
@@ -128,3 +128,38 @@ def test_genuine_chinese_free_text_fill_stays_text_input():
         answer="虽然……但是……",
     )
     assert chinese_choice_repair(question) is None
+
+
+def test_baseline_derived_english_semantic_fill_restores_choice_shape():
+    question = _q(
+        subject="英语",
+        knowledge="人物信息理解",
+        text="Write the answer: Eric studies carefully and finishes every task on time. What is Eric like?",
+        answer="He is hard-working.",
+    )
+    repaired = language_choice_repair(question)
+    assert repaired is not None
+    assert repaired["text"] == "Eric studies carefully and finishes every task on time. What is Eric like?"
+    assert repaired["options"][repaired["correct_index"]] == "He is hard-working."
+
+
+def test_baseline_derived_english_dialogue_blank_restores_choice_shape():
+    question = _q(
+        subject="英语",
+        knowledge="人物描述句型",
+        text="—What is your new friend like? —____",
+        answer="He is quiet and polite.",
+    )
+    repaired = language_choice_repair(question)
+    assert repaired is not None
+    assert repaired["options"][repaired["correct_index"]] == "He is quiet and polite."
+
+
+def test_objective_one_token_english_cloze_keeps_text_input_shape():
+    question = _q(
+        subject="英语",
+        knowledge="人物描述句型",
+        text="Tom and I ____ good friends.",
+        answer="are",
+    )
+    assert language_choice_repair(question) is None
