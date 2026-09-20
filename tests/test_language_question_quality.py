@@ -57,6 +57,52 @@ def test_new_language_judgement_variants_use_direct_wording():
 
 
 
+def test_materialized_chinese_glyph_judgement_is_natural_statement():
+    question = _q(
+        subject="语文",
+        knowledge="字形辨析",
+        question_type="true_false",
+        text="判断下面的作答是否正确：下列词语书写完全正确的一项是 —— 胆却　允诺　典礼",
+    )
+    rendered = language_question_text(question)
+    assert rendered == "判断：“胆却　允诺　典礼”中的词语书写全部正确。"
+    assert "作答是否正确" not in rendered
+    assert "一项是" not in rendered
+
+
+def test_materialized_chinese_idiom_judgement_fills_the_sentence():
+    question = _q(
+        subject="语文",
+        knowledge="成语运用",
+        question_type="true_false",
+        text=(
+            "判断下面的作答是否正确：他把这本科学读物看了一遍又一遍，仍然______。"
+            "填入最恰当的成语是 —— 同心协力"
+        ),
+    )
+    rendered = language_question_text(question)
+    assert rendered == "判断：句子“他把这本科学读物看了一遍又一遍，仍然同心协力。”中的成语使用恰当。"
+    assert "______" not in rendered
+    assert "作答是否正确" not in rendered
+
+
+def test_materialized_chinese_sick_sentence_and_rhetoric_judgements_are_direct():
+    sick = _q(
+        subject="语文",
+        knowledge="病句辨析",
+        question_type="true_false",
+        text="判断下面的作答是否正确：下列句子没有语病的一项是 —— 老师耐心地纠正并指出了我的错误。",
+    )
+    rhetoric = _q(
+        subject="语文",
+        knowledge="修辞手法",
+        question_type="true_false",
+        text="判断下面的作答是否正确：“小溪唱着歌，欢快地奔向远方。”主要运用了什么修辞手法 —— 比喻",
+    )
+    assert language_question_text(sick) == "判断：句子“老师耐心地纠正并指出了我的错误”没有语病。"
+    assert language_question_text(rhetoric) == "判断：“小溪唱着歌，欢快地奔向远方。”主要运用了“比喻”的修辞手法。"
+
+
 def test_existing_option_dependent_chinese_fill_restores_candidates():
     question = _q(
         subject="语文",
