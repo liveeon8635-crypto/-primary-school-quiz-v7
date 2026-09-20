@@ -4730,7 +4730,7 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
         student_id=sid,
         assignment_id=b.assignment_id,
         limit=6,
-        textbook_filter="人教版",
+        textbook_filter=None,
     )
     allowed_assessment_ids=set(assessment_context.get("sourceAssignmentIDs") or [])
     context_primary=assessment_context.get("primary") or {}
@@ -4778,7 +4778,11 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
     primary=assessment_context.get("primary") or {}
     forced_grade=int(primary.get("grade") or fallback_grade)
     forced_subject=str(primary.get("subject") or (wrong[0].subject if wrong else "数学"))[:30]
-    fallback_textbook="统编版（人民教育出版社）" if forced_subject=="语文" else "人教版"
+    fallback_textbook={
+        "数学":"人教版",
+        "语文":"统编版（人民教育出版社）",
+        "英语":"人教版（PEP·当前最新版）",
+    }.get(forced_subject,"")
     forced_textbook=str(primary.get("textbook") or fallback_textbook)[:80]
     weak_names=[str(x.get("knowledge") or "") for x in (assessment_context.get("weakKnowledge") or []) if str(x.get("knowledge") or "").strip()]
     default_knowledge=(weak_names[0] if weak_names else (wrong[0].knowledge if wrong else ""))
