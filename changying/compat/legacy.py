@@ -41,7 +41,7 @@ from changying.services.assessment_context_policy import install_subject_aware_a
 from changying.services.followups import FollowUpService
 from changying.services.points import PointService
 from changying.services.reinforcement_subject_policy import install_reinforcement_subject_policy
-from changying.services.rubric_evidence_closure import install_rubric_evidence_closure
+from changying.services.rubric_evidence_closure import install_rubric_evidence_closure, manual_question_meta
 from changying.services.submission_evidence import install_canonical_submission_evidence
 from changying.services.textbook_registry import install_textbook_registry_guard
 from changying.services.teaching import TeachingService
@@ -150,6 +150,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.ASSIGNMENT_SUBMISSION_MODES = ASSIGNMENT_SUBMISSION_MODES
     implementation.assignment_mode_name = assignment_mode_name
     implementation.assignment_status = assignment_status
+    implementation.manual_question_meta = manual_question_meta
     implementation.COMMERCIAL_PLANS = COMMERCIAL_PLANS
     implementation.SUBSCRIPTION_STATUS_NAMES = SUBSCRIPTION_STATUS_NAMES
     implementation.FEATURE_NAMES = FEATURE_NAMES
