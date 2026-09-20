@@ -37,3 +37,29 @@ def test_classic_quiz_filters_blank_metadata_and_supports_nested_rectangle_figur
     assert 'filter(Boolean).join(" · ")' in html
     assert "esc(q.textbook)+' · '+esc(q.unit)+' · '+esc(q.knowledge)" not in html
     assert 'shape==="nested_rect"||shape==="rectangle_with_inner_rectangle"' in html
+
+
+
+def test_student_progress_separates_recent_submission_from_cumulative_mastery():
+    from app import app  # noqa: F401
+    import app_v924 as legacy
+
+    html = legacy.INDEX_HTML
+
+    assert "latestSubmission" in html
+    assert "最近一次作答" in html
+    assert "长期累计掌握率" in html
+    assert "长期平均分" in html
+
+
+def test_nested_rectangle_dimensions_are_placed_near_matching_edges():
+    from app import app  # noqa: F401
+    import app_v924 as legacy
+
+    html = legacy.INDEX_HTML
+
+    assert '外长 '+ " in html
+    assert '外宽 '+ " in html
+    assert '内长 '+ " in html
+    assert '内宽 '+ " in html
+    assert 'text-anchor="middle" font-size="11">外长 ' in html
