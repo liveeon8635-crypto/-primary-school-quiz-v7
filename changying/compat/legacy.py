@@ -45,6 +45,7 @@ from changying.services.rubric_evidence_closure import install_rubric_evidence_c
 from changying.services.submission_evidence import install_canonical_submission_evidence
 from changying.services.textbook_registry import install_textbook_registry_guard
 from changying.services.teaching import TeachingService
+from changying.services.teacher_ai_rich_generation import install_teacher_ai_rich_generation
 from changying.services.wrong_questions import WrongQuestionService
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
 from changying.utils.json_tools import json_list
@@ -103,6 +104,7 @@ from changying.web.v1_unified_tools_session_bridge import install_v1_unified_too
 from changying.web.reinforcement_quality import install_reinforcement_figure_fallback
 from changying.web.rubric_review_ui import install_rubric_review_ui
 from changying.web.science_teacher_ai import install_science_teacher_ai_workflow
+from changying.web.teacher_ai_rich_generation_ui import install_teacher_ai_rich_generation_ui
 
 NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -273,8 +275,10 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_reinforcement_subject_policy(implementation)
     install_rubric_evidence_closure(implementation)
     install_canonical_submission_evidence(implementation)
+    install_teacher_ai_rich_generation(implementation)
     install_textbook_registry_guard(implementation)
     install_science_teacher_ai_workflow(implementation)
+    install_teacher_ai_rich_generation_ui(implementation)
     install_reinforcement_figure_fallback(implementation)
     install_rubric_review_ui(implementation)
     install_product_shell(implementation.app)
