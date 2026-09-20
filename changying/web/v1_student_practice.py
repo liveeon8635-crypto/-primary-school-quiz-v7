@@ -204,7 +204,8 @@ def _practice_patch_html() -> str:
 .cy-practice-submit{width:100%;margin-top:14px;border:0;background:#173c78;color:#fff;border-radius:12px;padding:12px;font-weight:900}
 .cy-practice-ok{margin-top:12px;padding:12px;border-radius:12px;background:#ecfdf3;color:#166534;border:1px solid #bbf7d0}
 .cy-practice-error{margin-top:12px;padding:12px;border-radius:12px;background:#fff1f1;color:#991b1b;border:1px solid #fecaca}
-@media(max-width:720px){.cy-practice-layer{padding:0}.cy-practice-sheet{max-height:92dvh;border-radius:24px 24px 0 0;padding:16px 14px calc(28px + env(safe-area-inset-bottom))}.cy-practice-grid{grid-template-columns:1fr}}
+.cy-ai-assign-box{margin:12px 0;position:sticky;top:0;z-index:4}
+@media(max-width:720px){.cy-practice-layer{padding:0}.cy-practice-sheet{max-height:92dvh;border-radius:24px 24px 0 0;padding:16px 14px calc(28px + env(safe-area-inset-bottom))}.cy-practice-grid{grid-template-columns:1fr}.cy-ai-assign-box{top:auto;bottom:calc(8px + env(safe-area-inset-bottom));z-index:8;box-shadow:0 10px 34px rgba(23,60,120,.18)}.cy-ai-assign-box .cy-practice-submit{margin-top:10px}}
 </style>
 <script id="changying_v1_student_practice_v1-script">
 (()=>{
@@ -213,7 +214,7 @@ def _practice_patch_html() -> str:
  const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
  async function api(url,opt={}){const t=token();if(!t||t==='demo')throw new Error('演示会话不会写入真实教学数据');const headers={Authorization:'Bearer '+t,...(opt.headers||{})};if(opt.body&&!headers['Content-Type'])headers['Content-Type']='application/json';const method=String(opt.method||'GET').toUpperCase(),retrySafe=method==='GET'||url.includes('/reinforcement/generate');let r=null,lastErr=null;for(let attempt=0;attempt<(retrySafe?2:1);attempt++){try{r=await fetch(url,{...opt,headers,cache:'no-store'});lastErr=null;break}catch(err){lastErr=err;if(attempt===0&&retrySafe)await new Promise(resolve=>setTimeout(resolve,900))}}if(lastErr||!r){throw new Error('网络连接刚刚中断，请稍后再试')}if(!r.ok){let msg='操作失败 '+r.status;try{const d=await r.json();msg=d.detail||d.message||msg}catch{}throw new Error(msg)}return r.status===204?null:await r.json()}
  function close(){document.getElementById('cy-practice-layer')?.remove();document.body.style.overflow=''}
- function dueDefault(){return new Date(Date.now()+7*86400000).toISOString().slice(0,10)}
+ function dueDefault(){const d=new Date();d.setDate(d.getDate()+7);const pad=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
  async function loadOptions(sid,grade,subject,textbook){const p=new URLSearchParams();if(grade)p.set('grade',grade);if(subject)p.set('subject',subject);if(textbook)p.set('textbook',textbook);return api('/teacher/students/'+sid+'/practice-options?'+p.toString())}
  function optionRows(values,current){return values.map(v=>'<option value="'+esc(v)+'" '+(String(v)===String(current)?'selected':'')+'>'+esc(v)+'</option>').join('')}
  function renderForm(layer,data){
@@ -300,9 +301,9 @@ def _practice_patch_html() -> str:
          const accepted=(q.accepted_answers||[]).length?' <span style="color:#667085">可接受：'+esc((q.accepted_answers||[]).join(' / '))+'</span>':'';
          return '<div class="cy-ai-question"><div class="cy-ai-qmeta"><span class="cy-ai-qtag">'+esc(type)+'</span><span class="cy-ai-qtag">'+esc(q.knowledge||'知识点')+'</span></div><b>'+(i+1)+'. '+esc(q.text)+'</b>'+fig+optionHtml+'<small>'+esc(q.textbook||'')+(q.textbook&&q.knowledge?' · ':'')+esc(q.knowledge||'')+'<br><b style="display:inline">参考答案：</b>'+answer+accepted+(q.explanation?' · '+esc(q.explanation):'')+'</small></div>';
        }).join('');
-       const assignBox='<div class="cy-practice-ok" style="margin:12px 0;position:sticky;top:0;z-index:4"><b>当前仅为教师审核预览，尚未布置，学生端不会看到。</b><div style="margin-top:8px">确认题目、答案和图示无误后，再执行下面的布置。</div><div class="cy-practice-grid" style="margin-top:10px"><div class="cy-practice-field"><label>截止日期</label><input id="cy-ai-due" type="date" value="'+dueDefault()+'"></div></div><button type="button" class="cy-practice-submit" id="cy-ai-assign">审核无误，布置给该学生</button></div>';
+       const assignBox='<div class="cy-practice-ok cy-ai-assign-box"><b>状态：未布置 · 当前仅为教师审核预览，学生端不会看到。</b><div style="margin-top:8px">确认题目、答案和图示无误后，点击下面按钮才会真正布置给学生。</div><div class="cy-practice-grid" style="margin-top:10px"><div class="cy-practice-field"><label>截止日期</label><input id="cy-ai-due" type="date" value="'+dueDefault()+'"></div></div><button type="button" class="cy-practice-submit" id="cy-ai-assign">审核无误，布置给该学生</button></div>';
        result.innerHTML='<div class="cy-practice-ok"><b>反馈关联完成：</b>'+esc(draft.notice||'已根据学习反馈生成。')+'</div>'+feedback+assignBox+questions;
-       layer.querySelector('#cy-ai-assign').onclick=async ev=>{const ab=ev.currentTarget;ab.disabled=true;ab.textContent='正在布置…';try{const assigned=await api('/teacher/students/'+sid+'/reinforcement/assign',{method:'POST',body:JSON.stringify({questions:draft.items,title:'AI 针对性练习',due_date:layer.querySelector('#cy-ai-due').value,wrong_ids:draft.wrongIDs||[],instructions:'根据最近综合测试、知识模块练习和知识点反馈生成的针对性练习。完成后结果继续进入学生连续学习档案。'})});result.innerHTML='<div class="cy-practice-ok"><b>已布置 AI 针对性练习，学生端现在可见。</b>共 '+esc(assigned.questionIDs?.length||draft.items?.length||0)+' 题，只发送给当前学生。<br><button type="button" class="cy-practice-close" id="cy-ai-back" style="margin-top:9px">返回学生档案</button></div>';layer.querySelector('#cy-ai-back').onclick=()=>location.reload()}catch(err){result.insertAdjacentHTML('afterbegin','<div class="cy-practice-error">'+esc(err.message)+'</div>');ab.disabled=false;ab.textContent='审核无误，布置给该学生'}};
+       layer.querySelector('#cy-ai-assign').onclick=async ev=>{const ab=ev.currentTarget;ab.disabled=true;ab.textContent='正在布置…';try{const assigned=await api('/teacher/students/'+sid+'/reinforcement/assign',{method:'POST',body:JSON.stringify({questions:draft.items,title:'AI 针对性练习',due_date:layer.querySelector('#cy-ai-due').value,wrong_ids:draft.wrongIDs||[],instructions:'根据最近综合测试、知识模块练习和知识点反馈生成的针对性练习。完成后结果继续进入学生连续学习档案。'})});result.innerHTML='<div class="cy-practice-ok"><b>状态：已布置 · AI 针对性练习已在学生端可见。</b>共 '+esc(assigned.questionIDs?.length||draft.items?.length||0)+' 题，只发送给当前学生。<br><button type="button" class="cy-practice-close" id="cy-ai-back" style="margin-top:9px">返回学生档案</button></div>';layer.querySelector('#cy-ai-back').onclick=()=>location.reload()}catch(err){result.insertAdjacentHTML('afterbegin','<div class="cy-practice-error">'+esc(err.message)+'</div>');ab.disabled=false;ab.textContent='审核无误，布置给该学生'}};
      }catch(err){result.innerHTML='<div class="cy-practice-error">'+esc(err.message)+'</div>'}
      finally{btn.disabled=false;btn.textContent='读取反馈并生成针对性练习'}
    };
@@ -560,7 +561,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
             source = "student_comprehensive_test"
 
         due_date = (body.due_date or "").strip() or (
-            datetime.utcnow() + timedelta(days=7)
+            datetime.now(implementation.SCHOOL_TZ) + timedelta(days=7)
         ).date().isoformat()
         question_ids = [int(q.id) for q in chosen]
         paper = Paper(
