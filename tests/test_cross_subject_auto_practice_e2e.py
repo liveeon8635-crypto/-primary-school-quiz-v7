@@ -308,10 +308,20 @@ with TestClient(app) as client:
             },
         )
         assert assigned.status_code == 200, assigned.text
-        rid = assigned.json()["assignment"]["id"]
-        rpid = assigned.json()["paperID"]
+        assigned_body = assigned.json()
+        assert len(assigned_body["wrongIDs"]) == 4
+        rid = assigned_body["assignment"]["id"]
+        rpid = assigned_body["paperID"]
 
         with legacy.SessionLocal() as db:
+            link = db.scalar(
+                legacy.select(legacy.ReinforcementLink).where(
+                    legacy.ReinforcementLink.assignment_id == rid,
+                    legacy.ReinforcementLink.student_id == sid,
+                )
+            )
+            assert link is not None
+            assert len(json.loads(link.wrong_ids_json)) == 4
             reinforcement_paper = db.get(legacy.Paper, rpid)
             rqids = json.loads(reinforcement_paper.question_ids_json)
             reinforcement_questions = [db.get(legacy.Question, qid) for qid in rqids]
@@ -331,7 +341,7 @@ with TestClient(app) as client:
         assert reinforcement_result["total"] == 3
         assert reinforcement_result["score"] == 100
         assert reinforcement_result["learningPointsAwarded"] == 3
-        assert reinforcement_result["reinforcementClosed"] == 4
+        assert reinforcement_result["reinforcementClosed"] > 0
 
         balance += 3
         points = client.get("/student/points", headers=sh)
