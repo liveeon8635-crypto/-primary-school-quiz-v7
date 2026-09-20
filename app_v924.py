@@ -4227,6 +4227,13 @@ def test_admin_ai(u:User=Depends(current_user),db:Session=Depends(get_db)):
 def ai_generate_questions(b:AIQuestionGenerateBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"admin","teacher")
     if b.grade<1 or b.grade>9:raise HTTPException(400,"年级须为 1-9")
+    if "科学" in (b.subject or ""):
+        science_textbook=(b.textbook or "").strip()
+        if not science_textbook or science_textbook=="人教版":
+            raise HTTPException(
+                400,
+                "科学教材必须明确填写学校实际使用的出版社/版本；当前系统不会把通用默认“人教版”自动当作科学教材",
+            )
     count=max(1,min(int(b.count or 5),20));difficulty=(b.difficulty or "中等")[:20];refs=_resource_context(db,u.school_id,b.resource_ids)
 
     requested=(b.question_type or "auto").strip().lower()
@@ -4271,6 +4278,14 @@ def ai_generate_questions(b:AIQuestionGenerateBody,u:User=Depends(current_user),
 - 优先考真实计算、数量关系、图形或生活应用，不把定义/教学目标直接改成题干。
 - 若要求非选择题，应出计算题、解答题、应用题、操作说明题等，并提供参考过程与评分点。
 - 干扰项（若有）来自常见计算或审题错误。'''
+    elif "科学" in (b.subject or ""):
+        subject_rule='''【科学命题规则】
+- 围绕观察事实、实验现象、证据解释、结构与功能、变化与因果、系统与模型等真实科学理解命题，不把教学目标直接改成题干。
+- 教材、册次、单元严格沿用教师本次输入；不得自行猜测、替换或声称属于另一出版社、另一版本教材。
+- 题干必须给足必要的观察对象、实验条件、数据、图表文字信息或现象描述；不得假定学生看得到教材原文。
+- 若要求非选择题，应真正考查基于证据解释、预测理由、实验变量辨析或方案评价，并给参考答案与可独立核对的评分点，最终由教师确认。
+- 实验情境不得诱导学生自行实施明火、强电、危险化学品等有风险操作；可使用安全的观察材料或教师已完成实验的数据。
+- 干扰项来自真实科学误区，不用纯数学计算、语文阅读或英语语言题凑数。'''
 
     prompt=f'''你是有一线命题经验的中国小学教师。请生成“真实校内练习/单元测验”风格题目。
 
