@@ -107,11 +107,24 @@ def test_choice_like_chinese_fill_restores_single_choice_shape():
     assert len(repaired["options"]) == 4
 
 
-def test_direct_chinese_fill_keeps_text_input_shape():
+def test_baseline_derived_semantic_chinese_fill_restores_choice_shape():
     question = _q(
         subject="语文",
         knowledge="词语理解",
         text="请直接填写答案：“这条小路十分僻静。”句中“僻静”的意思是？",
         answer="偏僻而安静",
+    )
+    repaired = chinese_choice_repair(question)
+    assert repaired is not None
+    assert repaired["text"] == "“这条小路十分僻静。”句中“僻静”的意思是？"
+    assert repaired["options"][repaired["correct_index"]] == "偏僻而安静"
+
+
+def test_genuine_chinese_free_text_fill_stays_text_input():
+    question = _q(
+        subject="语文",
+        knowledge="关联词运用",
+        text="填写关联词：_____天气很冷，_____同学们仍按计划观察。",
+        answer="虽然……但是……",
     )
     assert chinese_choice_repair(question) is None
