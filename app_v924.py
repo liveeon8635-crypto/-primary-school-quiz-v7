@@ -1982,7 +1982,7 @@ def teaching_grade_answers(db,u,questions,answers):
         if a.selected_index<0 or a.selected_index>=len(opts):raise HTTPException(400,"答案选项无效")
         ok=a.selected_index==q.correct_index;correct+=1 if ok else 0
         normalized.append({"question_id":q.id,"selected_index":a.selected_index,"correct":ok})
-    total=len(normalized);score=round(correct/total*100) if total else 0
+    total=len(normalized);score=half_up_percent(correct,total)
     return normalized,correct,total,score
 
 def teaching_review_for_attempt(db,attempt,lesson):
