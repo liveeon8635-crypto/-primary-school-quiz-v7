@@ -75,7 +75,7 @@ _STUDENT_MOBILE_POLISH = r'''
     if(!rows.length){box.innerHTML='<div class="empty">暂无作业记录</div>';return}
     box.innerHTML=rows.map(x=>{
       const paper=x.paper||{},subject=x.subject||paper.subject||'',textbook=x.textbook||paper.textbook||'',unit=x.unit||paper.unit||'';
-      const qn=Number(x.questionCount??(paper.questionIDs||[]).length||0),status=x.status||((x.completed)?'已完成':'待完成');
+      const qn=Number(x.questionCount??((paper.questionIDs||[]).length||0)),status=x.status||((x.completed)?'已完成':'待完成');
       const statusClass=x.completed?' is-done':(x.overdue?' is-overdue':'');
       const assigned=x.assignedAt||x.createdAt||'',submitted=x.submittedAt||x.quizSubmittedAt||x.mediaSubmittedAt||'';
       const meta=[subject,textbook,assignmentType(x)].filter(Boolean);
@@ -94,7 +94,7 @@ _STUDENT_MOBILE_POLISH = r'''
   function renderTimeline(rows){
     const box=document.getElementById('timeline');if(!box||!Array.isArray(rows)||box.dataset.cyStudentTimeline==='1')return;
     const events=rows.map(x=>{
-      const paper=x.paper||{},subject=x.subject||paper.subject||'',textbook=x.textbook||paper.textbook||'',qn=Number(x.questionCount??(paper.questionIDs||[]).length||0);
+      const paper=x.paper||{},subject=x.subject||paper.subject||'',textbook=x.textbook||paper.textbook||'',qn=Number(x.questionCount??((paper.questionIDs||[]).length||0));
       const done=!!x.completed,time=(done?(x.submittedAt||x.quizSubmittedAt||x.mediaSubmittedAt):(x.assignedAt||x.createdAt||x.dueDate))||'';
       const parts=[subject,textbook,assignmentType(x),qn?qn+'题':'',x.status||'',x.score!==null&&x.score!==undefined?x.score+'分':''].filter(Boolean);
       return {time,title:done?'完成：'+(x.title||'学习任务'):'布置：'+(x.title||'学习任务'),detail:parts.join(' · ')};
