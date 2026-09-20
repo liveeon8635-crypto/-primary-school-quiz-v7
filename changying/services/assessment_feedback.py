@@ -22,6 +22,7 @@ AUTO_ASSESSMENT_SOURCES = {
 LEARNING_FEEDBACK_SOURCES = {
     **AUTO_ASSESSMENT_SOURCES,
     "ai_reinforcement": "reinforcement",
+    "teacher_ai_practice": "teacher_ai",
 }
 
 
