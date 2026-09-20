@@ -1,3 +1,4 @@
+from pathlib import Path
 import inspect
 
 from app_v924 import (
@@ -25,15 +26,14 @@ def test_teaching_sessions_share_the_same_rounding_contract():
 
 
 def test_learning_accuracy_views_share_the_same_half_up_contract():
-    progress_source = inspect.getsource(progress_for)
-    assert '"accuracy":half_up_percent(hit,total)' in progress_source
-    assert '"accuracy":half_up_percent(v[0],v[1])' in progress_source
-    assert "round(hit/total*100)" not in progress_source
-    assert "round(v[0]/v[1]*100)" not in progress_source
+    source = Path("app_v924.py").read_text(encoding="utf-8")
 
-    growth_source = inspect.getsource(inspect.unwrap(student_growth_profile_data))
-    assert "accuracy=half_up_percent(total_correct,total_questions)" in growth_source
+    assert '"accuracy":half_up_percent(hit,total)' in source
+    assert source.count('"accuracy":half_up_percent(v[0],v[1])') >= 2
+    assert "accuracy=half_up_percent(total_correct,total_questions)" in source
+    assert "avg_accuracy=half_up_percent(correct_sum,total_sum)" in source
 
-    teacher_source = inspect.getsource(inspect.unwrap(teacher_analytics_data))
-    assert '"accuracy":half_up_percent(v[0],v[1])' in teacher_source
-    assert "avg_accuracy=half_up_percent(correct_sum,total_sum)" in teacher_source
+    assert "round(hit/total*100)" not in source
+    assert "round(v[0]/v[1]*100)" not in source
+    assert "round(total_correct/total_questions*100)" not in source
+    assert "round(correct_sum/total_sum*100)" not in source
