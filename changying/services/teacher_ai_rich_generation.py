@@ -53,8 +53,8 @@ def resolve_requested_type(requested: str, notes: str, count: int, subject: str)
     if value not in REQUEST_TYPES:
         value = "auto"
     if value != "auto":
-        if value == "calculation" and "数学" not in str(subject or ""):
-            raise ValueError("计算题当前仅在数学科目中作为独立自动判分题型使用")
+        if value in {"calculation", "short_answer"} and "数学" not in str(subject or ""):
+            raise ValueError("计算题和可自动判分的简短应用题当前仅在数学科目中开放；其他学科请使用单选、判断、填空或教师审核主观题")
         return value
 
     text = str(notes or "")
@@ -69,7 +69,7 @@ def resolve_requested_type(requested: str, notes: str, count: int, subject: str)
     )
     for words, qtype in keyword_types:
         if any(word in text for word in words):
-            if qtype == "calculation" and "数学" not in str(subject or ""):
+            if qtype in {"calculation", "short_answer"} and "数学" not in str(subject or ""):
                 continue
             return qtype
     return "mixed" if int(count or 0) >= 3 else "single_choice"
