@@ -17,6 +17,8 @@ import json
 import app_v924 as legacy
 from app import app  # noqa: F401
 
+legacy.startup()
+
 with legacy.SessionLocal() as db:
     student = db.scalar(
         legacy.select(legacy.User).where(legacy.User.username == "student1")
