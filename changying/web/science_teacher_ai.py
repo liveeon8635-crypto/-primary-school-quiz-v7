@@ -14,6 +14,11 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from changying.services.textbook_registry import (
+    TextbookRegistryError,
+    require_textbook,
+)
+
 
 SCIENCE_TEACHER_AI_MARKER = "changying_science_teacher_ai_v1"
 _AMBIGUOUS_SCIENCE_TEXTBOOKS = frozenset(
@@ -41,6 +46,18 @@ def require_explicit_science_textbook(subject: str, textbook: str) -> str:
             "不要使用数学、语文或英语界面的通用默认教材名"
         )
     return raw_textbook
+
+
+def normalize_teacher_ai_textbook(grade: int, subject: str, textbook: str) -> str:
+    """Normalize verified Grade 5 curricula and keep science explicit."""
+    raw_subject = str(subject or "").strip()
+    raw_textbook = str(textbook or "").strip()
+    if "科学" in raw_subject:
+        return require_explicit_science_textbook(raw_subject, raw_textbook)
+    try:
+        return require_textbook(int(grade or 0), raw_subject, raw_textbook)
+    except TextbookRegistryError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def augment_science_teacher_prompt(feature: str, prompt: str) -> str:
@@ -125,20 +142,34 @@ def patch_science_teacher_ai_html(html: str) -> str:
   if(window.__cyScienceTeacherAIInstalled)return;
   window.__cyScienceTeacherAIInstalled=true;
   const ambiguous=new Set(['人教版','人教版（当前最新版）','人教版（PEP·当前最新版）','PEP·当前最新版','统编版','统编版（人民教育出版社）']);
+  const registered={5:{'数学':'人教版','语文':'统编版（人民教育出版社）','英语':'人教版（PEP·当前最新版）'}};
   function sync(prefix){
     const subject=document.getElementById(prefix+'Subject');
+    const grade=document.getElementById(prefix+'Grade');
     const textbook=document.getElementById(prefix+'Textbook');
     const hint=document.getElementById(prefix+'ScienceTextbookHint');
     if(!subject||!textbook)return;
-    const science=String(subject.value||'').includes('科学');
-    if(science&&ambiguous.has(String(textbook.value||'').trim())) textbook.value='';
-    textbook.placeholder=science?'必填：学校实际科学教材出版社/版本':'请输入教材版本';
-    textbook.setAttribute('aria-required',science?'true':'false');
+    const subjectValue=String(subject.value||'').trim();
+    const science=subjectValue.includes('科学');
+    const gradeValue=Number(grade?.value||0);
+    const canonical=(registered[gradeValue]||{})[subjectValue]||'';
+    if(science){
+      if(ambiguous.has(String(textbook.value||'').trim())) textbook.value='';
+      textbook.placeholder='必填：学校实际科学教材出版社/版本';
+      textbook.setAttribute('aria-required','true');
+    }else if(canonical){
+      textbook.value=canonical;
+      textbook.placeholder='当前核定教材';
+      textbook.setAttribute('aria-required','true');
+    }else{
+      textbook.placeholder='请输入学校实际教材版本';
+      textbook.setAttribute('aria-required','false');
+    }
     if(hint) hint.classList.toggle('hidden',!science);
   }
   document.addEventListener('change',event=>{
-    if(event.target?.id==='aqSubject')sync('aq');
-    if(event.target?.id==='alSubject')sync('al');
+    if(event.target?.id==='aqSubject'||event.target?.id==='aqGrade')sync('aq');
+    if(event.target?.id==='alSubject'||event.target?.id==='alGrade')sync('al');
   });
   const observer=new MutationObserver(()=>{sync('aq');sync('al')});
   observer.observe(document.documentElement,{subtree:true,childList:true});
@@ -191,13 +222,17 @@ def install_science_teacher_ai_workflow(implementation: ModuleType) -> None:
         def guarded(*args: Any, __original=original, **kwargs: Any):
             body = _body_from_call(args, kwargs)
             if body is not None:
+                raw_textbook = str(getattr(body, "textbook", "") or "").strip()
                 try:
-                    require_explicit_science_textbook(
+                    canonical = normalize_teacher_ai_textbook(
+                        int(getattr(body, "grade", 0) or 0),
                         str(getattr(body, "subject", "") or ""),
-                        str(getattr(body, "textbook", "") or ""),
+                        raw_textbook,
                     )
                 except ValueError as exc:
                     raise HTTPException(400, str(exc)) from exc
+                if canonical != raw_textbook:
+                    setattr(body, "textbook", canonical)
             return __original(*args, **kwargs)
 
         route.dependant.call = guarded
@@ -210,6 +245,7 @@ __all__ = [
     "SCIENCE_TEACHER_AI_MARKER",
     "augment_science_teacher_prompt",
     "install_science_teacher_ai_workflow",
+    "normalize_teacher_ai_textbook",
     "patch_science_teacher_ai_html",
     "require_explicit_science_textbook",
 ]

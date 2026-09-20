@@ -3,6 +3,7 @@ import pytest
 from changying.web.science_teacher_ai import (
     SCIENCE_TEACHER_AI_MARKER,
     augment_science_teacher_prompt,
+    normalize_teacher_ai_textbook,
     patch_science_teacher_ai_html,
     require_explicit_science_textbook,
 )
@@ -25,6 +26,22 @@ def test_science_textbook_requires_school_specific_label():
         == "人教/鄂教版·学校现用版"
     )
     assert require_explicit_science_textbook("数学", "人教版") == "人教版"
+
+
+def test_registered_grade5_teacher_ai_textbooks_normalize_and_reject_mixing():
+    assert normalize_teacher_ai_textbook(5, "数学", "人教版（当前最新版）") == "人教版"
+    assert normalize_teacher_ai_textbook(5, "语文", "统编版") == "统编版（人民教育出版社）"
+    assert normalize_teacher_ai_textbook(5, "英语", "PEP·当前最新版") == "人教版（PEP·当前最新版）"
+
+    with pytest.raises(ValueError):
+        normalize_teacher_ai_textbook(5, "语文", "人教版")
+    with pytest.raises(ValueError):
+        normalize_teacher_ai_textbook(5, "英语", "人教版")
+    with pytest.raises(ValueError):
+        normalize_teacher_ai_textbook(5, "数学", "统编版（人民教育出版社）")
+
+    assert normalize_teacher_ai_textbook(4, "数学", "学校实际教材") == "学校实际教材"
+    assert normalize_teacher_ai_textbook(5, "科学", "学校实际科学教材") == "学校实际科学教材"
 
 
 def test_science_lesson_prompt_adds_evidence_practice_and_safety_contract():
@@ -67,6 +84,10 @@ def test_science_teacher_ui_patch_adds_lesson_subject_hint_and_dynamic_default_c
     assert "ambiguous.has" in once
     assert "textbook.value=''" in once
     assert "aria-required" in once
+    assert "const registered={5:{'数学':'人教版','语文':'统编版（人民教育出版社）','英语':'人教版（PEP·当前最新版）'}}" in once
+    assert "textbook.value=canonical" in once
+    assert "event.target?.id==='aqSubject'||event.target?.id==='aqGrade'" in once
+    assert "event.target?.id==='alSubject'||event.target?.id==='alGrade'" in once
 
 
 def test_runtime_installs_science_teacher_ai_workflow_on_classic_ai_routes():
