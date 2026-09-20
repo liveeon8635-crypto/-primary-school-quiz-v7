@@ -31,7 +31,7 @@ def v1_html() -> str:
     .steps{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}}.step{{padding:15px;border:1px solid var(--line);border-radius:15px;background:#fff;min-height:110px}}.step em{{font-style:normal;font-size:11px;color:var(--blue);font-weight:900}}.step b{{display:block;margin:8px 0 5px}}.step small{{color:var(--muted);line-height:1.5}}.placeholder{{border-style:dashed;background:#fbfcfe}}
     .bottom{{display:none}}.toast{{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#172033;color:#fff;border-radius:999px;padding:10px 15px;font-size:13px;opacity:0;pointer-events:none;transition:.2s;z-index:100}}.toast.show{{opacity:1;transform:translateX(-50%) translateY(-5px)}}
     @media(max-width:980px){{.cols-4{{grid-template-columns:repeat(2,1fr)}}.cols-3{{grid-template-columns:1fr 1fr}}.steps{{grid-template-columns:repeat(2,1fr)}}}}
-    @media(max-width:720px){{.top{{height:60px;padding:0 14px}}.brand small{{display:none}}.identity-chip{{max-width:125px}}.layout{{display:block;min-height:calc(100dvh - 60px)}}.side{{display:none}}main{{padding:20px 14px calc(132px + env(safe-area-inset-bottom))}}.page-head{{align-items:flex-start;flex-direction:column}}.cols-4{{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}.cols-3,.cols-2,.identities,.steps{{grid-template-columns:1fr}}.kpi{{padding:14px}}.kpi strong{{font-size:24px;margin:5px 0 2px}}.kpi span,.kpi small{{font-size:11px}}.login-wrap{{min-height:calc(100dvh - 60px);padding:18px 14px 84px}}.login{{padding:22px 18px}}.row{{align-items:flex-start}}.bottom{{position:fixed;display:grid;grid-template-columns:repeat(5,1fr);left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));z-index:60;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:18px;padding:5px 6px;box-shadow:0 14px 40px rgba(23,60,120,.16);backdrop-filter:blur(14px)}}.bottom a{{text-align:center;font-size:10px;color:#5f6b7e;padding:4px 1px;border-radius:10px}}.bottom a span{{display:block;font-size:16px;margin-bottom:1px}}.bottom a.active{{background:#eaf1ff;color:var(--navy);font-weight:800}}}}
+    @media(max-width:720px){{.top{{height:60px;padding:0 10px;gap:8px}}.brand{{gap:7px}}.mark{{width:36px;height:36px}}.brand small{{display:none}}.top-actions{{gap:5px;min-width:0}}.identity-chip{{max-width:105px;padding:7px 8px}}.top-actions .btn{{padding:8px 9px;min-height:36px;font-size:12px}}.layout{{display:block;min-height:calc(100dvh - 60px)}}.side{{display:none}}main{{padding:20px 14px calc(132px + env(safe-area-inset-bottom))}}.page-head{{align-items:flex-start;flex-direction:column}}.cols-4{{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}.cols-3,.cols-2,.identities,.steps{{grid-template-columns:1fr}}.kpi{{padding:14px}}.kpi strong{{font-size:24px;margin:5px 0 2px}}.kpi span,.kpi small{{font-size:11px}}.login-wrap{{min-height:calc(100dvh - 60px);padding:18px 14px 84px}}.login{{padding:22px 18px}}.row{{align-items:flex-start}}.bottom{{position:fixed;display:grid;grid-template-columns:repeat(5,1fr);left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));z-index:60;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:18px;padding:5px 6px;box-shadow:0 14px 40px rgba(23,60,120,.16);backdrop-filter:blur(14px)}}.bottom a{{text-align:center;font-size:10px;color:#5f6b7e;padding:4px 1px;border-radius:10px}}.bottom a span{{display:block;font-size:16px;margin-bottom:1px}}.bottom a.active{{background:#eaf1ff;color:var(--navy);font-weight:800}}}}
   </style>
 </head>
 <body>
@@ -77,11 +77,11 @@ def v1_html() -> str:
     function roleQuickNav(){{
       const role=session?.role||'teacher';
       if(role==='student')return[
-        ['syncLearning','▦','同步课堂','/v1/tool?page=syncLearning'],
-        ['assignments','✓','我的作业','/v1/tool?page=assignments'],
-        ['practice','✎','自主练习','/v1/tool?page=practice'],
-        ['progress','◉','我的学情','/v1/tool?page=progress'],
-        ['rewards','★','积分奖励','/v1/tool?page=rewards'],
+        ['syncLearning','▦','课堂','/v1/tool?page=syncLearning'],
+        ['assignments','✓','作业','/v1/tool?page=assignments'],
+        ['practice','✎','练习','/v1/tool?page=practice'],
+        ['progress','◉','学情','/v1/tool?page=progress'],
+        ['tools','☰','更多','/v1/tool?page=__hub__'],
       ];
       if(role==='parent')return[
         ['childLearning','▦','孩子课程','/v1/tool?page=childLearning'],
