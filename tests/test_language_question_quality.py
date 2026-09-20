@@ -2,7 +2,7 @@ from types import SimpleNamespace
 import json
 
 from changying.services.builtin_question_bank import built_in_question_specs
-from changying.services.language_question_quality import language_question_text
+from changying.services.language_question_quality import chinese_fill_candidates, language_question_text
 
 
 def _q(*, text, subject="英语", question_type="fill_blank", answer="", knowledge=""):
@@ -90,3 +90,26 @@ def test_new_option_dependent_chinese_fills_embed_candidates():
     ]
     assert risky
     assert all("备选答案：" in row["text"] for row in risky)
+
+
+
+def test_option_dependent_chinese_fill_exposes_candidates_for_choice_ui():
+    question = _q(
+        subject="语文",
+        knowledge="病句辨析",
+        text="请直接填写答案：下列句子没有语病的一项是？",
+        answer="同学们认真讨论并记录了观察结果。",
+    )
+    options = chinese_fill_candidates(question)
+    assert len(options) == 4
+    assert "同学们认真讨论并记录了观察结果。" in options
+
+
+def test_direct_chinese_fill_does_not_force_candidate_mode():
+    question = _q(
+        subject="语文",
+        knowledge="词语理解",
+        text="请直接填写答案：“这条小路十分僻静。”句中“僻静”的意思是？",
+        answer="偏僻而安静",
+    )
+    assert chinese_fill_candidates(question) == []
