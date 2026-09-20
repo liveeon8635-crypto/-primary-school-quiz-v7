@@ -529,7 +529,7 @@ def _rich_language_variants(
     """Append auto-gradable language variants without rewriting baseline rows.
 
     Existing language packs are intentionally retained as reviewed multiple-choice
-    inventory.  The variants add true/false, fill-in and short-answer shapes so
+    inventory.  The variants add true/false and fill-in shapes so
     comprehensive tests can exercise the same mixed-type submission/evidence loop
     already used by mathematics.
     """
@@ -591,24 +591,6 @@ def _rich_language_variants(
                 }
             )
             variants.append(judge)
-
-        if len(items) >= 3:
-            short_source = items[2]
-            short_answer = _correct_answer(short_source)
-            if short_answer:
-                short = dict(short_source)
-                prompt = "Answer briefly: " if english else "请用简短答案作答："
-                short.update(
-                    {
-                        "text": prompt + str(short_source["text"]).strip(),
-                        "options": [],
-                        "correct_index": -1,
-                        "question_type": "short_answer",
-                        "answer_json": {"answer": short_answer, "accepted": []},
-                        "figure_json": {},
-                    }
-                )
-                variants.append(short)
 
     return variants
 
