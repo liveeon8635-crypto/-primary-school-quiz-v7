@@ -68,7 +68,7 @@ def test_assignment_batch_normalizes_safe_alias_but_rejects_cross_subject_mix():
 def test_builtin_packs_accept_safe_aliases_but_never_cross_map_textbooks():
     assert len(built_in_question_specs(5, "数学", "人教版（当前最新版）")) >= 180
     assert len(built_in_question_specs(5, "语文", "统编版")) >= 120
-    assert len(built_in_question_specs(5, "英语", "PEP·当前最新版")) == 128
+    assert len(built_in_question_specs(5, "英语", "PEP·当前最新版")) == 160
 
     assert built_in_question_specs(5, "英语", MATH_G5_TEXTBOOK) == []
     assert built_in_question_specs(5, "数学", ENGLISH_G5_TEXTBOOK) == []
