@@ -49,6 +49,37 @@ def _clean_points(value: Any) -> list[str]:
     return [str(x).strip()[:1000] for x in value if str(x).strip()][:12]
 
 
+def math_step_credit(
+    scoring_points: Any,
+    met_points: Any,
+    missed_points: Any,
+) -> dict[str, Any] | None:
+    """Derive deterministic equal-weight partial credit from teacher-authored steps.
+
+    A ratio is emitted only when every rubric point has been classified as met
+    or missed. Unresolved steps stay explicitly pending teacher confirmation,
+    so AI uncertainty can never silently become score credit.
+    """
+    points = _clean_points(scoring_points)
+    if not points:
+        return None
+    met_set = set(_clean_points(met_points))
+    missed_set = set(_clean_points(missed_points)) - met_set
+    met = [point for point in points if point in met_set]
+    missed = [point for point in points if point in missed_set]
+    unresolved = [point for point in points if point not in met_set and point not in missed_set]
+    ratio = None if unresolved else round(len(met) / len(points), 4)
+    return {
+        "earnedSteps": len(met),
+        "totalSteps": len(points),
+        "missedSteps": len(missed),
+        "unresolvedSteps": len(unresolved),
+        "unresolvedPoints": unresolved,
+        "ratio": ratio,
+        "weightPolicy": "equal",
+    }
+
+
 def manual_question_meta(question: Any) -> dict[str, Any]:
     """Return structured rubric metadata with a legacy explanation fallback."""
     data = _json_object(getattr(question, "answer_json", "{}"))
@@ -164,6 +195,7 @@ def _rubric_context(questions: list[Any]) -> list[dict[str, Any]]:
         result.append(
             {
                 "question_id": int(question.id),
+                "subject": str(question.subject or ""),
                 "knowledge": str(question.knowledge or ""),
                 "question": str(question.text or ""),
                 "reference_answer": meta["reference_answer"],
@@ -342,18 +374,40 @@ def _grading_assist_call(implementation: ModuleType):
                 ratio = None
             if ratio is not None:
                 ratio = max(0.0, min(1.0, ratio))
-            cleaned_results.append(
-                {
-                    "question_id": qid,
-                    "knowledge": rubric.get("knowledge") or "",
-                    "met_points": met,
-                    "missed_points": missed,
-                    "suggested_ratio": ratio,
-                    "needs_teacher_review": [
-                        str(x)[:500] for x in (raw.get("needs_teacher_review") or []) if str(x).strip()
-                    ][:8],
-                }
-            )
+
+            review_notes = [
+                str(x)[:500]
+                for x in (raw.get("needs_teacher_review") or [])
+                if str(x).strip()
+            ][:8]
+            step_credit = None
+            if "数学" in str(rubric.get("subject") or "") and allowed:
+                step_credit = math_step_credit(
+                    rubric.get("scoring_points") or [],
+                    met,
+                    missed,
+                )
+                if step_credit is not None:
+                    # For math calculation/application rubrics, the completion
+                    # ratio must come from the actual teacher-authored steps,
+                    # not a free-form AI percentage.
+                    ratio = step_credit["ratio"]
+                    for point in step_credit.get("unresolvedPoints") or []:
+                        note = f"评分点待教师确认：{point}"[:500]
+                        if note not in review_notes and len(review_notes) < 8:
+                            review_notes.append(note)
+
+            cleaned = {
+                "question_id": qid,
+                "knowledge": rubric.get("knowledge") or "",
+                "met_points": met,
+                "missed_points": missed,
+                "suggested_ratio": ratio,
+                "needs_teacher_review": review_notes,
+            }
+            if step_credit is not None:
+                cleaned["step_credit"] = step_credit
+            cleaned_results.append(cleaned)
         data["rubric_results"] = cleaned_results
 
         review = db.scalar(
@@ -390,7 +444,7 @@ def _grading_assist_call(implementation: ModuleType):
             "result": data,
             "review": implementation._grading_review_payload(review),
             "reviewRequired": True,
-            "notice": "AI只按教师已审核的参考答案和评分要点提供建议；最终成绩、错题与学习证据必须由教师确认。",
+            "notice": "AI只按教师已审核的参考答案和评分要点提供建议；数学计算/应用题按评分点等权折算步骤部分得分，存在未确认步骤时不自动形成完成度；最终成绩、错题与学习证据必须由教师确认。",
             "imagesUsed": len(images),
             "quizItemsUsed": len(quiz),
             "rubricItemsUsed": len(rubrics),
@@ -573,6 +627,7 @@ def _append_teacher_confirmed_evidence(
             ratio=ratio,
             met=raw.get("met_points") or [],
             missed=raw.get("missed_points") or [],
+            stepCredit=raw.get("step_credit") or {},
         )
         if not _replace_event_if_needed(
             implementation,
@@ -827,5 +882,6 @@ __all__ = [
     "MANUAL_QUESTION_TYPES",
     "install_rubric_evidence_closure",
     "manual_question_meta",
+    "math_step_credit",
     "structured_manual_answer_json",
 ]
