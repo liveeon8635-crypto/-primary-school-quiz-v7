@@ -4377,6 +4377,41 @@ def ai_generate_questions(b:AIQuestionGenerateBody,u:User=Depends(current_user),
             "notice":f"AI 已按‘{'非选择题' if requested=='non_choice' else '选择题' if requested=='choice' else '混合题型'}’生成，仍须教师审核后使用。",
             "qualityGuard":"authentic-school-exam-v2"}
 
+def _ai_question_storage_parts(q):
+    qt=(q.question_type or ("single_choice" if q.options else "non_choice")).strip().lower()
+    if qt=="choice":qt="single_choice"
+    if qt not in AUTO_GRADED_QUESTION_TYPES and qt!="non_choice":
+        raise HTTPException(400,"题型无效；仅支持单选、判断、填空、计算、应用简答和教师审核主观题")
+    opts=[str(x) for x in (q.options or [])]
+    try:ci=int(q.correct_index)
+    except Exception:ci=-1
+    answer=(q.answer or q.reference_answer or "").strip()
+    accepted=[str(x).strip() for x in (q.accepted_answers or []) if str(x).strip()][:8]
+    figure=_sanitize_figure(q.figure or {})
+    exp=q.explanation or ""
+    if qt=="non_choice":
+        ref=(q.reference_answer or q.answer or "").strip()
+        points=[str(x).strip()[:1000] for x in (q.scoring_points or []) if str(x).strip()][:12]
+        if not ref:raise HTTPException(400,"教师审核主观题必须填写参考答案")
+        opts=[];ci=-1
+        exp=("参考答案："+ref)
+        if points:exp+="\n评分要点："+"；".join(points)
+        if q.explanation.strip():exp+="\n解析："+q.explanation.strip()
+        answer_json=json.dumps({"grading":"teacher_review","reference_answer":ref,"scoring_points":points},ensure_ascii=False)
+    elif qt=="single_choice":
+        if len(opts)!=4 or ci not in range(4):raise HTTPException(400,"单选题必须有4个选项和1个正确答案")
+        answer_json=json.dumps({"answer":"","accepted":[]},ensure_ascii=False)
+    elif qt=="true_false":
+        opts=["正确","错误"]
+        if ci not in range(2):raise HTTPException(400,"判断题必须标明正确或错误")
+        answer_json=json.dumps({"answer":"","accepted":[]},ensure_ascii=False)
+    else:
+        opts=[];ci=-1
+        if not answer:raise HTTPException(400,"填空/计算/应用简答题必须有可自动判分的标准答案")
+        answer_json=json.dumps({"answer":answer,"accepted":accepted},ensure_ascii=False)
+    return qt,opts,ci,exp,answer_json,json.dumps(figure,ensure_ascii=False)
+
+
 @app.post("/ai/questions/save")
 def ai_save_questions(b:AIQuestionSaveBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"admin","teacher")
@@ -4384,17 +4419,8 @@ def ai_save_questions(b:AIQuestionSaveBody,u:User=Depends(current_user),db:Sessi
     out=[]
     for q in b.questions:
         if q.grade<1 or q.grade>9 or not q.text.strip():raise HTTPException(400,"题目格式不完整，请审核后再保存")
-        qt=(q.question_type or ("choice" if q.options else "non_choice")).strip().lower()
-        if qt=="non_choice":
-            if not q.reference_answer.strip():raise HTTPException(400,"非选择题必须填写参考答案")
-            exp=("参考答案："+q.reference_answer.strip())
-            if q.scoring_points:exp+="\n评分要点："+"；".join(str(x).strip() for x in q.scoring_points if str(x).strip())
-            if q.explanation.strip():exp+="\n解析："+q.explanation.strip()
-            opts=[];ci=-1
-        else:
-            if len(q.options)!=4 or q.correct_index not in range(4):raise HTTPException(400,"选择题必须有4个选项和1个正确答案")
-            exp=q.explanation;opts=q.options;ci=q.correct_index
-        row=Question(school_id=u.school_id,grade=q.grade,subject=q.subject[:30],textbook=q.textbook[:80],semester=q.semester[:20],unit=q.unit[:100],knowledge=q.knowledge[:120],text=q.text,options_json=json.dumps(opts,ensure_ascii=False),correct_index=ci,explanation=exp,creator_id=u.id)
+        qt,opts,ci,exp,answer_json,figure_json=_ai_question_storage_parts(q)
+        row=Question(school_id=u.school_id,grade=q.grade,subject=q.subject[:30],textbook=q.textbook[:80],semester=q.semester[:20],unit=q.unit[:100],knowledge=q.knowledge[:120],text=q.text,options_json=json.dumps(opts,ensure_ascii=False),correct_index=ci,explanation=exp,question_type=qt,answer_json=answer_json,figure_json=figure_json,creator_id=u.id)
         db.add(row);db.flush();out.append(qj(row))
     audit(db,u,"ai.questions.save",f"count={len(out)}");db.commit();return {"ok":True,"items":out}
 
@@ -4407,18 +4433,9 @@ def ai_questions_assign(b:AIQuestionAssignmentBody,u:User=Depends(current_user),
     qids=[];saved=[];has_non_choice=False
     for q in b.questions:
         if q.grade<1 or q.grade>9 or not q.text.strip():raise HTTPException(400,"题目格式不完整，请先审核")
-        qt=(q.question_type or ("choice" if q.options else "non_choice")).strip().lower()
-        if qt=="non_choice":
-            has_non_choice=True
-            if not q.reference_answer.strip():raise HTTPException(400,"非选择题必须填写参考答案")
-            opts=[];ci=-1
-            exp=("参考答案："+q.reference_answer.strip())
-            if q.scoring_points:exp+="\n评分要点："+"；".join(str(x).strip() for x in q.scoring_points if str(x).strip())
-            if q.explanation.strip():exp+="\n解析："+q.explanation.strip()
-        else:
-            if len(q.options)!=4 or q.correct_index not in range(4):raise HTTPException(400,"选择题格式不完整，请先审核")
-            opts=q.options;ci=q.correct_index;exp=q.explanation
-        row=Question(school_id=u.school_id,grade=q.grade,subject=q.subject[:30],textbook=q.textbook[:80],semester=q.semester[:20],unit=q.unit[:100],knowledge=q.knowledge[:120],text=q.text,options_json=json.dumps(opts,ensure_ascii=False),correct_index=ci,explanation=exp,creator_id=u.id)
+        qt,opts,ci,exp,answer_json,figure_json=_ai_question_storage_parts(q)
+        has_non_choice=has_non_choice or qt=="non_choice"
+        row=Question(school_id=u.school_id,grade=q.grade,subject=q.subject[:30],textbook=q.textbook[:80],semester=q.semester[:20],unit=q.unit[:100],knowledge=q.knowledge[:120],text=q.text,options_json=json.dumps(opts,ensure_ascii=False),correct_index=ci,explanation=exp,question_type=qt,answer_json=answer_json,figure_json=figure_json,creator_id=u.id)
         db.add(row);db.flush();qids.append(row.id);saved.append(qj(row))
     first=b.questions[0];title=(b.title or f"{first.subject} AI练习").strip()[:160]
     p=Paper(school_id=u.school_id,title=title,grade=first.grade,subject=first.subject[:30],textbook=first.textbook[:80],unit=first.unit[:100],question_ids_json=json.dumps(qids),teacher_id=u.id)
@@ -4426,7 +4443,7 @@ def ai_questions_assign(b:AIQuestionAssignmentBody,u:User=Depends(current_user),
     due=(b.due_date or (datetime.utcnow().date()+timedelta(days=7)).isoformat())[:20]
     a=Assignment(school_id=u.school_id,title=title,class_id=c.id,paper_id=p.id,due_date=due);db.add(a);db.flush()
     mode="media" if has_non_choice else "quiz"
-    default_instruction="含非选择题：请在作业本/答题纸完成后拍照上传，教师审核评分。" if has_non_choice else "AI生成题目，已由教师审核后布置。"
+    default_instruction="含教师审核主观题：请在作业本/答题纸完成后拍照上传，教师审核评分。" if has_non_choice else "AI生成题目，已由教师审核后布置；在线完成并由服务器判分。"
     db.add(AssignmentSubmissionSetting(school_id=u.school_id,assignment_id=a.id,mode=mode,instructions=(b.instructions or default_instruction)[:2000]))
     sids=db.scalars(select(ClassStudent.student_id).join(User,User.id==ClassStudent.student_id).where(ClassStudent.class_id==c.id,User.school_id==u.school_id,User.role=="student",User.active==True)).all()
     for sid in sids:ensure_recipient(db,a,sid,"assignment")
