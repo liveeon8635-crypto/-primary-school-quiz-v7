@@ -110,16 +110,6 @@ _RICH_CALCULATION_KNOWLEDGE = {
     "植树问题",
 }
 
-_RICH_SHORT_ANSWER_KNOWLEDGE = {
-    "实际问题与方程",
-    "平行四边形的面积",
-    "三角形的面积",
-    "梯形的面积",
-    "组合图形的面积",
-    "植树问题",
-}
-
-
 def _correct_answer(spec: dict[str, Any]) -> str:
     options = list(spec.get("options") or [])
     index = int(spec.get("correct_index", -1))
@@ -202,23 +192,6 @@ def _rich_math_variants(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     }
                 )
                 variants.append(calc)
-
-        if knowledge in _RICH_SHORT_ANSWER_KNOWLEDGE and len(items) >= 4:
-            short_source = items[3]
-            short_answer = _correct_answer(short_source)
-            if short_answer:
-                short = dict(short_source)
-                short.update(
-                    {
-                        "text": f"请列式思考后写出答案：{str(short_source['text']).strip()}",
-                        "options": [],
-                        "correct_index": -1,
-                        "question_type": "short_answer",
-                        "answer_json": {"answer": short_answer, "accepted": []},
-                        "figure_json": {},
-                    }
-                )
-                variants.append(short)
 
     return variants
 
