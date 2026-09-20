@@ -25,3 +25,15 @@ def test_learning_point_backend_contract_remains_visible_to_classic_result_ui():
     assert '/student/practice-submit' in html
     assert 'Number(r.learningPointsAwarded||0)' in html
     assert 'Number(r.learningPointMax||r.total||0)' in html
+
+
+
+def test_classic_quiz_filters_blank_metadata_and_supports_nested_rectangle_figures():
+    from app import app  # noqa: F401
+    import app_v924 as legacy
+
+    html = legacy.INDEX_HTML
+
+    assert 'filter(Boolean).join(" · ")' in html
+    assert "esc(q.textbook)+' · '+esc(q.unit)+' · '+esc(q.knowledge)" not in html
+    assert 'shape==="nested_rect"||shape==="rectangle_with_inner_rectangle"' in html
