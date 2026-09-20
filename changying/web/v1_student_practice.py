@@ -44,17 +44,99 @@ class StudentPracticeCreateBody(BaseModel):
     class_id: int | None = None
 
 
-def _is_online_question(row: Any) -> bool:
+_ONLINE_QUESTION_TYPE_ORDER = (
+    "single_choice",
+    "true_false",
+    "fill_blank",
+    "calculation",
+    "short_answer",
+)
+
+
+def _online_question_type(row: Any) -> str:
     try:
-        options = json.loads(row.options_json or "[]")
+        options = json.loads(getattr(row, "options_json", "[]") or "[]")
     except Exception:
-        return False
-    return bool(
-        isinstance(options, list)
-        and len(options) >= 2
-        and int(row.correct_index) >= 0
-        and int(row.correct_index) < len(options)
-    )
+        options = []
+    if not isinstance(options, list):
+        options = []
+
+    raw = str(getattr(row, "question_type", "") or "").strip().lower()
+    if not raw:
+        try:
+            if len(options) >= 2 and 0 <= int(getattr(row, "correct_index", -1)) < len(options):
+                return "single_choice"
+        except Exception:
+            return ""
+        return ""
+
+    if raw in {"single_choice", "true_false"}:
+        try:
+            return raw if len(options) >= 2 and 0 <= int(getattr(row, "correct_index", -1)) < len(options) else ""
+        except Exception:
+            return ""
+
+    if raw in {"fill_blank", "calculation", "short_answer"}:
+        try:
+            meta = json.loads(getattr(row, "answer_json", "{}") or "{}")
+        except Exception:
+            meta = {}
+        return raw if isinstance(meta, dict) and str(meta.get("answer") or "").strip() else ""
+
+    return ""
+
+
+def _is_online_question(row: Any) -> bool:
+    return bool(_online_question_type(row))
+
+
+def _select_type_diverse_questions(rows: list[Any], limit: int) -> list[Any]:
+    """Round-robin question types while keeping knowledge coverage broad."""
+
+    buckets: dict[str, list[Any]] = defaultdict(list)
+    for row in rows:
+        question_type = _online_question_type(row)
+        if question_type:
+            buckets[question_type].append(row)
+    for bucket in buckets.values():
+        bucket.sort(key=lambda row: int(row.id))
+
+    active_types = [
+        question_type
+        for question_type in _ONLINE_QUESTION_TYPE_ORDER
+        if buckets.get(question_type)
+    ]
+    knowledge_hits: dict[str, int] = defaultdict(int)
+    chosen: list[Any] = []
+    while len(chosen) < limit:
+        added = False
+        for question_type in active_types:
+            bucket = buckets[question_type]
+            if not bucket:
+                continue
+            row = min(
+                bucket,
+                key=lambda item: (
+                    knowledge_hits[
+                        (getattr(item, "knowledge", "") or getattr(item, "unit", "") or "综合").strip()
+                        or "综合"
+                    ],
+                    int(item.id),
+                ),
+            )
+            bucket.remove(row)
+            chosen.append(row)
+            knowledge_key = (
+                (getattr(row, "knowledge", "") or getattr(row, "unit", "") or "综合").strip()
+                or "综合"
+            )
+            knowledge_hits[knowledge_key] += 1
+            added = True
+            if len(chosen) >= limit:
+                break
+        if not added:
+            break
+    return chosen
 
 
 def select_student_practice_questions(
@@ -86,32 +168,15 @@ def select_student_practice_questions(
         key = (knowledge or "").strip()
         if not key:
             return []
-        return [row for row in eligible if (row.knowledge or "").strip() == key][:limit]
+        module_rows = [
+            row for row in eligible if (getattr(row, "knowledge", "") or "").strip() == key
+        ]
+        return _select_type_diverse_questions(module_rows, limit)
 
     if kind != "comprehensive":
         return []
 
-    grouped: dict[str, list[Any]] = defaultdict(list)
-    for row in eligible:
-        key = (row.knowledge or row.unit or "综合").strip() or "综合"
-        grouped[key].append(row)
-
-    chosen: list[Any] = []
-    keys = sorted(grouped)
-    offset = 0
-    while len(chosen) < limit:
-        added = False
-        for key in keys:
-            bucket = grouped[key]
-            if offset < len(bucket):
-                chosen.append(bucket[offset])
-                added = True
-                if len(chosen) >= limit:
-                    break
-        if not added:
-            break
-        offset += 1
-    return chosen
+    return _select_type_diverse_questions(eligible, limit)
 
 
 def _practice_patch_html() -> str:
@@ -147,7 +212,7 @@ def _practice_patch_html() -> str:
  function renderForm(layer,data){
    const body=layer.querySelector('#cy-practice-body');const student=data.student||{};const grade=data.selectedGrade||student.grade||5;const subject=data.selectedSubject||data.subjects?.[0]||'数学';const textbooks=data.textbooks||[];const textbook=data.selectedTextbook||textbooks[0]||'';
    const modules=data.modules||[];const classes=data.classes||[];
-   body.innerHTML='<div class="cy-practice-note">综合测试和知识模块练习按科目使用当前核定教材：数学使用人教版，语文使用统编版（人民教育出版社），英语使用人教版（PEP·当前最新版）；不把旧教材单元或其他出版社教材当作同一“版本”混用。当前年级科目可用约 '+esc(data.availableQuestionCount||0)+' 题；系统标准题只会在你确认添加时补入现有题库。</div>'+
+   body.innerHTML='<div class="cy-practice-note">综合测试会主动混排可自动判分的单选、判断、填空、计算等题型，并尽量覆盖不同知识模块；知识模块练习也会优先混排该模块已有题型。教材严格使用当前核定版本：数学人教版、语文统编版（人民教育出版社）、英语人教版（PEP·当前最新版）。当前年级科目可用约 '+esc(data.availableQuestionCount||0)+' 题；系统标准题只会在你确认添加时补入现有题库。</div>'+
    '<form id="cy-practice-form"><div class="cy-practice-grid">'+
    '<div class="cy-practice-field"><label>学生</label><input value="'+esc(student.name||'学生')+'" disabled></div>'+
    '<div class="cy-practice-field"><label>教学班级</label><select id="cy-p-class">'+classes.map(c=>'<option value="'+c.id+'" '+(Number(c.id)===Number(data.defaultClassID)?'selected':'')+'>'+esc(c.name)+' · '+esc(c.grade)+'年级</option>').join('')+'</select></div>'+
