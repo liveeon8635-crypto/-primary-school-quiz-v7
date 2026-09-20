@@ -155,6 +155,9 @@ for value in (
     assert value in html
 assert "只有“教师审核主观题”会走拍照/教师确认" in html
 assert "全部题目可在线作答并由服务器判分" in html
+assert "const signature=isMath?'math':'nonmath'" in html
+assert "if(isMath)rows.push(['calculation','计算题'],['short_answer','简短应用题'])" in html
+assert "event.target?.id==='aqSubject'" in html
 '''
 
     env = os.environ.copy()
