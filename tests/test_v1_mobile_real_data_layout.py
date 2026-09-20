@@ -15,3 +15,13 @@ def test_v1_student_position_labels_do_not_merge_grade_and_teaching_affiliation_
     assert "当前教学归属：" in html
     assert "studentPosition(p)" in html
     assert "studentPosition(s)" in html
+
+
+def test_student_mobile_bottom_nav_uses_short_labels_and_more_hub():
+    html = v1_html()
+    assert "['syncLearning','▦','课堂','/v1/tool?page=syncLearning']" in html
+    assert "['assignments','✓','作业','/v1/tool?page=assignments']" in html
+    assert "['practice','✎','练习','/v1/tool?page=practice']" in html
+    assert "['progress','◉','学情','/v1/tool?page=progress']" in html
+    assert "['tools','☰','更多','/v1/tool?page=__hub__']" in html
+    assert ".identity-chip{max-width:105px" in html
