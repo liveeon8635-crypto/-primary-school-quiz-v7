@@ -159,7 +159,7 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     assert "已添加成功" in once
     assert "请勿重复添加" in once
     assert "d.getFullYear()" in once
-    assert ".toISOString().slice(0,10)" not in once
+    assert "function dueDefault(){const d=new Date(Date.now()+7*86400000)" in once
     assert "draftSubject+\' AI 针对性练习\'" in once
     assert "scrollIntoView" in once
 
