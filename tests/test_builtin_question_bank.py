@@ -105,13 +105,46 @@ def test_grade5_chinese_pack_is_large_and_covers_core_language_modules():
     }
     assert expected <= set(counts)
     assert min(counts[name] for name in expected) >= 8
+    baseline = [row for row in specs if not row.get("question_type")]
+    assert len(baseline) == 128
     for row in specs:
         assert row["grade"] == 5
         assert row["subject"] == "语文"
         assert row["textbook"] == "统编版（人民教育出版社）"
+    for row in baseline:
         assert len(row["options"]) == 4
         assert len(set(row["options"])) == 4
         assert 0 <= row["correct_index"] < 4
+
+
+def test_grade5_chinese_pack_has_mixed_auto_gradable_question_shapes():
+    specs = built_in_question_specs(5, "语文", "统编版（人民教育出版社）")
+    types = Counter((row.get("question_type") or "single_choice") for row in specs)
+    assert len(specs) == 160
+    assert types["single_choice"] == 128
+    assert types["true_false"] == 16
+    assert types["fill_blank"] == 16
+    assert types.get("short_answer", 0) == 0
+    for row in specs:
+        question_type = row.get("question_type") or "single_choice"
+        if question_type in {"single_choice", "true_false"}:
+            assert len(row["options"]) >= 2
+            assert 0 <= int(row["correct_index"]) < len(row["options"])
+        else:
+            assert question_type == "fill_blank"
+            assert row["options"] == []
+            assert row["correct_index"] == -1
+            assert row["answer_json"]["answer"]
+
+
+def test_grade5_english_pack_has_mixed_auto_gradable_question_shapes():
+    specs = built_in_question_specs(5, "英语", "人教版（PEP·当前最新版）")
+    types = Counter((row.get("question_type") or "single_choice") for row in specs)
+    assert len(specs) == 160
+    assert types["single_choice"] == 128
+    assert types["true_false"] == 16
+    assert types["fill_blank"] == 16
+    assert types.get("short_answer", 0) == 0
 
 
 def test_grade5_math_pack_uses_current_pep_textbook_only():
@@ -129,7 +162,7 @@ def test_grade5_math_pack_uses_current_pep_textbook_only():
 def test_grade5_english_pack_uses_current_pep_textbook_only():
     textbook = "人教版（PEP·当前最新版）"
     assert built_in_textbooks(5, "英语") == [textbook]
-    assert len(built_in_question_specs(5, "英语", textbook)) == 128
+    assert len(built_in_question_specs(5, "英语", textbook)) == 160
     for legacy_or_other in (
         "人教PEP",
         "人教版",

@@ -4416,7 +4416,7 @@ def _ai_question_storage_parts(q):
         if len(opts)!=4 or ci not in range(4):raise HTTPException(400,"单选题必须有4个选项和1个正确答案")
         answer_json=json.dumps({"answer":"","accepted":[]},ensure_ascii=False)
     elif qt=="true_false":
-        opts=["正确","错误"]
+        opts=["True","False"] if str(q.subject or "").strip()=="英语" else ["正确","错误"]
         if ci not in range(2):raise HTTPException(400,"判断题必须标明正确或错误")
         answer_json=json.dumps({"answer":"","accepted":[]},ensure_ascii=False)
     else:
@@ -4719,6 +4719,21 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
     )
     if b.assignment_id:q=q.where(WrongQuestionRecord.assignment_id==b.assignment_id)
     wrong=db.scalars(q.order_by(WrongQuestionRecord.id.desc()).limit(60)).all()
+    scope_hint=student_assessment_context(
+        db,
+        AssignmentRecipient=AssignmentRecipient,
+        Assignment=Assignment,
+        Submission=Submission,
+        Paper=Paper,
+        Question=Question,
+        school_id=u.school_id,
+        student_id=sid,
+        assignment_id=b.assignment_id,
+        limit=1,
+        textbook_filter=None,
+        subject_filter=None,
+    )
+    scope_primary=scope_hint.get("primary") or {}
     assessment_context=student_assessment_context(
         db,
         AssignmentRecipient=AssignmentRecipient,
@@ -4730,7 +4745,8 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
         student_id=sid,
         assignment_id=b.assignment_id,
         limit=6,
-        textbook_filter="人教版",
+        textbook_filter=str(scope_primary.get("textbook") or "").strip() or None,
+        subject_filter=str(scope_primary.get("subject") or "").strip() or None,
     )
     allowed_assessment_ids=set(assessment_context.get("sourceAssignmentIDs") or [])
     context_primary=assessment_context.get("primary") or {}
@@ -4778,7 +4794,11 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
     primary=assessment_context.get("primary") or {}
     forced_grade=int(primary.get("grade") or fallback_grade)
     forced_subject=str(primary.get("subject") or (wrong[0].subject if wrong else "数学"))[:30]
-    fallback_textbook="统编版（人民教育出版社）" if forced_subject=="语文" else "人教版"
+    fallback_textbook={
+        "数学":"人教版",
+        "语文":"统编版（人民教育出版社）",
+        "英语":"人教版（PEP·当前最新版）",
+    }.get(forced_subject,"")
     forced_textbook=str(primary.get("textbook") or fallback_textbook)[:80]
     weak_names=[str(x.get("knowledge") or "") for x in (assessment_context.get("weakKnowledge") or []) if str(x.get("knowledge") or "").strip()]
     default_knowledge=(weak_names[0] if weak_names else (wrong[0].knowledge if wrong else ""))
@@ -4799,7 +4819,7 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
             if len(opts)!=4 or ci not in range(4):continue
             answer="";accepted=[]
         elif qt=="true_false":
-            opts=["正确","错误"]
+            opts=["True","False"] if forced_subject=="英语" else ["正确","错误"]
             if ci not in range(2):continue
             answer="";accepted=[]
         else:
@@ -4859,7 +4879,7 @@ def teacher_reinforcement_assign(sid:int,b:AIReinforcementAssignBody,u:User=Depe
             if len(opts)!=4 or ci not in range(4):raise HTTPException(400,"单选题必须有4个选项和1个正确答案")
             answer="";accepted=[]
         elif qt=="true_false":
-            opts=["正确","错误"]
+            opts=["True","False"] if str(q.subject or "").strip()=="英语" else ["正确","错误"]
             if ci not in range(2):raise HTTPException(400,"判断题必须标明正确或错误")
             answer="";accepted=[]
         else:

@@ -202,3 +202,62 @@ def test_teacher_ai_preview_places_nested_rectangle_dimensions_on_edges():
     assert "外宽 '+esc(labels['外宽'])" in html
     assert "内长 '+esc(labels['内长'])" in html
     assert "内宽 '+esc(labels['内宽'])" in html
+
+
+
+def _materialized_rows_from_specs(specs):
+    import json
+
+    rows = []
+    for i, spec in enumerate(specs, start=1000):
+        rows.append(
+            SimpleNamespace(
+                id=i,
+                knowledge=spec["knowledge"],
+                unit=spec["unit"],
+                textbook=spec["textbook"],
+                options_json=json.dumps(spec.get("options") or [], ensure_ascii=False),
+                correct_index=int(spec.get("correct_index", -1)),
+                question_type=str(spec.get("question_type") or ""),
+                answer_json=json.dumps(spec.get("answer_json") or {}, ensure_ascii=False),
+            )
+        )
+    return rows
+
+
+def test_current_english_comprehensive_test_is_mixed_type():
+    from changying.services.builtin_question_bank import built_in_question_specs
+
+    textbook = "人教版（PEP·当前最新版）"
+    rows = _materialized_rows_from_specs(
+        built_in_question_specs(5, "英语", textbook)
+    )
+    chosen = select_student_practice_questions(
+        rows,
+        kind="comprehensive",
+        count=10,
+        textbook=textbook,
+    )
+    types = {_online_type.question_type or "single_choice" for _online_type in chosen}
+
+    assert len(chosen) == 10
+    assert {"single_choice", "true_false", "fill_blank"} <= types
+
+
+def test_current_chinese_comprehensive_test_is_mixed_type():
+    from changying.services.builtin_question_bank import built_in_question_specs
+
+    textbook = "统编版（人民教育出版社）"
+    rows = _materialized_rows_from_specs(
+        built_in_question_specs(5, "语文", textbook)
+    )
+    chosen = select_student_practice_questions(
+        rows,
+        kind="comprehensive",
+        count=10,
+        textbook=textbook,
+    )
+    types = {_online_type.question_type or "single_choice" for _online_type in chosen}
+
+    assert len(chosen) == 10
+    assert {"single_choice", "true_false", "fill_blank"} <= types

@@ -71,14 +71,14 @@ def test_context_is_scoped_to_primary_subject():
         "assessmentCount": 3,
         "sourceAssignmentIDs": [9, 8, 7],
         "assessments": [
-            {"assignmentID": 9, "subject": "语文", "score": 70},
-            {"assignmentID": 8, "subject": "数学", "score": 80},
-            {"assignmentID": 7, "subject": "语文", "score": 90},
+            {"assignmentID": 9, "subject": "语文", "textbook": "人教版", "score": 70},
+            {"assignmentID": 8, "subject": "数学", "textbook": "人教版", "score": 80},
+            {"assignmentID": 7, "subject": "语文", "textbook": "人教版", "score": 90},
         ],
         "weakKnowledge": [
-            {"subject": "数学", "knowledge": "梯形的面积", "accuracy": 20},
-            {"subject": "语文", "knowledge": "病句辨析", "accuracy": 50},
-            {"subject": "语文", "knowledge": "提取关键信息", "accuracy": 60},
+            {"subject": "数学", "textbook": "人教版", "knowledge": "梯形的面积", "accuracy": 20},
+            {"subject": "语文", "textbook": "人教版", "knowledge": "病句辨析", "accuracy": 50},
+            {"subject": "语文", "textbook": "人教版", "knowledge": "提取关键信息", "accuracy": 60},
         ],
     }
     scoped = scope_context_to_primary_subject(context)
@@ -87,6 +87,32 @@ def test_context_is_scoped_to_primary_subject():
     assert {x["subject"] for x in scoped["assessments"]} == {"语文"}
     assert {x["subject"] for x in scoped["weakKnowledge"]} == {"语文"}
     assert scoped["primary"]["assignmentID"] == 9
+
+
+def test_context_scope_also_blocks_other_textbook_lines():
+    context = {
+        "primary": {
+            "assignmentID": 11,
+            "subject": "数学",
+            "textbook": "人教版",
+        },
+        "assessmentCount": 3,
+        "sourceAssignmentIDs": [11, 10, 9],
+        "assessments": [
+            {"assignmentID": 11, "subject": "数学", "textbook": "人教版", "score": 60},
+            {"assignmentID": 10, "subject": "数学", "textbook": "北师大版", "score": 80},
+            {"assignmentID": 9, "subject": "数学", "textbook": "人教版", "score": 90},
+        ],
+        "weakKnowledge": [
+            {"subject": "数学", "textbook": "北师大版", "knowledge": "分数", "accuracy": 20},
+            {"subject": "数学", "textbook": "人教版", "knowledge": "小数乘法", "accuracy": 40},
+        ],
+    }
+    scoped = scope_context_to_primary_subject(context)
+    assert scoped["assessmentCount"] == 2
+    assert scoped["sourceAssignmentIDs"] == [11, 9]
+    assert {x["textbook"] for x in scoped["assessments"]} == {"人教版"}
+    assert {x["textbook"] for x in scoped["weakKnowledge"]} == {"人教版"}
 
 
 def test_non_chinese_subject_gets_cross_subject_ignore_instruction():
@@ -115,6 +141,8 @@ def test_runtime_context_policy_precedes_subject_scope_and_route_filters_wrong_s
     assert 'str(x.subject or "").strip()==context_subject' in source
     assert 'forced_subject!="数学"' in source
     assert 'if forced_subject=="数学" else {}' in source
+    assert 'textbook_filter=None' in source
+    assert '"英语":"人教版（PEP·当前最新版）"' in source
 
 
 

@@ -77,14 +77,3 @@ def test_classic_progress_separates_latest_submission_from_long_term_mastery():
     assert '长期累计掌握率' in html
     assert '最近一次作答与长期累计分开查看' in html
 
-
-def test_classic_nested_rectangle_places_dimensions_next_to_geometry():
-    from app import app  # noqa: F401
-    import app_v924 as legacy
-
-    html = legacy.INDEX_HTML
-
-    assert '外长 '+esc(labels["外长"]) in html
-    assert '外宽 '+esc(labels["外宽"]) in html
-    assert '内长 '+esc(labels["内长"]) in html
-    assert '内宽 '+esc(labels["内宽"]) in html

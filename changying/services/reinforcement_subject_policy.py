@@ -93,20 +93,29 @@ def normalize_science_reinforcement_items(
 
 
 def scope_context_to_primary_subject(context: dict[str, Any]) -> dict[str, Any]:
-    """Keep one reinforcement generation cycle inside a single school subject."""
+    """Keep one reinforcement cycle inside the primary subject and textbook line."""
     if not isinstance(context, dict):
         return context
     primary = dict(context.get("primary") or {})
     subject = str(primary.get("subject") or "").strip()
+    textbook = str(primary.get("textbook") or "").strip()
     if not subject:
         return context
     assessments = [
         x for x in (context.get("assessments") or [])
         if str((x or {}).get("subject") or "").strip() == subject
+        and (
+            not textbook
+            or str((x or {}).get("textbook") or "").strip() == textbook
+        )
     ]
     weak = [
         x for x in (context.get("weakKnowledge") or [])
         if str((x or {}).get("subject") or "").strip() == subject
+        and (
+            not textbook
+            or str((x or {}).get("textbook") or "").strip() == textbook
+        )
     ]
     out = dict(context)
     out["assessments"] = assessments
