@@ -1508,7 +1508,8 @@ def grade_answers(db,u,answers,allowed_question_ids=None,require_all=False):
         normalized.append(normalized_item)
     if require_all and allowed is not None and seen!=allowed:
         raise HTTPException(400,"请完成试卷全部题目后再提交")
-    total=len(normalized);score=round(correct/total*100) if total else 0
+    total=len(normalized)
+    score=((correct*200+total)//(2*total)) if total else 0
     return normalized,correct,total,score
 
 # ---------------- V7.3 lifecycle / assignment snapshots ----------------
