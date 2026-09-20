@@ -192,3 +192,13 @@ def test_selector_never_mixes_textbook_versions():
 
     assert {row.id for row in chosen} == {2, 4}
     assert {row.textbook for row in chosen} == {"北师大版"}
+
+
+
+def test_teacher_ai_preview_places_nested_rectangle_dimensions_on_edges():
+    html = patch_v1_student_practice_html(v1_html())
+
+    assert "外长 '+esc(labels['外长'])" in html
+    assert "外宽 '+esc(labels['外宽'])" in html
+    assert "内长 '+esc(labels['内长'])" in html
+    assert "内宽 '+esc(labels['内宽'])" in html
