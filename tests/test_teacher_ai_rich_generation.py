@@ -34,8 +34,8 @@ with TestClient(app) as client:
 
     def fake_ai_call(db, user, feature, prompt, images=None, timeout=90):
         assert feature in {"question_generation", "question_generation_repair"}
-        assert "标准题型协议" in prompt
-        assert "single_choice" in prompt and "non_choice" in prompt
+        assert "【题型硬性要求】" in prompt
+        assert "single_choice" in prompt and "fill_blank" in prompt
         return json.dumps({
             "questions": [
                 {
@@ -79,12 +79,12 @@ with TestClient(app) as client:
                     "explanation": "5×2=10"
                 },
                 {
-                    "question_type": "non_choice",
-                    "text": "说明为什么这样列式。",
-                    "reference_answer": "根据每袋质量乘袋数求总质量。",
-                    "scoring_points": ["数量关系正确", "理由清楚"],
-                    "knowledge": "应用题",
-                    "explanation": "教师审核"
+                    "question_type": "fill_blank",
+                    "text": "10千克也可以写成____kg。",
+                    "answer": "10",
+                    "accepted_answers": ["10.0"],
+                    "knowledge": "单位换算",
+                    "explanation": "千克与kg是同一单位表达"
                 },
             ]
         }, ensure_ascii=False)
@@ -109,17 +109,17 @@ with TestClient(app) as client:
     )
     assert generated.status_code == 200, generated.text
     body = generated.json()
-    assert body["qualityGuard"] == "canonical-rich-types-v1"
+    assert body["qualityGuard"] == "authentic-school-exam-v3-rich-types"
     assert body["questionType"] == "mixed"
     assert [x["question_type"] for x in body["items"]] == [
-        "single_choice", "true_false", "fill_blank", "calculation", "short_answer", "non_choice"
+        "single_choice", "true_false", "fill_blank", "calculation", "short_answer", "fill_blank"
     ]
     assert body["items"][1]["options"] == ["正确", "错误"]
     assert body["items"][2]["answer"] == "3"
     assert body["items"][2]["accepted_answers"] == ["3.0"]
     assert body["items"][4]["accepted_answers"] == ["10", "10kg"]
-    assert body["items"][5]["reference_answer"]
-    assert body["items"][5]["scoring_points"] == ["数量关系正确", "理由清楚"]
+    assert body["items"][5]["answer"] == "10"
+    assert all(x["question_type"] != "non_choice" for x in body["items"])
 
     science = client.post(
         "/ai/questions/generate",
