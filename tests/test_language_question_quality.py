@@ -107,6 +107,26 @@ def test_choice_like_chinese_fill_restores_single_choice_shape():
     assert len(repaired["options"]) == 4
 
 
+def test_materialized_candidate_chinese_fill_restores_single_choice_shape():
+    question = _q(
+        subject="语文",
+        knowledge="病句辨析",
+        text=(
+            "请从备选答案中选择，并输入完整答案：下列句子没有语病的一项是？ "
+            "备选答案：A. 经过努力，小组终于完成了实验记录。；"
+            "B. 公园里到处是盛开的花朵和清脆的鸟鸣。；"
+            "C. 我们必须认真改正并发现学习中的问题。；"
+            "D. 这篇文章的内容和插图都很丰富。"
+        ),
+        answer="经过努力，小组终于完成了实验记录。",
+    )
+    repaired = chinese_choice_repair(question)
+    assert repaired is not None
+    assert repaired["text"] == "下列句子没有语病的一项是？"
+    assert repaired["options"][repaired["correct_index"]] == "经过努力，小组终于完成了实验记录。"
+    assert len(repaired["options"]) == 4
+
+
 def test_baseline_derived_semantic_chinese_fill_restores_choice_shape():
     question = _q(
         subject="语文",
