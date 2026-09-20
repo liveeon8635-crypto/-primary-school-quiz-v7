@@ -1,7 +1,9 @@
 from changying.services.reinforcement_subject_policy import (
     augment_reinforcement_prompt,
+    explicit_science_textbook,
     normalize_science_reinforcement_items,
     reinforcement_subject_from_prompt,
+    require_explicit_science_textbook,
     scope_context_to_primary_subject,
 )
 from changying.web.reinforcement_quality import infer_reinforcement_figure
@@ -183,3 +185,57 @@ def test_science_reinforcement_normalizer_keeps_only_objective_safe_types():
         "fill_blank",
     ]
     assert all(row["figure"] == {} for row in rows)
+
+
+
+def test_science_textbook_integrity_rejects_generic_defaults():
+    assert explicit_science_textbook("") == ""
+    assert explicit_science_textbook("人教版") == ""
+    assert explicit_science_textbook("统编版（人民教育出版社）") == ""
+    assert explicit_science_textbook("学校实际科学教材·五年级上册") == "学校实际科学教材·五年级上册"
+
+    import pytest
+    with pytest.raises(ValueError):
+        require_explicit_science_textbook("人教版")
+
+
+def test_science_reinforcement_overwrites_legacy_people_education_fallback():
+    source = [
+        {
+            "question_type": "single_choice",
+            "subject": "科学",
+            "textbook": "人教版",
+            "text": "根据观察选择正确解释。",
+            "options": ["A", "B", "C", "D"],
+            "correct_index": 0,
+            "figure": {"type": "coordinate_grid"},
+        }
+    ]
+
+    unresolved = normalize_science_reinforcement_items(source, textbook="")
+    assert unresolved[0]["textbook"] == ""
+    assert unresolved[0]["figure"] == {}
+
+    explicit = normalize_science_reinforcement_items(
+        source,
+        textbook="学校实际科学教材·五年级上册",
+    )
+    assert explicit[0]["textbook"] == "学校实际科学教材·五年级上册"
+    assert explicit[0]["figure"] == {}
+
+
+def test_runtime_reinforcement_assignment_has_science_textbook_integrity_guard():
+    import app  # noqa: F401
+    import app_v924 as legacy
+
+    route = next(
+        route
+        for route in legacy.app.routes
+        if getattr(route, "path", None) == "/teacher/students/{sid}/reinforcement/assign"
+        and "POST" in getattr(route, "methods", set())
+    )
+    assert getattr(
+        route.dependant.call,
+        "_science_textbook_integrity_guard",
+        False,
+    ) is True
