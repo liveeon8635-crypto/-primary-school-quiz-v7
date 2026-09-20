@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from changying.services.rubric_evidence_closure import (
     _grading_assist_call,
     manual_question_meta,
+    math_step_credit,
     structured_manual_answer_json,
 )
 
@@ -78,3 +79,33 @@ def test_runtime_installs_rubric_evidence_closure():
         and "POST" in getattr(route, "methods", set())
     )
     assert hasattr(save_route.dependant.call, "__wrapped__")
+
+
+def test_math_step_credit_is_deterministic_when_all_steps_are_classified():
+    credit = math_step_credit(
+        ["列式正确", "计算过程正确", "答语和单位正确"],
+        ["列式正确", "答语和单位正确"],
+        ["计算过程正确"],
+    )
+    assert credit == {
+        "earnedSteps": 2,
+        "totalSteps": 3,
+        "missedSteps": 1,
+        "unresolvedSteps": 0,
+        "unresolvedPoints": [],
+        "ratio": 0.6667,
+        "weightPolicy": "equal",
+    }
+
+
+def test_math_step_credit_keeps_unresolved_steps_for_teacher_confirmation():
+    credit = math_step_credit(
+        ["列式正确", "计算过程正确", "答语和单位正确"],
+        ["列式正确"],
+        ["答语和单位正确"],
+    )
+    assert credit["earnedSteps"] == 1
+    assert credit["totalSteps"] == 3
+    assert credit["unresolvedSteps"] == 1
+    assert credit["unresolvedPoints"] == ["计算过程正确"]
+    assert credit["ratio"] is None
