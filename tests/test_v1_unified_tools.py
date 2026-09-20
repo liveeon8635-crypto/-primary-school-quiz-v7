@@ -25,7 +25,8 @@ def test_unified_patch_replaces_direct_classic_navigation():
     assert V1_UNIFIED_TOOLS_MARKER in html
     assert "function roleQuickNav()" in html
     assert "['tools','⌘','全部功能','/v1/tool']" in html
-    assert "['assignments','✓','我的作业','/v1/tool?page=assignments']" in html
+    assert "['assignments','✓','作业','/v1/tool?page=assignments']" in html
+    assert "['tools','☰','更多','/v1/tool?page=__hub__']" in html
     assert "/v1/workspace?focus=capabilities" not in html
     assert "全部功能" in html
     assert "a[data-cy-capability]" in html
@@ -54,7 +55,7 @@ def test_runtime_installs_same_tab_unified_tool_route_and_final_patch():
         assert V1_UNIFIED_TOOLS_MARKER in v1.text
         assert 'function roleQuickNav()' in v1.text
         assert "['tools','⌘','全部功能','/v1/tool']" in v1.text
-        assert "['assignments','✓','我的作业','/v1/tool?page=assignments']" in v1.text
+        assert "['assignments','✓','作业','/v1/tool?page=assignments']" in v1.text
         tool = client.get('/v1/tool?page=classes', follow_redirects=False)
         assert tool.status_code == 307
         assert tool.headers['location'] == '/classic?legacy=1&unified=1&from=v1&page=classes'
