@@ -105,10 +105,13 @@ def test_grade5_chinese_pack_is_large_and_covers_core_language_modules():
     }
     assert expected <= set(counts)
     assert min(counts[name] for name in expected) >= 8
+    baseline = [row for row in specs if not row.get("question_type")]
+    assert len(baseline) == 128
     for row in specs:
         assert row["grade"] == 5
         assert row["subject"] == "语文"
         assert row["textbook"] == "统编版（人民教育出版社）"
+    for row in baseline:
         assert len(row["options"]) == 4
         assert len(set(row["options"])) == 4
         assert 0 <= row["correct_index"] < 4
