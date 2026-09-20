@@ -54,7 +54,7 @@ def resolve_requested_type(requested: str, notes: str, count: int, subject: str)
         value = "auto"
     if value != "auto":
         if value in {"calculation", "short_answer"} and "数学" not in str(subject or ""):
-            raise ValueError("计算题和可自动判分的简短应用题当前仅在数学科目中开放；其他学科请使用单选、判断、填空或教师审核主观题")
+            raise ValueError(f"{str(subject or '').strip() or '当前科目'}不开放计算题或可自动判分的简短应用题；请使用单选、判断、填空或教师审核主观题")
         return value
 
     text = str(notes or "")
