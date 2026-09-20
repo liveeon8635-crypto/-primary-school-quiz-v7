@@ -101,6 +101,8 @@ def test_runtime_installs_science_teacher_ai_workflow_on_classic_ai_routes():
 
     targets = {
         ("/ai/questions/generate", "POST"),
+        ("/ai/questions/save", "POST"),
+        ("/ai/questions/assign", "POST"),
         ("/ai/lesson-plan/generate", "POST"),
         ("/ai/lesson-plan/practice", "POST"),
     }
