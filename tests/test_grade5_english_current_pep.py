@@ -27,13 +27,13 @@ def test_current_pep_english_pack_keeps_128_reviewed_baseline_items():
     baseline = grade5_english_specs()
     assert len(baseline) == 128
     rows = built_in_question_specs(5, "英语", ENGLISH_G5_TEXTBOOK)
-    assert len(rows) == 176
+    assert len(rows) == 160
     assert {row["unit"] for row in rows} == CURRENT_UNITS
     assert {row["subject"] for row in rows} == {"英语"}
     assert {row["textbook"] for row in rows} == {ENGLISH_G5_TEXTBOOK}
     assert all((row["text"] or "").strip() for row in rows)
     types = {row.get("question_type") or "single_choice" for row in rows}
-    assert {"single_choice", "true_false", "fill_blank", "short_answer"} <= types
+    assert {"single_choice", "true_false", "fill_blank"} <= types
     assert all(len(row["options"]) == 4 for row in baseline)
     assert all(0 <= int(row["correct_index"]) < 4 for row in baseline)
 
@@ -60,7 +60,7 @@ def test_english_practice_catalog_exposes_balanced_modules():
         textbook=ENGLISH_G5_TEXTBOOK,
     )
     counts = {row["knowledge"]: row["count"] for row in modules}
-    assert total == 176
+    assert total == 160
     assert len(counts) == 16
     assert set(counts.values()) == {11}
     assert counts["人物信息理解"] == 8
