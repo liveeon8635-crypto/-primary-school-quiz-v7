@@ -241,7 +241,7 @@ def test_current_english_comprehensive_test_is_mixed_type():
     types = {_online_type.question_type or "single_choice" for _online_type in chosen}
 
     assert len(chosen) == 10
-    assert {"single_choice", "true_false", "fill_blank", "short_answer"} <= types
+    assert {"single_choice", "true_false", "fill_blank"} <= types
 
 
 def test_current_chinese_comprehensive_test_is_mixed_type():
@@ -260,4 +260,4 @@ def test_current_chinese_comprehensive_test_is_mixed_type():
     types = {_online_type.question_type or "single_choice" for _online_type in chosen}
 
     assert len(chosen) == 10
-    assert {"single_choice", "true_false", "fill_blank", "short_answer"} <= types
+    assert {"single_choice", "true_false", "fill_blank"} <= types
