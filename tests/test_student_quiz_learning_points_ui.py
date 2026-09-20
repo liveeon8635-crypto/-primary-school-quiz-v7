@@ -77,3 +77,17 @@ def test_classic_progress_separates_latest_submission_from_long_term_mastery():
     assert '长期累计掌握率' in html
     assert '最近一次作答与长期累计分开查看' in html
 
+
+
+
+def test_student_quiz_supports_candidate_text_answer_mode():
+    from app import app  # noqa: F401
+    import app_v924 as legacy
+
+    html = legacy.INDEX_HTML
+
+    assert 'answerMode||""' in html
+    assert '"candidate_text"' in html
+    assert 'candidate-text-option' in html
+    assert 'textAnswer=decodeURIComponent' in html
+    assert 'typeName=isCandidateText?"选择题"' in html
