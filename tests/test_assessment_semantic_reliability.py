@@ -1,3 +1,4 @@
+import inspect
 from types import SimpleNamespace
 
 from changying.services.answer_semantics import (
@@ -91,3 +92,22 @@ def test_runtime_installs_semantic_grading_and_evidence_mastery():
     assert legacy.grade_answers.__name__ == "semantic_grade_answers"
     assert legacy.normalized_answer_stats.__name__ == "semantic_normalized_answer_stats"
     assert legacy._reinforcement_mastery_update.__name__ == "evidence_based_mastery_update"
+
+
+def test_runtime_semantic_grading_uses_half_up_rounding_contract():
+    from changying.services.assessment_reliability import install_assessment_reliability
+
+    source = inspect.getsource(install_assessment_reliability)
+    assert "implementation.half_up_percent(correct, total)" in source
+    assert "round(correct / total * 100)" not in source
+
+
+def test_runtime_grade_answers_is_semantic_wrapper_after_production_install():
+    import app  # noqa: F401
+    import app_v924 as legacy
+
+    assert legacy.grade_answers.__name__ == "semantic_grade_answers"
+    runtime_grader = inspect.unwrap(legacy.grade_answers)
+    wrapped_source = inspect.getsource(runtime_grader)
+    assert "implementation.half_up_percent(correct, total)" in wrapped_source
+    assert "round(correct / total * 100)" not in wrapped_source

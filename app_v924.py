@@ -1982,7 +1982,7 @@ def teaching_grade_answers(db,u,questions,answers):
         if a.selected_index<0 or a.selected_index>=len(opts):raise HTTPException(400,"答案选项无效")
         ok=a.selected_index==q.correct_index;correct+=1 if ok else 0
         normalized.append({"question_id":q.id,"selected_index":a.selected_index,"correct":ok})
-    total=len(normalized);score=round(correct/total*100) if total else 0
+    total=len(normalized);score=half_up_percent(correct,total)
     return normalized,correct,total,score
 
 def teaching_review_for_attempt(db,attempt,lesson):
@@ -4459,7 +4459,7 @@ def ai_questions_assign(b:AIQuestionAssignmentBody,u:User=Depends(current_user),
     first=b.questions[0];title=(b.title or f"{first.subject} AI练习").strip()[:160]
     p=Paper(school_id=u.school_id,title=title,grade=first.grade,subject=first.subject[:30],textbook=first.textbook[:80],unit=first.unit[:100],question_ids_json=json.dumps(qids),teacher_id=u.id)
     db.add(p);db.flush()
-    due=(b.due_date or (datetime.utcnow().date()+timedelta(days=7)).isoformat())[:20]
+    due=(b.due_date or (datetime.now(SCHOOL_TZ).date()+timedelta(days=7)).isoformat())[:20]
     a=Assignment(school_id=u.school_id,title=title,class_id=c.id,paper_id=p.id,due_date=due);db.add(a);db.flush()
     mode="media" if has_non_choice else "quiz"
     default_instruction="含教师审核主观题：请在作业本/答题纸完成后拍照上传，教师审核评分。" if has_non_choice else "AI生成题目，已由教师审核后布置；在线完成并由服务器判分。"
@@ -4902,7 +4902,7 @@ def teacher_reinforcement_assign(sid:int,b:AIReinforcementAssignBody,u:User=Depe
     p=Paper(school_id=u.school_id,title=title,grade=first.grade,subject=first.subject[:30],
             textbook=first.textbook[:80],unit=first.unit[:100],question_ids_json=json.dumps(qids),teacher_id=u.id)
     db.add(p);db.flush()
-    due=(b.due_date or (datetime.utcnow().date()+timedelta(days=3)).isoformat())[:20]
+    due=(b.due_date or (datetime.now(SCHOOL_TZ).date()+timedelta(days=3)).isoformat())[:20]
     a=Assignment(school_id=u.school_id,title=title,class_id=c.id,paper_id=p.id,due_date=due);db.add(a);db.flush()
     db.add(AssignmentSubmissionSetting(school_id=u.school_id,assignment_id=a.id,mode="quiz",
                                        instructions=(b.instructions or "根据错题生成的个性化巩固练习，请认真完成。")[:2000]))
