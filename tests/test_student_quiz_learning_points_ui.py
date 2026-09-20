@@ -58,8 +58,8 @@ def test_nested_rectangle_dimensions_are_placed_near_matching_edges():
 
     html = legacy.INDEX_HTML
 
-    assert '外长 '+ " in html
-    assert '外宽 '+ " in html
-    assert '内长 '+ " in html
-    assert '内宽 '+ " in html
+    assert 'if(labels["外长"])' in html
+    assert 'if(labels["外宽"])' in html
+    assert 'if(labels["内长"])' in html
+    assert 'if(labels["内宽"])' in html
     assert 'text-anchor="middle" font-size="11">外长 ' in html
