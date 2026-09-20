@@ -14,11 +14,21 @@ from typing import Any
 
 from sqlalchemy import select
 
-from changying.services.builtin_question_bank_chinese import CHINESE_G5_TEXTBOOK, grade5_chinese_specs
-from changying.services.builtin_question_bank_english import ENGLISH_G5_TEXTBOOK, grade5_english_specs
+from changying.services.builtin_question_bank_chinese import grade5_chinese_specs
+from changying.services.builtin_question_bank_english import grade5_english_specs
+from changying.services.textbook_registry import (
+    CHINESE_G5_TEXTBOOK,
+    ENGLISH_G5_TEXTBOOK,
+    MATH_G5_TEXTBOOK,
+    MATH_G5_TEXTBOOK_LABEL,
+    TextbookRegistryError,
+    normalize_textbook,
+    registered_subjects,
+    registered_textbooks,
+)
 
-PEP_CURRENT_TEXTBOOK = "人教版"
-PEP_CURRENT_TEXTBOOK_LABEL = "人教版（当前最新版）"
+PEP_CURRENT_TEXTBOOK = MATH_G5_TEXTBOOK
+PEP_CURRENT_TEXTBOOK_LABEL = MATH_G5_TEXTBOOK_LABEL
 
 
 def _dec(value: Any) -> Decimal:
@@ -408,28 +418,12 @@ def _grade5_math_specs() -> list[dict[str, Any]]:
 
 
 def built_in_subjects(grade: int) -> list[str]:
-    return ["数学", "语文", "英语"] if int(grade) == 5 else []
+    return registered_subjects(grade)
 
 
 def built_in_textbooks(grade: int, subject: str) -> list[str]:
-    """Return the currently supported school textbook line.
-
-    Changying currently standardizes automatic Grade 5 Chinese and math
-    tests/practice on the People's Education Press (PEP) textbook. Other publishers are not
-    interchangeable "versions" of the same textbook and must not be mixed into
-    this selector.
-    """
-
-    if int(grade) != 5:
-        return []
-    selected_subject = (subject or "").strip()
-    if selected_subject == "数学":
-        return [PEP_CURRENT_TEXTBOOK]
-    if selected_subject == "语文":
-        return [CHINESE_G5_TEXTBOOK]
-    if selected_subject == "英语":
-        return [ENGLISH_G5_TEXTBOOK]
-    return []
+    """Return canonical textbook lines from the central curriculum registry."""
+    return registered_textbooks(grade, subject)
 
 
 def built_in_question_specs(
@@ -437,21 +431,23 @@ def built_in_question_specs(
     subject: str,
     textbook: str = "",
 ) -> list[dict[str, Any]]:
-    requested_textbook = (textbook or "").strip()
     selected_subject = (subject or "").strip()
+    try:
+        requested_textbook = normalize_textbook(
+            grade,
+            selected_subject,
+            textbook,
+            default_registered=True,
+        )
+    except TextbookRegistryError:
+        return []
     if int(grade) != 5:
         return []
-    if selected_subject == "数学":
-        if requested_textbook and requested_textbook != PEP_CURRENT_TEXTBOOK:
-            return []
+    if selected_subject == "数学" and requested_textbook == MATH_G5_TEXTBOOK:
         return _grade5_math_specs()
-    if selected_subject == "语文":
-        if requested_textbook and requested_textbook != CHINESE_G5_TEXTBOOK:
-            return []
+    if selected_subject == "语文" and requested_textbook == CHINESE_G5_TEXTBOOK:
         return grade5_chinese_specs()
-    if selected_subject == "英语":
-        if requested_textbook and requested_textbook != ENGLISH_G5_TEXTBOOK:
-            return []
+    if selected_subject == "英语" and requested_textbook == ENGLISH_G5_TEXTBOOK:
         return grade5_english_specs()
     return []
 

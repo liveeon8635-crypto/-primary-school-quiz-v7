@@ -22,6 +22,11 @@ from changying.services.builtin_question_bank import (
     ensure_built_in_questions,
     potential_question_catalog,
 )
+from changying.services.textbook_registry import (
+    TextbookRegistryError,
+    normalize_textbook,
+    require_textbook,
+)
 from changying.web import v1 as v1_module
 
 
@@ -338,7 +343,14 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
             # Automatic tests/practice use the school's current PEP line only.
             # Other publishers are distinct教材体系, not alternate "versions".
             textbooks = built_in_textbooks(selected_grade, selected_subject)
-            requested_textbook = (textbook or "").strip()
+            try:
+                requested_textbook = normalize_textbook(
+                    selected_grade,
+                    selected_subject,
+                    (textbook or "").strip(),
+                )
+            except TextbookRegistryError:
+                requested_textbook = ""
             if requested_textbook in textbooks:
                 selected_textbook = requested_textbook
             else:
@@ -399,14 +411,21 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
         subject = (body.subject or "").strip()
         if not subject:
             raise HTTPException(400, "请选择科目")
-        textbook = (body.textbook or "").strip()
+        try:
+            textbook = require_textbook(
+                body.grade,
+                subject,
+                (body.textbook or "").strip(),
+            )
+        except TextbookRegistryError as exc:
+            raise HTTPException(400, str(exc)) from exc
         allowed_textbooks = built_in_textbooks(body.grade, subject)
         if not textbook:
             raise HTTPException(400, "当前自动测试尚未匹配到可用的核定教材")
         if textbook not in allowed_textbooks:
             raise HTTPException(
                 400,
-                "当前自动测试按科目使用已核定教材（数学：人教版；语文：统编版〔人民教育出版社〕；英语：人教版〔PEP·当前最新版〕），不支持混用旧教材单元或其他出版社教材",
+                "当前自动测试只允许使用该年级科目已核定的教材版本",
             )
         kind = (body.kind or "comprehensive").strip().lower()
         if kind not in {"comprehensive", "module"}:

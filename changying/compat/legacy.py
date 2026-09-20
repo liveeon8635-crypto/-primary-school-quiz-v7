@@ -43,6 +43,7 @@ from changying.services.points import PointService
 from changying.services.reinforcement_subject_policy import install_reinforcement_subject_policy
 from changying.services.rubric_evidence_closure import install_rubric_evidence_closure
 from changying.services.submission_evidence import install_canonical_submission_evidence
+from changying.services.textbook_registry import install_textbook_registry_guard
 from changying.services.teaching import TeachingService
 from changying.services.wrong_questions import WrongQuestionService
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
@@ -270,6 +271,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_reinforcement_subject_policy(implementation)
     install_rubric_evidence_closure(implementation)
     install_canonical_submission_evidence(implementation)
+    install_textbook_registry_guard(implementation)
     install_reinforcement_figure_fallback(implementation)
     install_rubric_review_ui(implementation)
     install_product_shell(implementation.app)
