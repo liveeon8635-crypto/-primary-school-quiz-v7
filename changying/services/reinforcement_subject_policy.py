@@ -8,9 +8,11 @@ assessment cannot be biased by the mathematical examples in the shared prompt.
 from __future__ import annotations
 
 import re
+from functools import wraps
 from types import ModuleType
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import select
 
 
@@ -32,10 +34,47 @@ def reinforcement_subject_from_prompt(prompt: str) -> str:
 
 
 SCIENCE_AUTO_TYPES = frozenset({"single_choice", "true_false", "fill_blank"})
+AMBIGUOUS_SCIENCE_TEXTBOOKS = frozenset(
+    {
+        "",
+        "人教版",
+        "人教版（当前最新版）",
+        "人教版（PEP·当前最新版）",
+        "PEP·当前最新版",
+        "统编版",
+        "统编版（人民教育出版社）",
+    }
+)
 
 
-def normalize_science_reinforcement_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Keep science reinforcement auto-gradable and free of math-only figures."""
+def explicit_science_textbook(textbook: str) -> str:
+    """Return only a school-explicit science textbook label."""
+    value = str(textbook or "").strip()
+    return "" if value in AMBIGUOUS_SCIENCE_TEXTBOOKS else value
+
+
+def require_explicit_science_textbook(textbook: str) -> str:
+    """Reject generic defaults that could silently relabel science work."""
+    value = explicit_science_textbook(textbook)
+    if not value:
+        raise ValueError(
+            "科学教材必须明确填写学校实际使用的出版社/版本；"
+            "针对性练习不能默认使用“人教版”等其他学科通用教材名"
+        )
+    return value
+
+
+def normalize_science_reinforcement_items(
+    items: list[dict[str, Any]],
+    *,
+    textbook: str = "",
+) -> list[dict[str, Any]]:
+    """Keep science reinforcement objective-safe and textbook-faithful.
+
+    The legacy generator defaults non-Chinese reinforcement to "人教版".
+    Science must overwrite that value from explicit assessment context only.
+    """
+    safe_textbook = explicit_science_textbook(textbook)
     result: list[dict[str, Any]] = []
     for item in items:
         if not isinstance(item, dict):
@@ -47,6 +86,7 @@ def normalize_science_reinforcement_items(items: list[dict[str, Any]]) -> list[d
             continue
         row = dict(item)
         row["question_type"] = qtype
+        row["textbook"] = safe_textbook
         row["figure"] = {}
         result.append(row)
     return result
@@ -200,12 +240,27 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
             ]
             payload = dict(result)
             if subject == "科学":
-                normalized_items = normalize_science_reinforcement_items(items)
+                primary = dict((payload.get("assessmentContext") or {}).get("primary") or {})
+                science_textbook = explicit_science_textbook(
+                    str(primary.get("textbook") or "")
+                )
+                normalized_items = normalize_science_reinforcement_items(
+                    items,
+                    textbook=science_textbook,
+                )
                 payload["items"] = normalized_items
+                notices: list[str] = []
                 if len(normalized_items) != len(items):
+                    notices.append("科学针对性练习已移除不适合自动判分的开放题型。")
+                if not science_textbook:
+                    notices.append(
+                        "科学学习证据未明确教材出版社/版本；本次练习不会默认标记为“人教版”，补全学校实际教材后才能布置。"
+                    )
+                if notices:
                     payload["notice"] = (
-                        str(payload.get("notice") or "")
-                        + "；科学针对性练习已移除不适合自动判分的开放题型。"
+                        str(payload.get("notice") or "").strip("；")
+                        + "；"
+                        + "；".join(notices)
                     ).strip("；")
             if subject == "英语":
                 normalized_items = []
@@ -237,13 +292,56 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
         route.endpoint = subject_scoped_route
         break
 
+    assign_target = "/teacher/students/{sid}/reinforcement/assign"
+    for route in implementation.app.routes:
+        if getattr(route, "path", None) != assign_target or "POST" not in getattr(route, "methods", set()):
+            continue
+        original_assign = route.dependant.call
+
+        @wraps(original_assign)
+        def science_textbook_safe_assign(*args: Any, __original=original_assign, **kwargs: Any):
+            body = kwargs.get("b")
+            if body is None:
+                for value in reversed(args):
+                    if hasattr(value, "questions"):
+                        body = value
+                        break
+
+            science_textbooks: set[str] = set()
+            for question in list(getattr(body, "questions", []) or []):
+                subject = str(getattr(question, "subject", "") or "").strip()
+                if subject != "科学":
+                    continue
+                try:
+                    textbook = require_explicit_science_textbook(
+                        str(getattr(question, "textbook", "") or "")
+                    )
+                except ValueError as exc:
+                    raise HTTPException(400, str(exc)) from exc
+                science_textbooks.add(textbook)
+
+            if len(science_textbooks) > 1:
+                raise HTTPException(
+                    400,
+                    "同一次科学针对性练习必须使用同一教材出版社/版本，不能混用。",
+                )
+            return __original(*args, **kwargs)
+
+        science_textbook_safe_assign._science_textbook_integrity_guard = True
+        route.dependant.call = science_textbook_safe_assign
+        route.endpoint = science_textbook_safe_assign
+        break
+
     implementation._reinforcement_subject_policy_installed = True
 
 
 __all__ = [
+    "AMBIGUOUS_SCIENCE_TEXTBOOKS",
     "augment_reinforcement_prompt",
+    "explicit_science_textbook",
     "install_reinforcement_subject_policy",
     "normalize_science_reinforcement_items",
+    "require_explicit_science_textbook",
     "reinforcement_subject_from_prompt",
     "scope_context_to_primary_subject",
 ]
