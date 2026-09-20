@@ -341,7 +341,31 @@ with TestClient(app) as client:
         assert reinforcement_result["total"] == 3
         assert reinforcement_result["score"] == 100
         assert reinforcement_result["learningPointsAwarded"] == 3
-        assert reinforcement_result["reinforcementClosed"] > 0
+        with legacy.SessionLocal() as db:
+            diagnostic_link = db.scalar(
+                legacy.select(legacy.ReinforcementLink).where(
+                    legacy.ReinforcementLink.assignment_id == rid,
+                    legacy.ReinforcementLink.student_id == sid,
+                )
+            )
+            diagnostic_ids = json.loads(diagnostic_link.wrong_ids_json or "[]") if diagnostic_link else []
+            diagnostic_rows = list(
+                db.scalars(
+                    legacy.select(legacy.WrongQuestionRecord).where(
+                        legacy.WrongQuestionRecord.id.in_(diagnostic_ids)
+                    )
+                ).all()
+            ) if diagnostic_ids else []
+            diagnostic_status = [
+                (row.id, row.student_id, row.school_id, row.status)
+                for row in diagnostic_rows
+            ]
+        assert reinforcement_result["reinforcementClosed"] > 0, (
+            subject,
+            reinforcement_result,
+            diagnostic_ids,
+            diagnostic_status,
+        )
 
         balance += 3
         points = client.get("/student/points", headers=sh)
