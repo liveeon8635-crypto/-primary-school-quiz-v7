@@ -45,3 +45,21 @@ def test_unified_top_validates_saved_state_instead_of_leaving_login_screen_visib
     assert "var savedOk=await Promise.resolve(validateSavedSession())" in html
     assert "else if(typeof enter==='function'){enter()}" in html
     assert "if(stateReady()){clearV1FromMarker();return true}" not in html
+
+
+
+def test_unified_top_all_functions_is_not_a_self_redirect_and_has_account_switch():
+    html = inject_v1_classic_unified("<html><body></body></html>")
+    assert "function showToolHub()" in html
+    assert "data-tool-hub" in html
+    assert "function switchAccount()" in html
+    assert "id=\"cy-v1-switch-account\"" in html
+    assert "切换账号" in html
+    assert "location.replace('/v1')" in html
+    assert "localStorage.removeItem('cyV1Identity')" in html
+
+
+def test_unified_top_opens_requested_hub_after_session_hydration():
+    html = inject_v1_classic_unified("<html><body></body></html>")
+    assert "params.get('page')==='__hub__'" in html
+    assert "showToolHub()" in html
