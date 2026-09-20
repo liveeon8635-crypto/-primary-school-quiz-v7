@@ -175,6 +175,63 @@ def _inline_candidates(options: list[str]) -> str:
         f"{labels[i]}. {value}" for i, value in enumerate(options[: len(labels)])
     )
 
+
+def _fill_chinese_blanks(stem: str, claimed: str) -> str:
+    text = str(stem or "").strip()
+    value = str(claimed or "").strip()
+    blanks = re.findall(r"_{2,}", text)
+    parts = [part.strip() for part in re.split(r"…{2,}|\.{3,}", value) if part.strip()]
+    if len(blanks) >= 2 and len(parts) >= len(blanks):
+        for part in parts[: len(blanks)]:
+            text = re.sub(r"_{2,}", part, text, count=1)
+        return text
+    return re.sub(r"_{2,}", value, text, count=1)
+
+
+def _natural_chinese_true_false(stem: str, claimed: str, knowledge: str = "") -> str:
+    """Turn a derived MCQ claim into a standalone judgement statement."""
+    source = str(stem or "").strip().rstrip("?？")
+    claim = str(claimed or "").strip().rstrip("。")
+    topic = str(knowledge or "").strip()
+
+    if "书写完全正确" in source:
+        return f"判断：“{claim}”中的词语书写全部正确。"
+
+    if "没有语病" in source:
+        return f"判断：句子“{claim}”没有语病。"
+
+    if "标点使用正确" in source:
+        return f"判断：句子“{claim}”的标点使用正确。"
+
+    if "主要运用了什么修辞手法" in source:
+        example = source.split("主要运用了什么修辞手法", 1)[0].strip()
+        return f"判断：{example}主要运用了“{claim}”的修辞手法。"
+
+    if "正确读音是" in source:
+        prefix = source.split("的正确读音是", 1)[0].strip()
+        return f"判断：{prefix}读作“{claim}”。"
+
+    if "填入最恰当的成语是" in source or topic == "成语运用":
+        base = re.sub(r"[。.]?\s*填入最恰当的成语是\s*$", "", source).strip()
+        filled = _fill_chinese_blanks(base, claim).rstrip("。")
+        return f"判断：句子“{filled}。”中的成语使用恰当。"
+
+    if any(marker in source for marker in ("最连贯的一项", "选择最连贯", "选择最恰当的一句", "填在横线上")):
+        return f"判断：将“{claim}”填入横线后，上下文衔接连贯。"
+
+    if "____" in source:
+        filled = _fill_chinese_blanks(source, claim)
+        return f"判断：补充后的表达“{filled}”正确。"
+
+    if "意思" in source:
+        quoted = re.findall(r"“([^”]+)”", source)
+        term = quoted[-1] if quoted else ""
+        if term:
+            return f"判断：在题目语境中，“{term}”的意思是“{claim}”。"
+
+    return f"判断：针对“{source}”，结论“{claim}”成立。"
+
+
 def language_question_text(question: Any) -> str:
     text = str(getattr(question, "text", "") or "").strip()
     subject = str(getattr(question, "subject", "") or "").strip()
@@ -218,10 +275,22 @@ def language_question_text(question: Any) -> str:
             return f"Is this answer correct? {stem} — {claimed}"
 
     if subject == "语文" and qtype == "true_false":
-        match = re.fullmatch(r"判断正误：题目“(.+)”的答案是“(.+)”。", text)
-        if match:
-            stem, claimed = match.group(1).strip(), match.group(2).strip()
-            return f"判断下面的作答是否正确：{stem} —— {claimed}"
+        legacy = re.fullmatch(r"判断正误：题目“(.+)”的答案是“(.+)”。", text)
+        if legacy:
+            stem, claimed = legacy.group(1).strip(), legacy.group(2).strip()
+            return _natural_chinese_true_false(
+                stem,
+                claimed,
+                str(getattr(question, "knowledge", "") or ""),
+            )
+        prefix = "判断下面的作答是否正确："
+        if text.startswith(prefix) and "——" in text[len(prefix):]:
+            stem, claimed = text[len(prefix):].rsplit("——", 1)
+            return _natural_chinese_true_false(
+                stem.strip(),
+                claimed.strip(),
+                str(getattr(question, "knowledge", "") or ""),
+            )
 
     return text
 
