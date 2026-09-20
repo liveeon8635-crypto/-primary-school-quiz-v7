@@ -31,9 +31,9 @@ def test_learning_accuracy_views_share_the_same_half_up_contract():
     assert "round(hit/total*100)" not in progress_source
     assert "round(v[0]/v[1]*100)" not in progress_source
 
-    growth_source = inspect.getsource(student_growth_profile_data)
+    growth_source = inspect.getsource(inspect.unwrap(student_growth_profile_data))
     assert "accuracy=half_up_percent(total_correct,total_questions)" in growth_source
 
-    teacher_source = inspect.getsource(teacher_analytics_data)
+    teacher_source = inspect.getsource(inspect.unwrap(teacher_analytics_data))
     assert '"accuracy":half_up_percent(v[0],v[1])' in teacher_source
     assert "avg_accuracy=half_up_percent(correct_sum,total_sum)" in teacher_source
