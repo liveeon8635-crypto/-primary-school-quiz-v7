@@ -30,8 +30,9 @@ def test_infers_line_segment_for_tree_planting_problem():
     }
     figure = infer_reinforcement_figure(item)
     assert figure["type"] == "line_segment"
-    assert len(figure["segments"]) == 12
-    assert "84÷7=12" in figure["title"]
+    assert len(figure["segments"]) == 4
+    assert figure["title"] == "植树间隔示意图（不按间隔数量绘制）"
+    assert "84÷7" not in figure["title"]
 
 
 def test_infers_coordinate_grid_for_position_problem():
@@ -117,8 +118,9 @@ def test_repairs_existing_tree_figure_to_stem_interval_count():
         },
     }
     figure = infer_reinforcement_figure(item)
-    assert len(figure["segments"]) == 10
-    assert figure["title"] == "90÷9=10 个间隔"
+    assert len(figure["segments"]) == 4
+    assert figure["title"] == "植树间隔示意图（不按间隔数量绘制）"
+    assert "90÷9" not in figure["title"]
 
 
 def test_repairs_nested_rectangle_figure_from_stem_dimensions():
