@@ -79,10 +79,17 @@ def patch_v1_student_detail_visibility(html: str) -> str:
             raise RuntimeError(f"V1 student detail visibility patch: marker not found: {old}")
         html = html.replace(old, new, 1)
 
-    return html.replace(
+    html = html.replace(
         "</body>",
         f"{_MOBILE_LAYOUT_CSS}<!-- {V1_STUDENT_DETAIL_VISIBILITY_MARKER} --></body>",
         1,
+    )
+
+    # Presentation-only: keep long continuous-record rows from overflowing the
+    # narrow phone viewport.  No API calls, no data writes, no auth changes.
+    return html.replace(
+        "<div class=\"list\" style=\"margin-top:12px\">",
+        "<div class=\"list\" style=\"margin-top:12px;min-width:0;overflow-wrap:anywhere\">",
     )
 
 
