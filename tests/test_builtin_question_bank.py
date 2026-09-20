@@ -114,6 +114,36 @@ def test_grade5_chinese_pack_is_large_and_covers_core_language_modules():
         assert 0 <= row["correct_index"] < 4
 
 
+def test_grade5_chinese_pack_has_mixed_auto_gradable_question_shapes():
+    specs = built_in_question_specs(5, "语文", "统编版（人民教育出版社）")
+    types = Counter((row.get("question_type") or "single_choice") for row in specs)
+    assert len(specs) == 176
+    assert types["single_choice"] == 128
+    assert types["true_false"] == 16
+    assert types["fill_blank"] == 16
+    assert types["short_answer"] == 16
+    for row in specs:
+        question_type = row.get("question_type") or "single_choice"
+        if question_type in {"single_choice", "true_false"}:
+            assert len(row["options"]) >= 2
+            assert 0 <= int(row["correct_index"]) < len(row["options"])
+        else:
+            assert question_type in {"fill_blank", "short_answer"}
+            assert row["options"] == []
+            assert row["correct_index"] == -1
+            assert row["answer_json"]["answer"]
+
+
+def test_grade5_english_pack_has_mixed_auto_gradable_question_shapes():
+    specs = built_in_question_specs(5, "英语", "人教版（PEP·当前最新版）")
+    types = Counter((row.get("question_type") or "single_choice") for row in specs)
+    assert len(specs) == 176
+    assert types["single_choice"] == 128
+    assert types["true_false"] == 16
+    assert types["fill_blank"] == 16
+    assert types["short_answer"] == 16
+
+
 def test_grade5_math_pack_uses_current_pep_textbook_only():
     assert built_in_textbooks(5, "数学") == ["人教版"]
     assert len(built_in_question_specs(5, "数学", "人教版")) >= 180
@@ -129,7 +159,7 @@ def test_grade5_math_pack_uses_current_pep_textbook_only():
 def test_grade5_english_pack_uses_current_pep_textbook_only():
     textbook = "人教版（PEP·当前最新版）"
     assert built_in_textbooks(5, "英语") == [textbook]
-    assert len(built_in_question_specs(5, "英语", textbook)) == 128
+    assert len(built_in_question_specs(5, "英语", textbook)) == 176
     for legacy_or_other in (
         "人教PEP",
         "人教版",
