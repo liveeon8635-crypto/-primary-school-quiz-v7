@@ -145,7 +145,7 @@ def install_assessment_reliability(implementation: ModuleType) -> None:
         if require_all and allowed is not None and seen != allowed:
             raise HTTPException(400, "请完成试卷全部题目后再提交")
         total = len(normalized)
-        score = round(correct / total * 100) if total else 0
+        score = implementation.half_up_percent(correct, total)
         return normalized, correct, total, score
 
     def semantic_normalized_answer_stats(db, answers, school_id):
