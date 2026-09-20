@@ -521,6 +521,98 @@ def _grade5_math_specs() -> list[dict[str, Any]]:
     return rows
 
 
+def _rich_language_variants(
+    rows: list[dict[str, Any]],
+    *,
+    subject: str,
+) -> list[dict[str, Any]]:
+    """Append auto-gradable language variants without rewriting baseline rows.
+
+    Existing language packs are intentionally retained as reviewed multiple-choice
+    inventory.  The variants add true/false, fill-in and short-answer shapes so
+    comprehensive tests can exercise the same mixed-type submission/evidence loop
+    already used by mathematics.
+    """
+
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped[str(row.get("knowledge") or "综合")].append(row)
+
+    variants: list[dict[str, Any]] = []
+    english = subject == "英语"
+    for knowledge_index, items in enumerate(grouped.values()):
+        if not items:
+            continue
+
+        fill_source = items[0]
+        fill_answer = _correct_answer(fill_source)
+        if fill_answer:
+            fill = dict(fill_source)
+            prompt = "Complete with the correct answer: " if english else "请直接填写正确答案："
+            fill.update(
+                {
+                    "text": prompt + str(fill_source["text"]).strip(),
+                    "options": [],
+                    "correct_index": -1,
+                    "question_type": "fill_blank",
+                    "answer_json": {"answer": fill_answer, "accepted": []},
+                    "figure_json": {},
+                }
+            )
+            variants.append(fill)
+
+        if len(items) >= 2:
+            judge_source = items[1]
+            judge_answer = _correct_answer(judge_source)
+            judge_options = list(judge_source.get("options") or [])
+            distractors = [
+                str(value)
+                for i, value in enumerate(judge_options)
+                if i != int(judge_source.get("correct_index", -1))
+            ]
+            use_correct = knowledge_index % 2 == 0 or not distractors
+            claimed = judge_answer if use_correct else distractors[0]
+            stem = str(judge_source["text"]).strip().rstrip("?？")
+            judge = dict(judge_source)
+            if english:
+                judge_text = f'True or false: For "{stem}", the answer is "{claimed}".'
+                judge_options_out = ["True", "False"]
+            else:
+                judge_text = f'判断正误：题目“{stem}”的答案是“{claimed}”。'
+                judge_options_out = ["正确", "错误"]
+            judge.update(
+                {
+                    "text": judge_text,
+                    "options": judge_options_out,
+                    "correct_index": 0 if use_correct else 1,
+                    "question_type": "true_false",
+                    "answer_json": {},
+                    "figure_json": {},
+                }
+            )
+            variants.append(judge)
+
+        if len(items) >= 3:
+            short_source = items[2]
+            short_answer = _correct_answer(short_source)
+            if short_answer:
+                short = dict(short_source)
+                prompt = "Answer briefly: " if english else "请用简短答案作答："
+                short.update(
+                    {
+                        "text": prompt + str(short_source["text"]).strip(),
+                        "options": [],
+                        "correct_index": -1,
+                        "question_type": "short_answer",
+                        "answer_json": {"answer": short_answer, "accepted": []},
+                        "figure_json": {},
+                    }
+                )
+                variants.append(short)
+
+    return variants
+
+
 def built_in_subjects(grade: int) -> list[str]:
     return registered_subjects(grade)
 
@@ -550,9 +642,11 @@ def built_in_question_specs(
     if selected_subject == "数学" and requested_textbook == MATH_G5_TEXTBOOK:
         return _grade5_math_specs()
     if selected_subject == "语文" and requested_textbook == CHINESE_G5_TEXTBOOK:
-        return grade5_chinese_specs()
+        baseline = grade5_chinese_specs()
+        return baseline + _rich_language_variants(baseline, subject="语文")
     if selected_subject == "英语" and requested_textbook == ENGLISH_G5_TEXTBOOK:
-        return grade5_english_specs()
+        baseline = grade5_english_specs()
+        return baseline + _rich_language_variants(baseline, subject="英语")
     return []
 
 
