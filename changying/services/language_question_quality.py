@@ -21,28 +21,19 @@ from typing import Any
 from changying.services.builtin_question_bank_chinese import grade5_chinese_specs
 
 
-_CHINESE_CHOICE_LIKE_KNOWLEDGE = {
-    "字形辨析",
-    "病句辨析",
-    "标点符号",
-    "句子衔接",
-    "概括主要内容",
-    "阅读推断",
-    "资料整合",
-    "习作修改",
-}
-
-
 def chinese_choice_repair(question: Any) -> dict[str, Any] | None:
-    """Restore choice controls for Chinese variants whose stems still ask for a choice."""
+    """Restore choice controls for Chinese fills mechanically derived from the reviewed choice bank.
+
+    Matching requires the same knowledge key, source stem and stored correct
+    answer, so genuine teacher/AI free-text fills that do not come from the
+    baseline choice bank remain text inputs.
+    """
 
     if str(getattr(question, "subject", "") or "").strip() != "语文":
         return None
     if str(getattr(question, "question_type", "") or "").strip().lower() != "fill_blank":
         return None
     knowledge = str(getattr(question, "knowledge", "") or "").strip()
-    if knowledge not in _CHINESE_CHOICE_LIKE_KNOWLEDGE:
-        return None
 
     text = str(getattr(question, "text", "") or "").strip()
     prefix = "请直接填写答案："
