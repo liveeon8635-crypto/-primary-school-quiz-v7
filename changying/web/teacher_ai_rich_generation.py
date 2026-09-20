@@ -68,7 +68,7 @@ def _requested_type(body: Any) -> str:
     return "mixed"
 
 
-def _format_rule(requested: str, count: int) -> str:
+def _format_rule(requested: str, count: int, subject: str) -> str:
     shared = """所有题目都使用以下字段：
 question_type, text, options, correct_index, answer, accepted_answers,
 reference_answer, scoring_points, figure, explanation, knowledge。
@@ -86,9 +86,14 @@ accepted_answers 可放数值等价写法。题目要求单位时，标准答案
 answer 必填，accepted_answers 只放明确等价表达；开放解释题禁止用此类型，应改 non_choice。""",
         "non_choice": """本次只生成 non_choice。不得给选项；reference_answer 与 scoring_points 必填；
 用于需要解释、过程、证据或教师判断的真正主观题，最终由教师审核。""",
-        "mixed": f"""本次生成 mixed。优先使用 single_choice、true_false、fill_blank、calculation、
-short_answer，并在确实需要教师判断时使用 non_choice。{("至少使用3种不同题型。" if count >= 3 else "在题数允许范围内尽量变化题型。")}
-不得把所有无选项题都写成 non_choice；可自动判分的填空、计算、简短应用题必须使用各自标准类型。""",
+        "mixed": (
+            f"""本次生成 mixed。优先使用 single_choice、true_false、fill_blank"""
+            + ("""、calculation、short_answer""" if "数学" in subject else "")
+            + f"""，并在确实需要教师判断时使用 non_choice。{("至少使用3种不同题型。" if count >= 3 else "在题数允许范围内尽量变化题型。")}
+不得把所有无选项题都写成 non_choice；可自动判分的填空"""
+            + ("、计算、简短应用题" if "数学" in subject else "")
+            + "必须使用各自标准类型。"
+        ),
     }
     return shared + "\n" + rules[requested] + """
 只返回 JSON：{"questions":[{...}]}，不要 Markdown。"""
@@ -100,17 +105,20 @@ def _subject_rule(subject: str) -> str:
 - 禁止把语文要素、教学目标直接当题目问学生。
 - 阅读题必须给足材料或明确情境；没有原文时不得伪造课文原句。
 - 唯一词语/字音/字形等可用 fill_blank；需要概括、分析、表达的题必须用 non_choice。
+- 不使用 calculation / short_answer 自动判分；开放语言表达必须交教师审核。
 - 干扰项来自真实常见误区。"""
     if "英语" in subject:
         return """【英语命题规则】
 - 严格沿用教师指定教材版本、年级、册次和单元。
 - 单选、判断、唯一词汇/短语答案可自动判分；开放写作、理由说明必须用 non_choice。
+- 不使用 calculation / short_answer 自动判分；开放语言表达必须交教师审核。
 - 不得把旧教材单元、旧词表或其他出版社内容混入。"""
     if "科学" in subject:
         return """【科学命题规则】
 - 围绕观察事实、实验现象、证据解释、结构与功能、变化与因果、系统与模型命题。
 - 教材、册次、单元严格沿用教师输入，不得猜测出版社或版本。
-- 自动判分题只能用于存在明确答案的事实/术语/判断；解释证据、设计实验、开放推理必须用 non_choice。
+- 自动判分题只能使用 single_choice、true_false、fill_blank；解释证据、设计实验、开放推理必须用 non_choice。
+- 不使用 calculation / short_answer 自动判分。
 - 实验情境不得诱导学生自行实施明火、强电、危险化学品等高风险操作。
 - 当前 figure 渲染器不支持科学实验图，因此 figure 必须为 {}。"""
     if "数学" in subject:
@@ -149,8 +157,8 @@ def _normalize_question(
         else:
             return None
 
-    if qtype == "calculation" and "数学" not in str(body.subject or ""):
-        qtype = "fill_blank"
+    if qtype in {"calculation", "short_answer"} and "数学" not in str(body.subject or ""):
+        return None
 
     options = [str(x)[:1000] for x in (raw.get("options") or []) if str(x).strip()]
     try:
@@ -236,8 +244,14 @@ def _generator_call(implementation: ModuleType):
         difficulty = str(b.difficulty or "中等")[:20]
         requested = _requested_type(b)
         refs = implementation._resource_context(db, u.school_id, b.resource_ids)
-        format_rule = _format_rule(requested, count)
-        subject_rule = _subject_rule(str(b.subject or ""))
+        subject = str(b.subject or "")
+        if requested in {"calculation", "short_answer"} and "数学" not in subject:
+            raise HTTPException(
+                400,
+                "计算题和可自动判分的应用简答题当前只在数学中开放；其他学科请使用单选、判断、填空或教师审核主观题",
+            )
+        format_rule = _format_rule(requested, count, subject)
+        subject_rule = _subject_rule(subject)
 
         prompt = f"""你是有一线命题经验的中国小学教师。请生成真实校内练习/单元测验风格题目。
 年级：{b.grade}年级
