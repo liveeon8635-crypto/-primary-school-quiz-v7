@@ -62,6 +62,12 @@ def _outer_inner_rectangles(text: str) -> dict[str, str]:
     }
 
 
+def _field(question: Any, key: str) -> Any:
+    if isinstance(question, dict):
+        return question.get(key)
+    return getattr(question, key, "")
+
+
 def normalize_question_figure(question: Any, figure: Any) -> dict[str, Any]:
     """Repair semantic figure metadata using facts explicitly stated in the stem."""
 
@@ -72,8 +78,8 @@ def normalize_question_figure(question: Any, figure: Any) -> dict[str, Any]:
         return {}
 
     out = dict(figure)
-    text = str(getattr(question, "text", "") or "")
-    knowledge = str(getattr(question, "knowledge", "") or "")
+    text = str(_field(question, "text") or "")
+    knowledge = str(_field(question, "knowledge") or "")
     combined = f"{knowledge} {text}"
 
     if kind == "coordinate_grid":
