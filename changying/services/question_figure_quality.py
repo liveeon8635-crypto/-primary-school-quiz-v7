@@ -33,7 +33,9 @@ def _first_pair(text: str) -> tuple[float, float] | None:
 
 
 def _length_spacing(text: str) -> tuple[float, float] | None:
-    length = re.search(r"长\s*(\d+(?:\.\d+)?)\s*(?:米|厘米|分米)", text)
+    length = re.search(r"(?:长|全长|总长|周长)\s*(\d+(?:\.\d+)?)\s*(?:米|厘米|分米)", text)
+    if not length:
+        length = re.search(r"一条\s*(\d+(?:\.\d+)?)\s*(?:米|厘米|分米)", text)
     spacing = re.search(r"每隔\s*(\d+(?:\.\d+)?)\s*(?:米|厘米|分米)", text)
     if not length or not spacing:
         return None
