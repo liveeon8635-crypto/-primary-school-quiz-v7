@@ -4719,6 +4719,21 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
     )
     if b.assignment_id:q=q.where(WrongQuestionRecord.assignment_id==b.assignment_id)
     wrong=db.scalars(q.order_by(WrongQuestionRecord.id.desc()).limit(60)).all()
+    scope_hint=student_assessment_context(
+        db,
+        AssignmentRecipient=AssignmentRecipient,
+        Assignment=Assignment,
+        Submission=Submission,
+        Paper=Paper,
+        Question=Question,
+        school_id=u.school_id,
+        student_id=sid,
+        assignment_id=b.assignment_id,
+        limit=1,
+        textbook_filter=None,
+        subject_filter=None,
+    )
+    scope_primary=scope_hint.get("primary") or {}
     assessment_context=student_assessment_context(
         db,
         AssignmentRecipient=AssignmentRecipient,
@@ -4730,7 +4745,8 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
         student_id=sid,
         assignment_id=b.assignment_id,
         limit=6,
-        textbook_filter=None,
+        textbook_filter=str(scope_primary.get("textbook") or "").strip() or None,
+        subject_filter=str(scope_primary.get("subject") or "").strip() or None,
     )
     allowed_assessment_ids=set(assessment_context.get("sourceAssignmentIDs") or [])
     context_primary=assessment_context.get("primary") or {}
