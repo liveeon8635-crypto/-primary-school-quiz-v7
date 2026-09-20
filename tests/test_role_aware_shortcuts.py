@@ -9,11 +9,11 @@ def test_v1_native_shortcuts_are_scoped_by_account_role():
     assert "session?.role||'teacher'" in html
 
     for label, page in (
-        ("同步课堂", "syncLearning"),
-        ("我的作业", "assignments"),
-        ("自主练习", "practice"),
-        ("我的学情", "progress"),
-        ("积分奖励", "rewards"),
+        ("课堂", "syncLearning"),
+        ("作业", "assignments"),
+        ("练习", "practice"),
+        ("学情", "progress"),
+        ("更多", "__hub__"),
     ):
         assert f"'{label}','/v1/tool?page={page}'" in html
 
@@ -39,11 +39,11 @@ def test_classic_top_level_shortcuts_follow_hydrated_role():
     html = V1_CLASSIC_UNIFIED_SNIPPET
     assert "var quickMenus=" in html
     assert "var quick=quickMenus[role]||quickMenus.teacher" in html
-    assert "student:[['syncLearning','▦','同步课堂','syncLearning']" in html
-    assert "['assignments','✓','我的作业','assignments']" in html
-    assert "['practice','✎','自主练习','practice']" in html
-    assert "['progress','◉','我的学情','progress']" in html
-    assert "['rewards','★','积分奖励','rewards']" in html
+    assert "student:[['syncLearning','▦','课堂','syncLearning']" in html
+    assert "['assignments','✓','作业','assignments']" in html
+    assert "['practice','✎','练习','practice']" in html
+    assert "['progress','◉','学情','progress']" in html
+    assert "['tools','☰','更多','#']" in html
     assert "parent:[['childLearning','▦','孩子课程','childLearning']" in html
     assert "admin:[['admin','▦','平台总览','admin']" in html
     assert "bottom.innerHTML=quick.map" in html
