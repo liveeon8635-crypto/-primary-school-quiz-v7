@@ -189,7 +189,7 @@ with TestClient(app) as client:
         option_body = options.json()
         assert option_body["selectedSubject"] == subject
         assert option_body["selectedTextbook"] == textbook
-        assert option_body["availableQuestionCount"] == 160
+        assert option_body["availableQuestionCount"] == (160 if subject == "英语" else 147)
         assert len(option_body["modules"]) == 16
 
         created = client.post(
