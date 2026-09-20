@@ -103,7 +103,6 @@ from changying.web.v1_unified_tools_session_bridge import install_v1_unified_too
 from changying.web.reinforcement_quality import install_reinforcement_figure_fallback
 from changying.web.rubric_review_ui import install_rubric_review_ui
 from changying.web.science_teacher_ai import install_science_teacher_ai_workflow
-from changying.web.science_teacher_ai import install_science_teacher_ai_workflow
 
 NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -277,7 +276,6 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_science_teacher_ai_workflow(implementation)
     install_reinforcement_figure_fallback(implementation)
     install_rubric_review_ui(implementation)
-    install_science_teacher_ai_workflow(implementation)
     install_product_shell(implementation.app)
     install_product_visibility_routes(implementation.app)
     install_classic_ui_patch(implementation.app)
