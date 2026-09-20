@@ -30,6 +30,7 @@ V1_CLASSIC_TOP_LEVEL_MARKER = "changying_v1_classic_top_level_v1"
 
 _ALLOWED_TOOL_PAGES = frozenset(
     {
+        "__hub__",
         "classes",
         "classPoints",
         "ai",
@@ -73,6 +74,8 @@ async def _body_bytes(response: Response) -> bytes:
 
 def _safe_tool_page(raw: str | None) -> str:
     page = str(raw or "").strip()
+    if not page:
+        return "__hub__"
     return page if page in _ALLOWED_TOOL_PAGES else "classes"
 
 
