@@ -37,19 +37,38 @@ def test_grade5_math_pack_is_large_and_covers_core_modules():
     assert min(counts[name] for name in expected) >= 10
 
 
-def test_generated_questions_have_valid_unique_multiple_choice_payloads():
+def test_generated_math_questions_include_valid_mixed_auto_gradable_payloads():
     specs = built_in_question_specs(5, "数学")
     keys = set()
+    types = Counter()
+    knowledge_types = {}
     for row in specs:
         assert row["grade"] == 5
         assert row["subject"] == "数学"
-        assert len(row["options"]) == 4
-        assert len(set(row["options"])) == 4
-        assert 0 <= row["correct_index"] < 4
-        assert row["options"][row["correct_index"]]
+        question_type = row.get("question_type") or "single_choice"
+        types[question_type] += 1
+        knowledge_types.setdefault(row["knowledge"], set()).add(question_type)
+
+        if question_type in {"single_choice", "true_false"}:
+            assert len(row["options"]) >= 2
+            assert len(set(row["options"])) == len(row["options"])
+            assert 0 <= row["correct_index"] < len(row["options"])
+            assert row["options"][row["correct_index"]]
+        else:
+            assert question_type in {"fill_blank", "calculation"}
+            assert row["options"] == []
+            assert row["correct_index"] == -1
+            assert row["answer_json"]["answer"]
+
         key = (row["text"], row["knowledge"])
         assert key not in keys
         keys.add(key)
+
+    assert {"single_choice", "true_false", "fill_blank", "calculation"} <= set(types)
+    assert all(
+        {"single_choice", "true_false", "fill_blank"} <= type_set
+        for type_set in knowledge_types.values()
+    )
 
 
 def test_unsupported_pack_does_not_invent_other_grades_or_subjects():
