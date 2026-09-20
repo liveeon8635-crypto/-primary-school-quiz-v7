@@ -59,8 +59,11 @@ def test_unified_classic_consumes_server_handoff_when_storage_context_is_empty()
     assert "fetch('/v1/auth-handoff/consume'" in script
     assert "method:'POST'" in script
     assert "credentials:'same-origin'" in script
-    assert "params.get('from')==='v1'?await consumeV1Handoff():null" in script
+    assert "fromV1=params.get('from')==='v1'" in script
+    assert "if(fromV1)bridge=await consumeV1Handoff()" in script
     assert "bridge&&bridge.token" in script
+    assert "function clearV1FromMarker()" in script
+    assert "u.searchParams.delete('from')" in script
     assert "state.token=t" in script
     assert "validateSavedSession" in script
     assert "cyV1SessionHandoff" not in script
