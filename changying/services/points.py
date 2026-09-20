@@ -316,7 +316,7 @@ class PointService:
         limit = max(1, min(int(limit or 40), 200))
         statement = select(self.PointLedger).where(
             self.PointLedger.school_id == school_id,
-            self.PointLedger.source.in_(("classroom", "reversal", "adjustment")),
+            self.PointLedger.source.in_(POINT_NET_SOURCES),
         )
         if class_id is not None:
             statement = statement.where(self.PointLedger.class_id == class_id)
