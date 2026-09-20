@@ -183,3 +183,63 @@ def test_science_reinforcement_normalizer_keeps_only_objective_safe_types():
         "fill_blank",
     ]
     assert all(row["figure"] == {} for row in rows)
+
+
+def test_science_reinforcement_never_keeps_legacy_people_education_fallback():
+    rows = normalize_science_reinforcement_items(
+        [
+            {
+                "question_type": "single_choice",
+                "subject": "科学",
+                "textbook": "人教版",
+                "text": "根据观察选择正确解释。",
+                "figure": {"type": "coordinate_grid"},
+            }
+        ],
+        textbook="",
+    )
+    assert len(rows) == 1
+    assert rows[0]["textbook"] == ""
+    assert rows[0]["figure"] == {}
+
+
+def test_science_reinforcement_inherits_only_explicit_context_textbook():
+    rows = normalize_science_reinforcement_items(
+        [
+            {
+                "question_type": "true_false",
+                "subject": "科学",
+                "textbook": "人教版",
+                "text": "根据实验记录判断。",
+            }
+        ],
+        textbook="学校实际科学教材·五年级上册",
+    )
+    assert rows[0]["textbook"] == "学校实际科学教材·五年级上册"
+
+
+def test_runtime_science_reinforcement_assign_has_textbook_safety_wrapper():
+    import inspect
+    import app  # noqa: F401
+    import app_v924 as legacy
+
+    route = next(
+        route
+        for route in legacy.app.routes
+        if getattr(route, "path", None) == "/teacher/students/{sid}/reinforcement/assign"
+        and "POST" in getattr(route, "methods", set())
+    )
+    chain = []
+    call = route.dependant.call
+    while callable(call):
+        chain.append(getattr(call, "__name__", ""))
+        wrapped = getattr(call, "__wrapped__", None)
+        if wrapped is None or wrapped is call:
+            break
+        call = wrapped
+    assert "science_textbook_safe_assign" in chain
+
+    source = inspect.getsource(legacy.teacher_reinforcement_generate)
+    assert 'fallback_textbook="统编版（人民教育出版社）" if forced_subject=="语文" else "人教版"' in source
+    # The compatibility policy must repair this legacy fallback after generation.
+    assert legacy._reinforcement_subject_policy_installed is True
