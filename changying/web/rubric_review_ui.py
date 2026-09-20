@@ -15,6 +15,7 @@ RUBRIC_REVIEW_UI_SNIPPET = r'''
 .cy-rubric-row-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
 .cy-rubric-points{display:grid;gap:5px;margin-top:8px;font-size:12px;line-height:1.55}
 .cy-rubric-met{color:#137a52}.cy-rubric-missed{color:#b54747}.cy-rubric-review-needed{color:#9a6700}
+.cy-rubric-step-credit{margin-top:6px;padding:7px 9px;border-radius:9px;background:#f3f6fa;color:#31445a}
 </style>
 <script id="changying_rubric_review_ui_v1-script">
 (function(){
@@ -40,6 +41,17 @@ RUBRIC_REVIEW_UI_SNIPPET = r'''
         var met=items(row.met_points);
         var missed=items(row.missed_points);
         var review=items(row.needs_teacher_review);
+        var step=row&&row.step_credit;
+        var stepText='';
+        if(step&&Number(step.totalSteps)>0){
+          var earned=Math.max(0,Number(step.earnedSteps)||0);
+          var total=Math.max(0,Number(step.totalSteps)||0);
+          var unresolved=Math.max(0,Number(step.unresolvedSteps)||0);
+          var detail=unresolved
+            ?('；'+unresolved+' 个评分步骤待教师确认，暂不自动折算完成度')
+            :('；按评分点等权折算 '+Math.round((Number(step.ratio)||0)*100)+'%');
+          stepText='<div class="cy-rubric-step-credit"><b>步骤部分得分：</b>'+safe(earned+'/'+total+detail)+'</div>';
+        }
         return '<div class="cy-rubric-row">'+
           '<div class="cy-rubric-row-head"><b>'+(index+1)+'. '+safe(row.knowledge||('题目 #'+(row.question_id||'')))+'</b>'+
           '<span class="badge">'+safe('AI建议完成度 '+ratioText)+'</span></div>'+
@@ -47,6 +59,7 @@ RUBRIC_REVIEW_UI_SNIPPET = r'''
           (met.length?'<div class="cy-rubric-met"><b>✓ 已达到：</b>'+met.map(safe).join('；')+'</div>':'')+
           (missed.length?'<div class="cy-rubric-missed"><b>△ 未达到：</b>'+missed.map(safe).join('；')+'</div>':'')+
           (review.length?'<div class="cy-rubric-review-needed"><b>需教师确认：</b>'+review.map(safe).join('；')+'</div>':'')+
+          stepText+
           (!met.length&&!missed.length&&!review.length?'<div class="muted">AI 未形成可靠的逐点评估，请教师直接核对原作答。</div>':'')+
           '</div></div>';
       }).join('')+
