@@ -214,25 +214,41 @@ def install_science_teacher_ai_workflow(implementation: ModuleType) -> None:
 
     implementation._ai_call = science_aware_ai_call
 
-    for path in ("/ai/questions/generate", "/ai/lesson-plan/generate", "/ai/lesson-plan/practice"):
+    for path in (
+        "/ai/questions/generate",
+        "/ai/questions/save",
+        "/ai/questions/assign",
+        "/ai/lesson-plan/generate",
+        "/ai/lesson-plan/practice",
+    ):
         route = _route(implementation, path, "POST")
         original = route.dependant.call
 
         @wraps(original)
         def guarded(*args: Any, __original=original, **kwargs: Any):
-            body = _body_from_call(args, kwargs)
+            body = kwargs.get("b")
+            if body is None:
+                for value in args:
+                    if hasattr(value, "questions") or (
+                        hasattr(value, "subject") and hasattr(value, "textbook")
+                    ):
+                        body = value
+                        break
             if body is not None:
-                raw_textbook = str(getattr(body, "textbook", "") or "").strip()
-                try:
-                    canonical = normalize_teacher_ai_textbook(
-                        int(getattr(body, "grade", 0) or 0),
-                        str(getattr(body, "subject", "") or ""),
-                        raw_textbook,
-                    )
-                except ValueError as exc:
-                    raise HTTPException(400, str(exc)) from exc
-                if canonical != raw_textbook:
-                    setattr(body, "textbook", canonical)
+                questions = list(getattr(body, "questions", []) or [])
+                targets = questions if questions else [body]
+                for target in targets:
+                    raw_textbook = str(getattr(target, "textbook", "") or "").strip()
+                    try:
+                        canonical = normalize_teacher_ai_textbook(
+                            int(getattr(target, "grade", 0) or 0),
+                            str(getattr(target, "subject", "") or ""),
+                            raw_textbook,
+                        )
+                    except ValueError as exc:
+                        raise HTTPException(400, str(exc)) from exc
+                    if canonical != raw_textbook:
+                        setattr(target, "textbook", canonical)
             return __original(*args, **kwargs)
 
         route.dependant.call = guarded
