@@ -84,7 +84,7 @@ def test_classic_nested_rectangle_places_dimensions_next_to_geometry():
 
     html = legacy.INDEX_HTML
 
-    assert '外长 '+esc(labels["外长"]) in html
-    assert '外宽 '+esc(labels["外宽"]) in html
-    assert '内长 '+esc(labels["内长"]) in html
-    assert '内宽 '+esc(labels["内宽"]) in html
+    assert '外长 \'+esc(labels["外长"])' in html
+    assert '外宽 \'+esc(labels["外宽"])' in html
+    assert '内长 \'+esc(labels["内长"])' in html
+    assert '内宽 \'+esc(labels["内宽"])' in html
