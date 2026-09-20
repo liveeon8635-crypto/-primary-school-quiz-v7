@@ -35,3 +35,13 @@ def test_unified_top_fallback_respects_remember_storage_contract():
     assert "localStorage.getItem('v717Token')" in html
     assert "sessionStorage.getItem('v6Token')" in html
     assert "localStorage.getItem('v6Token')" in html
+
+
+def test_unified_top_validates_saved_state_instead_of_leaving_login_screen_visible():
+    html = inject_v1_classic_unified("<html><body></body></html>")
+    handoff_index = html.index("if(fromV1)bridge=await consumeV1Handoff()")
+    saved_index = html.index("else if(stateReady())")
+    assert handoff_index < saved_index
+    assert "var savedOk=await Promise.resolve(validateSavedSession())" in html
+    assert "else if(typeof enter==='function'){enter()}" in html
+    assert "if(stateReady()){clearV1FromMarker();return true}" not in html
