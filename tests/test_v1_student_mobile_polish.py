@@ -1,3 +1,4 @@
+# Mobile acceptance covers account switching, navigation and detailed student records.
 import inspect
 
 from fastapi.testclient import TestClient
