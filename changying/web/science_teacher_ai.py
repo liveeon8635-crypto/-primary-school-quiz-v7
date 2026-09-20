@@ -183,7 +183,7 @@ def install_science_teacher_ai_workflow(implementation: ModuleType) -> None:
 
     implementation._ai_call = science_aware_ai_call
 
-    for path in ("/ai/lesson-plan/generate", "/ai/lesson-plan/practice"):
+    for path in ("/ai/questions/generate", "/ai/lesson-plan/generate", "/ai/lesson-plan/practice"):
         route = _route(implementation, path, "POST")
         original = route.dependant.call
 
