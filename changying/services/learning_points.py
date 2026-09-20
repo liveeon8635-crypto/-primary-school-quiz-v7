@@ -291,6 +291,14 @@ def install_learning_points(implementation: ModuleType) -> None:
         '${stat(w.earned||0,"本周发放")}${stat(w.net||0,"本周净表现")}${stat(w.learning||0,"本周学习")}${stat(w.activity||0,"本周活动")}${stat(w.discipline||0,"本周守纪")}',
     )
     html = html.replace(
+        '${stat(w.earned||0,"本周发放")}${stat(w.net||0,"净表现")}${stat(w.activity||0,"活动积分")}${stat(w.discipline||0,"守纪积分")}',
+        '${stat(w.earned||0,"本周发放")}${stat(w.net||0,"净表现")}${stat(w.learning||0,"学习积分")}${stat(w.activity||0,"活动积分")}${stat(w.discipline||0,"守纪积分")}',
+    )
+    html = html.replace(
+        'head(`${esc(d.student.name)}的课堂表现`,"课堂积分、每周表现与奖励记录",chooser)',
+        'head(`${esc(d.student.name)}的积分表现`,"课堂与学习积分、每周表现与奖励记录",chooser)',
+    )
+    html = html.replace(
         '课堂活动${w.activity||0}分，守纪${w.discipline||0}分',
         '学习积分${w.learning||0}分，课堂活动${w.activity||0}分，守纪${w.discipline||0}分',
     )
