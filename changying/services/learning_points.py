@@ -259,6 +259,47 @@ def install_learning_points(implementation: ModuleType) -> None:
 
     implementation.qj_public = question_public_with_learning_points
 
+    original_period_points = implementation.student_period_points
+
+    @wraps(original_period_points)
+    def student_period_points_with_learning(db, student_id, school_id, days=7):
+        payload = dict(original_period_points(db, student_id, school_id, days))
+        cutoff, _ = implementation.period_cutoff_utc(days)
+        stats = implementation.point_period_summary(
+            db,
+            student_id=student_id,
+            school_id=school_id,
+            cutoff=cutoff,
+            reason_limit=5,
+        )
+        payload["learning"] = int(stats.get("learning", 0) or 0)
+        return payload
+
+    implementation.student_period_points = student_period_points_with_learning
+
+    html = implementation.INDEX_HTML
+    html = html.replace(
+        'head("积分奖励","课堂表现积分、奖励商城与奖励记录；自动奖励不扣积分")',
+        'head("积分奖励","课堂与学习积分、奖励商城与奖励记录；自动奖励不扣积分")',
+    )
+    html = html.replace(
+        '${stat(s.available,"可用积分")}${stat(s.earned,"累计发放")}${stat(s.activity,"课堂活动")}${stat(s.discipline,"守纪积分")}',
+        '${stat(s.available,"可用积分")}${stat(s.earned,"累计发放")}${stat(s.learning||0,"学习积分")}${stat(s.activity,"课堂活动")}${stat(s.discipline,"守纪积分")}',
+    )
+    html = html.replace(
+        '${stat(w.earned||0,"本周发放")}${stat(w.net||0,"本周净表现")}${stat(w.activity||0,"本周活动")}${stat(w.discipline||0,"本周守纪")}',
+        '${stat(w.earned||0,"本周发放")}${stat(w.net||0,"本周净表现")}${stat(w.learning||0,"本周学习")}${stat(w.activity||0,"本周活动")}${stat(w.discipline||0,"本周守纪")}',
+    )
+    html = html.replace(
+        '课堂活动${w.activity||0}分，守纪${w.discipline||0}分',
+        '学习积分${w.learning||0}分，课堂活动${w.activity||0}分，守纪${w.discipline||0}分',
+    )
+    html = html.replace(
+        '活动 ${x.activity} · 守纪 ${x.discipline} · 净表现 ${x.net}',
+        '学习 ${x.learning||0} · 活动 ${x.activity} · 守纪 ${x.discipline} · 净表现 ${x.net}',
+    )
+    implementation.INDEX_HTML = html
+
     for path in (
         "/student/assignments/{aid}/submit",
         "/student/practice-submit",
