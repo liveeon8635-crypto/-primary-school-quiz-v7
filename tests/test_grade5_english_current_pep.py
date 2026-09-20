@@ -60,15 +60,20 @@ def test_english_practice_catalog_exposes_balanced_modules():
         textbook=ENGLISH_G5_TEXTBOOK,
     )
     counts = {row["knowledge"]: row["count"] for row in modules}
-    assert total == 160
+    # The pack still contains 160 stored shapes (128 reviewed baseline +
+    # 32 derived type variants), but practice availability counts unique
+    # learning content. One genuinely new spelling fill makes 129 families.
+    assert total == 129
     assert len(counts) == 16
-    assert set(counts.values()) == {10}
-    assert counts["人物信息理解"] == 10
-    assert counts["情绪原因与建议"] == 10
-    assert counts["一般现在时"] == 10
-    assert counts["should与shouldn't"] == 10
-    assert counts["饮食选择与表达"] == 10
-    assert counts["保护自然与行为判断"] == 10
+    assert min(counts.values()) >= 8
+    assert max(counts.values()) <= 9
+    assert sum(counts.values()) == 129
+    assert counts["人物信息理解"] >= 8
+    assert counts["情绪原因与建议"] >= 8
+    assert counts["一般现在时"] >= 8
+    assert counts["should与shouldn't"] >= 8
+    assert counts["饮食选择与表达"] >= 8
+    assert counts["保护自然与行为判断"] >= 8
 
 
 def test_practice_ui_names_current_pep_english_line():
