@@ -63,3 +63,28 @@ def test_nested_rectangle_dimensions_are_placed_near_matching_edges():
     assert 'if(labels["内长"])' in html
     assert 'if(labels["内宽"])' in html
     assert 'text-anchor="middle" font-size="11">外长 ' in html
+
+
+
+def test_classic_progress_separates_latest_submission_from_long_term_mastery():
+    from app import app  # noqa: F401
+    import app_v924 as legacy
+
+    html = legacy.INDEX_HTML
+
+    assert 'latestSubmission' in html
+    assert '最近一次作答' in html
+    assert '长期累计掌握率' in html
+    assert '最近一次作答与长期累计分开查看' in html
+
+
+def test_classic_nested_rectangle_places_dimensions_next_to_geometry():
+    from app import app  # noqa: F401
+    import app_v924 as legacy
+
+    html = legacy.INDEX_HTML
+
+    assert '外长 '+esc(labels["外长"]) in html
+    assert '外宽 '+esc(labels["外宽"]) in html
+    assert '内长 '+esc(labels["内长"]) in html
+    assert '内宽 '+esc(labels["内宽"]) in html
