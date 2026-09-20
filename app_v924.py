@@ -1472,6 +1472,10 @@ def progress_for(db,sid,school_id):
     items.sort(key=lambda x:x["accuracy"])
     return {"avgScore":avg,"totalAnswered":total_answered,"submissions":len(subs),"knowledge":items,"latestSubmission":latest}
 
+def half_up_percent(correct,total):
+    if not total:return 0
+    return (correct*200+total)//(2*total)
+
 def grade_answers(db,u,answers,allowed_question_ids=None,require_all=False):
     if not answers: raise HTTPException(400,"没有答题记录")
     if len(answers)>100: raise HTTPException(400,"单次提交题量过多")
@@ -1509,7 +1513,7 @@ def grade_answers(db,u,answers,allowed_question_ids=None,require_all=False):
     if require_all and allowed is not None and seen!=allowed:
         raise HTTPException(400,"请完成试卷全部题目后再提交")
     total=len(normalized)
-    score=((correct*200+total)//(2*total)) if total else 0
+    score=half_up_percent(correct,total)
     return normalized,correct,total,score
 
 # ---------------- V7.3 lifecycle / assignment snapshots ----------------
