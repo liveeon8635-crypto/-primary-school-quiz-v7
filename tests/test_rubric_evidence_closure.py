@@ -3,6 +3,7 @@ import json
 from types import SimpleNamespace
 
 from changying.services.rubric_evidence_closure import (
+    _archive_wrong_requested,
     _grading_assist_call,
     manual_question_meta,
     math_step_credit,
@@ -109,3 +110,11 @@ def test_math_step_credit_keeps_unresolved_steps_for_teacher_confirmation():
     assert credit["unresolvedSteps"] == 1
     assert credit["unresolvedPoints"] == ["计算过程正确"]
     assert credit["ratio"] is None
+
+
+
+def test_archive_wrong_choice_defaults_true_and_respects_explicit_false():
+    assert _archive_wrong_requested(None) is True
+    assert _archive_wrong_requested(SimpleNamespace()) is True
+    assert _archive_wrong_requested(SimpleNamespace(archive_wrong=True)) is True
+    assert _archive_wrong_requested(SimpleNamespace(archive_wrong=False)) is False
