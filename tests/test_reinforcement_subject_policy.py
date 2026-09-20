@@ -71,14 +71,14 @@ def test_context_is_scoped_to_primary_subject():
         "assessmentCount": 3,
         "sourceAssignmentIDs": [9, 8, 7],
         "assessments": [
-            {"assignmentID": 9, "subject": "语文", "score": 70},
-            {"assignmentID": 8, "subject": "数学", "score": 80},
-            {"assignmentID": 7, "subject": "语文", "score": 90},
+            {"assignmentID": 9, "subject": "语文", "textbook": "人教版", "score": 70},
+            {"assignmentID": 8, "subject": "数学", "textbook": "人教版", "score": 80},
+            {"assignmentID": 7, "subject": "语文", "textbook": "人教版", "score": 90},
         ],
         "weakKnowledge": [
-            {"subject": "数学", "knowledge": "梯形的面积", "accuracy": 20},
-            {"subject": "语文", "knowledge": "病句辨析", "accuracy": 50},
-            {"subject": "语文", "knowledge": "提取关键信息", "accuracy": 60},
+            {"subject": "数学", "textbook": "人教版", "knowledge": "梯形的面积", "accuracy": 20},
+            {"subject": "语文", "textbook": "人教版", "knowledge": "病句辨析", "accuracy": 50},
+            {"subject": "语文", "textbook": "人教版", "knowledge": "提取关键信息", "accuracy": 60},
         ],
     }
     scoped = scope_context_to_primary_subject(context)
