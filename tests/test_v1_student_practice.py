@@ -18,6 +18,8 @@ def q(
     textbook="人教版",
     question_type="",
     answer="",
+    subject="数学",
+    text="",
 ):
     values = ["A", "B"] if options is None else options
     return SimpleNamespace(
@@ -25,6 +27,8 @@ def q(
         knowledge=knowledge,
         unit=unit,
         textbook=textbook,
+        subject=subject,
+        text=text,
         options_json=__import__("json").dumps(values, ensure_ascii=False),
         correct_index=correct_index,
         question_type=question_type,
@@ -130,6 +134,50 @@ def test_selector_skips_text_questions_without_server_answer_metadata():
     assert [row.id for row in chosen] == [2]
 
 
+def test_selector_rejects_old_chinese_free_text_variants_but_keeps_real_cloze():
+    textbook = "统编版（人民教育出版社）"
+    rows = [
+        q(
+            1,
+            "病句辨析",
+            textbook=textbook,
+            subject="语文",
+            text="请直接填写答案：下列句子没有语病的一项是？",
+            options=[],
+            correct_index=-1,
+            question_type="fill_blank",
+            answer="同学们认真讨论并记录了观察结果。",
+        ),
+        q(
+            2,
+            "关联词运用",
+            textbook=textbook,
+            subject="语文",
+            text="______天气很冷，______同学们仍然按计划进行户外观察。",
+            options=[],
+            correct_index=-1,
+            question_type="fill_blank",
+            answer="虽然……但是……",
+        ),
+        q(
+            3,
+            "病句辨析",
+            textbook=textbook,
+            subject="语文",
+            text="下列句子没有语病的一项是？",
+        ),
+    ]
+
+    chosen = select_student_practice_questions(
+        rows,
+        kind="comprehensive",
+        count=10,
+        textbook=textbook,
+    )
+
+    assert {row.id for row in chosen} == {2, 3}
+
+
 def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     once = patch_v1_student_practice_html(v1_html())
     twice = patch_v1_student_practice_html(once)
@@ -216,6 +264,8 @@ def _materialized_rows_from_specs(specs):
                 knowledge=spec["knowledge"],
                 unit=spec["unit"],
                 textbook=spec["textbook"],
+                subject=spec["subject"],
+                text=spec["text"],
                 options_json=json.dumps(spec.get("options") or [], ensure_ascii=False),
                 correct_index=int(spec.get("correct_index", -1)),
                 question_type=str(spec.get("question_type") or ""),
