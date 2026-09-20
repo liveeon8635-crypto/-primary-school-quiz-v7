@@ -7,6 +7,11 @@ from typing import Any
 from sqlalchemy import func, select
 
 
+POINT_EARNING_SOURCES = ("classroom", "adjustment", "learning_submission", "learning_grading")
+POINT_NET_SOURCES = POINT_EARNING_SOURCES + ("reversal",)
+LEARNING_POINT_SOURCES = ("learning_submission", "learning_grading")
+
+
 class PointService:
     """Read-side point aggregation with injected legacy ORM models."""
 
@@ -51,7 +56,7 @@ class PointService:
                 self.PointLedger.class_id == class_id,
                 self.PointLedger.created_at >= start_utc,
                 self.PointLedger.created_at < end_utc,
-                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+                self.PointLedger.source.in_(POINT_NET_SOURCES),
             ).order_by(self.PointLedger.id.desc())
         ).all()
 
@@ -59,7 +64,7 @@ class PointService:
         for row in rows:
             item = by_student.setdefault(
                 row.student_id,
-                {"studentID": row.student_id, "net": 0, "activity": 0, "discipline": 0, "records": 0},
+                {"studentID": row.student_id, "net": 0, "activity": 0, "discipline": 0, "learning": 0, "records": 0},
             )
             points = int(row.points or 0)
             item["net"] += points
@@ -68,12 +73,15 @@ class PointService:
                 item["activity"] += points
             if row.category == "discipline":
                 item["discipline"] += points
+            if row.category == "learning":
+                item["learning"] += points
 
         return {
             "recordCount": len(rows),
             "studentCount": len(by_student),
             "activity": sum(int(row.points or 0) for row in rows if row.category == "activity"),
             "discipline": sum(int(row.points or 0) for row in rows if row.category == "discipline"),
+            "learning": sum(int(row.points or 0) for row in rows if row.category == "learning"),
             "net": sum(int(row.points or 0) for row in rows),
             "students": list(by_student.values()),
         }
@@ -94,7 +102,7 @@ class PointService:
                 self.PointLedger.class_id == class_id,
                 self.PointLedger.created_at >= start_utc,
                 self.PointLedger.created_at < end_utc,
-                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+                self.PointLedger.source.in_(POINT_NET_SOURCES),
             )
         ).all()
 
@@ -176,7 +184,7 @@ class PointService:
             select(self.PointLedger).where(
                 self.PointLedger.school_id == school_id,
                 self.PointLedger.created_at >= cutoff,
-                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+                self.PointLedger.source.in_(POINT_NET_SOURCES),
             )
         ).all()
 
@@ -184,10 +192,11 @@ class PointService:
             "earned": sum(
                 int(row.points or 0)
                 for row in rows
-                if (row.points or 0) > 0 and row.source in ("classroom", "adjustment")
+                if (row.points or 0) > 0 and row.source in POINT_EARNING_SOURCES
             ),
             "activity": sum(int(row.points or 0) for row in rows if row.category == "activity"),
             "discipline": sum(int(row.points or 0) for row in rows if row.category == "discipline"),
+            "learning": sum(int(row.points or 0) for row in rows if row.category == "learning"),
         }
 
     def period_summary(
@@ -204,14 +213,14 @@ class PointService:
                 self.PointLedger.school_id == school_id,
                 self.PointLedger.student_id == student_id,
                 self.PointLedger.created_at >= cutoff,
-                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+                self.PointLedger.source.in_(POINT_NET_SOURCES),
             ).order_by(self.PointLedger.id.desc())
         ).all()
 
         earned = sum(
             int(row.points or 0)
             for row in rows
-            if (row.points or 0) > 0 and row.source in ("classroom", "adjustment")
+            if (row.points or 0) > 0 and row.source in POINT_EARNING_SOURCES
         )
         reasons: dict[str, dict[str, int | str]] = {}
         for row in rows:
@@ -230,6 +239,7 @@ class PointService:
             "net": sum(int(row.points or 0) for row in rows),
             "activity": sum(int(row.points or 0) for row in rows if row.category == "activity"),
             "discipline": sum(int(row.points or 0) for row in rows if row.category == "discipline"),
+            "learning": sum(int(row.points or 0) for row in rows if row.category == "learning"),
             "topReasons": top_reasons,
         }
 
@@ -330,7 +340,7 @@ class PointService:
                 self.PointLedger.school_id == school_id,
                 self.PointLedger.student_id == student_id,
                 self.PointLedger.created_at >= cutoff,
-                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+                self.PointLedger.source.in_(POINT_NET_SOURCES),
             )
         ).all()
 
@@ -339,12 +349,14 @@ class PointService:
             value = sum(
                 int(row.points or 0)
                 for row in rows
-                if (row.points or 0) > 0 and row.source in ("classroom", "adjustment")
+                if (row.points or 0) > 0 and row.source in POINT_EARNING_SOURCES
             )
         elif metric == "activity":
             value = sum(int(row.points or 0) for row in rows if row.category == "activity")
         elif metric == "discipline":
             value = sum(int(row.points or 0) for row in rows if row.category == "discipline")
+        elif metric == "learning":
+            value = sum(int(row.points or 0) for row in rows if row.category == "learning")
         else:
             metric = "net"
             value = sum(int(row.points or 0) for row in rows)
@@ -369,7 +381,7 @@ class PointService:
                 self.PointLedger.student_id == student_id,
                 self.PointLedger.created_at >= first_utc,
                 self.PointLedger.created_at < final_utc,
-                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+                self.PointLedger.source.in_(POINT_NET_SOURCES),
             ).order_by(self.PointLedger.created_at)
         ).all()
 
@@ -381,11 +393,12 @@ class PointService:
                     "earned": sum(
                         int(row.points or 0)
                         for row in current
-                        if (row.points or 0) > 0 and row.source in ("classroom", "adjustment")
+                        if (row.points or 0) > 0 and row.source in POINT_EARNING_SOURCES
                     ),
                     "net": sum(int(row.points or 0) for row in current),
                     "activity": sum(int(row.points or 0) for row in current if row.category == "activity"),
                     "discipline": sum(int(row.points or 0) for row in current if row.category == "discipline"),
+                    "learning": sum(int(row.points or 0) for row in current if row.category == "learning"),
                 }
             )
         return result
@@ -397,20 +410,21 @@ class PointService:
                 self.PointLedger.student_id == student_id,
                 self.PointLedger.created_at >= start_utc,
                 self.PointLedger.created_at < end_utc,
-                self.PointLedger.source.in_(("classroom", "adjustment", "reversal")),
+                self.PointLedger.source.in_(POINT_NET_SOURCES),
             )
         ).all()
 
         earned = sum(
             int(row.points or 0)
             for row in rows
-            if (row.points or 0) > 0 and row.source in ("classroom", "adjustment")
+            if (row.points or 0) > 0 and row.source in POINT_EARNING_SOURCES
         )
         return {
             "earned": earned,
             "net": sum(int(row.points or 0) for row in rows),
             "activity": sum(int(row.points or 0) for row in rows if row.category == "activity"),
             "discipline": sum(int(row.points or 0) for row in rows if row.category == "discipline"),
+            "learning": sum(int(row.points or 0) for row in rows if row.category == "learning"),
             "records": len(rows),
         }
 
@@ -430,19 +444,25 @@ class PointService:
         earned = sum(
             int(points or 0)
             for _, points, source in rows
-            if (points or 0) > 0 and source in ("classroom", "adjustment")
+            if (points or 0) > 0 and source in POINT_EARNING_SOURCES
         )
         activity = sum(
             int(points or 0)
             for category, points, source in rows
             if category == "activity"
-            and source in ("classroom", "adjustment", "reversal")
+            and source in POINT_NET_SOURCES
         )
         discipline = sum(
             int(points or 0)
             for category, points, source in rows
             if category == "discipline"
-            and source in ("classroom", "adjustment", "reversal")
+            and source in POINT_NET_SOURCES
+        )
+        learning = sum(
+            int(points or 0)
+            for category, points, source in rows
+            if category == "learning"
+            and source in POINT_NET_SOURCES
         )
         reward_flow = sum(
             int(points or 0)
@@ -457,8 +477,9 @@ class PointService:
             "earned": earned,
             "activity": activity,
             "discipline": discipline,
+            "learning": learning,
             "redeemed": redeemed,
         }
 
 
-__all__ = ["PointService"]
+__all__ = ["LEARNING_POINT_SOURCES", "POINT_EARNING_SOURCES", "POINT_NET_SOURCES", "PointService"]
