@@ -24,10 +24,14 @@ from changying.services.builtin_question_bank_english import grade5_english_spec
 
 def _derived_fill_core(subject: str, text: str) -> str:
     raw = str(text or "").strip()
-    prefixes = (
-        ("请直接填写答案：",) if subject == "语文"
-        else ("Write the answer:", "Complete with the correct answer:")
-    )
+    if subject == "语文":
+        candidate_prefix = "请从备选答案中选择，并输入完整答案："
+        if raw.startswith(candidate_prefix):
+            core = raw[len(candidate_prefix):].strip()
+            return re.split(r"\s*备选答案：", core, maxsplit=1)[0].strip()
+        prefixes = ("请直接填写答案：",)
+    else:
+        prefixes = ("Write the answer:", "Complete with the correct answer:")
     for prefix in prefixes:
         if raw.lower().startswith(prefix.lower()):
             return raw[len(prefix):].strip()
