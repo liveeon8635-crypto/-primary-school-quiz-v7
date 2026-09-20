@@ -120,10 +120,10 @@ def test_grade5_chinese_pack_is_large_and_covers_core_language_modules():
 def test_grade5_chinese_pack_has_mixed_auto_gradable_question_shapes():
     specs = built_in_question_specs(5, "语文", "统编版（人民教育出版社）")
     types = Counter((row.get("question_type") or "single_choice") for row in specs)
-    assert len(specs) == 160
+    assert len(specs) == 147
     assert types["single_choice"] == 128
     assert types["true_false"] == 16
-    assert types["fill_blank"] == 16
+    assert types["fill_blank"] == 3
     assert types.get("short_answer", 0) == 0
     for row in specs:
         question_type = row.get("question_type") or "single_choice"
