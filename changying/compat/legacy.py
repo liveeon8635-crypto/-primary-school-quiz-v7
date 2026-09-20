@@ -40,6 +40,7 @@ from changying.services.assessment_reliability import install_assessment_reliabi
 from changying.services.assessment_context_policy import install_subject_aware_assessment_context
 from changying.services.followups import FollowUpService
 from changying.services.learning_points import install_learning_points
+from changying.services.language_question_quality import install_language_question_quality
 from changying.services.points import PointService
 from changying.services.reinforcement_subject_policy import install_reinforcement_subject_policy
 from changying.services.rubric_evidence_closure import install_rubric_evidence_closure, manual_question_meta
@@ -276,6 +277,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_reinforcement_subject_policy(implementation)
     install_rubric_evidence_closure(implementation)
     install_canonical_submission_evidence(implementation)
+    install_language_question_quality(implementation)
     install_learning_points(implementation)
     install_teacher_ai_rich_generation(implementation)
     install_textbook_registry_guard(implementation)
