@@ -13,17 +13,22 @@ _RICH_UI_SCRIPT = r'''
  window.__cyTeacherAIRichGenerationInstalled=true;
 
  function syncTypeSelector(){
-  const el=document.getElementById('aqType');
-  if(!el||el.dataset.richTypes==='1')return;
-  const previous=el.value||'auto';
-  el.innerHTML=[
-   ['auto','自动选择合适题型'],['mixed','混合题型'],['single_choice','单选题'],
-   ['true_false','判断题'],['fill_blank','填空题'],['calculation','计算题'],
-   ['short_answer','简短应用题'],['non_choice','教师审核主观题']
-  ].map(([v,n])=>'<option value="'+v+'">'+n+'</option>').join('');
-  el.value=[...el.options].some(x=>x.value===previous)?previous:'auto';
-  el.dataset.richTypes='1';
+  const el=document.getElementById('aqType'),subject=document.getElementById('aqSubject');
+  if(!el)return;
+  const previous=el.value||'auto',isMath=String(subject?.value||'').includes('数学');
+  const signature=isMath?'math':'nonmath';
+  if(el.dataset.richTypes===signature)return;
+  const rows=[
+   ['auto','自动选择合适题型'],['mixed','混合在线题型'],['single_choice','单选题'],
+   ['true_false','判断题'],['fill_blank','填空题']
+  ];
+  if(isMath)rows.push(['calculation','计算题'],['short_answer','简短应用题']);
+  rows.push(['non_choice','教师审核主观题']);
+  el.innerHTML=rows.map(([v,n])=>'<option value="'+v+'">'+n+'</option>').join('');
+  el.value=rows.some(x=>x[0]===previous)?previous:'auto';
+  el.dataset.richTypes=signature;
  }
+ document.addEventListener('change',event=>{if(event.target?.id==='aqSubject'){const el=document.getElementById('aqType');if(el)el.dataset.richTypes='';syncTypeSelector()}});
  new MutationObserver(syncTypeSelector).observe(document.documentElement,{childList:true,subtree:true});
  setTimeout(syncTypeSelector,0);
 
