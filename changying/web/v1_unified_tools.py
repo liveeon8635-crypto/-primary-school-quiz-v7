@@ -36,7 +36,7 @@ _TOOL_HTML = r'''<!doctype html>
   <header class="top"><a class="brand" href="/v1/workspace"><span class="mark">长</span><span>长缨辅学<small>统一功能工作区</small></span></a><div class="top-actions"><span class="chip" id="identity">正在识别身份</span><a class="back" href="/v1/tool">全部功能</a></div></header>
   <section class="bar"><div class="tool-title"><b id="toolTitle">功能工作区</b><small>保留原有业务能力，但统一放进长缨辅学界面；这里暴露的问题再逐项原生化。</small></div><select class="picker" id="toolPicker" aria-label="切换功能"></select></section>
   <div class="frame-wrap"><div class="loading" id="loading">正在打开功能…</div><div class="notice" id="notice"></div><iframe class="frame" id="toolFrame" title="长缨辅学功能"></iframe></div>
-  <nav class="bottom"><a href="/v1/workspace"><span>▦</span>当前教学</a><a href="/v1/student"><span>◉</span>学生</a><a href="/v1/history"><span>◷</span>往期教学</a><a href="/v1/transition"><span>↗</span>升学衔接</a><a class="active" href="/v1/tool"><span>⌘</span>全部功能</a></nav>
+  <nav class="bottom" id="roleBottom"></nav>
 <script>
 (()=>{
   const TOKEN_KEY='v717Token';
@@ -47,10 +47,24 @@ _TOOL_HTML = r'''<!doctype html>
     parent:[['childLearning','孩子课程'],['childRewards','课堂表现'],['childProgress','孩子学情'],['childAssignments','孩子作业'],['account','我的']],
     admin:[['admin','平台总览'],['subscription','套餐授权'],['users','账号管理'],['pointsAdmin','积分奖励'],['ai','AI 设置'],['teaching','定制教学'],['resources','教材教案'],['imports','批量导入'],['catalog','教材题库'],['adminAudit','全校审计'],['system','系统设置']]
   };
+  const quickMenus={
+    teacher:[['workspace','▦','当前教学','/v1/workspace'],['students','◉','学生','/v1/student'],['history','◷','往期教学','/v1/history'],['transition','↗','升学衔接','/v1/transition'],['tools','⌘','全部功能','/v1/tool']],
+    student:[['syncLearning','▦','同步课堂','syncLearning'],['assignments','✓','我的作业','assignments'],['practice','✎','自主练习','practice'],['progress','◉','我的学情','progress'],['rewards','★','积分奖励','rewards']],
+    parent:[['childLearning','▦','孩子课程','childLearning'],['childAssignments','✓','孩子作业','childAssignments'],['childProgress','◉','孩子学情','childProgress'],['childRewards','★','课堂表现','childRewards'],['account','⌘','我的','account']],
+    admin:[['admin','▦','平台总览','admin'],['users','◉','账号管理','users'],['pointsAdmin','★','积分奖励','pointsAdmin'],['adminAudit','◷','全校审计','adminAudit'],['system','⌘','系统设置','system']]
+  };
   const params=new URLSearchParams(location.search),requested=params.get('page')||'';
-  const picker=document.getElementById('toolPicker'),title=document.getElementById('toolTitle'),frame=document.getElementById('toolFrame'),loading=document.getElementById('loading'),identity=document.getElementById('identity'),notice=document.getElementById('notice');
+  const picker=document.getElementById('toolPicker'),title=document.getElementById('toolTitle'),frame=document.getElementById('toolFrame'),loading=document.getElementById('loading'),identity=document.getElementById('identity'),notice=document.getElementById('notice'),roleBottom=document.getElementById('roleBottom');
   let role='teacher',items=menus.teacher;
   function find(page){return items.find(x=>x[0]===page)||items[0]}
+  function renderRoleBottom(activePage){
+    const quick=quickMenus[role]||quickMenus.teacher;
+    roleBottom.innerHTML=quick.map(x=>{
+      const href=x[3].startsWith('/')?x[3]:'/v1/tool?page='+encodeURIComponent(x[3]);
+      const active=(x[3]===activePage)||(x[0]==='tools'&&location.pathname==='/v1/tool'&&!activePage);
+      return '<a '+(active?'class="active" ':'')+'href="'+href+'"><span>'+x[1]+'</span>'+x[2]+'</a>';
+    }).join('');
+  }
   function classicUrl(page){return '/classic?legacy=1&embedded=1&from=v1&page='+encodeURIComponent(page)}
   function embeddedPolish(doc){
     if(!doc||doc.getElementById('cy-v1-embedded-style'))return;
@@ -63,7 +77,7 @@ _TOOL_HTML = r'''<!doctype html>
     `;doc.head.appendChild(style);
   }
   function open(page,replace=true){
-    const item=find(page);page=item[0];title.textContent=item[1];picker.value=page;loading.classList.remove('hidden');notice.classList.remove('show');frame.src=classicUrl(page);
+    const item=find(page);page=item[0];title.textContent=item[1];picker.value=page;renderRoleBottom(page);loading.classList.remove('hidden');notice.classList.remove('show');frame.src=classicUrl(page);
     const u=new URL(location.href);u.searchParams.set('page',page);if(replace)history.replaceState(null,'',u.pathname+u.search);
   }
   frame.addEventListener('load',()=>{

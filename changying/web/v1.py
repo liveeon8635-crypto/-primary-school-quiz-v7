@@ -74,7 +74,38 @@ def v1_html() -> str:
     const navigate=(path)=>{{history.pushState({{}},'',path);render()}};
     const roleLabel={{admin:'管理员',teacher:'教师',parent:'家长',student:'学生'}};
     const identitiesFor=s=>{{if(!s)return[];const common={{accountRole:s.role,name:s.name||roleLabel[s.role]||'当前账号'}};if(s.role==='admin'){{const institution={{...common,key:'institution_admin',label:'机构管理员',mode:'institution',icon:'🏫'}};return s.demo?[institution,{{...common,key:'school_admin',label:'学校管理员',mode:'school',icon:'🏛️'}}]:[institution]}}if(s.role==='teacher'){{const institution={{...common,key:'institution_teacher',label:'机构老师',mode:'institution',icon:'👩‍🏫'}};return s.demo?[institution,{{...common,key:'school_teacher',label:'学校教师',mode:'school',icon:'📚'}}]:[institution]}}if(s.role==='parent')return[{{...common,key:'parent',label:'家长',mode:'family',icon:'👪'}}];return[{{...common,key:'student',label:'学生',mode:'student',icon:'🎒'}}]}};
-    function shell(content,active='workspace'){{const nav=[['workspace','▦','当前教学','/v1/workspace'],['students','◉','学生','/v1/student'],['history','◷','往期教学','/v1/history'],['transition','↗','升学衔接','/v1/transition']];return `<div class="layout"><aside class="side"><nav class="nav">${{nav.map(n=>`<a href="${{n[3]}}" data-nav class="${{active===n[0]?'active':''}}"><span>${{n[1]}}</span>${{n[2]}}</a>`).join('')}}<a href="/classic"><span>⌂</span>原教学系统</a></nav><div class="scope">${{identity?.mode==='school'?'小学阶段 · 学校教学':identity?.mode==='institution'?'小学阶段 · 培训机构教学':'小学阶段 · 学生连续档案'}}<br>档案以学生为长期主体</div></aside><main>${{content}}</main></div><nav class="bottom">${{nav.map(n=>`<a href="${{n[3]}}" data-nav class="${{active===n[0]?'active':''}}"><span>${{n[1]}}</span>${{n[2]}}</a>`).join('')}}<a href="/classic"><span>⌂</span>原系统</a></nav>`}}
+    function roleQuickNav(){{
+      const role=session?.role||'teacher';
+      if(role==='student')return[
+        ['syncLearning','▦','同步课堂','/v1/tool?page=syncLearning'],
+        ['assignments','✓','我的作业','/v1/tool?page=assignments'],
+        ['practice','✎','自主练习','/v1/tool?page=practice'],
+        ['progress','◉','我的学情','/v1/tool?page=progress'],
+        ['rewards','★','积分奖励','/v1/tool?page=rewards'],
+      ];
+      if(role==='parent')return[
+        ['childLearning','▦','孩子课程','/v1/tool?page=childLearning'],
+        ['childAssignments','✓','孩子作业','/v1/tool?page=childAssignments'],
+        ['childProgress','◉','孩子学情','/v1/tool?page=childProgress'],
+        ['childRewards','★','课堂表现','/v1/tool?page=childRewards'],
+        ['account','⌘','我的','/v1/tool?page=account'],
+      ];
+      if(role==='admin')return[
+        ['admin','▦','平台总览','/v1/tool?page=admin'],
+        ['users','◉','账号管理','/v1/tool?page=users'],
+        ['pointsAdmin','★','积分奖励','/v1/tool?page=pointsAdmin'],
+        ['adminAudit','◷','全校审计','/v1/tool?page=adminAudit'],
+        ['system','⌘','系统设置','/v1/tool?page=system'],
+      ];
+      return[
+        ['workspace','▦','当前教学','/v1/workspace'],
+        ['students','◉','学生','/v1/student'],
+        ['history','◷','往期教学','/v1/history'],
+        ['transition','↗','升学衔接','/v1/transition'],
+        ['tools','⌘','全部功能','/v1/tool'],
+      ];
+    }}
+    function shell(content,active='workspace'){{const nav=roleQuickNav();const item=n=>`<a href="${{n[3]}}" ${{n[3].startsWith('/v1/tool')?'': 'data-nav'}} class="${{active===n[0]?'active':''}}"><span>${{n[1]}}</span>${{n[2]}}</a>`;return `<div class="layout"><aside class="side"><nav class="nav">${{nav.map(item).join('')}}</nav><div class="scope">${{identity?.mode==='school'?'小学阶段 · 学校教学':identity?.mode==='institution'?'小学阶段 · 培训机构教学':session?.role==='parent'?'小学阶段 · 家长视图':session?.role==='student'?'小学阶段 · 学生学习':'小学阶段 · 学生连续档案'}}<br>快捷入口按当前账号身份显示</div></aside><main>${{content}}</main></div><nav class="bottom">${{nav.map(item).join('')}}</nav>`}}
     function bindNav(){{document.querySelectorAll('[data-nav]').forEach(a=>a.onclick=e=>{{e.preventDefault();navigate(a.getAttribute('href'))}})}}
     function loginView(message=''){{identityButton.hidden=true;chip.textContent='尚未登录';screen.innerHTML=`<div class="login-wrap"><form class="login" id="loginForm"><span class="tag">长缨辅学 V1</span><h1>登录教学系统</h1><p class="subtitle">登录后识别身份，进入账号已授权的教学视图。</p>${{message?`<div class="notice error">${{esc(message)}}</div>`:''}}<div class="field"><label>账号</label><input name="username" autocomplete="username" required></div><div class="field"><label>密码</label><input name="password" type="password" autocomplete="current-password" required></div><label class="field" style="display:flex;grid-template-columns:auto 1fr;align-items:center"><input name="remember" type="checkbox" style="width:auto">记住登录</label><button class="btn primary" type="submit">登录并继续</button><button class="btn" id="demoButton" type="button">查看演示流程</button><div class="login-help">演示流程使用明确标注的浏览器占位数据，不写入数据库；真实账号继续使用现有权限和数据。</div></form></div>`;document.getElementById('demoButton').onclick=()=>{{token='demo';session={{userID:900001,name:'演示教师',role:'teacher',demo:true}};chooseIdentity()}};document.getElementById('loginForm').onsubmit=async e=>{{e.preventDefault();const btn=e.submitter;btn.disabled=true;try{{const data=Object.fromEntries(new FormData(e.target)),remember=data.remember==='on';const result=await api('/login',{{method:'POST',body:JSON.stringify({{username:data.username,password:data.password,remember}})}});token=result.token;persistAuth(result,remember);session=result;if(result.mustChangePassword){{toast('请先修改初始密码');await openClassic('/v1/tool?page=account');return}}chooseIdentity()}}catch(err){{loginView(err.message)}}}}}}
     function chooseIdentity(){{const choices=identitiesFor(session);identity=null;localStorage.removeItem(IDENTITY_KEY);chip.textContent=session?.name||'当前账号';identityButton.hidden=true;screen.innerHTML=`<div class="login-wrap"><section class="login" style="width:min(650px,100%)"><span class="tag">已识别账号：${{esc(session?.name||'')}}</span><h1>选择本次使用身份</h1><p class="subtitle">${{session?.demo?'演示流程可切换机构与学校模式。':'现有账号按原权限接入培训机构数据；学校数据域建立后再开放对应真实身份。'}}</p><div class="identities">${{choices.map(x=>`<button class="identity" data-key="${{x.key}}"><span style="font-size:25px">${{x.icon}}</span><strong>${{x.label}}</strong><small>${{x.mode==='school'?'进入学校教学工作台':'进入'+(x.mode==='institution'?'培训机构教学工作台':'个人教学视图')}}</small></button>`).join('')}}</div></section></div>`;document.querySelectorAll('[data-key]').forEach(btn=>btn.onclick=()=>{{identity=choices.find(x=>x.key===btn.dataset.key);localStorage.setItem(IDENTITY_KEY,identity.key);navigate(identity.mode==='family'||identity.mode==='student'?'/v1/student':'/v1/workspace?mode='+identity.mode)}})}}
