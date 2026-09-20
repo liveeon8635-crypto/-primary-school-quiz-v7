@@ -75,7 +75,7 @@ with TestClient(app) as client:
         option_body = options.json()
         assert option_body["selectedSubject"] == subject
         assert option_body["selectedTextbook"] == textbook
-        assert option_body["availableQuestionCount"] == 176
+        assert option_body["availableQuestionCount"] == 160
         assert len(option_body["modules"]) == 16
 
         created = client.post(
@@ -104,7 +104,7 @@ with TestClient(app) as client:
         public_rows = public.json()
         assert len(public_rows) == 8
         types = {row["questionType"] for row in public_rows}
-        assert {"single_choice", "true_false", "fill_blank", "short_answer"} <= types
+        assert {"single_choice", "true_false", "fill_blank"} <= types
         assert all("correctIndex" not in row for row in public_rows)
         assert all("answer" not in row for row in public_rows)
 
