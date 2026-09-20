@@ -131,5 +131,6 @@ def test_production_classic_html_has_no_utc_assignment_default_expressions():
     assert response.status_code == 200
     assert "Date.now()+7*86400000).toISOString().slice(0,10)" not in response.text
     assert "Date.now()+3*86400000).toISOString().slice(0,10)" not in response.text
-    assert "d.setDate(d.getDate()+7)" in response.text
-    assert "d.setDate(d.getDate()+3)" in response.text
+    assert "function localDueDate(days=7)" in response.text
+    assert "localDueDate(7)" in response.text
+    assert "localDueDate(3)" in response.text
