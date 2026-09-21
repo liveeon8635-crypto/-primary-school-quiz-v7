@@ -313,6 +313,35 @@ with TestClient(app) as client:
         rid = assigned_body["assignment"]["id"]
         rpid = assigned_body["paperID"]
 
+        student_assignments = client.get("/student/assignments", headers=sh)
+        assert student_assignments.status_code == 200, student_assignments.text
+        visible = next(
+            (row for row in student_assignments.json() if row["id"] == rid),
+            None,
+        )
+        assert visible is not None, (
+            f"{subject} AI targeted practice must appear in the student's assignment list"
+        )
+        assert visible["title"] == f"{subject}针对性练习"
+        assert visible["completed"] is False
+        assert visible["statusCode"] == "pending"
+        assert visible["submissionMode"] == "quiz"
+        assert visible["submissionModeName"] == "在线答题"
+        assert visible["paperID"] == rpid
+        assert visible["assignedClassName"]
+        assert visible["paper"]["subject"] == subject
+        assert visible["paper"]["textbook"] == textbook
+        assert len(visible["paper"]["questionIDs"]) == 3
+
+        listed_questions = client.get(
+            f"/papers/{visible['paperID']}/questions",
+            headers=sh,
+        )
+        assert listed_questions.status_code == 200, listed_questions.text
+        assert len(listed_questions.json()) == 3
+        assert all(row["subject"] == subject for row in listed_questions.json())
+        assert all(row["textbook"] == textbook for row in listed_questions.json())
+
         with legacy.SessionLocal() as db:
             link = db.scalar(
                 legacy.select(legacy.ReinforcementLink).where(
