@@ -65,9 +65,9 @@ def question_type_fit_score(subject: str, knowledge: str, question_type: str) ->
 
     if subject == "数学":
         if _match(knowledge, ("计算", "口算", "竖式", "小数乘", "小数除", "简便运算")):
-            return 0 if qtype in {"calculation", "fill_blank"} else (1 if qtype in {"single_choice", "short_answer"} else 3)
+            return 0 if qtype in {"calculation", "fill_blank"} else (1 if qtype in {"single_choice", "short_answer", "true_false"} else 3)
         if _match(knowledge, ("应用", "数量关系", "解决问题")):
-            return 0 if qtype in {"short_answer", "calculation"} else (1 if qtype == "single_choice" else 3)
+            return 0 if qtype in {"short_answer", "calculation"} else (1 if qtype in {"single_choice", "true_false"} else 3)
         if _match(knowledge, ("面积", "周长", "图形", "几何", "统计", "可能性")):
             return 0 if qtype in {"single_choice", "calculation", "short_answer"} else (1 if qtype in {"fill_blank", "true_false"} else 3)
         return 0 if qtype in {"single_choice", "fill_blank", "calculation", "short_answer"} else 1
