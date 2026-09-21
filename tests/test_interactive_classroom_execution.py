@@ -82,7 +82,7 @@ def test_v1_connects_review_to_teacher_execution_and_student_consent():
     assert "学生讲解必须本人确认" in html
     assert "候选信息只对教师可见，不是公开排名" in html
     assert "婉拒不会扣分" in html
-    assert "Phase C 接入即时检测后才真正向学生端展示" in html
+    assert "关闭随堂检测后，按教师勾选项向学生展示" in html
 
 
 def test_runtime_interactive_classroom_phase_ab(tmp_path):
