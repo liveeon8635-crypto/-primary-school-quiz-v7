@@ -93,16 +93,16 @@ def test_v1_execution_patch_contains_teacher_and_student_consent_pages():
     )
     html = html.replace(
         "    function v1QuestionTypeLabel(q){",
-        "    async function classroomReviewPage(){const current=1,summary={handoutDraft:null};const renderReview=()=>{const draft=summary.handoutDraft;const draftEditor=(d)=>'';const content='<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div></section>';screen.innerHTML=shell(content,'workspace');const bindSave=()=>{};};}\n    function v1QuestionTypeLabel(q){",
+        "    async function classroomReviewPage(){const current=1,summary={handoutDraft:null};const renderReview=()=>{const draft=summary.handoutDraft;const draftEditor=(d)=>'';const content='<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div></section>';screen.innerHTML=shell(content,'workspace');const bindSave=()=>{};bindSave();};}\n    function v1QuestionTypeLabel(q){",
         1,
     )
     patched = patch_v1_classroom_execution_html(html)
     assert V1_CLASSROOM_EXECUTION_MARKER in patched
     assert "/v1/classroom-execution" in patched
     assert "/v1/classroom-invitations" in patched
-    assert "学生讲解必须由学生本人确认" in patched
-    assert "是否参与由你本人决定" in patched
-    assert "这里不会显示其他学生的候选信息、排名或薄弱标签" in patched
+    assert "学生讲解必须本人确认" in patched
+    assert "你可以自主选择接受或婉拒" in patched
+    assert "不是公开排名，也不会自动指定学生" in patched
 
 
 def test_runtime_phase_ab_classroom_execution(tmp_path):
