@@ -27,6 +27,7 @@ def quick_check_prompt(
     knowledge: str,
     qtype: str,
     notes: str = "",
+    excluded_knowledge: list[str] | None = None,
 ) -> str:
     qtype = normalize_quick_check_type(qtype)
     if qtype == "true_false":
@@ -35,20 +36,28 @@ def quick_check_prompt(
     else:
         schema = '{"questions":[{"question_type":"single_choice","text":"...","options":["...","...","...","..."],"correct_index":0,"explanation":"..."}]}'
         rule = "生成1道四选一单选题，四个选项都应具有合理迷惑性，但只有一个确定答案。"
+    exclusions = [
+        str(item or "").strip()
+        for item in (excluded_knowledge or [])
+        if str(item or "").strip() and str(item or "").strip() != str(knowledge or "").strip()
+    ]
+    exclusion_text = "、".join(dict.fromkeys(exclusions)) or "无"
     return f"""你是中国小学课堂教师。请为一次知识点讲解后的即时随堂检测生成1道题。
 年级：{int(grade or 5)}年级
 科目：{str(subject or '').strip()}
 教材：{str(textbook or '').strip()}
 知识点：{str(knowledge or '').strip()}
 教师补充：{str(notes or '').strip() or '无'}
+本堂课其他知识点（不得作为本题主要考查目标）：{exclusion_text}
 
 要求：
 1. 题目用于讲解后的即时理解检查，不是正式考试，不要复述教师原话。
 2. {rule}
 3. 内容必须与给定知识点直接相关，不得扩展到未讲内容。
-4. 不得包含学生姓名、排名、能力标签或个人学习数据。
-5. 解析简短清楚。
-6. 只返回JSON，不要Markdown。
+4. 不要把“本堂课其他知识点”作为题目的主要考查目标；如素材不可避免涉及，答案依据仍必须落在当前知识点。
+5. 不得包含学生姓名、排名、能力标签或个人学习数据。
+6. 解析简短清楚。
+7. 只返回JSON，不要Markdown。
 
 结构：
 {schema}
