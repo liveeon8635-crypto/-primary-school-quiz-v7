@@ -83,27 +83,17 @@ def test_private_candidate_policy_uses_positive_signals_not_weak_labels():
 
 
 def test_v1_execution_patch_contains_teacher_and_student_consent_pages():
-    html = v1_html()
-    html = html.replace(
-        "document.querySelectorAll('[data-feature]').forEach(b=>b.onclick=()=>toast(b.dataset.feature+'：V1 入口已预留'));",
-        "document.querySelectorAll('[data-feature]').forEach(b=>b.onclick=()=>{if(b.dataset.feature==='课堂复盘')navigate('/v1/classroom-review');else toast(b.dataset.feature+'：V1 入口已预留')});",
-    ).replace(
-        "if(path.includes('/student'))await studentPage();",
-        "if(path.includes('/classroom-review'))await classroomReviewPage();else if(path.includes('/student'))await studentPage();",
-    )
-    html = html.replace(
-        "    function v1QuestionTypeLabel(q){",
-        "    async function classroomReviewPage(){const current=1,summary={handoutDraft:null};const renderReview=()=>{const draft=summary.handoutDraft;const draftEditor=(d)=>'';const content='<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div></section>';screen.innerHTML=shell(content,'workspace');const bindSave=()=>{};bindSave();};}\n    function v1QuestionTypeLabel(q){",
-        1,
-    )
-    patched = patch_v1_classroom_execution_html(html)
-    assert V1_CLASSROOM_EXECUTION_MARKER in patched
-    assert "/v1/classroom-execution" in patched
-    assert "/v1/classroom-invitations" in patched
-    assert "学生讲解必须本人确认" in patched
-    assert "你可以自主选择接受或婉拒" in patched
-    assert "不是公开排名，也不会自动指定学生" in patched
+    from app import app  # noqa: F401
+    from changying.web import v1 as v1_module
 
+    html = v1_module.v1_html()
+    assert V1_CLASSROOM_EXECUTION_MARKER in html
+    assert "/v1/classroom-execution" in html
+    assert "/v1/classroom-invitations" in html
+    assert "学生讲解必须本人确认" in html
+    assert "你可以自主选择接受或婉拒" in html
+    assert "不是公开排名，也不会自动指定学生" in html
+    assert "婉拒不会扣分" in html
 
 def test_runtime_phase_ab_classroom_execution(tmp_path):
     db_path = tmp_path / "classroom-execution.sqlite3"
