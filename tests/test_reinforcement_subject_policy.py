@@ -356,3 +356,58 @@ def test_reinforcement_assign_route_has_duplicate_guard():
         and "POST" in getattr(route, "methods", set())
     )
     assert getattr(route.dependant.call, "_reinforcement_duplicate_guard", False) is True
+
+
+def test_reviewed_generic_source_family_blocks_exact_reskin_but_allows_different_options():
+    source = {
+        "subject": "语文",
+        "knowledge": "字形辨析",
+        "question_type": "single_choice",
+        "text": "下列词语书写完全正确的一项是？",
+        "options": ["爱幕", "爱慕", "爱墓", "爱暮"],
+        "correct_index": 1,
+    }
+    same_content = {
+        "subject": "语文",
+        "knowledge": "字形辨析",
+        "question_type": "true_false",
+        "text": "判断下面的作答是否正确：下列词语书写完全正确的一项是 —— 爱慕",
+        "options": ["正确", "错误"],
+        "correct_index": 0,
+    }
+    other_content = {
+        "subject": "语文",
+        "knowledge": "字形辨析",
+        "question_type": "single_choice",
+        "text": "下列词语书写完全正确的一项是？",
+        "options": ["胆却", "胆怯", "胆切", "胆怯怯"],
+        "correct_index": 1,
+    }
+
+    source_family = reinforcement_content_family(source)
+    assert reinforcement_source_key(source) == ""
+
+    kept, dropped = dedupe_reinforcement_items(
+        [same_content, other_content],
+        source_families={source_family},
+    )
+    assert kept == [other_content]
+    assert dropped == 1
+
+
+def test_runtime_reinforcement_generation_recovers_source_question_family_from_wrong_question_id():
+    import inspect
+    import app  # noqa: F401
+    import app_v924 as legacy
+
+    route = next(
+        route
+        for route in legacy.app.routes
+        if getattr(route, "path", None) == "/teacher/students/{sid}/reinforcement/generate"
+        and "POST" in getattr(route, "methods", set())
+    )
+    source = inspect.getsource(route.dependant.call)
+    assert "source_families" in source
+    assert "wrong.question_id" in source or 'getattr(wrong, "question_id"' in source
+    assert "implementation.Question.id == question_id" in source
+    assert "source_families=source_families" in source
