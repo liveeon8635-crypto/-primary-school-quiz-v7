@@ -302,7 +302,7 @@ def test_generic_language_stem_with_different_options_is_not_false_positive():
         "knowledge": "字形辨析",
         "question_type": "single_choice",
         "text": "下列词语书写完全正确的一项是？",
-        "options": ["爱幕", "爱慕", "爱墓", "爱暮"],
+        "options": ["爱幕　恩惠　协调", "爱慕　恩惠　协调", "爱慕　恩慧　协调", "爱慕　恩惠　协凋"],
         "correct_index": 1,
     }
     second = {
@@ -371,7 +371,7 @@ def test_reviewed_generic_source_family_blocks_exact_reskin_but_allows_different
         "subject": "语文",
         "knowledge": "字形辨析",
         "question_type": "true_false",
-        "text": "判断下面的作答是否正确：下列词语书写完全正确的一项是 —— 爱慕",
+        "text": "判断下面的作答是否正确：下列词语书写完全正确的一项是 —— 爱慕　恩惠　协调",
         "options": ["正确", "错误"],
         "correct_index": 0,
     }
