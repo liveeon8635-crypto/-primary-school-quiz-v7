@@ -64,6 +64,7 @@ def test_unified_tool_shortcuts_use_same_role_contract():
 
 
 def test_teacher_shortcuts_keep_existing_teaching_navigation():
+    # Teacher shortcuts intentionally preserve existing teaching navigation.
     html = v1_html()
     for label, path in (
         ("当前教学", "/v1/workspace"),
