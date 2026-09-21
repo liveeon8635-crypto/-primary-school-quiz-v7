@@ -87,7 +87,7 @@ def patch_v1_student_detail_visibility(html: str) -> str:
 
 
 def install_v1_student_detail_visibility_patch() -> None:
-    """Install complete student-detail rendering once before V1 routes bind."""
+    """Install the complete student-detail rendering once before V1 routes bind."""
 
     if getattr(v1_module, "_student_detail_visibility_patch_installed", False):
         return
