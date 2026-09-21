@@ -236,6 +236,7 @@ with TestClient(app) as client:
             .returning(handouts.c.id)
         ).scalar_one()
 
+        school_id = teacher.school_id
         before_points = int(
             db.scalar(
                 select(func.count())
@@ -258,7 +259,6 @@ with TestClient(app) as client:
             )
             or 0
         )
-        school_id = teacher.school_id
         db.commit()
         aid = assignment.id
         sid_student = student.id
