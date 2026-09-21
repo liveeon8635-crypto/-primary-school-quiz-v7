@@ -317,3 +317,12 @@ def test_operational_capture_handler_preserves_classroom_review_navigation():
     assert "if(name==='课堂复盘')" in html
     assert "navigate('/v1/classroom-review')" in html
     assert "showFeature(name)" in html
+
+
+
+def test_classroom_review_ai_generation_uses_long_timeout_without_changing_default():
+    html = patch_v1_classroom_review_html(v1_html())
+    assert "const timeoutMs=Number(options.timeoutMs||10000)" in html
+    assert "delete requestOptions.timeoutMs" in html
+    assert "timeoutMs:90000" in html
+    assert "setTimeout(()=>controller.abort(),timeoutMs)" in html
