@@ -16,6 +16,7 @@ from changying.web.v1_classroom_review import (
     patch_v1_classroom_review_html,
 )
 from changying.web.v1 import v1_html
+from changying.web.v1_operational import patch_v1_operational_html
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -306,3 +307,13 @@ with TestClient(app) as client:
         capture_output=True,
     )
     assert completed.returncode == 0, completed.stdout + "\n" + completed.stderr
+
+
+
+def test_operational_capture_handler_preserves_classroom_review_navigation():
+    html = patch_v1_operational_html(
+        patch_v1_classroom_review_html(v1_html())
+    )
+    assert "if(name==='课堂复盘')" in html
+    assert "navigate('/v1/classroom-review')" in html
+    assert "showFeature(name)" in html
