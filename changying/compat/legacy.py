@@ -68,6 +68,10 @@ from changying.web.v1_classroom_review import (
     install_v1_classroom_review_patch,
     install_v1_classroom_review_routes,
 )
+from changying.web.v1_classroom_execution import (
+    install_v1_classroom_execution_patch,
+    install_v1_classroom_execution_routes,
+)
 from changying.web.v1_completion import install_v1_completion_patch
 from changying.web.v1_data_quality import install_v1_data_quality_patch
 from changying.web.v1_fast_path import install_v1_fast_path_patch, install_v1_fast_read_routes
@@ -322,6 +326,8 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_student_practice_routes(implementation)
     install_v1_classroom_review_patch()
     install_v1_classroom_review_routes(implementation)
+    install_v1_classroom_execution_patch()
+    install_v1_classroom_execution_routes(implementation)
     install_v1_guardian_visibility_patch()
     install_v1_membership_reliability_patch()
     install_v1_final_closure_patch()
