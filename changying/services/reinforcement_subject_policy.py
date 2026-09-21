@@ -369,6 +369,11 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
         return prompt
     subject = reinforcement_subject_from_prompt(prompt)
     fit_guidance = subject_question_type_guidance(subject)
+    fit_rule = (
+        "\n【知识点—题型匹配约束】\n" + fit_guidance + "\n"
+        if fit_guidance
+        else ""
+    )
     if subject == "科学":
         return (
             str(prompt)
@@ -387,11 +392,11 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
     if subject == "英语":
         return (
             str(prompt)
+            + fit_rule
             + """
 
 【英语学科附加约束】
 1. 当前科目是英语。所有题目必须是小学英语内容，不得生成数学计算题、数学数量关系题或数学图示。
-0. {fit_guidance}
 2. 教材必须保持“人教版（PEP·当前最新版）”五年级上册语境；当前六个单元为 Different friends、My feelings、Work and play、Healthy habits、Food we eat、Nature and us。不得回退到旧版单元标题。
 3. 自动判分题只使用 single_choice、true_false、fill_blank；不要使用 calculation 或开放式 short_answer。5题以上尽量覆盖至少3种题型。
 4. fill_blank 仅用于答案明确的单词、短语、be/do/can/should 等语法形式；若存在多种合理表达，改成 single_choice/true_false，或完整列入 accepted_answers。
@@ -403,6 +408,7 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
     if subject and subject != "语文":
         return (
             str(prompt)
+            + fit_rule
             + f"""
 
 【学科隔离约束】
@@ -413,11 +419,11 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
         return prompt
     return (
         str(prompt)
+        + fit_rule
         + """
 
 【语文学科附加约束】
 1. 当前科目是语文。所有题目必须是小学语文学科内容，不得生成数学计算题、数学数量关系题或数学图示。
-0. {fit_guidance}
 2. 语文自动判分题只使用 single_choice、true_false、fill_blank；不要使用 calculation 或 short_answer。5题以上尽量覆盖这3种题型，但准确性优先。
 3. fill_blank 只用于存在明确、可自动判定答案的字词、关联词、标点或短语。开放性阅读感受、习作、概括性长答和长篇表达不得自动判分，遇到这类知识点必须改写成选择/判断等客观题；主观题以后走评分点 + 教师确认，不与本轮自动判分混用。
 4. 阅读题所需材料必须在题干内完整给出，材料简短、原创、信息充分；不得假定学生看得到教材原文，也不要大段复现教材或受版权保护的文章。
