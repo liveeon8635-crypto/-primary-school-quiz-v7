@@ -52,7 +52,7 @@ def _redirect_to_v1() -> RedirectResponse:
 
 
 def install_entry_policy(app: FastAPI) -> None:
-    """Make V1 the default entry and require an explicit transition to classic."""
+    """Keep V1 as the default entry and require an explicit transition to classic."""
     if getattr(app.state, "entry_policy_installed", False):
         return
 
