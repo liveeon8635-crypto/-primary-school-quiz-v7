@@ -26,7 +26,7 @@ def test_student_detail_no_longer_silently_truncates_loaded_record_arrays():
 def test_homepage_preview_remains_compact_while_student_detail_is_complete():
     html = rendered_html()
 
-    assert "people.slice(0,999).map" in html
+    assert "people.slice(0,6).map" in html
 
 
 def test_student_detail_visibility_patch_is_idempotent_and_read_only():
