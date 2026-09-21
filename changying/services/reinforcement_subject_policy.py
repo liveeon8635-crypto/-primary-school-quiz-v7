@@ -212,8 +212,9 @@ def dedupe_reinforcement_items(
     items: list[Any],
     *,
     source_keys: set[str] | None = None,
+    source_families: set[str] | None = None,
 ) -> tuple[list[Any], int]:
-    seen: set[str] = set()
+    seen: set[str] = set(source_families or set())
     blocked = set(source_keys or set())
     kept: list[Any] = []
     dropped = 0
@@ -427,6 +428,7 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
 
             db = kwargs.get("db")
             source_keys: set[str] = set()
+            source_families: set[str] = set()
             if db is not None and wrong_ids:
                 wrong_rows = db.scalars(
                     select(implementation.WrongQuestionRecord).where(
@@ -445,9 +447,47 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
                     if source_key:
                         source_keys.add(source_key)
 
+                    question_id = int(getattr(wrong, "question_id", 0) or 0)
+                    if not question_id:
+                        continue
+                    source_question = db.scalar(
+                        select(implementation.Question).where(
+                            implementation.Question.id == question_id,
+                            implementation.Question.school_id == getattr(wrong, "school_id", None),
+                        )
+                    )
+                    if source_question is None:
+                        continue
+                    try:
+                        source_options = json.loads(
+                            getattr(source_question, "options_json", "[]") or "[]"
+                        )
+                    except Exception:
+                        source_options = []
+                    if not isinstance(source_options, list):
+                        source_options = []
+                    try:
+                        source_meta = implementation.question_answer_meta(source_question)
+                    except Exception:
+                        source_meta = {}
+                    source_families.add(
+                        reinforcement_content_family(
+                            {
+                                "subject": getattr(source_question, "subject", ""),
+                                "knowledge": getattr(source_question, "knowledge", ""),
+                                "text": getattr(source_question, "text", ""),
+                                "question_type": implementation.question_type_of(source_question),
+                                "options": source_options,
+                                "correct_index": getattr(source_question, "correct_index", -1),
+                                "answer": (source_meta or {}).get("answer", ""),
+                            }
+                        )
+                    )
+
             items, duplicate_count = dedupe_reinforcement_items(
                 list(items),
                 source_keys=source_keys,
+                source_families=source_families,
             )
             if not items:
                 raise HTTPException(
