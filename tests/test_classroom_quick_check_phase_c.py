@@ -8,6 +8,7 @@ import sys
 
 from changying.services.classroom_quick_check import (
     clean_ai_quick_check,
+    quick_check_prompt,
     quick_check_summary,
 )
 from changying.web.v1 import v1_html
@@ -56,6 +57,20 @@ def test_quick_check_helpers_keep_objective_feedback_small_and_explicit():
     assert summary["distribution"][1]["count"] == 2
 
 
+
+def test_quick_check_prompt_excludes_sibling_knowledge_focus():
+    prompt = quick_check_prompt(
+        grade=5,
+        subject="语文",
+        textbook="统编版",
+        knowledge="习作修改",
+        qtype="single_choice",
+        excluded_knowledge=["病句辨析", "说明方法", "资料整合、阅读推断"],
+    )
+    assert "知识点：习作修改" in prompt
+    assert "本堂课其他知识点（不得作为本题主要考查目标）：病句辨析、说明方法、资料整合、阅读推断" in prompt
+    assert "不要把“本堂课其他知识点”作为题目的主要考查目标" in prompt
+
 def test_v1_phase_c_patch_exposes_teacher_controlled_quick_check_and_student_page():
     html = patch_v1_classroom_quick_check_html(
         patch_v1_classroom_execution_html(
@@ -65,6 +80,7 @@ def test_v1_phase_c_patch_exposes_teacher_controlled_quick_check_and_student_pag
     assert V1_CLASSROOM_QUICK_CHECK_MARKER in html
     assert "/v1/classroom-quick-checks" in html
     assert "AI生成草稿" in html
+    assert "timeoutMs:90000" in html
     assert "手工建立草稿" in html
     assert "教师确认并开始检测" in html
     assert "根据反馈继续讲解" in html
