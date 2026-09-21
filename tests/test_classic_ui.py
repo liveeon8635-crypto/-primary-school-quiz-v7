@@ -134,3 +134,20 @@ def test_production_classic_html_has_no_utc_assignment_default_expressions():
     assert "function localDueDate(days=7)" in response.text
     assert "localDueDate(7)" in response.text
     assert "localDueDate(3)" in response.text
+
+
+def test_production_classic_student_sync_exposes_open_classroom_quick_checks():
+    from app import app as production_app
+
+    response = TestClient(production_app).get(
+        "/classic?legacy=1&unified=1&page=syncLearning",
+        headers={"Accept-Encoding": "identity"},
+    )
+
+    assert response.status_code == 200
+    assert 'api("/student/classroom-quick-checks")' in response.text
+    assert "正在进行的课堂互动" in response.text
+    assert "进入随堂检测" in response.text
+    assert "classroomQuickChecksClassic" in response.text
+    assert '"/student/classroom-quick-checks/"+b.dataset.id+"/respond"' in response.text
+    assert "本次答案只用于当前课堂反馈，不会自动加分，也不会自动改写长期知识掌握记录。" in response.text
