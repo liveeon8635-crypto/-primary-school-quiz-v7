@@ -80,6 +80,9 @@ def test_v1_phase_c_patch_exposes_teacher_controlled_quick_check_and_student_pag
     assert V1_CLASSROOM_QUICK_CHECK_MARKER in html
     assert "/v1/classroom-quick-checks" in html
     assert "AI生成草稿" in html
+    assert "重新AI生成草稿" in html
+    assert "cy-q-regenerate" in html
+    assert "重新AI生成会覆盖当前草稿内容，但不会向学生开放" in html
     assert "timeoutMs:90000" in html
     assert "手工建立草稿" in html
     assert "教师确认并开始检测" in html
