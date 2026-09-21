@@ -168,6 +168,41 @@ def install_product_visibility_routes(app: FastAPI) -> None:
     app.state.product_visibility_routes_installed = True
 
 
+
+def install_teacher_dashboard_current_student_count(implementation: ModuleType) -> None:
+    """Keep the legacy teacher dashboard student KPI aligned with current class membership."""
+
+    if getattr(implementation, "_teacher_dashboard_current_student_count_installed", False):
+        return
+
+    original = implementation.teacher_analytics_data
+
+    def teacher_analytics_with_current_students(db, user):
+        payload = dict(original(db, user))
+        if getattr(user, "role", "") == "teacher":
+            current_students = db.scalar(
+                implementation.select(
+                    implementation.func.count(
+                        implementation.func.distinct(implementation.ClassStudent.student_id)
+                    )
+                )
+                .select_from(implementation.ClassStudent)
+                .join(
+                    implementation.SchoolClass,
+                    implementation.SchoolClass.id == implementation.ClassStudent.class_id,
+                )
+                .where(
+                    implementation.SchoolClass.school_id == user.school_id,
+                    implementation.SchoolClass.teacher_id == user.id,
+                )
+            )
+            payload["students"] = int(current_students or 0)
+        return payload
+
+    implementation.teacher_analytics_data = teacher_analytics_with_current_students
+    implementation._teacher_dashboard_current_student_count_installed = True
+
+
 def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str) -> None:
     """Install extracted helpers while preserving legacy runtime configuration."""
     implementation.MANIFEST = build_manifest(asset_version=asset_version)
@@ -234,6 +269,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
         return payload
 
     implementation.aj = assignment_json_with_local_timeline
+    install_teacher_dashboard_current_student_count(implementation)
 
     teaching_service = TeachingService(
         adaptive_session_model=implementation.TeachingAdaptiveSession,
@@ -385,4 +421,4 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_unified_tool_route(implementation.app)
 
 
-__all__ = ["NO_CACHE_HEADERS", "apply_legacy_compatibility", "install_product_visibility_routes"]
+__all__ = ["NO_CACHE_HEADERS", "apply_legacy_compatibility", "install_product_visibility_routes", "install_teacher_dashboard_current_student_count"]
