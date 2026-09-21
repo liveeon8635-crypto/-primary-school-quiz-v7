@@ -46,8 +46,12 @@ _RUNTIME_FALLBACK = r'''
     if(!screen||document.getElementById('cy-v1-runtime-error'))return;
     screen.insertAdjacentHTML('afterbegin','<div class="cy-v1-runtime-error" id="cy-v1-runtime-error"><b>页面读取出现异常，当前显示可能不完整。</b><div>这不代表学生、班级或教学记录不存在。可以重新加载后再试。</div><button type="button" data-cy-v1-retry>重新加载</button></div>');
   }
-  window.addEventListener('unhandledrejection',()=>showRuntimeReadError());
-  window.addEventListener('error',()=>showRuntimeReadError());
+  function isReadFailure(value){
+    const msg=String(value?.message||value||'');
+    return /读取失败|请求失败|failed to fetch|networkerror|load failed|aborterror|fetch is aborted/i.test(msg);
+  }
+  window.addEventListener('unhandledrejection',e=>{if(isReadFailure(e.reason))showRuntimeReadError()});
+  window.addEventListener('error',e=>{if(isReadFailure(e.error||e.message))showRuntimeReadError()});
   document.addEventListener('click',e=>{if(e.target.closest('[data-cy-v1-retry]'))location.reload()});
 })();
 </script>
