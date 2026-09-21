@@ -109,7 +109,7 @@ def patch_v1_classroom_review_html(html: str) -> str:
         raise RuntimeError("V1 workspace feature handler not found")
     html = html.replace(old_handler, new_handler, 1)
 
-    anchor = "    function v1QuestionTypeLabel(q){{"
+    anchor = "    function v1QuestionTypeLabel(q){"
     if anchor not in html:
         raise RuntimeError("V1 question label anchor not found")
 
