@@ -27,6 +27,10 @@ from changying.services.language_question_quality import (
     language_choice_repair,
     language_semantic_family,
 )
+from changying.services.question_type_fit import (
+    question_type_fit_score,
+    question_type_is_acceptable,
+)
 from changying.services.textbook_registry import (
     TextbookRegistryError,
     normalize_textbook,
@@ -142,7 +146,9 @@ def _select_type_diverse_questions(rows: list[Any], limit: int) -> list[Any]:
     buckets: dict[str, list[Any]] = defaultdict(list)
     for row in rows:
         question_type = _online_question_type(row)
-        if question_type:
+        subject = str(getattr(row, "subject", "") or "").strip()
+        knowledge = str(getattr(row, "knowledge", "") or "").strip()
+        if question_type and question_type_is_acceptable(subject, knowledge, question_type):
             buckets[question_type].append(row)
     for bucket in buckets.values():
         bucket.sort(key=lambda row: int(row.id))
@@ -174,6 +180,11 @@ def _select_type_diverse_questions(rows: list[Any], limit: int) -> list[Any]:
             row = min(
                 candidates,
                 key=lambda item: (
+                    question_type_fit_score(
+                        str(getattr(item, "subject", "") or "").strip(),
+                        str(getattr(item, "knowledge", "") or "").strip(),
+                        _online_question_type(item),
+                    ),
                     knowledge_hits[
                         (getattr(item, "knowledge", "") or getattr(item, "unit", "") or "综合").strip()
                         or "综合"

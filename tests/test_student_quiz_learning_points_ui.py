@@ -4,10 +4,12 @@ def test_classic_student_quiz_shows_learning_points_and_locks_final_submit():
 
     html = legacy.INDEX_HTML
 
-    assert 'answers=[],submitting=false' in html
-    assert 'if(submitting){answers.pop();return}' in html
-    assert 'submitBtn.disabled=true;submitBtn.textContent="正在提交…"' in html
-    assert 'catch(e){submitting=false;answers.pop()' in html
+    assert 'answersById=new Map()' in html
+    assert 'id="quizPrev"' in html
+    assert 'id="quizForward"' in html
+    assert 'id="quizSubmit"' in html
+    assert 'count!==qs.length||submitting?"disabled":""' in html
+    assert 'if(submitting)return;' in html
     assert '本题 \'+esc(q.learningPoints||1)+\' 学习积分' in html
     assert '本次获得 +' in html
     assert 'learningPointsAwarded' in html

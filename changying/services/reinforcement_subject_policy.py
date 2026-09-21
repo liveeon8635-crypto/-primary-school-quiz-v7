@@ -16,6 +16,11 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import select
 
+from changying.services.question_type_fit import (
+    question_type_is_acceptable,
+    subject_question_type_guidance,
+)
+
 from changying.services.language_question_quality import language_semantic_family_fields
 
 
@@ -363,6 +368,12 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
     if str(feature or "") != "reinforcement_generate":
         return prompt
     subject = reinforcement_subject_from_prompt(prompt)
+    fit_guidance = subject_question_type_guidance(subject)
+    fit_rule = (
+        "\n【知识点—题型匹配约束】\n" + fit_guidance + "\n"
+        if fit_guidance
+        else ""
+    )
     if subject == "科学":
         return (
             str(prompt)
@@ -381,6 +392,7 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
     if subject == "英语":
         return (
             str(prompt)
+            + fit_rule
             + """
 
 【英语学科附加约束】
@@ -396,6 +408,7 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
     if subject and subject != "语文":
         return (
             str(prompt)
+            + fit_rule
             + f"""
 
 【学科隔离约束】
@@ -406,6 +419,7 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
         return prompt
     return (
         str(prompt)
+        + fit_rule
         + """
 
 【语文学科附加约束】
@@ -518,6 +532,27 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
             elif subject == "科学":
                 items = list(payload.get("items") or items)
 
+            fit_items = [
+                item for item in items
+                if question_type_is_acceptable(
+                    subject,
+                    str(item.get("knowledge") or "").strip(),
+                    str(item.get("question_type") or "").strip(),
+                )
+            ]
+            if len(fit_items) != len(items):
+                payload["notice"] = (
+                    str(payload.get("notice") or "").strip("；")
+                    + f"；已移除 {len(items)-len(fit_items)} 道题型与知识点不匹配的机械变体。"
+                ).strip("；")
+            items = fit_items
+            payload["items"] = items
+            if not items:
+                raise HTTPException(
+                    502,
+                    "AI 生成题型与当前知识点不匹配，请重新生成。",
+                )
+
             db = kwargs.get("db")
             source_keys: set[str] = set()
             source_families: set[str] = set()
@@ -623,6 +658,19 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
                         break
 
             questions = list(getattr(body, "questions", []) or [])
+            mismatched = [
+                q for q in questions
+                if not question_type_is_acceptable(
+                    str(_item_value(q, "subject", "") or "").strip(),
+                    str(_item_value(q, "knowledge", "") or "").strip(),
+                    str(_item_value(q, "question_type", "") or "").strip(),
+                )
+            ]
+            if mismatched:
+                raise HTTPException(
+                    400,
+                    "针对性练习包含题型与知识点不匹配的机械变体，请重新生成或调整后再布置。",
+                )
             unique_questions, duplicate_count = dedupe_reinforcement_items(questions)
             if duplicate_count:
                 raise HTTPException(
