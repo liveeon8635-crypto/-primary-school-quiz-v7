@@ -61,14 +61,21 @@ def test_top_level_roster_and_workspace_failures_are_explicit():
     assert "window.__cyV1PeopleLoadWarnings=['工作台读取失败：'" in html
 
 
-def test_unexpected_browser_read_failures_offer_a_generic_retry():
+def test_unexpected_browser_read_failures_offer_a_generic_retry_without_false_runtime_alerts():
     html = patched_fixture()
 
     assert "页面读取出现异常，当前显示可能不完整" in html
     assert "这不代表学生、班级或教学记录不存在" in html
     assert "data-cy-v1-retry" in html
-    assert "window.addEventListener('unhandledrejection'" in html
-    assert "window.addEventListener('error'" in html
+    assert "function isReadFailure(value)" in html
+    assert "failed to fetch" in html
+    assert "networkerror" in html
+    assert "读取失败" in html
+    assert "请求失败" in html
+    assert "window.addEventListener('unhandledrejection',e=>{if(isReadFailure(e.reason))" in html
+    assert "window.addEventListener('error',e=>{if(isReadFailure(e.error||e.message))" in html
+    assert "window.addEventListener('unhandledrejection',()=>showRuntimeReadError())" not in html
+    assert "window.addEventListener('error',()=>showRuntimeReadError())" not in html
 
 
 def test_final_closure_patch_is_idempotent_and_read_only():
