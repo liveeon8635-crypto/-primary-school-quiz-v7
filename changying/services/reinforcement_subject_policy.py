@@ -16,6 +16,11 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import select
 
+from changying.services.question_type_fit import (
+    question_type_is_acceptable,
+    subject_question_type_guidance,
+)
+
 from changying.services.language_question_quality import language_semantic_family_fields
 
 
@@ -363,6 +368,7 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
     if str(feature or "") != "reinforcement_generate":
         return prompt
     subject = reinforcement_subject_from_prompt(prompt)
+    fit_guidance = subject_question_type_guidance(subject)
     if subject == "科学":
         return (
             str(prompt)
@@ -385,6 +391,7 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
 
 【英语学科附加约束】
 1. 当前科目是英语。所有题目必须是小学英语内容，不得生成数学计算题、数学数量关系题或数学图示。
+0. {fit_guidance}
 2. 教材必须保持“人教版（PEP·当前最新版）”五年级上册语境；当前六个单元为 Different friends、My feelings、Work and play、Healthy habits、Food we eat、Nature and us。不得回退到旧版单元标题。
 3. 自动判分题只使用 single_choice、true_false、fill_blank；不要使用 calculation 或开放式 short_answer。5题以上尽量覆盖至少3种题型。
 4. fill_blank 仅用于答案明确的单词、短语、be/do/can/should 等语法形式；若存在多种合理表达，改成 single_choice/true_false，或完整列入 accepted_answers。
@@ -410,6 +417,7 @@ def augment_reinforcement_prompt(feature: str, prompt: str) -> str:
 
 【语文学科附加约束】
 1. 当前科目是语文。所有题目必须是小学语文学科内容，不得生成数学计算题、数学数量关系题或数学图示。
+0. {fit_guidance}
 2. 语文自动判分题只使用 single_choice、true_false、fill_blank；不要使用 calculation 或 short_answer。5题以上尽量覆盖这3种题型，但准确性优先。
 3. fill_blank 只用于存在明确、可自动判定答案的字词、关联词、标点或短语。开放性阅读感受、习作、概括性长答和长篇表达不得自动判分，遇到这类知识点必须改写成选择/判断等客观题；主观题以后走评分点 + 教师确认，不与本轮自动判分混用。
 4. 阅读题所需材料必须在题干内完整给出，材料简短、原创、信息充分；不得假定学生看得到教材原文，也不要大段复现教材或受版权保护的文章。
@@ -518,6 +526,27 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
             elif subject == "科学":
                 items = list(payload.get("items") or items)
 
+            fit_items = [
+                item for item in items
+                if question_type_is_acceptable(
+                    subject,
+                    str(item.get("knowledge") or "").strip(),
+                    str(item.get("question_type") or "").strip(),
+                )
+            ]
+            if len(fit_items) != len(items):
+                payload["notice"] = (
+                    str(payload.get("notice") or "").strip("；")
+                    + f"；已移除 {len(items)-len(fit_items)} 道题型与知识点不匹配的机械变体。"
+                ).strip("；")
+            items = fit_items
+            payload["items"] = items
+            if not items:
+                raise HTTPException(
+                    502,
+                    "AI 生成题型与当前知识点不匹配，请重新生成。",
+                )
+
             db = kwargs.get("db")
             source_keys: set[str] = set()
             source_families: set[str] = set()
@@ -623,6 +652,19 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
                         break
 
             questions = list(getattr(body, "questions", []) or [])
+            mismatched = [
+                q for q in questions
+                if not question_type_is_acceptable(
+                    str(_item_value(q, "subject", "") or "").strip(),
+                    str(_item_value(q, "knowledge", "") or "").strip(),
+                    str(_item_value(q, "question_type", "") or "").strip(),
+                )
+            ]
+            if mismatched:
+                raise HTTPException(
+                    400,
+                    "针对性练习包含题型与知识点不匹配的机械变体，请重新生成或调整后再布置。",
+                )
             unique_questions, duplicate_count = dedupe_reinforcement_items(questions)
             if duplicate_count:
                 raise HTTPException(
