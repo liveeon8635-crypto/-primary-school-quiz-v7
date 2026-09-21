@@ -164,6 +164,90 @@ def reinforcement_source_key(item: Any) -> str:
     return "|".join((subject, knowledge, stem))
 
 
+
+def _reinforcement_claimed_answer(item: Any) -> str:
+    subject = str(_item_value(item, "subject", "") or "").strip()
+    qtype = str(_item_value(item, "question_type", "") or "").strip().lower()
+    if qtype != "true_false":
+        return ""
+    text = str(_item_value(item, "text", "") or "").strip()
+    if subject == "语文":
+        prefix = "判断下面的作答是否正确："
+        if text.startswith(prefix) and "——" in text[len(prefix):]:
+            return text[len(prefix):].rsplit("——", 1)[1].strip().rstrip("。")
+        match = re.fullmatch(r"判断正误：题目“.+”的答案是“(.+)”。", text)
+        return match.group(1).strip() if match else ""
+    if subject == "英语":
+        prefix = "Is this answer correct?"
+        if text.startswith(prefix) and "—" in text[len(prefix):]:
+            return text[len(prefix):].rsplit("—", 1)[1].strip().rstrip(".")
+        match = re.fullmatch(
+            r'True or false:\s*For\s+".+",\s*the answer is\s*"(.+)"\.',
+            text,
+            flags=re.IGNORECASE,
+        )
+        return match.group(1).strip() if match else ""
+    return ""
+
+
+def reinforcement_content_aliases(item: Any) -> set[str]:
+    """Return deterministic cross-type aliases for language content.
+
+    The aliases do not use fuzzy similarity. A reviewed single-choice source
+    can therefore match a fill/true-false re-skin even when its stem is generic,
+    while another option set with the same generic stem remains distinct.
+    """
+    subject = str(_item_value(item, "subject", "") or "").strip()
+    if subject not in {"语文", "英语"}:
+        return set()
+    knowledge = str(_item_value(item, "knowledge", "") or "").strip()
+    stem = reinforcement_source_stem(item)
+    if not stem:
+        return set()
+    qtype = str(_item_value(item, "question_type", "") or "").strip().lower()
+    if qtype == "choice":
+        qtype = "single_choice"
+    options = [str(x).strip() for x in (_item_value(item, "options", []) or [])]
+    try:
+        correct_index = int(_item_value(item, "correct_index", -1))
+    except Exception:
+        correct_index = -1
+    answer = str(
+        _item_value(item, "answer", "")
+        or _item_value(item, "reference_answer", "")
+        or ""
+    ).strip()
+
+    prefix = "|".join((subject, knowledge, stem))
+    aliases: set[str] = set()
+
+    if qtype == "single_choice" and 0 <= correct_index < len(options):
+        correct = _normalized_reinforcement_text(options[correct_index])
+        aliases.add(prefix + "|answer|" + correct)
+        for index, option in enumerate(options):
+            value = _normalized_reinforcement_text(option)
+            aliases.add(
+                prefix
+                + "|claim|"
+                + value
+                + "|"
+                + ("true" if index == correct_index else "false")
+            )
+    elif qtype == "fill_blank" and answer:
+        aliases.add(prefix + "|answer|" + _normalized_reinforcement_text(answer))
+    elif qtype == "true_false":
+        claimed = _reinforcement_claimed_answer(item)
+        if claimed and correct_index in (0, 1):
+            aliases.add(
+                prefix
+                + "|claim|"
+                + _normalized_reinforcement_text(claimed)
+                + "|"
+                + ("true" if correct_index == 0 else "false")
+            )
+    return aliases
+
+
 def reinforcement_content_family(item: Any) -> str:
     subject = str(_item_value(item, "subject", "") or "").strip()
     knowledge = str(_item_value(item, "knowledge", "") or "").strip()
@@ -212,18 +296,27 @@ def dedupe_reinforcement_items(
     items: list[Any],
     *,
     source_keys: set[str] | None = None,
+    source_families: set[str] | None = None,
+    source_aliases: set[str] | None = None,
 ) -> tuple[list[Any], int]:
-    seen: set[str] = set()
+    seen: set[str] = set(source_families or set())
+    seen_aliases: set[str] = set(source_aliases or set())
     blocked = set(source_keys or set())
     kept: list[Any] = []
     dropped = 0
     for item in items:
         family = reinforcement_content_family(item)
+        aliases = reinforcement_content_aliases(item)
         source_key = reinforcement_source_key(item)
-        if family in seen or (source_key and source_key in blocked):
+        if (
+            family in seen
+            or bool(aliases & seen_aliases)
+            or (source_key and source_key in blocked)
+        ):
             dropped += 1
             continue
         seen.add(family)
+        seen_aliases.update(aliases)
         kept.append(item)
     return kept, dropped
 
@@ -427,6 +520,8 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
 
             db = kwargs.get("db")
             source_keys: set[str] = set()
+            source_families: set[str] = set()
+            source_aliases: set[str] = set()
             if db is not None and wrong_ids:
                 wrong_rows = db.scalars(
                     select(implementation.WrongQuestionRecord).where(
@@ -445,9 +540,46 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
                     if source_key:
                         source_keys.add(source_key)
 
+                    question_id = int(getattr(wrong, "question_id", 0) or 0)
+                    if not question_id:
+                        continue
+                    source_question = db.scalar(
+                        select(implementation.Question).where(
+                            implementation.Question.id == question_id,
+                            implementation.Question.school_id == getattr(wrong, "school_id", None),
+                        )
+                    )
+                    if source_question is None:
+                        continue
+                    try:
+                        source_options = json.loads(
+                            getattr(source_question, "options_json", "[]") or "[]"
+                        )
+                    except Exception:
+                        source_options = []
+                    if not isinstance(source_options, list):
+                        source_options = []
+                    try:
+                        source_meta = implementation.question_answer_meta(source_question)
+                    except Exception:
+                        source_meta = {}
+                    source_item = {
+                        "subject": getattr(source_question, "subject", ""),
+                        "knowledge": getattr(source_question, "knowledge", ""),
+                        "text": getattr(source_question, "text", ""),
+                        "question_type": implementation.question_type_of(source_question),
+                        "options": source_options,
+                        "correct_index": getattr(source_question, "correct_index", -1),
+                        "answer": (source_meta or {}).get("answer", ""),
+                    }
+                    source_families.add(reinforcement_content_family(source_item))
+                    source_aliases.update(reinforcement_content_aliases(source_item))
+
             items, duplicate_count = dedupe_reinforcement_items(
                 list(items),
                 source_keys=source_keys,
+                source_families=source_families,
+                source_aliases=source_aliases,
             )
             if not items:
                 raise HTTPException(
@@ -535,6 +667,7 @@ __all__ = [
     "install_reinforcement_subject_policy",
     "normalize_science_reinforcement_items",
     "require_explicit_science_textbook",
+    "reinforcement_content_aliases",
     "reinforcement_content_family",
     "reinforcement_source_key",
     "reinforcement_source_stem",
