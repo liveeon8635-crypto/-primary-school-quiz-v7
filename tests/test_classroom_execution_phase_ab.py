@@ -98,8 +98,8 @@ def test_v1_execution_patch_contains_teacher_and_student_consent_pages():
     )
     patched = patch_v1_classroom_execution_html(html)
     assert V1_CLASSROOM_EXECUTION_MARKER in patched
-    assert "/v1/classroom-session" in patched
-    assert "/v1/classroom-presenter" in patched
+    assert "/v1/classroom-execution" in patched
+    assert "/v1/classroom-invitations" in patched
     assert "学生讲解必须由学生本人确认" in patched
     assert "是否参与由你本人决定" in patched
     assert "这里不会显示其他学生的候选信息、排名或薄弱标签" in patched
@@ -216,12 +216,12 @@ with TestClient(app) as client:
     assert data["segments"][0]["knowledgeKey"] == "句子衔接"
     assert data["segments"][0]["baselineAccuracy"] == 100
 
-    started = client.post(f"/teacher/classroom-sessions/{sid}/start", headers=th)
+    started = client.post(f"/teacher/classroom-sessions/{sid}/state", headers=th, json={"status": "active"})
     assert started.status_code == 200, started.text
     assert started.json()["session"]["status"] == "active"
 
     mode = client.post(
-        f"/teacher/classroom-segments/{segid}/mode",
+        f"/teacher/classroom-sessions/{sid}/segments/{segid}/mode",
         headers=th,
         json={"mode": "student"},
     )
@@ -229,52 +229,53 @@ with TestClient(app) as client:
 
     state = client.get(f"/teacher/classroom-sessions/{sid}", headers=th)
     assert state.status_code == 200
-    seg = state.json()["segments"][0]
-    candidate = next(x for x in seg["candidates"] if x["id"] == student_id)
+    candidates = client.get(f"/teacher/classroom-sessions/{sid}/segments/{segid}/candidates", headers=th)
+    assert candidates.status_code == 200, candidates.text
+    candidate = next(x for x in candidates.json() if x["id"] == student_id)
     assert candidate["sourceExerciseCorrect"] is True
     assert any("正确作答" in x for x in candidate["signals"])
 
     invited = client.post(
-        f"/teacher/classroom-segments/{segid}/invite",
+        f"/teacher/classroom-sessions/{sid}/segments/{segid}/invite",
         headers=th,
         json={"student_id": student_id, "presenter_type": "student"},
     )
     assert invited.status_code == 200, invited.text
-    turnid = invited.json()["turnID"]
+    turnid = invited.json()["segments"][0]["presenterTurn"]["id"]
 
-    blocked = client.post(f"/teacher/classroom-segments/{segid}/start", headers=th)
+    blocked = client.post(f"/teacher/classroom-sessions/{sid}/segments/{segid}/start", headers=th)
     assert blocked.status_code == 400
     assert "学生本人确认" in blocked.text
 
-    invitations = client.get("/student/classroom-presenter-invitations", headers=sh)
+    invitations = client.get("/student/classroom-invitations", headers=sh)
     assert invitations.status_code == 200, invitations.text
     invite = next(x for x in invitations.json() if x["id"] == turnid)
     assert invite["knowledgeKey"] == "句子衔接"
     assert invite["status"] == "invited"
 
     accepted = client.post(
-        f"/student/classroom-presenter-invitations/{turnid}/respond",
+        f"/student/classroom-invitations/{turnid}/respond",
         headers=sh,
-        json={"decision": "accept"},
+        json={"response": "accepted"},
     )
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["status"] == "accepted"
 
-    explaining = client.post(f"/teacher/classroom-segments/{segid}/start", headers=th)
+    explaining = client.post(f"/teacher/classroom-sessions/{sid}/segments/{segid}/start", headers=th)
     assert explaining.status_code == 200, explaining.text
 
     state = client.get(f"/teacher/classroom-sessions/{sid}", headers=th).json()
     assert state["segments"][0]["status"] == "explaining"
     assert state["segments"][0]["presenterTurn"]["status"] == "presenting"
-    event_types = [x["type"] for x in state["events"]]
+    event_types = [x["eventType"] for x in state["events"]]
     assert "presenter.invited" in event_types
     assert "presenter.accepted" in event_types
     assert "explanation.started" in event_types
 
-    completed_seg = client.post(f"/teacher/classroom-segments/{segid}/complete", headers=th)
+    completed_seg = client.post(f"/teacher/classroom-sessions/{sid}/segments/{segid}/complete", headers=th)
     assert completed_seg.status_code == 200, completed_seg.text
 
-    done = client.post(f"/teacher/classroom-sessions/{sid}/complete", headers=th)
+    done = client.post(f"/teacher/classroom-sessions/{sid}/state", headers=th, json={"status": "completed"})
     assert done.status_code == 200, done.text
     assert done.json()["session"]["status"] == "completed"
 
