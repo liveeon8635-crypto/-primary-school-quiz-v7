@@ -1,7 +1,11 @@
 from changying.services.reinforcement_subject_policy import (
     augment_reinforcement_prompt,
+    dedupe_reinforcement_items,
     explicit_science_textbook,
     normalize_science_reinforcement_items,
+    reinforcement_content_family,
+    reinforcement_source_key,
+    reinforcement_source_stem,
     reinforcement_subject_from_prompt,
     require_explicit_science_textbook,
     scope_context_to_primary_subject,
@@ -267,3 +271,88 @@ def test_runtime_reinforcement_assignment_has_science_textbook_integrity_guard()
         "_science_textbook_integrity_guard",
         False,
     ) is True
+
+
+def test_language_semantic_duplicate_is_removed_across_question_types():
+    source = {
+        "subject": "语文",
+        "knowledge": "字形辨析",
+        "question_type": "single_choice",
+        "text": "下列词语书写完全正确的一项是？",
+        "options": ["爱幕　恩惠　协调", "爱慕　恩惠　协调", "爱慕　恩慧　协调", "爱慕　恩惠　协凋"],
+        "correct_index": 1,
+    }
+    derived = {
+        "subject": "语文",
+        "knowledge": "字形辨析",
+        "question_type": "true_false",
+        "text": "判断下面的作答是否正确：下列词语书写完全正确的一项是 —— 爱慕　恩惠　协调",
+        "options": ["正确", "错误"],
+        "correct_index": 0,
+    }
+    assert reinforcement_content_family(source) == reinforcement_content_family(derived)
+    kept, dropped = dedupe_reinforcement_items([source, derived])
+    assert kept == [source]
+    assert dropped == 1
+
+
+def test_generic_language_stem_with_different_options_is_not_false_positive():
+    first = {
+        "subject": "语文",
+        "knowledge": "字形辨析",
+        "question_type": "single_choice",
+        "text": "下列词语书写完全正确的一项是？",
+        "options": ["爱幕", "爱慕", "爱墓", "爱暮"],
+        "correct_index": 1,
+    }
+    second = {
+        "subject": "语文",
+        "knowledge": "字形辨析",
+        "question_type": "single_choice",
+        "text": "下列词语书写完全正确的一项是？",
+        "options": ["胆却", "胆怯", "胆切", "胆怯怯"],
+        "correct_index": 1,
+    }
+    kept, dropped = dedupe_reinforcement_items([first, second])
+    assert kept == [first, second]
+    assert dropped == 0
+    assert reinforcement_source_key(first) == ""
+    assert reinforcement_source_key(second) == ""
+
+
+def test_specific_source_copy_is_blocked_even_when_wrapped_as_judgement():
+    wrong_source = {
+        "subject": "英语",
+        "knowledge": "人物信息理解",
+        "text": "Eric studies carefully and finishes every task on time. What is Eric like?",
+    }
+    generated = {
+        "subject": "英语",
+        "knowledge": "人物信息理解",
+        "question_type": "true_false",
+        "text": "Is this answer correct? Eric studies carefully and finishes every task on time. What is Eric like? — He is hard-working.",
+        "options": ["True", "False"],
+        "correct_index": 0,
+    }
+    source_key = reinforcement_source_key(wrong_source)
+    assert source_key
+    assert reinforcement_source_stem(generated) == reinforcement_source_stem(wrong_source)
+    kept, dropped = dedupe_reinforcement_items(
+        [generated],
+        source_keys={source_key},
+    )
+    assert kept == []
+    assert dropped == 1
+
+
+def test_reinforcement_assign_route_has_duplicate_guard():
+    import app  # noqa: F401
+    import app_v924 as legacy
+
+    route = next(
+        route
+        for route in legacy.app.routes
+        if getattr(route, "path", None) == "/teacher/students/{sid}/reinforcement/assign"
+        and "POST" in getattr(route, "methods", set())
+    )
+    assert getattr(route.dependant.call, "_reinforcement_duplicate_guard", False) is True
