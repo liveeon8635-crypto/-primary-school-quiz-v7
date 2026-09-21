@@ -176,12 +176,12 @@ def patch_v1_classroom_execution_html(html: str) -> str:
     if handler_old in html:
         html = html.replace(handler_old, handler_new, 1)
 
-    handout_section = "'<section class="section card"><h2>课堂练习情况讲义草稿</h2><div id="cy-handout-editor">'+draftEditor(draft)+'</div></section>';"
+    handout_section = """'<section class="section card"><h2>课堂练习情况讲义草稿</h2><div id="cy-handout-editor">'+draftEditor(draft)+'</div></section>';"""
     if handout_section in html:
         html = html.replace(
             handout_section,
-            "'<section class="section card"><h2>课堂练习情况讲义草稿</h2><div id="cy-handout-editor">'+draftEditor(draft)+'</div></section>'+"
-            "(draft?'<section class="section card"><h2>课堂互动执行</h2><p class="muted">讲义确认后，可进入真实课堂状态机。学生讲解必须由学生本人确认。</p><button class="btn primary" id="cy-enter-classroom">进入课堂执行</button></section>':'');",
+            """'<section class="section card"><h2>课堂练习情况讲义草稿</h2><div id="cy-handout-editor">'+draftEditor(draft)+'</div></section>'+"""
+            """(draft?'<section class="section card"><h2>课堂互动执行</h2><p class="muted">讲义确认后，可进入真实课堂状态机。学生讲解必须由学生本人确认。</p><button class="btn primary" id="cy-enter-classroom">进入课堂执行</button></section>':'');""",
             1,
         )
 
