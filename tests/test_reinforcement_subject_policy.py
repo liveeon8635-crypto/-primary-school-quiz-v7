@@ -365,7 +365,7 @@ def test_reviewed_generic_source_family_blocks_exact_reskin_but_allows_different
         "knowledge": "字形辨析",
         "question_type": "single_choice",
         "text": "下列词语书写完全正确的一项是？",
-        "options": ["爱幕", "爱慕", "爱墓", "爱暮"],
+        "options": ["爱幕　恩惠　协调", "爱慕　恩惠　协调", "爱慕　恩慧　协调", "爱慕　恩惠　协凋"],
         "correct_index": 1,
     }
     same_content = {
