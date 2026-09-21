@@ -41,9 +41,10 @@ def test_chinese_sentence_cohesion_rejects_true_false_but_keeps_natural_forms():
     assert question_type_is_acceptable("语文", "句子衔接", "true_false") is False
 
 
-def test_math_calculation_does_not_get_forced_into_true_false():
-    assert question_type_is_acceptable("数学", "小数乘法计算", "calculation") is True
-    assert question_type_is_acceptable("数学", "小数乘法计算", "true_false") is False
+def test_math_calculation_prefers_calculation_but_allows_valid_binary_judgement():
+    assert question_type_fit_score("数学", "小数乘法计算", "calculation") == 0
+    assert question_type_fit_score("数学", "小数乘法计算", "true_false") == 1
+    assert question_type_is_acceptable("数学", "小数乘法计算", "true_false") is True
 
 
 def test_comprehensive_selector_excludes_mechanical_sentence_cohesion_judgement():
