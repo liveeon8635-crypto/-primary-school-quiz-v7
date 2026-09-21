@@ -41,6 +41,13 @@ def segment_status_for_mode(mode:str)->str:
 def presenter_required(mode:str)->bool:
     return str(mode or "") in {"student","co_teach"}
 
+def presenter_turn_is_open(status:str)->bool:
+    return str(status or "") in {"invited","accepted","presenting"}
+
+def can_complete_session(segment_statuses:Iterable[str])->bool:
+    values=[str(x or "") for x in segment_statuses]
+    return bool(values) and all(x=="completed" for x in values)
+
 def can_start_segment(*,session_status:str,segment_status:str,mode:str,presenter_status:str|None)->tuple[bool,str]:
     if session_status!="active": return False,"课堂尚未处于进行中"
     if segment_status not in {"planned","selecting_presenter"}: return False,"当前知识点状态不能开始讲解"
@@ -77,7 +84,7 @@ def unique_knowledge_keys(values:Iterable[str])->list[str]:
 
 __all__=[
     "PRESENTER_STATUSES","SEGMENT_MODES","SEGMENT_STATUSES","SESSION_STATUSES",
-    "can_start_segment","candidate_signals","candidate_sort_key","presenter_required",
+    "can_complete_session","can_start_segment","candidate_signals","candidate_sort_key","presenter_required","presenter_turn_is_open",
     "presenter_transition_allowed","segment_status_for_mode","session_transition_allowed",
     "unique_knowledge_keys",
 ]
