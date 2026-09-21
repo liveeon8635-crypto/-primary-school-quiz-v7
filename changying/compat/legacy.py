@@ -57,7 +57,14 @@ from changying.web.product_shell import (
     install_product_shell,
     teacher_workbench_html,
 )
-from changying.web.pwa import build_manifest
+from changying.web.pwa import (
+    ICON_180_PNG,
+    ICON_192_PNG,
+    ICON_512_PNG,
+    ICON_SVG,
+    build_manifest,
+    install_favicon_route,
+)
 from changying.web.v1 import install_v1_routes
 from changying.web.v1_acceptance_polish import install_v1_acceptance_polish_patch
 from changying.web.v1_auth_handoff import install_v1_auth_handoff_routes
@@ -164,6 +171,11 @@ def install_product_visibility_routes(app: FastAPI) -> None:
 def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str) -> None:
     """Install extracted helpers while preserving legacy runtime configuration."""
     implementation.MANIFEST = build_manifest(asset_version=asset_version)
+    implementation.ICON_SVG = ICON_SVG
+    implementation.ICON_180_PNG = ICON_180_PNG
+    implementation.ICON_192_PNG = ICON_192_PNG
+    implementation.ICON_512_PNG = ICON_512_PNG
+    install_favicon_route(implementation.app)
     implementation.SCHOOL_TZ = SCHOOL_TZ
     implementation.due_deadline_utc = due_deadline_utc
     implementation.school_local_iso = school_local_iso
