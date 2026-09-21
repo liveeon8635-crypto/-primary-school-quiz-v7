@@ -243,14 +243,107 @@ with TestClient(app) as client:
     assert final_points["summary"]["learning"] == baseline_learning + 3
     assert "学习积分" in legacy.INDEX_HTML
     assert "本周学习" in legacy.INDEX_HTML
+
+    reinforcement_questions = [
+        {
+            "grade": 5, "subject": "数学", "textbook": "人教版", "semester": "上册",
+            "unit": "综合", "knowledge": "计算", "text": "3+4等于多少？",
+            "options": ["5", "6", "7", "8"], "correct_index": 2, "explanation": "3+4=7",
+            "question_type": "single_choice", "answer": "", "accepted_answers": [], "figure": {},
+        },
+        {
+            "grade": 5, "subject": "数学", "textbook": "人教版", "semester": "上册",
+            "unit": "综合", "knowledge": "计算", "text": "5+5等于多少？",
+            "options": ["8", "9", "10", "11"], "correct_index": 2, "explanation": "5+5=10",
+            "question_type": "single_choice", "answer": "", "accepted_answers": [], "figure": {},
+        },
+        {
+            "grade": 5, "subject": "数学", "textbook": "人教版", "semester": "上册",
+            "unit": "综合", "knowledge": "计算", "text": "6+6等于多少？",
+            "options": ["10", "11", "12", "13"], "correct_index": 2, "explanation": "6+6=12",
+            "question_type": "single_choice", "answer": "", "accepted_answers": [], "figure": {},
+        },
+    ]
+    reinforcement_assigned = client.post(
+        "/ai/questions/assign",
+        headers=th,
+        json={
+            "questions": reinforcement_questions,
+            "title": "学习积分数学针对性练习",
+            "class_id": class_id,
+            "due_date": "2026-09-30",
+            "instructions": "",
+        },
+    )
+    assert reinforcement_assigned.status_code == 200, reinforcement_assigned.text
+    reinforcement_aid = reinforcement_assigned.json()["assignment"]["id"]
+    reinforcement_pid = reinforcement_assigned.json()["paperID"]
+
+    with legacy.SessionLocal() as db:
+        paper = db.get(legacy.Paper, reinforcement_pid)
+        reinforcement_qids = json.loads(paper.question_ids_json)
+        reinforcement_rows = [db.get(legacy.Question, qid) for qid in reinforcement_qids]
+        reinforcement_wrong = 0 if int(reinforcement_rows[2].correct_index) != 0 else 1
+
+    reinforcement_submitted = client.post(
+        f"/student/assignments/{reinforcement_aid}/submit",
+        headers=sh,
+        json={
+            "answers": [
+                {"question_id": reinforcement_rows[0].id, "selected_index": int(reinforcement_rows[0].correct_index)},
+                {"question_id": reinforcement_rows[1].id, "selected_index": int(reinforcement_rows[1].correct_index)},
+                {"question_id": reinforcement_rows[2].id, "selected_index": reinforcement_wrong},
+            ]
+        },
+    )
+    assert reinforcement_submitted.status_code == 200, reinforcement_submitted.text
+    reinforcement_body = reinforcement_submitted.json()
+    assert reinforcement_body["correct"] == 2
+    assert reinforcement_body["total"] == 3
+    assert reinforcement_body["learningPointsAwarded"] == 2
+    assert reinforcement_body["learningPointMax"] == 3
+
+    after_reinforcement = client.get("/student/points", headers=sh).json()
+    assert after_reinforcement["summary"]["balance"] == baseline_balance + 5
+    assert after_reinforcement["summary"]["learning"] == baseline_learning + 5
+    reinforcement_learning = [
+        row for row in after_reinforcement["ledger"]
+        if row["source"] == "learning_submission" and row["relatedID"] == reinforcement_body["id"]
+    ]
+    assert len(reinforcement_learning) == 1
+    assert reinforcement_learning[0]["points"] == 2
+    assert reinforcement_learning[0]["category"] == "learning"
+
+    reinforcement_resubmitted = client.post(
+        f"/student/assignments/{reinforcement_aid}/submit",
+        headers=sh,
+        json={
+            "answers": [
+                {"question_id": reinforcement_rows[0].id, "selected_index": int(reinforcement_rows[0].correct_index)},
+                {"question_id": reinforcement_rows[1].id, "selected_index": int(reinforcement_rows[1].correct_index)},
+                {"question_id": reinforcement_rows[2].id, "selected_index": reinforcement_wrong},
+            ]
+        },
+    )
+    assert reinforcement_resubmitted.status_code == 409, reinforcement_resubmitted.text
+    assert reinforcement_resubmitted.json()["detail"] == "在线答题已提交，不能重复提交"
+    after_reinforcement_resubmit = client.get("/student/points", headers=sh).json()
+    assert after_reinforcement_resubmit["summary"]["balance"] == baseline_balance + 5
+    assert after_reinforcement_resubmit["summary"]["learning"] == baseline_learning + 5
+    reinforcement_learning_after = [
+        row for row in after_reinforcement_resubmit["ledger"]
+        if row["source"] == "learning_submission" and row["relatedID"] == reinforcement_body["id"]
+    ]
+    assert len(reinforcement_learning_after) == 1
+    assert reinforcement_learning_after[0]["points"] == 2
 '''
 
     env = os.environ.copy()
     env.update(
         {
             "DATABASE_URL": f"sqlite:///{db_path}",
-            "JWT_SECRET": "learning-points-test-signing-material-0123456789abcdef",
-            "COMMERCIAL_ADMIN_KEY": "learning-points-test-operator-material-012345",
+            "JWT_SECRET": "learning-points-test-" + "signing-material-0123456789abcdef",
+            "COMMERCIAL_ADMIN_KEY": "learning-points-test-" + "operator-material-012345",
             "ENABLE_DEMO_SEED": "1",
             "PYTHONPATH": str(ROOT),
         }

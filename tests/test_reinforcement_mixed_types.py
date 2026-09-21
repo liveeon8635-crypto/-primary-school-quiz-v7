@@ -106,6 +106,9 @@ with TestClient(app) as client:
     rb = result.json()
     assert (rb["correct"], rb["total"], rb["score"]) == (3, 4, 75)
     assert rb["learningFeedbackArchived"] == 1
+    assert rb["learningPointsAwarded"] == 3
+    assert rb["learningPointMax"] == 4
+    assert rb["learningEvidenceAdded"] == 5
 
     with legacy.SessionLocal() as db:
         paper = db.get(legacy.Paper, rpid)
