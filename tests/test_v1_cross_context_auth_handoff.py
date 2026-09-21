@@ -1,5 +1,8 @@
+import os
 import re
 import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi import FastAPI, HTTPException
@@ -16,6 +19,9 @@ from changying.web.v1_auth_handoff import (
 )
 from changying.web.v1_classic_unified_top import inject_v1_classic_unified
 from changying.web.v1_legacy_capabilities import _LEGACY_CAPABILITIES_SNIPPET
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _script_by_id(html: str, script_id: str) -> str:
@@ -203,3 +209,87 @@ def test_invalid_bearer_never_creates_handoff_cookie() -> None:
     )
     assert response.status_code == 401
     assert V1_AUTH_HANDOFF_COOKIE not in response.headers.get("set-cookie", "")
+
+
+def test_real_seeded_roles_keep_identity_through_v1_classic_handoff(tmp_path) -> None:
+    """Lock the real V1 -> Classic handoff for every seeded account role."""
+    db_path = tmp_path / "role-handoff.sqlite3"
+    script = r'''
+from fastapi.testclient import TestClient
+
+from app import app
+
+accounts = (
+    ("admin", "admin"),
+    ("teacher1", "teacher"),
+    ("student1", "student"),
+    ("parent1", "parent"),
+)
+
+with TestClient(app) as client:
+    for username, expected_role in accounts:
+        login = client.post(
+            "/login",
+            json={"username": username, "password": "123456", "remember": False},
+        )
+        assert login.status_code == 200, (username, login.text)
+        login_body = login.json()
+        assert login_body["role"] == expected_role
+        token = login_body["token"]
+
+        staged = client.post(
+            "/v1/auth-handoff",
+            headers={"Authorization": "Bearer " + token},
+        )
+        assert staged.status_code == 200, (username, staged.text)
+        cookie = staged.headers["set-cookie"]
+        assert "cy_v1_auth_handoff=" in cookie
+        assert "HttpOnly" in cookie
+        assert "SameSite=strict" in cookie
+
+        consumed = client.post("/v1/auth-handoff/consume")
+        assert consumed.status_code == 200, (username, consumed.text)
+        handoff = consumed.json()
+        assert handoff["valid"] is True
+        assert handoff["token"] == token
+        assert handoff["role"] == expected_role
+        assert handoff["name"] == login_body["name"]
+
+        session = client.get(
+            "/session",
+            headers={"Authorization": "Bearer " + handoff["token"]},
+        )
+        assert session.status_code == 200, (username, session.text)
+        session_body = session.json()
+        assert session_body["valid"] is True
+        assert session_body["role"] == expected_role
+        assert session_body["name"] == login_body["name"]
+
+        second = client.post("/v1/auth-handoff/consume")
+        assert second.status_code == 401
+'''
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "DATABASE_URL": f"sqlite:///{db_path}",
+            "JWT_SECRET": "handoff-" + "jwt-" + "0123456789abcdef0123456789abcdef",
+            "COMMERCIAL_ADMIN_KEY": "handoff-" + "operator-" + "0123456789abcdef",
+            "ENABLE_DEMO_SEED": "1",
+            "PYTHONPATH": str(ROOT),
+        }
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        "seeded role handoff subprocess failed\n"
+        f"stdout:\n{result.stdout}\n"
+        f"stderr:\n{result.stderr}"
+    )
