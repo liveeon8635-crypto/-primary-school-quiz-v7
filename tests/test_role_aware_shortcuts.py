@@ -73,3 +73,33 @@ def test_teacher_shortcuts_keep_existing_teaching_navigation():
         ("全部功能", "/v1/tool"),
     ):
         assert f"'{label}','{path}'" in html
+
+
+def test_all_recognized_roles_have_explicit_quick_navigation_on_both_surfaces():
+    native = v1_html()
+    classic = V1_CLASSIC_UNIFIED_SNIPPET
+    unified = unified_tool_html()
+
+    # Every production account role must have an explicit menu before the
+    # teacher fallback is considered. This protects student/parent/admin
+    # navigation after a cross-context session handoff.
+    for surface in (classic, unified):
+        for role in ("student", "parent", "admin"):
+            assert f"{role}:[" in surface
+        assert "quickMenus[role]||quickMenus.teacher" in surface
+
+    # Native V1 must also branch explicitly for the same non-teacher roles.
+    for role in ("student", "parent", "admin"):
+        assert f"if(role==='{role}')return[" in native
+
+    # Lock representative role-only destinations so a recognized identity
+    # cannot silently inherit teacher shortcuts.
+    role_targets = {
+        "student": ("syncLearning", "assignments", "practice", "progress"),
+        "parent": ("childLearning", "childAssignments", "childProgress", "childRewards"),
+        "admin": ("admin", "users", "pointsAdmin", "adminAudit"),
+    }
+    for targets in role_targets.values():
+        for target in targets:
+            assert target in classic
+            assert target in unified
