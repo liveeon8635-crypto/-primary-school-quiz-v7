@@ -106,6 +106,7 @@ from changying.web.v1_unified_tools_session_bridge import install_v1_unified_too
 from changying.web.reinforcement_quality import install_reinforcement_figure_fallback
 from changying.web.rubric_review_ui import install_rubric_review_ui
 from changying.web.science_teacher_ai import install_science_teacher_ai_workflow
+from changying.web.student_quiz_navigation import install_student_quiz_navigation
 from changying.web.teacher_ai_rich_generation_ui import install_teacher_ai_rich_generation_ui
 
 NO_CACHE_HEADERS = {
@@ -296,6 +297,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_teacher_ai_rich_generation_ui(implementation)
     install_reinforcement_figure_fallback(implementation)
     install_rubric_review_ui(implementation)
+    install_student_quiz_navigation(implementation)
     install_product_shell(implementation.app)
     install_product_visibility_routes(implementation.app)
     install_classic_ui_patch(implementation.app)
