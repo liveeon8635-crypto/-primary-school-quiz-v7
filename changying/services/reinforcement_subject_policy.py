@@ -7,6 +7,7 @@ assessment cannot be biased by the mathematical examples in the shared prompt.
 
 from __future__ import annotations
 
+import json
 import re
 from functools import wraps
 from types import ModuleType
@@ -14,6 +15,8 @@ from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import select
+
+from changying.services.language_question_quality import language_semantic_family_fields
 
 
 def reinforcement_subject_from_prompt(prompt: str) -> str:
@@ -90,6 +93,139 @@ def normalize_science_reinforcement_items(
         row["figure"] = {}
         result.append(row)
     return result
+
+
+
+_GENERIC_SOURCE_MARKERS = (
+    "下列",
+    "哪项",
+    "哪一项",
+    "一项是",
+    "选择正确",
+    "choose the correct",
+)
+
+
+def _item_value(item: Any, key: str, default: Any = "") -> Any:
+    if isinstance(item, dict):
+        return item.get(key, default)
+    return getattr(item, key, default)
+
+
+def _normalized_reinforcement_text(value: Any) -> str:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    return text.rstrip("。.!！?？").strip().lower()
+
+
+def reinforcement_source_stem(item: Any) -> str:
+    subject = str(_item_value(item, "subject", "") or "").strip()
+    qtype = str(_item_value(item, "question_type", "") or "").strip().lower()
+    text = str(_item_value(item, "text", "") or "").strip()
+
+    if subject == "语文":
+        if text.startswith("请从备选答案中选择，并输入完整答案："):
+            text = text.split("：", 1)[1].strip()
+            text = re.split(r"\s*备选答案：", text, maxsplit=1)[0].strip()
+        elif text.startswith("请直接填写答案："):
+            text = text.split("：", 1)[1].strip()
+        elif qtype == "true_false" and text.startswith("判断下面的作答是否正确：") and "——" in text:
+            text = text.split("：", 1)[1].rsplit("——", 1)[0].strip()
+    elif subject == "英语":
+        lowered = text.lower()
+        for prefix in ("write the answer:", "complete with the correct answer:"):
+            if lowered.startswith(prefix):
+                text = text[len(prefix):].strip()
+                break
+        if qtype == "true_false":
+            if text.startswith("Is this answer correct?") and "—" in text:
+                text = text[len("Is this answer correct?"):].rsplit("—", 1)[0].strip()
+            else:
+                match = re.fullmatch(
+                    r'True or false:\s*For\s+"(.+)",\s*the answer is\s*".+"\.',
+                    text,
+                    flags=re.IGNORECASE,
+                )
+                if match:
+                    text = match.group(1).strip()
+    return _normalized_reinforcement_text(text)
+
+
+def reinforcement_source_key(item: Any) -> str:
+    subject = str(_item_value(item, "subject", "") or "").strip()
+    knowledge = str(_item_value(item, "knowledge", "") or "").strip()
+    stem = reinforcement_source_stem(item)
+    if not stem:
+        return ""
+    # Generic option-dependent stems can represent many genuinely different
+    # questions. Never use the stem alone to block those against source rows.
+    lowered = stem.lower()
+    if any(marker in lowered for marker in _GENERIC_SOURCE_MARKERS):
+        return ""
+    return "|".join((subject, knowledge, stem))
+
+
+def reinforcement_content_family(item: Any) -> str:
+    subject = str(_item_value(item, "subject", "") or "").strip()
+    knowledge = str(_item_value(item, "knowledge", "") or "").strip()
+    text = str(_item_value(item, "text", "") or "").strip()
+    qtype = str(_item_value(item, "question_type", "") or "").strip().lower()
+    if qtype == "choice":
+        qtype = "single_choice"
+    options = [str(x) for x in (_item_value(item, "options", []) or [])]
+    try:
+        correct_index = int(_item_value(item, "correct_index", -1))
+    except Exception:
+        correct_index = -1
+    answer = str(
+        _item_value(item, "answer", "")
+        or _item_value(item, "reference_answer", "")
+        or ""
+    ).strip()
+
+    if subject in {"语文", "英语"}:
+        return language_semantic_family_fields(
+            subject=subject,
+            knowledge=knowledge,
+            text=text,
+            options=options,
+            correct_index=correct_index,
+            question_type=qtype,
+            answer=answer,
+        )
+
+    # Non-language subjects use an exact, conservative family. This blocks
+    # literal duplicates without guessing that two merely similar questions
+    # are equivalent.
+    stem = reinforcement_source_stem(item)
+    answer_or_options = options or ([f"answer:{answer}"] if answer else [])
+    return "|".join(
+        (
+            subject,
+            knowledge,
+            stem,
+            json.dumps(answer_or_options, ensure_ascii=False),
+        )
+    )
+
+
+def dedupe_reinforcement_items(
+    items: list[Any],
+    *,
+    source_keys: set[str] | None = None,
+) -> tuple[list[Any], int]:
+    seen: set[str] = set()
+    blocked = set(source_keys or set())
+    kept: list[Any] = []
+    dropped = 0
+    for item in items:
+        family = reinforcement_content_family(item)
+        source_key = reinforcement_source_key(item)
+        if family in seen or (source_key and source_key in blocked):
+            dropped += 1
+            continue
+        seen.add(family)
+        kept.append(item)
+    return kept, dropped
 
 
 def scope_context_to_primary_subject(context: dict[str, Any]) -> dict[str, Any]:
@@ -279,14 +415,52 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
                     row["figure"] = {}
                     normalized_items.append(row)
                 payload["items"] = normalized_items
+                items = normalized_items
                 primary = dict((payload.get("assessmentContext") or {}).get("primary") or {})
                 if primary and not str(primary.get("textbook") or "").strip():
                     primary["textbook"] = "人教版（PEP·当前最新版）"
                     ctx = dict(payload.get("assessmentContext") or {})
                     ctx["primary"] = primary
                     payload["assessmentContext"] = ctx
+            elif subject == "科学":
+                items = list(payload.get("items") or items)
 
             db = kwargs.get("db")
+            source_keys: set[str] = set()
+            if db is not None and wrong_ids:
+                wrong_rows = db.scalars(
+                    select(implementation.WrongQuestionRecord).where(
+                        implementation.WrongQuestionRecord.id.in_(wrong_ids)
+                    )
+                ).all()
+                for wrong in wrong_rows:
+                    source_key = reinforcement_source_key(
+                        {
+                            "subject": getattr(wrong, "subject", ""),
+                            "knowledge": getattr(wrong, "knowledge", ""),
+                            "text": getattr(wrong, "problem_text", ""),
+                            "question_type": "",
+                        }
+                    )
+                    if source_key:
+                        source_keys.add(source_key)
+
+            items, duplicate_count = dedupe_reinforcement_items(
+                list(items),
+                source_keys=source_keys,
+            )
+            if not items:
+                raise HTTPException(
+                    502,
+                    "AI 生成题与原题或同批题目内容重复，请重新生成。",
+                )
+            payload["items"] = items
+            if duplicate_count:
+                payload["notice"] = (
+                    str(payload.get("notice") or "").strip("；")
+                    + f"；已自动移除 {duplicate_count} 道与原题或同批题目内容重复的题。"
+                ).strip("；")
+
             if db is not None and wrong_ids:
                 valid = db.scalars(
                     select(implementation.WrongQuestionRecord.id).where(
@@ -316,8 +490,16 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
                         body = value
                         break
 
+            questions = list(getattr(body, "questions", []) or [])
+            unique_questions, duplicate_count = dedupe_reinforcement_items(questions)
+            if duplicate_count:
+                raise HTTPException(
+                    400,
+                    "针对性练习包含内容重复的跨题型题目，请删除重复题后再布置。",
+                )
+
             science_textbooks: set[str] = set()
-            for question in list(getattr(body, "questions", []) or []):
+            for question in questions:
                 subject = str(getattr(question, "subject", "") or "").strip()
                 if subject != "科学":
                     continue
@@ -337,6 +519,7 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
             return __original(*args, **kwargs)
 
         science_textbook_safe_assign._science_textbook_integrity_guard = True
+        science_textbook_safe_assign._reinforcement_duplicate_guard = True
         route.dependant.call = science_textbook_safe_assign
         route.endpoint = science_textbook_safe_assign
         break
@@ -347,10 +530,14 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
 __all__ = [
     "AMBIGUOUS_SCIENCE_TEXTBOOKS",
     "augment_reinforcement_prompt",
+    "dedupe_reinforcement_items",
     "explicit_science_textbook",
     "install_reinforcement_subject_policy",
     "normalize_science_reinforcement_items",
     "require_explicit_science_textbook",
+    "reinforcement_content_family",
+    "reinforcement_source_key",
+    "reinforcement_source_stem",
     "reinforcement_subject_from_prompt",
     "scope_context_to_primary_subject",
 ]
