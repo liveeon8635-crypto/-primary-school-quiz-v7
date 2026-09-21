@@ -64,6 +64,10 @@ from changying.web.v1_auth_handoff import install_v1_auth_handoff_routes
 from changying.web.v1_audit_localization import install_v1_audit_localization
 from changying.web.v1_classic_embed_bootstrap import install_v1_classic_embed_bootstrap
 from changying.web.v1_classic_gzip_embed import install_v1_classic_gzip_embed
+from changying.web.v1_classroom_review import (
+    install_v1_classroom_review_patch,
+    install_v1_classroom_review_routes,
+)
 from changying.web.v1_completion import install_v1_completion_patch
 from changying.web.v1_data_quality import install_v1_data_quality_patch
 from changying.web.v1_fast_path import install_v1_fast_path_patch, install_v1_fast_read_routes
@@ -316,6 +320,8 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_student_detail_visibility_patch()
     install_v1_student_practice_patch()
     install_v1_student_practice_routes(implementation)
+    install_v1_classroom_review_patch()
+    install_v1_classroom_review_routes(implementation)
     install_v1_guardian_visibility_patch()
     install_v1_membership_reliability_patch()
     install_v1_final_closure_patch()
