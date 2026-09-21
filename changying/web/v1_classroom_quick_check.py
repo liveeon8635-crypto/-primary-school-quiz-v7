@@ -197,7 +197,7 @@ def patch_v1_classroom_quick_check_html(html: str) -> str:
     if bind_anchor not in html:
         raise RuntimeError("quick-check classroom binding anchor not found")
     bindings = r'''
-        document.querySelectorAll('.cy-q-generate').forEach(b=>b.onclick=async()=>{const seg=b.dataset.seg,type=document.querySelector('.cy-q-type[data-seg="'+seg+'"]')?.value||'single_choice';b.disabled=true;try{await api('/teacher/classroom-sessions/'+sid+'/segments/'+seg+'/quick-checks/draft',{method:'POST',body:JSON.stringify({question_type:type,use_ai:true})});toast('随堂检测草稿已生成，请教师审核');await reload()}catch(e){toast(e.message);b.disabled=false}});
+        document.querySelectorAll('.cy-q-generate').forEach(b=>b.onclick=async()=>{const seg=b.dataset.seg,type=document.querySelector('.cy-q-type[data-seg="'+seg+'"]')?.value||'single_choice';b.disabled=true;try{await api('/teacher/classroom-sessions/'+sid+'/segments/'+seg+'/quick-checks/draft',{method:'POST',body:JSON.stringify({question_type:type,use_ai:true}),timeoutMs:90000});toast('随堂检测草稿已生成，请教师审核');await reload()}catch(e){toast(e.message);b.disabled=false}});
         document.querySelectorAll('.cy-q-manual').forEach(b=>b.onclick=async()=>{const seg=b.dataset.seg,type=document.querySelector('.cy-q-type[data-seg="'+seg+'"]')?.value||'single_choice';b.disabled=true;try{await api('/teacher/classroom-sessions/'+sid+'/segments/'+seg+'/quick-checks/draft',{method:'POST',body:JSON.stringify({question_type:type,use_ai:false})});toast('已建立手工草稿，请编辑后再开放');await reload()}catch(e){toast(e.message);b.disabled=false}});
         document.querySelectorAll('.cy-q-save').forEach(b=>b.onclick=async()=>{const id=b.dataset.check,q=(data.quickChecks||[]).find(x=>String(x.id)===String(id));const text=document.querySelector('.cy-q-text[data-check="'+id+'"]').value,opts=[...document.querySelectorAll('.cy-q-opt[data-check="'+id+'"]')].sort((a,b)=>Number(a.dataset.index)-Number(b.dataset.index)).map(x=>x.value),correct=Number(document.querySelector('.cy-q-correct[data-check="'+id+'"]').value),explain=document.querySelector('.cy-q-explain[data-check="'+id+'"]').value;try{await api('/teacher/classroom-sessions/'+sid+'/quick-checks/'+id,{method:'PUT',body:JSON.stringify({question_text:text,options:opts,correct_index:correct,explanation:explain})});toast('随堂检测草稿已保存');await reload()}catch(e){toast(e.message)}});
         document.querySelectorAll('.cy-q-open').forEach(b=>b.onclick=async()=>{if(!confirm('确认现在向本班学生开放这道随堂检测？'))return;try{await api('/teacher/classroom-sessions/'+sid+'/quick-checks/'+b.dataset.check+'/state',{method:'POST',body:JSON.stringify({status:'open'})});toast('随堂检测已开放');await reload()}catch(e){toast(e.message)}});
@@ -489,6 +489,19 @@ def install_v1_classroom_quick_check_routes(implementation: Any) -> None:
                     SchoolClass.school_id == u.school_id,
                 )
             )
+            sibling_knowledge = [
+                str(value or "").strip()
+                for value in db.scalars(
+                    select(segments.c.knowledge_key)
+                    .where(
+                        segments.c.session_id == sid,
+                        segments.c.school_id == u.school_id,
+                        segments.c.id != segid,
+                    )
+                    .order_by(segments.c.order_no)
+                ).all()
+                if str(value or "").strip()
+            ]
             prompt = quick_check_prompt(
                 grade=int(getattr(class_row, "grade", 5) or 5),
                 subject=str(s.get("subject") or ""),
@@ -496,6 +509,7 @@ def install_v1_classroom_quick_check_routes(implementation: Any) -> None:
                 knowledge=str(seg.get("knowledge_key") or ""),
                 qtype=qtype,
                 notes=body.notes[:1000],
+                excluded_knowledge=sibling_knowledge,
             )
             raw = implementation._ai_json(
                 implementation._ai_call(
