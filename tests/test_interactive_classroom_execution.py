@@ -423,7 +423,7 @@ with TestClient(app) as client:
                 select(func.count())
                 .select_from(legacy.PointLedger)
                 .where(
-                    legacy.PointLedger.school_id == teacher.school_id,
+                    legacy.PointLedger.school_id == school_id,
                     legacy.PointLedger.student_id == sid_student,
                 )
             )
@@ -434,7 +434,7 @@ with TestClient(app) as client:
                 select(func.count())
                 .select_from(legacy.LearningEvidenceEvent)
                 .where(
-                    legacy.LearningEvidenceEvent.school_id == teacher.school_id,
+                    legacy.LearningEvidenceEvent.school_id == school_id,
                     legacy.LearningEvidenceEvent.student_id == sid_student,
                 )
             )
