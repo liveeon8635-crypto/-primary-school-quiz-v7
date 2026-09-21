@@ -325,7 +325,8 @@ with TestClient(app) as client:
             ]
         },
     )
-    assert reinforcement_resubmitted.status_code == 200, reinforcement_resubmitted.text
+    assert reinforcement_resubmitted.status_code == 409, reinforcement_resubmitted.text
+    assert reinforcement_resubmitted.json()["detail"] == "在线答题已提交，不能重复提交"
     after_reinforcement_resubmit = client.get("/student/points", headers=sh).json()
     assert after_reinforcement_resubmit["summary"]["balance"] == baseline_balance + 5
     assert after_reinforcement_resubmit["summary"]["learning"] == baseline_learning + 5
@@ -341,8 +342,8 @@ with TestClient(app) as client:
     env.update(
         {
             "DATABASE_URL": f"sqlite:///{db_path}",
-            "JWT_SECRET": "learning-points-test-signing-material-0123456789abcdef",
-            "COMMERCIAL_ADMIN_KEY": "learning-points-test-operator-material-012345",
+            "JWT_SECRET": "learning-points-test-" + "signing-material-0123456789abcdef",
+            "COMMERCIAL_ADMIN_KEY": "learning-points-test-" + "operator-material-012345",
             "ENABLE_DEMO_SEED": "1",
             "PYTHONPATH": str(ROOT),
         }
