@@ -3,6 +3,7 @@ from changying.services.reinforcement_subject_policy import (
     dedupe_reinforcement_items,
     explicit_science_textbook,
     normalize_science_reinforcement_items,
+    reinforcement_content_aliases,
     reinforcement_content_family,
     reinforcement_source_key,
     reinforcement_source_stem,
@@ -384,12 +385,15 @@ def test_reviewed_generic_source_family_blocks_exact_reskin_but_allows_different
         "correct_index": 1,
     }
 
-    source_family = reinforcement_content_family(source)
+    source_aliases = reinforcement_content_aliases(source)
     assert reinforcement_source_key(source) == ""
+    assert source_aliases
+    assert source_aliases & reinforcement_content_aliases(same_content)
+    assert not (source_aliases & reinforcement_content_aliases(other_content))
 
     kept, dropped = dedupe_reinforcement_items(
         [same_content, other_content],
-        source_families={source_family},
+        source_aliases=source_aliases,
     )
     assert kept == [other_content]
     assert dropped == 1
@@ -408,6 +412,8 @@ def test_runtime_reinforcement_generation_recovers_source_question_family_from_w
     )
     source = inspect.getsource(route.dependant.call)
     assert "source_families" in source
+    assert "source_aliases" in source
     assert "wrong.question_id" in source or 'getattr(wrong, "question_id"' in source
     assert "implementation.Question.id == question_id" in source
     assert "source_families=source_families" in source
+    assert "source_aliases=source_aliases" in source
