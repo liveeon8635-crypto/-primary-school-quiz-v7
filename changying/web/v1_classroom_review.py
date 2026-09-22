@@ -129,7 +129,7 @@ def patch_v1_classroom_review_html(html: str) -> str:
       };
       const renderReview=()=>{
         if(!summary){screen.innerHTML=shell(heading('课堂练习复盘','把同一堂课的练习结果汇总成教师可判断的数据。')+'<section class="card">'+selector()+'</section>','workspace');bindNav();document.getElementById('cy-review-assignment').onchange=e=>load(e.target.value);return}
-        const k=summary.knowledgeStats||[],errors=summary.commonErrors||[],students=summary.students||[],draft=summary.handoutDraft,interaction=summary.classroomInteraction||null;
+        const k=summary.knowledgeStats||[],errors=summary.commonErrors||[],students=summary.students||[],draft=summary.handoutDraft,interaction=summary.classroomInteraction||null,openSession=summary.openClassroomSession||null;
         const completedAt=interaction?.session?.completedAt||'',draftUpdatedAt=draft?.updatedAt||'',draftStale=!!(draft&&completedAt&&draftUpdatedAt&&draftUpdatedAt<completedAt);
         const generateLabel=draftStale?'重新生成本堂课讲义草稿':'由教师确认并生成讲义草稿';
         const staleNotice=draftStale?'<div class="notice error"><b>旧草稿 · 建议重新生成</b><br>现有草稿保存于 '+esc(draftUpdatedAt)+'，早于本堂互动课堂完成时间 '+esc(completedAt)+'；重新生成后才会纳入本堂随堂检测、补讲轨迹与学生讲解评价。</div>':'';
@@ -282,6 +282,7 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
         turn_table = metadata.tables.get("classroom_presenter_turns")
         presentation_review_table = metadata.tables.get("classroom_presentation_reviews")
         result["classroomInteraction"] = None
+        result["openClassroomSession"] = None
         if all(
             table is not None
             for table in (
@@ -293,6 +294,29 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
                 presentation_review_table,
             )
         ):
+            open_session_row = db.execute(
+                select(session_table)
+                .where(
+                    session_table.c.school_id == user.school_id,
+                    session_table.c.teacher_id == user.id,
+                    session_table.c.source_assignment_id == aid,
+                    session_table.c.status.in_(["planned", "active", "paused"]),
+                )
+                .order_by(session_table.c.id.desc())
+            ).first()
+            if open_session_row is not None:
+                open_map = open_session_row._mapping
+                result["openClassroomSession"] = {
+                    "id": int(open_map["id"]),
+                    "status": str(open_map["status"] or ""),
+                    "title": str(open_map["title"] or ""),
+                    "startedAt": (
+                        open_map["started_at"].isoformat(timespec="minutes")
+                        if open_map["started_at"]
+                        else ""
+                    ),
+                }
+
             session_row = db.execute(
                 select(session_table)
                 .where(
