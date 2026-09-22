@@ -309,15 +309,17 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
 def test_runtime_registers_student_practice_routes():
     from app import app
 
-    routes = {(route.path, tuple(sorted(route.methods or []))) for route in app.routes if hasattr(route, 'path')}
-    assert (
-        "/teacher/students/{sid}/practice-options",
-        ("GET",),
-    ) in routes
-    assert (
-        "/teacher/students/{sid}/auto-practice",
-        ("POST",),
-    ) in routes
+    expected = {
+        "/teacher/students/{sid}/practice-options": ("GET",),
+        "/teacher/students/{sid}/auto-practice": ("POST",),
+    }
+    routes = {}
+    for route in app.routes:
+        for child in getattr(getattr(route, "original_router", route), "routes", [route]):
+            path = getattr(child, "path", None)
+            if path in expected:
+                routes[path] = tuple(sorted(child.methods or []))
+    assert routes == expected
 
 
 def test_selector_never_mixes_textbook_versions():
