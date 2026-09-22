@@ -321,6 +321,9 @@ def test_v1_exposes_classroom_review_entry_and_teacher_decision_language():
     assert "旧草稿 · 建议重新生成" in html
     assert "重新生成本堂课讲义草稿" in html
     assert "draftUpdatedAt<completedAt" in html
+    assert "讲义需补全互动摘要" in html
+    assert "重新生成并补全互动摘要" in html
+    assert "互动课堂过程摘要（系统记录）" in html
 
 
 def test_runtime_classroom_review_full_loop(tmp_path):
