@@ -164,3 +164,68 @@ with TestClient(app) as client:
         f"stdout:\n{result.stdout}\n"
         f"stderr:\n{result.stderr}"
     )
+
+
+def test_teaching_evidence_context_router_is_get_only_and_installed_once(monkeypatch):
+    from types import SimpleNamespace
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import changying.web.v2_teaching_evidence_context as route_module
+
+    app = FastAPI()
+    user = SimpleNamespace(id=7, school_id=17, role="teacher")
+    student = SimpleNamespace(id=23, name="测试学生")
+    implementation = SimpleNamespace(
+        app=app,
+        current_user=lambda: user,
+        get_db=lambda: object(),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "_teacher_student",
+        lambda implementation, db, actual_user, sid: student,
+    )
+    monkeypatch.setattr(
+        route_module,
+        "legacy_student_evidence",
+        lambda implementation, db, student_id, school_id: [],
+    )
+    monkeypatch.setattr(
+        route_module,
+        "student_evidence_snapshot",
+        lambda items: {"state": "evidence_insufficient", "sampleCount": 0, "dimensions": []},
+    )
+    monkeypatch.setattr(
+        route_module,
+        "build_teaching_evidence_context",
+        lambda snapshot: {
+            "sampleCount": snapshot["sampleCount"],
+            "decisionRequiredByTeacher": True,
+            "automaticDiagnosis": False,
+        },
+    )
+
+    route_module.install_v21_teaching_evidence_context_routes(implementation)
+    route_module.install_v21_teaching_evidence_context_routes(implementation)
+
+    expected = {"/v2/students/{sid}/teaching-evidence-context"}
+    matching = [
+        child
+        for route in app.routes
+        for child in getattr(getattr(route, "original_router", route), "routes", [route])
+        if getattr(child, "path", None) in expected
+    ]
+    assert {route.path for route in matching} == expected
+
+    client = TestClient(app)
+    response = client.get("/v2/students/23/teaching-evidence-context")
+    assert response.status_code == 200
+    assert response.json() == {
+        "student": {"id": 23, "name": "测试学生"},
+        "sampleCount": 0,
+        "decisionRequiredByTeacher": True,
+        "automaticDiagnosis": False,
+    }
+    assert client.post("/v2/students/23/teaching-evidence-context").status_code == 405
