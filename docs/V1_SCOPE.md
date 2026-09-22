@@ -132,11 +132,12 @@ V1 只调用现有受保护接口，后端继续执行角色和学校范围校�
 5. **学校课表仍是事实概览。** 尚无标准课节、教室、课程表实体；不应由 UI 虚构。
 6. **历史查询缺少标准化学年/学期筛选 API。** 当前真实班级历史与连续档案可查，但筛选维度仍不完整。
 
-### P2：架构完整性缺口
+### P2：架构完整性状态
 
-- C2 服务层仍在进行中，数据库型业务仍有较多逻辑位于 legacy；
-- API Router、数据库层与前端资源拆分仍应按 ARCHITECTURE 的 D/E/F 阶段渐进执行；
-- README 的代码结构描述落后于当前已新增的 learning evidence、classroom review、handout release 等模块，应在功能稳定后同步更新，而不是用文档驱动生产重构。
+- 本轮可安全识别的 C2 service 边界已经完成抽离并由兼容桥接线；legacy 仍保留大量数据库型业务，但不再为了“清零”进行无收益的大批量迁移。
+- 当前独立 Web 模块的 D 阶段 Router 迁移已经完成；legacy 单体中的直接路由只在具备隔离测试、稳定 service 边界且无需同时改 ORM/schema 时继续小批次迁出。
+- E 数据库层与 F 前端资源拆分仍属于长期架构阶段，不作为当前产品完整性收口条件，也不与生产数据/权限重构同时推进。
+- README 的代码结构在本轮同步到当前 services、learning evidence、classroom interaction、transition 与 V1 Web 模块。
 
 ### 后续处理顺序
 
@@ -165,3 +166,15 @@ V1 只调用现有受保护接口，后端继续执行角色和学校范围校�
 3. **学年/学期历史筛选继续保持保守。** #323 已统一可确认的 TeachingProgram 周期事实，但历史 Assignment/Classroom 并未持久关联 TeachingProgram/cycle。不得仅凭日期猜测某条历史教学事实属于哪个学年/学期。后续只有在新教学事实能够明确携带 cycle source/id 后，才新增精确 cycle 筛选；旧数据继续按时间线、班级历史、科目和教师所有权查询。
 
 因此，当前 P1 的正确收口不是继续新增三个推断性表，而是保留明确 provenance 缺口，等待真实业务事实后再迁移。下一阶段转入 P2 渐进架构整理，不改变既有教学语义。
+
+
+### 2026-09-22 P2 本轮收口状态
+
+本轮 P2 以“降低已知架构风险、形成可继续迁移的稳定边界”为目标，而不是把 legacy 一次性清空。当前已经完成：
+
+- C2：衔接计划、家长关联历史、班级历史、学业汇总和教学题目读侧等明确边界进入 service，重复 legacy 查询改为薄委托；现有 Assignment/Teaching/Point/WrongQuestion/FollowUp service 继续保持兼容调用。
+- D：PR #337—#354 将当前独立 Web 模块的路由注册逐批迁到 APIRouter，包括连续档案/历史/证据、互动课堂、V1 shell、认证 handoff、产品首页与 favicon；公开 URL、权限、返回结构与生产数据语义保持不变。
+- 安全链：每一批继续执行独立分支 → exact-head CI/Harness Guard → 合并 → Render 自动部署 → 生产只读基线验收；生产基线未因这些重构发生积分、LearningEvidenceEvent、Submission 历史或衔接计划的越界变化。
+- 文档：README 与 ARCHITECTURE 已同步实际模块边界，不再把已经完成的 C2/D 工作描述为“尚未开始”。
+
+因此，**当前 P2 有明确测试保护且无需高风险数据迁移的待办已收口**。仍留在 `app_v924.py` 的大体量 ORM、直接 API、认证依赖、数据库层和内嵌前端属于下一阶段长期架构债务；它们只有在真实维护收益与隔离测试都满足时才继续小批次迁移，不为了形式上的“零 legacy”一次性重构。
