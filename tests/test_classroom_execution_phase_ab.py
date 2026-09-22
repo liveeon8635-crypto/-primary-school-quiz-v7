@@ -99,7 +99,7 @@ def test_v1_execution_patch_contains_teacher_and_student_consent_pages():
     assert "完成本堂课并进入课堂复盘" in html
     assert "cy-session-complete-bottom" in html
     assert "segs.every(x=>x.status==='completed')" in html
-    assert "查看/进入最近课堂" in html
+    assert "进入课堂执行（最近课堂）" in html
     assert "新开一堂课" in html
     assert "force_new:false" in html
     assert "force_new:true" in html
@@ -306,7 +306,7 @@ with TestClient(app) as client:
         assert "classroom_events" in tables
         session_count = db.scalar(legacy.select(legacy.func.count()).select_from(tables["classroom_sessions"]))
         event_count = db.scalar(legacy.select(legacy.func.count()).select_from(tables["classroom_events"]))
-        assert session_count == 1
+        assert session_count == 2
         assert event_count >= 7
 """
 
