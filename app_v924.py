@@ -167,6 +167,9 @@ class Submission(Base):
     correct:Mapped[int]=mapped_column(Integer)
     total:Mapped[int]=mapped_column(Integer)
     answers_json:Mapped[str]=mapped_column(Text,default="[]")
+    # Nullable by design: historical rows predate actor provenance and must not
+    # be guessed as student-completed. New student submissions write "student".
+    completion_actor:Mapped[str|None]=mapped_column(String(30),nullable=True,index=True)
     submitted_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
 
 class AssignmentSubmissionSetting(Base):
@@ -1637,13 +1640,15 @@ def class_history_rows(db,student_id,school_id):
         out.append({"id":x.id,"classID":x.class_id,"className":c.name if c else f"班级#{x.class_id}","grade":c.grade if c else None,"joinedAt":school_local_iso(x.joined_at),"leftAt":school_local_iso(x.left_at) if x.left_at else None,"leaveReason":x.leave_reason,"leaveReasonName":reason_names.get(x.leave_reason,x.leave_reason or "在读"),"current":x.left_at is None})
     return out
 
-def save_sub(db,u,aid,title,normalized,correct,total,score):
+def save_sub(db,u,aid,title,normalized,correct,total,score,completion_actor="student"):
     answers=json.dumps(normalized,ensure_ascii=False)
+    if completion_actor not in ("student","parent_assisted","parent_submitted","teacher_recorded"):
+        raise ValueError("invalid completion actor")
     if aid is not None:
         old=db.scalar(select(Submission).where(Submission.assignment_id==aid,Submission.student_id==u.id,Submission.school_id==u.school_id))
         if old:
-            old.title=title;old.score=score;old.correct=correct;old.total=total;old.answers_json=answers;old.submitted_at=datetime.utcnow();return old
-    sub=Submission(school_id=u.school_id,assignment_id=aid,student_id=u.id,title=title,score=score,correct=correct,total=total,answers_json=answers);db.add(sub);db.flush();return sub
+            old.title=title;old.score=score;old.correct=correct;old.total=total;old.answers_json=answers;old.completion_actor=completion_actor;old.submitted_at=datetime.utcnow();return old
+    sub=Submission(school_id=u.school_id,assignment_id=aid,student_id=u.id,title=title,score=score,correct=correct,total=total,answers_json=answers,completion_actor=completion_actor);db.add(sub);db.flush();return sub
 
 AUDIT_ACTION_NAMES={
     "account.deletion.cancel":"取消注销申请",
