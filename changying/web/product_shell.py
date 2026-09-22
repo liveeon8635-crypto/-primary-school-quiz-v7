@@ -8,7 +8,7 @@ it does not mutate production data.
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse
 
 PRODUCT_SHELL_MARKER = "changying_product_shell_v1_3"
@@ -153,6 +153,7 @@ def install_product_shell(app: FastAPI) -> None:
     if getattr(app.state, "product_shell_installed", False):
         return
 
+    router = APIRouter()
     legacy_root = None
     for route in list(app.router.routes):
         if getattr(route, "path", None) == "/" and "GET" in getattr(route, "methods", set()):
@@ -160,7 +161,7 @@ def install_product_shell(app: FastAPI) -> None:
             break
 
     if legacy_root is not None and not any(getattr(r, "path", None) == "/classic" for r in app.router.routes):
-        app.add_api_route(
+        router.add_api_route(
             "/classic",
             legacy_root.endpoint,
             methods=["GET"],
@@ -174,10 +175,11 @@ def install_product_shell(app: FastAPI) -> None:
         if not (getattr(route, "path", None) == "/" and "GET" in getattr(route, "methods", set()))
     ]
 
-    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    @router.get("/", response_class=HTMLResponse, include_in_schema=False)
     def changying_product_home():
         return HTMLResponse(teacher_workbench_html())
 
+    app.include_router(router)
     app.state.product_shell_installed = True
 
 

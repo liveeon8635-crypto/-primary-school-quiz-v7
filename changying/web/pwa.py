@@ -9,7 +9,7 @@ from __future__ import annotations
 import base64
 import json
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.responses import Response
 
 
@@ -54,16 +54,21 @@ def build_manifest(asset_version: str = "924") -> str:
 def install_favicon_route(app: FastAPI) -> None:
     """Serve a same-origin favicon without adding another asset dependency."""
 
-    if any(getattr(route, "path", None) == "/favicon.ico" for route in app.routes):
+    if getattr(app.state, "favicon_route_installed", False):
         return
 
-    @app.get("/favicon.ico", include_in_schema=False)
+    router = APIRouter()
+
+    @router.get("/favicon.ico", include_in_schema=False)
     def favicon() -> Response:
         return Response(
             ICON_180_PNG,
             media_type="image/png",
             headers={"Cache-Control": "public, max-age=86400"},
         )
+
+    app.include_router(router)
+    app.state.favicon_route_installed = True
 
 
 __all__ = [
