@@ -36,6 +36,7 @@ from changying.domain.growth import (
 from changying.security.passwords import hash_password, password_ok, password_version, verify_password
 from changying.security.tokens import make_token as issue_token
 from changying.services.assignments import AssignmentService
+from changying.services.class_history import ClassHistoryService
 from changying.services.assessment_reliability import install_assessment_reliability
 from changying.services.assessment_context_policy import install_subject_aware_assessment_context
 from changying.services.followups import FollowUpService
@@ -284,6 +285,15 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.teaching_service = teaching_service
     implementation.latest_teaching_session = teaching_service.latest_session
     implementation.teaching_program_lessons = teaching_service.program_lessons
+
+    class_history_service = ClassHistoryService(
+        history_model=implementation.StudentClassHistory,
+        class_model=implementation.SchoolClass,
+        select_fn=implementation.select,
+        local_iso=school_local_iso,
+    )
+    implementation.class_history_service = class_history_service
+    implementation.class_history_rows = class_history_service.rows
 
     point_service = PointService(
         point_ledger_model=implementation.PointLedger,
