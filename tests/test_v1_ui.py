@@ -88,6 +88,15 @@ def test_v1_runtime_build_guard_refreshes_stale_open_shell(monkeypatch):
     assert newer.json() == {"build": "build-new-456"}
 
 
+def test_v1_login_identity_selection_preserves_requested_route():
+    html = v1_html()
+    assert "const identityReturnPath=()" in html
+    assert "'/v1/history'" in html
+    assert "chooseIdentity(identityReturnPath())" in html
+    assert "navigate(returnPath||fallback)" in html
+    assert "identityButton.onclick=()=>chooseIdentity('')" in html
+
+
 def test_v1_student_workspace_uses_real_assignment_and_progress_summary():
     html = v1_html()
     assert "api('/student/assignments')" in html
