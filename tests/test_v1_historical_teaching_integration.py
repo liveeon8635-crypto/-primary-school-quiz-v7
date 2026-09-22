@@ -334,3 +334,62 @@ with TestClient(app) as client:
         f"stdout:\n{result.stdout}\n"
         f"stderr:\n{result.stderr}"
     )
+
+
+def test_historical_teaching_router_is_get_only_and_installed_once(monkeypatch):
+    from types import SimpleNamespace
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import changying.web.v1_historical_teaching as route_module
+
+    app = FastAPI()
+    user = SimpleNamespace(id=7, school_id=17, role="teacher")
+    needs = []
+    implementation = SimpleNamespace(
+        app=app,
+        current_user=lambda: user,
+        get_db=lambda: object(),
+        need=lambda actual, *roles: needs.append((actual, roles)),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "teacher_historical_classrooms",
+        lambda implementation, db, teacher_id, school_id, limit=40: [
+            {"sessionID": 1, "teacherID": teacher_id, "schoolID": school_id}
+        ],
+    )
+    monkeypatch.setattr(
+        route_module,
+        "teacher_historical_students",
+        lambda implementation, db, teacher_id, school_id, query="", subject="", limit=60: [
+            {"studentID": 2, "teacherID": teacher_id, "schoolID": school_id}
+        ],
+    )
+
+    route_module.install_v1_historical_teaching_routes(implementation)
+    route_module.install_v1_historical_teaching_routes(implementation)
+
+    expected = {
+        "/v1/teacher/history/classrooms",
+        "/v1/teacher/history/students",
+    }
+    matching = [
+        child
+        for route in app.routes
+        for child in getattr(getattr(route, "original_router", route), "routes", [route])
+        if getattr(child, "path", None) in expected
+    ]
+    assert {route.path for route in matching} == expected
+
+    client = TestClient(app)
+    classrooms = client.get("/v1/teacher/history/classrooms")
+    assert classrooms.status_code == 200
+    assert classrooms.json()["count"] == 1
+    students = client.get("/v1/teacher/history/students")
+    assert students.status_code == 200
+    assert students.json()["count"] == 1
+    assert client.post("/v1/teacher/history/classrooms").status_code == 405
+    assert client.post("/v1/teacher/history/students").status_code == 405
+    assert needs == [(user, ("teacher",)), (user, ("teacher",))]
