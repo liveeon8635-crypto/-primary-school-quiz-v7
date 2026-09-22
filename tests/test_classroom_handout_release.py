@@ -43,6 +43,10 @@ def test_v1_handout_release_requires_teacher_confirmation_and_exposes_student_en
     assert "confirm('确认将当前教师草稿发布给本作业接收学生" in html
     assert "confirm('确认撤回当前已发布讲义" in html
     assert "后续修改草稿不会改变本版本内容" in html
+    assert "查看版本" in html
+    assert "历史版本只读预览" in html
+    assert "版本差异" in html
+    assert "/class-review/handout-releases/" in html
 
 
 def test_runtime_handout_release_version_snapshot_and_revoke(tmp_path):
@@ -239,6 +243,37 @@ with TestClient(app) as client:
     assert state2["current"]["id"] == release2["id"]
     assert [x["version"] for x in state2["history"]] == [2, 1]
     assert state2["history"][1]["status"] == "superseded"
+
+    teacher_v1 = client.get(
+        f"/teacher/assignments/{aid}/class-review/handout-releases/{release1['id']}",
+        headers=th,
+    )
+    assert teacher_v1.status_code == 200, teacher_v1.text
+    assert teacher_v1.json()["version"] == 1
+    assert teacher_v1.json()["status"] == "superseded"
+    assert teacher_v1.json()["content"] == "V1 冻结正文"
+    assert teacher_v1.json()["teacherNotes"] == "教师已审核"
+
+    teacher_v2 = client.get(
+        f"/teacher/assignments/{aid}/class-review/handout-releases/{release2['id']}",
+        headers=th,
+    )
+    assert teacher_v2.status_code == 200, teacher_v2.text
+    assert teacher_v2.json()["version"] == 2
+    assert teacher_v2.json()["status"] == "published"
+    assert teacher_v2.json()["content"] == "V2 新正文，不得覆盖 V1"
+
+    teacher_detail_denied = client.get(
+        f"/teacher/assignments/{aid}/class-review/handout-releases/{release1['id']}",
+        headers=sh,
+    )
+    assert teacher_detail_denied.status_code == 403
+
+    historical_student = client.get(
+        f"/student/classroom-handouts/{release1['id']}",
+        headers=sh,
+    )
+    assert historical_student.status_code == 404
 
     current_student = client.get("/student/classroom-handouts", headers=sh).json()
     assert len(current_student) == 1
