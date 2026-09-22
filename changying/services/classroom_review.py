@@ -250,6 +250,168 @@ def classroom_review_summary(
     }
 
 
+
+def _row_value(row: Any, key: str, default: Any = None) -> Any:
+    if row is None:
+        return default
+    mapping = getattr(row, "_mapping", None)
+    if mapping is not None:
+        return mapping.get(key, default)
+    if isinstance(row, dict):
+        return row.get(key, default)
+    return getattr(row, key, default)
+
+
+def _iso_minute(value: Any) -> str:
+    if not value:
+        return ""
+    try:
+        return value.isoformat(timespec="minutes")
+    except Exception:
+        return str(value)
+
+
+def classroom_interaction_summary(
+    *,
+    session: Any,
+    segments: list[Any],
+    quick_checks: list[Any],
+    responses: list[Any],
+    presenter_turns: list[Any],
+    presentation_reviews: list[Any],
+) -> dict[str, Any]:
+    """Aggregate one classroom execution without exposing student identities."""
+
+    sid = int(_row_value(session, "id", 0) or 0)
+    responses_by_check: dict[int, list[Any]] = defaultdict(list)
+    for row in responses:
+        responses_by_check[int(_row_value(row, "check_id", 0) or 0)].append(row)
+
+    checks_by_segment: dict[int, list[Any]] = defaultdict(list)
+    for row in quick_checks:
+        checks_by_segment[int(_row_value(row, "segment_id", 0) or 0)].append(row)
+    for rows in checks_by_segment.values():
+        rows.sort(
+            key=lambda x: (
+                _row_value(x, "created_at"),
+                int(_row_value(x, "id", 0) or 0),
+            )
+        )
+
+    turns_by_segment: dict[int, list[Any]] = defaultdict(list)
+    for row in presenter_turns:
+        turns_by_segment[int(_row_value(row, "segment_id", 0) or 0)].append(row)
+
+    reviews_by_segment: dict[int, list[Any]] = defaultdict(list)
+    for row in presentation_reviews:
+        reviews_by_segment[int(_row_value(row, "segment_id", 0) or 0)].append(row)
+
+    segment_rows: list[dict[str, Any]] = []
+    total_rounds = 0
+    total_reteach = 0
+    total_presentations = 0
+    total_reviews = 0
+    total_teacher_points = 0
+
+    ordered_segments = sorted(
+        segments,
+        key=lambda x: (
+            int(_row_value(x, "order_no", 0) or 0),
+            int(_row_value(x, "id", 0) or 0),
+        ),
+    )
+    for seg in ordered_segments:
+        seg_id = int(_row_value(seg, "id", 0) or 0)
+        rounds = []
+        for check in checks_by_segment.get(seg_id, []):
+            check_id = int(_row_value(check, "id", 0) or 0)
+            check_responses = responses_by_check.get(check_id, [])
+            response_count = len(check_responses)
+            correct_count = sum(
+                1 for row in check_responses if _row_value(row, "is_correct") is True
+            )
+            accuracy = (
+                round(correct_count / response_count * 100)
+                if response_count
+                else None
+            )
+            decision = str(_row_value(check, "decision", "") or "")
+            if decision == "reteach":
+                total_reteach += 1
+            rounds.append(
+                {
+                    "round": len(rounds) + 1,
+                    "questionType": str(_row_value(check, "question_type", "") or ""),
+                    "questionText": str(_row_value(check, "question_text", "") or ""),
+                    "status": str(_row_value(check, "status", "") or ""),
+                    "decision": decision,
+                    "responseCount": response_count,
+                    "correctCount": correct_count,
+                    "accuracy": accuracy,
+                }
+            )
+        total_rounds += len(rounds)
+
+        completed_turns = [
+            row
+            for row in turns_by_segment.get(seg_id, [])
+            if str(_row_value(row, "status", "") or "") == "completed"
+        ]
+        reviews = reviews_by_segment.get(seg_id, [])
+        total_presentations += len(completed_turns)
+        total_reviews += len(reviews)
+        granted_points = sum(int(_row_value(row, "granted_points", 0) or 0) for row in reviews)
+        total_teacher_points += granted_points
+
+        def avg(field: str) -> float | None:
+            values = [
+                int(_row_value(row, field, 0) or 0)
+                for row in reviews
+                if int(_row_value(row, field, 0) or 0) > 0
+            ]
+            return round(sum(values) / len(values), 1) if values else None
+
+        segment_rows.append(
+            {
+                "segmentID": seg_id,
+                "knowledge": str(_row_value(seg, "knowledge_key", "") or ""),
+                "title": str(_row_value(seg, "title", "") or ""),
+                "orderNo": int(_row_value(seg, "order_no", 0) or 0),
+                "mode": str(_row_value(seg, "mode", "") or ""),
+                "status": str(_row_value(seg, "status", "") or ""),
+                "baselineAccuracy": _row_value(seg, "baseline_accuracy"),
+                "postcheckAccuracy": _row_value(seg, "postcheck_accuracy"),
+                "quickCheckRounds": rounds,
+                "roundCount": len(rounds),
+                "reteachCount": sum(1 for row in rounds if row["decision"] == "reteach"),
+                "presentationCount": len(completed_turns),
+                "presentationReviewCount": len(reviews),
+                "presentationAverages": {
+                    "accuracy": avg("accuracy_rating"),
+                    "clarity": avg("clarity_rating"),
+                    "interaction": avg("interaction_rating"),
+                },
+                "teacherGrantedPoints": granted_points,
+            }
+        )
+
+    return {
+        "session": {
+            "id": sid,
+            "title": str(_row_value(session, "title", "") or ""),
+            "status": str(_row_value(session, "status", "") or ""),
+            "startedAt": _iso_minute(_row_value(session, "started_at")),
+            "completedAt": _iso_minute(_row_value(session, "completed_at")),
+        },
+        "quickCheckRoundCount": total_rounds,
+        "reteachCount": total_reteach,
+        "presentationCount": total_presentations,
+        "presentationReviewCount": total_reviews,
+        "teacherGrantedPoints": total_teacher_points,
+        "segments": segment_rows,
+    }
+
+
 def build_anonymized_handout_prompt(
     summary: dict[str, Any],
     *,
@@ -281,19 +443,57 @@ def build_anonymized_handout_prompt(
         "knowledgeStats": knowledge,
         "commonErrors": errors,
     }
+    interaction = summary.get("classroomInteraction") or {}
+    if interaction:
+        selected_segments = [
+            row
+            for row in interaction.get("segments", [])
+            if not wanted_knowledge or row.get("knowledge") in wanted_knowledge
+        ]
+        aggregate["classroomInteraction"] = {
+            "sessionStatus": (interaction.get("session") or {}).get("status"),
+            "quickCheckRoundCount": interaction.get("quickCheckRoundCount", 0),
+            "reteachCount": interaction.get("reteachCount", 0),
+            "presentationCount": interaction.get("presentationCount", 0),
+            "presentationReviewCount": interaction.get("presentationReviewCount", 0),
+            "teacherGrantedPoints": interaction.get("teacherGrantedPoints", 0),
+            "segments": [
+                {
+                    "knowledge": row.get("knowledge"),
+                    "mode": row.get("mode"),
+                    "rounds": [
+                        {
+                            "round": q.get("round"),
+                            "questionType": q.get("questionType"),
+                            "responseCount": q.get("responseCount"),
+                            "correctCount": q.get("correctCount"),
+                            "accuracy": q.get("accuracy"),
+                            "decision": q.get("decision"),
+                        }
+                        for q in row.get("quickCheckRounds", [])
+                    ],
+                    "reteachCount": row.get("reteachCount", 0),
+                    "presentationCount": row.get("presentationCount", 0),
+                    "presentationReviewCount": row.get("presentationReviewCount", 0),
+                    "presentationAverages": row.get("presentationAverages", {}),
+                    "teacherGrantedPoints": row.get("teacherGrantedPoints", 0),
+                }
+                for row in selected_segments
+            ],
+        }
     return f"""你是中国小学教师的课堂复盘讲义助手。
-请根据下面的匿名化班级练习统计，为教师生成一份“课堂练习情况讲义草稿”。
+请根据下面的匿名化班级练习统计与互动课堂反馈，为教师生成一份“课堂练习情况讲义草稿”。
 
 硬约束：
 1. 不出现学生姓名、账号、学生ID、个人排名或任何可识别个人的信息。
-2. 只讨论班级共性数据；不要根据一次练习推断学生长期能力。
+2. 只讨论班级共性数据；互动课堂检测、补讲轨迹和讲解评价只作为本堂课反馈，不得据此推断学生长期能力。
 3. 讲义面向教师课堂讲解使用，不是成绩通报。
 4. 必须包含：本课练习概况、需要重点讲解的知识点、典型错误及原因、正确思路/方法、1-2个变式例题、课堂讲解建议、课后巩固建议。
 5. 若完成率不足100%，明确标注“当前为阶段性数据”，不要把未完成学生当作低分学生。
 6. 教师补充意见必须优先遵循，但不能泄露个人信息。
 7. 只返回中文讲义正文，不要 JSON，不要 Markdown 代码块。
 
-匿名化统计：
+匿名化练习与互动课堂统计：
 {json.dumps(aggregate, ensure_ascii=False)}
 
 教师补充：
@@ -303,5 +503,6 @@ def build_anonymized_handout_prompt(
 
 __all__ = [
     "build_anonymized_handout_prompt",
+    "classroom_interaction_summary",
     "classroom_review_summary",
 ]
