@@ -69,6 +69,8 @@ def install_favicon_route(app: FastAPI) -> None:
 
     app.include_router(router)
 
+    app.include_router(router)
+
 
 __all__ = [
     "ICON_180_PNG",
