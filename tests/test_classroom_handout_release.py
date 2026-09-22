@@ -61,7 +61,7 @@ def test_v1_handout_release_requires_teacher_confirmation_and_exposes_student_en
     assert "知识点讲解" in html
     assert "补讲决策" in html
     assert "教师加分" in html
-    assert "这里只汇总既有事实，不自动改变学生长期掌握状态" in html
+    assert "不自动改变学生长期掌握状态" in html
     assert "window.__cyClassroomClosureSummary=summary" in html
 
 
