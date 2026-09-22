@@ -14,6 +14,7 @@ from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueCon
 from changying.services.assignments import teacher_assignment_rows
 from changying.services.classroom_review import (
     build_anonymized_handout_prompt,
+    classroom_interaction_summary,
     classroom_review_summary,
 )
 from changying.web import v1 as v1_module
@@ -128,14 +129,23 @@ def patch_v1_classroom_review_html(html: str) -> str:
       };
       const renderReview=()=>{
         if(!summary){screen.innerHTML=shell(heading('课堂练习复盘','把同一堂课的练习结果汇总成教师可判断的数据。')+'<section class="card">'+selector()+'</section>','workspace');bindNav();document.getElementById('cy-review-assignment').onchange=e=>load(e.target.value);return}
-        const k=summary.knowledgeStats||[],errors=summary.commonErrors||[],students=summary.students||[],draft=summary.handoutDraft;
+        const k=summary.knowledgeStats||[],errors=summary.commonErrors||[],students=summary.students||[],draft=summary.handoutDraft,interaction=summary.classroomInteraction||null;
         const kRows=k.map((x,i)=>'<label class="row" style="cursor:pointer"><input type="checkbox" class="cy-review-k" value="'+esc(x.knowledge)+'" '+(x.accuracy<80?'checked':'')+'><span class="row-main"><b>'+esc(x.knowledge)+'</b><small>答题 '+x.answered+' 次 · 涉及 '+x.studentCount+' 人</small></span><span class="tag">'+x.accuracy+'% · '+esc(x.reviewPriority)+'</span></label>').join('')||'<div class="empty">暂无已完成练习数据</div>';
         const eRows=errors.map(x=>'<label class="row" style="cursor:pointer"><input type="checkbox" class="cy-review-q" value="'+x.questionID+'" '+(x.wrongRate>=30?'checked':'')+'><span class="row-main"><b>'+esc(x.knowledge)+' · 错误率 '+x.wrongRate+'%</b><small>'+esc(x.problem)+'</small><small>常见错误：'+esc((x.wrongAnswerDistribution||[]).map(v=>v.answer+'×'+v.count).join('；')||'—')+'</small></span></label>').join('')||'<div class="empty">暂无共性错题</div>';
         const sRows=students.map(x=>'<div class="row"><span class="row-main"><b>'+esc(x.studentName)+'</b><small>'+(x.completed?'已完成 · '+esc(x.submittedAt||''):'未完成')+'</small></span><span class="tag">'+(x.score===null?'—':x.score+'分')+'</span></div>').join('');
+        const modeNames={teacher:'教师讲解',student:'学生讲解',co_teach:'师生共讲',discussion:'讨论',skipped:'暂不讲解'};
+        const decisionNames={reteach:'继续讲解',complete:'确认完成'};
+        const interactionRows=interaction?(interaction.segments||[]).map(x=>{
+          const rounds=(x.quickCheckRounds||[]).map(r=>'第'+r.round+'轮 '+r.responseCount+'人 · '+(r.accuracy===null?'—':r.accuracy+'%')+(r.decision?' · '+(decisionNames[r.decision]||r.decision):'')).join(' → ');
+          const review=x.presentationReviewCount?('学生讲解 '+x.presentationCount+' 次 · 评价均值 准确 '+(x.presentationAverages?.accuracy??'—')+'/5、清晰 '+(x.presentationAverages?.clarity??'—')+'/5、互动 '+(x.presentationAverages?.interaction??'—')+'/5 · 教师明确加分 '+x.teacherGrantedPoints+' 分'):(x.presentationCount?('学生讲解 '+x.presentationCount+' 次 · 尚无教师评价'):'');
+          return '<div class="row"><span class="row-main"><b>'+esc(x.knowledge||x.title||'知识点')+'</b><small>'+esc(modeNames[x.mode]||x.mode||'')+(rounds?' · '+esc(rounds):'')+'</small>'+(review?'<small>'+esc(review)+'</small>':'')+'</span><span class="tag">'+(x.reteachCount||0)+' 次补讲</span></div>';
+        }).join(''):'';
+        const interactionBlock=interaction?('<section class="section card"><h2>互动课堂反馈</h2><p class="muted">检测、补讲轨迹与讲解评价只用于本堂课复盘和讲义草稿，不会自动改写长期知识掌握记录。</p><div class="notice">课堂状态：'+esc(interaction.session?.status||'')+' · 随堂检测 '+(interaction.quickCheckRoundCount||0)+' 轮 · 补讲 '+(interaction.reteachCount||0)+' 次 · 学生讲解 '+(interaction.presentationCount||0)+' 次 · 教师明确加分 '+(interaction.teacherGrantedPoints||0)+' 分</div><div class="list">'+(interactionRows||'<div class="empty">暂无互动课堂数据</div>')+'</div></section>'):'';
         const content=heading('课堂练习复盘','先看班级事实，再由教师决定讲什么、是否生成讲义。','<button class="btn" id="cy-review-back">返回当前教学</button>')+
           '<section class="card"><div class="field"><label>选择本堂课练习</label>'+selector()+'</div><div class="notice">'+esc(summary.dataNotice||'')+'</div></section>'+
           '<section class="section grid cols-4"><div class="card kpi"><span>接收学生</span><strong>'+summary.recipientCount+'</strong></div><div class="card kpi"><span>已完成</span><strong>'+summary.completedCount+'</strong><small>'+summary.completionRate+'%</small></div><div class="card kpi"><span>平均分</span><strong>'+(summary.averageScore??'—')+'</strong><small>仅统计已完成</small></div><div class="card kpi"><span>题量</span><strong>'+esc(summary.paper?.questionCount??'—')+'</strong></div></section>'+
           '<section class="section grid cols-2"><div class="card"><h2>知识点掌握情况（本次练习）</h2><p class="muted">勾选需要进入讲义的知识点；系统建议仅供教师判断。</p><div class="list">'+kRows+'</div></div><div class="card"><h2>典型共性错误</h2><p class="muted">勾选值得课堂讲解的典型题；不会把学生姓名送入 AI。</p><div class="list">'+eRows+'</div></div></section>'+
+          interactionBlock+
           '<section class="section card"><h2>学生完成情况</h2><p class="muted">此处仅教师可见；生成讲义时会自动匿名化，不发送姓名、账号、ID或个人排名。</p><div class="list">'+sRows+'</div></section>'+
           '<section class="section card"><h2>教师讲义决策</h2><div class="field"><label>教师补充（可选）</label><textarea id="cy-review-notes" rows="3" placeholder="例如：重点讲清方法，不展开排名；增加一道变式题">'+esc(draft?.teacherNotes||'')+'</textarea></div><button class="btn primary" id="cy-handout-generate" '+(summary.handoutReady?'':'disabled')+'>由教师确认并生成讲义草稿</button><span class="muted" style="margin-left:10px">不会自动发布给学生</span></section>'+
           '<section class="section card"><h2>课堂练习情况讲义草稿</h2><div id="cy-handout-editor">'+draftEditor(draft)+'</div></section>';
@@ -260,6 +270,87 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
             submissions=submissions,
             questions=questions,
         )
+
+        metadata = implementation.Base.metadata
+        session_table = metadata.tables.get("classroom_sessions")
+        segment_table = metadata.tables.get("classroom_segments")
+        check_table = metadata.tables.get("classroom_quick_checks")
+        response_table = metadata.tables.get("classroom_quick_check_responses")
+        turn_table = metadata.tables.get("classroom_presenter_turns")
+        presentation_review_table = metadata.tables.get("classroom_presentation_reviews")
+        result["classroomInteraction"] = None
+        if all(
+            table is not None
+            for table in (
+                session_table,
+                segment_table,
+                check_table,
+                response_table,
+                turn_table,
+                presentation_review_table,
+            )
+        ):
+            session_row = db.execute(
+                select(session_table)
+                .where(
+                    session_table.c.school_id == user.school_id,
+                    session_table.c.teacher_id == user.id,
+                    session_table.c.source_assignment_id == aid,
+                )
+                .order_by(session_table.c.id.desc())
+            ).first()
+            if session_row is not None:
+                session_id = int(session_row._mapping["id"])
+                segment_rows = list(
+                    db.execute(
+                        select(segment_table)
+                        .where(
+                            segment_table.c.school_id == user.school_id,
+                            segment_table.c.session_id == session_id,
+                        )
+                        .order_by(segment_table.c.order_no, segment_table.c.id)
+                    ).all()
+                )
+                check_rows = list(
+                    db.execute(
+                        select(check_table).where(
+                            check_table.c.school_id == user.school_id,
+                            check_table.c.session_id == session_id,
+                        )
+                    ).all()
+                )
+                response_rows = list(
+                    db.execute(
+                        select(response_table).where(
+                            response_table.c.school_id == user.school_id,
+                            response_table.c.session_id == session_id,
+                        )
+                    ).all()
+                )
+                turn_rows = list(
+                    db.execute(
+                        select(turn_table).where(
+                            turn_table.c.school_id == user.school_id,
+                            turn_table.c.session_id == session_id,
+                        )
+                    ).all()
+                )
+                presentation_review_rows = list(
+                    db.execute(
+                        select(presentation_review_table).where(
+                            presentation_review_table.c.school_id == user.school_id,
+                            presentation_review_table.c.session_id == session_id,
+                        )
+                    ).all()
+                )
+                result["classroomInteraction"] = classroom_interaction_summary(
+                    session=session_row,
+                    segments=segment_rows,
+                    quick_checks=check_rows,
+                    responses=response_rows,
+                    presenter_turns=turn_rows,
+                    presentation_reviews=presentation_review_rows,
+                )
         draft = db.execute(
             select(table).where(
                 table.c.school_id == user.school_id,
