@@ -94,6 +94,30 @@ def _draft_payload(row: Any) -> dict[str, Any] | None:
     }
 
 
+def _default_handout_title(summary: dict[str, Any]) -> str:
+    """Build a subject-accurate handout title independent of a class label."""
+
+    class_info = summary.get("class") or {}
+    paper = summary.get("paper") or {}
+    assignment = summary.get("assignment") or {}
+    grade = int(class_info.get("grade") or 0)
+    subject = str(paper.get("subject") or "").strip()
+    class_name = str(class_info.get("name") or "").strip()
+    context = (
+        f"{grade}年级{subject}"
+        if grade and subject
+        else f"{grade}年级"
+        if grade
+        else subject
+        or class_name
+        or "课堂练习"
+    )
+    assignment_title = str(assignment.get("title") or "").strip()
+    if assignment_title:
+        return f"{context} · {assignment_title} 课堂练习复盘讲义"
+    return f"{context} · 课堂练习复盘讲义"
+
+
 def patch_v1_classroom_review_html(html: str) -> str:
     if V1_CLASSROOM_REVIEW_MARKER in html:
         return html
@@ -569,10 +593,7 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
         )
         if interaction_summary:
             content = content.rstrip() + "\n\n" + interaction_summary
-        title = (
-            f"{summary['class']['name']} · {summary['assignment']['title']} "
-            "课堂练习复盘讲义"
-        )
+        title = _default_handout_title(summary)
         draft = save_draft(
             db,
             u,
@@ -608,10 +629,7 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
         content = body.content.strip()
         if not content:
             raise HTTPException(400, "讲义正文不能为空")
-        title = body.title.strip() or (
-            f"{summary['class']['name']} · {summary['assignment']['title']} "
-            "课堂练习复盘讲义"
-        )
+        title = body.title.strip() or _default_handout_title(summary)
         draft = save_draft(
             db,
             u,
