@@ -200,11 +200,11 @@ def patch_v1_classroom_execution_html(html: str) -> str:
     handout_sections = [
         (
             "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div></section>';",
-            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px;display:flex;gap:8px;flex-wrap:wrap\"><button class=\"btn primary\" id=\"cy-enter-classroom\">进入课堂执行（最近课堂）</button>'+(interaction?.session?.status===\"completed\"?'<button class=\"btn\" id=\"cy-new-classroom\">新开一堂课</button>':'')+'<span class=\"muted\" style=\"margin-left:10px\">学生讲解必须本人确认；默认复用最近课堂，只有“新开一堂课”才创建新 session</span></div>':'')+'</section>';",
+            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px;display:flex;gap:8px;flex-wrap:wrap\">'+(interaction?.session?.id?'<button class=\"btn primary\" id=\"cy-enter-classroom\">查看已完成课堂</button>':'')+(openSession?'<button class=\"btn\" id=\"cy-open-classroom\">进入未结束课堂</button>':'<button class=\"btn\" id=\"cy-new-classroom\">新开一堂课</button>')+'<span class=\"muted\" style=\"margin-left:10px\">学生讲解必须本人确认；有未结束课堂时先处理，不会静默新建</span></div>':'')+'</section>';",
         ),
         (
             "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2>'+staleNotice+'<div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div></section>';",
-            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2>'+staleNotice+'<div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px;display:flex;gap:8px;flex-wrap:wrap\"><button class=\"btn primary\" id=\"cy-enter-classroom\">进入课堂执行（最近课堂）</button>'+(interaction?.session?.status===\"completed\"?'<button class=\"btn\" id=\"cy-new-classroom\">新开一堂课</button>':'')+'<span class=\"muted\" style=\"margin-left:10px\">学生讲解必须本人确认；默认复用最近课堂，只有“新开一堂课”才创建新 session</span></div>':'')+'</section>';",
+            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2>'+staleNotice+'<div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px;display:flex;gap:8px;flex-wrap:wrap\">'+(interaction?.session?.id?'<button class=\"btn primary\" id=\"cy-enter-classroom\">查看已完成课堂</button>':'')+(openSession?'<button class=\"btn\" id=\"cy-open-classroom\">进入未结束课堂</button>':'<button class=\"btn\" id=\"cy-new-classroom\">新开一堂课</button>')+'<span class=\"muted\" style=\"margin-left:10px\">学生讲解必须本人确认；有未结束课堂时先处理，不会静默新建</span></div>':'')+'</section>';",
         ),
     ]
     for handout_section, replacement in handout_sections:
@@ -219,7 +219,7 @@ def patch_v1_classroom_execution_html(html: str) -> str:
         raise RuntimeError("classroom review save binding anchor not found")
     html = html.replace(
         save_anchor,
-        "};bindSave();const enter=document.getElementById('cy-enter-classroom');if(enter)enter.onclick=async()=>{const recent=Number(interaction?.session?.id||0);if(recent){navigate('/v1/classroom-execution?session='+recent);return}enter.disabled=true;try{const r=await api('/teacher/assignments/'+current+'/classroom-session',{method:'POST',body:JSON.stringify({force_new:false})});navigate('/v1/classroom-execution?session='+r.session.id)}catch(err){toast(err.message);enter.disabled=false}};const newer=document.getElementById('cy-new-classroom');if(newer)newer.onclick=async()=>{newer.disabled=true;try{const r=await api('/teacher/assignments/'+current+'/classroom-session',{method:'POST',body:JSON.stringify({force_new:true})});navigate('/v1/classroom-execution?session='+r.session.id)}catch(err){toast(err.message);newer.disabled=false}};",
+        "};bindSave();const enter=document.getElementById('cy-enter-classroom');if(enter)enter.onclick=()=>navigate('/v1/classroom-execution?session='+Number(interaction?.session?.id||0));const pending=document.getElementById('cy-open-classroom');if(pending)pending.onclick=()=>navigate('/v1/classroom-execution?session='+Number(openSession?.id||0));const newer=document.getElementById('cy-new-classroom');if(newer)newer.onclick=async()=>{newer.disabled=true;try{const r=await api('/teacher/assignments/'+current+'/classroom-session',{method:'POST',body:JSON.stringify({force_new:true})});navigate('/v1/classroom-execution?session='+r.session.id)}catch(err){toast(err.message);newer.disabled=false}};",
         1,
     )
 

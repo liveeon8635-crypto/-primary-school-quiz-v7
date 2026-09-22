@@ -408,6 +408,8 @@ with TestClient(app) as client:
     assert data["handoutDraft"] is None
     assert data["classroomInteraction"]["session"]["status"] == "completed"
     assert data["classroomInteraction"]["session"]["title"] == "已完成互动课堂"
+    assert data["openClassroomSession"]["status"] == "planned"
+    assert data["openClassroomSession"]["title"] == "误创建待开始课堂"
 
     captured = {}
     def fake_ai_call(db, user, feature, prompt, images=None, timeout=90):
