@@ -88,6 +88,17 @@ def test_v1_runtime_build_guard_refreshes_stale_open_shell(monkeypatch):
     assert newer.json() == {"build": "build-new-456"}
 
 
+def test_v1_login_identity_selection_preserves_requested_route():
+    html = v1_html()
+    assert "const identityReturnPath=()" in html
+    assert "'/v1/history'" in html
+    assert "pendingIdentityReturnPath=identityReturnPath();chooseIdentity()" in html
+    assert "target=pendingIdentityReturnPath||fallback" in html
+    assert "pendingIdentityReturnPath='';navigate(target)" in html
+    assert "identityButton.textContent='切换账号'" in html
+    assert "pendingIdentityReturnPath='';loginView()" in html
+
+
 def test_v1_student_workspace_uses_real_assignment_and_progress_summary():
     html = v1_html()
     assert "api('/student/assignments')" in html
