@@ -1941,11 +1941,13 @@ def require_teaching_grade(user,p):
         raise HTTPException(403,f"本教学方案仅面向{p.grade}年级学生")
 
 def teaching_question_counts(db,p):
-    out={}
-    rows=db.execute(select(TeachingQuestion.stage,TeachingQuestion.subject,TeachingQuestion.level,func.count()).where(TeachingQuestion.program_id==p.id,TeachingQuestion.school_id==p.school_id,TeachingQuestion.active==True).group_by(TeachingQuestion.stage,TeachingQuestion.subject,TeachingQuestion.level)).all()
-    for stage,subject,level,count in rows:
-        out.setdefault(stage,{}).setdefault(subject,{})[level]=int(count or 0)
-    return out
+    from changying.services.teaching import TeachingService
+
+    return TeachingService(
+        adaptive_session_model=TeachingAdaptiveSession,
+        lesson_model=TeachingLesson,
+        question_model=TeachingQuestion,
+    ).question_counts(db,p)
 
 def teaching_program_json(db,p):
     lessons=teaching_program_lessons(db,program_id=p.id)
@@ -1967,10 +1969,13 @@ def teaching_question_json(q,public=False):
     return d
 
 def teaching_questions_for_level(db,p,level,lesson=None,stage="lesson",subject=None):
-    q=select(TeachingQuestion).where(TeachingQuestion.school_id==p.school_id,TeachingQuestion.program_id==p.id,TeachingQuestion.active==True,TeachingQuestion.level==level)
-    if lesson is not None:q=q.where(TeachingQuestion.lesson_id==lesson.id,TeachingQuestion.stage=="lesson",TeachingQuestion.subject==lesson.subject)
-    else:q=q.where(TeachingQuestion.lesson_id.is_(None),TeachingQuestion.stage==stage,TeachingQuestion.subject==subject)
-    return db.scalars(q.order_by(TeachingQuestion.id)).all()
+    from changying.services.teaching import TeachingService
+
+    return TeachingService(
+        adaptive_session_model=TeachingAdaptiveSession,
+        lesson_model=TeachingLesson,
+        question_model=TeachingQuestion,
+    ).questions_for_level(db,p,level,lesson,stage,subject)
 
 def first_available_level(db,p,lesson=None,stage="lesson",subject=None,after=None):
     levels=list(TEACHING_LEVELS)

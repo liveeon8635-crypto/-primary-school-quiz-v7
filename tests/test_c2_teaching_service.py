@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import Boolean, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from types import SimpleNamespace
 
 import app_v924 as legacy
 from app import app  # noqa: F401
@@ -21,6 +22,19 @@ class TestTeachingLesson(Base):
     subject: Mapped[str] = mapped_column(String(20))
     lesson_no: Mapped[int] = mapped_column(Integer)
     published: Mapped[bool] = mapped_column(Boolean)
+
+
+class TestTeachingQuestion(Base):
+    __tablename__ = "c2_test_teaching_questions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    program_id: Mapped[int] = mapped_column(Integer)
+    school_id: Mapped[int] = mapped_column(Integer)
+    lesson_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stage: Mapped[str] = mapped_column(String(20))
+    subject: Mapped[str] = mapped_column(String(20))
+    level: Mapped[str] = mapped_column(String(2))
+    active: Mapped[bool] = mapped_column(Boolean)
 
 
 class TestTeachingAdaptiveSession(Base):
@@ -117,3 +131,34 @@ def test_teaching_service_is_installed_into_legacy_runtime():
     assert isinstance(service, TeachingService)
     assert legacy.latest_teaching_session.__self__ is service
     assert legacy.teaching_program_lessons.__self__ is service
+    assert legacy.teaching_question_counts.__self__ is service
+    assert legacy.teaching_questions_for_level.__self__ is service
+
+
+def test_question_counts_and_level_selection_preserve_school_lesson_and_stage_scope():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    service = TeachingService(
+        adaptive_session_model=TestTeachingAdaptiveSession,
+        lesson_model=TestTeachingLesson,
+        question_model=TestTeachingQuestion,
+    )
+    program = SimpleNamespace(id=10, school_id=100)
+    lesson = SimpleNamespace(id=20, subject="数学")
+    with Session(engine) as db:
+        db.add_all([
+            TestTeachingQuestion(id=1, program_id=10, school_id=100, lesson_id=20, stage="lesson", subject="数学", level="C", active=True),
+            TestTeachingQuestion(id=3, program_id=10, school_id=100, lesson_id=20, stage="lesson", subject="数学", level="C", active=True),
+            TestTeachingQuestion(id=4, program_id=10, school_id=100, lesson_id=None, stage="unit", subject="数学", level="C", active=True),
+            TestTeachingQuestion(id=5, program_id=10, school_id=100, lesson_id=20, stage="lesson", subject="数学", level="B", active=True),
+            TestTeachingQuestion(id=6, program_id=10, school_id=100, lesson_id=20, stage="lesson", subject="数学", level="C", active=False),
+            TestTeachingQuestion(id=7, program_id=10, school_id=200, lesson_id=20, stage="lesson", subject="数学", level="C", active=True),
+            TestTeachingQuestion(id=8, program_id=11, school_id=100, lesson_id=20, stage="lesson", subject="数学", level="C", active=True),
+        ])
+        db.commit()
+        counts = service.question_counts(db, program)
+        lesson_rows = service.questions_for_level(db, program, "C", lesson)
+        unit_rows = service.questions_for_level(db, program, "C", None, "unit", "数学")
+    assert counts == {"lesson": {"数学": {"B": 1, "C": 2}}, "unit": {"数学": {"C": 1}}}
+    assert [row.id for row in lesson_rows] == [1, 3]
+    assert [row.id for row in unit_rows] == [4]
