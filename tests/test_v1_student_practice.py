@@ -309,7 +309,7 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
 def test_runtime_registers_student_practice_routes():
     from app import app
 
-    routes = {(route.path, tuple(sorted(route.methods or []))) for route in app.routes}
+    routes = {(route.path, tuple(sorted(route.methods or []))) for route in app.routes if hasattr(route, 'path')}
     assert (
         "/teacher/students/{sid}/practice-options",
         ("GET",),
