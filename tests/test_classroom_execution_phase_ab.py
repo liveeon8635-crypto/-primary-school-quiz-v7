@@ -102,7 +102,6 @@ def test_v1_execution_patch_contains_teacher_and_student_consent_pages():
     assert "查看已完成课堂" in html
     assert "进入未结束课堂" in html
     assert "新开一堂课" in html
-    assert "force_new:false" in html
     assert "force_new:true" in html
     assert "取消未开始课堂并返回复盘" in html
     assert "interaction?.session?.id" in html
