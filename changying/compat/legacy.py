@@ -54,6 +54,7 @@ from changying.services.wrong_questions import WrongQuestionService
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
 from changying.utils.json_tools import json_list
 from changying.web.classic_ui import install_classic_ui_patch
+from changying.web.health_revision import install_health_revision_route
 from changying.web.product_shell import (
     PRODUCT_SHELL_MARKER,
     install_product_shell,
@@ -392,6 +393,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_student_quiz_navigation(implementation)
     install_product_shell(implementation.app)
     install_product_visibility_routes(implementation.app)
+    install_health_revision_route(implementation.app)
     install_classic_ui_patch(implementation.app)
     install_v1_classic_embed_bootstrap()
     install_v1_classic_gzip_embed(implementation.app)
