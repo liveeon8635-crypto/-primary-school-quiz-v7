@@ -219,7 +219,7 @@ def patch_v1_classroom_execution_html(html: str) -> str:
         raise RuntimeError("classroom review save binding anchor not found")
     html = html.replace(
         save_anchor,
-        "};bindSave();const enter=document.getElementById('cy-enter-classroom');if(enter)enter.onclick=async()=>{enter.disabled=true;try{const r=await api('/teacher/assignments/'+current+'/classroom-session',{method:'POST',body:JSON.stringify({force_new:false})});navigate('/v1/classroom-execution?session='+r.session.id)}catch(err){toast(err.message);enter.disabled=false}};const newer=document.getElementById('cy-new-classroom');if(newer)newer.onclick=async()=>{newer.disabled=true;try{const r=await api('/teacher/assignments/'+current+'/classroom-session',{method:'POST',body:JSON.stringify({force_new:true})});navigate('/v1/classroom-execution?session='+r.session.id)}catch(err){toast(err.message);newer.disabled=false}};",
+        "};bindSave();const enter=document.getElementById('cy-enter-classroom');if(enter)enter.onclick=async()=>{const recent=Number(interaction?.session?.id||0);if(recent){navigate('/v1/classroom-execution?session='+recent);return}enter.disabled=true;try{const r=await api('/teacher/assignments/'+current+'/classroom-session',{method:'POST',body:JSON.stringify({force_new:false})});navigate('/v1/classroom-execution?session='+r.session.id)}catch(err){toast(err.message);enter.disabled=false}};const newer=document.getElementById('cy-new-classroom');if(newer)newer.onclick=async()=>{newer.disabled=true;try{const r=await api('/teacher/assignments/'+current+'/classroom-session',{method:'POST',body:JSON.stringify({force_new:true})});navigate('/v1/classroom-execution?session='+r.session.id)}catch(err){toast(err.message);newer.disabled=false}};",
         1,
     )
 
@@ -242,7 +242,7 @@ def patch_v1_classroom_execution_html(html: str) -> str:
       const renderExec=()=>{
         const s=data.session,segs=data.segments||[],events=data.events||[];
         const top='<section class="card"><div class="section-head"><div><h2>'+esc(s.title)+'</h2><p>'+esc(s.className+' · '+s.subject+' · '+(s.textbook||''))+'</p></div><span class="tag">'+esc(stateName(s.status))+'</span></div><div style="display:flex;gap:8px;flex-wrap:wrap">'+
-          (s.status==='planned'?'<button class="btn primary" id="cy-session-start">开始课堂</button>':'')+
+          (s.status==='planned'?'<button class="btn primary" id="cy-session-start">开始课堂</button><button class="btn" id="cy-session-cancel">取消未开始课堂并返回复盘</button>':'')+
           (s.status==='active'?'<button class="btn" id="cy-session-pause">暂停课堂</button>':'')+
           (s.status==='paused'?'<button class="btn primary" id="cy-session-resume">继续课堂</button>':'')+
           (['active','paused'].includes(s.status)?'<button class="btn" id="cy-session-complete">完成本堂课</button>':'')+
@@ -270,6 +270,7 @@ def patch_v1_classroom_execution_html(html: str) -> str:
         screen.innerHTML=shell(content,'workspace');bindNav();
         const by=id=>document.getElementById(id);
         if(by('cy-session-start'))by('cy-session-start').onclick=()=>call('/teacher/classroom-sessions/'+sid+'/state',{status:'active'});
+        if(by('cy-session-cancel'))by('cy-session-cancel').onclick=async()=>{const btn=by('cy-session-cancel');btn.disabled=true;try{await api('/teacher/classroom-sessions/'+sid+'/state',{method:'POST',body:JSON.stringify({status:'cancelled'})});navigate('/v1/classroom-review?assignment='+s.sourceAssignmentID)}catch(e){toast(e.message);btn.disabled=false}};
         if(by('cy-session-pause'))by('cy-session-pause').onclick=()=>call('/teacher/classroom-sessions/'+sid+'/state',{status:'paused'});
         if(by('cy-session-resume'))by('cy-session-resume').onclick=()=>call('/teacher/classroom-sessions/'+sid+'/state',{status:'active'});
         const finishSession=async btn=>{btn.disabled=true;try{await api('/teacher/classroom-sessions/'+sid+'/state',{method:'POST',body:JSON.stringify({status:'completed'})});navigate('/v1/classroom-review?assignment='+s.sourceAssignmentID)}catch(e){toast(e.message);btn.disabled=false}};
