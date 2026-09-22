@@ -16,6 +16,6 @@ def test_completion_actor_migration_is_nullable_idempotent_and_never_backfills()
     end=SOURCE.index('@app.on_event("startup")', start)
     body=SOURCE[start:end]
     assert 'if "completion_actor" in columns:' in body
-    assert "ALTER TABLE submissions ADD COLUMN completion_actor VARCHAR(30) NULL" in body
-    assert "CREATE INDEX IF NOT EXISTS ix_submissions_completion_actor" in body
+    assert 'sa_text("ALTER TABLE submissions ADD COLUMN completion_actor VARCHAR(30) NULL")' in body
+    assert 'sa_text("CREATE INDEX IF NOT EXISTS ix_submissions_completion_actor ON submissions (completion_actor)")' in body
     assert "UPDATE submissions" not in body
