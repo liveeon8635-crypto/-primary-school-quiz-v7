@@ -76,7 +76,8 @@ def test_v1_connects_review_to_teacher_execution_and_student_consent():
         patch_v1_classroom_review_html(v1_html())
     )
     assert V1_CLASSROOM_EXECUTION_MARKER in html
-    assert "进入课堂执行" in html
+    assert "查看已完成课堂" in html
+    assert "进入未结束课堂" in html
     assert "/v1/classroom-execution" in html
     assert "/v1/classroom-invitations" in html
     assert "学生讲解必须本人确认" in html
