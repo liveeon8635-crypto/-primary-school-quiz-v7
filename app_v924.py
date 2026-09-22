@@ -3454,9 +3454,27 @@ async def production_security_headers(request:Request,call_next):
         response.headers["Strict-Transport-Security"]="max-age=31536000; includeSubDomains"
     return response
 
+def ensure_submission_completion_actor_column():
+    """Add the nullable provenance column before any ORM query touches Submission.
+
+    create_all() creates missing tables but intentionally does not ALTER an
+    existing table. Keep this migration narrow and idempotent; historical rows
+    remain NULL/unknown and are never backfilled.
+    """
+    inspector=sa_inspect(engine)
+    if "submissions" not in set(inspector.get_table_names()):
+        return
+    columns={col["name"] for col in inspector.get_columns("submissions")}
+    if "completion_actor" in columns:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE submissions ADD COLUMN completion_actor VARCHAR(30) NULL"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_submissions_completion_actor ON submissions (completion_actor)"))
+
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(engine)
+    ensure_submission_completion_actor_column()
     # V7.3.0: keep the V7.2.0 production seeding behavior; never create public demo credentials automatically on PostgreSQL.
     # Existing production users are untouched. Set ENABLE_DEMO_SEED=1 only for an intentional demo.
     if raw_url.startswith("sqlite") or os.getenv("ENABLE_DEMO_SEED","0")=="1":
