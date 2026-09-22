@@ -151,3 +151,20 @@ def test_production_classic_student_sync_exposes_open_classroom_quick_checks():
     assert "classroomQuickChecksClassic" in response.text
     assert '"/student/classroom-quick-checks/"+b.dataset.id+"/respond"' in response.text
     assert "本次答案只用于当前课堂反馈，不会自动加分，也不会自动改写长期知识掌握记录。" in response.text
+
+
+def test_production_classic_student_collection_bindings_use_query_selector_all():
+    from app import app as production_app
+
+    response = TestClient(production_app).get(
+        "/classic?legacy=1&unified=1&page=syncLearning",
+        headers={"Accept-Encoding": "identity"},
+    )
+
+    assert response.status_code == 200
+    assert 'document.querySelectorAll(".openClassroomQuickCheck").forEach' in response.text
+    assert 'document.querySelectorAll(".cy-classic-quick-submit").forEach' in response.text
+    assert 'document.querySelectorAll(".enterSyncLesson").forEach' in response.text
+    assert 'document.querySelectorAll(".startStageTest").forEach' in response.text
+    assert '$(".openClassroomQuickCheck").forEach' not in response.text
+    assert '$(".cy-classic-quick-submit").forEach' not in response.text
