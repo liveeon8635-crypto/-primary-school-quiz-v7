@@ -222,8 +222,13 @@ def patch_v1_classroom_handout_release_html(html: str) -> str:
         ['课堂讲义',current?('V'+current.version+' 当前发布'):(state.history||[]).length?('无当前发布 · 历史 '+state.history.length+' 版'):'尚未发布']
       ].map(x=>'<div class="row"><span class="row-main"><b>'+esc(x[0])+'</b></span><span class="tag">'+esc(x[1])+'</span></div>').join('');
       const closureCard=document.createElement('section');closureCard.id='cy-classroom-closure-overview';closureCard.className='section card';
-      closureCard.innerHTML='<h2>本堂课闭环总览</h2><p class="muted">把练习、互动、检测、教师决策、明确加分和讲义版本放在同一条课堂记录中；这里只汇总既有事实，不自动改变学生长期掌握状态。</p><div class="list">'+closureRows+'</div>';
+      const classInfo=interaction?.class||{},paperInfo=interaction?.paper||{},assignmentInfo=interaction?.assignment||{},sessionInfo=closure?.session||{};
+      const recordTitle=[classInfo.grade?(classInfo.grade+'年级'):'',paperInfo.subject||'',assignmentInfo.title||''].filter(Boolean).join(' · ');
+      const recordMeta=[paperInfo.textbook||'',paperInfo.unit||'',sessionInfo.completedAt?('完成于 '+sessionInfo.completedAt):''].filter(Boolean).join(' · ');
+      closureCard.innerHTML='<h2>本堂课完整课堂记录</h2><p class="muted">'+esc(recordTitle||'课堂记录')+(recordMeta?'<br>'+esc(recordMeta):'')+'</p><div class="notice">这是一份按课堂事实自动汇总的只读记录：练习结果、互动过程、教师决策、明确加分与讲义版本共同归属于本堂课；不自动改变学生长期掌握状态。</div><div class="list">'+closureRows+'</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" id="cy-record-open-interaction" '+(sessionInfo.id?'':'disabled')+'>查看互动课堂</button><button class="btn" id="cy-record-open-handout" '+(current?'':'disabled')+'>查看当前讲义版本</button></div>';
       draftSection.insertAdjacentElement('beforebegin',closureCard);
+      const interactionButton=document.getElementById('cy-record-open-interaction');if(interactionButton&&sessionInfo.id)interactionButton.onclick=()=>navigate('/v1/classroom-execution?session='+sessionInfo.id);
+      const handoutButton=document.getElementById('cy-record-open-handout');if(handoutButton&&current)handoutButton.onclick=()=>renderHistoryPreview(Number(current.id));
       const publishLabel=current?'发布新版本 V'+state.nextVersion:'确认发布 V'+state.nextVersion;
       const actions=(state.canPublish?'<button class="btn primary" id="cy-handout-publish">'+publishLabel+'</button>':'')+(current?' <button class="btn" id="cy-handout-revoke">撤回当前发布</button>':'');
       const section=document.createElement('section');section.id='cy-handout-release-card';section.className='section card';

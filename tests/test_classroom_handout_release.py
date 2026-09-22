@@ -51,12 +51,17 @@ def test_v1_handout_release_requires_teacher_confirmation_and_exposes_student_en
     assert "targetIndex>0?ordered[targetIndex-1]" in html
     assert "来源草稿更新时间" in html
     assert "被新版本替代" in html
-    assert "本堂课闭环总览" in html
+    assert "本堂课完整课堂记录" in html
+    assert "按课堂事实自动汇总的只读记录" in html
+    assert "查看互动课堂" in html
+    assert "查看当前讲义版本" in html
+    assert "paperInfo.textbook" in html
+    assert "sessionInfo.completedAt" in html
     assert "课堂练习" in html
     assert "知识点讲解" in html
     assert "补讲决策" in html
     assert "教师加分" in html
-    assert "这里只汇总既有事实，不自动改变学生长期掌握状态" in html
+    assert "不自动改变学生长期掌握状态" in html
     assert "window.__cyClassroomClosureSummary=summary" in html
 
 
