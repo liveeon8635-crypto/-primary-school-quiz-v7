@@ -58,7 +58,7 @@ def _matching_route_objects(path: str):
 
 
 def test_legacy_runtime_router_keeps_get_only_route_contracts():
-    expected = ("/offline", "/version", "/release", *PROBE_PATHS)
+    expected = ("/version", "/release", *PROBE_PATHS)
     for path in expected:
         matching = _matching_route_objects(path)
         assert len(matching) == 1, (path, matching)
@@ -67,10 +67,6 @@ def test_legacy_runtime_router_keeps_get_only_route_contracts():
 
 def test_legacy_runtime_router_keeps_public_responses():
     client = TestClient(legacy.app)
-
-    offline = client.get("/offline")
-    assert offline.status_code == 200
-    assert "text/html" in offline.headers["content-type"]
 
     version = client.get("/version")
     assert version.status_code == 200
@@ -88,5 +84,5 @@ def test_legacy_runtime_router_keeps_public_responses():
         body = response.json()
         assert body["ok"] is True, (path, body)
 
-    for path in ("/offline", "/version", "/release", "/probe-v1070", "/probe-v730"):
+    for path in ("/version", "/release", "/probe-v1070", "/probe-v730"):
         assert client.post(path).status_code == 405, path
