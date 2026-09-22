@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 from typing import Any
 
-from fastapi import Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, func, select
@@ -293,6 +293,8 @@ def install_v1_classroom_handout_release_routes(implementation: Any) -> None:
     if getattr(app.state, "v1_classroom_handout_release_routes_installed", False):
         return
 
+    router = APIRouter()
+
     releases = register_classroom_handout_release_table(implementation)
     metadata = implementation.Base.metadata
     drafts = metadata.tables.get("classroom_review_handouts")
@@ -350,7 +352,7 @@ def install_v1_classroom_handout_release_routes(implementation: Any) -> None:
             "history": [_release_payload(row) for row in rows],
         }
 
-    @app.get("/teacher/assignments/{aid}/class-review/handout-releases")
+    @router.get("/teacher/assignments/{aid}/class-review/handout-releases")
     def teacher_handout_releases(
         aid: int,
         u: Any = Depends(current_user),
@@ -358,7 +360,7 @@ def install_v1_classroom_handout_release_routes(implementation: Any) -> None:
     ):
         return release_state(db, u, aid)
 
-    @app.get("/teacher/assignments/{aid}/class-review/handout-releases/{release_id}")
+    @router.get("/teacher/assignments/{aid}/class-review/handout-releases/{release_id}")
     def teacher_handout_release_detail(
         aid: int,
         release_id: int,
@@ -378,7 +380,7 @@ def install_v1_classroom_handout_release_routes(implementation: Any) -> None:
             raise HTTPException(404, "讲义历史版本不存在或无权限")
         return _teacher_release_payload(row)
 
-    @app.post("/teacher/assignments/{aid}/class-review/handout-publish")
+    @router.post("/teacher/assignments/{aid}/class-review/handout-publish")
     def publish_handout(
         aid: int,
         body: HandoutReleaseBody,
@@ -464,7 +466,7 @@ def install_v1_classroom_handout_release_routes(implementation: Any) -> None:
             "notice": "已发布冻结版本；后续修改教师草稿不会改变这一版本。",
         }
 
-    @app.post("/teacher/assignments/{aid}/class-review/handout-revoke")
+    @router.post("/teacher/assignments/{aid}/class-review/handout-revoke")
     def revoke_handout(
         aid: int,
         body: HandoutReleaseBody,
@@ -540,14 +542,14 @@ def install_v1_classroom_handout_release_routes(implementation: Any) -> None:
             out.append(payload)
         return out
 
-    @app.get("/student/classroom-handouts")
+    @router.get("/student/classroom-handouts")
     def student_handouts(
         u: Any = Depends(current_user),
         db: Any = Depends(get_db),
     ):
         return student_release_rows(db, u)
 
-    @app.get("/student/classroom-handouts/{release_id}")
+    @router.get("/student/classroom-handouts/{release_id}")
     def student_handout(
         release_id: int,
         u: Any = Depends(current_user),
@@ -584,7 +586,7 @@ def install_v1_classroom_handout_release_routes(implementation: Any) -> None:
         )
         return payload
 
-    @app.get("/v1/classroom-handouts", include_in_schema=False)
+    @router.get("/v1/classroom-handouts", include_in_schema=False)
     def classroom_handouts_page():
         return HTMLResponse(
             v1_module.v1_html(),
@@ -594,6 +596,7 @@ def install_v1_classroom_handout_release_routes(implementation: Any) -> None:
             },
         )
 
+    app.include_router(router)
     app.state.v1_classroom_handout_release_routes_installed = True
 
 
