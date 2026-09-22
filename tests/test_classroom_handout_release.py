@@ -49,6 +49,8 @@ def test_v1_handout_release_requires_teacher_confirmation_and_exposes_student_en
     assert "/class-review/handout-releases/" in html
     assert "sort((a,b)=>Number(a.version)-Number(b.version))" in html
     assert "targetIndex>0?ordered[targetIndex-1]" in html
+    assert "来源草稿更新时间" in html
+    assert "被新版本替代" in html
 
 
 def test_runtime_handout_release_version_snapshot_and_revoke(tmp_path):
@@ -255,6 +257,11 @@ with TestClient(app) as client:
     assert teacher_v1.json()["status"] == "superseded"
     assert teacher_v1.json()["content"] == "V1 冻结正文"
     assert teacher_v1.json()["teacherNotes"] == "教师已审核"
+    assert teacher_v1.json()["snapshot"]["handoutID"] == draft_id
+    assert teacher_v1.json()["snapshot"]["sourceDraftUpdatedAt"]
+    assert teacher_v1.json()["snapshot"]["publishedAt"]
+    assert teacher_v1.json()["snapshot"]["supersededAt"]
+    assert teacher_v1.json()["snapshot"]["revokedAt"] == ""
 
     teacher_v2 = client.get(
         f"/teacher/assignments/{aid}/class-review/handout-releases/{release2['id']}",
@@ -264,6 +271,11 @@ with TestClient(app) as client:
     assert teacher_v2.json()["version"] == 2
     assert teacher_v2.json()["status"] == "published"
     assert teacher_v2.json()["content"] == "V2 新正文，不得覆盖 V1"
+    assert teacher_v2.json()["snapshot"]["handoutID"] == draft_id
+    assert teacher_v2.json()["snapshot"]["sourceDraftUpdatedAt"]
+    assert teacher_v2.json()["snapshot"]["publishedAt"]
+    assert teacher_v2.json()["snapshot"]["supersededAt"] == ""
+    assert teacher_v2.json()["snapshot"]["revokedAt"] == ""
 
     teacher_detail_denied = client.get(
         f"/teacher/assignments/{aid}/class-review/handout-releases/{release1['id']}",
