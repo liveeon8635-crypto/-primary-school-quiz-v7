@@ -12,7 +12,12 @@ def test_historical_teaching_view_is_read_only_and_role_safe():
     html = patch_v1_historical_teaching_view(v1_html())
     assert V1_HISTORICAL_TEACHING_VIEW_MARKER in html
     assert "/v1/teacher/history/students" in html
+    assert "/v1/teacher/history/classrooms" in html
+    assert "互动课堂历史" in html
+    assert "查看课堂过程" in html
+    assert "课堂复盘/讲义" in html
     assert "teacher-owned-assignment-recipient-snapshots" not in html
+    assert "teacher-owned-completed-classroom-sessions" not in html
     assert "学生离班后的新档案内容" in html
     assert "sessionStorage.getItem('v717Token')" in html
     assert "localStorage.getItem('v717Token')" in html
@@ -56,4 +61,6 @@ def test_production_v1_contains_historical_teaching_view():
     html = v1_module.v1_html()
     assert V1_HISTORICAL_TEACHING_VIEW_MARKER in html
     assert "真实历史教学记录" in html
+    assert "互动课堂历史" in html
     assert "/v1/teacher/history/students" in html
+    assert "/v1/teacher/history/classrooms" in html
