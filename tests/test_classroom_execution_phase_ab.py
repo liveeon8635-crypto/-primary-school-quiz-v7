@@ -103,6 +103,8 @@ def test_v1_execution_patch_contains_teacher_and_student_consent_pages():
     assert "新开一堂课" in html
     assert "force_new:false" in html
     assert "force_new:true" in html
+    assert "取消未开始课堂并返回复盘" in html
+    assert "interaction?.session?.id" in html
 
 def test_runtime_phase_ab_classroom_execution(tmp_path):
     db_path = tmp_path / "classroom-execution.sqlite3"
@@ -297,6 +299,15 @@ with TestClient(app) as client:
     assert explicit_new.json()["created"] is True
     assert explicit_new.json()["session"]["id"] != sid
     assert explicit_new.json()["session"]["status"] == "planned"
+    new_sid = explicit_new.json()["session"]["id"]
+
+    cancelled = client.post(
+        f"/teacher/classroom-sessions/{new_sid}/state",
+        headers=th,
+        json={"status": "cancelled"},
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["session"]["status"] == "cancelled"
 
     with legacy.SessionLocal() as db:
         tables = legacy.Base.metadata.tables
