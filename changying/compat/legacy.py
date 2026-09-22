@@ -35,6 +35,7 @@ from changying.domain.growth import (
 )
 from changying.security.passwords import hash_password, password_ok, password_version, verify_password
 from changying.security.tokens import make_token as issue_token
+from changying.services.academic_summary import AcademicSummaryService
 from changying.services.assignments import AssignmentService
 from changying.services.class_history import ClassHistoryService
 from changying.services.assessment_reliability import install_assessment_reliability
@@ -294,6 +295,14 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     )
     implementation.class_history_service = class_history_service
     implementation.class_history_rows = class_history_service.rows
+
+    academic_summary_service = AcademicSummaryService(
+        submission_model=implementation.Submission,
+        select_fn=implementation.select,
+        period_cutoff_fn=period_cutoff_utc,
+    )
+    implementation.academic_summary_service = academic_summary_service
+    implementation.student_academic_summary = academic_summary_service.summary
 
     point_service = PointService(
         point_ledger_model=implementation.PointLedger,
