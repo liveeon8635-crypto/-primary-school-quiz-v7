@@ -96,6 +96,9 @@ def test_v1_execution_patch_contains_teacher_and_student_consent_pages():
     assert "婉拒不会扣分" in html
     assert "navigate('/v1/classroom-review?assignment='+s.sourceAssignmentID)" in html
     assert "status:'completed'" in html
+    assert "完成本堂课并进入课堂复盘" in html
+    assert "cy-session-complete-bottom" in html
+    assert "segs.every(x=>x.status==='completed')" in html
 
 def test_runtime_phase_ab_classroom_execution(tmp_path):
     db_path = tmp_path / "classroom-execution.sqlite3"
