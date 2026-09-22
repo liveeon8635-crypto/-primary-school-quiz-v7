@@ -45,7 +45,12 @@ def test_aggregate_routes_are_get_only_and_keep_authentication_boundary():
             '/teacher/v1-bootstrap',
             '/teacher/v1-profiles',
         }
-        routes = {r.path: set(r.methods or []) for r in app.routes if getattr(r, 'path', None) in expected}
+        routes = {}
+        for route in app.routes:
+            for child in getattr(getattr(route, 'original_router', route), 'routes', [route]):
+                path = getattr(child, 'path', None)
+                if path in expected:
+                    routes[path] = set(child.methods or [])
         assert set(routes) == expected
         for path, methods in routes.items():
             assert methods == {'GET'}, (path, methods)
