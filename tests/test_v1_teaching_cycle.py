@@ -10,10 +10,38 @@ def test_cycle_kind_maps_existing_terms_without_inference():
     assert _cycle_kind("暑期") == "summer"
 
 
-def test_route_is_read_only_contract():
-    source=(__import__("pathlib").Path(__file__).resolve().parents[1]/"changying/web/v1_teaching_cycle.py").read_text(encoding="utf-8")
-    assert '@app.get("/v1/teaching-cycles"' in source
-    assert "storageNeutral" in source
-    assert "@app.post" not in source
-    assert ".commit(" not in source
-    assert ".add(" not in source
+def test_router_preserves_read_only_response_and_is_installed_once(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import changying.web.v1_teaching_cycle as route_module
+
+    app = FastAPI()
+    user = SimpleNamespace(school_id=17)
+    needs = []
+    monkeypatch.setattr(
+        route_module,
+        "teaching_cycle_rows",
+        lambda implementation, db, school_id: [{"schoolID": school_id}],
+    )
+    implementation = SimpleNamespace(
+        app=app,
+        current_user=lambda: user,
+        get_db=lambda: object(),
+        need=lambda actual, *roles: needs.append((actual, roles)),
+    )
+    route_module.install_v1_teaching_cycle_routes(implementation)
+    route_module.install_v1_teaching_cycle_routes(implementation)
+
+    matching = [route for route in app.routes if route.path == "/v1/teaching-cycles"]
+    assert len(matching) == 1
+    response = TestClient(app).get("/v1/teaching-cycles")
+    assert response.status_code == 200
+    assert response.json() == {
+        "scope": "existing-teaching-program-facts",
+        "storageNeutral": True,
+        "cycles": [{"schoolID": 17}],
+        "count": 1,
+    }
+    assert needs == [(user, ("teacher", "admin"))]
+    assert TestClient(app).post("/v1/teaching-cycles").status_code == 405
