@@ -3462,10 +3462,12 @@ def startup():
     if raw_url.startswith("sqlite") or os.getenv("ENABLE_DEMO_SEED","0")=="1":
         with SessionLocal() as db:
             seed(db)
-    with engine.begin() as conn:
-        # Existing tables are not altered by create_all. Add the one authorized
-        # nullable provenance column before any startup query loads Submission.
-        conn.execute(sa_text("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS completion_actor VARCHAR(30) NULL"))
+    # Existing tables are not altered by create_all. Add the one authorized
+    # nullable provenance column before any startup query loads Submission.
+    submission_columns={col["name"] for col in sa_inspect(engine).get_columns("submissions")}
+    if "completion_actor" not in submission_columns:
+        with engine.begin() as conn:
+            conn.execute(sa_text("ALTER TABLE submissions ADD COLUMN completion_actor VARCHAR(30) NULL"))
     with SessionLocal() as db:
         v730_backfill(db)
         v740_seed_teaching(db)
