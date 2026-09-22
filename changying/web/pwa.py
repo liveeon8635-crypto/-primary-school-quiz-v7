@@ -54,7 +54,7 @@ def build_manifest(asset_version: str = "924") -> str:
 def install_favicon_route(app: FastAPI) -> None:
     """Serve a same-origin favicon without adding another asset dependency."""
 
-    if any(getattr(route, "path", None) == "/favicon.ico" for route in app.routes):
+    if getattr(app.state, "favicon_route_installed", False):
         return
 
     router = APIRouter()
@@ -70,6 +70,7 @@ def install_favicon_route(app: FastAPI) -> None:
     app.include_router(router)
 
     app.include_router(router)
+    app.state.favicon_route_installed = True
 
 
 __all__ = [
