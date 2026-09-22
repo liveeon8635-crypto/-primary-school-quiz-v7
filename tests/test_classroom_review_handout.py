@@ -247,6 +247,9 @@ def test_v1_exposes_classroom_review_entry_and_teacher_decision_language():
     assert "不会自动改写长期知识掌握记录" in html
     assert "随堂检测" in html
     assert "学生讲解" in html
+    assert "旧草稿 · 建议重新生成" in html
+    assert "重新生成本堂课讲义草稿" in html
+    assert "draftUpdatedAt<completedAt" in html
 
 
 def test_runtime_classroom_review_full_loop(tmp_path):

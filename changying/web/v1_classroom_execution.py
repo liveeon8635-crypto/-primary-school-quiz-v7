@@ -193,14 +193,22 @@ def patch_v1_classroom_execution_html(html: str) -> str:
         1,
     )
 
-    handout_section = "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div></section>';"
-    if handout_section not in html:
+    handout_sections = [
+        (
+            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div></section>';",
+            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px\"><button class=\"btn primary\" id=\"cy-enter-classroom\">进入课堂执行</button><span class=\"muted\" style=\"margin-left:10px\">由教师控制课堂节奏；学生讲解必须本人确认</span></div>':'')+'</section>';",
+        ),
+        (
+            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2>'+staleNotice+'<div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div></section>';",
+            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2>'+staleNotice+'<div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px\"><button class=\"btn primary\" id=\"cy-enter-classroom\">进入课堂执行</button><span class=\"muted\" style=\"margin-left:10px\">由教师控制课堂节奏；学生讲解必须本人确认</span></div>':'')+'</section>';",
+        ),
+    ]
+    for handout_section, replacement in handout_sections:
+        if handout_section in html:
+            html = html.replace(handout_section, replacement, 1)
+            break
+    else:
         raise RuntimeError("classroom handout section anchor not found")
-    html = html.replace(
-        handout_section,
-        "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px\"><button class=\"btn primary\" id=\"cy-enter-classroom\">进入课堂执行</button><span class=\"muted\" style=\"margin-left:10px\">由教师控制课堂节奏；学生讲解必须本人确认</span></div>':'')+'</section>';",
-        1,
-    )
 
     save_anchor = "};bindSave();"
     if save_anchor not in html:
