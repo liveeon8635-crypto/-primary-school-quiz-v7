@@ -17,6 +17,10 @@ def test_patch_is_optional_and_fact_only():
     assert "标准化学习证据" in html
     assert "只展示已记录事实" in html
     assert "masteryInferred 固定为 false" in html
+    assert "教师端保留来源标识以便追溯" in html
+    assert "可追溯" in html
+    assert "sourceId" in html
+    assert "slice(0,12)" in html
     assert "${learningEvidenceSection(profile)}<section" in html
     assert "自动生成掌握、薄弱或教学结论" in html
 
