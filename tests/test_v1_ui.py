@@ -1,7 +1,13 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from changying.web.v1 import V1_PATHS, V1_UI_MARKER, install_v1_routes, v1_html
+from changying.web.v1 import (
+    V1_PATHS,
+    V1_UI_MARKER,
+    current_v1_build_id,
+    install_v1_routes,
+    v1_html,
+)
 
 
 def test_v1_contains_required_clickable_journey_and_product_boundaries():
@@ -49,6 +55,37 @@ def test_v1_routes_install_without_replacing_existing_routes():
         assert response.status_code == 200
         assert response.headers["X-Changying-V1"] == V1_UI_MARKER
         assert "长缨辅学 V1" in response.text
+
+
+def test_v1_runtime_build_guard_refreshes_stale_open_shell(monkeypatch):
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "build-old-123")
+    assert current_v1_build_id() == "build-old-123"
+    html = v1_html()
+    assert 'const PAGE_BUILD="build-old-123"' in html
+    assert "/v1/version?ts=" in html
+    assert "ensureFreshBuild" in html
+    assert "location.replace" in html
+    assert "__v1_build" in html
+    assert "visibilitychange" in html
+
+    app = FastAPI()
+    install_v1_routes(app)
+    client = TestClient(app)
+
+    version = client.get("/v1/version")
+    assert version.status_code == 200
+    assert version.json() == {"build": "build-old-123"}
+    assert "no-store" in version.headers["Cache-Control"]
+    assert version.headers["Pragma"] == "no-cache"
+
+    page = client.get("/v1/history")
+    assert page.status_code == 200
+    assert page.headers["X-Changying-V1-Build"] == "build-old-123"
+    assert "no-store" in page.headers["Cache-Control"]
+
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "build-new-456")
+    newer = client.get("/v1/version")
+    assert newer.json() == {"build": "build-new-456"}
 
 
 def test_v1_student_workspace_uses_real_assignment_and_progress_summary():
