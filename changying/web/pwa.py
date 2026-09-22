@@ -68,8 +68,6 @@ def install_favicon_route(app: FastAPI) -> None:
         )
 
     app.include_router(router)
-
-    app.include_router(router)
     app.state.favicon_route_installed = True
 
 
