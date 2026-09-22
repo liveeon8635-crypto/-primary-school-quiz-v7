@@ -200,11 +200,11 @@ def patch_v1_classroom_execution_html(html: str) -> str:
     handout_sections = [
         (
             "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div></section>';",
-            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px;display:flex;gap:8px;flex-wrap:wrap\"><button class=\"btn primary\" id=\"cy-enter-classroom\">查看/进入最近课堂</button>'+(interaction?.session?.status===\"completed\"?'<button class=\"btn\" id=\"cy-new-classroom\">新开一堂课</button>':'')+'<span class=\"muted\" style=\"margin-left:10px\">默认复用最近课堂；只有“新开一堂课”才创建新 session</span></div>':'')+'</section>';",
+            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px;display:flex;gap:8px;flex-wrap:wrap\"><button class=\"btn primary\" id=\"cy-enter-classroom\">进入课堂执行（最近课堂）</button>'+(interaction?.session?.status===\"completed\"?'<button class=\"btn\" id=\"cy-new-classroom\">新开一堂课</button>':'')+'<span class=\"muted\" style=\"margin-left:10px\">学生讲解必须本人确认；默认复用最近课堂，只有“新开一堂课”才创建新 session</span></div>':'')+'</section>';",
         ),
         (
             "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2>'+staleNotice+'<div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div></section>';",
-            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2>'+staleNotice+'<div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px;display:flex;gap:8px;flex-wrap:wrap\"><button class=\"btn primary\" id=\"cy-enter-classroom\">查看/进入最近课堂</button>'+(interaction?.session?.status===\"completed\"?'<button class=\"btn\" id=\"cy-new-classroom\">新开一堂课</button>':'')+'<span class=\"muted\" style=\"margin-left:10px\">默认复用最近课堂；只有“新开一堂课”才创建新 session</span></div>':'')+'</section>';",
+            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2>'+staleNotice+'<div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px;display:flex;gap:8px;flex-wrap:wrap\"><button class=\"btn primary\" id=\"cy-enter-classroom\">进入课堂执行（最近课堂）</button>'+(interaction?.session?.status===\"completed\"?'<button class=\"btn\" id=\"cy-new-classroom\">新开一堂课</button>':'')+'<span class=\"muted\" style=\"margin-left:10px\">学生讲解必须本人确认；默认复用最近课堂，只有“新开一堂课”才创建新 session</span></div>':'')+'</section>';",
         ),
     ]
     for handout_section, replacement in handout_sections:
