@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, Text, UniqueConstraint, select
 
@@ -171,6 +171,7 @@ def install_v1_classroom_presentation_review_routes(implementation: Any) -> None
     PointLedger = implementation.PointLedger
     current_user = implementation.current_user
     get_db = implementation.get_db
+    router = APIRouter()
 
     def append_event(
         db: Any,
@@ -381,7 +382,7 @@ def install_v1_classroom_presentation_review_routes(implementation: Any) -> None
             "point": point_payload(db, review) if review else None,
         }
 
-    @app.get("/teacher/classroom-sessions/{sid}/presentation-reviews")
+    @router.get("/teacher/classroom-sessions/{sid}/presentation-reviews")
     def list_presentation_reviews(
         sid: int,
         u: Any = Depends(current_user),
@@ -402,7 +403,7 @@ def install_v1_classroom_presentation_review_routes(implementation: Any) -> None
         ]
         return [review_payload(db, session=session, turn=row) for row in rows]
 
-    @app.put("/teacher/classroom-sessions/{sid}/presenter-turns/{tid}/review")
+    @router.put("/teacher/classroom-sessions/{sid}/presenter-turns/{tid}/review")
     def save_presentation_review(
         sid: int,
         tid: int,
@@ -497,7 +498,7 @@ def install_v1_classroom_presentation_review_routes(implementation: Any) -> None
             "feedback": feedback,
         }
 
-    @app.post("/teacher/classroom-sessions/{sid}/presentation-reviews/{rid}/grant-points")
+    @router.post("/teacher/classroom-sessions/{sid}/presentation-reviews/{rid}/grant-points")
     def grant_presentation_points(
         sid: int,
         rid: int,
@@ -624,6 +625,7 @@ def install_v1_classroom_presentation_review_routes(implementation: Any) -> None
             "notice": "积分由教师本次明确确认后写入；评价和随堂检测均不会自动生成积分。",
         }
 
+    app.include_router(router)
     app.state.v1_classroom_presentation_review_routes_installed = True
 
 
