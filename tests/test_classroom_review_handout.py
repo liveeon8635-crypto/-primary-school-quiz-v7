@@ -15,6 +15,7 @@ from changying.services.classroom_review import (
 )
 from changying.web.v1_classroom_review import (
     V1_CLASSROOM_REVIEW_MARKER,
+    _default_handout_title,
     patch_v1_classroom_review_html,
 )
 from changying.web.v1 import v1_html
@@ -302,6 +303,17 @@ def test_handout_prompt_is_anonymized_and_excludes_student_rows():
     assert '"accuracy": 0' in prompt
     assert '"accuracy": 100' in prompt
     assert '"decision": "reteach"' in prompt
+
+
+def test_default_handout_title_uses_grade_and_actual_subject_not_class_label():
+    summary = {
+        "class": {"id": 8, "name": "数学五年级", "grade": 5},
+        "paper": {"subject": "语文", "textbook": "统编版（人民教育出版社）"},
+        "assignment": {"id": 32, "title": "语文 AI 针对性练习"},
+    }
+    title = _default_handout_title(summary)
+    assert title == "5年级语文 · 语文 AI 针对性练习 课堂练习复盘讲义"
+    assert "数学五年级" not in title
 
 
 def test_v1_exposes_classroom_review_entry_and_teacher_decision_language():
