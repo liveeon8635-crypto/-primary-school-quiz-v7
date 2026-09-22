@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 from typing import Any
 
-from fastapi import Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, select
@@ -223,6 +223,8 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
     app = implementation.app
     if getattr(app.state, "v1_classroom_review_routes_installed", False):
         return
+
+    router = APIRouter()
 
     table = register_classroom_review_table(implementation)
     Assignment = implementation.Assignment
@@ -478,7 +480,7 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
         ).first()
         return _draft_payload(row) or {}
 
-    @app.get("/teacher/classroom-reviews/assignments")
+    @router.get("/teacher/classroom-reviews/assignments")
     def classroom_review_assignments(
         u: Any = Depends(current_user),
         db: Any = Depends(get_db),
@@ -532,7 +534,7 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
             )
         return out
 
-    @app.get("/teacher/assignments/{aid}/class-review")
+    @router.get("/teacher/assignments/{aid}/class-review")
     def classroom_review(
         aid: int,
         u: Any = Depends(current_user),
@@ -540,7 +542,7 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
     ):
         return review_summary(db, u, aid)
 
-    @app.post("/teacher/assignments/{aid}/class-review/handout-generate")
+    @router.post("/teacher/assignments/{aid}/class-review/handout-generate")
     def generate_classroom_handout(
         aid: int,
         body: HandoutGenerateBody,
@@ -618,7 +620,7 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
             "notice": "讲义仅为教师草稿，尚未发布给学生；请审核修改后再使用。",
         }
 
-    @app.put("/teacher/assignments/{aid}/class-review/handout")
+    @router.put("/teacher/assignments/{aid}/class-review/handout")
     def save_classroom_handout(
         aid: int,
         body: HandoutSaveBody,
@@ -649,7 +651,7 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
         db.commit()
         return {"ok": True, "handoutDraft": draft}
 
-    @app.get("/v1/classroom-review", include_in_schema=False)
+    @router.get("/v1/classroom-review", include_in_schema=False)
     def classroom_review_page():
         return HTMLResponse(
             v1_module.v1_html(),
@@ -659,6 +661,7 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
             },
         )
 
+    app.include_router(router)
     app.state.v1_classroom_review_routes_installed = True
 
 
