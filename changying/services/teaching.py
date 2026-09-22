@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 
 class TeachingService:
@@ -15,9 +15,11 @@ class TeachingService:
         *,
         adaptive_session_model: Any,
         lesson_model: Any | None = None,
+        question_model: Any | None = None,
     ) -> None:
         self.TeachingAdaptiveSession = adaptive_session_model
         self.TeachingLesson = lesson_model
+        self.TeachingQuestion = question_model
 
     def program_lessons(
         self,
@@ -49,6 +51,63 @@ class TeachingService:
                 )
             ).all()
         )
+
+    def question_counts(self, db, program) -> dict[str, dict[str, dict[str, int]]]:
+        if self.TeachingQuestion is None:
+            raise RuntimeError("TeachingQuestion model is not configured")
+        rows = db.execute(
+            select(
+                self.TeachingQuestion.stage,
+                self.TeachingQuestion.subject,
+                self.TeachingQuestion.level,
+                func.count(),
+            )
+            .where(
+                self.TeachingQuestion.program_id == program.id,
+                self.TeachingQuestion.school_id == program.school_id,
+                self.TeachingQuestion.active == True,
+            )
+            .group_by(
+                self.TeachingQuestion.stage,
+                self.TeachingQuestion.subject,
+                self.TeachingQuestion.level,
+            )
+        ).all()
+        counts = {}
+        for stage, subject, level, count in rows:
+            counts.setdefault(stage, {}).setdefault(subject, {})[level] = int(count or 0)
+        return counts
+
+    def questions_for_level(
+        self,
+        db,
+        program,
+        level,
+        lesson=None,
+        stage="lesson",
+        subject=None,
+    ) -> list[Any]:
+        if self.TeachingQuestion is None:
+            raise RuntimeError("TeachingQuestion model is not configured")
+        statement = select(self.TeachingQuestion).where(
+            self.TeachingQuestion.school_id == program.school_id,
+            self.TeachingQuestion.program_id == program.id,
+            self.TeachingQuestion.active == True,
+            self.TeachingQuestion.level == level,
+        )
+        if lesson is not None:
+            statement = statement.where(
+                self.TeachingQuestion.lesson_id == lesson.id,
+                self.TeachingQuestion.stage == "lesson",
+                self.TeachingQuestion.subject == lesson.subject,
+            )
+        else:
+            statement = statement.where(
+                self.TeachingQuestion.lesson_id.is_(None),
+                self.TeachingQuestion.stage == stage,
+                self.TeachingQuestion.subject == subject,
+            )
+        return db.scalars(statement.order_by(self.TeachingQuestion.id)).all()
 
     def latest_session(
         self,

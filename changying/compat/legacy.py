@@ -282,10 +282,13 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     teaching_service = TeachingService(
         adaptive_session_model=implementation.TeachingAdaptiveSession,
         lesson_model=implementation.TeachingLesson,
+        question_model=implementation.TeachingQuestion,
     )
     implementation.teaching_service = teaching_service
     implementation.latest_teaching_session = teaching_service.latest_session
     implementation.teaching_program_lessons = teaching_service.program_lessons
+    implementation.teaching_question_counts = teaching_service.question_counts
+    implementation.teaching_questions_for_level = teaching_service.questions_for_level
 
     class_history_service = ClassHistoryService(
         history_model=implementation.StudentClassHistory,
