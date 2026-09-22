@@ -2,14 +2,26 @@
 
 from __future__ import annotations
 
+import json
+import os
+
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 V1_UI_MARKER = "changying_v1_20260915"
 V1_PATHS = ("/v1", "/v1/workspace", "/v1/student", "/v1/history", "/v1/transition")
 
 
+def current_v1_build_id() -> str:
+    return (
+        os.getenv("RENDER_GIT_COMMIT")
+        or os.getenv("GIT_COMMIT")
+        or V1_UI_MARKER
+    ).strip()
+
+
 def v1_html() -> str:
+    build_id = json.dumps(current_v1_build_id())
     return f'''<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -71,7 +83,31 @@ def v1_html() -> str:
     const demoApi=url=>{{if(url==='/teacher/classes')return identity?.mode==='school'?[{{id:900201,name:'演示三年级二班',grade:3,studentCount:1}},{{id:900202,name:'演示五年级一班',grade:5,studentCount:1}}]:[{{id:900201,name:'演示三年级晚托班',grade:3,studentCount:1}},{{id:900202,name:'演示五年级周末班',grade:5,studentCount:1}}];if(url.includes('/students/')&&url.endsWith('/growth-profile'))return demoProfile(url.split('/')[3]);if(url.includes('/teacher/classes/')&&url.endsWith('/students'))return demoStudents.filter(x=>x.classID===Number(url.split('/')[3])).map(demoStudentForMode);if(url==='/teacher/dashboard')return{{pendingSubmissions:1,avgScore:82}};return[]}};
     const api=async(url,options={{}})=>{{if(session?.demo)return demoApi(url);const timeoutMs=Number(options.timeoutMs||10000),requestOptions={{...options}};delete requestOptions.timeoutMs;const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeoutMs);try{{const res=await fetch(url,{{...requestOptions,headers:{{'Content-Type':'application/json',...(token?{{Authorization:'Bearer '+token}}:{{}}),...(requestOptions.headers||{{}})}},signal:controller.signal}});let body=null;try{{body=await res.json()}}catch{{}}if(!res.ok){{const error=new Error(body?.detail||'请求失败');error.status=res.status;throw error}}return body}}finally{{clearTimeout(timer)}}}};
     const toast=message=>{{const el=document.getElementById('toast');el.textContent=message;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2200)}};
-    const navigate=(path)=>{{history.pushState({{}},'',path);render()}};
+    const PAGE_BUILD={build_id};
+    let buildCheckBusy=false;
+    const ensureFreshBuild=async(target)=>{{
+      if(buildCheckBusy||session?.demo)return false;
+      buildCheckBusy=true;
+      try{{
+        const res=await fetch('/v1/version?ts='+Date.now(),{{cache:'no-store'}});
+        if(!res.ok)return false;
+        const body=await res.json(),remote=String(body?.build||'');
+        if(remote&&remote!==String(PAGE_BUILD)){{
+          const now=Date.now(),lastBuild=sessionStorage.getItem('cyV1ReloadBuild')||'',lastAt=Number(sessionStorage.getItem('cyV1ReloadAt')||0);
+          if(lastBuild!==remote||now-lastAt>10000){{
+            sessionStorage.setItem('cyV1ReloadBuild',remote);
+            sessionStorage.setItem('cyV1ReloadAt',String(now));
+            const url=new URL(target||location.href,location.origin);
+            url.searchParams.set('__v1_build',remote.slice(0,16));
+            location.replace(url.pathname+url.search+url.hash);
+            return true;
+          }}
+        }}
+      }}catch(_e){{}}
+      finally{{buildCheckBusy=false}}
+      return false;
+    }};
+    const navigate=async(path)=>{{if(await ensureFreshBuild(path))return;history.pushState({{}},'',path);render()}};
     const roleLabel={{admin:'管理员',teacher:'教师',parent:'家长',student:'学生'}};
     const identitiesFor=s=>{{if(!s)return[];const common={{accountRole:s.role,name:s.name||roleLabel[s.role]||'当前账号'}};if(s.role==='admin'){{const institution={{...common,key:'institution_admin',label:'机构管理员',mode:'institution',icon:'🏫'}};return s.demo?[institution,{{...common,key:'school_admin',label:'学校管理员',mode:'school',icon:'🏛️'}}]:[institution]}}if(s.role==='teacher'){{const institution={{...common,key:'institution_teacher',label:'机构老师',mode:'institution',icon:'👩‍🏫'}};return s.demo?[institution,{{...common,key:'school_teacher',label:'学校教师',mode:'school',icon:'📚'}}]:[institution]}}if(s.role==='parent')return[{{...common,key:'parent',label:'家长',mode:'family',icon:'👪'}}];return[{{...common,key:'student',label:'学生',mode:'student',icon:'🎒'}}]}};
     function roleQuickNav(){{
@@ -200,7 +236,7 @@ def v1_html() -> str:
     async function historyPage(){{let people=[];try{{people=await loadPeople()}}catch{{}}const content=heading('往期教学 / 历史','当前工作台只服务当前周期，结束内容按时间层级查询。','<span class="tag">只读查询</span>')+`<div class="grid cols-2"><section class="card"><h2>查询层级</h2><div class="list" style="margin-top:12px"><div class="row"><b>1 学年</b><span>2025—2026（演示）</span></div><div class="row"><b>2 学期 / 寒暑假</b><span>选择教学周期</span></div><div class="row"><b>3 班级或教学项目</b><span>按当时归属查询</span></div><div class="row"><b>4 学生</b><span>回到连续个人档案</span></div><div class="row"><b>5 教学记录</b><span>作业、成绩、跟进</span></div></div></section><section class="card"><h2>已有班级历史</h2><p>${{session.demo?'下列为明确标注的演示占位学生，点击查看连续档案。':'下列学生来自当前账号真实可见范围，点击查看其连续档案。'}}</p><div class="list" style="margin-top:12px">${{people.slice(0,8).map(p=>`<a class="row" data-student href="/v1/student?id=${{p.id}}"><span class="row-main"><b>${{esc(p.name)}}</b><small>${{esc(p.className||p.currentClassName||'历史教学待查询')}}</small></span><span class="row-action">打开档案 →</span></a>`).join('')||'<div class="empty">暂无可见历史数据</div>'}}</div></section></div>`;screen.innerHTML=shell(content,'history');bindNav();document.querySelectorAll('[data-student]').forEach(a=>a.onclick=e=>{{e.preventDefault();navigate(a.getAttribute('href'))}})}}
     function transitionPage(){{const id=new URLSearchParams(location.search).get('id')||'';const types=['幼升小','低段到中段','中段到高段','五升六','小升初'];const stages=['上一阶段状态','下一阶段要求','前置知识检查','差距识别','衔接计划','假期干预','开学诊断','下一阶段'];const content=heading('升年级与升学衔接','围绕同一份学生档案记录阶段变化，不因升年级创建新学生。',id?`<span class="tag">学生档案 #${{esc(id)}}</span>`:'<span class="tag demo">结构占位</span>')+`<section class="card"><div class="section-head"><div><h2>衔接类型</h2><p>V1 预留结构，尚未启用自动分析</p></div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${{types.map(x=>`<button class="btn" data-transition>${{x}}</button>`).join('')}}</div></section><section class="section"><div class="section-head"><div><h2>衔接流程</h2><p>未来每一步都引用同一个 student_id</p></div></div><div class="steps">${{stages.map((x,i)=>`<div class="step placeholder"><em>STEP ${{String(i+1).padStart(2,'0')}}</em><b>${{x}}</b><small>${{i===0?'读取已有档案事实':'待教师录入或后续规则支持'}}</small></div>`).join('')}}</div></section>`;screen.innerHTML=shell(content,'transition');bindNav();document.querySelectorAll('[data-transition]').forEach(b=>b.onclick=()=>toast(b.textContent+'：入口已预留'))}}
     async function render(){{if(!token){{loginView();return}}if(!session){{try{{session=await api('/session');persistAuth({{...session,token}},authRemember())}}catch(err){{token='';clearAuthStorage();loginView(err.status===401?'登录已过期，请重新登录':err.message);return}}}}const choices=identitiesFor(session),saved=localStorage.getItem(IDENTITY_KEY);identity=choices.find(x=>x.key===saved)||null;if(!identity){{chooseIdentity();return}}chip.textContent=identity.label+' · '+(session.name||'');identityButton.hidden=false;const path=location.pathname;if(path==='/v1'||path==='/v1/'){{chooseIdentity();return}}if(path.includes('/student'))await studentPage();else if(path.includes('/history'))await historyPage();else if(path.includes('/transition'))transitionPage();else await workspace()}}
-    identityButton.onclick=chooseIdentity;window.addEventListener('popstate',render);document.addEventListener('click',e=>{{const classic=e.target.closest('a[href^="/v1/tool"],a[href^="/classic"]');if(classic&&token&&token!=='demo'){{e.preventDefault();openClassic(classic.getAttribute('href'));return}}const a=e.target.closest('a[data-nav]');if(a){{e.preventDefault();navigate(a.getAttribute('href'))}}}});render();
+    identityButton.onclick=chooseIdentity;window.addEventListener('popstate',async()=>{{if(await ensureFreshBuild(location.pathname+location.search))return;render()}});document.addEventListener('visibilitychange',()=>{{if(!document.hidden)ensureFreshBuild(location.pathname+location.search)}});document.addEventListener('click',e=>{{const classic=e.target.closest('a[href^="/v1/tool"],a[href^="/classic"]');if(classic&&token&&token!=='demo'){{e.preventDefault();openClassic(classic.getAttribute('href'));return}}const a=e.target.closest('a[data-nav]');if(a){{e.preventDefault();navigate(a.getAttribute('href'))}}}});render();
   }})();
   </script>
 </body>
@@ -218,6 +254,18 @@ def install_v1_routes(app: FastAPI) -> None:
             headers={
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
                 "X-Changying-V1": V1_UI_MARKER,
+                "X-Changying-V1-Build": current_v1_build_id(),
+            },
+        )
+
+    @app.get("/v1/version", include_in_schema=False)
+    def v1_version():
+        return JSONResponse(
+            {"build": current_v1_build_id()},
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
             },
         )
 
@@ -226,4 +274,4 @@ def install_v1_routes(app: FastAPI) -> None:
     app.state.v1_routes_installed = True
 
 
-__all__ = ["V1_PATHS", "V1_UI_MARKER", "install_v1_routes", "v1_html"]
+__all__ = ["V1_PATHS", "V1_UI_MARKER", "current_v1_build_id", "install_v1_routes", "v1_html"]
