@@ -87,6 +87,35 @@ def _release_payload(row: Any, *, include_content: bool = False) -> dict[str, An
     return payload
 
 
+def _json_list(raw: Any) -> list[Any]:
+    try:
+        value = json.loads(raw or "[]")
+    except Exception:
+        return []
+    return value if isinstance(value, list) else []
+
+
+def _teacher_release_payload(row: Any) -> dict[str, Any] | None:
+    payload = _release_payload(row, include_content=True)
+    if payload is None:
+        return None
+    data = _mapping(row)
+    payload.update(
+        {
+            "selectedKnowledge": [
+                str(x) for x in _json_list(data.get("selected_knowledge_json"))
+            ],
+            "selectedQuestionIDs": [
+                int(x)
+                for x in _json_list(data.get("selected_question_ids_json"))
+                if str(x).strip().lstrip("-").isdigit()
+            ],
+            "teacherNotes": str(data.get("teacher_notes") or ""),
+        }
+    )
+    return payload
+
+
 def patch_v1_classroom_handout_release_html(html: str) -> str:
     if V1_CLASSROOM_HANDOUT_RELEASE_MARKER in html:
         return html
@@ -171,13 +200,15 @@ def patch_v1_classroom_handout_release_html(html: str) -> str:
       const existing=document.getElementById('cy-handout-release-card');if(existing)existing.remove();
       const draftSection=[...document.querySelectorAll('section.card')].find(x=>x.querySelector('h2')?.textContent.trim()==='课堂练习情况讲义草稿');
       if(!draftSection)return;
-      const history=(state.history||[]).map(x=>'<div class="row"><span class="row-main"><b>V'+x.version+' · '+esc(x.title||'课堂讲义')+'</b><small>'+esc([x.publishedAt,x.status==='published'?'当前发布':x.status==='superseded'?'历史版本':'已撤回'].filter(Boolean).join(' · '))+'</small></span><span class="tag">'+esc(x.status==='published'?'已发布':x.status==='superseded'?'历史':'已撤回')+'</span></div>').join('')||'<div class="empty">还没有发布版本。</div>';
+      const history=(state.history||[]).map(x=>'<div class="row"><span class="row-main"><b>V'+x.version+' · '+esc(x.title||'课堂讲义')+'</b><small>'+esc([x.publishedAt,x.status==='published'?'当前发布':x.status==='superseded'?'历史版本':'已撤回'].filter(Boolean).join(' · '))+'</small></span><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="tag">'+esc(x.status==='published'?'已发布':x.status==='superseded'?'历史':'已撤回')+'</span><button class="btn cy-handout-history-open" data-release="'+x.id+'">查看版本</button></span></div>').join('')||'<div class="empty">还没有发布版本。</div>';
       const current=state.current;
       const publishLabel=current?'发布新版本 V'+state.nextVersion:'确认发布 V'+state.nextVersion;
       const actions=(state.canPublish?'<button class="btn primary" id="cy-handout-publish">'+publishLabel+'</button>':'')+(current?' <button class="btn" id="cy-handout-revoke">撤回当前发布</button>':'');
       const section=document.createElement('section');section.id='cy-handout-release-card';section.className='section card';
-      section.innerHTML='<h2>讲义发布</h2><div class="notice"><b>必须由教师明确确认。</b><br>发布会把当前草稿复制为冻结版本；之后继续修改草稿不会改变学生已经看到的版本。撤回只取消学生可见性，不删除历史快照。</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">'+actions+'</div><div class="list">'+history+'</div>';
+      section.innerHTML='<h2>讲义发布</h2><div class="notice"><b>必须由教师明确确认。</b><br>发布会把当前草稿复制为冻结版本；之后继续修改草稿不会改变学生已经看到的版本。撤回只取消学生可见性，不删除历史快照。</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">'+actions+'</div><div class="list">'+history+'</div><div id="cy-handout-history-preview"></div>';
       draftSection.insertAdjacentElement('afterend',section);
+      const renderHistoryPreview=async(releaseID)=>{const preview=document.getElementById('cy-handout-history-preview');if(!preview)return;preview.innerHTML='<div class="notice">正在读取冻结版本…</div>';try{const targetMeta=(state.history||[]).find(x=>Number(x.id)===Number(releaseID));const peerMeta=(state.history||[]).find(x=>Number(x.id)!==Number(releaseID));const pair=await Promise.all([api('/teacher/assignments/'+aid+'/class-review/handout-releases/'+releaseID),peerMeta?api('/teacher/assignments/'+aid+'/class-review/handout-releases/'+peerMeta.id):Promise.resolve(null)]);const target=pair[0],peer=pair[1],changes=[];if(peer){if(target.title!==peer.title)changes.push('标题');if(target.content!==peer.content)changes.push('正文');if(JSON.stringify(target.selectedKnowledge)!==JSON.stringify(peer.selectedKnowledge))changes.push('知识点选择');if(JSON.stringify(target.selectedQuestionIDs)!==JSON.stringify(peer.selectedQuestionIDs))changes.push('题目选择');if(target.teacherNotes!==peer.teacherNotes)changes.push('教师备注')}const diff=peer?'<div class="notice"><b>版本差异：V'+target.version+' ↔ V'+peer.version+'</b><br>'+(changes.length?'发生变化：'+esc(changes.join('、')):'冻结内容完全一致')+'</div>':'';const peerBlock=peer?'<div class="card"><h3>对比版本 V'+peer.version+'</h3><p class="muted">'+esc(peer.title||'')+'</p><div style="white-space:pre-wrap;line-height:1.7;max-height:420px;overflow:auto">'+esc(peer.content||'')+'</div></div>':'';preview.innerHTML='<section class="section card"><div class="section-head"><div><h3>历史版本只读预览 · V'+target.version+'</h3><p>'+esc([target.status,target.publishedAt].filter(Boolean).join(' · '))+'</p></div><button class="btn" id="cy-handout-history-close">关闭预览</button></div>'+diff+'<div class="grid cols-2"><div class="card"><h3>查看版本 V'+target.version+'</h3><p class="muted">'+esc(target.title||'')+'</p><div style="white-space:pre-wrap;line-height:1.7;max-height:420px;overflow:auto">'+esc(target.content||'')+'</div><p class="muted">知识点：'+esc((target.selectedKnowledge||[]).join('、')||'—')+'<br>教师备注：'+esc(target.teacherNotes||'—')+'</p></div>'+peerBlock+'</div></section>';document.getElementById('cy-handout-history-close').onclick=()=>{preview.innerHTML=''}}catch(err){preview.innerHTML='<div class="notice error">'+esc(err.message)+'</div>'}};
+      document.querySelectorAll('.cy-handout-history-open').forEach(b=>b.onclick=()=>renderHistoryPreview(Number(b.dataset.release)));
       const publish=document.getElementById('cy-handout-publish');
       if(publish)publish.onclick=async()=>{if(!confirm('确认将当前教师草稿发布给本作业接收学生？发布后会冻结为 V'+state.nextVersion+'，后续修改不会覆盖这一版本。'))return;publish.disabled=true;try{const r=await api('/teacher/assignments/'+aid+'/class-review/handout-publish',{method:'POST',body:JSON.stringify({confirm:true})});window.__cyHandoutReleaseState=r.releaseState;toast('讲义 V'+r.release.version+' 已发布');mountClassroomHandoutReleaseControls()}catch(err){toast(err.message);publish.disabled=false}};
       const revoke=document.getElementById('cy-handout-revoke');
@@ -299,6 +330,26 @@ def install_v1_classroom_handout_release_routes(implementation: Any) -> None:
         db: Any = Depends(get_db),
     ):
         return release_state(db, u, aid)
+
+    @app.get("/teacher/assignments/{aid}/class-review/handout-releases/{release_id}")
+    def teacher_handout_release_detail(
+        aid: int,
+        release_id: int,
+        u: Any = Depends(current_user),
+        db: Any = Depends(get_db),
+    ):
+        teacher_assignment(db, u, aid)
+        row = db.execute(
+            select(releases).where(
+                releases.c.id == release_id,
+                releases.c.school_id == u.school_id,
+                releases.c.assignment_id == aid,
+                releases.c.teacher_id == u.id,
+            )
+        ).first()
+        if not row:
+            raise HTTPException(404, "讲义历史版本不存在或无权限")
+        return _teacher_release_payload(row)
 
     @app.post("/teacher/assignments/{aid}/class-review/handout-publish")
     def publish_handout(
@@ -522,6 +573,7 @@ def install_v1_classroom_handout_release_routes(implementation: Any) -> None:
 __all__ = [
     "HandoutReleaseBody",
     "V1_CLASSROOM_HANDOUT_RELEASE_MARKER",
+    "_teacher_release_payload",
     "install_v1_classroom_handout_release_patch",
     "install_v1_classroom_handout_release_routes",
     "patch_v1_classroom_handout_release_html",
