@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import timezone
 from types import ModuleType
 
-from fastapi import Depends
+from fastapi import APIRouter, Depends
 
 from changying.domain.learning_evidence_growth_profile import (
     growth_profile_learning_evidence,
@@ -192,7 +192,9 @@ def install_v27_stage_evidence_routes(implementation: ModuleType) -> None:
     if getattr(app.state, "v27_stage_evidence_routes_installed", False):
         return
 
-    @app.get(
+    router = APIRouter()
+
+    @router.get(
         "/v2/students/{sid}/stage-evidence-comparison",
         include_in_schema=False,
     )
@@ -210,6 +212,7 @@ def install_v27_stage_evidence_routes(implementation: ModuleType) -> None:
             user.role,
         )
 
+    app.include_router(router)
     app.state.v27_stage_evidence_routes_installed = True
 
 
