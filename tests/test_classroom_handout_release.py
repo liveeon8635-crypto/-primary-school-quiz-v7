@@ -47,6 +47,8 @@ def test_v1_handout_release_requires_teacher_confirmation_and_exposes_student_en
     assert "历史版本只读预览" in html
     assert "版本差异" in html
     assert "/class-review/handout-releases/" in html
+    assert "sort((a,b)=>Number(a.version)-Number(b.version))" in html
+    assert "targetIndex>0?ordered[targetIndex-1]" in html
 
 
 def test_runtime_handout_release_version_snapshot_and_revoke(tmp_path):
