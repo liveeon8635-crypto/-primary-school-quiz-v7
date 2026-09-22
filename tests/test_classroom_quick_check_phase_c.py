@@ -87,6 +87,8 @@ def test_v1_phase_c_patch_exposes_teacher_controlled_quick_check_and_student_pag
     assert "手工建立草稿" in html
     assert "教师确认并开始检测" in html
     assert "根据反馈继续讲解" in html
+    assert "再生成一轮检测" in html
+    assert "['complete','reteach'].includes(q.decision)" in html
     assert "不会自动加分" in html
     assert "不会自动改写你的长期知识掌握记录" in html
 
