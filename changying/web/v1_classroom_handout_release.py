@@ -169,7 +169,7 @@ def patch_v1_classroom_handout_release_html(html: str) -> str:
             "const load=async(aid)=>{current=Number(aid);const pair=await Promise.all(["
             "api('/teacher/assignments/'+current+'/class-review'),"
             "api('/teacher/assignments/'+current+'/class-review/handout-releases')]);"
-            "summary=pair[0];window.__cyHandoutReleaseAssignment=current;"
+            "summary=pair[0];window.__cyClassroomClosureSummary=summary;window.__cyHandoutReleaseAssignment=current;"
             "window.__cyHandoutReleaseState=pair[1];renderReview()};"
         ),
         1,
@@ -209,6 +209,21 @@ def patch_v1_classroom_handout_release_html(html: str) -> str:
       if(!draftSection)return;
       const history=(state.history||[]).map(x=>'<div class="row"><span class="row-main"><b>V'+x.version+' · '+esc(x.title||'课堂讲义')+'</b><small>'+esc([x.publishedAt,x.status==='published'?'当前发布':x.status==='superseded'?'历史版本':'已撤回'].filter(Boolean).join(' · '))+'</small></span><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="tag">'+esc(x.status==='published'?'已发布':x.status==='superseded'?'历史':'已撤回')+'</span><button class="btn cy-handout-history-open" data-release="'+x.id+'">查看版本</button></span></div>').join('')||'<div class="empty">还没有发布版本。</div>';
       const current=state.current;
+      const interaction=window.__cyClassroomClosureSummary||null;
+      const closure=(interaction&&interaction.classroomInteraction)||null;
+      const completed=Number(interaction?.completedCount||0),recipients=Number(interaction?.recipientCount||0);
+      const closureRows=[
+        ['课堂练习',recipients?(completed+'/'+recipients+' 人完成'):'暂无接收学生'],
+        ['知识点讲解',closure?((closure.segments||[]).length+' 个环节'):'暂无互动课堂记录'],
+        ['随堂检测',closure?((closure.quickCheckRoundCount||0)+' 轮'):'0 轮'],
+        ['补讲决策',closure?((closure.reteachCount||0)+' 次'):'0 次'],
+        ['学生讲解',closure?((closure.presentationCount||0)+' 次'):'0 次'],
+        ['教师加分',closure?((closure.teacherGrantedPoints||0)+' 分'):'0 分'],
+        ['课堂讲义',current?('V'+current.version+' 当前发布'):(state.history||[]).length?('无当前发布 · 历史 '+state.history.length+' 版'):'尚未发布']
+      ].map(x=>'<div class="row"><span class="row-main"><b>'+esc(x[0])+'</b></span><span class="tag">'+esc(x[1])+'</span></div>').join('');
+      const closureCard=document.createElement('section');closureCard.id='cy-classroom-closure-overview';closureCard.className='section card';
+      closureCard.innerHTML='<h2>本堂课闭环总览</h2><p class="muted">把练习、互动、检测、教师决策、明确加分和讲义版本放在同一条课堂记录中；这里只汇总既有事实，不自动改变学生长期掌握状态。</p><div class="list">'+closureRows+'</div>';
+      draftSection.insertAdjacentElement('beforebegin',closureCard);
       const publishLabel=current?'发布新版本 V'+state.nextVersion:'确认发布 V'+state.nextVersion;
       const actions=(state.canPublish?'<button class="btn primary" id="cy-handout-publish">'+publishLabel+'</button>':'')+(current?' <button class="btn" id="cy-handout-revoke">撤回当前发布</button>':'');
       const section=document.createElement('section');section.id='cy-handout-release-card';section.className='section card';
