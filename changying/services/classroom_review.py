@@ -412,6 +412,94 @@ def classroom_interaction_summary(
     }
 
 
+
+def build_deterministic_interaction_handout_summary(
+    summary: dict[str, Any],
+    *,
+    selected_knowledge: list[str],
+) -> str:
+    """Render teacher-facing classroom interaction facts without student identities."""
+
+    interaction = summary.get("classroomInteraction") or {}
+    if not interaction:
+        return ""
+
+    wanted = {str(x).strip() for x in selected_knowledge if str(x).strip()}
+    segments = [
+        row
+        for row in interaction.get("segments", [])
+        if not wanted or str(row.get("knowledge") or "") in wanted
+    ]
+    if not segments:
+        return ""
+
+    round_count = sum(len(row.get("quickCheckRounds") or []) for row in segments)
+    reteach_count = sum(int(row.get("reteachCount") or 0) for row in segments)
+    presentation_count = sum(int(row.get("presentationCount") or 0) for row in segments)
+    review_count = sum(int(row.get("presentationReviewCount") or 0) for row in segments)
+    teacher_points = sum(int(row.get("teacherGrantedPoints") or 0) for row in segments)
+
+    lines = [
+        "互动课堂过程摘要（系统记录）",
+        "",
+        (
+            f"本堂选定知识点共进行了{round_count}轮随堂检测，"
+            f"发生{reteach_count}次补讲，学生讲解{presentation_count}次，"
+            f"教师完成讲解评价{review_count}次，并明确发放互动积分{teacher_points}分。"
+        ),
+    ]
+
+    decision_names = {"reteach": "继续讲解", "complete": "确认完成"}
+    for row in segments:
+        knowledge = str(row.get("knowledge") or row.get("title") or "知识点")
+        details: list[str] = []
+        rounds = row.get("quickCheckRounds") or []
+        if rounds:
+            round_bits = []
+            for q in rounds:
+                accuracy = q.get("accuracy")
+                accuracy_text = "—" if accuracy is None else f"{accuracy}%"
+                decision = decision_names.get(
+                    str(q.get("decision") or ""),
+                    str(q.get("decision") or ""),
+                )
+                decision_text = f"，教师决定{decision}" if decision else ""
+                round_bits.append(
+                    f"第{int(q.get('round') or len(round_bits) + 1)}轮："
+                    f"{int(q.get('responseCount') or 0)}人提交，"
+                    f"{int(q.get('correctCount') or 0)}人正确，"
+                    f"正确率{accuracy_text}{decision_text}"
+                )
+            details.append("；".join(round_bits))
+
+        if int(row.get("presentationCount") or 0) > 0:
+            presentation_text = f"学生讲解{int(row.get('presentationCount') or 0)}次"
+            if int(row.get("presentationReviewCount") or 0) > 0:
+                avgs = row.get("presentationAverages") or {}
+                presentation_text += (
+                    "；教师评价均值："
+                    f"内容准确性{avgs.get('accuracy') if avgs.get('accuracy') is not None else '—'}/5、"
+                    f"表达清晰度{avgs.get('clarity') if avgs.get('clarity') is not None else '—'}/5、"
+                    f"互动效果{avgs.get('interaction') if avgs.get('interaction') is not None else '—'}/5"
+                )
+            points = int(row.get("teacherGrantedPoints") or 0)
+            if points:
+                presentation_text += f"；教师明确加分{points}分"
+            details.append(presentation_text)
+
+        if details:
+            lines.append(f"- {knowledge}：" + "；".join(details) + "。")
+
+    lines.extend(
+        [
+            "",
+            "说明：以上数据仅作为本堂课过程反馈，不自动改写长期知识掌握记录；互动积分仅来自教师明确确认，不由随堂检测结果自动生成。",
+        ]
+    )
+    return "\n".join(lines)
+
+
+
 def build_anonymized_handout_prompt(
     summary: dict[str, Any],
     *,
@@ -503,6 +591,7 @@ def build_anonymized_handout_prompt(
 
 __all__ = [
     "build_anonymized_handout_prompt",
+    "build_deterministic_interaction_handout_summary",
     "classroom_interaction_summary",
     "classroom_review_summary",
 ]

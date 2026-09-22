@@ -9,6 +9,7 @@ import json
 
 from changying.services.classroom_review import (
     build_anonymized_handout_prompt,
+    build_deterministic_interaction_handout_summary,
     classroom_interaction_summary,
     classroom_review_summary,
 )
@@ -177,6 +178,76 @@ def test_classroom_interaction_summary_keeps_rounds_reteach_and_teacher_review_a
     }
     assert "studentName" not in json.dumps(result, ensure_ascii=False)
     assert "999" not in json.dumps(result, ensure_ascii=False)
+
+
+def test_deterministic_interaction_summary_preserves_reteach_scores_review_and_points():
+    summary = {
+        "classroomInteraction": {
+            "segments": [
+                {
+                    "knowledge": "说明方法",
+                    "quickCheckRounds": [
+                        {
+                            "round": 1,
+                            "responseCount": 1,
+                            "correctCount": 0,
+                            "accuracy": 0,
+                            "decision": "reteach",
+                        },
+                        {
+                            "round": 2,
+                            "responseCount": 1,
+                            "correctCount": 1,
+                            "accuracy": 100,
+                            "decision": "complete",
+                        },
+                    ],
+                    "reteachCount": 1,
+                    "presentationCount": 1,
+                    "presentationReviewCount": 1,
+                    "presentationAverages": {
+                        "accuracy": 1.0,
+                        "clarity": 2.0,
+                        "interaction": 2.0,
+                    },
+                    "teacherGrantedPoints": 1,
+                },
+                {
+                    "knowledge": "资料整合、阅读推断",
+                    "quickCheckRounds": [
+                        {
+                            "round": 1,
+                            "responseCount": 1,
+                            "correctCount": 1,
+                            "accuracy": 100,
+                            "decision": "complete",
+                        }
+                    ],
+                    "reteachCount": 0,
+                    "presentationCount": 0,
+                    "presentationReviewCount": 0,
+                    "presentationAverages": {},
+                    "teacherGrantedPoints": 0,
+                },
+            ]
+        }
+    }
+
+    text = build_deterministic_interaction_handout_summary(
+        summary,
+        selected_knowledge=["说明方法", "资料整合、阅读推断"],
+    )
+
+    assert "共进行了3轮随堂检测" in text
+    assert "发生1次补讲" in text
+    assert "第1轮：1人提交，0人正确，正确率0%，教师决定继续讲解" in text
+    assert "第2轮：1人提交，1人正确，正确率100%，教师决定确认完成" in text
+    assert "内容准确性1.0/5" in text
+    assert "表达清晰度2.0/5" in text
+    assert "互动效果2.0/5" in text
+    assert "教师明确加分1分" in text
+    assert "不自动改写长期知识掌握记录" in text
+    assert "student" not in text.lower()
 
 
 def test_handout_prompt_is_anonymized_and_excludes_student_rows():
