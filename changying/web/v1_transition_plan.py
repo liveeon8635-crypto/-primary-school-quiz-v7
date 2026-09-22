@@ -9,6 +9,7 @@ from types import ModuleType
 from fastapi import Depends, HTTPException, Request
 
 from changying.domain.transition_plan_storage import install_transition_plan_model
+from changying.services.transition_plans import TransitionPlanService
 from changying.web.v1_transition_snapshot import _authorized_student
 
 
@@ -53,16 +54,12 @@ def install_v1_transition_plan_routes(implementation: ModuleType) -> None:
     table = install_transition_plan_model(implementation)
     # Additive table creation only. Existing tables/data are untouched.
     table.create(bind=implementation.engine, checkfirst=True)
+    service = TransitionPlanService(table=table, select_fn=implementation.select, audit_log_model=implementation.AuditLog)
 
     @app.get("/v1/students/{sid}/transition-plans", include_in_schema=False)
     def list_transition_plans(sid: int, user=Depends(implementation.current_user), db=Depends(implementation.get_db)):
         _authorized_student(implementation, db, user, sid)
-        rows = db.execute(
-            implementation.select(table).where(
-                table.c.school_id == user.school_id,
-                table.c.student_id == sid,
-            ).order_by(table.c.created_at.desc(), table.c.id.desc())
-        ).all()
+        rows = service.list_rows(db, school_id=int(user.school_id), student_id=int(sid))
         return {"studentID": sid, "plans": [_row(x) for x in rows]}
 
     @app.post("/v1/students/{sid}/transition-plans", include_in_schema=False)
@@ -89,14 +86,10 @@ def install_v1_transition_plan_routes(implementation: ModuleType) -> None:
             "created_at": now,
             "updated_at": now,
         }
-        result = db.execute(table.insert().values(**values))
-        db.add(implementation.AuditLog(
-            school_id=user.school_id, user_id=user.id,
-            action="student.transition_plan.create",
-            detail=f"student={sid}:plan={result.inserted_primary_key[0]}",
-        ))
-        db.commit()
-        saved = db.execute(implementation.select(table).where(table.c.id == result.inserted_primary_key[0])).first()
+        saved = service.create(
+            db, school_id=int(user.school_id), student_id=int(sid),
+            teacher_id=int(user.id), values=values,
+        )
         return _row(saved)
 
     @app.post("/v1/students/{sid}/transition-plans/{plan_id}/close", include_in_schema=False)
@@ -104,20 +97,12 @@ def install_v1_transition_plan_routes(implementation: ModuleType) -> None:
         if user.role not in {"teacher", "admin"}:
             raise HTTPException(403, "仅教师或管理员可关闭衔接计划")
         _authorized_student(implementation, db, user, sid)
-        row = db.execute(implementation.select(table).where(
-            table.c.id == plan_id, table.c.school_id == user.school_id, table.c.student_id == sid,
-        )).first()
-        if row is None:
+        saved = service.close(
+            db, school_id=int(user.school_id), student_id=int(sid),
+            teacher_id=int(user.id), plan_id=int(plan_id),
+        )
+        if saved is None:
             raise HTTPException(404, "衔接计划不存在")
-        if row._mapping["status"] != "closed":
-            now = datetime.utcnow()
-            db.execute(table.update().where(table.c.id == plan_id).values(status="closed", closed_at=now, updated_at=now))
-            db.add(implementation.AuditLog(
-                school_id=user.school_id, user_id=user.id,
-                action="student.transition_plan.close", detail=f"student={sid}:plan={plan_id}",
-            ))
-            db.commit()
-        saved = db.execute(implementation.select(table).where(table.c.id == plan_id)).first()
         return _row(saved)
 
     app.state.v1_transition_plan_routes_installed = True
