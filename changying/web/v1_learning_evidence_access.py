@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from fastapi import Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from changying.domain.learning_evidence_growth_profile import growth_profile_learning_evidence
 from changying.domain.learning_evidence_read_model import student_evidence_snapshot
@@ -85,7 +85,9 @@ def install_v1_learning_evidence_access_routes(implementation: ModuleType) -> No
     if getattr(app.state, "v1_learning_evidence_access_installed", False):
         return
 
-    @app.get("/v1/students/{sid}/learning-evidence", include_in_schema=False)
+    router = APIRouter()
+
+    @router.get("/v1/students/{sid}/learning-evidence", include_in_schema=False)
     def read_learning_evidence(
         sid: int,
         user=Depends(implementation.current_user),
@@ -103,6 +105,7 @@ def install_v1_learning_evidence_access_routes(implementation: ModuleType) -> No
         )
         return learning_evidence_for_role(evidence, user.role)
 
+    app.include_router(router)
     app.state.v1_learning_evidence_access_installed = True
 
 
