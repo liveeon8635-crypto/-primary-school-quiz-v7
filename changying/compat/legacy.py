@@ -110,6 +110,7 @@ from changying.web.v22_evidence_coverage_view import install_v22_evidence_covera
 from changying.web.v1_historical_teaching import install_v1_historical_teaching_routes
 from changying.web.v1_historical_teaching_view import install_v1_historical_teaching_view_patch
 from changying.web.v1_transition_snapshot import install_v1_transition_snapshot_routes
+from changying.web.v1_transition_plan import install_v1_transition_plan_routes
 from changying.web.v1_transition_facts_view import install_v1_transition_facts_view_patch
 from changying.web.v27_stage_evidence_comparison import install_v27_stage_evidence_routes
 from changying.web.v27_stage_evidence_view import install_v27_stage_evidence_view_patch
@@ -416,6 +417,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_historical_teaching_routes(implementation)
     install_v1_transition_facts_view_patch()
     install_v1_transition_snapshot_routes(implementation)
+    install_v1_transition_plan_routes(implementation)
     install_v27_stage_evidence_view_patch()
     install_v27_stage_evidence_routes(implementation)
     install_v1_parent_link_history_profile(implementation)
