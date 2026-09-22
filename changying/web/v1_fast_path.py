@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from types import ModuleType
 
-from fastapi import Depends
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 
 from changying.web import v1 as v1_module
@@ -124,8 +124,9 @@ def install_v1_fast_read_routes(implementation: ModuleType) -> None:
 
     current_user = implementation.current_user
     get_db = implementation.get_db
+    router = APIRouter()
 
-    @app.get("/teacher/v1-roster", include_in_schema=False)
+    @router.get("/teacher/v1-roster", include_in_schema=False)
     def teacher_v1_roster(
         u=Depends(current_user),
         db=Depends(get_db),
@@ -134,7 +135,7 @@ def install_v1_fast_read_routes(implementation: ModuleType) -> None:
         roster, _ = _teacher_roster(implementation, db, u)
         return roster
 
-    @app.get("/teacher/v1-bootstrap", include_in_schema=False)
+    @router.get("/teacher/v1-bootstrap", include_in_schema=False)
     def teacher_v1_bootstrap(
         u=Depends(current_user),
         db=Depends(get_db),
@@ -148,7 +149,7 @@ def install_v1_fast_read_routes(implementation: ModuleType) -> None:
         roster["workbench"] = implementation.teacher_workbench_summary(u=u, db=db)
         return roster
 
-    @app.get("/teacher/v1-profiles", include_in_schema=False)
+    @router.get("/teacher/v1-profiles", include_in_schema=False)
     def teacher_v1_profiles(
         u=Depends(current_user),
         db=Depends(get_db),
@@ -166,6 +167,7 @@ def install_v1_fast_read_routes(implementation: ModuleType) -> None:
             records.append({"student": person, "profile": profile})
         return {"records": records}
 
+    app.include_router(router)
     app.state.v1_fast_read_routes_installed = True
 
 

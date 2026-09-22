@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from fastapi import Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from changying.domain.learning_evidence import EVIDENCE_TYPES
 from changying.domain.learning_evidence_read_model import student_evidence_snapshot
@@ -99,7 +99,9 @@ def install_v21_teaching_evidence_context_routes(implementation: ModuleType) -> 
     if getattr(app.state, "v21_teaching_evidence_context_routes_installed", False):
         return
 
-    @app.get("/v2/students/{sid}/teaching-evidence-context", include_in_schema=False)
+    router = APIRouter()
+
+    @router.get("/v2/students/{sid}/teaching-evidence-context", include_in_schema=False)
     def teaching_evidence_context(
         sid: int,
         user=Depends(implementation.current_user),
@@ -118,6 +120,7 @@ def install_v21_teaching_evidence_context_routes(implementation: ModuleType) -> 
             **build_teaching_evidence_context(snapshot),
         }
 
+    app.include_router(router)
     app.state.v21_teaching_evidence_context_routes_installed = True
 
 
