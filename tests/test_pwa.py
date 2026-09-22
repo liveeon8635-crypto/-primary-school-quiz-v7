@@ -48,7 +48,13 @@ def test_favicon_route_returns_png_and_is_idempotent():
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/png")
     assert _png_dimensions(response.content) == (180, 180)
-    assert sum(getattr(route, "path", None) == "/favicon.ico" for route in app.routes) == 1
+    matching = [
+        child
+        for route in app.routes
+        for child in getattr(getattr(route, "original_router", route), "routes", [route])
+        if getattr(child, "path", None) == "/favicon.ico"
+    ]
+    assert len(matching) == 1
 
 
 def test_production_pwa_asset_routes_do_not_raise_name_error():
