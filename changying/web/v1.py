@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
 V1_UI_MARKER = "changying_v1_20260915"
@@ -250,6 +250,8 @@ def install_v1_routes(app: FastAPI) -> None:
     if getattr(app.state, "v1_routes_installed", False):
         return
 
+    router = APIRouter()
+
     def response() -> HTMLResponse:
         return HTMLResponse(
             v1_html(),
@@ -260,7 +262,7 @@ def install_v1_routes(app: FastAPI) -> None:
             },
         )
 
-    @app.get("/v1/version", include_in_schema=False)
+    @router.get("/v1/version", include_in_schema=False)
     def v1_version():
         return JSONResponse(
             {"build": current_v1_build_id()},
@@ -272,7 +274,8 @@ def install_v1_routes(app: FastAPI) -> None:
         )
 
     for path in V1_PATHS:
-        app.add_api_route(path, response, methods=["GET"], include_in_schema=False)
+        router.add_api_route(path, response, methods=["GET"], include_in_schema=False)
+    app.include_router(router)
     app.state.v1_routes_installed = True
 
 
