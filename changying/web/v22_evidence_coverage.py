@@ -11,7 +11,7 @@ from collections import defaultdict
 from types import ModuleType
 from typing import Any
 
-from fastapi import Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from changying.domain.learning_evidence import EVIDENCE_TYPES
 
@@ -210,7 +210,9 @@ def install_v22_evidence_coverage_routes(implementation: ModuleType) -> None:
     if getattr(app.state, "v22_evidence_coverage_routes_installed", False):
         return
 
-    @app.get("/v2/teacher/evidence-coverage", include_in_schema=False)
+    router = APIRouter()
+
+    @router.get("/v2/teacher/evidence-coverage", include_in_schema=False)
     def evidence_coverage(
         class_id: int | None = None,
         user=Depends(implementation.current_user),
@@ -223,6 +225,7 @@ def install_v22_evidence_coverage_routes(implementation: ModuleType) -> None:
             class_id=class_id,
         )
 
+    app.include_router(router)
     app.state.v22_evidence_coverage_routes_installed = True
 
 
