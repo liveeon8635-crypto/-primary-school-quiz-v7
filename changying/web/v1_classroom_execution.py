@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 from typing import Any
 
-from fastapi import Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, Text, UniqueConstraint, func, select
@@ -333,6 +333,8 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
     if getattr(app.state, "v1_classroom_execution_routes_installed", False):
         return
 
+    router = APIRouter()
+
     tables = register_classroom_execution_tables(implementation)
     sessions = tables["sessions"]
     segments = tables["segments"]
@@ -546,7 +548,7 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
             questions=questions,
         )
 
-    @app.post("/teacher/assignments/{aid}/classroom-session")
+    @router.post("/teacher/assignments/{aid}/classroom-session")
     def create_classroom_session(
         aid: int,
         body: ClassroomSessionOpenBody,
@@ -671,11 +673,11 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
         db.commit()
         return {"created": True, **session_payload(db, u, sid)}
 
-    @app.get("/teacher/classroom-sessions/{sid}")
+    @router.get("/teacher/classroom-sessions/{sid}")
     def get_classroom_session(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         return session_payload(db, u, sid)
 
-    @app.post("/teacher/classroom-sessions/{sid}/state")
+    @router.post("/teacher/classroom-sessions/{sid}/state")
     def set_classroom_session_state(sid: int, body: SessionStateBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         s = teacher_session_row(db, u, sid)
         target = body.status.strip()
@@ -697,7 +699,7 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
         db.commit()
         return session_payload(db, u, sid)
 
-    @app.post("/teacher/classroom-sessions/{sid}/segments/{segid}/mode")
+    @router.post("/teacher/classroom-sessions/{sid}/segments/{segid}/mode")
     def set_classroom_segment_mode(sid: int, segid: int, body: SegmentModeBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         s = teacher_session_row(db, u, sid)
         seg = session_segment_row(db, u, sid, segid)
@@ -719,7 +721,7 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
         db.commit()
         return session_payload(db, u, sid)
 
-    @app.post("/teacher/classroom-sessions/{sid}/segments/{segid}/reveal")
+    @router.post("/teacher/classroom-sessions/{sid}/segments/{segid}/reveal")
     def set_classroom_segment_reveal(sid: int, segid: int, body: SegmentRevealBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         teacher_session_row(db, u, sid)
         session_segment_row(db, u, sid, segid)
@@ -737,7 +739,7 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
         db.commit()
         return session_payload(db, u, sid)
 
-    @app.post("/teacher/classroom-sessions/{sid}/segments/{segid}/start")
+    @router.post("/teacher/classroom-sessions/{sid}/segments/{segid}/start")
     def start_classroom_segment(sid: int, segid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         s = teacher_session_row(db, u, sid)
         seg = session_segment_row(db, u, sid, segid)
@@ -757,7 +759,7 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
         db.commit()
         return session_payload(db, u, sid)
 
-    @app.post("/teacher/classroom-sessions/{sid}/segments/{segid}/complete")
+    @router.post("/teacher/classroom-sessions/{sid}/segments/{segid}/complete")
     def complete_classroom_segment(sid: int, segid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         s = teacher_session_row(db, u, sid)
         if str(s["status"]) != "active":
@@ -778,7 +780,7 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
         db.commit()
         return session_payload(db, u, sid)
 
-    @app.get("/teacher/classroom-sessions/{sid}/segments/{segid}/candidates")
+    @router.get("/teacher/classroom-sessions/{sid}/segments/{segid}/candidates")
     def classroom_presenter_candidates(sid: int, segid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         s = teacher_session_row(db, u, sid)
         seg = session_segment_row(db, u, sid, segid)
@@ -854,7 +856,7 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
         result.sort(key=candidate_sort_key)
         return result
 
-    @app.post("/teacher/classroom-sessions/{sid}/segments/{segid}/invite")
+    @router.post("/teacher/classroom-sessions/{sid}/segments/{segid}/invite")
     def invite_classroom_presenter(sid: int, segid: int, body: PresenterInviteBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         s = teacher_session_row(db, u, sid)
         seg = session_segment_row(db, u, sid, segid)
@@ -904,7 +906,7 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
         db.commit()
         return session_payload(db, u, sid)
 
-    @app.post("/teacher/classroom-sessions/{sid}/presenter-turns/{tid}/state")
+    @router.post("/teacher/classroom-sessions/{sid}/presenter-turns/{tid}/state")
     def teacher_presenter_state(sid: int, tid: int, body: PresenterStateBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         s = teacher_session_row(db, u, sid)
         raw = db.execute(select(turns).where(turns.c.id == tid, turns.c.session_id == sid, turns.c.school_id == u.school_id)).first()
@@ -930,7 +932,7 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
         db.commit()
         return session_payload(db, u, sid)
 
-    @app.get("/student/classroom-invitations")
+    @router.get("/student/classroom-invitations")
     def student_classroom_invitations(u: Any = Depends(current_user), db: Any = Depends(get_db)):
         implementation.need(u, "student")
         rows = db.execute(
@@ -971,7 +973,7 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
             )
         return out
 
-    @app.post("/student/classroom-invitations/{tid}/respond")
+    @router.post("/student/classroom-invitations/{tid}/respond")
     def respond_classroom_invitation(tid: int, body: PresenterResponseBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         implementation.need(u, "student")
         raw = db.execute(select(turns).where(turns.c.id == tid, turns.c.school_id == u.school_id, turns.c.student_id == u.id)).first()
@@ -1001,8 +1003,9 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
             },
         )
 
-    app.add_api_route("/v1/classroom-execution", v1_response, methods=["GET"], include_in_schema=False)
-    app.add_api_route("/v1/classroom-invitations", v1_response, methods=["GET"], include_in_schema=False)
+    router.add_api_route("/v1/classroom-execution", v1_response, methods=["GET"], include_in_schema=False)
+    router.add_api_route("/v1/classroom-invitations", v1_response, methods=["GET"], include_in_schema=False)
+    app.include_router(router)
     app.state.v1_classroom_execution_routes_installed = True
 
 
