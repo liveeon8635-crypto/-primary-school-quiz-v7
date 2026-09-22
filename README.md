@@ -10,7 +10,7 @@ Render 固定启动：
 uvicorn app:app --host 0.0.0.0 --port $PORT
 ```
 
-`app.py` 是永久稳定入口，不应直接加入业务逻辑或版本号。当前生产实现由 `changying/production.py` 选择，并通过 `changying/compat/legacy.py` 与正在逐步模块化的 legacy 应用兼容。
+`app.py` 是永久稳定入口，不应直接加入业务逻辑或版本号。当前生产实现由 `changying/production.py` 选择，并通过 `changying/compat/legacy.py` 与正在逐步模块化的 legacy 应用兼容。已抽离的 service 和 Web Router 保持原 URL/调用契约；`app_v924.py` 中剩余 ORM、直接 API 与内嵌前端继续按测试保护的小批次迁移，不做一次性重写。
 
 ## 代码结构
 
@@ -30,8 +30,25 @@ changying/
   utils/
     datetime_tools.py
     json_tools.py
+  services/
+    assignments.py
+    teaching.py
+    points.py
+    wrong_questions.py
+    followups.py
+    transition_plans.py
+    parent_link_history.py
+    class_history.py
+    academic_summary.py
   web/
-    pwa.py
+    pwa.py                      # PWA / favicon
+    product_shell.py            # 产品首页 / Classic 兼容入口
+    v1.py                       # V1 shell
+    v1_auth_handoff.py          # V1 → Classic 一次性认证交接
+    v1_transition_*.py          # 升年级/升学衔接事实与计划
+    v1_historical_teaching.py   # 往期教学只读事实
+    v*_learning_evidence*.py    # 学习证据读写/可见性
+    v1_classroom_*.py           # 互动课堂执行、检测、讲义与评价
 tests/                         # 单元、smoke、契约与隔离集成测试
 docs/ARCHITECTURE.md           # 模块化状态与后续路线
 render.yaml                    # Render 部署定义
