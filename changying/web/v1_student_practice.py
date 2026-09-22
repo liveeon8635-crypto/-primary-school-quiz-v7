@@ -13,7 +13,7 @@ import json
 import re
 from typing import Any
 
-from fastapi import Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -414,6 +414,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
     current_user = implementation.current_user
     get_db = implementation.get_db
     Session = implementation.Session
+    router = APIRouter()
 
     def teacher_student_context(db, user, sid: int) -> tuple[Any, list[Any]]:
         implementation.need(user, "teacher")
@@ -443,7 +444,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
             raise HTTPException(403, "该学生不在你的在读班级")
         return student, classes
 
-    @app.get("/teacher/students/{sid}/practice-options")
+    @router.get("/teacher/students/{sid}/practice-options")
     def student_practice_options(
         sid: int,
         grade: int | None = None,
@@ -535,7 +536,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
             "availableQuestionCount": available_count,
         }
 
-    @app.post("/teacher/students/{sid}/auto-practice")
+    @router.post("/teacher/students/{sid}/auto-practice")
     def create_student_practice(
         sid: int,
         body: StudentPracticeCreateBody,
@@ -697,6 +698,7 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
             "recipientCount": 1,
         }
 
+    app.include_router(router)
     app.state.v1_student_practice_routes_installed = True
 
 
