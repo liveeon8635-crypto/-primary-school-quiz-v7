@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_former_teacher_can_query_only_own_historical_teaching_facts(tmp_path):
     db_path = tmp_path / "historical-teaching.sqlite3"
     script = r"""
+from datetime import datetime
+
 from fastapi.testclient import TestClient
 
 import app_v924 as legacy
@@ -143,6 +145,124 @@ with TestClient(app) as client:
                 answers_json="[]",
             )
         )
+        db.flush()
+
+        metadata = legacy.Base.metadata
+        sessions = metadata.tables["classroom_sessions"]
+        segments = metadata.tables["classroom_segments"]
+        checks = metadata.tables["classroom_quick_checks"]
+        turns = metadata.tables["classroom_presenter_turns"]
+        reviews = metadata.tables["classroom_presentation_reviews"]
+        handouts = metadata.tables["classroom_review_handouts"]
+        started = datetime(2026, 6, 18, 9, 0)
+        completed = datetime(2026, 6, 18, 9, 40)
+
+        session_id = db.execute(
+            sessions.insert().values(
+                school_id=teacher.school_id,
+                class_id=old_class.id,
+                teacher_id=teacher.id,
+                source_assignment_id=assignment.id,
+                subject="数学",
+                textbook="人教版",
+                title="五年级分数互动课堂",
+                status="completed",
+                started_at=started,
+                completed_at=completed,
+                created_at=started,
+                updated_at=completed,
+            )
+        ).inserted_primary_key[0]
+        segment_id = db.execute(
+            segments.insert().values(
+                school_id=teacher.school_id,
+                session_id=session_id,
+                knowledge_key="分数",
+                title="分数",
+                order_no=1,
+                mode="student",
+                status="completed",
+                baseline_accuracy=50,
+                postcheck_accuracy=100,
+                reveal_distribution=False,
+                reveal_correct_answer=False,
+                reveal_explanation=False,
+                created_at=started,
+                updated_at=completed,
+            )
+        ).inserted_primary_key[0]
+        db.execute(
+            checks.insert().values(
+                school_id=teacher.school_id,
+                session_id=session_id,
+                segment_id=segment_id,
+                created_by=teacher.id,
+                question_type="single_choice",
+                question_text="历史课堂检测",
+                options_json='["A","B"]',
+                correct_index=0,
+                explanation="测试",
+                status="closed",
+                decision="reteach",
+                opened_at=started,
+                closed_at=completed,
+                decided_at=completed,
+                created_at=started,
+                updated_at=completed,
+            )
+        )
+        turn_id = db.execute(
+            turns.insert().values(
+                school_id=teacher.school_id,
+                session_id=session_id,
+                segment_id=segment_id,
+                student_id=student.id,
+                requested_by=teacher.id,
+                presenter_type="student",
+                status="completed",
+                note="",
+                invited_at=started,
+                responded_at=started,
+                started_at=started,
+                completed_at=completed,
+                created_at=started,
+            )
+        ).inserted_primary_key[0]
+        db.execute(
+            reviews.insert().values(
+                school_id=teacher.school_id,
+                session_id=session_id,
+                segment_id=segment_id,
+                turn_id=turn_id,
+                student_id=student.id,
+                teacher_id=teacher.id,
+                accuracy_rating=4,
+                clarity_rating=4,
+                interaction_rating=5,
+                teacher_note="历史课堂讲解",
+                granted_points=2,
+                point_reason="课堂讲解表现",
+                reviewed_at=completed,
+                points_granted_at=completed,
+                created_at=completed,
+                updated_at=completed,
+            )
+        )
+        db.execute(
+            handouts.insert().values(
+                school_id=teacher.school_id,
+                assignment_id=assignment.id,
+                class_id=old_class.id,
+                teacher_id=teacher.id,
+                title="历史课堂讲义",
+                selected_knowledge_json='["分数"]',
+                selected_question_ids_json="[]",
+                teacher_notes="",
+                content_text="历史课堂讲义内容",
+                created_at=completed,
+                updated_at=completed,
+            )
+        )
         db.commit()
 
     full_profile = client.get(
@@ -164,8 +284,31 @@ with TestClient(app) as client:
     assert record["submitted"] is True
     assert record["score"] == 88
 
+    classrooms = client.get("/v1/teacher/history/classrooms", headers=th)
+    assert classrooms.status_code == 200, classrooms.text
+    classroom_body = classrooms.json()
+    assert classroom_body["scope"] == "teacher-owned-completed-classroom-sessions"
+    classroom = next(
+        x for x in classroom_body["classrooms"]
+        if x["assignmentID"] == record["assignmentID"]
+    )
+    assert classroom["title"] == "五年级分数互动课堂"
+    assert classroom["className"] == "历史教学班"
+    assert classroom["subject"] == "数学"
+    assert classroom["segmentCount"] == 1
+    assert classroom["completedSegmentCount"] == 1
+    assert classroom["quickCheckRoundCount"] == 1
+    assert classroom["reteachCount"] == 1
+    assert classroom["presentationCount"] == 1
+    assert classroom["presentationReviewCount"] == 1
+    assert classroom["teacherGrantedPoints"] == 2
+    assert classroom["handoutID"] is not None
+    assert classroom["scope"] == "teacher-owned-completed-classroom-sessions"
+
     forbidden = client.get("/v1/teacher/history/students", headers=sh)
     assert forbidden.status_code == 403
+    forbidden_classrooms = client.get("/v1/teacher/history/classrooms", headers=sh)
+    assert forbidden_classrooms.status_code == 403
 """
 
     env = os.environ.copy()
