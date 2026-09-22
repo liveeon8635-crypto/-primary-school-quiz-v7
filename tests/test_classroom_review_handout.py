@@ -9,6 +9,7 @@ import json
 
 from changying.services.classroom_review import (
     build_anonymized_handout_prompt,
+    classroom_interaction_summary,
     classroom_review_summary,
 )
 from changying.web.v1_classroom_review import (
@@ -95,6 +96,89 @@ def test_classroom_review_aggregates_class_facts_without_long_term_inference():
     assert "阶段数据" in result["dataNotice"]
 
 
+def test_classroom_interaction_summary_keeps_rounds_reteach_and_teacher_review_aggregate():
+    from datetime import datetime
+
+    session = SimpleNamespace(
+        id=7,
+        title="课堂执行",
+        status="completed",
+        started_at=datetime(2026, 9, 22, 10, 0),
+        completed_at=datetime(2026, 9, 22, 10, 40),
+    )
+    segments = [
+        SimpleNamespace(
+            id=31,
+            knowledge_key="说明方法",
+            title="说明方法",
+            order_no=1,
+            mode="student",
+            status="completed",
+            baseline_accuracy=0,
+            postcheck_accuracy=None,
+        )
+    ]
+    quick_checks = [
+        SimpleNamespace(
+            id=41,
+            segment_id=31,
+            question_type="single_choice",
+            question_text="第一轮",
+            status="closed",
+            decision="reteach",
+            created_at=datetime(2026, 9, 22, 10, 20),
+        ),
+        SimpleNamespace(
+            id=42,
+            segment_id=31,
+            question_type="true_false",
+            question_text="第二轮",
+            status="closed",
+            decision="complete",
+            created_at=datetime(2026, 9, 22, 10, 35),
+        ),
+    ]
+    responses = [
+        SimpleNamespace(check_id=41, is_correct=False),
+        SimpleNamespace(check_id=42, is_correct=True),
+    ]
+    turns = [SimpleNamespace(segment_id=31, status="completed", student_id=999)]
+    reviews = [
+        SimpleNamespace(
+            segment_id=31,
+            accuracy_rating=1,
+            clarity_rating=2,
+            interaction_rating=2,
+            granted_points=1,
+            student_id=999,
+        )
+    ]
+
+    result = classroom_interaction_summary(
+        session=session,
+        segments=segments,
+        quick_checks=quick_checks,
+        responses=responses,
+        presenter_turns=turns,
+        presentation_reviews=reviews,
+    )
+
+    assert result["quickCheckRoundCount"] == 2
+    assert result["reteachCount"] == 1
+    assert result["presentationCount"] == 1
+    assert result["teacherGrantedPoints"] == 1
+    seg = result["segments"][0]
+    assert [x["accuracy"] for x in seg["quickCheckRounds"]] == [0, 100]
+    assert [x["decision"] for x in seg["quickCheckRounds"]] == ["reteach", "complete"]
+    assert seg["presentationAverages"] == {
+        "accuracy": 1.0,
+        "clarity": 2.0,
+        "interaction": 2.0,
+    }
+    assert "studentName" not in json.dumps(result, ensure_ascii=False)
+    assert "999" not in json.dumps(result, ensure_ascii=False)
+
+
 def test_handout_prompt_is_anonymized_and_excludes_student_rows():
     summary = {
         "class": {"id": 2, "name": "五年级1班", "grade": 5},
@@ -108,6 +192,29 @@ def test_handout_prompt_is_anonymized_and_excludes_student_rows():
         "students": [
             {"studentID": 12345, "studentName": "绝不能进入AI提示词", "score": 50}
         ],
+        "classroomInteraction": {
+            "session": {"status": "completed"},
+            "quickCheckRoundCount": 2,
+            "reteachCount": 1,
+            "presentationCount": 1,
+            "presentationReviewCount": 1,
+            "teacherGrantedPoints": 1,
+            "segments": [
+                {
+                    "knowledge": "句子衔接",
+                    "mode": "student",
+                    "quickCheckRounds": [
+                        {"round": 1, "questionType": "single_choice", "responseCount": 2, "correctCount": 0, "accuracy": 0, "decision": "reteach"},
+                        {"round": 2, "questionType": "single_choice", "responseCount": 2, "correctCount": 2, "accuracy": 100, "decision": "complete"},
+                    ],
+                    "reteachCount": 1,
+                    "presentationCount": 1,
+                    "presentationReviewCount": 1,
+                    "presentationAverages": {"accuracy": 4.0, "clarity": 4.5, "interaction": 4.0},
+                    "teacherGrantedPoints": 1,
+                }
+            ],
+        },
     }
     prompt = build_anonymized_handout_prompt(
         summary,
@@ -120,6 +227,10 @@ def test_handout_prompt_is_anonymized_and_excludes_student_rows():
     assert "句子衔接" in prompt
     assert "重点讲方法" in prompt
     assert "不出现学生姓名" in prompt
+    assert "classroomInteraction" in prompt
+    assert '"accuracy": 0' in prompt
+    assert '"accuracy": 100' in prompt
+    assert '"decision": "reteach"' in prompt
 
 
 def test_v1_exposes_classroom_review_entry_and_teacher_decision_language():
@@ -132,6 +243,10 @@ def test_v1_exposes_classroom_review_entry_and_teacher_decision_language():
     assert "不会把学生姓名送入 AI" in html
     assert "/teacher/classroom-reviews/assignments" in html
     assert "/class-review/handout-generate" in html
+    assert "互动课堂反馈" in html
+    assert "不会自动改写长期知识掌握记录" in html
+    assert "随堂检测" in html
+    assert "学生讲解" in html
 
 
 def test_runtime_classroom_review_full_loop(tmp_path):
