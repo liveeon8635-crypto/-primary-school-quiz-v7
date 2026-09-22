@@ -23,7 +23,8 @@ def patch_v1_identity_clarity(html: str) -> str:
         "function chooseIdentity(){const choices=identitiesFor(session);"
         "if(choices.length===1){identity=choices[0];localStorage.setItem(IDENTITY_KEY,identity.key);"
         "chip.textContent=identity.label+' · '+(session.name||'');identityButton.hidden=false;identityButton.textContent='切换账号';"
-        "navigate(identity.mode==='family'||identity.mode==='student'?'/v1/student':'/v1/workspace?mode='+identity.mode);return}"
+        "const fallback=identity.mode==='family'||identity.mode==='student'?'/v1/student':'/v1/workspace?mode='+identity.mode;"
+        "const target=pendingIdentityReturnPath||fallback;pendingIdentityReturnPath='';navigate(target);return}"
         "identity=null;"
     )
     if choose_marker not in html:
@@ -45,7 +46,7 @@ def patch_v1_identity_clarity(html: str) -> str:
         "identityButton.onclick=()=>{"
         "const choices=identitiesFor(session);"
         "if(choices.length<=1){clearAuthStorage();token='';session=null;identity=null;"
-        "localStorage.removeItem(IDENTITY_KEY);loginView();return}"
+        "localStorage.removeItem(IDENTITY_KEY);pendingIdentityReturnPath='';loginView();return}"
         "chooseIdentity()};"
     )
     if click_marker not in html:
