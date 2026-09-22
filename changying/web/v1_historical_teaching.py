@@ -196,11 +196,215 @@ def teacher_historical_students(
     return out[: max(1, min(int(limit or 60), 100))]
 
 
+
+def teacher_historical_classrooms(
+    implementation: ModuleType,
+    db: Any,
+    teacher_id: int,
+    school_id: int,
+    *,
+    limit: int = 40,
+) -> list[dict[str, Any]]:
+    """Return completed interactive classroom sessions owned by one teacher."""
+
+    metadata = implementation.Base.metadata
+    sessions = metadata.tables.get("classroom_sessions")
+    segments = metadata.tables.get("classroom_segments")
+    checks = metadata.tables.get("classroom_quick_checks")
+    turns = metadata.tables.get("classroom_presenter_turns")
+    reviews = metadata.tables.get("classroom_presentation_reviews")
+    handouts = metadata.tables.get("classroom_review_handouts")
+    if sessions is None:
+        return []
+
+    rows = db.execute(
+        implementation.select(sessions)
+        .where(
+            sessions.c.school_id == school_id,
+            sessions.c.teacher_id == teacher_id,
+            sessions.c.status == "completed",
+        )
+        .order_by(sessions.c.completed_at.desc(), sessions.c.id.desc())
+        .limit(max(1, min(int(limit or 40), 100)))
+    ).all()
+
+    out: list[dict[str, Any]] = []
+    for raw in rows:
+        row = raw._mapping
+        sid = int(row["id"])
+        assignment_id = int(row["source_assignment_id"]) if row["source_assignment_id"] else None
+        assignment = db.get(implementation.Assignment, assignment_id) if assignment_id else None
+        paper = db.get(implementation.Paper, assignment.paper_id) if assignment is not None else None
+        klass = db.get(implementation.SchoolClass, int(row["class_id"]))
+
+        segment_count = 0
+        completed_segment_count = 0
+        if segments is not None:
+            segment_count = int(
+                db.scalar(
+                    implementation.select(implementation.func.count())
+                    .select_from(segments)
+                    .where(
+                        segments.c.school_id == school_id,
+                        segments.c.session_id == sid,
+                    )
+                )
+                or 0
+            )
+            completed_segment_count = int(
+                db.scalar(
+                    implementation.select(implementation.func.count())
+                    .select_from(segments)
+                    .where(
+                        segments.c.school_id == school_id,
+                        segments.c.session_id == sid,
+                        segments.c.status == "completed",
+                    )
+                )
+                or 0
+            )
+
+        quick_check_rounds = 0
+        reteach_count = 0
+        if checks is not None:
+            quick_check_rounds = int(
+                db.scalar(
+                    implementation.select(implementation.func.count())
+                    .select_from(checks)
+                    .where(
+                        checks.c.school_id == school_id,
+                        checks.c.session_id == sid,
+                    )
+                )
+                or 0
+            )
+            reteach_count = int(
+                db.scalar(
+                    implementation.select(implementation.func.count())
+                    .select_from(checks)
+                    .where(
+                        checks.c.school_id == school_id,
+                        checks.c.session_id == sid,
+                        checks.c.decision == "reteach",
+                    )
+                )
+                or 0
+            )
+
+        presentation_count = 0
+        if turns is not None:
+            presentation_count = int(
+                db.scalar(
+                    implementation.select(implementation.func.count())
+                    .select_from(turns)
+                    .where(
+                        turns.c.school_id == school_id,
+                        turns.c.session_id == sid,
+                        turns.c.status == "completed",
+                    )
+                )
+                or 0
+            )
+
+        review_count = 0
+        teacher_granted_points = 0
+        if reviews is not None:
+            review_count = int(
+                db.scalar(
+                    implementation.select(implementation.func.count())
+                    .select_from(reviews)
+                    .where(
+                        reviews.c.school_id == school_id,
+                        reviews.c.session_id == sid,
+                    )
+                )
+                or 0
+            )
+            teacher_granted_points = int(
+                db.scalar(
+                    implementation.select(
+                        implementation.func.coalesce(
+                            implementation.func.sum(reviews.c.granted_points),
+                            0,
+                        )
+                    ).where(
+                        reviews.c.school_id == school_id,
+                        reviews.c.session_id == sid,
+                    )
+                )
+                or 0
+            )
+
+        handout_id = None
+        handout_updated_at = None
+        if handouts is not None and assignment_id:
+            handout = db.execute(
+                implementation.select(handouts.c.id, handouts.c.updated_at).where(
+                    handouts.c.school_id == school_id,
+                    handouts.c.assignment_id == assignment_id,
+                )
+            ).first()
+            if handout is not None:
+                handout_id = int(handout._mapping["id"])
+                handout_updated_at = implementation.school_local_iso(
+                    handout._mapping["updated_at"]
+                )
+
+        out.append(
+            {
+                "sessionID": sid,
+                "assignmentID": assignment_id,
+                "assignmentTitle": assignment.title if assignment is not None else "",
+                "title": str(row["title"] or ""),
+                "classID": int(row["class_id"]),
+                "className": klass.name if klass is not None else "",
+                "grade": klass.grade if klass is not None else None,
+                "subject": str(row["subject"] or (paper.subject if paper is not None else "")),
+                "textbook": str(row["textbook"] or (paper.textbook if paper is not None else "")),
+                "startedAt": implementation.school_local_iso(row["started_at"]),
+                "completedAt": implementation.school_local_iso(row["completed_at"]),
+                "segmentCount": segment_count,
+                "completedSegmentCount": completed_segment_count,
+                "quickCheckRoundCount": quick_check_rounds,
+                "reteachCount": reteach_count,
+                "presentationCount": presentation_count,
+                "presentationReviewCount": review_count,
+                "teacherGrantedPoints": teacher_granted_points,
+                "handoutID": handout_id,
+                "handoutUpdatedAt": handout_updated_at,
+                "scope": "teacher-owned-completed-classroom-sessions",
+            }
+        )
+    return out
+
+
+
 def install_v1_historical_teaching_routes(implementation: ModuleType) -> None:
     """Install the read-only historical teaching query endpoint."""
     app = implementation.app
     if getattr(app.state, "v1_historical_teaching_routes_installed", False):
         return
+
+
+    @app.get("/v1/teacher/history/classrooms", include_in_schema=False)
+    def historical_classrooms(
+        limit: int = 40,
+        user=Depends(implementation.current_user),
+        db=Depends(implementation.get_db),
+    ):
+        implementation.need(user, "teacher")
+        rows = teacher_historical_classrooms(
+            implementation,
+            db,
+            int(user.id),
+            int(user.school_id),
+            limit=limit,
+        )
+        return {
+            "scope": "teacher-owned-completed-classroom-sessions",
+            "classrooms": rows,
+            "count": len(rows),
+        }
 
     @app.get("/v1/teacher/history/students", include_in_schema=False)
     def historical_students(
@@ -231,5 +435,6 @@ def install_v1_historical_teaching_routes(implementation: ModuleType) -> None:
 
 __all__ = [
     "install_v1_historical_teaching_routes",
+    "teacher_historical_classrooms",
     "teacher_historical_students",
 ]
