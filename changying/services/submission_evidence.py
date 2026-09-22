@@ -150,6 +150,7 @@ def append_submission_evidence(
         score=int(getattr(submission, "score", 0) or 0),
         correct=int(getattr(submission, "correct", 0) or 0),
         total=int(getattr(submission, "total", 0) or 0),
+        completionActor=getattr(submission, "completion_actor", None),
     )
     if not _existing(
         implementation,
@@ -207,6 +208,7 @@ def append_submission_evidence(
             assignmentID=assignment_id,
             classID=class_id,
             questionID=qid,
+            completionActor=getattr(submission, "completion_actor", None),
         )
         db.add(
             implementation.LearningEvidenceEvent(
