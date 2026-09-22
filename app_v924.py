@@ -3468,8 +3468,8 @@ def ensure_submission_completion_actor_column():
     if "completion_actor" in columns:
         return
     with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE submissions ADD COLUMN completion_actor VARCHAR(30) NULL"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_submissions_completion_actor ON submissions (completion_actor)"))
+        conn.execute(sa_text("ALTER TABLE submissions ADD COLUMN completion_actor VARCHAR(30) NULL"))
+        conn.execute(sa_text("CREATE INDEX IF NOT EXISTS ix_submissions_completion_actor ON submissions (completion_actor)"))
 
 @app.on_event("startup")
 def startup():
