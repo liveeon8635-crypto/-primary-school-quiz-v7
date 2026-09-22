@@ -11,7 +11,7 @@ from collections import defaultdict
 from types import ModuleType
 from typing import Any
 
-from fastapi import Depends
+from fastapi import APIRouter, Depends
 
 
 def _latest_submission(rows):
@@ -385,8 +385,9 @@ def install_v1_historical_teaching_routes(implementation: ModuleType) -> None:
     if getattr(app.state, "v1_historical_teaching_routes_installed", False):
         return
 
+    router = APIRouter()
 
-    @app.get("/v1/teacher/history/classrooms", include_in_schema=False)
+    @router.get("/v1/teacher/history/classrooms", include_in_schema=False)
     def historical_classrooms(
         limit: int = 40,
         user=Depends(implementation.current_user),
@@ -406,7 +407,7 @@ def install_v1_historical_teaching_routes(implementation: ModuleType) -> None:
             "count": len(rows),
         }
 
-    @app.get("/v1/teacher/history/students", include_in_schema=False)
+    @router.get("/v1/teacher/history/students", include_in_schema=False)
     def historical_students(
         q: str = "",
         subject: str = "",
@@ -430,6 +431,7 @@ def install_v1_historical_teaching_routes(implementation: ModuleType) -> None:
             "count": len(rows),
         }
 
+    app.include_router(router)
     app.state.v1_historical_teaching_routes_installed = True
 
 
