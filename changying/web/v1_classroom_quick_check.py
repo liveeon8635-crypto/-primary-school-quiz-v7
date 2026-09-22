@@ -167,7 +167,7 @@ def patch_v1_classroom_quick_check_html(html: str) -> str:
         const answer=opts[q.correctIndex]||'';
         const decision=q.decision?('<span class="tag">教师决定：'+(q.decision==='reteach'?'继续讲解':'确认完成')+'</span>'):'';
         const actions=!q.decision&&seg.status==='reviewed'?'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary cy-q-decision" data-check="'+q.id+'" data-decision="complete">本知识点确认完成</button><button class="btn cy-q-decision" data-check="'+q.id+'" data-decision="reteach">根据反馈继续讲解</button></div>':'';
-        const again=q.decision==='complete'&&seg.status==='completed'&&s.status==='active'?'<div style="margin-top:8px"><select class="cy-q-type" data-seg="'+seg.id+'"><option value="single_choice">单选题</option><option value="true_false">判断题</option></select> <button class="btn cy-q-generate" data-seg="'+seg.id+'">再生成一轮检测</button></div>':'';
+        const again=['complete','reteach'].includes(q.decision)&&seg.status==='completed'&&s.status==='active'?'<div style="margin-top:8px"><select class="cy-q-type" data-seg="'+seg.id+'"><option value="single_choice">单选题</option><option value="true_false">判断题</option></select> <button class="btn cy-q-generate" data-seg="'+seg.id+'">再生成一轮检测</button></div>':'';
         return '<div class="notice" style="margin-top:10px"><b>随堂检测已结束</b><p>'+esc(q.questionText)+'</p><p>'+esc(statText)+'</p><p>正确答案：'+esc(answer)+'</p>'+(q.explanation?'<p class="muted">解析：'+esc(q.explanation)+'</p>':'')+decision+actions+again+'</div>';
       };
 '''
