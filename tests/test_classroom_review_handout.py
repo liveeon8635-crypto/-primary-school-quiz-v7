@@ -256,6 +256,7 @@ def test_runtime_classroom_review_full_loop(tmp_path):
     db_path = tmp_path / "classroom-review.sqlite3"
     script = r"""
 import json
+from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 import app_v924 as legacy
 from app import app
@@ -358,6 +359,40 @@ with TestClient(app) as client:
         aid = assignment.id
         qid = questions[0].id
 
+        sessions = legacy.Base.metadata.tables["classroom_sessions"]
+        completed_time = datetime(2026, 9, 22, 10, 40)
+        db.execute(
+            sessions.insert().values(
+                school_id=teacher.school_id,
+                class_id=cls.id,
+                teacher_id=teacher.id,
+                source_assignment_id=assignment.id,
+                subject="语文",
+                textbook="统编版（人民教育出版社）",
+                title="已完成互动课堂",
+                status="completed",
+                started_at=completed_time - timedelta(minutes=40),
+                completed_at=completed_time,
+                created_at=completed_time - timedelta(minutes=41),
+                updated_at=completed_time,
+            )
+        )
+        db.execute(
+            sessions.insert().values(
+                school_id=teacher.school_id,
+                class_id=cls.id,
+                teacher_id=teacher.id,
+                source_assignment_id=assignment.id,
+                subject="语文",
+                textbook="统编版（人民教育出版社）",
+                title="误创建待开始课堂",
+                status="planned",
+                created_at=completed_time + timedelta(minutes=1),
+                updated_at=completed_time + timedelta(minutes=1),
+            )
+        )
+        db.commit()
+
     listing = client.get("/teacher/classroom-reviews/assignments", headers=th)
     assert listing.status_code == 200, listing.text
     row = next(x for x in listing.json() if x["id"] == aid)
@@ -371,6 +406,8 @@ with TestClient(app) as client:
     assert data["completedCount"] == 1
     assert data["completionRate"] == 50
     assert data["handoutDraft"] is None
+    assert data["classroomInteraction"]["session"]["status"] == "completed"
+    assert data["classroomInteraction"]["session"]["title"] == "已完成互动课堂"
 
     captured = {}
     def fake_ai_call(db, user, feature, prompt, images=None, timeout=90):

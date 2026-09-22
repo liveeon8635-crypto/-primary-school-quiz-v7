@@ -99,6 +99,10 @@ def test_v1_execution_patch_contains_teacher_and_student_consent_pages():
     assert "完成本堂课并进入课堂复盘" in html
     assert "cy-session-complete-bottom" in html
     assert "segs.every(x=>x.status==='completed')" in html
+    assert "进入课堂执行（最近课堂）" in html
+    assert "新开一堂课" in html
+    assert "force_new:false" in html
+    assert "force_new:true" in html
 
 def test_runtime_phase_ab_classroom_execution(tmp_path):
     db_path = tmp_path / "classroom-execution.sqlite3"
@@ -274,6 +278,26 @@ with TestClient(app) as client:
     assert done.status_code == 200, done.text
     assert done.json()["session"]["status"] == "completed"
 
+    reopened = client.post(
+        f"/teacher/assignments/{aid}/classroom-session",
+        headers=th,
+        json={},
+    )
+    assert reopened.status_code == 200, reopened.text
+    assert reopened.json()["created"] is False
+    assert reopened.json()["session"]["id"] == sid
+    assert reopened.json()["session"]["status"] == "completed"
+
+    explicit_new = client.post(
+        f"/teacher/assignments/{aid}/classroom-session",
+        headers=th,
+        json={"force_new": True},
+    )
+    assert explicit_new.status_code == 200, explicit_new.text
+    assert explicit_new.json()["created"] is True
+    assert explicit_new.json()["session"]["id"] != sid
+    assert explicit_new.json()["session"]["status"] == "planned"
+
     with legacy.SessionLocal() as db:
         tables = legacy.Base.metadata.tables
         assert "classroom_sessions" in tables
@@ -282,7 +306,7 @@ with TestClient(app) as client:
         assert "classroom_events" in tables
         session_count = db.scalar(legacy.select(legacy.func.count()).select_from(tables["classroom_sessions"]))
         event_count = db.scalar(legacy.select(legacy.func.count()).select_from(tables["classroom_events"]))
-        assert session_count == 1
+        assert session_count == 2
         assert event_count >= 7
 """
 

@@ -299,9 +299,21 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
                     session_table.c.school_id == user.school_id,
                     session_table.c.teacher_id == user.id,
                     session_table.c.source_assignment_id == aid,
+                    session_table.c.status == "completed",
                 )
-                .order_by(session_table.c.id.desc())
+                .order_by(session_table.c.completed_at.desc(), session_table.c.id.desc())
             ).first()
+            if session_row is None:
+                session_row = db.execute(
+                    select(session_table)
+                    .where(
+                        session_table.c.school_id == user.school_id,
+                        session_table.c.teacher_id == user.id,
+                        session_table.c.source_assignment_id == aid,
+                        session_table.c.status != "cancelled",
+                    )
+                    .order_by(session_table.c.id.desc())
+                ).first()
             if session_row is not None:
                 session_id = int(session_row._mapping["id"])
                 segment_rows = list(
