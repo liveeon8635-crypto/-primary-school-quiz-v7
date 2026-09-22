@@ -192,3 +192,56 @@ with TestClient(app) as client:
         f"stdout:\n{result.stdout}\n"
         f"stderr:\n{result.stderr}"
     )
+
+
+def test_transition_snapshot_router_is_get_only_and_installed_once(monkeypatch):
+    from types import SimpleNamespace
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import changying.web.v1_transition_snapshot as route_module
+
+    app = FastAPI()
+    user = SimpleNamespace(school_id=17, role="teacher")
+    student = SimpleNamespace(id=23, name="测试学生")
+    implementation = SimpleNamespace(
+        app=app,
+        current_user=lambda: user,
+        get_db=lambda: object(),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "_authorized_student",
+        lambda implementation, db, actual_user, sid: student,
+    )
+    monkeypatch.setattr(
+        route_module,
+        "transition_snapshot",
+        lambda implementation, db, actual_student, school_id, viewer_role: {
+            "student": {"id": int(actual_student.id)},
+            "schoolID": school_id,
+            "viewerRole": viewer_role,
+        },
+    )
+
+    route_module.install_v1_transition_snapshot_routes(implementation)
+    route_module.install_v1_transition_snapshot_routes(implementation)
+
+    matching = [
+        child
+        for route in app.routes
+        for child in getattr(getattr(route, "original_router", route), "routes", [route])
+        if getattr(child, "path", None) == "/v1/students/{sid}/transition-snapshot"
+    ]
+    assert len(matching) == 1
+
+    client = TestClient(app)
+    response = client.get("/v1/students/23/transition-snapshot")
+    assert response.status_code == 200
+    assert response.json() == {
+        "student": {"id": 23},
+        "schoolID": 17,
+        "viewerRole": "teacher",
+    }
+    assert client.post("/v1/students/23/transition-snapshot").status_code == 405

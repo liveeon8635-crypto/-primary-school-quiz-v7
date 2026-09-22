@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from fastapi import Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from changying.domain.learning_evidence import EVIDENCE_TYPES
 from changying.domain.learning_evidence_growth_profile import (
@@ -120,7 +120,9 @@ def install_v1_transition_snapshot_routes(implementation: ModuleType) -> None:
     if getattr(app.state, "v1_transition_snapshot_routes_installed", False):
         return
 
-    @app.get("/v1/students/{sid}/transition-snapshot", include_in_schema=False)
+    router = APIRouter()
+
+    @router.get("/v1/students/{sid}/transition-snapshot", include_in_schema=False)
     def read_transition_snapshot(
         sid: int,
         user=Depends(implementation.current_user),
@@ -135,6 +137,7 @@ def install_v1_transition_snapshot_routes(implementation: ModuleType) -> None:
             user.role,
         )
 
+    app.include_router(router)
     app.state.v1_transition_snapshot_routes_installed = True
 
 
