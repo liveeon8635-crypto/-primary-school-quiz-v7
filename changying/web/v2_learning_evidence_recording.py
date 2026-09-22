@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from types import ModuleType
 from typing import Any
 
-from fastapi import Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from changying.domain.learning_evidence import LearningEvidence
@@ -153,7 +153,9 @@ def install_v2_learning_evidence_routes(implementation: ModuleType) -> None:
     if getattr(app.state, "v2_learning_evidence_routes_installed", False):
         return
 
-    @app.get("/v2/students/{sid}/learning-evidence/manual", include_in_schema=False)
+    router = APIRouter()
+
+    @router.get("/v2/students/{sid}/learning-evidence/manual", include_in_schema=False)
     def list_manual_evidence(
         sid: int,
         user=Depends(implementation.current_user),
@@ -186,7 +188,7 @@ def install_v2_learning_evidence_routes(implementation: ModuleType) -> None:
             "appendOnly": True,
         }
 
-    @app.get("/v2/students/{sid}/learning-evidence/events", include_in_schema=False)
+    @router.get("/v2/students/{sid}/learning-evidence/events", include_in_schema=False)
     def list_manual_evidence_events(
         sid: int,
         user=Depends(implementation.current_user),
@@ -248,7 +250,7 @@ def install_v2_learning_evidence_routes(implementation: ModuleType) -> None:
             "includesRetracted": True,
         }
 
-    @app.post("/v2/students/{sid}/learning-evidence", include_in_schema=False)
+    @router.post("/v2/students/{sid}/learning-evidence", include_in_schema=False)
     def create_manual_evidence(
         sid: int,
         body: LearningEvidenceCreateBody,
@@ -300,7 +302,7 @@ def install_v2_learning_evidence_routes(implementation: ModuleType) -> None:
             "appendOnly": True,
         }
 
-    @app.post("/v2/learning-evidence/{event_id}/retract", include_in_schema=False)
+    @router.post("/v2/learning-evidence/{event_id}/retract", include_in_schema=False)
     def retract_manual_evidence(
         event_id: int,
         body: LearningEvidenceRetractBody,
@@ -365,6 +367,7 @@ def install_v2_learning_evidence_routes(implementation: ModuleType) -> None:
             "appendOnly": True,
         }
 
+    app.include_router(router)
     app.state.v2_learning_evidence_routes_installed = True
 
 
