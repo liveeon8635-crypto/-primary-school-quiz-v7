@@ -48,12 +48,12 @@ def test_favicon_route_returns_png_and_is_idempotent():
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/png")
     assert _png_dimensions(response.content) == (180, 180)
-    matching = [
-        child
+    matching = {
+        id(child): child
         for route in app.routes
         for child in getattr(getattr(route, "original_router", route), "routes", [route])
         if getattr(child, "path", None) == "/favicon.ico"
-    ]
+    }
     assert len(matching) == 1
 
 
