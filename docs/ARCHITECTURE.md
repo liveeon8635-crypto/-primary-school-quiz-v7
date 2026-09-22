@@ -121,28 +121,36 @@ GitHub Actions 使用 Python 3.14，在分支 push 和 `main` PR 上执行完整
 
 以上测试全部使用临时 SQLite / 测试专用配置，不连接生产 PostgreSQL。阶段 C1 完成后，后续服务层抽离必须保持这些契约继续全绿。
 
-### 阶段 C2：服务层（进行中）
+### 阶段 C2：服务层（本轮边界已收口，按需继续）
 
 优先把“数据库查询 + 业务计算”迁到 service 层，但路由 URL 和 ORM 表保持不变。当前 main 已存在并由兼容桥实际接线的数据库读侧包括：
 
 ```text
 changying/services/
-  assignments.py       # AssignmentService
-  teaching.py          # TeachingService
-  points.py            # PointService
-  wrong_questions.py   # WrongQuestionService
-  followups.py         # FollowUpService
+  assignments.py          # AssignmentService
+  teaching.py             # TeachingService（含已抽离教学题目读侧）
+  points.py               # PointService
+  wrong_questions.py      # WrongQuestionService
+  followups.py            # FollowUpService
+  transition_plans.py     # TransitionPlanService
+  parent_link_history.py  # ParentLinkHistoryService
+  class_history.py        # ClassHistoryService
+  academic_summary.py     # AcademicSummaryService
 ```
 
 以上服务均通过 `changying.compat.legacy.apply_legacy_compatibility` 注入 legacy 全局调用契约，现有 FastAPI URL、ORM 表和返回结构不变；对应 C2 测试覆盖 school/student/teacher/class scope、排序、limit 与序列化契约。
 
-C2 后续不再按旧文档重复创建 `homeroom.py` 或 `commercial.py` 占位模块。下一批只在能够从 legacy 找到**单一、已有测试保护、无 schema 变化**的数据库读侧边界时抽离；优先读侧，写侧继续保留在 legacy，避免服务层整理与生产数据语义同时变化。
+本轮 C2 已把能够明确识别、已有隔离测试保护且不要求 schema 变化的边界完成抽离，包括衔接计划持久化、家长关联历史、班级历史、学业汇总和教学题目读侧；legacy 中对应重复读查询已改为薄委托。后续不再为了“服务层完整”创建占位 service，也不批量迁移写侧。只有出现新的**单一、已测试、维护收益明确、无 schema 变化**边界时再继续抽离。
 
-当前阶段完成条件：核心教学读侧的直接 ORM 查询逐批减少，兼容桥仍保持原调用契约，C1/C2 集成测试持续全绿。之后才进入阶段 D Router 拆分。
+本轮 C2 收口判据已经满足：兼容桥仍保持原调用契约，C1/C2 集成测试持续全绿，生产数据语义未改变。legacy 中仍存在大量数据库型业务，这属于后续长期迁移范围，不要求在一次 P2 整理中清零。
 
-### 阶段 D：API Router
+### 阶段 D：API Router（模块化边界已完成，legacy 单体按需继续）
 
-在集成测试覆盖后，再把同领域路由迁入 `APIRouter`，保持公开 URL 和返回结构不变。
+在集成测试覆盖后，把同领域路由迁入 `APIRouter`，保持公开 URL 和返回结构不变。
+
+截至 2026-09-22，本轮已经完成当前独立 Web 模块的 Router 迁移：教学周期、衔接快照/计划、往期教学、学习证据读写、教学证据上下文、互动课堂复盘/讲义/讲解评价/随堂检测/课堂执行、V1 shell、认证 handoff、产品首页与 favicon 等均通过独立 `APIRouter` 注册。对应 PR #337—#354 均经过 exact-head CI/Harness Guard，并在合并后由 Render 自动部署和生产只读基线验收。
+
+`app_v924.py` 仍保留大量 legacy 直接路由。这里不以“路由数量归零”为当前收口条件：只有某一同领域路由已经具备隔离测试、稳定 service 边界且无需同时修改 ORM/schema 时，才继续从单体迁出，避免为了结构整洁制造生产风险。
 
 ### 阶段 E：数据库层
 
