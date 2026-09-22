@@ -154,6 +154,7 @@ def install_product_shell(app: FastAPI) -> None:
         return
 
     router = APIRouter()
+    router = APIRouter()
     legacy_root = None
     for route in list(app.router.routes):
         if getattr(route, "path", None) == "/" and "GET" in getattr(route, "methods", set()):
@@ -179,6 +180,7 @@ def install_product_shell(app: FastAPI) -> None:
     def changying_product_home():
         return HTMLResponse(teacher_workbench_html())
 
+    app.include_router(router)
     app.include_router(router)
     app.state.product_shell_installed = True
 
