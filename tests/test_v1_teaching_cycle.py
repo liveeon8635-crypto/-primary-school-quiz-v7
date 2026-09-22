@@ -36,7 +36,7 @@ def test_router_preserves_read_only_response_and_is_installed_once(monkeypatch):
     matching = [
         child
         for route in app.routes
-        for child in getattr(route, "routes", [route])
+        for child in getattr(getattr(route, "original_router", route), "routes", [route])
         if getattr(child, "path", None) == "/v1/teaching-cycles"
     ]
     assert len(matching) == 1
