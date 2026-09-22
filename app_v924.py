@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import jwt
-from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Header, Depends, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, Response
@@ -7570,7 +7570,9 @@ def offline_page():
     return OFFLINE_HTML
 
 
-@app.get("/version")
+legacy_runtime_router = APIRouter()
+
+@legacy_runtime_router.get("/version")
 def version():
     return {"version":APP_VERSION,"status":"ok","schema":f"commercial-v{APP_VERSION.replace('.', '')}-operator-console"}
 
@@ -7579,7 +7581,7 @@ def version():
 
 
 
-@app.get("/probe-v1070")
+@legacy_runtime_router.get("/probe-v1070")
 def probe_v1070():
     return {
         "running":Path(__file__).name,
@@ -7601,7 +7603,7 @@ def probe_v1070():
         "classroomPointRuleCustomization":True
     }
 
-@app.get("/probe-v1063")
+@legacy_runtime_router.get("/probe-v1063")
 def probe_v1063():
     return {
         "running":Path(__file__).name,
@@ -7619,7 +7621,7 @@ def probe_v1063():
         "schoolLicensedFileUploadStillSupported":True
     }
 
-@app.get("/probe-v1062")
+@legacy_runtime_router.get("/probe-v1062")
 def probe_v1062():
     return {
         "running":Path(__file__).name,
@@ -7637,7 +7639,7 @@ def probe_v1062():
         "restoreSchoolPointDefaults":True
     }
 
-@app.get("/probe-v1061")
+@legacy_runtime_router.get("/probe-v1061")
 def probe_v1061():
     return {
         "running":Path(__file__).name,
@@ -7657,7 +7659,7 @@ def probe_v1061():
         "nonChoiceMediaAssignment":True
     }
 
-@app.get("/probe-v1060")
+@legacy_runtime_router.get("/probe-v1060")
 def probe_v1060():
     return {"running":Path(__file__).name,"version":APP_VERSION,"ok":True,"brand":"长缨辅学",
             "releaseChannel":RELEASE_CHANNEL,"releaseName":RELEASE_NAME,"stableRelease":True,
@@ -7665,19 +7667,19 @@ def probe_v1060():
             "personalizedReinforcementAssignment":True,"automaticMasteryClosure":True,"authenticQuestionQualityGuard":True,"aiQuestionTypeControl":True,"nonChoiceGeneration":True,"nonChoiceMediaAssignment":True,
             "teacherFinalDecision":True,"studentWrongBook":True,"schemaVersion":SCHEMA_VERSION}
 
-@app.get("/probe-v1050")
+@legacy_runtime_router.get("/probe-v1050")
 def probe_v1050():
     return {"running":Path(__file__).name,"version":APP_VERSION,"ok":True,"brand":"长缨辅学","releaseChannel":RELEASE_CHANNEL,"releaseName":RELEASE_NAME,"stableRelease":True,"aiQuestionReviewWorkbench":True,"editableAIQuestions":True,"selectiveQuestionSave":True,"directAIAssignment":True,"autoPaperCreation":True,"teacherReviewRequired":True,"schemaVersion":SCHEMA_VERSION}
 
-@app.get("/probe-v1040")
+@legacy_runtime_router.get("/probe-v1040")
 def probe_v1040():
     return {"running":Path(__file__).name,"version":APP_VERSION,"ok":True,"brand":"长缨辅学","releaseChannel":RELEASE_CHANNEL,"releaseName":RELEASE_NAME,"stableRelease":True,"aiTeachingAssistant":True,"aiLessonWorkbench":True,"structuredLessonPreview":True,"editableLessonPlan":True,"saveToCustomTeaching":True,"classroomPracticeGeneration":True,"teacherReviewRequired":True,"schemaVersion":SCHEMA_VERSION}
 
-@app.get("/probe-v1030")
+@legacy_runtime_router.get("/probe-v1030")
 def probe_v1030():
     return {"running":Path(__file__).name,"version":APP_VERSION,"ok":True,"brand":"长缨辅学","releaseChannel":RELEASE_CHANNEL,"releaseName":RELEASE_NAME,"stableRelease":True,"aiTeachingAssistant":True,"aiQuestionGeneration":True,"aiLessonPlanning":True,"aiGradingAssist":True,"schoolAIConfig":True,"encryptedAPIKey":True,"teacherReviewRequired":True,"studentDataOptIn":True,"openAIResponses":True,"openAICompatible":True,"schemaVersion":SCHEMA_VERSION}
 
-@app.get("/probe-v1020")
+@legacy_runtime_router.get("/probe-v1020")
 def probe_v1020():
     return {
         "running":Path(__file__).name,"version":APP_VERSION,"ok":True,"brand":"长缨辅学",
@@ -7687,7 +7689,7 @@ def probe_v1020():
         "imageMaxMB":8,"videoMaxMB":50,"assignmentMediaMaxMB":100,"schemaVersion":SCHEMA_VERSION
     }
 
-@app.get("/probe-v1010")
+@legacy_runtime_router.get("/probe-v1010")
 def probe_v1010():
     return {
         "running":Path(__file__).name,"version":APP_VERSION,"ok":True,"brand":"长缨辅学",
@@ -7696,7 +7698,7 @@ def probe_v1010():
         "studentResourcePublishing":True,"databaseFileStorage":True,"schemaVersion":SCHEMA_VERSION
     }
 
-@app.get("/probe-v1000")
+@legacy_runtime_router.get("/probe-v1000")
 def probe_v1000():
     return {
         "running":Path(__file__).name,"version":APP_VERSION,"ok":True,"brand":"长缨辅学",
@@ -7706,7 +7708,7 @@ def probe_v1000():
         "orderLedger":True,"renewalManagement":True,"businessDashboard":True,"schemaVersion":SCHEMA_VERSION
     }
 
-@app.get("/probe-v926")
+@legacy_runtime_router.get("/probe-v926")
 def probe_v926():
     return {
         "running":Path(__file__).name,"version":APP_VERSION,"ok":True,"brand":"长缨辅学",
@@ -7716,7 +7718,7 @@ def probe_v926():
         "schemaVersion":SCHEMA_VERSION
     }
 
-@app.get("/probe-v925")
+@legacy_runtime_router.get("/probe-v925")
 def probe_v925():
     return {
         "running":Path(__file__).name,"version":APP_VERSION,"ok":True,"brand":"长缨辅学",
@@ -7726,7 +7728,7 @@ def probe_v925():
         "schemaVersion":SCHEMA_VERSION
     }
 
-@app.get("/probe-v924")
+@legacy_runtime_router.get("/probe-v924")
 def probe_v924():
     return {
         "running":Path(__file__).name,"version":APP_VERSION,"ok":True,"brand":"长缨辅学",
@@ -7736,23 +7738,23 @@ def probe_v924():
         "schemaVersion":SCHEMA_VERSION
     }
 
-@app.get("/probe-v923")
+@legacy_runtime_router.get("/probe-v923")
 def probe_v923():
     return {"running":Path(__file__).name,"version":APP_VERSION,"ok":True,"brand":"长缨辅学","releaseChannel":RELEASE_CHANNEL,"releaseName":RELEASE_NAME,"operatorConsole":True,"schoolPauseResume":True,"quotaOverrides":True,"planFilter":True,"operationLogs":True,"exactServiceEndDate":True,"schemaVersion":SCHEMA_VERSION}
 
-@app.get("/probe-v922")
+@legacy_runtime_router.get("/probe-v922")
 def probe_v922():
     return {"running":"app_v770.py","version":APP_VERSION,"ok":True,"brand":"长缨辅学","releaseChannel":RELEASE_CHANNEL,"releaseName":RELEASE_NAME,"operatorConsole":True,"commercialFollowUps":True,"followupDueKPI":True,"schemaVersion":SCHEMA_VERSION}
 
-@app.get("/probe-v921")
+@legacy_runtime_router.get("/probe-v921")
 def probe_v921():
     return {"running":"app_v770.py","version":APP_VERSION,"ok":True,"brand":"长缨辅学","releaseChannel":RELEASE_CHANNEL,"releaseName":RELEASE_NAME,"operatorConsole":True,"customerProfileEdit":True,"missingContactKPI":True,"schemaVersion":SCHEMA_VERSION}
 
-@app.get("/probe-v920")
+@legacy_runtime_router.get("/probe-v920")
 def probe_v920():
     return {"running":"app_v770.py","version":APP_VERSION,"ok":True,"brand":"长缨辅学","releaseChannel":RELEASE_CHANNEL,"releaseName":RELEASE_NAME,"operatorConsole":True,"customerCreate":True,"trialActivation":True,"renewalManagement":True,"expiryManagement":True,"adminPasswordReset":True,"paymentAutomation":False,"schemaVersion":SCHEMA_VERSION}
 
-@app.get("/probe-v910")
+@legacy_runtime_router.get("/probe-v910")
 def probe_v910():
     return {
         "running":"app_v770.py","version":APP_VERSION,"ok":True,"brand":"长缨辅学",
@@ -7762,7 +7764,7 @@ def probe_v910():
         "schemaVersion":SCHEMA_VERSION
     }
 
-@app.get("/probe-v900")
+@legacy_runtime_router.get("/probe-v900")
 def probe_v900():
     return {
         "running":"app_v770.py",
@@ -7779,7 +7781,7 @@ def probe_v900():
         "legacyServiceWorkerRetired":True
     }
 
-@app.get("/release")
+@legacy_runtime_router.get("/release")
 def public_release():
     return {
         "product":"长缨辅学",
@@ -7790,89 +7792,91 @@ def public_release():
         "webPrimary":True
     }
 
-@app.get("/probe-v890")
+@legacy_runtime_router.get("/probe-v890")
 def probe_v890():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","webPrimary":True,"growthReportLocalized":True,"releaseReadiness":True,"legacyServiceWorkerRetired":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v880")
+@legacy_runtime_router.get("/probe-v880")
 def probe_v880():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","studentGrowthProfile":True,"growthReportXlsx":True,"growthReportSheets":5,"webPrimary":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v874")
+@legacy_runtime_router.get("/probe-v874")
 def probe_v874():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","studentGrowthProfile":True,"classHistoryMobileLayout":True,"classHistoryTimeAware":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v873")
+@legacy_runtime_router.get("/probe-v873")
 def probe_v873():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","studentGrowthProfile":True,"classHistoryExactDedupe":True,"sameDayEventsPreserved":True,"classHistoryTimeAware":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v872")
+@legacy_runtime_router.get("/probe-v872")
 def probe_v872():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","studentGrowthProfile":True,"classHistoryDayDedupe":True,"sameDayRestoreLabel":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v871")
+@legacy_runtime_router.get("/probe-v871")
 def probe_v871():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","studentGrowthProfile":True,"classHistoryDates":True,"dedupeExactClassHistory":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v870")
+@legacy_runtime_router.get("/probe-v870")
 def probe_v870():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","webPrimary":True,"studentGrowthProfile":True,"growthProfileSearchEntry":True,"growthProfileClassEntry":True,"legacyServiceWorkerRetired":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v863")
+@legacy_runtime_router.get("/probe-v863")
 def probe_v863():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","webPrimary":True,"legacyServiceWorkerRetired":True,"cacheUnlock":True,"modalHidesBottomNav":True,"visualViewportKeyboardFix":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v862")
+@legacy_runtime_router.get("/probe-v862")
 def probe_v862():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","webPrimary":True,"modalHidesBottomNav":True,"visualViewportKeyboardFix":True,"focusedFieldAutoScroll":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v861")
+@legacy_runtime_router.get("/probe-v861")
 def probe_v861():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","webPrimary":True,"searchStatusZh":True,"mobileModalSafeBottom":True,"mobileScrollReset":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v860")
+@legacy_runtime_router.get("/probe-v860")
 def probe_v860():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","webPrimary":True,"globalSearch":True,"teacherQuickActions":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v843")
+@legacy_runtime_router.get("/probe-v843")
 def probe_v843():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","pwaTakeover":True,"offlineFallback":True,"cacheFirstNavigation":True,"serviceWorkerClaim":True,"standaloneManifest":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v842")
+@legacy_runtime_router.get("/probe-v842")
 def probe_v842():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","iosSilentStart":True,"startupNetworkRequests":False,"cacheFirstNavigation":True,"manualSessionResume":True,"pwaInstall":True,"safeArea":True,"offlineShell":True,"deepLinks":True,"nativeScaffold":True,"notificationPermission":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v841")
+@legacy_runtime_router.get("/probe-v841")
 def probe_v841():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"brand":"长缨辅学","friendlyOffline":True,"autoReconnect":True,"pwaInstall":True,"safeArea":True,"offlineShell":True,"deepLinks":True,"nativeScaffold":True,"notificationPermission":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v840")
+@legacy_runtime_router.get("/probe-v840")
 def probe_v840():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"pwaInstall":True,"safeArea":True,"offlineShell":True,"deepLinks":True,"nativeScaffold":True,"notificationPermission":True,"schemaVersion":"8.3.0"}
 
-@app.get("/probe-v831")
+@legacy_runtime_router.get("/probe-v831")
 def probe_v831():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"systemHealth":True,"backupExport":True,"accountDataExport":True,"deletionRequests":True,"legalPages":True,"securityHeaders":True,"schemaMigrations":True}
 
-@app.get("/probe-v820")
+@legacy_runtime_router.get("/probe-v820")
 def probe_v820():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"dailyWorkbench":True,"activeReminders":True,"callbackReminders":True,"staleFollowupReminders":True,"teacherHomeSummary":True,"followupCenter":True}
 
-@app.get("/probe-v810")
+@legacy_runtime_router.get("/probe-v810")
 def probe_v810():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"followupCenter":True,"classTodos":True,"growthTimeline":True,"parentCommunicationHistory":True,"followupExport":True,"dailyWorkbench":True,"activeReminders":True,"callbackReminders":True}
 
-@app.get("/probe-v790")
+@legacy_runtime_router.get("/probe-v790")
 def probe_v790():
     return {"running":"app_v770.py","version":"9.2.0","ok":True,"groups":True,"growthDashboard":True,"homeroomDashboard":True,"academicBehavior":True,"followupCenter":True,"growthTimeline":True,"parentCommunicationHistory":True,"dailyWorkbench":True,"activeReminders":True}
 
-@app.get("/probe-v740")
+@legacy_runtime_router.get("/probe-v740")
 def probe_v740():
     return {"running":"app_v740.py","version":"7.4.0","ok":True,"assignmentSnapshots":True,"classHistory":True,"customTeaching":True,"adaptiveABC":True,"stableFixes":True}
 
-@app.get("/probe-v730")
+@legacy_runtime_router.get("/probe-v730")
 def probe_v730_compat():
     return {"running":"app_v740.py","version":"7.4.0","ok":True,"compat":"v730"}
+
+app.include_router(legacy_runtime_router)
 
 def fresh_html():
     return HTMLResponse(
