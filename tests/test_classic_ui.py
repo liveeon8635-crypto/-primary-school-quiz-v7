@@ -168,3 +168,26 @@ def test_production_classic_student_collection_bindings_use_query_selector_all()
     assert 'document.querySelectorAll(".startStageTest").forEach' in response.text
     assert '$(".openClassroomQuickCheck").forEach' not in response.text
     assert '$(".cy-classic-quick-submit").forEach' not in response.text
+
+
+
+def test_production_classic_student_sync_exposes_presenter_invitations():
+    from app import app as production_app
+
+    response = TestClient(production_app).get(
+        "/classic?legacy=1&unified=1&page=syncLearning",
+        headers={"Accept-Encoding": "identity"},
+    )
+
+    assert response.status_code == 200
+    assert 'api("/student/classroom-invitations")' in response.text
+    assert "课堂讲解邀请" in response.text
+    assert "查看课堂讲解邀请" in response.text
+    assert "classroomInvitationsClassic" in response.text
+    assert '"/student/classroom-invitations/"+b.dataset.id+"/respond"' in response.text
+    assert 'JSON.stringify({response:"accepted"})' in response.text
+    assert 'JSON.stringify({response:"declined"})' in response.text
+    assert "婉拒不会扣分，也不会被记录为知识掌握不足" in response.text
+    assert 'document.querySelectorAll(".openClassroomInvitation").forEach' in response.text
+    assert 'document.querySelectorAll(".cy-classic-invite-accept").forEach' in response.text
+    assert 'document.querySelectorAll(".cy-classic-invite-decline").forEach' in response.text
