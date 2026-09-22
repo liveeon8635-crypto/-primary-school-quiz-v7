@@ -30,6 +30,10 @@ from changying.web import v1 as v1_module
 V1_CLASSROOM_EXECUTION_MARKER = "changying_v1_classroom_execution_ab_v1"
 
 
+class ClassroomSessionOpenBody(BaseModel):
+    force_new: bool = False
+
+
 class SessionStateBody(BaseModel):
     status: str
 
@@ -196,11 +200,11 @@ def patch_v1_classroom_execution_html(html: str) -> str:
     handout_sections = [
         (
             "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div></section>';",
-            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px\"><button class=\"btn primary\" id=\"cy-enter-classroom\">进入课堂执行</button><span class=\"muted\" style=\"margin-left:10px\">由教师控制课堂节奏；学生讲解必须本人确认</span></div>':'')+'</section>';",
+            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2><div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px;display:flex;gap:8px;flex-wrap:wrap\"><button class=\"btn primary\" id=\"cy-enter-classroom\">查看/进入最近课堂</button>'+(interaction?.session?.status===\"completed\"?'<button class=\"btn\" id=\"cy-new-classroom\">新开一堂课</button>':'')+'<span class=\"muted\" style=\"margin-left:10px\">默认复用最近课堂；只有“新开一堂课”才创建新 session</span></div>':'')+'</section>';",
         ),
         (
             "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2>'+staleNotice+'<div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div></section>';",
-            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2>'+staleNotice+'<div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px\"><button class=\"btn primary\" id=\"cy-enter-classroom\">进入课堂执行</button><span class=\"muted\" style=\"margin-left:10px\">由教师控制课堂节奏；学生讲解必须本人确认</span></div>':'')+'</section>';",
+            "'<section class=\"section card\"><h2>课堂练习情况讲义草稿</h2>'+staleNotice+'<div id=\"cy-handout-editor\">'+draftEditor(draft)+'</div>'+(draft?'<div style=\"margin-top:14px;display:flex;gap:8px;flex-wrap:wrap\"><button class=\"btn primary\" id=\"cy-enter-classroom\">查看/进入最近课堂</button>'+(interaction?.session?.status===\"completed\"?'<button class=\"btn\" id=\"cy-new-classroom\">新开一堂课</button>':'')+'<span class=\"muted\" style=\"margin-left:10px\">默认复用最近课堂；只有“新开一堂课”才创建新 session</span></div>':'')+'</section>';",
         ),
     ]
     for handout_section, replacement in handout_sections:
@@ -215,7 +219,7 @@ def patch_v1_classroom_execution_html(html: str) -> str:
         raise RuntimeError("classroom review save binding anchor not found")
     html = html.replace(
         save_anchor,
-        "};bindSave();const enter=document.getElementById('cy-enter-classroom');if(enter)enter.onclick=async()=>{enter.disabled=true;try{const r=await api('/teacher/assignments/'+current+'/classroom-session',{method:'POST',body:'{}'});navigate('/v1/classroom-execution?session='+r.session.id)}catch(err){toast(err.message);enter.disabled=false}};",
+        "};bindSave();const enter=document.getElementById('cy-enter-classroom');if(enter)enter.onclick=async()=>{enter.disabled=true;try{const r=await api('/teacher/assignments/'+current+'/classroom-session',{method:'POST',body:JSON.stringify({force_new:false})});navigate('/v1/classroom-execution?session='+r.session.id)}catch(err){toast(err.message);enter.disabled=false}};const newer=document.getElementById('cy-new-classroom');if(newer)newer.onclick=async()=>{newer.disabled=true;try{const r=await api('/teacher/assignments/'+current+'/classroom-session',{method:'POST',body:JSON.stringify({force_new:true})});navigate('/v1/classroom-execution?session='+r.session.id)}catch(err){toast(err.message);newer.disabled=false}};",
         1,
     )
 
@@ -542,7 +546,12 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
         )
 
     @app.post("/teacher/assignments/{aid}/classroom-session")
-    def create_classroom_session(aid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    def create_classroom_session(
+        aid: int,
+        body: ClassroomSessionOpenBody,
+        u: Any = Depends(current_user),
+        db: Any = Depends(get_db),
+    ):
         implementation.need(u, "teacher")
         assignment = implementation.teacher_assignment_for(db, u.school_id, u.id, aid)
         if not assignment:
@@ -561,7 +570,7 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
             raise HTTPException(400, "请先由教师生成并保存课堂复盘讲义")
         handout = _mapping(handout_row)
 
-        existing = db.execute(
+        open_session = db.execute(
             select(sessions)
             .where(
                 sessions.c.school_id == u.school_id,
@@ -571,8 +580,28 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
             )
             .order_by(sessions.c.id.desc())
         ).first()
-        if existing:
-            return {"created": False, **session_payload(db, u, int(_mapping(existing)["id"]))}
+        if open_session:
+            return {
+                "created": False,
+                "reused": True,
+                **session_payload(db, u, int(_mapping(open_session)["id"])),
+            }
+
+        latest_session = db.execute(
+            select(sessions)
+            .where(
+                sessions.c.school_id == u.school_id,
+                sessions.c.teacher_id == u.id,
+                sessions.c.source_assignment_id == aid,
+            )
+            .order_by(sessions.c.id.desc())
+        ).first()
+        if latest_session and not body.force_new:
+            return {
+                "created": False,
+                "reused": True,
+                **session_payload(db, u, int(_mapping(latest_session)["id"])),
+            }
 
         selected = unique_knowledge_keys(_json_list(handout["selected_knowledge_json"]))
         if not selected:
@@ -620,8 +649,24 @@ def install_v1_classroom_execution_routes(implementation: Any) -> None:
                     updated_at=now,
                 )
             )
-        append_event(db, u, sid, "session.created", payload={"sourceAssignmentID": aid, "handoutID": int(handout["id"]), "segmentCount": len(selected)})
-        implementation.audit(db, u, "classroom.session.create", f"session={sid};assignment={aid};segments={len(selected)}")
+        append_event(
+            db,
+            u,
+            sid,
+            "session.created",
+            payload={
+                "sourceAssignmentID": aid,
+                "handoutID": int(handout["id"]),
+                "segmentCount": len(selected),
+                "explicitNew": bool(body.force_new),
+            },
+        )
+        implementation.audit(
+            db,
+            u,
+            "classroom.session.create",
+            f"session={sid};assignment={aid};segments={len(selected)};force_new={int(bool(body.force_new))}",
+        )
         db.commit()
         return {"created": True, **session_payload(db, u, sid)}
 
