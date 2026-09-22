@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 from typing import Any
 
-from fastapi import Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, Text, UniqueConstraint, select
@@ -273,6 +273,8 @@ def install_v1_classroom_quick_check_routes(implementation: Any) -> None:
     if getattr(app.state, "v1_classroom_quick_check_routes_installed", False):
         return
 
+    router = APIRouter()
+
     tables = register_classroom_quick_check_tables(implementation)
     checks = tables["checks"]
     responses = tables["responses"]
@@ -429,7 +431,7 @@ def install_v1_classroom_quick_check_routes(implementation: Any) -> None:
             raise HTTPException(400, "正确答案索引无效")
         return question_text[:5000], cleaned, int(correct_index)
 
-    @app.get("/teacher/classroom-sessions/{sid}/quick-checks")
+    @router.get("/teacher/classroom-sessions/{sid}/quick-checks")
     def list_teacher_quick_checks(
         sid: int,
         u: Any = Depends(current_user),
@@ -446,7 +448,7 @@ def install_v1_classroom_quick_check_routes(implementation: Any) -> None:
         ).all()
         return [teacher_payload(db, _mapping(row)) for row in rows]
 
-    @app.post("/teacher/classroom-sessions/{sid}/segments/{segid}/quick-checks/draft")
+    @router.post("/teacher/classroom-sessions/{sid}/segments/{segid}/quick-checks/draft")
     def create_quick_check_draft(
         sid: int,
         segid: int,
@@ -576,7 +578,7 @@ def install_v1_classroom_quick_check_routes(implementation: Any) -> None:
         row = check_row(db, u, sid, int(qid))
         return teacher_payload(db, row)
 
-    @app.put("/teacher/classroom-sessions/{sid}/quick-checks/{qid}")
+    @router.put("/teacher/classroom-sessions/{sid}/quick-checks/{qid}")
     def edit_quick_check(
         sid: int,
         qid: int,
@@ -608,7 +610,7 @@ def install_v1_classroom_quick_check_routes(implementation: Any) -> None:
         db.commit()
         return teacher_payload(db, check_row(db, u, sid, qid))
 
-    @app.post("/teacher/classroom-sessions/{sid}/quick-checks/{qid}/state")
+    @router.post("/teacher/classroom-sessions/{sid}/quick-checks/{qid}/state")
     def set_quick_check_state(
         sid: int,
         qid: int,
@@ -690,7 +692,7 @@ def install_v1_classroom_quick_check_routes(implementation: Any) -> None:
         db.commit()
         return teacher_payload(db, check_row(db, u, sid, qid))
 
-    @app.post("/teacher/classroom-sessions/{sid}/quick-checks/{qid}/decision")
+    @router.post("/teacher/classroom-sessions/{sid}/quick-checks/{qid}/decision")
     def decide_after_quick_check(
         sid: int,
         qid: int,
@@ -751,7 +753,7 @@ def install_v1_classroom_quick_check_routes(implementation: Any) -> None:
             "quickCheck": teacher_payload(db, check_row(db, u, sid, qid)),
         }
 
-    @app.get("/student/classroom-quick-checks")
+    @router.get("/student/classroom-quick-checks")
     def student_quick_checks(
         u: Any = Depends(current_user),
         db: Any = Depends(get_db),
@@ -843,7 +845,7 @@ def install_v1_classroom_quick_check_routes(implementation: Any) -> None:
             )
         return out
 
-    @app.post("/student/classroom-quick-checks/{qid}/respond")
+    @router.post("/student/classroom-quick-checks/{qid}/respond")
     def respond_quick_check(
         qid: int,
         body: QuickCheckResponseBody,
@@ -948,6 +950,7 @@ def install_v1_classroom_quick_check_routes(implementation: Any) -> None:
         methods=["GET"],
         include_in_schema=False,
     )
+    app.include_router(router)
     app.state.v1_classroom_quick_check_routes_installed = True
 
 
