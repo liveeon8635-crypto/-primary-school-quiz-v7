@@ -33,7 +33,7 @@ def test_router_preserves_read_only_response_and_is_installed_once(monkeypatch):
     route_module.install_v1_teaching_cycle_routes(implementation)
     route_module.install_v1_teaching_cycle_routes(implementation)
 
-    matching = [route for route in app.routes if route.path == "/v1/teaching-cycles"]
+    matching = [route for route in app.routes if getattr(route, 'path', None) == "/v1/teaching-cycles"]
     assert len(matching) == 1
     response = TestClient(app).get("/v1/teaching-cycles")
     assert response.status_code == 200
