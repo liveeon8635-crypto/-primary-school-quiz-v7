@@ -123,23 +123,22 @@ GitHub Actions 使用 Python 3.14，在分支 push 和 `main` PR 上执行完整
 
 ### 阶段 C2：服务层（进行中）
 
-优先把“数据库查询 + 业务计算”迁到 service 层，但路由 URL 和 ORM 表保持不变：
+优先把“数据库查询 + 业务计算”迁到 service 层，但路由 URL 和 ORM 表保持不变。当前 main 已存在并由兼容桥实际接线的数据库读侧包括：
 
 ```text
 changying/services/
-  assignments.py
-  teaching.py
-  points.py
-  homeroom.py
-  commercial.py
+  assignments.py       # AssignmentService
+  teaching.py          # TeachingService
+  points.py            # PointService
+  wrong_questions.py   # WrongQuestionService
+  followups.py         # FollowUpService
 ```
 
-第一步从作业读侧开始：`AssignmentService` 接管提交方式、媒体计数和作业有效状态读取，
-由兼容桥注入现有 legacy 全局函数名。既有 FastAPI 路由继续保持原 URL、请求/返回结构和 ORM 表，
-先依靠 C1 集成安全网验证行为一致，再继续迁移写侧与其他 service。
+以上服务均通过 `changying.compat.legacy.apply_legacy_compatibility` 注入 legacy 全局调用契约，现有 FastAPI URL、ORM 表和返回结构不变；对应 C2 测试覆盖 school/student/teacher/class scope、排序、limit 与序列化契约。
 
-作业读侧稳定后开始第二个领域：`PointService` 首先接管学生积分 summary 聚合。
-同样由兼容桥保持原 `point_summary` 调用契约，先迁移可验证的读侧计算，再逐步处理积分流水查询与写侧操作。
+C2 后续不再按旧文档重复创建 `homeroom.py` 或 `commercial.py` 占位模块。下一批只在能够从 legacy 找到**单一、已有测试保护、无 schema 变化**的数据库读侧边界时抽离；优先读侧，写侧继续保留在 legacy，避免服务层整理与生产数据语义同时变化。
+
+当前阶段完成条件：核心教学读侧的直接 ORM 查询逐批减少，兼容桥仍保持原调用契约，C1/C2 集成测试持续全绿。之后才进入阶段 D Router 拆分。
 
 ### 阶段 D：API Router
 
