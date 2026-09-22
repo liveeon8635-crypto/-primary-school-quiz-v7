@@ -1632,13 +1632,15 @@ def recipient_students(db,a):
     return db.scalars(select(User).join(AssignmentRecipient,AssignmentRecipient.student_id==User.id).where(AssignmentRecipient.assignment_id==a.id,AssignmentRecipient.school_id==a.school_id,User.school_id==a.school_id,User.role=="student").order_by(User.name,User.id)).all()
 
 def class_history_rows(db,student_id,school_id):
-    rows=db.scalars(select(StudentClassHistory).where(StudentClassHistory.student_id==student_id,StudentClassHistory.school_id==school_id).order_by(StudentClassHistory.joined_at.desc(),StudentClassHistory.id.desc())).all()
-    out=[]
-    reason_names={"transfer":"调班","graduate":"毕业归档","restore":"恢复入班","":"在读"}
-    for x in rows:
-        c=db.get(SchoolClass,x.class_id)
-        out.append({"id":x.id,"classID":x.class_id,"className":c.name if c else f"班级#{x.class_id}","grade":c.grade if c else None,"joinedAt":school_local_iso(x.joined_at),"leftAt":school_local_iso(x.left_at) if x.left_at else None,"leaveReason":x.leave_reason,"leaveReasonName":reason_names.get(x.leave_reason,x.leave_reason or "在读"),"current":x.left_at is None})
-    return out
+    """Legacy callable; the query and response mapping live in the read service."""
+    from changying.services.class_history import ClassHistoryService
+
+    return ClassHistoryService(
+        history_model=StudentClassHistory,
+        class_model=SchoolClass,
+        select_fn=select,
+        local_iso=school_local_iso,
+    ).rows(db,student_id,school_id)
 
 def save_sub(db,u,aid,title,normalized,correct,total,score,completion_actor="student"):
     answers=json.dumps(normalized,ensure_ascii=False)
@@ -2355,17 +2357,14 @@ def class_period_profile(db,student_ids:list[int],school_id:int,start_utc:dateti
             "averageNet":round(totals["net"]/count,1) if count else 0,"autoRewards":auto_count}
 
 def student_academic_summary(db,student_id:int,school_id:int,days:int=30):
-    cutoff,_=period_cutoff_utc(days)
-    rows=db.scalars(select(Submission).where(
-        Submission.school_id==school_id,Submission.student_id==student_id,
-        Submission.submitted_at>=cutoff
-    ).order_by(Submission.submitted_at.desc())).all()
-    if not rows:return {"days":days,"count":0,"avgScore":None,"avgAccuracy":None,"latestScore":None}
-    scores=[int(x.score or 0) for x in rows]
-    acc=[(int(x.correct or 0)*100/int(x.total)) for x in rows if int(x.total or 0)>0]
-    return {"days":days,"count":len(rows),"avgScore":round(sum(scores)/len(scores),1),
-            "avgAccuracy":round(sum(acc)/len(acc),1) if acc else None,
-            "latestScore":scores[0] if scores else None}
+    """Legacy callable; recent submission aggregation lives in the read service."""
+    from changying.services.academic_summary import AcademicSummaryService
+
+    return AcademicSummaryService(
+        submission_model=Submission,
+        select_fn=select,
+        period_cutoff_fn=period_cutoff_utc,
+    ).summary(db,student_id,school_id,days)
 
 def _progress_streak_from_trend(trend:list[dict]):
     if len(trend)<2:return 0
