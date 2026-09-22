@@ -229,9 +229,10 @@ def test_transition_snapshot_router_is_get_only_and_installed_once(monkeypatch):
     route_module.install_v1_transition_snapshot_routes(implementation)
 
     matching = [
-        route
+        child
         for route in app.routes
-        if getattr(route, "path", None) == "/v1/students/{sid}/transition-snapshot"
+        for child in getattr(getattr(route, "original_router", route), "routes", [route])
+        if getattr(child, "path", None) == "/v1/students/{sid}/transition-snapshot"
     ]
     assert len(matching) == 1
 
