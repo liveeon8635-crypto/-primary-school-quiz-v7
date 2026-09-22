@@ -99,12 +99,14 @@ def test_v1_execution_patch_contains_teacher_and_student_consent_pages():
     assert "完成本堂课并进入课堂复盘" in html
     assert "cy-session-complete-bottom" in html
     assert "segs.every(x=>x.status==='completed')" in html
-    assert "进入课堂执行（最近课堂）" in html
+    assert "查看已完成课堂" in html
+    assert "进入未结束课堂" in html
     assert "新开一堂课" in html
     assert "force_new:false" in html
     assert "force_new:true" in html
     assert "取消未开始课堂并返回复盘" in html
     assert "interaction?.session?.id" in html
+    assert "openSession?.id" in html
 
 def test_runtime_phase_ab_classroom_execution(tmp_path):
     db_path = tmp_path / "classroom-execution.sqlite3"
