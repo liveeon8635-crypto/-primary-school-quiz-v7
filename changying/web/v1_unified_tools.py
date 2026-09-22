@@ -8,7 +8,7 @@ permission, or write semantics change.
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse
 
 from changying.web import v1 as v1_module
@@ -115,7 +115,9 @@ def install_v1_unified_tool_route(app: FastAPI) -> None:
     if getattr(app.state, "v1_unified_tool_route_installed", False):
         return
 
-    @app.get(V1_UNIFIED_TOOL_PATH, include_in_schema=False)
+    router = APIRouter()
+
+    @router.get(V1_UNIFIED_TOOL_PATH, include_in_schema=False)
     def v1_unified_tool():
         return HTMLResponse(
             unified_tool_html(),
@@ -125,6 +127,7 @@ def install_v1_unified_tool_route(app: FastAPI) -> None:
             },
         )
 
+    app.include_router(router)
     app.state.v1_unified_tool_route_installed = True
 
 
