@@ -14,6 +14,7 @@ from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueCon
 from changying.services.assignments import teacher_assignment_rows
 from changying.services.classroom_review import (
     build_anonymized_handout_prompt,
+    build_deterministic_interaction_handout_summary,
     classroom_interaction_summary,
     classroom_review_summary,
 )
@@ -561,6 +562,12 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
         ).strip()
         if not content:
             raise HTTPException(502, "AI 未返回有效讲义内容")
+        interaction_summary = build_deterministic_interaction_handout_summary(
+            summary,
+            selected_knowledge=selected_knowledge,
+        )
+        if interaction_summary:
+            content = content.rstrip() + "\n\n" + interaction_summary
         title = (
             f"{summary['class']['name']} · {summary['assignment']['title']} "
             "课堂练习复盘讲义"
