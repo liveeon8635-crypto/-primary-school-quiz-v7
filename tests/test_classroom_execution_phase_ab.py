@@ -94,6 +94,8 @@ def test_v1_execution_patch_contains_teacher_and_student_consent_pages():
     assert "你可以自主选择接受或婉拒" in html
     assert "不是公开排名，也不会自动指定学生" in html
     assert "婉拒不会扣分" in html
+    assert "navigate('/v1/classroom-review?assignment='+s.sourceAssignmentID)" in html
+    assert "status:'completed'" in html
 
 def test_runtime_phase_ab_classroom_execution(tmp_path):
     db_path = tmp_path / "classroom-execution.sqlite3"
