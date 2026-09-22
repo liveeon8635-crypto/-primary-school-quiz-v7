@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 V1_AUTH_HANDOFF_COOKIE = "cy_v1_auth_handoff"
@@ -42,7 +42,9 @@ def install_v1_auth_handoff_routes(implementation: ModuleType) -> None:
     if getattr(app.state, "v1_auth_handoff_routes_installed", False):
         return
 
-    @app.post(V1_AUTH_HANDOFF_STAGE_PATH, include_in_schema=False)
+    router = APIRouter()
+
+    @router.post(V1_AUTH_HANDOFF_STAGE_PATH, include_in_schema=False)
     def stage_v1_auth_handoff(
         request: Request,
         authorization: str | None = Header(default=None),
@@ -69,7 +71,7 @@ def install_v1_auth_handoff_routes(implementation: ModuleType) -> None:
         )
         return response
 
-    @app.post(V1_AUTH_HANDOFF_CONSUME_PATH, include_in_schema=False)
+    @router.post(V1_AUTH_HANDOFF_CONSUME_PATH, include_in_schema=False)
     def consume_v1_auth_handoff(
         request: Request,
         db=Depends(implementation.get_db),
@@ -117,6 +119,7 @@ def install_v1_auth_handoff_routes(implementation: ModuleType) -> None:
         _delete_handoff_cookie(response, request)
         return response
 
+    app.include_router(router)
     app.state.v1_auth_handoff_routes_installed = True
 
 
