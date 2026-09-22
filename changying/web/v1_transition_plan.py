@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from types import ModuleType
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from changying.domain.transition_plan_storage import install_transition_plan_model
 from changying.services.transition_plans import TransitionPlanService
@@ -55,14 +55,15 @@ def install_v1_transition_plan_routes(implementation: ModuleType) -> None:
     # Additive table creation only. Existing tables/data are untouched.
     table.create(bind=implementation.engine, checkfirst=True)
     service = TransitionPlanService(table=table, select_fn=implementation.select, audit_log_model=implementation.AuditLog)
+    router = APIRouter()
 
-    @app.get("/v1/students/{sid}/transition-plans", include_in_schema=False)
+    @router.get("/v1/students/{sid}/transition-plans", include_in_schema=False)
     def list_transition_plans(sid: int, user=Depends(implementation.current_user), db=Depends(implementation.get_db)):
         _authorized_student(implementation, db, user, sid)
         rows = service.list_rows(db, school_id=int(user.school_id), student_id=int(sid))
         return {"studentID": sid, "plans": [_row(x) for x in rows]}
 
-    @app.post("/v1/students/{sid}/transition-plans", include_in_schema=False)
+    @router.post("/v1/students/{sid}/transition-plans", include_in_schema=False)
     async def create_transition_plan(sid: int, request: Request, user=Depends(implementation.current_user), db=Depends(implementation.get_db)):
         if user.role not in {"teacher", "admin"}:
             raise HTTPException(403, "仅教师或管理员可保存衔接计划")
@@ -92,7 +93,7 @@ def install_v1_transition_plan_routes(implementation: ModuleType) -> None:
         )
         return _row(saved)
 
-    @app.post("/v1/students/{sid}/transition-plans/{plan_id}/close", include_in_schema=False)
+    @router.post("/v1/students/{sid}/transition-plans/{plan_id}/close", include_in_schema=False)
     def close_transition_plan(sid: int, plan_id: int, user=Depends(implementation.current_user), db=Depends(implementation.get_db)):
         if user.role not in {"teacher", "admin"}:
             raise HTTPException(403, "仅教师或管理员可关闭衔接计划")
@@ -105,6 +106,7 @@ def install_v1_transition_plan_routes(implementation: ModuleType) -> None:
             raise HTTPException(404, "衔接计划不存在")
         return _row(saved)
 
+    app.include_router(router)
     app.state.v1_transition_plan_routes_installed = True
 
 
