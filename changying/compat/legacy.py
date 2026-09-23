@@ -60,6 +60,7 @@ from changying.web.product_shell import (
     install_product_shell,
     teacher_workbench_html,
 )
+from changying.web.operator_usage_metering import install_operator_usage_metering_routes
 from changying.web.pwa import (
     ICON_180_PNG,
     ICON_192_PNG,
@@ -394,6 +395,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_product_shell(implementation.app)
     install_product_visibility_routes(implementation.app)
     install_health_revision_route(implementation.app)
+    install_operator_usage_metering_routes(implementation)
     install_classic_ui_patch(implementation.app)
     install_v1_classic_embed_bootstrap()
     install_v1_classic_gzip_embed(implementation.app)
