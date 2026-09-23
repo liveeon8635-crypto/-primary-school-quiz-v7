@@ -61,6 +61,7 @@ from changying.web.product_shell import (
     teacher_workbench_html,
 )
 from changying.web.operator_usage_metering import install_operator_usage_metering_routes
+from changying.web.operator_console_legacy import OPERATOR_HTML
 from changying.web.pwa import (
     ICON_180_PNG,
     ICON_192_PNG,
@@ -229,6 +230,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.assignment_mode_name = assignment_mode_name
     implementation.assignment_status = assignment_status
     implementation.manual_question_meta = manual_question_meta
+    implementation.OPERATOR_HTML = OPERATOR_HTML
     implementation.COMMERCIAL_PLANS = COMMERCIAL_PLANS
     implementation.SUBSCRIPTION_STATUS_NAMES = SUBSCRIPTION_STATUS_NAMES
     implementation.FEATURE_NAMES = FEATURE_NAMES
