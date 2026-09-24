@@ -11,6 +11,8 @@ from collections import Counter, defaultdict
 import json
 from typing import Any
 
+from changying.utils.datetime_tools import school_local_iso
+
 
 def _json_list(raw: Any) -> list[Any]:
     try:
@@ -101,7 +103,7 @@ def classroom_review_summary(
                 "correct": int(sub.correct) if sub is not None else None,
                 "total": int(sub.total) if sub is not None else None,
                 "submittedAt": (
-                    sub.submitted_at.isoformat(timespec="minutes")
+                    school_local_iso(sub.submitted_at)
                     if sub is not None and getattr(sub, "submitted_at", None)
                     else ""
                 ),
@@ -210,11 +212,7 @@ def classroom_review_summary(
             "id": int(assignment.id),
             "title": str(getattr(assignment, "title", "") or ""),
             "dueDate": str(getattr(assignment, "due_date", "") or ""),
-            "createdAt": (
-                assignment.created_at.isoformat(timespec="minutes")
-                if getattr(assignment, "created_at", None)
-                else ""
-            ),
+            "createdAt": school_local_iso(getattr(assignment, "created_at", None)),
         },
         "class": {
             "id": int(class_row.id),
@@ -263,12 +261,7 @@ def _row_value(row: Any, key: str, default: Any = None) -> Any:
 
 
 def _iso_minute(value: Any) -> str:
-    if not value:
-        return ""
-    try:
-        return value.isoformat(timespec="minutes")
-    except Exception:
-        return str(value)
+    return school_local_iso(value) if value else ""
 
 
 def classroom_interaction_summary(
