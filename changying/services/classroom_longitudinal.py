@@ -106,7 +106,24 @@ def classroom_student_snapshot(
     ).mappings().all()
 
     point_table = getattr(implementation.PointLedger, "__table__", None)
-    presentation_select = select(
+    presentation_from = (
+        turns.join(
+            segments,
+            (segments.c.id == turns.c.segment_id)
+            & (segments.c.school_id == turns.c.school_id),
+        )
+        .join(
+            sessions,
+            (sessions.c.id == turns.c.session_id)
+            & (sessions.c.school_id == turns.c.school_id),
+        )
+        .outerjoin(
+            reviews,
+            (reviews.c.turn_id == turns.c.id)
+            & (reviews.c.school_id == turns.c.school_id),
+        )
+    )
+    presentation_columns = [
         turns.c.id.label("turn_id"),
         turns.c.session_id,
         turns.c.segment_id,
@@ -125,48 +142,15 @@ def classroom_student_snapshot(
         reviews.c.point_reason,
         reviews.c.points_granted_at,
         reviews.c.point_ledger_id,
-    ).select_from(
-        turns.join(
-            segments,
-            (segments.c.id == turns.c.segment_id)
-            & (segments.c.school_id == turns.c.school_id),
-        )
-        .join(
-            sessions,
-            (sessions.c.id == turns.c.session_id)
-            & (sessions.c.school_id == turns.c.school_id),
-        )
-        .outerjoin(
-            reviews,
-            (reviews.c.turn_id == turns.c.id)
-            & (reviews.c.school_id == turns.c.school_id),
-        )
-    )
+    ]
     if point_table is not None:
-        presentation_select = presentation_select.add_columns(
-            point_table.c.reversed.label("point_reversed")
-        ).select_from(
-            turns.join(
-                segments,
-                (segments.c.id == turns.c.segment_id)
-                & (segments.c.school_id == turns.c.school_id),
-            )
-            .join(
-                sessions,
-                (sessions.c.id == turns.c.session_id)
-                & (sessions.c.school_id == turns.c.school_id),
-            )
-            .outerjoin(
-                reviews,
-                (reviews.c.turn_id == turns.c.id)
-                & (reviews.c.school_id == turns.c.school_id),
-            )
-            .outerjoin(
-                point_table,
-                (point_table.c.id == reviews.c.point_ledger_id)
-                & (point_table.c.school_id == turns.c.school_id),
-            )
+        presentation_from = presentation_from.outerjoin(
+            point_table,
+            (point_table.c.id == reviews.c.point_ledger_id)
+            & (point_table.c.school_id == turns.c.school_id),
         )
+        presentation_columns.append(point_table.c.reversed.label("point_reversed"))
+    presentation_select = select(*presentation_columns).select_from(presentation_from)
 
     presentation_rows = db.execute(
         presentation_select.where(
