@@ -3056,10 +3056,30 @@ def deletion_json(db,row):
 
 AI_PROVIDERS=("openai_responses","openai_compatible")
 AI_DEFAULT_BASE="https://api.openai.com/v1"
+AI_DEEPSEEK_CURRENT_MODEL="deepseek-flash"
+AI_DEEPSEEK_LEGACY_MODEL_ALIASES={
+    "deepseek-v4-flash":AI_DEEPSEEK_CURRENT_MODEL,
+    "deepseek-v4-flash-vision-exp":AI_DEEPSEEK_CURRENT_MODEL,
+}
 AI_HOURLY_LIMIT=max(5,min(int(os.getenv("AI_HOURLY_LIMIT","60") or 60),1000))
 AI_RESOURCE_MAX_CHARS=24000
 AI_GRADE_MAX_IMAGES=4
 AI_GRADE_MAX_IMAGE_BYTES=8*1024*1024
+
+def _ai_is_official_deepseek_base(base):
+    value=(base or "").strip().rstrip("/").lower()
+    return value in ("https://api.deepseek.com","https://api.deepseek.com/v1")
+
+def _ai_effective_model(provider,base,model):
+    raw=(model or "").strip()
+    if provider=="openai_compatible" and _ai_is_official_deepseek_base(base):
+        return AI_DEEPSEEK_LEGACY_MODEL_ALIASES.get(raw,raw)
+    return raw
+
+def _ai_model_truth(provider,base,model):
+    configured=(model or "").strip()
+    effective=_ai_effective_model(provider,base,configured)
+    return effective,configured if configured!=effective else ""
 
 def _ai_fernet():
     secret=(os.getenv("AI_CONFIG_SECRET") or os.getenv("JWT_SECRET") or "changying-ai-local-config-secret").encode("utf-8")
@@ -3086,20 +3106,24 @@ def _ai_env_key():
 def ai_config_payload(db,school_id):
     row=ai_config_for(db,school_id,False);env_key=bool(_ai_env_key())
     if not row:
-        return {"configured":False,"enabled":False,"provider":"openai_responses","baseURL":AI_DEFAULT_BASE,"model":os.getenv("AI_MODEL","").strip(),"hasKey":env_key,"keySource":"environment" if env_key else "","keyLast4":"","allowStudentData":False,"hourlyLimit":AI_HOURLY_LIMIT}
-    has_db=bool(row.api_key_cipher)
-    return {"configured":bool((row.model or os.getenv("AI_MODEL","")).strip() and (has_db or env_key)),"enabled":bool(row.enabled),"provider":row.provider,"baseURL":row.base_url or AI_DEFAULT_BASE,"model":row.model or os.getenv("AI_MODEL","").strip(),"hasKey":bool(has_db or env_key),"keySource":"database" if has_db else ("environment" if env_key else ""),"keyLast4":row.api_key_last4 if has_db else "","allowStudentData":bool(row.allow_student_data),"updatedAt":school_local_iso(row.updated_at),"hourlyLimit":AI_HOURLY_LIMIT}
+        provider="openai_responses";base=AI_DEFAULT_BASE;configured_model=os.getenv("AI_MODEL","").strip()
+        model,legacy_alias=_ai_model_truth(provider,base,configured_model)
+        return {"configured":False,"enabled":False,"provider":provider,"baseURL":base,"model":model,"configuredModel":configured_model,"legacyModelAlias":legacy_alias,"hasKey":env_key,"keySource":"environment" if env_key else "","keyLast4":"","allowStudentData":False,"hourlyLimit":AI_HOURLY_LIMIT}
+    has_db=bool(row.api_key_cipher);provider=(row.provider or "").strip();base=(row.base_url or AI_DEFAULT_BASE).strip().rstrip("/") or AI_DEFAULT_BASE
+    configured_model=(row.model or os.getenv("AI_MODEL","")).strip();model,legacy_alias=_ai_model_truth(provider,base,configured_model)
+    return {"configured":bool(configured_model and (has_db or env_key)),"enabled":bool(row.enabled),"provider":provider,"baseURL":base,"model":model,"configuredModel":configured_model,"legacyModelAlias":legacy_alias,"hasKey":bool(has_db or env_key),"keySource":"database" if has_db else ("environment" if env_key else ""),"keyLast4":row.api_key_last4 if has_db else "","allowStudentData":bool(row.allow_student_data),"updatedAt":school_local_iso(row.updated_at),"hourlyLimit":AI_HOURLY_LIMIT}
 
 def _ai_active_config(db,school_id):
     row=ai_config_for(db,school_id,False)
     if not row or not row.enabled:raise HTTPException(503,"AI 教学助手尚未启用，请联系学校管理员完成 AI 设置")
     provider=(row.provider or "").strip()
     if provider not in AI_PROVIDERS:raise HTTPException(500,"AI 服务商配置无效")
-    model=(row.model or os.getenv("AI_MODEL","")).strip()
-    if not model:raise HTTPException(503,"尚未配置 AI 模型")
+    base=(row.base_url or AI_DEFAULT_BASE).strip().rstrip("/") or AI_DEFAULT_BASE
+    configured_model=(row.model or os.getenv("AI_MODEL","")).strip()
+    if not configured_model:raise HTTPException(503,"尚未配置 AI 模型")
+    model=_ai_effective_model(provider,base,configured_model)
     api_key=_ai_decrypt_key(row.api_key_cipher) if row.api_key_cipher else _ai_env_key()
     if not api_key:raise HTTPException(503,"尚未配置 AI API Key")
-    base=(row.base_url or AI_DEFAULT_BASE).strip().rstrip("/") or AI_DEFAULT_BASE
     return row,provider,base,model,api_key
 
 def _ai_extract_text(data):
@@ -4260,7 +4284,7 @@ def save_admin_ai_config(b:AIConfigBody,u:User=Depends(current_user),db:Session=
     if provider not in AI_PROVIDERS:raise HTTPException(400,"AI 接口类型无效")
     base=(b.base_url or AI_DEFAULT_BASE).strip().rstrip("/")
     if not (base.startswith("https://") or base.startswith("http://localhost") or base.startswith("http://127.0.0.1")):raise HTTPException(400,"AI 接口地址必须使用 HTTPS")
-    model=(b.model or "").strip()
+    configured_model=(b.model or "").strip();model=_ai_effective_model(provider,base,configured_model)
     if b.enabled and not model:raise HTTPException(400,"启用 AI 前请填写模型名称")
     row=ai_config_for(db,u.school_id,True);row.provider=provider;row.base_url=base[:300];row.model=model[:120];row.enabled=bool(b.enabled);row.allow_student_data=bool(b.allow_student_data);row.updated_by=u.id;row.updated_at=datetime.utcnow()
     if b.clear_api_key:row.api_key_cipher="";row.api_key_last4=""
