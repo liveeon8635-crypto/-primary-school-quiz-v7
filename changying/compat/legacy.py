@@ -34,6 +34,7 @@ from changying.domain.growth import (
     progress_streak_from_trend,
 )
 from changying.security.passwords import hash_password, password_ok, password_version, verify_password
+from changying.security.login_rate import BoundedLoginRateLimiter, LoginRateLimitExceeded
 from changying.security.tokens import make_token as issue_token
 from changying.services.academic_summary import AcademicSummaryService
 from changying.services.assignments import AssignmentService
@@ -246,6 +247,34 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     implementation.verify_password = verify_password
     implementation.password_ok = password_ok
     implementation.password_version = password_version
+
+    login_rate_limiter = BoundedLoginRateLimiter(
+        window_seconds=implementation.LOGIN_RATE_WINDOW_SECONDS,
+        max_attempts=implementation.LOGIN_RATE_MAX_ATTEMPTS,
+        max_keys=2048,
+    )
+
+    def bounded_login_rate_check(request):
+        key = implementation._client_ip(request)
+        try:
+            login_rate_limiter.check(key)
+        except LoginRateLimitExceeded:
+            raise implementation.HTTPException(429, "登录请求过于频繁，请稍后再试")
+        return key
+
+    def bounded_login_rate_failure(key):
+        try:
+            login_rate_limiter.failure(key)
+        except LoginRateLimitExceeded:
+            raise implementation.HTTPException(429, "登录请求过于频繁，请稍后再试")
+
+    def bounded_login_rate_clear(key):
+        login_rate_limiter.clear(key)
+
+    implementation._bounded_login_rate_limiter = login_rate_limiter
+    implementation.login_rate_check = bounded_login_rate_check
+    implementation.login_rate_failure = bounded_login_rate_failure
+    implementation.login_rate_clear = bounded_login_rate_clear
 
     assignment_service = AssignmentService(
         assignment_submission_setting_model=implementation.AssignmentSubmissionSetting,
