@@ -45,6 +45,16 @@ def test_v1_session_refresh_migrates_legacy_token_into_shared_contract() -> None
     assert "clearAuthStorage()" in script
 
 
+def test_v1_session_refresh_enforces_required_password_change_before_identity() -> None:
+    script = _v1_script()
+
+    guard = "if(session?.mustChangePassword){toast('请先修改初始密码');await openClassic('/v1/tool?page=account');return}"
+    render_start = script.index("async function render()")
+    guard_index = script.index(guard, render_start)
+    identity_index = script.index("const choices=identitiesFor(session)", render_start)
+    assert guard_index < identity_index
+
+
 def test_v1_runtime_script_is_valid_javascript() -> None:
     result = subprocess.run(
         ["node", "--check", "-"],
