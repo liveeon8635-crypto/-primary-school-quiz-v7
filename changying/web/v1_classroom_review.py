@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, select
 
 from changying.services.assignments import teacher_assignment_rows
+from changying.utils.datetime_tools import school_local_iso
 from changying.services.classroom_review import (
     build_anonymized_handout_prompt,
     build_deterministic_interaction_handout_summary,
@@ -89,8 +90,8 @@ def _draft_payload(row: Any) -> dict[str, Any] | None:
         ],
         "teacherNotes": str(data["teacher_notes"] or ""),
         "content": str(data["content_text"] or ""),
-        "createdAt": data["created_at"].isoformat(timespec="minutes") if data["created_at"] else "",
-        "updatedAt": data["updated_at"].isoformat(timespec="minutes") if data["updated_at"] else "",
+        "createdAt": school_local_iso(data["created_at"]),
+        "updatedAt": school_local_iso(data["updated_at"]),
     }
 
 
@@ -338,11 +339,7 @@ def install_v1_classroom_review_routes(implementation: Any) -> None:
                     "id": int(open_map["id"]),
                     "status": str(open_map["status"] or ""),
                     "title": str(open_map["title"] or ""),
-                    "startedAt": (
-                        open_map["started_at"].isoformat(timespec="minutes")
-                        if open_map["started_at"]
-                        else ""
-                    ),
+                    "startedAt": school_local_iso(open_map["started_at"]),
                 }
 
             session_row = db.execute(
