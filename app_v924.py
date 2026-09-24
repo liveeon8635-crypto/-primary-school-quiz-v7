@@ -21,6 +21,7 @@ from changying.services.assessment_feedback import (
     student_assessment_context,
 )
 from changying.services.question_figure_quality import normalize_question_figure
+from changying.security.login_rate import BoundedLoginRateLimiter, LoginRateLimitExceeded
 
 # ---------------- Database ----------------
 BASE = Path(__file__).resolve().parent
@@ -2793,29 +2794,31 @@ def commercial_write_blocked(db,school_id):
     payload=subscription_payload(db,school_id)
     return payload["readOnly"],payload
 
-_commercial_auth_lock=threading.Lock()
-_commercial_auth_failures={}
 COMMERCIAL_AUTH_WINDOW_SECONDS=15*60
 COMMERCIAL_AUTH_MAX_ATTEMPTS=8
+COMMERCIAL_AUTH_MAX_CLIENTS=512
+_commercial_auth_limiter=BoundedLoginRateLimiter(
+    window_seconds=COMMERCIAL_AUTH_WINDOW_SECONDS,
+    max_attempts=COMMERCIAL_AUTH_MAX_ATTEMPTS,
+    max_keys=COMMERCIAL_AUTH_MAX_CLIENTS,
+)
 
 def commercial_operator(request:Request,x_commercial_key:Optional[str]=Header(default=None)):
     if not COMMERCIAL_ADMIN_KEY:
         raise HTTPException(503,"尚未配置 COMMERCIAL_ADMIN_KEY，商业运营控制台暂不可用")
     client=(request.headers.get("x-forwarded-for") or (request.client.host if request.client else "unknown")).split(",")[0].strip()[:120]
-    now=time.time()
-    with _commercial_auth_lock:
-        attempts=[t for t in _commercial_auth_failures.get(client,[]) if now-t<COMMERCIAL_AUTH_WINDOW_SECONDS]
-        _commercial_auth_failures[client]=attempts
-        if len(attempts)>=COMMERCIAL_AUTH_MAX_ATTEMPTS:
-            wait=max(1,int(COMMERCIAL_AUTH_WINDOW_SECONDS-(now-attempts[0])))
-            raise HTTPException(429,f"运营密钥尝试过多，请约 {max(1,wait//60)} 分钟后再试")
+    try:
+        _commercial_auth_limiter.check(client)
+    except LoginRateLimitExceeded:
+        raise HTTPException(429,"运营密钥尝试过多，请稍后再试")
     valid=bool(x_commercial_key) and secrets.compare_digest(x_commercial_key,COMMERCIAL_ADMIN_KEY)
     if not valid:
-        with _commercial_auth_lock:
-            _commercial_auth_failures.setdefault(client,[]).append(now)
+        try:
+            _commercial_auth_limiter.failure(client)
+        except LoginRateLimitExceeded:
+            raise HTTPException(429,"运营密钥尝试过多，请稍后再试")
         raise HTTPException(403,"商业运营密钥无效")
-    with _commercial_auth_lock:
-        _commercial_auth_failures.pop(client,None)
+    _commercial_auth_limiter.clear(client)
     return True
 
 def commercial_customer_for(db,school_id,create=False):
