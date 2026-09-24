@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, func, select
 
+from changying.utils.datetime_tools import school_local_iso
 from changying.web import v1 as v1_module
 
 
@@ -63,7 +64,7 @@ def _mapping(row: Any) -> dict[str, Any]:
 
 
 def _iso(value: Any) -> str:
-    return value.isoformat(timespec="minutes") if value else ""
+    return school_local_iso(value) if value else ""
 
 
 def _release_payload(row: Any, *, include_content: bool = False) -> dict[str, Any] | None:

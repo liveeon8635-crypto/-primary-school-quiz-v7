@@ -18,6 +18,7 @@ from changying.services.classroom_quick_check import (
     quick_check_prompt,
     quick_check_summary,
 )
+from changying.utils.datetime_tools import school_local_iso
 from changying.web import v1 as v1_module
 
 
@@ -102,7 +103,7 @@ def _mapping(row: Any) -> dict[str, Any]:
 
 
 def _iso(value: Any) -> str:
-    return value.isoformat(timespec="minutes") if value else ""
+    return school_local_iso(value) if value else ""
 
 
 def _json_list(raw: Any) -> list[Any]:
