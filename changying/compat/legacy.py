@@ -97,6 +97,7 @@ from changying.web.v1_classroom_handout_release import (
     install_v1_classroom_handout_release_patch,
     install_v1_classroom_handout_release_routes,
 )
+from changying.web.v1_classroom_longitudinal_profile import install_v1_classroom_longitudinal_profile
 from changying.web.v1_completion import install_v1_completion_patch
 from changying.web.v1_data_quality import install_v1_data_quality_patch
 from changying.web.v1_fast_path import install_v1_fast_path_patch, install_v1_fast_read_routes
@@ -465,6 +466,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_audit_localization()
     install_v1_history_focus_patch()
     install_v1_learning_evidence_profile(implementation)
+    install_v1_classroom_longitudinal_profile(implementation)
     install_v2_learning_evidence_recorder_patch()
     install_v2_learning_evidence_routes(implementation)
     install_v21_teaching_evidence_context_view_patch()
