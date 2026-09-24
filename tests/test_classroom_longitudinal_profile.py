@@ -21,6 +21,11 @@ from sqlalchemy import func, select
 import app_v924 as legacy
 from app import app  # noqa: F401
 
+# Importing the FastAPI app does not run lifespan/startup handlers in this
+# subprocess. Create the isolated SQLite schema and seed it explicitly.
+legacy.Base.metadata.create_all(legacy.engine)
+with legacy.SessionLocal() as seed_db:
+    legacy.seed(seed_db)
 
 with legacy.SessionLocal() as db:
     teacher = db.scalar(select(legacy.User).where(legacy.User.username == "teacher1"))
