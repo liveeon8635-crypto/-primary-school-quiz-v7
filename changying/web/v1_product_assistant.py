@@ -180,7 +180,10 @@ _ASSISTANT_SNIPPET = r'''
   const fab=document.getElementById('cy-product-assistant-fab'),panel=document.getElementById('cy-product-assistant-panel');
   const identityButton=document.getElementById('identityButton'),identityChip=document.getElementById('identityChip');
   const chat=document.getElementById('cy-pa-chat'),input=document.getElementById('cy-pa-input'),send=document.getElementById('cy-pa-send');
-  const readToken=()=>sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||'';
+  const REMEMBER_KEY='v717Remember';
+  const authRemember=()=>localStorage.getItem(REMEMBER_KEY)==='1';
+  const authStore=()=>authRemember()?localStorage:sessionStorage;
+  const readToken=()=>authStore().getItem('v717Token')||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||'';
   const identityReady=()=>Boolean(identityButton&&identityButton.hidden===false&&readToken());
   const tutorialStep=()=>document.querySelector('.cy-lesson-top h2')?.textContent?.trim()||'';
   const context=()=>({page:location.pathname+location.search,identity:String(identityChip?.textContent||'').trim(),tutorial_step:tutorialStep()});
