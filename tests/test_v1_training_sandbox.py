@@ -239,6 +239,8 @@ def test_student_role_is_seeded_with_real_upstream_context_and_can_submit():
     assert s.data["submissions"][0]["score"] == 100
     assert s.data["targeted_practices"]
     assert s.progress["answer"] == "done"
+    assert "result" not in s.progress
+    apply_training_action(s, "visit_step", {"step": "result", "status": "done"})
     assert s.progress["result"] == "done"
 
     apply_training_action(s, "complete_student_practice", {})
@@ -368,3 +370,17 @@ def test_training_subject_default_knowledge_stays_coherent():
     paper = s.data["papers"][0]
     assert paper["knowledge"] == "基础词汇与句型"
     assert all(q["knowledge"] == "基础词汇与句型" for q in paper["questions"])
+
+
+def test_teacher_submission_does_not_auto_complete_evidence_review():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"grade": 5})
+    apply_training_action(s, "add_student", {})
+    apply_training_action(s, "create_paper", {"questionCount": 4})
+    apply_training_action(s, "review_paper", {})
+    apply_training_action(s, "assign", {})
+    apply_training_action(s, "simulate_student_submission", {})
+    assert s.progress["student_submission"] == "done"
+    assert "evidence" not in s.progress
+    apply_training_action(s, "visit_step", {"step": "evidence", "status": "done"})
+    assert s.progress["evidence"] == "done"
