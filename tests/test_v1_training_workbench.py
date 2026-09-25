@@ -126,3 +126,21 @@ def test_workbench_explains_auxiliary_pages_instead_of_falling_back_to_wrong_rol
 
     assert "views[step.id]||(()=>auxiliaryPage(step,'教师'" in html
     assert "adminAuxDetail(step.id)" in html
+
+
+def test_training_workbench_inline_script_parses_in_node(tmp_path):
+    import re
+    import subprocess
+
+    html = training_workbench_html()
+    match = re.search(r"<script>([\\s\\S]*?)</script>", html)
+    assert match, "training workbench must contain its inline script"
+    script = tmp_path / "training-workbench.js"
+    script.write_text(match.group(1), encoding="utf-8")
+    checked = subprocess.run(
+        ["node", "--check", str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert checked.returncode == 0, checked.stderr
