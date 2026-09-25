@@ -299,7 +299,8 @@ _ASSISTANT_SNIPPET = r'''
     addMessage('user',text);input.value='';send.disabled=true;send.textContent='回答中…';
     try{
       const data=await postJson('/v1/product-assistant/query',{question:text,...context()});
-      addMessage('assistant',data.reply||'暂时没有可用回答。');
+      const reply=data.reply||'暂时没有可用回答。';
+      addMessage('assistant',reply);renderGuideGrid(reply);
     }catch(err){addMessage('assistant','产品助手暂时无法回答：'+err.message)}
     finally{send.disabled=false;send.textContent='发送'}
   }
@@ -312,7 +313,7 @@ _ASSISTANT_SNIPPET = r'''
   }
 
   const closePanel=()=>{panel.hidden=true;fab.setAttribute('aria-label','打开产品助手')};
-  const openPanel=()=>{panel.hidden=false;fab.setAttribute('aria-label','收起产品助手');updateContext()};
+  const openPanel=()=>{panel.hidden=false;fab.setAttribute('aria-label','收起产品助手');updateContext();renderGuideGrid()};
   fab.onclick=()=>panel.hidden?openPanel():closePanel();
   document.getElementById('cy-pa-close').onclick=closePanel;
   document.getElementById('cy-pa-collapse').onclick=closePanel;
@@ -337,7 +338,7 @@ _ASSISTANT_SNIPPET = r'''
     }catch(err){btn.textContent='提交失败，重试';btn.disabled=false}
   };
 
-  const sync=()=>{const ready=identityReady();if(fab.hidden===ready)fab.hidden=!ready;if(!ready){panel.hidden=true;return}updateContext()};
+  const sync=()=>{const ready=identityReady();if(fab.hidden===ready)fab.hidden=!ready;if(!ready){panel.hidden=true;return}updateContext();if(!panel.hidden)renderGuideGrid()};
   const identityObserver=new MutationObserver(()=>queueMicrotask(sync));
   if(identityButton)identityObserver.observe(identityButton,{attributes:true,attributeFilter:['hidden']});
   if(identityChip)identityObserver.observe(identityChip,{childList:true,characterData:true,subtree:true});
