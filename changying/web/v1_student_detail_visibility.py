@@ -63,6 +63,8 @@ _MOBILE_LAYOUT_CSS = (
     "#suggestions,#assignments,#weak,#timeline{min-width:0;max-width:100%;overflow-x:auto;"
     "-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}"
     "#suggestions>*,#assignments>*,#weak>*,#timeline>*{min-width:0;overflow-wrap:anywhere}"
+    "html,body{overscroll-behavior-y:contain}"
+    "body{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 72px)}"
     "}"
     "</style>"
 )
