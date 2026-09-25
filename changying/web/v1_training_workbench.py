@@ -300,6 +300,7 @@ function bindTeacher(step){
   if($('createClass'))$('createClass').onclick=()=>act('create_class',{name:$('className').value,grade:+$('classGrade').value});
   if($('addStudent'))$('addStudent').onclick=()=>act('add_student',{name:$('studentName').value,username:$('studentUser').value});
   if($('profileDone'))$('profileDone').onclick=()=>markStep();
+  if($('paperSubject')&&$('paperKnowledge'))$('paperSubject').onchange=()=>{$('paperKnowledge').value=({数学:'小数乘法',语文:'词语理解与表达',英语:'基础词汇与句型'}[$('paperSubject').value]||$('paperKnowledge').value)};
   if($('createPaper'))$('createPaper').onclick=()=>act('create_paper',{subject:$('paperSubject').value,textbook:$('paperTextbook').value,knowledge:$('paperKnowledge').value,questionCount:+$('paperCount').value});
   if($('reviewPaper'))$('reviewPaper').onclick=()=>act('review_paper',{});
   if($('assignWork'))$('assignWork').onclick=()=>act('assign',{title:$('assignTitle').value,due:$('assignDue').value});
