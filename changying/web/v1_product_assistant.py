@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from changying.web import v1 as v1_module
+from changying.web import v1_classic_gzip_embed as classic_embed_module
 
 
 V1_PRODUCT_ASSISTANT_MARKER = "changying_v1_product_assistant_v1"
@@ -237,13 +238,14 @@ _ASSISTANT_SNIPPET = r'''
   if(window.__cyV1ProductAssistantInstalled)return;
   window.__cyV1ProductAssistantInstalled=true;
   const fab=document.getElementById('cy-product-assistant-fab'),panel=document.getElementById('cy-product-assistant-panel');
-  const identityButton=document.getElementById('identityButton'),identityChip=document.getElementById('identityChip');
+  const identityButton=document.getElementById('identityButton'),identityChip=document.getElementById('identityChip')||document.getElementById('cy-v1-unified-identity')||document.getElementById('identity');
   const chat=document.getElementById('cy-pa-chat'),input=document.getElementById('cy-pa-input'),send=document.getElementById('cy-pa-send');
   const REMEMBER_KEY='v717Remember';
   const authRemember=()=>localStorage.getItem(REMEMBER_KEY)==='1';
   const authStore=()=>authRemember()?localStorage:sessionStorage;
-  const readToken=()=>authStore().getItem('v717Token')||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||'';
-  const identityReady=()=>Boolean(identityButton&&identityButton.hidden===false&&readToken());
+  const classicToken=()=>{try{return typeof state!=='undefined'&&state?.token?String(state.token):''}catch{return''}};
+  const readToken=()=>authStore().getItem('v717Token')||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||classicToken()||'';
+  const identityReady=()=>Boolean(readToken()&&(identityButton?identityButton.hidden===false:Boolean(identityChip&&!String(identityChip.textContent||'').includes('正在识别'))));
   const tutorialStep=()=>document.querySelector('.cy-lesson-top h2')?.textContent?.trim()||'';
   const context=()=>({page:location.pathname+location.search,identity:String(identityChip?.textContent||'').trim(),tutorial_step:tutorialStep()});
   const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -326,15 +328,23 @@ def patch_v1_product_assistant(html: str) -> str:
 
 
 def install_v1_product_assistant_patch() -> None:
-    if getattr(v1_module, "_product_assistant_patch_installed", False):
-        return
-    original = v1_module.v1_html
+    if not getattr(v1_module, "_product_assistant_patch_installed", False):
+        original = v1_module.v1_html
 
-    def patched_v1_html() -> str:
-        return patch_v1_product_assistant(original())
+        def patched_v1_html() -> str:
+            return patch_v1_product_assistant(original())
 
-    v1_module.v1_html = patched_v1_html
-    v1_module._product_assistant_patch_installed = True
+        v1_module.v1_html = patched_v1_html
+        v1_module._product_assistant_patch_installed = True
+
+    if not getattr(classic_embed_module, "_product_assistant_unified_installed", False):
+        original_unified = classic_embed_module.enhance_unified_classic_html
+
+        def patched_unified_classic_html(html: str) -> str:
+            return patch_v1_product_assistant(original_unified(html))
+
+        classic_embed_module.enhance_unified_classic_html = patched_unified_classic_html
+        classic_embed_module._product_assistant_unified_installed = True
 
 
 __all__ = [

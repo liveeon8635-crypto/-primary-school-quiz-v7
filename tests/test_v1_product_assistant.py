@@ -20,7 +20,7 @@ def test_product_assistant_ui_is_present_but_hidden_before_authenticated_identit
 
     assert V1_PRODUCT_ASSISTANT_MARKER in html
     assert 'id="cy-product-assistant-fab" hidden' in html
-    assert "identityButton&&identityButton.hidden===false&&readToken()" in html
+    assert "readToken()&&(identityButton?identityButton.hidden===false" in html
     assert "fab.hidden=!ready" in html
 
 
@@ -96,3 +96,18 @@ def test_product_assistant_fab_is_compact_collapsible_and_feedback_is_quick():
     assert 'data-pa-category="流程不直观"' in html
     assert 'placeholder="一句话描述问题或建议' in html
     assert "cleanReplyText" in html
+
+
+def test_all_functions_shell_keeps_product_assistant_available():
+    response = TestClient(app).get("/v1/tool")
+    assert response.status_code == 200
+    html = response.text
+
+    assert V1_PRODUCT_ASSISTANT_MARKER in html
+    assert 'id="cy-product-assistant-fab" hidden' in html
+    assert "document.getElementById('identityChip')||document.getElementById('cy-v1-unified-identity')||document.getElementById('identity')" in html
+    assert "正在识别" in html
+    assert "const classicToken=()=>{" in html
+    assert "state?.token" in html
+    assert QUERY_PATH in html
+    assert FEEDBACK_PATH in html
