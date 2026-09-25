@@ -20,8 +20,8 @@ def test_transition_types_are_real_selectable_controls():
 def test_transition_selection_keeps_persistence_boundary_honest():
     html = patch_v1_transition_selection(v1_html())
 
-    assert "当前选择仅保存在本次浏览会话，尚未写入学生档案" in html
-    assert "当前仅保存在本次浏览会话，不写入学生档案" in html
+    assert "类型选择本身不写档案，教师或管理员确认保存后才形成衔接计划" in html
+    assert "类型选择本身只保存在本次浏览会话" in html
     for method in ("POST", "PUT", "PATCH", "DELETE"):
         assert f"method:'{method}'" not in _TRANSITION_SELECTION_SNIPPET
         assert f'method:"{method}"' not in _TRANSITION_SELECTION_SNIPPET
