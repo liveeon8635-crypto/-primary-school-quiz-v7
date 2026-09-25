@@ -257,6 +257,34 @@ _ASSISTANT_SNIPPET = r'''
   const cleanReplyText=text=>String(text||'').replace(/\*\*/g,'').replace(/\`/g,'').replace(/^#{1,4}\s*/gm,'').trim();
   const addMessage=(kind,text)=>{const el=document.createElement('div');el.className='cy-pa-msg '+kind;el.textContent=kind==='assistant'?cleanReplyText(text):text;chat.appendChild(el);chat.scrollTop=chat.scrollHeight};
   const updateContext=()=>{const c=context();document.getElementById('cy-pa-context').textContent=(c.identity||'当前身份')+' · '+c.page+(c.tutorial_step?' · '+c.tutorial_step:'')};
+  const PAGE_GUIDES=[
+    {id:'workspace',title:'当前教学',href:'/v1/workspace',icon:'▦',hint:'当前班级、课程、学生与待办',keywords:'当前教学 工作台 班级 课程 待办 晚托 周末课'},
+    {id:'student',title:'学生档案',href:'/v1/student',icon:'◉',hint:'连续学情、作业、错题与时间线',keywords:'学生 档案 学情 作业 错题 成绩 时间线'},
+    {id:'history',title:'往期教学',href:'/v1/history',icon:'◷',hint:'按学年和教学周期回看历史',keywords:'往期 历史 学年 学期 寒假 暑假'},
+    {id:'transition',title:'升学衔接',href:'/v1/transition',icon:'↗',hint:'阶段变化、差距与衔接计划',keywords:'升学 升年级 衔接 阶段 差距 计划'},
+    {id:'tools',title:'全部功能',href:'/v1/tool',icon:'⌘',hint:'进入当前身份的完整功能页',keywords:'全部功能 更多 功能 页面 入口'},
+    {id:'assignments',title:'作业',href:'/v1/tool?page=assignments',icon:'✓',hint:'学生查看和完成待办作业',keywords:'作业 待完成 提交'},
+    {id:'practice',title:'练习',href:'/v1/tool?page=practice',icon:'✎',hint:'练习、针对性训练与错题巩固',keywords:'练习 针对性 错题 巩固'},
+    {id:'progress',title:'学情',href:'/v1/tool?page=progress',icon:'◎',hint:'查看学习进度与掌握情况',keywords:'学情 进度 掌握 正确率'}
+  ];
+  const guideScore=(g,text,currentPage)=>{
+    const hay=String(text||'')+' '+String(currentPage||'');
+    let score=currentPage&&currentPage.startsWith(g.href.split('?')[0])?5:0;
+    String(g.keywords||'').split(/\s+/).forEach(k=>{if(k&&hay.includes(k))score+=2});
+    return score;
+  };
+  const guideCandidates=text=>{
+    const c=context(),identity=String(c.identity||'');
+    let pool=PAGE_GUIDES;
+    if(identity.includes('学生'))pool=PAGE_GUIDES.filter(g=>['assignments','practice','progress','tools'].includes(g.id));
+    const ranked=pool.map((g,order)=>({g,order,score:guideScore(g,text,c.page)})).sort((a,b)=>b.score-a.score||a.order-b.order);
+    const picked=ranked.filter(x=>x.score>0).slice(0,3).map(x=>x.g);
+    return picked.length?picked:pool.slice(0,3);
+  };
+  const renderGuideGrid=text=>{
+    const grid=document.getElementById('cy-pa-guide-grid');if(!grid)return;
+    grid.innerHTML=guideCandidates(text).map(g=>'<a class="cy-pa-guide-card" href="'+escapeHtml(g.href)+'" data-pa-guide="'+escapeHtml(g.id)+'"><span class="cy-pa-guide-visual" role="img" aria-label="'+escapeHtml(g.title)+'页面示意图"><span class="cy-pa-guide-bar"></span><span class="cy-pa-guide-page"><span class="cy-pa-guide-icon">'+escapeHtml(g.icon)+'</span><span class="cy-pa-guide-lines"><i></i><i></i></span></span></span><span class="cy-pa-guide-copy"><b>'+escapeHtml(g.title)+'</b><small>'+escapeHtml(g.hint)+'</small></span></a>').join('');
+  };
 
   async function postJson(path,body){
     const token=readToken();if(!token)throw new Error('登录状态已失效，请重新登录');
