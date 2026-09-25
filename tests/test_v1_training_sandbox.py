@@ -15,6 +15,14 @@ from changying.web.v1_training_sandbox import (
 )
 
 
+
+
+def _correct_answers(paper):
+    return {
+        str(q["id"]): q["correctIndex"] if q.get("answerKind") == "choice" else q.get("correctAnswer", "")
+        for q in paper["questions"]
+    }
+
 def teacher_session() -> SandboxSession:
     return SandboxSession(
         session_id="training-test",
@@ -207,7 +215,7 @@ def test_virtual_student_can_submit_real_question_choices():
     apply_training_action(s, "switch_to_student", {})
 
     paper = s.data["papers"][0]
-    answers = {str(q["id"]): q["correctIndex"] for q in paper["questions"]}
+    answers = _correct_answers(paper)
     apply_training_action(s, "student_submit", {"answers": answers})
 
     submission = s.data["submissions"][0]
@@ -226,7 +234,7 @@ def test_student_role_is_seeded_with_real_upstream_context_and_can_submit():
     assert s.data["submissions"] == []
 
     paper = s.data["papers"][0]
-    answers = {str(q["id"]): q["correctIndex"] for q in paper["questions"]}
+    answers = _correct_answers(paper)
     apply_training_action(s, "student_submit_self", {"answers": answers})
     assert s.data["submissions"][0]["score"] == 100
     assert s.data["targeted_practices"]
@@ -284,7 +292,7 @@ def test_student_can_rewind_answer_step_and_submit_again():
     store = TrainingSandboxStore(ttl_seconds=3600, max_sessions=10)
     s = store.create(22, "student")
     paper = s.data["papers"][0]
-    answers = {str(q["id"]): q["correctIndex"] for q in paper["questions"]}
+    answers = _correct_answers(paper)
     apply_training_action(s, "student_submit_self", {"answers": answers})
     assert s.data["submissions"]
     apply_training_action(s, "rewind_step", {"step": "answer"})
@@ -311,3 +319,43 @@ def test_every_training_step_has_role_relationship_context_or_is_core_action():
     for role, steps in ROLE_FLOW.items():
         for step in steps:
             assert step["id"] in STEP_RELATIONSHIPS or step["id"] in core_actions, (role, step["id"])
+
+
+def test_training_paper_uses_mixed_types_and_matching_answer_modes():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"grade": 5})
+    apply_training_action(s, "create_paper", {"subject": "数学", "knowledge": "小数乘法", "questionCount": 8})
+    questions = s.data["papers"][0]["questions"]
+    assert {"单选", "判断", "填空", "计算", "简短应用题"}.issubset({q["type"] for q in questions})
+    assert all(q["answerKind"] in {"choice", "text"} for q in questions)
+    assert all(("options" in q) == (q["answerKind"] == "choice") for q in questions)
+
+
+def test_training_text_answers_accept_normalized_units_and_reject_missing_unit():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"grade": 5})
+    apply_training_action(s, "add_student", {})
+    apply_training_action(s, "create_paper", {"subject": "数学", "questionCount": 5})
+    apply_training_action(s, "review_paper", {})
+    apply_training_action(s, "assign", {})
+    apply_training_action(s, "switch_to_student", {})
+    paper = s.data["papers"][0]
+    answers = _correct_answers(paper)
+    app = next(q for q in paper["questions"] if q["type"] == "简短应用题")
+    answers[str(app["id"])] = "10 元"
+    apply_training_action(s, "student_submit", {"answers": answers})
+    assert s.data["submissions"][0]["score"] == 100
+
+    s2 = teacher_session()
+    apply_training_action(s2, "create_class", {"grade": 5})
+    apply_training_action(s2, "add_student", {})
+    apply_training_action(s2, "create_paper", {"subject": "数学", "questionCount": 5})
+    apply_training_action(s2, "review_paper", {})
+    apply_training_action(s2, "assign", {})
+    apply_training_action(s2, "switch_to_student", {})
+    paper2 = s2.data["papers"][0]
+    answers2 = _correct_answers(paper2)
+    app2 = next(q for q in paper2["questions"] if q["type"] == "简短应用题")
+    answers2[str(app2["id"])] = "10"
+    apply_training_action(s2, "student_submit", {"answers": answers2})
+    assert s2.data["submissions"][0]["score"] < 100
