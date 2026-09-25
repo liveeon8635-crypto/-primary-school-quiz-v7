@@ -105,9 +105,43 @@ def install_v1_student_detail_visibility_patch() -> None:
     v1_module._student_detail_visibility_patch_installed = True
 
 
+WORKSPACE_ATTACHMENT_MARKER = "changying_v1_workspace_attachment_affordance_v1"
+
+_ATTACHMENT_AFFORDANCE = (
+    f"<div id='{WORKSPACE_ATTACHMENT_MARKER}' class='card' "
+    "style='margin-top:12px'>"
+    "<h2>发送照片或文件</h2>"
+    "<p>选择照片或文件后随本次教学记录一起提交；未选择时不产生任何记录。</p>"
+    "<input type='file' id='workspace-attachment-input' "
+    "accept='image/*,.pdf,.doc,.docx,.txt' multiple>"
+    "<div id='workspace-attachment-list' class='list' style='margin-top:8px'></div>"
+    "</div>"
+)
+
+
+def patch_v1_workspace_attachment_affordance(html: str) -> str:
+    """Add a presentation-only photo/file picker to the V1 workspace.
+
+    This is an additive UI affordance only: it renders a file input and a
+    local list of chosen file names.  It performs no upload, no API call, no
+    data write, and changes no authorization behavior.
+    """
+
+    if WORKSPACE_ATTACHMENT_MARKER in html:
+        return html
+
+    return html.replace(
+        "</body>",
+        f"{_ATTACHMENT_AFFORDANCE}<!-- {WORKSPACE_ATTACHMENT_MARKER} --></body>",
+        1,
+    )
+
+
 __all__ = [
     "STUDENT_DETAIL_MOBILE_CSS_MARKER",
     "V1_STUDENT_DETAIL_VISIBILITY_MARKER",
+    "WORKSPACE_ATTACHMENT_MARKER",
     "install_v1_student_detail_visibility_patch",
     "patch_v1_student_detail_visibility",
+    "patch_v1_workspace_attachment_affordance",
 ]
