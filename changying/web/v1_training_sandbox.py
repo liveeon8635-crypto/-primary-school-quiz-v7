@@ -86,6 +86,21 @@ STEP_RELATIONSHIPS: dict[str, dict[str, str]] = {
     "points": {"who": "规则或教师", "creates": "可追溯积分动态", "visible_to": "教师/学生/家长摘要", "other_role_sees": "不同角色看到同一积分事实的不同解释层级", "communication_tip": "必须显示积分来源，避免用户把总分误解为学习成绩", "next": "长期激励与评价"},
     "history": {"who": "系统归档", "creates": "只读往期教学", "visible_to": "授权角色", "other_role_sees": "当前工作台减少旧内容，但学生连续档案仍保留历史", "communication_tip": "结束班级不等于删除学生或删除成绩", "next": "阶段衔接"},
     "transition": {"who": "教师/管理员", "creates": "同一学生的阶段变化计划", "visible_to": "授权角色", "other_role_sees": "学生/家长看到的是同一学生下一阶段的连续变化，而不是一个新账号", "communication_tip": "强调学生ID连续性，避免升年级重复建档", "next": "下一阶段继续同一档案"},
+    "classroom": {"who": "学生参与", "creates": "课堂参与/随堂反馈", "visible_to": "学生本人/教师汇总", "other_role_sees": "教师看到参与结果；家长只看适合家长端的摘要", "communication_tip": "讲解邀请可拒绝，拒绝不形成负面证据", "next": "作业与随堂反馈"},
+    "assignments": {"who": "教师布置、学生完成", "creates": "待办与完成状态", "visible_to": "学生/教师/家长状态页", "other_role_sees": "学生负责作答；家长看状态；教师看完成情况", "communication_tip": "保存过程不等于正式提交", "next": "逐题作答或查看状态"},
+    "answer": {"who": "学生", "creates": "答题内容", "visible_to": "提交前仅学生本人", "other_role_sees": "教师只有提交后才获得结果", "communication_tip": "提交前不会显示正确答案，避免误把练习预览当正式提交", "next": "提交结果"},
+    "result": {"who": "系统根据提交形成", "creates": "得分/知识点/错题/积分", "visible_to": "按角色授权显示", "other_role_sees": "教师看教学证据；家长看摘要", "communication_tip": "一次分数不等于长期掌握结论", "next": "针对性练习/学情"},
+    "practice": {"who": "学生完成、教师可审核来源", "creates": "下一轮练习结果", "visible_to": "学生/教师", "other_role_sees": "教师可看到结果继续调整教学", "communication_tip": "告诉学生为什么收到这组题", "next": "继续回流学情"},
+    "progress": {"who": "系统汇总", "creates": "长期趋势视图", "visible_to": "学生/教师/家长摘要", "other_role_sees": "各角色看到不同解释层级", "communication_tip": "重点解释趋势和证据来源，不只说一个总分", "next": "下一步学习"},
+    "rewards": {"who": "规则/教师评价产生", "creates": "积分动态", "visible_to": "学生/教师/家长摘要", "other_role_sees": "积分来源一致，展示粒度不同", "communication_tip": "积分不是学业成绩", "next": "持续激励"},
+    "wrongbook": {"who": "提交/教师确认形成", "creates": "错题记录", "visible_to": "学生/教师", "other_role_sees": "教师可用于针对练习", "communication_tip": "错题用于下一轮学习，不用于贴负面标签", "next": "针对性练习"},
+    "learning": {"who": "家长查看", "creates": "无业务写入", "visible_to": "关联家长", "other_role_sees": "教师维护课程事实，学生参与课程", "communication_tip": "家长先确认孩子、班级和教师是否正确", "next": "孩子作业"},
+    "overview": {"who": "管理员", "creates": "管理视图", "visible_to": "管理员", "other_role_sees": "教师/学生/家长不会看到后台管理总览", "communication_tip": "总览用于发现问题，不直接替教师完成教学", "next": "账号和班级关系"},
+    "users": {"who": "管理员", "creates": "教师/家长账号", "visible_to": "管理员及对应账号本人", "other_role_sees": "新账号登录后只看到自身角色功能", "communication_tip": "创建账号时要明确角色和后续入口", "next": "班级与教学归属"},
+    "classes": {"who": "管理员/教师", "creates": "教学归属关系", "visible_to": "按角色可见", "other_role_sees": "教师看到自己的班级；学生看到自己的归属；家长看到关联孩子信息", "communication_tip": "调班/换老师改变关系，不复制学生档案", "next": "教学开始"},
+    "audit": {"who": "管理员查看", "creates": "无新增业务事实", "visible_to": "管理员", "other_role_sees": "普通用户只看到自身功能结果", "communication_tip": "审计用于追溯谁在什么时候做了什么", "next": "定位问题"},
+    "system": {"who": "管理员", "creates": "系统级设置", "visible_to": "管理员", "other_role_sees": "设置会影响可用功能，但不应改写历史学习事实", "communication_tip": "系统设置和教学数据是两个边界", "next": "持续治理"},
+    "account": {"who": "当前用户", "creates": "账号偏好/安全操作", "visible_to": "账号本人", "other_role_sees": "其他角色不应直接看到账号安全信息", "communication_tip": "身份切换和账号退出要区分", "next": "返回角色主线"},
 }
 
 SCENARIO_PRESETS: dict[str, dict[str, Any]] = {
@@ -119,6 +134,12 @@ class SandboxSession:
         "points": [],
         "history": [],
         "transitions": [],
+        "accounts": [],
+        "point_rules": [],
+        "audit": [],
+        "system_settings": {},
+        "wrong_questions": [],
+        "guardian_links": [],
     })
     events: list[dict[str, Any]] = field(default_factory=list)
 
@@ -130,6 +151,94 @@ class SandboxSession:
     def touch(self) -> None:
         self.touched_at = time.time()
 
+
+
+def _sample_questions(session: SandboxSession, knowledge: str = "小数乘法", count: int = 4) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": session.new_id(),
+            "index": i + 1,
+            "type": "单选",
+            "knowledge": knowledge,
+            "prompt": f"{knowledge} · 沙盒练习题 {i + 1}",
+            "options": [f"选项 A · {i + 1}", f"选项 B · {i + 1}", f"选项 C · {i + 1}", f"选项 D · {i + 1}"],
+            "correctIndex": i % 4,
+        }
+        for i in range(count)
+    ]
+
+
+def _seed_role_context(session: SandboxSession) -> None:
+    """Prepare only the upstream facts a role needs in order to practice."""
+    if session.primary_role == "teacher":
+        return
+
+    if session.primary_role in {"student", "parent"}:
+        cls = {"id": session.new_id(), "name": "五年级实操班", "grade": 5, "teacher": "周老师（虚拟）"}
+        student = {
+            "id": session.new_id(),
+            "name": "小禾",
+            "username": "xiaohe01",
+            "classID": cls["id"],
+            "className": cls["name"],
+            "grade": 5,
+        }
+        questions = _sample_questions(session, count=6)
+        paper = {
+            "id": session.new_id(),
+            "title": "小数乘法练习",
+            "grade": 5,
+            "subject": "数学",
+            "textbook": "人教版",
+            "knowledge": "小数乘法",
+            "questions": questions,
+            "reviewed": True,
+        }
+        assignment = {
+            "id": session.new_id(),
+            "title": "小数乘法练习",
+            "classID": cls["id"],
+            "paperID": paper["id"],
+            "studentIDs": [student["id"]],
+            "due": "本周五",
+            "status": "open",
+        }
+        session.data["classes"].append(cls)
+        session.data["students"].append(student)
+        session.data["papers"].append(paper)
+        session.data["assignments"].append(assignment)
+        session.data["guardian_links"].append({"parent": "小禾家长", "studentID": student["id"]})
+
+        if session.primary_role == "parent":
+            total = len(questions)
+            correct = max(1, round(total * 0.75))
+            score = round(correct * 100 / total)
+            session.data["submissions"].append({
+                "id": session.new_id(),
+                "assignmentID": assignment["id"],
+                "studentID": student["id"],
+                "studentName": student["name"],
+                "score": score,
+                "correct": correct,
+                "total": total,
+                "knowledge": paper["knowledge"],
+                "accuracy": score,
+                "wrongCount": total - correct,
+                "source": "seeded_parent_view",
+            })
+            session.data["points"].append({"id": session.new_id(), "studentID": student["id"], "points": correct, "source": "练习完成"})
+            session.data["history"].append({"id": session.new_id(), "classID": cls["id"], "className": "四年级实操班", "status": "read_only"})
+        return
+
+    if session.primary_role == "admin":
+        teacher = {"id": session.new_id(), "name": "周老师", "username": "teacher_demo", "role": "teacher", "status": "正常"}
+        student = {"id": session.new_id(), "name": "小禾", "username": "student_demo", "role": "student", "status": "在读"}
+        parent = {"id": session.new_id(), "name": "小禾家长", "username": "parent_demo", "role": "parent", "status": "正常"}
+        session.data["accounts"].extend([teacher, student, parent])
+        session.data["classes"].append({"id": session.new_id(), "name": "五年级实操班", "grade": 5, "teacher": teacher["name"], "teacherID": teacher["id"]})
+        session.data["point_rules"].append({"id": session.new_id(), "name": "练习完成", "points": 2, "active": True})
+        session.data["audit"].append({"id": session.new_id(), "action": "账号示例", "detail": "演示环境初始化", "actor": "系统"})
+        session.data["system_settings"] = {"loginSecurity": "开启", "teachingCycle": "当前学期", "featureFlags": "默认"}
 
 class TrainingSandboxStore:
     def __init__(self, ttl_seconds: int = TRAINING_TTL_SECONDS, max_sessions: int = TRAINING_MAX_SESSIONS):
@@ -160,6 +269,7 @@ class TrainingSandboxStore:
                 current_role=role,
                 linked_mode=linked_mode,
             )
+            _seed_role_context(item)
             self._items[sid] = item
             return item
 
@@ -182,6 +292,7 @@ class TrainingSandboxStore:
                 current_role=old.primary_role,
                 linked_mode=old.linked_mode,
             )
+            _seed_role_context(fresh)
             self._items[session_id] = fresh
             return fresh
 
@@ -298,8 +409,96 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
         _event(session, action, step)
         return
 
+    if session.primary_role == "student" and action == "student_submit_self":
+        assignment = _need(session.data["assignments"], "教师布置作业")
+        student = _need(session.data["students"], "学生身份")
+        paper = _need(session.data["papers"], "作业试卷")
+        if session.data["submissions"]:
+            raise HTTPException(409, "这份沙盒作业已经提交，可重置沙盒后重新练习")
+        submitted_answers = p.get("answers") if isinstance(p.get("answers"), dict) else {}
+        normalized = {str(key): value for key, value in submitted_answers.items()}
+        total = len(paper["questions"])
+        correct = sum(
+            1
+            for question in paper["questions"]
+            if str(question["id"]) in normalized
+            and int(normalized[str(question["id"])]) == int(question["correctIndex"])
+        )
+        score = round(correct * 100 / max(1, total))
+        sub = {
+            "id": session.new_id(),
+            "assignmentID": assignment["id"],
+            "studentID": student["id"],
+            "studentName": student["name"],
+            "score": score,
+            "correct": correct,
+            "total": total,
+            "knowledge": paper["knowledge"],
+            "accuracy": score,
+            "wrongCount": total - correct,
+            "source": "student_training",
+        }
+        session.data["submissions"].append(sub)
+        session.data["points"].append({"id": session.new_id(), "studentID": student["id"], "points": correct, "source": "练习完成"})
+        for question in paper["questions"]:
+            answer = normalized.get(str(question["id"]))
+            if answer is None or int(answer) != int(question["correctIndex"]):
+                session.data["wrong_questions"].append({"id": session.new_id(), "questionID": question["id"], "knowledge": question["knowledge"], "prompt": question["prompt"]})
+        session.data["targeted_practices"].append({"id": session.new_id(), "studentID": student["id"], "knowledge": paper["knowledge"], "basedOnSubmissionID": sub["id"], "questionCount": 4, "status": "assigned"})
+        session.progress["answer"] = "done"
+        session.progress["result"] = "done"
+        _event(session, action, f"submission={sub['id']}:score={score}")
+        return
+
+    if session.primary_role == "student" and action == "complete_student_practice":
+        practice = _need(session.data["targeted_practices"], "提交一次作业后生成针对性练习")
+        practice["status"] = "completed"
+        session.progress["practice"] = "done"
+        _event(session, action, f"practice={practice['id']}:completed")
+        return
+
+    if session.primary_role == "admin" and action == "admin_create_account":
+        role = str(p.get("role", "teacher")).strip()
+        if role not in {"teacher", "parent"}:
+            raise HTTPException(400, "管理员练习只创建教师或家长账号")
+        obj = {"id": session.new_id(), "name": str(p.get("name", "练习账号"))[:100], "username": str(p.get("username", f"demo{session.next_id}"))[:100], "role": role, "status": "正常"}
+        session.data["accounts"].append(obj)
+        session.data["audit"].append({"id": session.new_id(), "action": "账号创建", "detail": f"{role}:{obj['username']}", "actor": "当前沙盒管理员"})
+        session.progress["users"] = "done"
+        _event(session, action, f"account={obj['id']}:{role}")
+        return
+
+    if session.primary_role == "admin" and action == "admin_create_class":
+        teachers = [x for x in session.data["accounts"] if x.get("role") == "teacher"]
+        teacher = teachers[-1] if teachers else None
+        if not teacher:
+            raise HTTPException(409, "请先创建教师账号")
+        obj = {"id": session.new_id(), "name": str(p.get("name", "五年级实操班"))[:120], "grade": int(p.get("grade", 5)), "teacher": teacher["name"], "teacherID": teacher["id"]}
+        session.data["classes"].append(obj)
+        session.data["audit"].append({"id": session.new_id(), "action": "班级创建", "detail": obj["name"], "actor": "当前沙盒管理员"})
+        session.progress["classes"] = "done"
+        _event(session, action, f"class={obj['id']}")
+        return
+
+    if session.primary_role == "admin" and action == "admin_set_point_rule":
+        obj = {"id": session.new_id(), "name": str(p.get("name", "课堂参与"))[:80], "points": max(0, min(int(p.get("points", 2)), 100)), "active": True}
+        session.data["point_rules"].append(obj)
+        session.data["audit"].append({"id": session.new_id(), "action": "积分规则", "detail": f"{obj['name']}:+{obj['points']}", "actor": "当前沙盒管理员"})
+        session.progress["points"] = "done"
+        _event(session, action, f"point_rule={obj['id']}")
+        return
+
+    if session.primary_role == "admin" and action == "admin_set_system":
+        key = str(p.get("key", "trainingFeature"))[:60]
+        value = str(p.get("value", "开启"))[:120]
+        session.data["system_settings"][key] = value
+        session.data["audit"].append({"id": session.new_id(), "action": "系统设置", "detail": f"{key}={value}", "actor": "当前沙盒管理员"})
+        session.progress["system"] = "done"
+        _event(session, action, f"system={key}")
+        return
+
     if session.primary_role != "teacher":
-        raise HTTPException(400, "当前版本仅教师主线支持业务实操；其他身份可先浏览完整页面关系")
+        raise HTTPException(400, "当前身份的这个步骤只读；请使用页面上的完成/跳过继续")
 
     if action == "create_class":
         name = str(p.get("name", "")).strip() or "五年级一班"
