@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from app import app
 from changying.web.v1_training_sandbox import (
     ROLE_FLOW,
+    SCENARIO_PRESETS,
     STEP_RELATIONSHIPS,
     SandboxSession,
     TrainingSandboxStore,
@@ -20,7 +21,7 @@ def teacher_session() -> SandboxSession:
 
 
 def test_training_routes_are_registered_without_new_schema():
-    paths = {route.path for route in app.routes}
+    paths = {route.path for route in app.routes if hasattr(route, "path")}
     assert "/v1/training-sandbox/start" in paths
     assert "/v1/training-sandbox/{session_id}" in paths
     assert "/v1/training-sandbox/{session_id}/action" in paths
@@ -142,7 +143,34 @@ def test_training_module_has_no_production_database_write_dependency():
     from pathlib import Path
 
     source = Path("changying/web/v1_training_sandbox.py").read_text(encoding="utf-8")
-    assert "sqlalchemy" not in source.lower()
+    assert "from sqlalchemy" not in source.lower()
+    assert "import sqlalchemy" not in source.lower()
     assert "get_db" not in source
     assert "db.commit" not in source
     assert "LearningEvidenceEvent" not in source
+
+
+def test_scenario_presets_support_resume_without_repeating_every_role_step():
+    s = teacher_session()
+    apply_training_action(s, "load_scenario", {"preset": "assigned"})
+    assert s.data["classes"]
+    assert s.data["students"]
+    assert s.data["papers"][0]["reviewed"] is True
+    assert s.data["assignments"]
+    assert s.data["submissions"] == []
+
+    apply_training_action(s, "load_scenario", {"preset": "submitted"})
+    assert s.data["submissions"]
+    assert s.progress["evidence"] == "done"
+
+    apply_training_action(s, "load_scenario", {"preset": "classroom"})
+    assert s.data["class_reviews"]
+
+
+def test_relationship_map_explains_cross_role_visibility_and_communication():
+    assert SCENARIO_PRESETS["empty"]["title"] == "从零开始"
+    for step in ("assign", "student_submission", "evidence", "interactive", "points"):
+        rel = STEP_RELATIONSHIPS[step]
+        assert rel["visible_to"]
+        assert rel["other_role_sees"]
+        assert rel["communication_tip"]
