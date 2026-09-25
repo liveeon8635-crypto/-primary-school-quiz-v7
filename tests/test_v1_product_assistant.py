@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from app import app
 from changying.web.v1_product_assistant import (
     FEEDBACK_PATH,
+    FEEDBACK_PROOF_PREFIX,
     QUERY_PATH,
     V1_PRODUCT_ASSISTANT_MARKER,
 )
@@ -63,3 +64,20 @@ def test_feedback_ui_warns_against_sensitive_information():
 
     assert "不要填写密码、API Key 等敏感信息" in html
     assert "会自动附带当前页面、当前身份和正在进行的新手步骤" in html
+
+
+def test_product_assistant_observer_does_not_watch_its_own_body_mutations():
+    html = rendered_v1()
+
+    assert "observe(document.body,{childList:true,subtree:true" not in html
+    assert "identityObserver.observe(identityButton" in html
+    assert "identityObserver.observe(identityChip" in html
+
+
+def test_feedback_bridge_uses_short_lived_proof_and_shows_sync_state():
+    html = rendered_v1()
+
+    assert FEEDBACK_PROOF_PREFIX in html or FEEDBACK_PROOF_PREFIX == "/v1/product-feedback/proof"
+    assert "freemanSynced" in html
+    assert "已同步到 Freeman" in html
+    assert "Freeman 同步待确认" in html
