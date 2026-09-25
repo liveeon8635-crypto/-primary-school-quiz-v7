@@ -55,14 +55,19 @@ _DETAIL_MOBILE_TARGETS = (
 )
 
 
-STUDENT_DETAIL_MOBILE_CSS_MARKER = "changying_v1_student_detail_mobile_css_v1"
+STUDENT_DETAIL_MOBILE_CSS_MARKER = "changying_v1_student_detail_mobile_css_v2"
 
 _MOBILE_LAYOUT_CSS = (
     f"<style id='{STUDENT_DETAIL_MOBILE_CSS_MARKER}'>"
     "@media (max-width:640px){"
-    "#suggestions,#assignments,#weak,#timeline{min-width:0;max-width:100%;overflow-x:auto;"
-    "-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}"
+    "html,body{overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;"
+    "overscroll-behavior-y:auto;height:auto;max-height:none}"
+    "#suggestions,#assignments,#weak,#timeline{min-width:0;max-width:100%;"
+    "overflow-x:auto;overflow-y:visible;max-height:none;height:auto;"
+    "-webkit-overflow-scrolling:touch;overscroll-behavior:contain}"
     "#suggestions>*,#assignments>*,#weak>*,#timeline>*{min-width:0;overflow-wrap:anywhere}"
+    ".card{overflow:visible;max-height:none}"
+    "body{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px))}"
     "}"
     "</style>"
 )
