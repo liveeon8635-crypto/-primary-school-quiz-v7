@@ -34,6 +34,7 @@ class ProductAssistantBody(BaseModel):
     page: str = Field(default="", max_length=240)
     identity: str = Field(default="", max_length=160)
     tutorial_step: str = Field(default="", max_length=200)
+    child_id: int | None = None
 
 
 class ProductFeedbackBody(BaseModel):
@@ -44,27 +45,231 @@ class ProductFeedbackBody(BaseModel):
     tutorial_step: str = Field(default="", max_length=200)
 
 
-_PRODUCT_CONTEXT = """你是“长缨辅学”的产品内智能助手。只回答长缨产品怎么用、当前页面用途、不同身份功能、操作顺序和产品反馈相关问题。
+_PRODUCT_CONTEXT = """你是“长缨辅学”的站内学习与产品助手。你既帮助用户理解长缨怎么用，也要根据账号身份采用不同的沟通方式。
 
-核心原则：
+共同原则：
 1. 学生始终是一份连续档案；换班、换教师、换学期、升年级不应重新创建学生。
 2. 当前教学负责正在发生的教学；历史教学负责只读回看；升年级/升学用衔接记录表达阶段变化。
 3. 教师主线：当前教学→学生连续档案→综合/模块测试或练习→教师审核布置→学生提交→分数/知识点/错题/积分回流→AI针对性练习→课堂复盘讲义→互动课堂/随堂检测→历史/升年级衔接。
 4. 学生主线：课堂→作业→逐题作答→提交结果→针对性练习→学情→积分/错题/历史。
 5. 家长主线：孩子课程→孩子作业→孩子学情→课堂表现/积分→连续档案与历史。
 6. 管理员主线：平台总览→账号→班级与教学归属→积分规则→审计→系统设置→历史连续性。
-7. 新手教学必须在账号登录并选择身份后出现；系统按当前身份顺序引导，每一步可跳过、退出保存、以后从“新手教学”继续。
-8. 教师审核是重要边界；AI 可以生成建议或草稿，但不应自动替教师发布、评分确认或推进课堂。
-9. 不要声称你读取了用户未提供的学生、班级、成绩或数据库数据。不要编造按钮、数据或已经发生的操作。
-10. 用户问“我现在该做什么”时，根据身份、页面和新手步骤给 1-3 个明确动作；用户描述问题时，先解释当前功能，再指出应去哪个入口。
-回答使用简洁中文，优先给可执行步骤。"""
+7. 教师审核是重要边界；AI 可以生成建议或草稿，但不应自动替教师发布、评分确认或推进课堂。
+8. 只能使用当前账号有权看到、并明确提供在“角色内学习数据”中的事实；不要编造学生、班级、成绩、按钮或已经发生的操作。
+9. 用户问“我现在该做什么”时，根据身份、页面和新手步骤给 1-3 个明确动作；用户描述产品问题时，先解释当前功能，再指出应去哪个入口。
+10. 回答简洁、友好、可执行，不贴标签、不羞辱、不用同伴比较刺激用户。
+
+学生模式：
+- 除了介绍长缨功能，也允许学生问学科知识、错题思路和“为什么”。优先把问题拆成小步骤，连接到生活例子、已有知识或一个小挑战，帮助学生产生兴趣。
+- 对学习问题采用“先判断卡点→给一条有用提示/类比→让学生完成下一小步→再继续”的方式；不要只反问，也不要一次把完整解题过程全部倒给学生。
+- 如果学生在作业、练习、测验场景索要最终答案、正确选项、标准答案或要求代做，不直接给答案。可以解释概念、指出题目条件、给相似例子、提供检查方法，并邀请学生先完成下一步。
+- 学生做完或暴露薄弱点后，优先引导到“我的错题 / 自主练习 / 我的学情 / 同步课堂”等对应功能继续巩固，而不是把对话变成脱离长缨的通用聊天。
+- 如果只是问一个独立知识概念，可以正常解释，但尽量附带一个引导思考的小问题或小例子。
+
+家长模式：
+- 优先使用当前绑定孩子的真实学习数据回答“最近怎么样”等问题：先说一个具体事实或进步，再说一个值得关注的点，最后给 1-2 个可在家庭执行的小建议。
+- 家庭建议以鼓励、作息、复述思路、短时巩固、让孩子自己讲明白为主；不要鼓励家长代做作业或直接给答案。
+- 不给孩子下能力、性格或心理标签，不把一次成绩当作长期结论，不拿孩子和其他学生比较。
+- 需要深入时，引导家长去“孩子学情 / 孩子作业 / 课堂表现 / 孩子课程”查看对应证据。
+
+教师和管理员模式：
+- 保持产品与工作流导向，优先解释功能、数据来源、操作边界和下一步入口。
+"""
 
 
-def _local_answer(question: str, identity: str, page: str, tutorial_step: str) -> str:
+def _student_direct_answer_request(question: str, page: str = "") -> bool:
+    text = (question or "").strip().lower()
+    explicit = (
+        "直接告诉我答案",
+        "直接给我答案",
+        "把答案给我",
+        "答案是什么",
+        "正确答案",
+        "标准答案",
+        "选哪个",
+        "应该选哪个",
+        "第几项",
+        "抄答案",
+        "代做",
+    )
+    if any(k in text for k in explicit):
+        return True
+    in_assessment = any(k in (page or "") for k in ("assignments", "practice", "quiz", "assessment", "test"))
+    return in_assessment and any(k in text for k in ("答案", "直接算出", "直接做完", "告诉我结果"))
+
+
+def _assignment_counts(implementation: ModuleType, db, student_id: int, school_id: int) -> tuple[int, int]:
+    try:
+        recipient = implementation.AssignmentRecipient
+        assignment = implementation.Assignment
+        rows = db.scalars(
+            select(recipient)
+            .where(recipient.school_id == school_id, recipient.student_id == student_id)
+            .order_by(recipient.assignment_id.desc())
+            .limit(80)
+        ).all()
+        pending = overdue = 0
+        for row in rows:
+            item = db.scalar(
+                select(assignment).where(
+                    assignment.id == row.assignment_id,
+                    assignment.school_id == school_id,
+                )
+            )
+            if not item:
+                continue
+            status = implementation.assignment_effective_status(db, item, student_id)
+            if not status.get("completed"):
+                pending += 1
+            if status.get("overdue"):
+                overdue += 1
+        return pending, overdue
+    except Exception:
+        return 0, 0
+
+
+def _knowledge_summary(progress: dict) -> tuple[str, str]:
+    items = [x for x in (progress.get("knowledge") or []) if int(x.get("answered") or 0) > 0]
+    weakest = items[:3]
+    strongest = sorted(items, key=lambda x: (int(x.get("accuracy") or 0), str(x.get("knowledge") or "")), reverse=True)[:2]
+    weak_text = "、".join(f"{x.get('knowledge')} {x.get('accuracy')}%" for x in weakest) or "暂无足够数据"
+    strong_text = "、".join(f"{x.get('knowledge')} {x.get('accuracy')}%" for x in strongest) or "暂无足够数据"
+    return strong_text, weak_text
+
+
+def _student_learning_context(implementation: ModuleType, db, user) -> str:
+    try:
+        progress = implementation.progress_for(db, user.id, user.school_id)
+        current_class = implementation.current_class_for(db, user.id, user.school_id)
+        pending, overdue = _assignment_counts(implementation, db, user.id, user.school_id)
+        strong, weak = _knowledge_summary(progress)
+        latest = progress.get("latestSubmission") or {}
+        points = implementation.point_summary(db, user.id, user.school_id)
+        weekly = implementation.student_period_points(db, user.id, user.school_id, 7)
+        badges = implementation.student_growth_badges(db, user.id, user.school_id) or []
+        badge_text = "、".join(str(x.get("name") or "") for x in badges[:3] if x.get("name")) or "暂无"
+        latest_text = (
+            f"{latest.get('subject') or '未标科目'}《{latest.get('title') or '最近练习'}》"
+            f"{latest.get('score', 0)}分，{latest.get('submittedAt') or '时间未记录'}"
+            if latest
+            else "暂无提交记录"
+        )
+        return (
+            "当前学生可见学习摘要："
+            f"年级={getattr(user, 'grade', '') or '未设置'}；班级={getattr(current_class, 'name', '') or '未分班'}；"
+            f"长期平均分={progress.get('avgScore', 0)}；累计练习={progress.get('submissions', 0)}；累计答题={progress.get('totalAnswered', 0)}；"
+            f"最近一次={latest_text}；待完成作业={pending}；逾期={overdue}；"
+            f"掌握较好={strong}；当前宜巩固={weak}；"
+            f"当前可用积分={points.get('available', 0)}；近7天净表现={weekly.get('net', 0)}；成长徽章={badge_text}。"
+            "这些数据只用于帮助学生理解自己的学习与选择长缨功能，不包含任何题目标准答案。"
+        )
+    except Exception:
+        return "当前学生学习摘要暂时不可用；只能依据当前页面和学生自己提供的信息进行引导。"
+
+
+def _parent_learning_context(
+    implementation: ModuleType,
+    db,
+    user,
+    child_id: int | None,
+    question: str,
+) -> str:
+    try:
+        child = implementation.User
+        link = implementation.ParentStudent
+        children = db.scalars(
+            select(child)
+            .join(link, link.student_id == child.id)
+            .where(
+                link.parent_id == user.id,
+                child.school_id == user.school_id,
+                child.role == "student",
+            )
+            .order_by(child.id)
+        ).all()
+        if not children:
+            return "当前家长账号尚未绑定学生。"
+
+        target = next((x for x in children if child_id and x.id == child_id), None)
+        if target is None:
+            named = [x for x in children if x.name and x.name in (question or "")]
+            target = named[0] if named else children[0]
+
+        progress = implementation.progress_for(db, target.id, user.school_id)
+        current_class = implementation.current_class_for(db, target.id, user.school_id)
+        pending, overdue = _assignment_counts(implementation, db, target.id, user.school_id)
+        strong, weak = _knowledge_summary(progress)
+        latest = progress.get("latestSubmission") or {}
+        points = implementation.point_summary(db, target.id, user.school_id)
+        weekly = implementation.student_period_points(db, target.id, user.school_id, 7)
+        advice = implementation.student_growth_advice(db, target.id, user.school_id) or []
+        advice_text = "；".join(str(x) for x in advice[:2]) or "暂无系统成长建议"
+        latest_text = (
+            f"{latest.get('subject') or '未标科目'}《{latest.get('title') or '最近练习'}》"
+            f"{latest.get('score', 0)}分，{latest.get('submittedAt') or '时间未记录'}"
+            if latest
+            else "暂无提交记录"
+        )
+        return (
+            f"当前家长已绑定{len(children)}名学生；本次默认/选中孩子={target.name}。"
+            f"年级={target.grade or '未设置'}；班级={getattr(current_class, 'name', '') or '未分班'}；"
+            f"长期平均分={progress.get('avgScore', 0)}；累计练习={progress.get('submissions', 0)}；累计答题={progress.get('totalAnswered', 0)}；"
+            f"最近一次={latest_text}；待完成作业={pending}；逾期={overdue}；"
+            f"掌握较好={strong}；当前宜巩固={weak}；"
+            f"当前可用积分={points.get('available', 0)}；近7天净表现={weekly.get('net', 0)}；"
+            f"系统成长建议={advice_text}。"
+            "回答家长时只围绕这些已授权事实，不推断孩子未记录的状态。"
+        )
+    except Exception:
+        return "当前孩子学习摘要暂时不可用；只能依据当前页面和家长自己提供的信息进行建议。"
+
+
+def _role_learning_context(
+    implementation: ModuleType,
+    db,
+    user,
+    child_id: int | None,
+    question: str,
+) -> str:
+    role = str(getattr(user, "role", "") or "")
+    if role == "student":
+        return _student_learning_context(implementation, db, user)
+    if role == "parent":
+        return _parent_learning_context(implementation, db, user, child_id, question)
+    return "当前角色不注入学生个人学习数据；按产品功能与当前页面回答。"
+
+
+def _local_answer(
+    question: str,
+    identity: str,
+    page: str,
+    tutorial_step: str,
+    role: str = "",
+    learning_context: str = "",
+) -> str:
     text = question.strip()
     context = f"当前身份：{identity or '已登录身份'}；当前页面：{page or 'V1'}"
     if tutorial_step:
         context += f"；新手步骤：{tutorial_step}"
+
+    if role == "student" and _student_direct_answer_request(text, page):
+        return (
+            "我不直接替你提取作业或练习的最终答案，但可以陪你把题拆开。"
+            "先把题目里“已知什么、要求什么”各说一句；如果你卡住，我会先帮你标出关键条件，再给一条提示。"
+            "做完后可以去“我的错题”或“自主练习”再用一道相似题检查自己是不是真的会了。"
+        )
+    if role == "student" and any(k in text for k in ("不会", "怎么做", "为什么", "知识点", "这题", "题目")):
+        return (
+            "可以问我学习问题。我们不急着拿答案：先说你卡在哪一步，我会把它拆成一个小目标，"
+            "给你一条提示或生活里的例子，再让你试下一步。完成后还可以用“我的错题 / 自主练习 / 我的学情”继续巩固。"
+        )
+    if role == "parent" and any(k in text for k in ("最近", "怎么样", "学情", "学习情况", "进步", "在家", "配合", "鼓励")):
+        base = learning_context if learning_context else "当前孩子学习摘要暂时不可用。"
+        return (
+            f"{base} 家庭配合上建议先肯定一个具体进步，再只选一个薄弱点做10分钟左右的短巩固；"
+            "让孩子先讲思路，家长主要追问“你为什么这么想”，尽量不要直接代做。"
+            "需要证据时可打开“孩子学情”“孩子作业”或“课堂表现”。"
+        )
 
     if any(k in text for k in ("现在该做", "下一步", "从哪里开始")):
         return (
@@ -80,10 +285,10 @@ def _local_answer(question: str, identity: str, page: str, tutorial_step: str) -
     if any(k in text for k in ("升年级", "升学", "历史")):
         return "升年级或换班不会重新建学生。当前教学关系发生变化，旧班级和旧学期进入历史；衔接计划继续引用同一个学生 ID。"
     return (
-        f"{context}。我可以解释这个页面的用途、告诉你下一步怎么操作，或帮你定位教师/学生/家长/管理员对应功能。"
+        f"{context}。我可以解释这个页面的用途、告诉你下一步怎么操作，或帮你定位当前身份对应功能。"
+        "学生也可以问知识点和不会的题，家长可以问孩子最近的学习情况与家庭配合方式。"
         "如果你是在反馈产品问题，也可以切到“反馈”直接提交当前页面问题。"
     )
-
 
 def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
     app = implementation.app
@@ -99,10 +304,34 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         db=Depends(implementation.get_db),
     ):
         question = body.question.strip()
+        role = str(getattr(user, "role", "") or "")
+        learning_context = _role_learning_context(
+            implementation,
+            db,
+            user,
+            body.child_id,
+            question,
+        )
+        if role == "student" and _student_direct_answer_request(question, body.page):
+            return {
+                "ok": True,
+                "reply": _local_answer(
+                    question,
+                    body.identity,
+                    body.page,
+                    body.tutorial_step,
+                    role=role,
+                    learning_context=learning_context,
+                ),
+                "source": "learning_guard",
+                "degraded": False,
+            }
         prompt = (
             _PRODUCT_CONTEXT
             + "\n\n当前上下文："
-            + f"账号角色={getattr(user, 'role', '')}; 身份={body.identity}; 页面={body.page}; 新手步骤={body.tutorial_step or '无'}。"
+            + f"账号角色={role}; 身份={body.identity}; 页面={body.page}; 新手步骤={body.tutorial_step or '无'}。"
+            + "\n角色内学习数据："
+            + learning_context
             + "\n用户问题："
             + question
         )
@@ -118,14 +347,28 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         except HTTPException:
             return {
                 "ok": True,
-                "reply": _local_answer(question, body.identity, body.page, body.tutorial_step),
+                "reply": _local_answer(
+                    question,
+                    body.identity,
+                    body.page,
+                    body.tutorial_step,
+                    role=role,
+                    learning_context=learning_context,
+                ),
                 "source": "local",
                 "degraded": True,
             }
         except Exception:
             return {
                 "ok": True,
-                "reply": _local_answer(question, body.identity, body.page, body.tutorial_step),
+                "reply": _local_answer(
+                    question,
+                    body.identity,
+                    body.page,
+                    body.tutorial_step,
+                    role=role,
+                    learning_context=learning_context,
+                ),
                 "source": "local",
                 "degraded": True,
             }
