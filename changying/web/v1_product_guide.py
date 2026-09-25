@@ -225,10 +225,13 @@ _GUIDE_SNIPPET = r'''
   }
 
   function renderPersistentGuide(){
-    if(!screen||screen.querySelector('#cy-v1-product-guide-page'))return;
+    if(!screen)return;
+    const existing=screen.querySelector('#cy-v1-product-guide-page');
+    if(existing?.dataset?.guideVersion==='v4')return;
+    if(existing)existing.remove();
     const persona=currentPersona();
     if(!persona){
-      screen.innerHTML='<main id="cy-v1-product-guide-page"><section class="cy-guide-hero"><span class="tag">新手教学</span><h1>请先完成账号登录并选择身份</h1><p>新手教学会根据你真实登录后的身份显示对应流程；未登录或尚未选择身份时不会提前展示。</p></section></main>';
+      screen.innerHTML='<main id="cy-v1-product-guide-page" data-guide-version="v4"><section class="cy-guide-hero"><span class="tag">新手教学</span><h1>请先完成账号登录并选择身份</h1><p>新手教学会根据你真实登录后的身份显示对应流程；未登录或尚未选择身份时不会提前展示。</p></section></main>';
       return;
     }
     const progress=completion(persona);
