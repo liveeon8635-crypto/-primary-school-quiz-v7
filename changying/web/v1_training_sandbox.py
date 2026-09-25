@@ -587,7 +587,6 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
                 session.data["wrong_questions"].append({"id": session.new_id(), "questionID": question["id"], "knowledge": question["knowledge"], "prompt": question["prompt"]})
         session.data["targeted_practices"].append({"id": session.new_id(), "studentID": student["id"], "knowledge": paper["knowledge"], "basedOnSubmissionID": sub["id"], "questionCount": 4, "status": "assigned"})
         session.progress["answer"] = "done"
-        session.progress["result"] = "done"
         _event(session, action, f"submission={sub['id']}:score={score}")
         return
 
@@ -770,7 +769,6 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
             "source": "练习完成",
         })
         session.progress["student_submission"] = "done"
-        session.progress["evidence"] = "done"
         _event(session, action, f"submission={obj['id']}:score={score}")
         return
 
