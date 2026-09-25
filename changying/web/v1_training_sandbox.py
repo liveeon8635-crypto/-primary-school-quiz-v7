@@ -339,9 +339,16 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
             {
                 "id": session.new_id(),
                 "index": i + 1,
-                "type": ["单选", "填空", "计算", "应用"][i % 4],
+                "type": "单选",
                 "knowledge": knowledge,
                 "prompt": f"{knowledge} · 沙盒练习题 {i + 1}",
+                "options": [
+                    f"选项 A · {i + 1}",
+                    f"选项 B · {i + 1}",
+                    f"选项 C · {i + 1}",
+                    f"选项 D · {i + 1}",
+                ],
+                "correctIndex": i % 4,
             }
             for i in range(count)
         ]
@@ -402,7 +409,17 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
         if action == "student_submit" and session.current_role != "student":
             raise HTTPException(409, "请先切换到虚拟学生视角，或选择自动模拟")
         total = len(paper["questions"])
-        correct = max(0, min(total, int(p.get("correct", max(1, round(total * 0.75))))))
+        submitted_answers = p.get("answers")
+        if action == "student_submit" and isinstance(submitted_answers, dict):
+            normalized = {str(key): value for key, value in submitted_answers.items()}
+            correct = sum(
+                1
+                for question in paper["questions"]
+                if str(question["id"]) in normalized
+                and int(normalized[str(question["id"])]) == int(question["correctIndex"])
+            )
+        else:
+            correct = max(0, min(total, int(p.get("correct", max(1, round(total * 0.75))))))
         score = round(correct * 100 / max(1, total))
         existing = [x for x in session.data["submissions"] if x["assignmentID"] == assignment["id"] and x["studentID"] == student["id"]]
         if existing:
