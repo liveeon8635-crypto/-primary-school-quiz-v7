@@ -130,6 +130,7 @@ from changying.web.v1_membership_visibility import install_v1_membership_visibil
 from changying.web.v1_operational import install_v1_operational_patch
 from changying.web.v1_parent_link_history import install_v1_parent_link_history_profile
 from changying.web.v1_school_facts import install_v1_school_facts_patch
+from changying.web.v1_product_guide import install_v1_product_guide_patch
 from changying.web.v1_student_detail_visibility import install_v1_student_detail_visibility_patch
 from changying.web.v1_student_practice import install_v1_student_practice_patch, install_v1_student_practice_routes
 from changying.web.v1_teaching_actions import install_v1_teaching_actions_patch
@@ -465,6 +466,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_unified_tool_session_bridge()
     install_v1_audit_localization()
     install_v1_history_focus_patch()
+    install_v1_product_guide_patch()
     install_v1_learning_evidence_profile(implementation)
     install_v1_classroom_longitudinal_profile(implementation)
     install_v2_learning_evidence_recorder_patch()
