@@ -467,15 +467,15 @@ _ASSISTANT_SNIPPET = r'''
 <button id="cy-product-assistant-fab" hidden aria-label="打开产品助手" title="产品助手">✦<span class="cy-pa-fab-label">产品助手</span></button>
 <section id="cy-product-assistant-panel" hidden aria-label="长缨产品助手">
   <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-collapse" aria-label="收起">−</button></div></header>
-  <div class="cy-pa-tabs"><button class="cy-pa-tab active" data-pa-tab="ask">问产品</button><button class="cy-pa-tab" data-pa-tab="feedback">提反馈</button></div>
+  <div class="cy-pa-tabs"><button class="cy-pa-tab active" id="cy-pa-ask-tab" data-pa-tab="ask">问产品</button><button class="cy-pa-tab" data-pa-tab="feedback">提反馈</button></div>
   <div class="cy-pa-body" id="cy-pa-ask">
-    <div class="cy-pa-quick"><button data-pa-question="我现在该做什么？">下一步做什么</button><button data-pa-question="这个页面是干什么的？">页面用途</button><button data-pa-question="这一步为什么排在这里？">为什么这样走</button></div>
+    <div class="cy-pa-quick"><button id="cy-pa-quick-1" data-pa-question="我现在该做什么？">下一步做什么</button><button id="cy-pa-quick-2" data-pa-question="这个页面是干什么的？">页面用途</button><button id="cy-pa-quick-3" data-pa-question="这一步为什么排在这里？">为什么这样走</button></div>
     <div class="cy-pa-guide" id="cy-pa-guide">
       <div class="cy-pa-guide-title">页面示意 · 点卡片直达</div>
       <div class="cy-pa-guide-grid" id="cy-pa-guide-grid"></div>
       <div class="cy-pa-note">页面示意直接随助手生成，不依赖额外图片下载；点击即可进入对应功能页。</div>
     </div>
-    <div class="cy-pa-chat" id="cy-pa-chat"><div class="cy-pa-msg assistant">我会结合你当前登录身份、所在页面和新手教学步骤回答长缨怎么用；也会用页面示意卡标出相关入口。</div></div>
+    <div class="cy-pa-chat" id="cy-pa-chat"><div class="cy-pa-msg assistant" id="cy-pa-welcome">我会结合你当前登录身份、所在页面和新手教学步骤回答长缨怎么用；也会用页面示意卡标出相关入口。</div></div>
     <div class="cy-pa-compose"><textarea id="cy-pa-input" placeholder="例如：这个页面应该先做什么？"></textarea><button class="btn primary" id="cy-pa-send">发送</button></div>
   </div>
   <div class="cy-pa-body" id="cy-pa-feedback" hidden>
@@ -499,7 +499,8 @@ _ASSISTANT_SNIPPET = r'''
   const identityButtonReady=()=>{const button=getIdentityButton();return Boolean(button&&button.hidden===false)};
   const identityReady=()=>Boolean(readToken()&&(identityChipReady()||identityButtonReady()));
   const tutorialStep=()=>document.querySelector('.cy-lesson-top h2')?.textContent?.trim()||'';
-  const context=()=>{const chip=getIdentityChip();return {page:location.pathname+location.search,identity:String(chip?.textContent||'').trim(),tutorial_step:tutorialStep()}};
+  const selectedChildID=()=>{try{return typeof state!=='undefined'&&state?.childID?Number(state.childID):null}catch{return null}};
+  const context=()=>{const chip=getIdentityChip();return {page:location.pathname+location.search,identity:String(chip?.textContent||'').trim(),tutorial_step:tutorialStep(),child_id:selectedChildID()}};
   const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const cleanReplyText=text=>String(text||'').replace(/\*\*/g,'').replace(/\`/g,'').replace(/^#{1,4}\s*/gm,'').trim();
   const addMessage=(kind,text)=>{const el=document.createElement('div');el.className='cy-pa-msg '+kind;el.textContent=kind==='assistant'?cleanReplyText(text):text;chat.appendChild(el);chat.scrollTop=chat.scrollHeight};
@@ -550,6 +551,40 @@ _ASSISTANT_SNIPPET = r'''
     if(label.includes('学生'))return'student';
     return'teacher';
   };
+  const ROLE_COPY={
+    teacher:{
+      tab:'问产品',
+      placeholder:'例如：这个页面应该先做什么？',
+      welcome:'我会结合你当前身份和页面解释长缨怎么用，并把相关功能入口直接标出来。',
+      quick:[['下一步做什么','我现在该做什么？'],['页面用途','这个页面是干什么的？'],['为什么这样走','这一步为什么排在这里？']]
+    },
+    student:{
+      tab:'问长缨',
+      placeholder:'可以问不会的题、知识点，或长缨里下一步怎么学…',
+      welcome:'你可以问我长缨怎么用，也可以问不会的知识点和题目思路。我不会直接替你做作业，会陪你把问题拆开，一步一步找到答案。',
+      quick:[['这题怎么想','我有一道题不会，先别告诉我答案，帮我拆解思路。'],['拆知识点','帮我把这个知识点拆成容易理解的小步骤。'],['去哪里巩固','我刚刚有点没学会，长缨里应该去哪里继续练？']]
+    },
+    parent:{
+      tab:'孩子学习',
+      placeholder:'例如：孩子最近怎么样？我在家怎么配合？',
+      welcome:'我会优先结合当前绑定孩子在长缨里的真实学习记录，帮你看进步、待关注点和家庭里可以怎么配合。',
+      quick:[['最近怎么样','结合长缨里的记录，孩子最近学习情况怎么样？'],['在家怎么配合','根据孩子目前的学习情况，我在家可以怎么配合？'],['先鼓励什么','我现在最值得先肯定和鼓励孩子的是什么？']]
+    },
+    admin:{
+      tab:'问产品',
+      placeholder:'例如：这个页面应该先做什么？',
+      welcome:'我会结合当前管理身份和页面解释长缨的功能、边界和下一步操作。',
+      quick:[['下一步做什么','我现在该做什么？'],['页面用途','这个页面是干什么的？'],['为什么这样走','这一步为什么排在这里？']]
+    }
+  };
+  const applyRoleCopy=()=>{
+    const c=context(),role=guideRole(c.identity),cfg=ROLE_COPY[role]||ROLE_COPY.teacher;
+    const tab=document.getElementById('cy-pa-ask-tab'),welcome=document.getElementById('cy-pa-welcome');
+    if(tab)tab.textContent=cfg.tab;
+    if(welcome)welcome.textContent=cfg.welcome;
+    input.placeholder=cfg.placeholder;
+    cfg.quick.forEach((item,i)=>{const btn=document.getElementById('cy-pa-quick-'+(i+1));if(btn){btn.textContent=item[0];btn.dataset.paQuestion=item[1]}});
+  };
   const guideScore=(g,text,currentPage)=>{
     const hay=String(text||'')+' '+String(currentPage||'');
     const page=String(currentPage||'').split('#')[0];
@@ -596,7 +631,7 @@ _ASSISTANT_SNIPPET = r'''
   }
 
   const closePanel=()=>{panel.hidden=true;fab.hidden=!identityReady();fab.setAttribute('aria-label','打开产品助手')};
-  const openPanel=()=>{if(!identityReady())return;panel.hidden=false;fab.hidden=true;fab.setAttribute('aria-label','收起产品助手');updateContext();renderGuideGrid()};
+  const openPanel=()=>{if(!identityReady())return;panel.hidden=false;fab.hidden=true;fab.setAttribute('aria-label','收起产品助手');updateContext();applyRoleCopy();renderGuideGrid()};
   fab.onclick=()=>panel.hidden?openPanel():closePanel();
   document.getElementById('cy-pa-collapse').onclick=closePanel;
   document.querySelectorAll('[data-pa-category]').forEach(btn=>btn.onclick=()=>{
@@ -627,7 +662,7 @@ _ASSISTANT_SNIPPET = r'''
     if(button&&!observedIdentityNodes.has(button)){identityObserver.observe(button,{attributes:true,attributeFilter:['hidden']});observedIdentityNodes.add(button)}
     if(chip&&!observedIdentityNodes.has(chip)){identityObserver.observe(chip,{childList:true,characterData:true,subtree:true});observedIdentityNodes.add(chip)}
   };
-  const sync=()=>{observeIdentityNodes();const ready=identityReady();if(!ready){fab.hidden=true;panel.hidden=true;return}fab.hidden=!panel.hidden;updateContext();if(!panel.hidden)renderGuideGrid()};
+  const sync=()=>{observeIdentityNodes();const ready=identityReady();if(!ready){fab.hidden=true;panel.hidden=true;return}fab.hidden=!panel.hidden;updateContext();applyRoleCopy();if(!panel.hidden)renderGuideGrid()};
   window.addEventListener('pageshow',sync);window.addEventListener('popstate',sync);window.addEventListener('focus',sync);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
   let authReadyPoll=null;
