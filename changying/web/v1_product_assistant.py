@@ -8,10 +8,14 @@ recorded through the existing audit log so no new schema is required.
 from __future__ import annotations
 
 import json
+import secrets
+from datetime import datetime, timedelta
 from types import ModuleType
 
+import requests
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from changying.web import v1 as v1_module
 
@@ -19,6 +23,9 @@ from changying.web import v1 as v1_module
 V1_PRODUCT_ASSISTANT_MARKER = "changying_v1_product_assistant_v1"
 QUERY_PATH = "/v1/product-assistant/query"
 FEEDBACK_PATH = "/v1/product-feedback"
+FEEDBACK_PROOF_PREFIX = "/v1/product-feedback/proof"
+FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
+FEEDBACK_PROOF_TTL_MINUTES = 15
 
 
 class ProductAssistantBody(BaseModel):
@@ -128,12 +135,14 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         user=Depends(implementation.current_user),
         db=Depends(implementation.get_db),
     ):
+        proof_token = secrets.token_urlsafe(24)
         payload = {
             "category": body.category.strip() or "其他反馈",
             "message": body.message.strip(),
             "page": body.page.strip(),
             "identity": body.identity.strip(),
             "tutorialStep": body.tutorial_step.strip(),
+            "transferToken": proof_token,
         }
         implementation.audit(
             db,
@@ -142,7 +151,57 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             json.dumps(payload, ensure_ascii=False)[:1800],
         )
         db.commit()
-        return {"ok": True, "received": True}
+
+        synced = False
+        try:
+            response = requests.post(
+                FREEMAN_FEEDBACK_IMPORT_URL,
+                json={"projectId": "longying", "proofToken": proof_token},
+                timeout=4,
+            )
+            synced = bool(response.ok)
+        except requests.RequestException:
+            synced = False
+        return {"ok": True, "received": True, "freemanSynced": synced}
+
+    @router.get(FEEDBACK_PROOF_PREFIX + "/{proof_token}", include_in_schema=False)
+    def product_feedback_proof(proof_token: str, db=Depends(implementation.get_db)):
+        token = str(proof_token or "").strip()
+        if len(token) < 24 or len(token) > 96:
+            raise HTTPException(404, "反馈凭证不存在")
+        row = db.scalar(
+            select(implementation.AuditLog)
+            .where(
+                implementation.AuditLog.action == "product.feedback",
+                implementation.AuditLog.detail.contains(token),
+            )
+            .order_by(implementation.AuditLog.id.desc())
+            .limit(1)
+        )
+        if not row:
+            raise HTTPException(404, "反馈凭证不存在")
+        created_at = row.created_at or datetime.utcnow()
+        if datetime.utcnow() - created_at > timedelta(minutes=FEEDBACK_PROOF_TTL_MINUTES):
+            raise HTTPException(410, "反馈凭证已过期")
+        try:
+            payload = json.loads(row.detail or "{}")
+        except Exception:
+            raise HTTPException(404, "反馈凭证无效")
+        if payload.get("transferToken") != token:
+            raise HTTPException(404, "反馈凭证无效")
+        return {
+            "ok": True,
+            "projectId": "longying",
+            "feedback": {
+                "sourceId": row.id,
+                "category": str(payload.get("category") or "其他反馈")[:60],
+                "message": str(payload.get("message") or "")[:1200],
+                "page": str(payload.get("page") or "")[:240],
+                "identity": str(payload.get("identity") or "")[:160],
+                "tutorialStep": str(payload.get("tutorialStep") or "")[:200],
+                "createdAt": created_at.isoformat() + "Z",
+            },
+        }
 
     app.include_router(router)
     app.state.v1_product_assistant_routes_installed = True
@@ -228,15 +287,17 @@ _ASSISTANT_SNIPPET = r'''
     if(!message)return;
     const btn=document.getElementById('cy-pa-submit-feedback');btn.disabled=true;btn.textContent='提交中…';
     try{
-      await postJson('/v1/product-feedback',{category:document.getElementById('cy-pa-category').value,message,...context()});
+      const result=await postJson('/v1/product-feedback',{category:document.getElementById('cy-pa-category').value,message,...context()});
       document.getElementById('cy-pa-feedback-text').value='';
-      btn.textContent='已收到，谢谢 ✓';
-      setTimeout(()=>{btn.textContent='提交反馈';btn.disabled=false},1600);
+      btn.textContent=result.freemanSynced?'已同步到 Freeman ✓':'反馈已收到 · Freeman 同步待确认';
+      setTimeout(()=>{btn.textContent='提交反馈';btn.disabled=false},2200);
     }catch(err){btn.textContent='提交失败，重试';btn.disabled=false}
   };
 
-  const sync=()=>{const ready=identityReady();fab.hidden=!ready;if(!ready)panel.hidden=true;else updateContext()};
-  new MutationObserver(()=>queueMicrotask(sync)).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['hidden']});
+  const sync=()=>{const ready=identityReady();if(fab.hidden===ready)fab.hidden=!ready;if(!ready){panel.hidden=true;return}updateContext()};
+  const identityObserver=new MutationObserver(()=>queueMicrotask(sync));
+  if(identityButton)identityObserver.observe(identityButton,{attributes:true,attributeFilter:['hidden']});
+  if(identityChip)identityObserver.observe(identityChip,{childList:true,characterData:true,subtree:true});
   window.addEventListener('pageshow',sync);window.addEventListener('popstate',sync);
   setTimeout(sync,0);setTimeout(sync,300);
 })();
@@ -270,6 +331,7 @@ def install_v1_product_assistant_patch() -> None:
 
 __all__ = [
     "FEEDBACK_PATH",
+    "FEEDBACK_PROOF_PREFIX",
     "QUERY_PATH",
     "V1_PRODUCT_ASSISTANT_MARKER",
     "install_v1_product_assistant_patch",
