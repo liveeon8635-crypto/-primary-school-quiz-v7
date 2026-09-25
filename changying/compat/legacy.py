@@ -131,6 +131,7 @@ from changying.web.v1_operational import install_v1_operational_patch
 from changying.web.v1_parent_link_history import install_v1_parent_link_history_profile
 from changying.web.v1_school_facts import install_v1_school_facts_patch
 from changying.web.v1_product_guide import install_v1_product_guide_patch
+from changying.web.v1_training_sandbox import install_v1_training_sandbox_routes
 from changying.web.v1_product_assistant import (
     install_v1_product_assistant_patch,
     install_v1_product_assistant_routes,
@@ -471,6 +472,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_audit_localization()
     install_v1_history_focus_patch()
     install_v1_product_guide_patch()
+    install_v1_training_sandbox_routes(implementation)
     install_v1_product_assistant_patch()
     install_v1_product_assistant_routes(implementation)
     install_v1_learning_evidence_profile(implementation)
