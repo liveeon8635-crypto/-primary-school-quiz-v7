@@ -3334,7 +3334,7 @@ def run_schema_migrations(db):
         ("10.6.3","修复明确年级班级的名称/年级字段不一致，并同步当前学生年级"),
         ("10.6.4","将已完成的 AI 针对性练习错题回填到连续学习反馈，并纳入后续针对性练习"),
         ("10.6.5","AI 针对性练习支持多题型、文本自动判分与按需规则图示"),
-        ("10.6.6","公开推广收口：停用历史演示学校与默认演示账号，保留历史记录")
+        ("10.6.6","公开推广收口：停用历史默认演示账号，保留已承载真实用户的学校与全部历史记录")
     ]
     changed=False
     for version,description in migrations:
@@ -3610,21 +3610,16 @@ LEGACY_DEMO_USERNAMES=("teacher1","student1","parent1")
 
 
 def retire_legacy_demo_identities(db):
-    """Deactivate only the original seeded demo identities, preserving history."""
+    """Deactivate only default legacy demo accounts; never disable a repurposed school."""
 
     schools=db.scalars(
         select(School).where(
             (func.lower(School.code)=="demo") | (School.name=="演示小学")
         ).order_by(School.id)
     ).all()
-    retired_school_ids=[]
+    demo_school_ids=[school.id for school in schools]
     retired_users=[]
     for school in schools:
-        changed=False
-        if school.active:
-            school.active=False
-            retired_school_ids.append(school.id)
-            changed=True
         users=db.scalars(
             select(User).where(
                 User.school_id==school.id,
@@ -3638,23 +3633,21 @@ def retire_legacy_demo_identities(db):
             user.active=False
             retired_users.append(user.username)
             retired_here.append(user.username)
-            changed=True
-        if changed:
+        if retired_here:
             db.add(AuditLog(
                 school_id=school.id,
                 user_id=None,
-                action="legacy_demo.retired",
+                action="legacy_demo.accounts_retired",
                 detail=(
                     f"school={school.id};users="
                     + ",".join(retired_here)
-                    + ";history_preserved=true"
+                    + ";school_preserved=true;history_preserved=true"
                 ),
             ))
     return {
-        "retiredSchoolIDs":retired_school_ids,
+        "demoSchoolIDs":demo_school_ids,
         "retiredLegacyUsers":retired_users,
     }
-
 
 def production_demo_identity_status(db):
     """Detect seeded demo identities that must not survive a public launch."""
