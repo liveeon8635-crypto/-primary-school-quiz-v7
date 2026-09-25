@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from changying.web import v1 as v1_module
-from changying.web import v1_unified_tools as unified_tools_module
+from changying.web import v1_classic_gzip_embed as classic_embed_module
 
 
 V1_PRODUCT_ASSISTANT_MARKER = "changying_v1_product_assistant_v1"
@@ -238,7 +238,7 @@ _ASSISTANT_SNIPPET = r'''
   if(window.__cyV1ProductAssistantInstalled)return;
   window.__cyV1ProductAssistantInstalled=true;
   const fab=document.getElementById('cy-product-assistant-fab'),panel=document.getElementById('cy-product-assistant-panel');
-  const identityButton=document.getElementById('identityButton'),identityChip=document.getElementById('identityChip')||document.getElementById('identity');
+  const identityButton=document.getElementById('identityButton'),identityChip=document.getElementById('identityChip')||document.getElementById('cy-v1-unified-identity')||document.getElementById('identity');
   const chat=document.getElementById('cy-pa-chat'),input=document.getElementById('cy-pa-input'),send=document.getElementById('cy-pa-send');
   const REMEMBER_KEY='v717Remember';
   const authRemember=()=>localStorage.getItem(REMEMBER_KEY)==='1';
@@ -336,11 +336,14 @@ def install_v1_product_assistant_patch() -> None:
         v1_module.v1_html = patched_v1_html
         v1_module._product_assistant_patch_installed = True
 
-    if not getattr(unified_tools_module, "_product_assistant_surface_installed", False):
-        unified_tools_module._TOOL_HTML = patch_v1_product_assistant(  # noqa: SLF001
-            unified_tools_module._TOOL_HTML  # noqa: SLF001
-        )
-        unified_tools_module._product_assistant_surface_installed = True
+    if not getattr(classic_embed_module, "_product_assistant_unified_installed", False):
+        original_unified = classic_embed_module.enhance_unified_classic_html
+
+        def patched_unified_classic_html(html: str) -> str:
+            return patch_v1_product_assistant(original_unified(html))
+
+        classic_embed_module.enhance_unified_classic_html = patched_unified_classic_html
+        classic_embed_module._product_assistant_unified_installed = True
 
 
 __all__ = [
