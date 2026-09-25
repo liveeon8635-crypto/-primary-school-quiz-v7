@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from changying.web import v1 as v1_module
+from changying.web import v1_unified_tools as unified_tools_module
 
 
 V1_PRODUCT_ASSISTANT_MARKER = "changying_v1_product_assistant_v1"
@@ -238,13 +239,13 @@ _ASSISTANT_SNIPPET = r'''
   if(window.__cyV1ProductAssistantInstalled)return;
   window.__cyV1ProductAssistantInstalled=true;
   const fab=document.getElementById('cy-product-assistant-fab'),panel=document.getElementById('cy-product-assistant-panel');
-  const identityButton=document.getElementById('identityButton'),identityChip=document.getElementById('identityChip');
+  const identityButton=document.getElementById('identityButton'),identityChip=document.getElementById('identityChip')||document.getElementById('identity');
   const chat=document.getElementById('cy-pa-chat'),input=document.getElementById('cy-pa-input'),send=document.getElementById('cy-pa-send');
   const REMEMBER_KEY='v717Remember';
   const authRemember=()=>localStorage.getItem(REMEMBER_KEY)==='1';
   const authStore=()=>authRemember()?localStorage:sessionStorage;
   const readToken=()=>authStore().getItem('v717Token')||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||'';
-  const identityReady=()=>Boolean(identityButton&&identityButton.hidden===false&&readToken());
+  const identityReady=()=>Boolean(readToken()&&(identityButton?identityButton.hidden===false:Boolean(identityChip&&!String(identityChip.textContent||'').includes('正在识别'))));
   const tutorialStep=()=>document.querySelector('.cy-lesson-top h2')?.textContent?.trim()||'';
   const context=()=>({page:location.pathname+location.search,identity:String(identityChip?.textContent||'').trim(),tutorial_step:tutorialStep()});
   const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -278,10 +279,9 @@ _ASSISTANT_SNIPPET = r'''
   }
 
   const sizeButton=document.getElementById('cy-pa-size');
-  const syncSizeButton=()=>{const compact=panel.classList.contains('compact');sizeButton.textContent=compact?'展开':'—';sizeButton.setAttribute('aria-label',compact?'展开助手':'收起助手')};
-  fab.onclick=()=>{panel.hidden=false;panel.classList.remove('compact');syncSizeButton();updateContext()};
-  sizeButton.onclick=()=>{panel.classList.toggle('compact');syncSizeButton()};
-  document.getElementById('cy-pa-close').onclick=()=>{panel.hidden=true;panel.classList.remove('compact');syncSizeButton()};
+  fab.onclick=()=>{panel.hidden=false;updateContext()};
+  sizeButton.onclick=()=>{panel.hidden=true};
+  document.getElementById('cy-pa-close').onclick=()=>{panel.hidden=true};
   document.querySelectorAll('.cy-pa-tab').forEach(x=>x.onclick=()=>setTab(x.dataset.paTab));
   document.querySelectorAll('[data-pa-question]').forEach(x=>x.onclick=()=>ask(x.dataset.paQuestion));
   send.onclick=()=>ask(input.value);
@@ -323,15 +323,23 @@ def patch_v1_product_assistant(html: str) -> str:
 
 
 def install_v1_product_assistant_patch() -> None:
-    if getattr(v1_module, "_product_assistant_patch_installed", False):
-        return
-    original = v1_module.v1_html
+    if not getattr(v1_module, "_product_assistant_patch_installed", False):
+        original = v1_module.v1_html
 
-    def patched_v1_html() -> str:
-        return patch_v1_product_assistant(original())
+        def patched_v1_html() -> str:
+            return patch_v1_product_assistant(original())
 
-    v1_module.v1_html = patched_v1_html
-    v1_module._product_assistant_patch_installed = True
+        v1_module.v1_html = patched_v1_html
+        v1_module._product_assistant_patch_installed = True
+
+    if not getattr(unified_tools_module, "_product_assistant_patch_installed", False):
+        original_tool_html = unified_tools_module.unified_tool_html
+
+        def patched_tool_html() -> str:
+            return patch_v1_product_assistant(original_tool_html())
+
+        unified_tools_module.unified_tool_html = patched_tool_html
+        unified_tools_module._product_assistant_patch_installed = True
 
 
 __all__ = [
