@@ -40,6 +40,7 @@ button,input,select,textarea{font:inherit}.hidden{display:none!important}.muted{
     <div class="top-actions">
       <button class="icon-btn" id="toggleMap"><span class="label">训练地图</span> ☰</button>
       <button class="icon-btn" id="askBtn"><span class="label">问助手</span> ✦</button>
+      <button class="icon-btn" id="feedbackBtn"><span class="label">反馈</span> ◇</button>
       <a class="icon-btn" href="/v1/workspace">退出</a>
     </div>
   </div>
@@ -175,6 +176,10 @@ async function askAssistant(){
  openDrawer('产品助手','<div class="assistant-log" id="assistantLog"><div class="assistant-msg ai">可以问：这个页面有什么用？其他角色会看到什么？我下一步应该做什么？</div></div><div class="field"><label>问题</label><textarea id="assistantQuestion" placeholder="例如：学生提交以后，教师和家长分别能看到什么？"></textarea></div><button class="btn primary" id="assistantSend" style="margin-top:9px">发送</button>');
  document.getElementById('assistantSend').onclick=async()=>{const q=document.getElementById('assistantQuestion').value.trim();if(!q)return;const log=document.getElementById('assistantLog');log.insertAdjacentHTML('beforeend','<div class="assistant-msg">'+esc(q)+'</div>');try{const d=await request('/v1/product-assistant/query',{method:'POST',body:JSON.stringify({question:q,page:current().page,identity:roleName(session.currentRole),tutorial_step:current().title})});log.insertAdjacentHTML('beforeend','<div class="assistant-msg ai">'+esc(d.reply)+'</div>')}catch(e){log.insertAdjacentHTML('beforeend','<div class="assistant-msg ai">'+esc(e.message)+'</div>')}}
 }
+async function sendTrainingFeedback(){
+  openDrawer('训练反馈','<div class="notice">反馈会附带当前身份、当前功能页和训练步骤，进入长缨 / Freeman 产品反馈链；不会附带沙盒答题内容。</div><div class="field" style="margin-top:12px"><label>类型</label><select id="feedbackCategory"><option>操作不清楚</option><option>页面难用</option><option>流程太繁琐</option><option>角色关系不清楚</option><option>功能建议</option><option>其他反馈</option></select></div><div class="field" style="margin-top:9px"><label>反馈内容</label><textarea id="feedbackMessage" placeholder="告诉我们具体卡在哪一步、期待怎样改。"></textarea></div><button class="btn primary" id="feedbackSend" style="margin-top:9px">提交反馈</button><div id="feedbackResult" class="small muted" style="margin-top:8px"></div>');
+  document.getElementById('feedbackSend').onclick=async()=>{const message=document.getElementById('feedbackMessage').value.trim();if(!message)return;const btn=document.getElementById('feedbackSend');btn.disabled=true;try{await request('/v1/product-feedback',{method:'POST',body:JSON.stringify({category:document.getElementById('feedbackCategory').value,message,page:current().page,identity:roleName(session.currentRole),tutorial_step:current().title})});document.getElementById('feedbackResult').textContent='已提交。谢谢，这条反馈会进入产品优化池。'}catch(e){document.getElementById('feedbackResult').textContent=e.message}finally{btn.disabled=false}}
+}
 document.getElementById('prevBtn').onclick=()=>setIndex(index-1);
 document.getElementById('nextBtn').onclick=()=>setIndex(index+1);
 document.getElementById('skipBtn').onclick=async()=>{await markStep('skipped');if(index<session.flow.length-1)setIndex(index+1)};
@@ -184,6 +189,7 @@ document.getElementById('drawerClose').onclick=()=>drawer.classList.add('hidden'
 drawer.onclick=e=>{if(e.target===drawer)drawer.classList.add('hidden')};
 document.getElementById('toggleMap').onclick=()=>rail.classList.toggle('open');
 document.getElementById('askBtn').onclick=askAssistant;
+document.getElementById('feedbackBtn').onclick=sendTrainingFeedback;
 document.getElementById('loadScenario').onclick=async()=>{const preset=document.getElementById('scenario').value;await act('load_scenario',{preset});const target={empty:0,assigned:7,submitted:8,classroom:10}[preset]??0;setIndex(Math.min(target,session.flow.length-1))};
 start();
 })();
