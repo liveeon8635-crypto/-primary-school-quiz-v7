@@ -768,7 +768,8 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
             "points": correct,
             "source": "练习完成",
         })
-        session.progress["student_submission"] = "done"
+        if action == "simulate_student_submission":
+            session.progress["student_submission"] = "done"
         _event(session, action, f"submission={obj['id']}:score={score}")
         return
 
