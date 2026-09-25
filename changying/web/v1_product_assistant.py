@@ -211,6 +211,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
 _ASSISTANT_SNIPPET = r'''
 <style id="changying_v1_product_assistant_v1-css">
   #cy-product-assistant-fab{position:fixed;right:14px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:125;border:0;border-radius:999px;background:#173a78;color:#fff;width:48px;height:48px;padding:0;font-weight:900;box-shadow:0 10px 28px rgba(23,58,120,.24);display:grid;place-items:center;font-size:20px}#cy-product-assistant-fab .cy-pa-fab-label{display:none}
+  #cy-product-assistant-fab[hidden],#cy-product-assistant-panel[hidden]{display:none!important}
   #cy-product-assistant-panel{position:fixed;right:14px;bottom:calc(142px + env(safe-area-inset-bottom));z-index:126;width:min(390px,calc(100vw - 28px));max-height:min(620px,70dvh);background:#fff;border:1px solid #dbe4f1;border-radius:20px;box-shadow:0 22px 70px rgba(17,34,64,.28);overflow:hidden;display:flex;flex-direction:column}
   .cy-pa-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid #e2e8f1}.cy-pa-head b{display:block}.cy-pa-head small{display:block;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);line-height:1.35}.cy-pa-head-actions{display:flex;gap:6px}.cy-pa-head-actions .btn{min-height:36px;padding:7px 10px}
   .cy-pa-tabs{display:grid;grid-template-columns:1fr 1fr;padding:9px;gap:7px;background:#f7f9fc}.cy-pa-tab{border:1px solid #dbe4f1;background:#fff;border-radius:11px;padding:9px;font-weight:750}.cy-pa-tab.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78}
@@ -312,8 +313,8 @@ _ASSISTANT_SNIPPET = r'''
     updateContext();
   }
 
-  const closePanel=()=>{panel.hidden=true;fab.setAttribute('aria-label','打开产品助手')};
-  const openPanel=()=>{panel.hidden=false;fab.setAttribute('aria-label','收起产品助手');updateContext();renderGuideGrid()};
+  const closePanel=()=>{panel.hidden=true;fab.hidden=!identityReady();fab.setAttribute('aria-label','打开产品助手')};
+  const openPanel=()=>{if(!identityReady())return;panel.hidden=false;fab.hidden=true;fab.setAttribute('aria-label','收起产品助手');updateContext();renderGuideGrid()};
   fab.onclick=()=>panel.hidden?openPanel():closePanel();
   document.getElementById('cy-pa-close').onclick=closePanel;
   document.getElementById('cy-pa-collapse').onclick=closePanel;
@@ -338,7 +339,7 @@ _ASSISTANT_SNIPPET = r'''
     }catch(err){btn.textContent='提交失败，重试';btn.disabled=false}
   };
 
-  const sync=()=>{const ready=identityReady();if(fab.hidden===ready)fab.hidden=!ready;if(!ready){panel.hidden=true;return}updateContext();if(!panel.hidden)renderGuideGrid()};
+  const sync=()=>{const ready=identityReady();if(!ready){fab.hidden=true;panel.hidden=true;return}fab.hidden=!panel.hidden;updateContext();if(!panel.hidden)renderGuideGrid()};
   const identityObserver=new MutationObserver(()=>queueMicrotask(sync));
   if(identityButton)identityObserver.observe(identityButton,{attributes:true,attributeFilter:['hidden']});
   if(identityChip)identityObserver.observe(identityChip,{childList:true,characterData:true,subtree:true});
