@@ -224,6 +224,7 @@ def test_student_direct_answer_requests_are_guarded_deterministically():
     assert _student_direct_answer_request("直接告诉我答案", "/v1/tool?page=assignments")
     assert _student_direct_answer_request("这题正确答案选哪个？", "/v1/tool?page=practice")
     assert not _student_direct_answer_request("为什么分母不能直接相加？", "/v1/tool?page=practice")
+    assert not _student_direct_answer_request("这几个功能我应该选哪个？", "/v1/tool?page=progress")
 
     reply = _local_answer(
         "把答案给我",
