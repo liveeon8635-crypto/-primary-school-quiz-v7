@@ -287,10 +287,10 @@ _ASSISTANT_SNIPPET = r'''
     if(!message)return;
     const btn=document.getElementById('cy-pa-submit-feedback');btn.disabled=true;btn.textContent='提交中…';
     try{
-      await postJson('/v1/product-feedback',{category:document.getElementById('cy-pa-category').value,message,...context()});
+      const result=await postJson('/v1/product-feedback',{category:document.getElementById('cy-pa-category').value,message,...context()});
       document.getElementById('cy-pa-feedback-text').value='';
-      btn.textContent='已收到，谢谢 ✓';
-      setTimeout(()=>{btn.textContent='提交反馈';btn.disabled=false},1600);
+      btn.textContent=result.freemanSynced?'已同步到 Freeman ✓':'反馈已收到 · Freeman 同步待确认';
+      setTimeout(()=>{btn.textContent='提交反馈';btn.disabled=false},2200);
     }catch(err){btn.textContent='提交失败，重试';btn.disabled=false}
   };
 
