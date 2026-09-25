@@ -244,18 +244,19 @@ _ASSISTANT_SNIPPET = r'''
   if(window.__cyV1ProductAssistantInstalled)return;
   window.__cyV1ProductAssistantInstalled=true;
   const fab=document.getElementById('cy-product-assistant-fab'),panel=document.getElementById('cy-product-assistant-panel');
-  const identityButton=document.getElementById('identityButton'),identityChip=document.getElementById('identityChip')||document.getElementById('cy-v1-unified-identity')||document.getElementById('identity');
+  const getIdentityButton=()=>document.getElementById('identityButton');
+  const getIdentityChip=()=>document.getElementById('cy-v1-unified-identity')||document.getElementById('identityChip')||document.getElementById('identity');
   const chat=document.getElementById('cy-pa-chat'),input=document.getElementById('cy-pa-input'),send=document.getElementById('cy-pa-send');
   const REMEMBER_KEY='v717Remember';
   const authRemember=()=>localStorage.getItem(REMEMBER_KEY)==='1';
   const authStore=()=>authRemember()?localStorage:sessionStorage;
   const classicToken=()=>{try{return typeof state!=='undefined'&&state?.token?String(state.token):''}catch{return''}};
   const readToken=()=>authStore().getItem('v717Token')||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||classicToken()||'';
-  const identityChipReady=()=>Boolean(identityChip&&String(identityChip.textContent||'').trim()&&!String(identityChip.textContent||'').includes('正在识别'));
-  const identityButtonReady=()=>Boolean(identityButton&&identityButton.hidden===false);
+  const identityChipReady=()=>{const chip=getIdentityChip();return Boolean(chip&&String(chip.textContent||'').trim()&&!String(chip.textContent||'').includes('正在识别'))};
+  const identityButtonReady=()=>{const button=getIdentityButton();return Boolean(button&&button.hidden===false)};
   const identityReady=()=>Boolean(readToken()&&(identityChipReady()||identityButtonReady()));
   const tutorialStep=()=>document.querySelector('.cy-lesson-top h2')?.textContent?.trim()||'';
-  const context=()=>({page:location.pathname+location.search,identity:String(identityChip?.textContent||'').trim(),tutorial_step:tutorialStep()});
+  const context=()=>{const chip=getIdentityChip();return {page:location.pathname+location.search,identity:String(chip?.textContent||'').trim(),tutorial_step:tutorialStep()}};
   const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const cleanReplyText=text=>String(text||'').replace(/\*\*/g,'').replace(/\`/g,'').replace(/^#{1,4}\s*/gm,'').trim();
   const addMessage=(kind,text)=>{const el=document.createElement('div');el.className='cy-pa-msg '+kind;el.textContent=kind==='assistant'?cleanReplyText(text):text;chat.appendChild(el);chat.scrollTop=chat.scrollHeight};
@@ -341,10 +342,14 @@ _ASSISTANT_SNIPPET = r'''
     }catch(err){btn.textContent='提交失败，重试';btn.disabled=false}
   };
 
-  const sync=()=>{const ready=identityReady();if(!ready){fab.hidden=true;panel.hidden=true;return}fab.hidden=!panel.hidden;updateContext();if(!panel.hidden)renderGuideGrid()};
+  const observedIdentityNodes=new WeakSet();
   const identityObserver=new MutationObserver(()=>queueMicrotask(sync));
-  if(identityButton)identityObserver.observe(identityButton,{attributes:true,attributeFilter:['hidden']});
-  if(identityChip)identityObserver.observe(identityChip,{childList:true,characterData:true,subtree:true});
+  const observeIdentityNodes=()=>{
+    const button=getIdentityButton(),chip=getIdentityChip();
+    if(button&&!observedIdentityNodes.has(button)){identityObserver.observe(button,{attributes:true,attributeFilter:['hidden']});observedIdentityNodes.add(button)}
+    if(chip&&!observedIdentityNodes.has(chip)){identityObserver.observe(chip,{childList:true,characterData:true,subtree:true});observedIdentityNodes.add(chip)}
+  };
+  const sync=()=>{observeIdentityNodes();const ready=identityReady();if(!ready){fab.hidden=true;panel.hidden=true;return}fab.hidden=!panel.hidden;updateContext();if(!panel.hidden)renderGuideGrid()};
   window.addEventListener('pageshow',sync);window.addEventListener('popstate',sync);window.addEventListener('focus',sync);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
   let authReadyPoll=null;

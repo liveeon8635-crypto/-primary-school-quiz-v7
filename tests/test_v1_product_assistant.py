@@ -44,7 +44,8 @@ def test_product_assistant_attaches_current_page_identity_and_tutorial_step():
     html = rendered_v1()
 
     assert "page:location.pathname+location.search" in html
-    assert "identity:String(identityChip?.textContent||'').trim()" in html
+    assert "const chip=getIdentityChip()" in html
+    assert "identity:String(chip?.textContent||'').trim()" in html
     assert "document.querySelector('.cy-lesson-top h2')" in html
     assert QUERY_PATH in html
     assert FEEDBACK_PATH in html
@@ -71,8 +72,9 @@ def test_product_assistant_observer_does_not_watch_its_own_body_mutations():
     html = rendered_v1()
 
     assert "observe(document.body,{childList:true,subtree:true" not in html
-    assert "identityObserver.observe(identityButton" in html
-    assert "identityObserver.observe(identityChip" in html
+    assert "identityObserver.observe(button" in html
+    assert "identityObserver.observe(chip" in html
+    assert "const observeIdentityNodes=()=>" in html
 
 
 def test_feedback_bridge_uses_short_lived_proof_and_shows_sync_state():
@@ -109,7 +111,7 @@ def test_all_functions_shell_keeps_product_assistant_available():
 
     assert V1_PRODUCT_ASSISTANT_MARKER in html
     assert 'id="cy-product-assistant-fab" hidden' in html
-    assert "document.getElementById('identityChip')||document.getElementById('cy-v1-unified-identity')||document.getElementById('identity')" in html
+    assert "const getIdentityChip=()=>document.getElementById('cy-v1-unified-identity')||document.getElementById('identityChip')||document.getElementById('identity')" in html
     assert "正在识别" in html
     assert "const classicToken=()=>{" in html
     assert "state?.token" in html
@@ -158,6 +160,19 @@ def test_product_assistant_rechecks_auth_after_classic_refresh_hydration():
 def test_product_assistant_uses_unified_identity_even_if_legacy_identity_button_is_hidden():
     html = rendered_v1()
 
-    assert "const identityChipReady=()=>Boolean(identityChip&&String(identityChip.textContent||'').trim()" in html
-    assert "const identityButtonReady=()=>Boolean(identityButton&&identityButton.hidden===false)" in html
+    assert "const getIdentityChip=()=>document.getElementById('cy-v1-unified-identity')||document.getElementById('identityChip')" in html
+    assert "const identityChipReady=()=>{const chip=getIdentityChip()" in html
+    assert "const identityButtonReady=()=>{const button=getIdentityButton()" in html
     assert "identityChipReady()||identityButtonReady()" in html
+    assert "observeIdentityNodes();const ready=identityReady()" in html
+
+
+def test_product_assistant_resolves_identity_after_unified_header_mounts():
+    html = rendered_v1()
+
+    # Unified Classic mounts its header after this assistant script has already
+    # been parsed, so identity lookup must be dynamic rather than captured once.
+    assert "const getIdentityChip=()=>document.getElementById('cy-v1-unified-identity')" in html
+    assert "const getIdentityButton=()=>document.getElementById('identityButton')" in html
+    assert "const observeIdentityNodes=()=>{" in html
+    assert "const chip=getIdentityChip()" in html
