@@ -1,6 +1,7 @@
-from fastapi import HTTPException
+from types import SimpleNamespace
 
-from app import app
+from fastapi import FastAPI, HTTPException
+
 from changying.web.v1_training_sandbox import (
     ROLE_FLOW,
     SCENARIO_PRESETS,
@@ -8,6 +9,7 @@ from changying.web.v1_training_sandbox import (
     SandboxSession,
     TrainingSandboxStore,
     apply_training_action,
+    install_v1_training_sandbox_routes,
 )
 
 
@@ -21,6 +23,13 @@ def teacher_session() -> SandboxSession:
 
 
 def test_training_routes_are_registered_without_new_schema():
+    app = FastAPI()
+
+    def current_user():
+        return SimpleNamespace(id=1, role="teacher")
+
+    implementation = SimpleNamespace(app=app, current_user=current_user)
+    install_v1_training_sandbox_routes(implementation)
     paths = {route.path for route in app.routes if hasattr(route, "path")}
     assert "/v1/training-sandbox/start" in paths
     assert "/v1/training-sandbox/{session_id}" in paths
