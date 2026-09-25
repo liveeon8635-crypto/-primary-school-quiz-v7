@@ -257,7 +257,7 @@ _GUIDE_SNIPPET = r'''
   function renderPersistentGuide(){
     if(!screen)return;
     const existing=screen.querySelector('#cy-v1-product-guide-page');
-    if(existing?.dataset?.guideVersion==='v6')return;
+    if(existing?.dataset?.guideVersion==='v7')return;
     if(existing)existing.remove();
     const persona=currentPersona();
     if(!persona){
