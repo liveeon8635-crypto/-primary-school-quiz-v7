@@ -466,6 +466,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_unified_tool_session_bridge()
     install_v1_audit_localization()
     install_v1_history_focus_patch()
+    install_v1_product_guide_patch()
     install_v1_learning_evidence_profile(implementation)
     install_v1_classroom_longitudinal_profile(implementation)
     install_v2_learning_evidence_recorder_patch()
