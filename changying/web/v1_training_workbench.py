@@ -102,6 +102,8 @@ function render(){
   progressBar.style.width=Math.round(((index+1)/Math.max(1,session.flow.length))*100)+'%';progressText.textContent=(index+1)+'/'+session.flow.length;
   stepsEl.innerHTML=session.flow.map((s,i)=>'<button class="step '+(i===index?'active ':'')+statusClass(s.id)+'" data-i="'+i+'"><span class="step-no">'+(i+1)+'</span><span><b>'+esc(s.title)+'</b><small>'+esc(s.page)+'</small></span><span>'+({done:'✓',skipped:'↷'}[session.progress?.[s.id]]||'')+'</span></button>').join('');
   stepsEl.querySelectorAll('.step').forEach(b=>b.onclick=()=>setIndex(Number(b.dataset.i)));
+  const scenario=document.getElementById('scenario');
+  if(session.primaryRole!=='teacher'&&scenario&&scenario.options.length>1)scenario.innerHTML='<option value="empty">重新载入本身份练习</option>';
   document.getElementById('prevBtn').disabled=index===0;document.getElementById('nextBtn').disabled=index===session.flow.length-1;
   renderStep(step);
 }
