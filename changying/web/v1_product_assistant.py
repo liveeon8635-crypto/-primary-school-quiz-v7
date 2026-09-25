@@ -26,8 +26,20 @@ V1_PRODUCT_ASSISTANT_MARKER = "changying_v1_product_assistant_v1"
 QUERY_PATH = "/v1/product-assistant/query"
 FEEDBACK_PATH = "/v1/product-feedback"
 FEEDBACK_PROOF_PREFIX = "/v1/product-feedback/proof"
+FEEDBACK_ATTACHMENT_PATH = "/v1/product-feedback/attachment"
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
 FEEDBACK_PROOF_TTL_MINUTES = 15
+FEEDBACK_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024
+FEEDBACK_ATTACHMENT_ALLOWED_TYPES = (
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "application/pdf",
+    "text/plain",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+)
 
 
 class ProductAssistantBody(BaseModel):
