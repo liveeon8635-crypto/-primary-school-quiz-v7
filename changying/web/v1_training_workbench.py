@@ -33,7 +33,7 @@ button,input,select,textarea{font:inherit}.hidden{display:none!important}.muted{
 html,body{overflow-x:hidden}.top{padding:9px 12px}.top-row{gap:9px}.brand{width:42px;height:42px;border-radius:14px;flex:0 0 auto}.top-copy b{font-size:16px}.top-copy small{max-width:46vw;font-size:12px}.top-actions{gap:0}.top-actions #toggleMap,.top-actions #askBtn,.top-actions #feedbackBtn{display:none}.top-actions .icon-btn{padding:8px 10px;border-radius:10px;font-size:14px}.top-actions .icon-btn[href]{white-space:nowrap}
 .progress-wrap{margin-top:7px}.progress-wrap span{min-width:40px}.layout{display:block;margin-top:10px;padding:0 10px;margin-bottom:92px}.rail{position:fixed;inset:74px 10px 86px;z-index:50;max-height:none;margin:0;display:none;box-shadow:0 18px 55px rgba(20,39,76,.20)}.rail.open{display:block}.relation{display:none}.form-grid{grid-template-columns:1fr}.full{grid-column:auto}.metric-grid{grid-template-columns:1fr 1fr}.mode-grid,.map-grid{grid-template-columns:1fr}.card{padding:14px;border-radius:16px}h1{font-size:22px}.page-head h2{font-size:20px}
 .bottom{left:10px;right:10px;bottom:max(8px,env(safe-area-inset-bottom));display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1.25fr);gap:7px;padding:7px;overflow:visible}.bottom .btn{min-width:0;white-space:nowrap;padding:11px 10px}.bottom .spacer,.bottom #skipBtn,.bottom #relationBtn,.bottom #resetStepBtn{display:none}.bottom #prevBtn{grid-column:1}.bottom #moreBtn{display:block;grid-column:2}.bottom #nextBtn{grid-column:3;width:100%}
-.drawer-panel{width:92vw;padding:16px}
+.drawer-panel{width:92vw;padding:16px}.stage[aria-busy="true"]{opacity:.72;pointer-events:none}
 }
 </style>
 </head>
@@ -72,7 +72,7 @@ const token=()=>{const remember=localStorage.getItem('v717Remember')==='1';retur
 const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const stage=document.getElementById('stage'),rail=document.getElementById('rail'),stepsEl=document.getElementById('steps'),progressBar=document.getElementById('progressBar'),progressText=document.getElementById('progressText'),topTitle=document.getElementById('topTitle'),topMeta=document.getElementById('topMeta');
 const drawer=document.getElementById('drawer'),drawerTitle=document.getElementById('drawerTitle'),drawerBody=document.getElementById('drawerBody');
-let session=null,index=Math.max(0,Number(sessionStorage.getItem(INDEX_KEY)||0)),answers={},questionCursor=0;
+let session=null,index=Math.max(0,Number(sessionStorage.getItem(INDEX_KEY)||0)),answers={},questionCursor=0,actionPending=false;
 
 async function request(path,opt={}){
   const t=token();if(!t){location.href='/v1';throw new Error('请先登录')}
@@ -85,7 +85,34 @@ async function request(path,opt={}){
   let d={};try{d=await r.json()}catch{}
   if(!r.ok)throw new Error(d.detail||('请求失败 '+r.status));return d
 }
-async function act(action,payload={}){session=await request('/v1/training-sandbox/'+session.sessionID+'/action',{method:'POST',body:JSON.stringify({action,payload})});render();return session}
+function setStageBusy(flag){
+  actionPending=flag;
+  stage.setAttribute('aria-busy',flag?'true':'false');
+  stage.querySelectorAll('button').forEach(btn=>{
+    if(flag){if(!btn.disabled)btn.dataset.cyBusyDisabled='1';btn.disabled=true}
+    else if(btn.dataset.cyBusyDisabled==='1'){btn.disabled=false;delete btn.dataset.cyBusyDisabled}
+  });
+}
+function showActionError(error){
+  let box=document.getElementById('actionError');
+  if(!box){stage.insertAdjacentHTML('afterbegin','<div class="notice warn" id="actionError" role="alert"></div>');box=document.getElementById('actionError')}
+  box.textContent='这一步没有完成：'+String(error?.message||error||'请重试');
+  box.scrollIntoView({block:'center',behavior:'smooth'});
+}
+async function act(action,payload={}){
+  if(actionPending)return session;
+  setStageBusy(true);
+  try{
+    session=await request('/v1/training-sandbox/'+session.sessionID+'/action',{method:'POST',body:JSON.stringify({action,payload})});
+    render();
+    return session;
+  }catch(e){
+    showActionError(e);
+    throw e;
+  }finally{
+    setStageBusy(false);
+  }
+}
 async function start(){
   try{
     const id=sessionStorage.getItem(SESSION_KEY);
@@ -101,7 +128,7 @@ async function start(){
 function current(){return session?.flow?.[index]||null}
 function stepSettled(id){return ['done','skipped'].includes(session?.progress?.[id])}
 function firstUnsettledIndex(){const i=session?.flow?.findIndex(s=>!stepSettled(s.id))??-1;return i<0?(session?.flow?.length||0):i}
-function setIndex(i){index=Math.max(0,Math.min(session.flow.length-1,i));sessionStorage.setItem(INDEX_KEY,String(index));answers={};questionCursor=0;render()}
+function setIndex(i){index=Math.max(0,Math.min(session.flow.length-1,i));sessionStorage.setItem(INDEX_KEY,String(index));answers={};questionCursor=0;render();requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}))}
 function relation(step=current()){return session?.relationships?.[step?.id]||{}}
 function answerMode(q){return q?.answerKind==='choice'?'选择答案':(q?.type==='简短应用题'?'填写答案（含单位）':'输入答案')}
 function correctDisplay(q){if(q?.answerKind==='choice'){const i=Number(q.correctIndex);return (q.options||[])[i]??''}return q?.correctAnswer??''}
@@ -354,6 +381,7 @@ document.getElementById('closeRail').onclick=()=>rail.classList.remove('open');
 document.getElementById('askBtn').onclick=askAssistant;
 document.getElementById('feedbackBtn').onclick=sendTrainingFeedback;
 document.getElementById('moreBtn').onclick=openMobileMore;
+window.addEventListener('unhandledrejection',event=>{event.preventDefault();showActionError(event.reason)});
 document.getElementById('loadScenario').onclick=async()=>{const preset=document.getElementById('scenario').value;await act('load_scenario',{preset});const target={empty:0,assigned:7,submitted:8,classroom:10}[preset]??0;setIndex(Math.min(target,session.flow.length-1))};
 start();
 })();
