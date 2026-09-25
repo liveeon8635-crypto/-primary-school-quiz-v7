@@ -1,6 +1,6 @@
 """Ephemeral role training sandbox for Changying V1.
 
-The sandbox deliberately does not use the production SQLAlchemy session. It
+The sandbox deliberately does not use the production database session. It
 exercises real HTTP routes and workflow state transitions while keeping all
 training objects in a bounded in-process store. Training sessions are isolated
 by authenticated owner and expire automatically.
@@ -74,18 +74,25 @@ ROLE_FLOW: dict[str, list[dict[str, str]]] = {
 }
 
 STEP_RELATIONSHIPS: dict[str, dict[str, str]] = {
-    "create_class": {"who": "教师", "creates": "当前教学容器", "visible_to": "教师/管理员", "next": "添加学生账号"},
-    "add_student": {"who": "教师", "creates": "学生账号 + 连续档案起点", "visible_to": "教师/学生/授权家长", "next": "组卷和布置"},
-    "paper": {"who": "教师", "creates": "试卷草稿", "visible_to": "教师", "next": "审核后布置"},
-    "assign": {"who": "教师", "creates": "学生待办", "visible_to": "教师/学生/家长状态页", "next": "学生作答"},
-    "student_submission": {"who": "学生或沙盒模拟器", "creates": "提交结果", "visible_to": "学生/教师/家长摘要", "next": "教师查看证据"},
-    "evidence": {"who": "系统汇总", "creates": "分数/逐题/知识点/错题/积分", "visible_to": "按角色授权可见", "next": "针对性练习"},
-    "targeted": {"who": "AI 草稿 + 教师审核", "creates": "针对性练习", "visible_to": "教师审核后给指定学生", "next": "继续练习并回流"},
-    "class_review": {"who": "教师", "creates": "班级复盘讲义草稿", "visible_to": "教师确认后再发布", "next": "互动课堂"},
-    "interactive": {"who": "教师主导/学生参与", "creates": "课堂事件与随堂反馈", "visible_to": "对应课堂参与者", "next": "积分/复盘/下一轮教学"},
-    "points": {"who": "规则或教师", "creates": "可追溯积分动态", "visible_to": "教师/学生/家长摘要", "next": "长期激励与评价"},
-    "history": {"who": "系统归档", "creates": "只读往期教学", "visible_to": "授权角色", "next": "阶段衔接"},
-    "transition": {"who": "教师/管理员", "creates": "同一学生的阶段变化计划", "visible_to": "授权角色", "next": "下一阶段继续同一档案"},
+    "create_class": {"who": "教师", "creates": "当前教学容器", "visible_to": "教师/管理员", "other_role_sees": "学生和家长此时还看不到任何作业", "communication_tip": "先确认班级名称、年级和教学周期，避免后续双方口径不一致", "next": "添加学生账号"},
+    "add_student": {"who": "教师", "creates": "学生账号 + 连续档案起点", "visible_to": "教师/学生/授权家长", "other_role_sees": "学生得到自己的入口；家长只有关联后才看到该学生", "communication_tip": "告知学生使用哪个账号、家长能看到什么，避免把教师入口当成学生入口", "next": "组卷和布置"},
+    "paper": {"who": "教师", "creates": "试卷草稿", "visible_to": "教师", "other_role_sees": "未发布前学生和家长都看不到", "communication_tip": "草稿不是作业，教师审核通过后才进入布置环节", "next": "审核后布置"},
+    "assign": {"who": "教师", "creates": "学生待办", "visible_to": "教师/学生/家长状态页", "other_role_sees": "学生看到待完成作业；家长看到状态和截止信息，不代替学生作答", "communication_tip": "让教师明确告诉学生作业名称、截止时间和入口", "next": "学生作答"},
+    "student_submission": {"who": "学生或沙盒模拟器", "creates": "提交结果", "visible_to": "学生/教师/家长摘要", "other_role_sees": "教师看到提交状态与结果；家长看到授权范围内的完成状态/摘要", "communication_tip": "提交与保存草稿要区分，避免教师误以为学生已交", "next": "教师查看证据"},
+    "evidence": {"who": "系统汇总", "creates": "分数/逐题/知识点/错题/积分", "visible_to": "按角色授权可见", "other_role_sees": "学生看自己的结果；教师看教学证据；家长看适合家长理解的摘要", "communication_tip": "页面要解释同一结果在不同角色下为什么显示不同", "next": "针对性练习"},
+    "targeted": {"who": "AI 草稿 + 教师审核", "creates": "针对性练习", "visible_to": "教师审核后给指定学生", "other_role_sees": "学生只看到教师确认发布后的练习", "communication_tip": "明确说明练习为什么被生成、依据哪次测试/哪些错题", "next": "继续练习并回流"},
+    "class_review": {"who": "教师", "creates": "班级复盘讲义草稿", "visible_to": "教师确认后再发布", "other_role_sees": "草稿阶段学生不可见；发布后按课堂流程使用", "communication_tip": "区分“系统建议复盘”和“教师确认发布”", "next": "互动课堂"},
+    "interactive": {"who": "教师主导/学生参与", "creates": "课堂事件与随堂反馈", "visible_to": "对应课堂参与者", "other_role_sees": "学生收到邀请/随堂检测；教师看汇总；家长只看适合家长端的结果摘要", "communication_tip": "邀请学生讲解不是系统评价，学生可以拒绝且不形成负面证据", "next": "积分/复盘/下一轮教学"},
+    "points": {"who": "规则或教师", "creates": "可追溯积分动态", "visible_to": "教师/学生/家长摘要", "other_role_sees": "不同角色看到同一积分事实的不同解释层级", "communication_tip": "必须显示积分来源，避免用户把总分误解为学习成绩", "next": "长期激励与评价"},
+    "history": {"who": "系统归档", "creates": "只读往期教学", "visible_to": "授权角色", "other_role_sees": "当前工作台减少旧内容，但学生连续档案仍保留历史", "communication_tip": "结束班级不等于删除学生或删除成绩", "next": "阶段衔接"},
+    "transition": {"who": "教师/管理员", "creates": "同一学生的阶段变化计划", "visible_to": "授权角色", "other_role_sees": "学生/家长看到的是同一学生下一阶段的连续变化，而不是一个新账号", "communication_tip": "强调学生ID连续性，避免升年级重复建档", "next": "下一阶段继续同一档案"},
+}
+
+SCENARIO_PRESETS: dict[str, dict[str, Any]] = {
+    "empty": {"title": "从零开始", "description": "从建立班级开始完整练习。"},
+    "assigned": {"title": "从已布置作业开始", "description": "自动准备班级、学生、试卷和已布置作业，直接练学生端/关联角色体验。"},
+    "submitted": {"title": "从已提交结果开始", "description": "自动准备一次学生提交，直接练证据回流、针对性练习和学情沟通。"},
+    "classroom": {"title": "从课堂复盘开始", "description": "自动准备班级结果与复盘草稿，直接练互动课堂、随堂检测和积分评价。"},
 }
 
 
@@ -209,6 +216,7 @@ def _payload(session: SandboxSession) -> dict[str, Any]:
         "linkedMode": session.linked_mode,
         "flow": ROLE_FLOW.get(session.primary_role, []),
         "relationships": STEP_RELATIONSHIPS,
+        "scenarioPresets": SCENARIO_PRESETS,
         "progress": deepcopy(session.progress),
         "data": deepcopy(session.data),
         "events": deepcopy(session.events[-80:]),
@@ -235,6 +243,43 @@ def _event(session: SandboxSession, action: str, detail: str) -> None:
 def apply_training_action(session: SandboxSession, action: str, payload: dict[str, Any]) -> None:
     p = payload or {}
     session.touch()
+
+    if action == "load_scenario":
+        preset = str(p.get("preset", "empty")).strip()
+        if preset not in SCENARIO_PRESETS:
+            raise HTTPException(400, "未知练习场景")
+        if preset == "empty":
+            session.data = SandboxSession(
+                session_id=session.session_id,
+                owner_user_id=session.owner_user_id,
+                primary_role=session.primary_role,
+                current_role=session.primary_role,
+                linked_mode=session.linked_mode,
+            ).data
+            session.progress = {}
+            session.events = []
+            session.next_id = 1
+            _event(session, action, "preset=empty")
+            return
+        if session.primary_role != "teacher":
+            raise HTTPException(400, "当前预置场景仅支持教师主线")
+        # Presets are built through the same sandbox actions so page relationships
+        # and downstream behavior stay identical to a user-driven training run.
+        if not session.data["classes"]:
+            apply_training_action(session, "create_class", {"name": "五年级实操班", "grade": 5})
+        if not session.data["students"]:
+            apply_training_action(session, "add_student", {"name": "小禾", "username": "xiaohe01"})
+        if not session.data["papers"]:
+            apply_training_action(session, "create_paper", {"subject": "数学", "textbook": "人教版", "knowledge": "小数乘法", "questionCount": 8})
+            apply_training_action(session, "review_paper", {})
+        if not session.data["assignments"]:
+            apply_training_action(session, "assign", {"title": "小数乘法练习", "due": "本周五"})
+        if preset in {"submitted", "classroom"} and not session.data["submissions"]:
+            apply_training_action(session, "simulate_student_submission", {"correct": 6})
+        if preset == "classroom" and not session.data["class_reviews"]:
+            apply_training_action(session, "create_class_review", {})
+        _event(session, action, f"preset={preset}")
+        return
 
     if action == "set_linked_mode":
         mode = str(p.get("mode", "")).strip()
@@ -511,6 +556,7 @@ def install_v1_training_sandbox_routes(implementation: ModuleType) -> None:
 
 __all__ = [
     "ROLE_FLOW",
+    "SCENARIO_PRESETS",
     "STEP_RELATIONSHIPS",
     "STORE",
     "TRAINING_PREFIX",
