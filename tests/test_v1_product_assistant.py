@@ -48,6 +48,7 @@ def test_product_assistant_attaches_current_page_identity_and_tutorial_step():
     assert "document.querySelector('.cy-lesson-top h2')" in html
     assert QUERY_PATH in html
     assert FEEDBACK_PATH in html
+    assert "sizeButton.onclick=()=>{panel.hidden=true}" in html
 
 
 def test_product_assistant_and_feedback_routes_require_authentication():
