@@ -16,19 +16,20 @@ def test_v1_product_guide_is_routable_and_permanently_reachable():
     assert V1_PRODUCT_GUIDE_MARKER in html
     assert 'id="guideButton"' in html
     assert '>使用指南</button>' in html
-    assert "guideButton.onclick=()=>navigate('/v1/guide')" in html
-    assert "if(path.includes('/guide'))productGuidePage()" in html
+    assert "location.href='/v1/guide'" in html
+    assert "location.pathname==='/v1/guide'" in html
+    assert 'cy-v1-product-guide-page' in html
 
 
 def test_first_visit_uses_same_product_guide_and_can_be_skipped_or_reopened():
     html = rendered_guide()
 
-    assert "const GUIDE_KEY='cyV1ProductGuideSeenV1'" in html
-    assert "localStorage.getItem(GUIDE_KEY)!=='1'" in html
-    assert "history.replaceState({},'', '/v1/guide?first=1&return='" in html
+    assert "const KEY='cyV1ProductGuideSeenV1'" in html
+    assert "localStorage.getItem(KEY)!=='1'" in html
     assert '首次使用' in html
     assert '暂时跳过' in html
-    assert "localStorage.setItem(GUIDE_KEY,'1')" in html
+    assert "localStorage.setItem(KEY,'1')" in html
+    assert '以后可随时点击顶部“使用指南”重新查看' in html
 
 
 def test_product_guide_covers_the_continuous_student_workflow():
@@ -51,11 +52,13 @@ def test_product_guide_covers_the_continuous_student_workflow():
     assert '/v1/history' in html
 
 
-def test_product_guide_is_browser_local_and_does_not_add_data_writes():
+def test_product_guide_uses_browser_local_acknowledgement_without_business_writes():
     html = rendered_guide()
 
-    segment = html[html.index('function productGuidePage()'):html.index('async function render()', html.index('function productGuidePage()'))]
-    assert 'localStorage.setItem(GUIDE_KEY' in segment
+    start = html.index('id="changying_v1_product_guide_v1-script"')
+    end = html.index('</script>', start)
+    segment = html[start:end]
+    assert 'localStorage.setItem(KEY' in segment
     assert "method:'POST'" not in segment
     assert "method:'PUT'" not in segment
     assert "method:'DELETE'" not in segment
