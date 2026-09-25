@@ -178,7 +178,7 @@ async function askAssistant(){
 document.getElementById('prevBtn').onclick=()=>setIndex(index-1);
 document.getElementById('nextBtn').onclick=()=>setIndex(index+1);
 document.getElementById('skipBtn').onclick=async()=>{await markStep('skipped');if(index<session.flow.length-1)setIndex(index+1)};
-document.getElementById('resetStepBtn').onclick=()=>{answers={};render()};
+document.getElementById('resetStepBtn').onclick=async()=>{answers={};await act('rewind_step',{step:current().id})};
 document.getElementById('relationBtn').onclick=showRelation;
 document.getElementById('drawerClose').onclick=()=>drawer.classList.add('hidden');
 drawer.onclick=e=>{if(e.target===drawer)drawer.classList.add('hidden')};
