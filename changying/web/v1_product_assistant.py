@@ -261,26 +261,62 @@ _ASSISTANT_SNIPPET = r'''
   const cleanReplyText=text=>String(text||'').replace(/\*\*/g,'').replace(/\`/g,'').replace(/^#{1,4}\s*/gm,'').trim();
   const addMessage=(kind,text)=>{const el=document.createElement('div');el.className='cy-pa-msg '+kind;el.textContent=kind==='assistant'?cleanReplyText(text):text;chat.appendChild(el);chat.scrollTop=chat.scrollHeight};
   const updateContext=()=>{const c=context();document.getElementById('cy-pa-context').textContent=(c.identity||'当前身份')+' · '+c.page+(c.tutorial_step?' · '+c.tutorial_step:'')};
-  const PAGE_GUIDES=[
-    {id:'workspace',title:'当前教学',href:'/v1/workspace',icon:'▦',hint:'当前班级、课程、学生与待办',keywords:'当前教学 工作台 班级 课程 待办 晚托 周末课'},
-    {id:'student',title:'学生档案',href:'/v1/student',icon:'◉',hint:'连续学情、作业、错题与时间线',keywords:'学生 档案 学情 作业 错题 成绩 时间线'},
-    {id:'history',title:'往期教学',href:'/v1/history',icon:'◷',hint:'按学年和教学周期回看历史',keywords:'往期 历史 学年 学期 寒假 暑假'},
-    {id:'transition',title:'升学衔接',href:'/v1/transition',icon:'↗',hint:'阶段变化、差距与衔接计划',keywords:'升学 升年级 衔接 阶段 差距 计划'},
-    {id:'tools',title:'全部功能',href:'/v1/tool',icon:'⌘',hint:'进入当前身份的完整功能页',keywords:'全部功能 更多 功能 页面 入口'},
-    {id:'assignments',title:'作业',href:'/v1/tool?page=assignments',icon:'✓',hint:'学生查看和完成待办作业',keywords:'作业 待完成 提交'},
-    {id:'practice',title:'练习',href:'/v1/tool?page=practice',icon:'✎',hint:'练习、针对性训练与错题巩固',keywords:'练习 针对性 错题 巩固'},
-    {id:'progress',title:'学情',href:'/v1/tool?page=progress',icon:'◎',hint:'查看学习进度与掌握情况',keywords:'学情 进度 掌握 正确率'}
-  ];
+  const GUIDE_SETS={
+    teacher:[
+      {id:'workspace',title:'当前教学',href:'/v1/workspace',icon:'▦',hint:'当前班级、课程、学生与待办',keywords:'当前教学 工作台 班级 课程 待办 晚托 周末课'},
+      {id:'classes',title:'班级学生',href:'/v1/tool?page=classes',icon:'▥',hint:'查看班级与学生关系',keywords:'班级 学生 名单 归属'},
+      {id:'student',title:'学生档案',href:'/v1/student',icon:'◉',hint:'连续学情、作业、错题与时间线',keywords:'学生 档案 学情 错题 成绩 时间线'},
+      {id:'papers',title:'组卷作业',href:'/v1/tool?page=papers',icon:'✓',hint:'组卷、布置与检查学生提交',keywords:'作业 组卷 布置 批改 提交 测验'},
+      {id:'analytics',title:'学情分析',href:'/v1/tool?page=analytics',icon:'◎',hint:'查看班级和学生学习数据',keywords:'学情 分析 进度 掌握 正确率'},
+      {id:'classroom',title:'课堂复盘',href:'/v1/classroom-review',icon:'▣',hint:'复盘讲义、互动课堂与随堂检测',keywords:'课堂 复盘 讲义 互动 随堂检测'},
+      {id:'history',title:'往期教学',href:'/v1/history',icon:'◷',hint:'按学年和教学周期回看历史',keywords:'往期 历史 学年 学期 寒假 暑假'},
+      {id:'transition',title:'升学衔接',href:'/v1/transition',icon:'↗',hint:'阶段变化、差距与衔接计划',keywords:'升学 升年级 衔接 阶段 差距 计划'},
+      {id:'tools',title:'全部功能',href:'/v1/tool',icon:'⌘',hint:'进入教师完整功能页',keywords:'全部功能 更多 功能 页面 入口'}
+    ],
+    student:[
+      {id:'syncLearning',title:'同步课堂',href:'/v1/tool?page=syncLearning',icon:'▦',hint:'查看课堂学习与互动内容',keywords:'课堂 同步 互动 随堂检测'},
+      {id:'assignments',title:'我的作业',href:'/v1/tool?page=assignments',icon:'✓',hint:'查看并完成待办作业',keywords:'作业 待完成 提交'},
+      {id:'practice',title:'自主练习',href:'/v1/tool?page=practice',icon:'✎',hint:'练习、针对性训练与错题巩固',keywords:'练习 针对性 错题 巩固'},
+      {id:'progress',title:'我的学情',href:'/v1/tool?page=progress',icon:'◎',hint:'查看学习进度与掌握情况',keywords:'学情 进度 掌握 正确率 成绩'},
+      {id:'rewards',title:'积分奖励',href:'/v1/tool?page=rewards',icon:'★',hint:'查看积分变化与奖励记录',keywords:'积分 奖励 表现'},
+      {id:'wrongbook',title:'我的错题',href:'/v1/tool?page=wrongbook',icon:'◫',hint:'回看错题并继续巩固',keywords:'错题 错题本 订正'},
+      {id:'tools',title:'更多功能',href:'/v1/tool?page=__hub__',icon:'⌘',hint:'进入学生完整功能页',keywords:'全部功能 更多 功能 页面 入口'}
+    ],
+    parent:[
+      {id:'childLearning',title:'孩子课程',href:'/v1/tool?page=childLearning',icon:'▦',hint:'查看孩子当前课程与学习安排',keywords:'孩子 课程 当前学习'},
+      {id:'childAssignments',title:'孩子作业',href:'/v1/tool?page=childAssignments',icon:'✓',hint:'查看作业进度、完成与逾期状态',keywords:'孩子 作业 待完成 逾期'},
+      {id:'childProgress',title:'孩子学情',href:'/v1/tool?page=childProgress',icon:'◎',hint:'查看成绩、知识点与学习进展',keywords:'孩子 学情 成绩 进度 掌握'},
+      {id:'childRewards',title:'课堂表现',href:'/v1/tool?page=childRewards',icon:'★',hint:'查看课堂表现与积分记录',keywords:'课堂 表现 积分 奖励'},
+      {id:'account',title:'我的',href:'/v1/tool?page=account',icon:'⌘',hint:'查看家长账号与关联信息',keywords:'我的 账号 家长 关联'},
+      {id:'tools',title:'全部功能',href:'/v1/tool',icon:'☰',hint:'进入家长完整功能页',keywords:'全部功能 更多 功能 页面 入口'}
+    ],
+    admin:[
+      {id:'admin',title:'平台总览',href:'/v1/tool?page=admin',icon:'▦',hint:'查看学校或机构整体运行情况',keywords:'平台 总览 机构 学校'},
+      {id:'users',title:'账号管理',href:'/v1/tool?page=users',icon:'◉',hint:'管理教师、学生与家长账号',keywords:'账号 用户 教师 学生 家长'},
+      {id:'pointsAdmin',title:'积分奖励',href:'/v1/tool?page=pointsAdmin',icon:'★',hint:'查看与维护积分奖励规则',keywords:'积分 奖励 规则'},
+      {id:'adminAudit',title:'全校审计',href:'/v1/tool?page=adminAudit',icon:'◷',hint:'回看关键操作和管理记录',keywords:'审计 操作记录 全校'},
+      {id:'system',title:'系统设置',href:'/v1/tool?page=system',icon:'⚙',hint:'管理系统级配置',keywords:'系统 设置 配置'},
+      {id:'subscription',title:'套餐授权',href:'/v1/tool?page=subscription',icon:'◇',hint:'查看套餐与功能授权状态',keywords:'套餐 授权 功能'},
+      {id:'tools',title:'全部功能',href:'/v1/tool',icon:'⌘',hint:'进入管理员完整功能页',keywords:'全部功能 更多 功能 页面 入口'}
+    ]
+  };
+  const guideRole=identity=>{
+    const label=String(identity||'');
+    if(label.includes('管理员'))return'admin';
+    if(label.includes('家长'))return'parent';
+    if(label.includes('学生'))return'student';
+    return'teacher';
+  };
   const guideScore=(g,text,currentPage)=>{
     const hay=String(text||'')+' '+String(currentPage||'');
-    let score=currentPage&&currentPage.startsWith(g.href.split('?')[0])?5:0;
+    const page=String(currentPage||'').split('#')[0];
+    let score=page===g.href?9:0;
+    if(!g.href.includes('?')&&page.startsWith(g.href))score+=4;
     String(g.keywords||'').split(/\s+/).forEach(k=>{if(k&&hay.includes(k))score+=2});
     return score;
   };
   const guideCandidates=text=>{
-    const c=context(),identity=String(c.identity||'');
-    let pool=PAGE_GUIDES;
-    if(identity.includes('学生'))pool=PAGE_GUIDES.filter(g=>['assignments','practice','progress','tools'].includes(g.id));
+    const c=context(),role=guideRole(c.identity),pool=GUIDE_SETS[role]||GUIDE_SETS.teacher;
     const ranked=pool.map((g,order)=>({g,order,score:guideScore(g,text,c.page)})).sort((a,b)=>b.score-a.score||a.order-b.order);
     const picked=ranked.filter(x=>x.score>0).slice(0,3).map(x=>x.g);
     return picked.length?picked:pool.slice(0,3);
@@ -304,7 +340,7 @@ _ASSISTANT_SNIPPET = r'''
     try{
       const data=await postJson('/v1/product-assistant/query',{question:text,...context()});
       const reply=data.reply||'暂时没有可用回答。';
-      addMessage('assistant',reply);renderGuideGrid(reply);
+      addMessage('assistant',reply);renderGuideGrid(text+' '+reply);
     }catch(err){addMessage('assistant','产品助手暂时无法回答：'+err.message)}
     finally{send.disabled=false;send.textContent='发送'}
   }

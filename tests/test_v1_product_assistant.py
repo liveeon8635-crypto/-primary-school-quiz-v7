@@ -123,9 +123,9 @@ def test_product_assistant_visual_guides_follow_reply_context():
     html = rendered_v1()
 
     assert 'id="cy-pa-guide-grid"' in html
-    assert "const PAGE_GUIDES=[" in html
+    assert "const GUIDE_SETS={" in html
     assert "const renderGuideGrid=text=>" in html
-    assert "renderGuideGrid(reply)" in html
+    assert "renderGuideGrid(text+' '+reply)" in html
     assert "renderGuideGrid()" in html
     assert 'data-pa-guide="' in html
     assert 'role="img"' in html
@@ -146,6 +146,8 @@ def test_product_assistant_visual_guides_are_not_empty_placeholder_markup():
     assert "grid.innerHTML=guideCandidates(text).map" in html
     assert "当前班级、课程、学生与待办" in html
     assert "连续学情、作业、错题与时间线" in html
+    assert "孩子作业" in html
+    assert "平台总览" in html
 
 
 def test_product_assistant_rechecks_auth_after_classic_refresh_hydration():
@@ -176,3 +178,28 @@ def test_product_assistant_resolves_identity_after_unified_header_mounts():
     assert "const getIdentityButton=()=>document.getElementById('identityButton')" in html
     assert "const observeIdentityNodes=()=>{" in html
     assert "const chip=getIdentityChip()" in html
+
+
+def test_visual_guides_are_role_scoped_and_never_send_teacher_to_student_only_pages():
+    html = rendered_v1()
+
+    assert "const guideRole=identity=>" in html
+    assert "if(label.includes('管理员'))return'admin'" in html
+    assert "if(label.includes('家长'))return'parent'" in html
+    assert "if(label.includes('学生'))return'student'" in html
+    assert "return'teacher'" in html
+    assert "href:'/v1/tool?page=papers'" in html
+    assert "href:'/v1/tool?page=analytics'" in html
+    assert "href:'/v1/tool?page=childAssignments'" in html
+    assert "href:'/v1/tool?page=childProgress'" in html
+    assert "href:'/v1/tool?page=users'" in html
+    assert "href:'/v1/tool?page=adminAudit'" in html
+    assert "const c=context(),role=guideRole(c.identity),pool=GUIDE_SETS[role]||GUIDE_SETS.teacher" in html
+
+
+def test_visual_guide_current_page_scoring_distinguishes_unified_tool_pages():
+    html = rendered_v1()
+
+    assert "let score=page===g.href?9:0" in html
+    assert "if(!g.href.includes('?')&&page.startsWith(g.href))score+=4" in html
+    assert "renderGuideGrid(text+' '+reply)" in html
