@@ -14,7 +14,7 @@ V1_PRODUCT_GUIDE_MARKER = "changying_v1_product_guide_v7"
 GUIDE_PATH = "/v1/guide"
 
 _GUIDE_SNIPPET = r'''
-<style id="changying_v1_product_guide_css_v4">
+<style id="changying_v1_product_guide_css_v7">
   #cy-onboarding-overlay{position:fixed;inset:0;z-index:140;background:rgba(12,25,47,.58);display:grid;place-items:center;padding:12px}
   .cy-onboarding-shell{width:min(980px,100%);max-height:94dvh;overflow:auto;background:#f5f8fd;border-radius:24px;box-shadow:0 26px 90px rgba(12,25,47,.32);border:1px solid rgba(255,255,255,.4)}
   .cy-onboarding-head{position:sticky;top:0;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-bottom:1px solid #dfe7f2}
@@ -60,7 +60,7 @@ _GUIDE_SNIPPET = r'''
     #cy-v1-product-guide-page{padding:18px 12px 100px}
   }
 </style>
-<script id="changying_v1_product_guide_v4-script">
+<script id="changying_v1_product_guide_v7-script">
 (()=>{
   if(window.__cyV1ProductGuideInstalled)return;
   window.__cyV1ProductGuideInstalled=true;
