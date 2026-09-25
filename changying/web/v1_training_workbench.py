@@ -94,6 +94,11 @@ function pageIntro(step,subtitle=''){
 function pageCard(title,subtitle,body,actions=''){
   return '<section class="card page-card"><div class="page-head"><div><h2>'+esc(title)+'</h2><p>'+esc(subtitle)+'</p></div><span class="tag warn">实操沙盒</span></div>'+body+(actions?'<div class="action-row">'+actions+'</div>':'')+'</section>';
 }
+function auxiliaryPage(step,roleLabel,details=''){
+  const rel=relation(step);
+  const body='<div class="notice">'+esc(details||'这个页面属于 '+roleLabel+' 的完整功能地图。请先理解它的上游来源、可见范围和下游去向，再继续。')+'</div>'+roleRelationBlock(rel);
+  return pageIntro(step,'这一页不是孤立功能；训练重点是理解它和其他角色、上下游页面之间的关系。')+pageCard(step.title,'页面：'+step.page,body,'<button class="btn primary" id="auxDone">完成本页实操</button>');
+}
 function listItems(items,formatter){return '<div class="list">'+(items?.length?items.map(formatter).join(''):'<div class="notice">当前还没有数据，请先完成上一环节。</div>')+'</div>'}
 function markStep(status='done'){return act('visit_step',{step:current().id,status})}
 function render(){
@@ -113,7 +118,7 @@ function renderStep(step){
   const d=session.data||{};
   if(session.primaryRole!=='teacher'){renderNonTeacher(step);return}
   const views={
-    purpose:()=>pageIntro(step,'先理解长缨不是单一出题工具，而是把教学动作和长期学生档案连成一个闭环。')+pageCard('教师工作全景','从今天的教学动作，持续回流到同一个学生档案。','<div class="map-grid"><div class="map-node"><b>当前教学</b><small>班级、作业、课堂：今天要做什么。</small></div><div class="map-node"><b>学生连续档案</b><small>成绩、错题、知识点、积分和历史：长期发生了什么。</small></div><div class="map-node"><b>AI / 针对练习</b><small>基于证据形成下一步教学草稿，教师负责审核。</small></div><div class="map-node"><b>课堂与历史</b><small>复盘、互动、阶段变化继续引用同一学生。</small></div></div>','<button class="btn primary" id="understand">我理解教师主线</button>'),
+    teacher_dashboard:()=>pageIntro(step,'先从教师工作台建立全局认识：当前教学动作最终都会回流到同一个学生连续档案。')+pageCard('教师工作台','从今天的教学动作，持续回流到同一个学生档案。','<div class="map-grid"><div class="map-node"><b>班级学生</b><small>确定当前教学对象和关系。</small></div><div class="map-node"><b>组卷作业</b><small>生成、审核并布置任务。</small></div><div class="map-node"><b>学情 / AI</b><small>读取证据并形成下一轮教学。</small></div><div class="map-node"><b>课堂 / 历史</b><small>把教学结果继续沉淀到长期档案。</small></div></div>','<button class="btn primary" id="understand">我理解教师工作台</button>'),
     create_class:()=>pageIntro(step,'真正创建一个临时练习班级。它不会进入正式班级统计。')+pageCard('班级学生','先建立当前教学容器。','<div class="form-grid"><div class="field"><label>班级名称</label><input id="className" value="五年级实操班"></div><div class="field"><label>年级</label><select id="classGrade">'+[1,2,3,4,5,6].map(x=>'<option '+(x===5?'selected':'')+' value="'+x+'">'+x+'年级</option>').join('')+'</select></div></div>'+listItems(d.classes,x=>'<div class="item"><b>'+esc(x.name)+'</b><small>'+esc(x.grade)+'年级 · 沙盒教师</small></div>'),'<button class="btn primary" id="createClass">＋新建班级</button>'),
     add_student:()=>{const cls=d.classes?.at(-1);return pageIntro(step,'创建一个与练习班级关联的虚拟学生账号，后续可以亲自切到这个学生视角。')+pageCard('创建学生账号',cls?'当前班级：'+cls.name:'请先建立班级','<div class="form-grid"><div class="field"><label>学生姓名</label><input id="studentName" value="小禾"></div><div class="field"><label>学生账号</label><input id="studentUser" value="xiaohe01"></div></div>'+listItems(d.students,x=>'<div class="item"><b>'+esc(x.name)+'</b><small>'+esc(x.username)+' · '+esc(x.className)+'</small></div>'),'<button class="btn primary" id="addStudent">创建学生账号</button>')},
     student_profile:()=>{const s=d.students?.at(-1);const sub=d.submissions?.at(-1);return pageIntro(step,'学生档案是长期主线；后面的作业和课堂结果都会回到这里。')+pageCard('学生连续档案',s?esc(s.name)+' · '+esc(s.className):'暂无学生',s?'<div class="metric-grid"><div class="metric"><strong>'+esc(sub?.score??'—')+'</strong><small>最近得分</small></div><div class="metric"><strong>'+esc(sub?.wrongCount??0)+'</strong><small>错题</small></div><div class="metric"><strong>'+esc(d.points?.reduce((n,x)=>n+Number(x.points||0),0)||0)+'</strong><small>积分</small></div><div class="metric"><strong>'+esc(d.history?.length||0)+'</strong><small>历史阶段</small></div></div><div class="notice" style="margin-top:12px">现在数据较少是正常的。完成一次作业后再回来，档案会发生变化。</div>':'<div class="notice">请先添加学生。</div>','<button class="btn primary" id="profileDone">我已了解连续档案</button>')},
@@ -130,7 +135,16 @@ function renderStep(step){
     transition:()=>{const s=d.students?.at(-1);return pageIntro(step,'升年级改变阶段，不重新创建学生。')+pageCard('升年级与升学衔接',s?esc(s.name)+' · 同一学生档案':'暂无学生','<div class="form-grid"><div class="field"><label>上一阶段</label><input id="transitionFrom" value="五年级"></div><div class="field"><label>下一阶段</label><input id="transitionTo" value="六年级"></div></div>'+listItems(d.transitions,x=>'<div class="item"><b>'+esc(x.from)+' → '+esc(x.to)+'</b><small>同一学生档案 #'+esc(x.studentID)+'</small></div>'),'<button class="btn primary" id="createTransition">建立练习衔接计划</button>')},
     hub:()=>pageIntro(step,'最后从功能关系图回看整条链，理解每个页面的上游、下游和角色交接。')+pageCard('全部功能关系图','不是菜单清单，而是业务链。','<div class="map-grid">'+session.flow.map((x,i)=>'<div class="map-node"><b>'+(i+1)+'. '+esc(x.title)+'</b><small>'+esc(x.page)+'<br>'+esc(session.relationships?.[x.id]?.next||'继续当前角色主线')+'</small></div>').join('')+'</div>','<button class="btn primary" id="finishTraining">完成本轮实操训练</button>')
   };
-  stage.innerHTML=(views[step.id]||views.purpose)();bindTeacher(step);
+  stage.innerHTML=(views[step.id]||(()=>auxiliaryPage(step,'教师',teacherAuxDetail(step.id)))();bindTeacher(step);
+}
+function teacherAuxDetail(id){
+  return ({
+    teacher_resources:'这里管理教材、教案和课件。私有备课资料与学生可见资料必须区分。',
+    teacher_catalog:'这里浏览教材题库并为组卷/AI出题提供上游资源；浏览题库不等于给学生布置任务。',
+    teacher_audit:'这里回看教师自己的操作记录，帮助确认谁在什么时间做了什么。',
+    teacher_leaderboard:'这里查看班级激励排行；它用于激励，不替代学情诊断。',
+    account:'这里管理当前账号、设备和登录相关设置，不改变学生学习事实。'
+  })[id]||'请理解这一页在教师完整工作流中的位置。';
 }
 function renderStudentSubmission(step){
   const d=session.data||{},a=d.assignments?.at(-1),p=d.papers?.at(-1),s=d.students?.at(-1),sub=d.submissions?.at(-1);
@@ -170,6 +184,10 @@ function renderStudentRole(step,d,rel){
     stage.innerHTML=pageIntro(step,'积分用于激励，必须能看到来源，不能把积分误解成学习成绩。')+pageCard('积分奖励','每一笔都可追溯来源。',listItems(d.points,x=>'<div class="item"><b>+'+esc(x.points)+' 积分</b><small>'+esc(x.source)+'</small></div>')+roleRelationBlock(rel),done);
   }else if(step.id==='wrongbook'){
     stage.innerHTML=pageIntro(step,'错题用于下一轮学习，不是给学生贴负面标签。')+pageCard('我的错题','来自刚才的提交结果。',listItems(d.wrong_questions,x=>'<div class="item"><b>'+esc(x.prompt)+'</b><small>'+esc(x.knowledge)+'</small></div>')+roleRelationBlock(rel),done);
+  }else if(step.id==='student_home'){
+    stage.innerHTML=pageIntro(step,'学习首页只负责汇总今天要做什么；看到任务不等于已经完成。')+pageCard('学习首页',s?esc(s.name)+' · '+esc(s.className):'学生首页','<div class="metric-grid"><div class="metric"><strong>'+d.assignments.length+'</strong><small>作业</small></div><div class="metric"><strong>'+d.targeted_practices.length+'</strong><small>针对练习</small></div><div class="metric"><strong>'+d.wrong_questions.length+'</strong><small>错题</small></div><div class="metric"><strong>'+d.points.reduce((n,x)=>n+Number(x.points||0),0)+'</strong><small>积分</small></div></div>'+roleRelationBlock(rel),done);
+  }else if(step.id==='student_leaderboard'){
+    stage.innerHTML=pageIntro(step,'班级排行用于激励，不代表学习能力排名。')+pageCard('班级排行','只理解展示规则和边界。','<div class="notice">你的练习积分会影响允许展示的班级排行，但教师仍应使用学情、错题和课堂证据判断下一步教学。</div>'+roleRelationBlock(rel),done);
   }else{
     stage.innerHTML=pageIntro(step,'理解账号、身份和当前教学归属。')+pageCard('我的账号',s?esc(s.name)+' · 学生':'学生账号','<div class="item"><b>当前班级</b><small>'+esc(s?.className||'五年级实操班')+'</small></div>'+roleRelationBlock(rel),done);
   }
@@ -184,7 +202,8 @@ function bindStudentRole(){
 function renderParentRole(step,d,rel){
   const child=d.students?.at(-1),cls=d.classes?.at(-1),assignment=d.assignments?.at(-1),sub=d.submissions?.at(-1);
   let body='';
-  if(step.id==='learning')body='<div class="item"><b>'+esc(child?.name||'小禾')+'</b><small>'+esc(cls?.name||'五年级实操班')+' · 教师 '+esc(cls?.teacher||'周老师')+'</small></div>';
+  if(step.id==='parent_home')body='<div class="metric-grid"><div class="metric"><strong>'+esc(child?.name||'小禾')+'</strong><small>当前孩子</small></div><div class="metric"><strong>'+d.assignments.length+'</strong><small>作业</small></div><div class="metric"><strong>'+esc(sub?.score??'—')+'</strong><small>最近结果</small></div><div class="metric"><strong>'+d.points.reduce((n,x)=>n+Number(x.points||0),0)+'</strong><small>积分</small></div></div>';
+  else if(step.id==='learning')body='<div class="item"><b>'+esc(child?.name||'小禾')+'</b><small>'+esc(cls?.name||'五年级实操班')+' · 教师 '+esc(cls?.teacher||'周老师')+'</small></div>';
   else if(step.id==='assignments')body='<div class="item"><b>'+esc(assignment?.title||'小数乘法练习')+'</b><small>截止 '+esc(assignment?.due||'本周五')+' · '+(sub?'已完成':'待完成')+'。家长只查看状态，不代替孩子作答。</small></div>';
   else if(step.id==='progress')body=sub?'<div class="metric-grid"><div class="metric"><strong>'+sub.score+'%</strong><small>最近练习</small></div><div class="metric"><strong>'+esc(sub.knowledge)+'</strong><small>需要关注</small></div><div class="metric"><strong>'+sub.wrongCount+'</strong><small>错题</small></div><div class="metric"><strong>趋势</strong><small>看长期变化</small></div></div>':'<div class="notice">暂无结果。</div>';
   else if(step.id==='rewards')body=listItems(d.points,x=>'<div class="item"><b>+'+esc(x.points)+' 积分</b><small>'+esc(x.source)+' · 积分不是成绩</small></div>');
@@ -207,14 +226,27 @@ function renderAdminRole(step,d,rel){
     stage.innerHTML=pageIntro(step,'审计用于回答“谁在什么时候做了什么”，不是修改业务事实的入口。')+pageCard('全校审计','刚才的沙盒管理动作已经进入临时审计时间线。',listItems(d.audit,x=>'<div class="item"><b>'+esc(x.action)+'</b><small>'+esc(x.actor)+' · '+esc(x.detail)+'</small></div>')+roleRelationBlock(rel),done);
   }else if(step.id==='system'){
     stage.innerHTML=pageIntro(step,'系统设置影响功能可用性，但不能绕过权限或改写历史学习证据。')+pageCard('系统设置','在沙盒中练习一个设置变更。','<div class="form-grid"><div class="field"><label>设置项</label><input id="systemKey" value="trainingFeature"></div><div class="field"><label>值</label><select id="systemValue"><option>开启</option><option>关闭</option></select></div></div><div class="notice">当前设置：'+esc(JSON.stringify(d.system_settings))+'</div>','<button class="btn primary" id="adminSystemSave">保存练习设置</button>');
-  }else{
+  }else if(step.id==='history'){
     stage.innerHTML=pageIntro(step,'从管理员视角确认历史班级、账号关系和学生连续性仍能追踪。')+pageCard('历史连续性','管理关系变化，不能删除学生历史事实。','<div class="notice">班级、教师和账号关系可以变化；学生连续档案仍保持同一主体。沙盒审计事件：'+d.audit.length+' 条。</div>'+roleRelationBlock(rel),done);
+  }else{
+    stage.innerHTML=auxiliaryPage(step,'管理员',adminAuxDetail(step.id));
   }
   bindAdminRole();
+}
+function adminAuxDetail(id){
+  return ({
+    admin_subscription:'这里管理套餐和功能授权。它决定功能是否可用，但不应该改写任何历史学习事实。',
+    admin_ai:'这里设置 AI 服务和学生数据授权边界。密钥只属于管理员；教师仍保留审核发布权。',
+    admin_teaching:'这里配置学校/机构的教学计划和课时；配置与正式发布是两个动作。',
+    admin_resources:'这里管理教材、教案和课件资源，必须区分学校自有资料、官方导航和学生可见范围。',
+    admin_imports:'这里批量导入账号和基础关系。导入前要核对重复账号、班级和角色，避免批量制造关系错误。',
+    admin_catalog:'这里维护教材题库上游资源；学生不会直接看到后台题库配置。'
+  })[id]||'请理解这一管理页面如何影响教师、学生和家长端。';
 }
 function bindAdminRole(){
   const $=id=>document.getElementById(id);
   if($('adminDone'))$('adminDone').onclick=()=>markStep();
+  if($('auxDone'))$('auxDone').onclick=()=>markStep();
   if($('adminCreateAccount'))$('adminCreateAccount').onclick=()=>act('admin_create_account',{name:$('adminUserName').value,username:$('adminUsername').value,role:$('adminRole').value});
   if($('adminCreateClass'))$('adminCreateClass').onclick=()=>act('admin_create_class',{name:$('adminClassName').value,grade:+$('adminClassGrade').value});
   if($('adminPointRule'))$('adminPointRule').onclick=()=>act('admin_set_point_rule',{name:$('pointRuleName').value,points:+$('pointRuleValue').value});
@@ -223,6 +255,7 @@ function bindAdminRole(){
 function bindTeacher(step){
   const $=id=>document.getElementById(id);
   if($('understand'))$('understand').onclick=()=>markStep();
+  if($('auxDone'))$('auxDone').onclick=()=>markStep();
   if($('createClass'))$('createClass').onclick=()=>act('create_class',{name:$('className').value,grade:+$('classGrade').value});
   if($('addStudent'))$('addStudent').onclick=()=>act('add_student',{name:$('studentName').value,username:$('studentUser').value});
   if($('profileDone'))$('profileDone').onclick=()=>markStep();
