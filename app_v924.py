@@ -3668,7 +3668,7 @@ def production_demo_identity_status(db):
             )
         ).all()
     return {
-        "ok":not demo_school_ids and not active_demo_users,
+        "ok":not active_demo_users,
         "activeDemoSchoolIDs":demo_school_ids,
         "activeLegacyDemoUsers":[row.username for row in active_demo_users],
     }
@@ -3742,7 +3742,7 @@ def production_readiness_payload(db):
     if not LEGAL_PRIVACY_CONTACT:blockers.append("LEGAL_PRIVACY_CONTACT/COMMERCIAL_CONTACT 未配置；公开推广前必须提供隐私与服务联系渠道。")
     if not LEGAL_EFFECTIVE_DATE:blockers.append("LEGAL_EFFECTIVE_DATE 未配置；公开推广前应标明隐私政策/用户协议生效日期。")
     if demo_seed:blockers.append("ENABLE_DEMO_SEED 必须关闭，避免正式环境自动创建演示账号。")
-    if not demo_identity["ok"]:blockers.append("生产环境仍包含启用的演示学校或默认演示账号；公开推广前必须停用/迁出这些演示身份并建立真实运营学校。")
+    if not demo_identity["ok"]:blockers.append("生产环境仍包含启用的默认演示账号；公开推广前必须停用这些演示登录，历史数据继续保留。")
     if migration_version!=SCHEMA_VERSION:blockers.append(f"数据库迁移版本为 {migration_version or '未知'}，当前要求 {SCHEMA_VERSION}。")
     if missing_tables:blockers.append("缺少关键数据表："+"、".join(missing_tables))
     if _cors_raw=="*":blockers.append("CORS_ORIGINS 不得为 *；正式环境必须同源运行或显式配置可信来源。")
@@ -5254,7 +5254,7 @@ def admin_release_readiness(u:User=Depends(current_user),db:Session=Depends(get_
     if demo_seed:
         blockers.append("ENABLE_DEMO_SEED 必须关闭，避免正式环境自动创建演示数据。")
     if not demo_identity["ok"]:
-        blockers.append("生产环境仍包含启用的演示学校或默认演示账号；公开推广前必须清理。")
+        blockers.append("生产环境仍包含启用的默认演示账号；公开推广前必须停用这些演示登录。")
     if not PRODUCTION_DB_DURABILITY_CONFIRMED:
         blockers.append("生产数据库持久性尚未确认。")
     if not PRODUCTION_DB_BACKUP_CONFIRMED:
@@ -5350,7 +5350,7 @@ def admin_stability_check(u:User=Depends(current_user),db:Session=Depends(get_db
     if not LEGAL_OPERATOR_NAME or not LEGAL_PRIVACY_CONTACT or not LEGAL_EFFECTIVE_DATE:
         blockers.append("公开推广法律标识尚未完整配置（运营主体、联系渠道、生效日期）。")
     if demo_seed:blockers.append("ENABLE_DEMO_SEED 必须关闭。")
-    if not demo_identity["ok"]:blockers.append("生产环境仍包含启用的演示学校或默认演示账号。")
+    if not demo_identity["ok"]:blockers.append("生产环境仍包含启用的默认演示账号。")
     if not PRODUCTION_DB_DURABILITY_CONFIRMED:blockers.append("生产数据库持久性尚未确认。")
     if not PRODUCTION_DB_BACKUP_CONFIRMED:blockers.append("生产数据库备份/恢复能力尚未确认。")
     if not PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED:blockers.append("生产数据库网络边界尚未确认。")
