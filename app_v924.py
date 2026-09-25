@@ -1,4 +1,4 @@
-import os, io, json, secrets, hashlib, time, threading, base64, zipfile, re, socket
+import os, io, json, secrets, hashlib, time, threading, base64, zipfile, re, socket, html as html_lib
 import requests
 from pathlib import Path
 from urllib.parse import quote, urlsplit
@@ -2642,6 +2642,9 @@ RELEASE_NAME="小学教学版"
 
 COMMERCIAL_ADMIN_KEY=os.getenv("COMMERCIAL_ADMIN_KEY","").strip()
 COMMERCIAL_CONTACT=os.getenv("COMMERCIAL_CONTACT","").strip()
+LEGAL_OPERATOR_NAME=os.getenv("LEGAL_OPERATOR_NAME","").strip()
+LEGAL_PRIVACY_CONTACT=(os.getenv("LEGAL_PRIVACY_CONTACT") or COMMERCIAL_CONTACT).strip()
+LEGAL_EFFECTIVE_DATE=os.getenv("LEGAL_EFFECTIVE_DATE","").strip()
 
 COMMERCIAL_PLANS={
     "free":{
@@ -3499,7 +3502,11 @@ def account_export_payload(db,u):
     return data
 
 def legal_page(title,body):
-    html=f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#5362e8"><title>{title} - 长缨辅学</title><style>body{{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:#f4f6fb;color:#1f2738;margin:0;min-height:100dvh;-webkit-text-size-adjust:100%}}main{{max-width:760px;margin:0 auto;padding:calc(28px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) calc(90px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left))}}article{{background:#fff;border:1px solid #e5e8f0;border-radius:20px;padding:24px;line-height:1.8}}h1{{margin-top:0}}.note{{background:#fff7e7;padding:12px;border-radius:12px;color:#7b5719}}</style></head><body><main><article><h1>{title}</h1>'+body+'<p class="note">正式公开上架前，请根据实际运营主体、所在地区法规、学校数据处理协议和联系方式完成最终法律文本确认。</p></article></main></body></html>'
+    operator=html_lib.escape(LEGAL_OPERATOR_NAME or "未配置运营主体")
+    contact=html_lib.escape(LEGAL_PRIVACY_CONTACT or "未配置隐私/服务联系渠道")
+    effective=html_lib.escape(LEGAL_EFFECTIVE_DATE or "未配置")
+    title_html=html_lib.escape(title)
+    html=f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#5362e8"><title>{title_html} - 长缨辅学</title><style>body{{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;background:#f4f6fb;color:#1f2738;margin:0;min-height:100dvh;-webkit-text-size-adjust:100%}}main{{max-width:760px;margin:0 auto;padding:calc(28px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) calc(90px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left))}}article{{background:#fff;border:1px solid #e5e8f0;border-radius:20px;padding:24px;line-height:1.8}}h1{{margin-top:0}}.legal-meta{{background:#eef4ff;padding:12px;border-radius:12px;color:#334d78}}.note{{background:#fff7e7;padding:12px;border-radius:12px;color:#7b5719}}</style></head><body><main><article><h1>{title_html}</h1>'+body+f'<section class="legal-meta"><b>运营主体：</b>{operator}<br><b>隐私/服务联系：</b>{contact}<br><b>生效日期：</b>{effective}</section><p class="note">法律文本需由实际运营主体结合服务地区、学校数据处理协议与适用规则确认；系统只负责公开当前已配置的主体、联系渠道和版本信息。</p></article></main></body></html>'
     return HTMLResponse(html,headers={"Cache-Control":"no-store"})
 
 # ---------------- App ----------------
@@ -3595,6 +3602,9 @@ def production_readiness_payload(db):
     if db_backend!="PostgreSQL":blockers.append("正式商业环境必须使用托管 PostgreSQL。")
     if len(jwt_secret)<32:blockers.append("JWT_SECRET 未固定或长度不足 32 位。")
     if len(admin_key)<24:blockers.append("COMMERCIAL_ADMIN_KEY 未配置或长度不足 24 位。")
+    if not LEGAL_OPERATOR_NAME:blockers.append("LEGAL_OPERATOR_NAME 未配置；公开推广前必须明确实际运营主体。")
+    if not LEGAL_PRIVACY_CONTACT:blockers.append("LEGAL_PRIVACY_CONTACT/COMMERCIAL_CONTACT 未配置；公开推广前必须提供隐私与服务联系渠道。")
+    if not LEGAL_EFFECTIVE_DATE:blockers.append("LEGAL_EFFECTIVE_DATE 未配置；公开推广前应标明隐私政策/用户协议生效日期。")
     if demo_seed:blockers.append("ENABLE_DEMO_SEED 必须关闭，避免正式环境自动创建演示账号。")
     if migration_version!=SCHEMA_VERSION:blockers.append(f"数据库迁移版本为 {migration_version or '未知'}，当前要求 {SCHEMA_VERSION}。")
     if missing_tables:blockers.append("缺少关键数据表："+"、".join(missing_tables))
@@ -3609,6 +3619,9 @@ def production_readiness_payload(db):
             "database":{"ok":db_backend=="PostgreSQL","value":db_backend},
             "jwtSecret":{"ok":len(jwt_secret)>=32,"value":"已固定" if len(jwt_secret)>=32 else "未固定/过短"},
             "operatorKey":{"ok":len(admin_key)>=24,"value":"已配置" if admin_key else "未配置"},
+            "legalOperator":{"ok":bool(LEGAL_OPERATOR_NAME),"value":LEGAL_OPERATOR_NAME or "未配置"},
+            "legalContact":{"ok":bool(LEGAL_PRIVACY_CONTACT),"value":"已配置" if LEGAL_PRIVACY_CONTACT else "未配置"},
+            "legalEffectiveDate":{"ok":bool(LEGAL_EFFECTIVE_DATE),"value":LEGAL_EFFECTIVE_DATE or "未配置"},
             "schema":{"ok":migration_version==SCHEMA_VERSION,"value":migration_version or "未知"},
             "demoSeed":{"ok":not demo_seed,"value":"已关闭" if not demo_seed else "已开启"},
             "criticalTables":{"ok":not missing_tables,"value":"完整" if not missing_tables else "缺失 "+"、".join(missing_tables)},
@@ -5083,6 +5096,12 @@ def admin_release_readiness(u:User=Depends(current_user),db:Session=Depends(get_
         blockers.append("正式多用户上线应使用托管 PostgreSQL。")
     if not jwt_configured:
         blockers.append("必须在环境变量中固定 JWT_SECRET，避免服务重启导致全部登录会话失效。")
+    if not LEGAL_OPERATOR_NAME:
+        blockers.append("公开推广前必须配置 LEGAL_OPERATOR_NAME。")
+    if not LEGAL_PRIVACY_CONTACT:
+        blockers.append("公开推广前必须配置 LEGAL_PRIVACY_CONTACT 或 COMMERCIAL_CONTACT。")
+    if not LEGAL_EFFECTIVE_DATE:
+        blockers.append("公开推广前必须配置 LEGAL_EFFECTIVE_DATE。")
     if demo_seed:
         blockers.append("ENABLE_DEMO_SEED 必须关闭，避免正式环境自动创建演示数据。")
     if migration_version!=SCHEMA_VERSION:
@@ -5109,6 +5128,9 @@ def admin_release_readiness(u:User=Depends(current_user),db:Session=Depends(get_
         "checks":{
             "databaseBackend":{"ok":db_backend=="PostgreSQL","value":db_backend},
             "jwtSecret":{"ok":jwt_configured,"value":"已固定" if jwt_configured else "未固定"},
+            "legalOperator":{"ok":bool(LEGAL_OPERATOR_NAME),"value":LEGAL_OPERATOR_NAME or "未配置"},
+            "legalContact":{"ok":bool(LEGAL_PRIVACY_CONTACT),"value":"已配置" if LEGAL_PRIVACY_CONTACT else "未配置"},
+            "legalEffectiveDate":{"ok":bool(LEGAL_EFFECTIVE_DATE),"value":LEGAL_EFFECTIVE_DATE or "未配置"},
             "schemaMigration":{"ok":migration_version==SCHEMA_VERSION,"value":migration_version or "未知"},
             "demoSeed":{"ok":not demo_seed,"value":"已关闭" if not demo_seed else "已开启"},
             "securityHeaders":{"ok":True,"value":"CSP/HSTS/Frame/Referrer 已启用"},
@@ -5159,6 +5181,8 @@ def admin_stability_check(u:User=Depends(current_user),db:Session=Depends(get_db
     advisories=[]
     if db_backend!="PostgreSQL":blockers.append("生产环境应使用托管 PostgreSQL。")
     if len(jwt_secret)<32:blockers.append("JWT_SECRET 未固定或长度不足 32 位。")
+    if not LEGAL_OPERATOR_NAME or not LEGAL_PRIVACY_CONTACT or not LEGAL_EFFECTIVE_DATE:
+        blockers.append("公开推广法律标识尚未完整配置（运营主体、联系渠道、生效日期）。")
     if demo_seed:blockers.append("ENABLE_DEMO_SEED 必须关闭。")
     if migration_version!=SCHEMA_VERSION:blockers.append(f"数据库迁移版本 {migration_version or '未知'} 与要求 {SCHEMA_VERSION} 不一致。")
     if missing:blockers.append("缺少关键数据表："+"、".join(missing))
