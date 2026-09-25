@@ -15,6 +15,14 @@ from changying.web.v1_training_sandbox import (
 )
 
 
+
+
+def _correct_answers(paper):
+    return {
+        str(q["id"]): q["correctIndex"] if q.get("answerKind") == "choice" else q.get("correctAnswer", "")
+        for q in paper["questions"]
+    }
+
 def teacher_session() -> SandboxSession:
     return SandboxSession(
         session_id="training-test",
@@ -182,7 +190,8 @@ def test_scenario_presets_support_resume_without_repeating_every_role_step():
 
     apply_training_action(s, "load_scenario", {"preset": "submitted"})
     assert s.data["submissions"]
-    assert s.progress["evidence"] == "done"
+    assert s.progress["student_submission"] == "done"
+    assert "evidence" not in s.progress
 
     apply_training_action(s, "load_scenario", {"preset": "classroom"})
     assert s.data["class_reviews"]
@@ -207,7 +216,7 @@ def test_virtual_student_can_submit_real_question_choices():
     apply_training_action(s, "switch_to_student", {})
 
     paper = s.data["papers"][0]
-    answers = {str(q["id"]): q["correctIndex"] for q in paper["questions"]}
+    answers = _correct_answers(paper)
     apply_training_action(s, "student_submit", {"answers": answers})
 
     submission = s.data["submissions"][0]
@@ -226,11 +235,13 @@ def test_student_role_is_seeded_with_real_upstream_context_and_can_submit():
     assert s.data["submissions"] == []
 
     paper = s.data["papers"][0]
-    answers = {str(q["id"]): q["correctIndex"] for q in paper["questions"]}
+    answers = _correct_answers(paper)
     apply_training_action(s, "student_submit_self", {"answers": answers})
     assert s.data["submissions"][0]["score"] == 100
     assert s.data["targeted_practices"]
     assert s.progress["answer"] == "done"
+    assert "result" not in s.progress
+    apply_training_action(s, "visit_step", {"step": "result", "status": "done"})
     assert s.progress["result"] == "done"
 
     apply_training_action(s, "complete_student_practice", {})
@@ -284,7 +295,7 @@ def test_student_can_rewind_answer_step_and_submit_again():
     store = TrainingSandboxStore(ttl_seconds=3600, max_sessions=10)
     s = store.create(22, "student")
     paper = s.data["papers"][0]
-    answers = {str(q["id"]): q["correctIndex"] for q in paper["questions"]}
+    answers = _correct_answers(paper)
     apply_training_action(s, "student_submit_self", {"answers": answers})
     assert s.data["submissions"]
     apply_training_action(s, "rewind_step", {"step": "answer"})
@@ -311,3 +322,96 @@ def test_every_training_step_has_role_relationship_context_or_is_core_action():
     for role, steps in ROLE_FLOW.items():
         for step in steps:
             assert step["id"] in STEP_RELATIONSHIPS or step["id"] in core_actions, (role, step["id"])
+
+
+def test_training_paper_uses_mixed_types_and_matching_answer_modes():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"grade": 5})
+    apply_training_action(s, "create_paper", {"subject": "数学", "knowledge": "小数乘法", "questionCount": 8})
+    questions = s.data["papers"][0]["questions"]
+    assert {"单选", "判断", "填空", "计算", "简短应用题"}.issubset({q["type"] for q in questions})
+    assert all(q["answerKind"] in {"choice", "text"} for q in questions)
+    assert all(("options" in q) == (q["answerKind"] == "choice") for q in questions)
+
+
+def test_training_text_answers_accept_normalized_units_and_reject_missing_unit():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"grade": 5})
+    apply_training_action(s, "add_student", {})
+    apply_training_action(s, "create_paper", {"subject": "数学", "questionCount": 5})
+    apply_training_action(s, "review_paper", {})
+    apply_training_action(s, "assign", {})
+    apply_training_action(s, "switch_to_student", {})
+    paper = s.data["papers"][0]
+    answers = _correct_answers(paper)
+    app = next(q for q in paper["questions"] if q["type"] == "简短应用题")
+    answers[str(app["id"])] = "10 元"
+    apply_training_action(s, "student_submit", {"answers": answers})
+    assert s.data["submissions"][0]["score"] == 100
+
+    s2 = teacher_session()
+    apply_training_action(s2, "create_class", {"grade": 5})
+    apply_training_action(s2, "add_student", {})
+    apply_training_action(s2, "create_paper", {"subject": "数学", "questionCount": 5})
+    apply_training_action(s2, "review_paper", {})
+    apply_training_action(s2, "assign", {})
+    apply_training_action(s2, "switch_to_student", {})
+    paper2 = s2.data["papers"][0]
+    answers2 = _correct_answers(paper2)
+    app2 = next(q for q in paper2["questions"] if q["type"] == "简短应用题")
+    answers2[str(app2["id"])] = "10"
+    apply_training_action(s2, "student_submit", {"answers": answers2})
+    assert s2.data["submissions"][0]["score"] < 100
+
+
+def test_training_subject_default_knowledge_stays_coherent():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"grade": 5})
+    apply_training_action(s, "create_paper", {"subject": "英语", "knowledge": "小数乘法", "questionCount": 4})
+    paper = s.data["papers"][0]
+    assert paper["knowledge"] == "基础词汇与句型"
+    assert all(q["knowledge"] == "基础词汇与句型" for q in paper["questions"])
+
+
+def test_teacher_submission_does_not_auto_complete_evidence_review():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"grade": 5})
+    apply_training_action(s, "add_student", {})
+    apply_training_action(s, "create_paper", {"questionCount": 4})
+    apply_training_action(s, "review_paper", {})
+    apply_training_action(s, "assign", {})
+    apply_training_action(s, "simulate_student_submission", {})
+    assert s.progress["student_submission"] == "done"
+    assert "evidence" not in s.progress
+    apply_training_action(s, "visit_step", {"step": "evidence", "status": "done"})
+    assert s.progress["evidence"] == "done"
+
+
+def test_manual_virtual_student_must_return_before_teacher_flow_advances():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"grade": 5})
+    apply_training_action(s, "add_student", {})
+    apply_training_action(s, "create_paper", {"questionCount": 4})
+    apply_training_action(s, "review_paper", {})
+    apply_training_action(s, "assign", {})
+    apply_training_action(s, "switch_to_student", {})
+    paper = s.data["papers"][0]
+    apply_training_action(s, "student_submit", {"answers": _correct_answers(paper)})
+    assert s.current_role == "student"
+    assert "student_submission" not in s.progress
+    apply_training_action(s, "return_primary_role", {})
+    apply_training_action(s, "visit_step", {"step": "student_submission", "status": "done"})
+    assert s.current_role == "teacher"
+    assert s.progress["student_submission"] == "done"
+
+
+def test_simulated_linked_submission_can_complete_teacher_submission_step_directly():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"grade": 5})
+    apply_training_action(s, "add_student", {})
+    apply_training_action(s, "create_paper", {"questionCount": 4})
+    apply_training_action(s, "review_paper", {})
+    apply_training_action(s, "assign", {})
+    apply_training_action(s, "simulate_student_submission", {})
+    assert s.current_role == "teacher"
+    assert s.progress["student_submission"] == "done"

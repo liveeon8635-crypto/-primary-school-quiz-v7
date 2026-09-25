@@ -182,3 +182,32 @@ def test_mobile_training_hides_verbose_relationship_cards_until_requested():
     assert ".rail.open{display:block}.relation{display:none}.form-grid" in html
     assert "角色关系" in html
     assert "mobileRelation" in html
+
+
+def test_training_answer_ui_matches_question_type_and_pages_one_question_at_a_time():
+    html = training_workbench_html()
+    assert "function questionPager(" in html
+    assert "function questionControl(" in html
+    assert "answerKind==='choice'" in html
+    assert "answer-input" in html
+    assert "填写答案（含单位）" in html
+    assert 'id="questionPrev"' in html
+    assert 'id="questionNext"' in html
+    assert "bindQuestionPager('answerOption','answerInput')" in html
+    assert "bindQuestionPager('studentSelfOption','studentSelfInput')" in html
+
+
+def test_training_actions_show_busy_and_error_feedback():
+    html = training_workbench_html()
+    assert "actionPending=false" in html
+    assert "function setStageBusy(flag)" in html
+    assert "function showActionError(error)" in html
+    assert "这一步没有完成：" in html
+    assert 'id="actionError"' in html
+    assert "window.addEventListener('unhandledrejection'" in html
+    assert '.stage[aria-busy="true"]' in html
+
+
+def test_step_navigation_returns_mobile_view_to_top():
+    html = training_workbench_html()
+    assert "requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}))" in html
