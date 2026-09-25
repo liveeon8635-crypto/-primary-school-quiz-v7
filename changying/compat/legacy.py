@@ -138,6 +138,7 @@ from changying.web.v1_product_assistant import (
     install_v1_product_assistant_routes,
 )
 from changying.web.v1_student_detail_visibility import install_v1_student_detail_visibility_patch
+from changying.web.v1_workspace_attachment import install_v1_workspace_attachment_patch
 from changying.web.v1_student_practice import install_v1_student_practice_patch, install_v1_student_practice_routes
 from changying.web.v1_teaching_actions import install_v1_teaching_actions_patch
 from changying.web.v1_transition_selection import install_v1_transition_selection_patch
