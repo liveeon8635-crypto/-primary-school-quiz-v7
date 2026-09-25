@@ -77,3 +77,32 @@ def test_training_workbench_never_posts_to_production_business_routes():
     )
     for item in forbidden:
         assert item not in html
+
+
+def test_all_roles_have_actionable_training_pages():
+    html = training_workbench_html()
+    for text in (
+        "我的作业",
+        "逐题作答",
+        "我的学情",
+        "我的错题",
+        "孩子课程",
+        "家长只查看状态",
+        "平台总览",
+        "账号管理",
+        "班级与教学归属",
+        "积分规则",
+        "全校审计",
+        "系统设置",
+    ):
+        assert text in html
+
+    for action in (
+        "student_submit_self",
+        "complete_student_practice",
+        "admin_create_account",
+        "admin_create_class",
+        "admin_set_point_rule",
+        "admin_set_system",
+    ):
+        assert action in html
