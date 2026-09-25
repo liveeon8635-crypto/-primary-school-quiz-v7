@@ -190,7 +190,8 @@ def test_scenario_presets_support_resume_without_repeating_every_role_step():
 
     apply_training_action(s, "load_scenario", {"preset": "submitted"})
     assert s.data["submissions"]
-    assert s.progress["evidence"] == "done"
+    assert s.progress["student_submission"] == "done"
+    assert "evidence" not in s.progress
 
     apply_training_action(s, "load_scenario", {"preset": "classroom"})
     assert s.data["class_reviews"]
