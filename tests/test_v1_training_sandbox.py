@@ -183,3 +183,23 @@ def test_relationship_map_explains_cross_role_visibility_and_communication():
         assert rel["visible_to"]
         assert rel["other_role_sees"]
         assert rel["communication_tip"]
+
+
+def test_virtual_student_can_submit_real_question_choices():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"grade": 5})
+    apply_training_action(s, "add_student", {"name": "小禾", "username": "xiaohe01"})
+    apply_training_action(s, "create_paper", {"questionCount": 4})
+    apply_training_action(s, "review_paper", {})
+    apply_training_action(s, "assign", {})
+    apply_training_action(s, "switch_to_student", {})
+
+    paper = s.data["papers"][0]
+    answers = {str(q["id"]): q["correctIndex"] for q in paper["questions"]}
+    apply_training_action(s, "student_submit", {"answers": answers})
+
+    submission = s.data["submissions"][0]
+    assert submission["correct"] == 4
+    assert submission["total"] == 4
+    assert submission["score"] == 100
+    assert submission["source"] == "manual_virtual_student"
