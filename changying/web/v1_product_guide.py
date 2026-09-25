@@ -10,11 +10,11 @@ from __future__ import annotations
 from changying.web import v1 as v1_module
 
 
-V1_PRODUCT_GUIDE_MARKER = "changying_v1_product_guide_v4"
+V1_PRODUCT_GUIDE_MARKER = "changying_v1_product_guide_v7"
 GUIDE_PATH = "/v1/guide"
 
 _GUIDE_SNIPPET = r'''
-<style id="changying_v1_product_guide_css_v4">
+<style id="changying_v1_product_guide_css_v7">
   #cy-onboarding-overlay{position:fixed;inset:0;z-index:140;background:rgba(12,25,47,.58);display:grid;place-items:center;padding:12px}
   .cy-onboarding-shell{width:min(980px,100%);max-height:94dvh;overflow:auto;background:#f5f8fd;border-radius:24px;box-shadow:0 26px 90px rgba(12,25,47,.32);border:1px solid rgba(255,255,255,.4)}
   .cy-onboarding-head{position:sticky;top:0;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-bottom:1px solid #dfe7f2}
@@ -46,6 +46,7 @@ _GUIDE_SNIPPET = r'''
   .cy-lesson-notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:14px}.cy-note{background:#f8faff;border:1px solid #dfe7f2;border-radius:14px;padding:12px}.cy-note strong{display:block;font-size:12px;color:var(--navy);margin-bottom:5px}.cy-note p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}
   .cy-lesson-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}.cy-lesson-actions .btn.primary{margin-left:auto}
   .cy-skip-note{font-size:11px;color:var(--muted);margin-top:9px}
+  .cy-practice-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px;padding:12px;border:1px dashed #b9c9df;border-radius:14px;background:#fff}.cy-practice-form label{display:grid;gap:5px;font-size:11px;color:var(--muted)}.cy-practice-form input,.cy-practice-form select{width:100%;border:1px solid #cfdbea;border-radius:10px;padding:9px 10px;background:#fff;color:var(--ink)}.cy-practice-tip{margin-top:12px;padding:10px 12px;border-radius:12px;background:#fff8e8;border:1px solid #f3d69a;color:#744b06;font-size:12px;line-height:1.55}
   #cy-v1-product-guide-page{padding:26px clamp(14px,4vw,44px) 110px;max-width:1080px;margin:0 auto}
   .cy-guide-hero{background:linear-gradient(145deg,#edf3ff,#fff);border:1px solid #d3e0f4;border-radius:22px;padding:22px}.cy-guide-hero h1{margin:8px 0}.cy-guide-hero p{color:var(--muted);line-height:1.7;max-width:760px}
   .cy-guide-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}.cy-guide-summary>div{background:#fff;border:1px solid #dfe7f2;border-radius:15px;padding:13px}.cy-guide-summary b{display:block;margin-bottom:4px}.cy-guide-summary small{color:var(--muted);line-height:1.45}
@@ -54,17 +55,17 @@ _GUIDE_SNIPPET = r'''
     #cy-onboarding-overlay{padding:0}.cy-onboarding-shell{width:100%;height:100dvh;max-height:none;border-radius:0}
     .cy-onboarding-body{padding:12px}.cy-role-grid{grid-template-columns:1fr}.cy-tutorial-layout{grid-template-columns:1fr}
     .cy-tutorial-rail{order:2}.cy-step-list{grid-template-columns:repeat(2,minmax(0,1fr))}
-    .cy-step-item{grid-template-columns:26px 1fr}.cy-step-state{display:none}.cy-demo-cards,.cy-lesson-notes,.cy-guide-summary{grid-template-columns:1fr}
+    .cy-step-item{grid-template-columns:26px 1fr}.cy-step-state{display:none}.cy-demo-cards,.cy-lesson-notes,.cy-guide-summary,.cy-practice-form{grid-template-columns:1fr}
     .cy-lesson-top{display:block}.cy-lesson-top .cy-badge{margin-top:8px}.cy-lesson-actions{display:grid;grid-template-columns:1fr 1fr}.cy-lesson-actions .btn.primary{margin-left:0;grid-column:1/-1}
     #cy-v1-product-guide-page{padding:18px 12px 100px}
   }
 </style>
-<script id="changying_v1_product_guide_v4-script">
+<script id="changying_v1_product_guide_v7-script">
 (()=>{
   if(window.__cyV1ProductGuideInstalled)return;
   window.__cyV1ProductGuideInstalled=true;
 
-  const STATE_KEY='cyV1RoleTutorialStateV4';
+  const STATE_KEY='cyV1RoleTutorialStateV7';
   const screen=document.getElementById('screen');
   const tutorialButton=document.getElementById('tutorialButton');
   const identityButton=document.getElementById('identityButton');
@@ -72,18 +73,22 @@ _GUIDE_SNIPPET = r'''
   const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
   const teacherSteps=[
-    ['workspace','进入当前教学','先确认当前周期、班级和学生。','选择“演示五年级周末班”','当前教学','班级：演示五年级周末班|学生：演示学生·小禾|本周待办：3 项','已进入本周教学工作台。','当前教学只代表现在正在发生的教学，不会改变学生长期档案。'],
-    ['student','打开学生连续档案','找到同一个学生的成绩、错题、积分、课堂与历史。','打开“演示学生·小禾”','学生档案','数学平均分：82|薄弱点：小数乘法|待完成作业：1','已打开同一学生 ID 的连续档案。','成绩、作业、课堂表现、家长关系和阶段变化都围绕同一个学生 ID 累积。'],
-    ['assessment','生成综合测试','用年级、科目、教材和知识模块生成诊断性内容。','生成 8 题数学综合测试','自动出题','年级：五年级|教材：人教版|题型：选择 / 填空 / 计算 / 应用','已生成一份仅用于演示的测试草稿。','AI 负责生成草稿，教师仍然负责审核后再布置。'],
-    ['review','审核并布置','检查题干、答案方式、图示、难度与积分后再发布。','确认并布置给演示学生','教师审核','题目：8 题|图示：按需|积分：按规则赋值','演示作业已布置。','真实系统中教师始终保留最终发布权。'],
-    ['submission','查看学生提交','从教师视角查看学生提交后的分数、知识点正确率和错题。','查看最新提交结果','提交结果','得分：75%|小数乘法：62%|错题：2 道','已读取本次学习证据。','一次提交会形成成绩、逐题证据、知识点结果和错题记录。'],
-    ['targeted','生成针对性练习','根据最近测试、薄弱知识点和错题生成下一轮练习。','生成针对性练习','AI 针对性练习','依据：最近测试 + 错题|知识点：小数乘法|题数：6','已生成下一轮针对性练习草稿。','AI 建议仍需教师审核，审核后可只布置给该学生。'],
-    ['reviewHandout','生成课堂复盘讲义','汇总同班学生数据，由教师决定是否形成课堂讲义。','生成复盘讲义草稿','课堂复盘','共同薄弱点：习作修改|草稿：1 份|已发布版本：0','讲义草稿已生成。','系统不会自动向学生发布；教师确认后才冻结为发布版本。'],
-    ['interactive','开展互动课堂','选择教师讲、学生讲、共同讲或讨论，并用随堂检测即时收口。','开始 1 道随堂检测','互动课堂','讲解方式：师生共讲|候选学生：仅教师可见|Quick check：1 题','随堂检测已完成演示。','邀请由教师决定，学生可拒绝；课堂不会自动推进。'],
-    ['points','查看积分与课堂评价','理解积分如何从练习、课堂与教师自定义评价进入积分动态。','查看演示积分动态','积分奖励','本周积分：29|练习积分：18|课堂评价：11','已打开积分动态。','重复提交不会重复加分；教师评价与自动积分来源应可追溯。'],
-    ['history','查询往期教学','结束的班级、课程和学期进入只读历史。','打开上一学期记录','往期教学','2025—2026 上学期|班级：演示五年级一班|记录：完整保留','已回到历史教学记录。','历史事实保留，不会因为换班或换老师重新创建学生。'],
-    ['transition','处理升年级衔接','用同一学生档案记录阶段变化和下一阶段计划。','建立五升六衔接计划','升学衔接','上一阶段：五年级|衔接类型：五升六|状态：演示计划','已建立虚拟衔接计划。','衔接记录阶段变化，学生身份和历史档案保持连续。'],
-    ['hub','认识全部功能中心','最后认识角色下的完整功能入口与快捷导航。','打开全部功能地图','全部功能','教学 / 作业 / 练习 / 学情|课堂 / 积分 / 历史|账号 / 设置 / 更多工具','教师新手教学主线已走完。','以后可从右上角“新手教学”回来重做任一步。']
+    ['purpose','先认识长缨解决什么问题','长缨把“班级—学生—作业—证据—针对练习—课堂—历史”连成一条连续教学链，不只是一个出题工具。','确认我理解教师主线','产品总览','当前教学：今天要做什么|学生档案：长期发生了什么|AI 助手：下一步怎么教','已建立教师角色的产品全景。','先知道整条链为什么存在，再学习按钮在哪里；这样后面的每一步都有方向。'],
+    ['createClass','建立第一个班级','先建立真实教学容器，后续学生、作业、课堂和统计才有明确归属。','创建我的练习班级','建立班级','班级：{className}|年级：{grade}|学科：{subject}','班级练习已在本机教学沙盒中建立。','真实系统里班级是当前教学关系，不会替代学生长期档案。'],
+    ['addStudents','添加学生账号','把学生加入班级，并理解“学生账号”和“学生连续档案”是同一个长期实体。','添加一个练习学生账号','添加学生','学生：{studentName}|账号：{studentAccount}|归属：{className}','练习学生已加入练习班级。','以后换班、换老师或升年级仍然沿用同一个学生档案，不应重复建学生。'],
+    ['student','打开学生连续档案','确认这个学生的成绩、错题、积分、课堂表现和历史都从这里持续累积。','查看练习学生档案','学生连续档案','学生：{studentName}|当前班级：{className}|状态：当前在读','已打开同一学生 ID 的连续档案。','教师日常教学是短周期，学生档案是长期主线。'],
+    ['paper','组一份真实感作业','选择年级、科目、教材、题量和知识范围，体验手工组卷与 AI 生成的定位。','生成我的练习试卷','组卷 / 自动出题','科目：{subject}|教材：{textbook}|题量：{questionCount} 题','已生成练习试卷草稿。','AI 可以帮你生成草稿，但教师应检查题型、答案方式、图示和难度。'],
+    ['review','审核题目并确认积分','像真实发布前一样检查题目，必要时删改题、改分值或重新生成。','完成发布前审核','教师审核','题目：{questionCount} 题|答案方式：题型匹配|积分：按规则赋值','练习试卷已经通过教师审核。','审核是重要的人机边界：AI 提建议，教师做最终教学决定。'],
+    ['assign','布置给班级或个人','选择对象和截止时间，理解“班级作业”和“个别针对练习”的差别。','布置这份练习作业','布置作业','班级：{className}|对象：{studentName} 等学生|截止：本周五','练习作业已进入学生待办。','真实发布后学生端应立即看到任务，教师端能追踪完成状态。'],
+    ['studentPreview','切到学生视角完成一次作答','亲自体验学生怎样看到作业、切换题目、提交以及为什么不能在提交前看到答案。','模拟学生完成并提交','学生作答','学生：{studentName}|进度：{questionCount}/{questionCount}|提交：一次有效提交','练习提交完成，开始形成学习证据。','教师只有体验过学生路径，才容易判断题型、交互和反馈是否真的好用。'],
+    ['submission','查看结果如何回流','回到教师视角看分数、逐题证据、知识点正确率、错题和积分如何进入同一档案。','查看这次练习结果','结果回流','得分：75%|薄弱点：{knowledge}|错题：2 道','本次提交已经形成可继续使用的学习证据。','长缨的价值不在“做完一套题”，而在结果能继续驱动下一轮教学。'],
+    ['targeted','生成下一轮针对性练习','根据最近测试、薄弱知识点和具体错题生成下一轮练习，而不是重新随机出题。','生成针对性练习','AI 针对性练习','依据：最近测试 + 错题|知识点：{knowledge}|对象：{studentName}','已生成下一轮针对性练习草稿。','针对性练习仍要由教师审核后再布置，且可以只给某个学生。'],
+    ['reviewHandout','把全班数据变成课堂复盘','当同班学生完成练习后，汇总共性问题，由教师决定是否生成课堂复盘讲义。','生成复盘讲义草稿','课堂复盘','班级：{className}|共性薄弱点：{knowledge}|草稿：1 份','课堂复盘讲义草稿已生成。','系统不会自动发布讲义；教师确认后才冻结版本。'],
+    ['interactive','用互动课堂把问题讲透','在知识点处选择教师讲、学生讲、共同讲或讨论，再用随堂检测收口。','完成一次互动课堂演示','互动课堂','讲解方式：师生共讲|学生邀请：可接受/拒绝|随堂检测：1 题','互动课堂演示完成。','课堂互动是为了验证“讲懂没有”，而不是为了自动给学生贴标签。'],
+    ['points','理解积分和课堂评价','查看自动积分与教师自定义课堂评价怎样进入积分动态，并保持来源可追溯。','查看练习积分动态','积分奖励','学生：{studentName}|练习积分：+6|课堂评价：教师自定义','已理解积分如何从行为进入动态。','重复提交不重复加分，教师评价与自动积分都应能追溯来源。'],
+    ['history','把结束的教学放进历史','学期或班级结束后，当前教学退出工作台，但事实仍可按时间回看。','打开一次往期教学记录','往期教学','班级：{className}|状态：已结束|学生档案：继续保留','已看到当前教学和历史教学的边界。','历史教学只读回看；学生不会因为教学关系结束而消失。'],
+    ['transition','处理升年级和升学衔接','用同一学生档案表达阶段变化、前置知识检查和下一阶段计划。','建立一个练习衔接计划','升学衔接','学生：{studentName}|上一阶段：{grade}|下一阶段：继续同一档案','练习衔接计划已建立。','阶段变化应记录在同一个 student_id 上，而不是重新创建“新学生”。'],
+    ['hub','认识全部功能并进入真实使用','最后把刚学过的主线映射到全部功能中心；以后可以边用边学、随时回来复习某一步。','打开完整功能地图','全部功能','班级 / 学生 / 组卷 / 作业|学情 / AI / 课堂 / 积分|历史 / 衔接 / 账号 / 设置','教师主线教学已经完成。','新手教学不是一次性说明书：任何一步都能跳过，以后需要时再回来复习。']
   ];
 
   const adminSteps=[
@@ -133,11 +138,13 @@ _GUIDE_SNIPPET = r'''
     if(label.includes('机构管理员'))return 'institution_admin';
     if(label.includes('家长'))return 'parent';
     if(label.includes('学生'))return 'student';
+    if(label.includes('教师')||label.includes('老师'))return 'institution_teacher';
+    if(label.includes('管理员'))return 'institution_admin';
     return '';
   };
   const currentPersona=()=>personas.find(p=>p.id===currentPersonaId())||null;
-  const seenKey=id=>'cyV1RoleTutorialSeenV4:'+id;
-  const SESSION_SHOWN_KEY='cyV1RoleTutorialShownThisLoginV6';
+  const seenKey=id=>'cyV1RoleTutorialSeenV7:'+id;
+  const SESSION_SHOWN_KEY='cyV1RoleTutorialShownThisLoginV7';
   const sessionShownFor=()=>sessionStorage.getItem(SESSION_SHOWN_KEY)||'';
   const markSessionShown=id=>sessionStorage.setItem(SESSION_SHOWN_KEY,id||'');
   const clearSessionShown=()=>sessionStorage.removeItem(SESSION_SHOWN_KEY);
@@ -148,10 +155,24 @@ _GUIDE_SNIPPET = r'''
   const completion=p=>{const st=personaState(p.id),total=p.steps.length,settled=Object.values(st.status||{}).filter(x=>x==='done'||x==='skipped').length;return{settled,total,pct:Math.round((settled/Math.max(1,total))*100)}};
   const markSeen=id=>{if(id)localStorage.setItem(seenKey(id),'1')};
   const statusText=s=>s==='done'?'已完成':s==='skipped'?'已跳过':'未开始';
+  const DEFAULT_DEMO={className:'五年级一班',grade:'五年级',subject:'数学',studentName:'小禾',studentAccount:'xiaohe01',textbook:'人教版',questionCount:'8',knowledge:'小数乘法'};
+  const demoState=id=>({...DEFAULT_DEMO,...(personaState(id).demo||{})});
+  const applyDemo=(text,demo)=>String(text||'').replace(/\{(\w+)\}/g,(_,key)=>demo[key]??'');
+  function customizerHtml(persona,stepId){
+    if(!['createClass','addStudents','paper','assign','targeted'].includes(stepId))return '';
+    const d=demoState(persona.id);
+    if(stepId==='createClass')return '<div class="cy-practice-form"><label>班级名称<input data-demo-field="className" value="'+esc(d.className)+'"></label><label>年级<select data-demo-field="grade"><option>五年级</option><option>四年级</option><option>六年级</option></select></label><label>主要学科<select data-demo-field="subject"><option>数学</option><option>语文</option><option>英语</option></select></label></div>';
+    if(stepId==='addStudents')return '<div class="cy-practice-form"><label>学生姓名<input data-demo-field="studentName" value="'+esc(d.studentName)+'"></label><label>学生账号<input data-demo-field="studentAccount" value="'+esc(d.studentAccount)+'"></label><div class="cy-practice-tip">这里只写入浏览器练习沙盒，不会创建真实学生。</div></div>';
+    if(stepId==='paper')return '<div class="cy-practice-form"><label>教材<select data-demo-field="textbook"><option>人教版</option></select></label><label>题量<select data-demo-field="questionCount"><option>5</option><option selected>8</option><option>10</option><option>15</option></select></label><label>重点知识<input data-demo-field="knowledge" value="'+esc(d.knowledge)+'"></label></div>';
+    if(stepId==='assign')return '<div class="cy-practice-tip">你将把“'+esc(d.subject)+' · '+esc(d.questionCount)+' 题”布置给“'+esc(d.className)+'”，并体验学生端如何收到任务。</div>';
+    return '<div class="cy-practice-tip">系统会把“最近一次提交 + '+esc(d.knowledge)+' 错题”作为练习依据，并只针对 '+esc(d.studentName)+' 生成下一轮内容。</div>';
+  }
+
 
   function closeOverlay(){document.getElementById('cy-onboarding-overlay')?.remove()}
   function mountShell(){
     closeOverlay();
+    const assistantPanel=document.getElementById('cy-product-assistant-panel');if(assistantPanel)assistantPanel.hidden=true;
     const overlay=document.createElement('div');overlay.id='cy-onboarding-overlay';
     overlay.innerHTML='<section class="cy-onboarding-shell" role="dialog" aria-modal="true"><header class="cy-onboarding-head"><div><strong>长缨新手教学</strong><small>虚拟演示账户 · 不写真实数据</small></div><button class="btn" id="cy-onboarding-close">退出并保存</button></header><div class="cy-onboarding-body"></div></section>';
     document.body.appendChild(overlay);
@@ -194,17 +215,22 @@ _GUIDE_SNIPPET = r'''
   function renderLesson(persona,index){
     const overlay=document.getElementById('cy-onboarding-overlay')||mountShell();
     const body=overlay.querySelector('.cy-onboarding-body');
-    const st=personaState(persona.id),step=persona.steps[index],stepId=step[0],pct=Math.round(((index+1)/persona.steps.length)*100);
+    const st=personaState(persona.id),step=persona.steps[index],stepId=step[0],pct=Math.round(((index+1)/persona.steps.length)*100),demo=demoState(persona.id);
     updatePersona(persona.id,s=>({...s,index}));
     const rail=persona.steps.map((x,i)=>{
       const status=personaState(persona.id).status?.[x[0]]||'';
       return '<div class="cy-step-item '+(i===index?'active ':'')+(status||'')+'"><span class="cy-step-no">'+(i+1)+'</span><span><b>'+esc(x[1])+'</b><small class="cy-step-state">'+statusText(status)+'</small></span><span class="cy-step-state">'+(status==='done'?'✓':status==='skipped'?'↷':'')+'</span></div>';
     }).join('');
-    const items=String(step[5]).split('|').map(x=>{const parts=x.split('：');return '<div class="cy-demo-card"><b>'+esc(parts.shift())+'</b><small>'+esc(parts.join('：'))+'</small></div>'}).join('');
-    body.innerHTML='<div class="cy-tutorial-layout"><aside class="cy-tutorial-rail"><div><span class="cy-badge">'+persona.icon+' '+esc(persona.name)+'</span><p style="font-size:12px;color:var(--muted);line-height:1.5;margin:8px 2px">'+esc(persona.account)+'</p><p style="font-size:11px;color:var(--muted);line-height:1.5">步骤路线仅用于查看进度，系统会按顺序引导，不需要你自己选择下一项。</p></div><div class="cy-step-list">'+rail+'</div></aside><section class="cy-tutorial-stage"><article class="cy-lesson-card"><div class="cy-lesson-top"><div><span class="tag">新手任务 '+(index+1)+'</span><h2>'+esc(step[1])+'</h2><p>'+esc(step[2])+'</p></div><span class="cy-badge">'+(st.status?.[stepId]==='done'?'✓ 已完成':st.status?.[stepId]==='skipped'?'↷ 已跳过':'进行中')+'</span></div><div class="cy-progress-row"><span>第 '+(index+1)+' / '+persona.steps.length+' 步</span><div class="cy-progress-track"><i style="width:'+pct+'%"></i></div><span>'+pct+'%</span></div><div class="cy-mission"><strong>这一关你要做</strong><p>'+esc(step[3])+'</p></div><section class="cy-demo-app"><div class="cy-demo-appbar"><b>'+persona.icon+' '+esc(persona.account)+'</b><span>虚拟演示 · '+esc(persona.name)+'</span></div><div class="cy-demo-canvas"><div class="cy-demo-screen-title">'+esc(step[4])+'</div><div class="cy-demo-screen-sub">以下均为演示数据，不会写入真实学生、积分、作业、课堂或学习证据。</div><div class="cy-demo-cards">'+items+'</div><div class="cy-demo-action"><button class="btn primary" id="cy-do-action">'+esc(step[3])+'</button></div><div class="cy-demo-feedback" id="cy-demo-feedback">'+esc(step[6])+'</div></div></section><div class="cy-lesson-notes"><div class="cy-note"><strong>你刚做了什么</strong><p>'+esc(step[3])+'</p></div><div class="cy-note"><strong>系统为什么这样做</strong><p>'+esc(step[7])+'</p></div><div class="cy-note"><strong>真实使用时注意</strong><p>演示不会产生真实业务写入；进入真实系统后仍按当前账号权限、教师审核和审计规则执行。</p></div></div><div class="cy-lesson-actions"><button class="btn" id="cy-prev" '+(index===0?'disabled':'')+'>上一步</button><button class="btn" id="cy-skip">跳过本步</button><button class="btn primary" id="cy-next" disabled>完成本步并继续</button></div><p class="cy-skip-note">“跳过本步”只影响新手教学进度；退出后仍可从右上角“新手教学”继续整条引导，完成后也可以重新开始。</p></article></section></div>';
+    const items=applyDemo(step[5],demo).split('|').map(x=>{const parts=x.split('：');return '<div class="cy-demo-card"><b>'+esc(parts.shift())+'</b><small>'+esc(parts.join('：'))+'</small></div>'}).join('');
+    const practice=customizerHtml(persona,stepId);
+    body.innerHTML='<div class="cy-tutorial-layout"><aside class="cy-tutorial-rail"><div><span class="cy-badge">'+persona.icon+' '+esc(persona.name)+'</span><p style="font-size:12px;color:var(--muted);line-height:1.5;margin:8px 2px">'+esc(persona.account)+'</p><p style="font-size:11px;color:var(--muted);line-height:1.5">步骤路线仅用于查看进度，系统会按顺序引导，不需要你自己选择下一项。</p></div><div class="cy-step-list">'+rail+'</div></aside><section class="cy-tutorial-stage"><article class="cy-lesson-card"><div class="cy-lesson-top"><div><span class="tag">新手任务 '+(index+1)+'</span><h2>'+esc(step[1])+'</h2><p>'+esc(step[2])+'</p></div><span class="cy-badge">'+(st.status?.[stepId]==='done'?'✓ 已完成':st.status?.[stepId]==='skipped'?'↷ 已跳过':'进行中')+'</span></div><div class="cy-progress-row"><span>第 '+(index+1)+' / '+persona.steps.length+' 步</span><div class="cy-progress-track"><i style="width:'+pct+'%"></i></div><span>'+pct+'%</span></div><div class="cy-mission"><strong>这一关你要做</strong><p>'+esc(step[3])+'</p></div><section class="cy-demo-app"><div class="cy-demo-appbar"><b>'+persona.icon+' '+esc(persona.account)+'</b><span>虚拟演示 · '+esc(persona.name)+'</span></div><div class="cy-demo-canvas"><div class="cy-demo-screen-title">'+esc(step[4])+'</div><div class="cy-demo-screen-sub">以下均为演示数据，不会写入真实学生、积分、作业、课堂或学习证据。</div><div class="cy-demo-cards">'+items+'</div>'+practice+'<div class="cy-demo-action"><button class="btn primary" id="cy-do-action">'+esc(step[3])+'</button></div><div class="cy-demo-feedback" id="cy-demo-feedback">'+esc(applyDemo(step[6],demo))+'</div></div></section><div class="cy-lesson-notes"><div class="cy-note"><strong>你刚做了什么</strong><p>'+esc(step[3])+'</p></div><div class="cy-note"><strong>系统为什么这样做</strong><p>'+esc(step[7])+'</p></div><div class="cy-note"><strong>真实使用时注意</strong><p>演示不会产生真实业务写入；进入真实系统后仍按当前账号权限、教师审核和审计规则执行。</p></div></div><div class="cy-lesson-actions"><button class="btn" id="cy-prev" '+(index===0?'disabled':'')+'>上一步</button><button class="btn" id="cy-skip">跳过本步</button><button class="btn primary" id="cy-next" disabled>完成本步并继续</button></div><p class="cy-skip-note">“跳过本步”只影响新手教学进度；退出后仍可从右上角“新手教学”继续整条引导，完成后也可以重新开始。</p></article></section></div>';
     let actionDone=false;
     const doAction=body.querySelector('#cy-do-action'),feedback=body.querySelector('#cy-demo-feedback'),next=body.querySelector('#cy-next');
-    doAction.onclick=()=>{actionDone=true;doAction.disabled=true;doAction.textContent='演示操作已完成 ✓';feedback.classList.add('show');next.disabled=false};
+    doAction.onclick=()=>{
+      const fields={};body.querySelectorAll('[data-demo-field]').forEach(el=>{fields[el.dataset.demoField]=String(el.value||'').trim()});
+      if(Object.keys(fields).length)updatePersona(persona.id,s=>({...s,demo:{...DEFAULT_DEMO,...(s.demo||{}),...fields}}));
+      actionDone=true;doAction.disabled=true;doAction.textContent='练习操作已完成 ✓';feedback.classList.add('show');next.disabled=false
+    };
     if(st.status?.[stepId]==='done'){actionDone=true;doAction.disabled=true;doAction.textContent='演示操作已完成 ✓';feedback.classList.add('show');next.disabled=false}
      body.querySelector('#cy-prev').onclick=()=>index>0&&renderLesson(persona,index-1);
     body.querySelector('#cy-skip').onclick=()=>{
@@ -231,15 +257,15 @@ _GUIDE_SNIPPET = r'''
   function renderPersistentGuide(){
     if(!screen)return;
     const existing=screen.querySelector('#cy-v1-product-guide-page');
-    if(existing?.dataset?.guideVersion==='v6')return;
+    if(existing?.dataset?.guideVersion==='v7')return;
     if(existing)existing.remove();
     const persona=currentPersona();
     if(!persona){
-      screen.innerHTML='<main id="cy-v1-product-guide-page" data-guide-version="v6"><section class="cy-guide-hero"><span class="tag">新手教学</span><h1>请先完成账号登录并选择身份</h1><p>新手教学会根据你真实登录后的身份显示对应流程；未登录或尚未选择身份时不会提前展示。</p></section></main>';
+      screen.innerHTML='<main id="cy-v1-product-guide-page" data-guide-version="v7"><section class="cy-guide-hero"><span class="tag">新手教学</span><h1>请先完成账号登录并选择身份</h1><p>新手教学会根据你真实登录后的身份显示对应流程；未登录或尚未选择身份时不会提前展示。</p></section></main>';
       return;
     }
     const progress=completion(persona);
-    screen.innerHTML='<main id="cy-v1-product-guide-page" data-guide-version="v6"><section class="cy-guide-hero"><span class="tag">'+persona.icon+' '+esc(persona.name)+'</span><h1>当前身份的新手教学</h1><p>系统会按顺序带你走完整流程，而不是让你先自己选择功能。每一步都有“为什么先做这一步 / 现在要做什么 / 完成后得到什么”。</p><div class="cy-guide-actions"><button class="btn primary" id="cy-guide-start">'+(progress.settled?'继续新手教学':'开始新手教学')+'</button><button class="btn" id="cy-guide-restart">从头开始</button></div><div class="cy-guide-summary"><div><b>'+progress.total+' 步</b><small>当前身份完整主线</small></div><div><b>'+progress.settled+' 步已处理</b><small>包含完成和主动跳过</small></div><div><b>随时可回来</b><small>右上角“新手教学”长期保留</small></div></div></section><section class="card" style="margin-top:18px"><h2>为什么采用顺序引导？</h2><p style="color:var(--muted);line-height:1.75">新用户先建立整体使用方向，再进入真实操作。路线图只负责显示进度，不作为自由功能菜单；真正的功能入口仍由当前身份的工作台和快捷导航承担。</p></section></main>';
+    screen.innerHTML='<main id="cy-v1-product-guide-page" data-guide-version="v7"><section class="cy-guide-hero"><span class="tag">'+persona.icon+' '+esc(persona.name)+'</span><h1>当前身份的新手教学</h1><p>系统会按顺序带你走完整流程，而不是让你先自己选择功能。每一步都有“为什么先做这一步 / 现在要做什么 / 完成后得到什么”。</p><div class="cy-guide-actions"><button class="btn primary" id="cy-guide-start">'+(progress.settled?'继续新手教学':'开始新手教学')+'</button><button class="btn" id="cy-guide-restart">从头开始</button></div><div class="cy-guide-summary"><div><b>'+progress.total+' 步</b><small>当前身份完整主线</small></div><div><b>'+progress.settled+' 步已处理</b><small>包含完成和主动跳过</small></div><div><b>随时可回来</b><small>右上角“新手教学”长期保留</small></div></div></section><section class="card" style="margin-top:18px"><h2>为什么采用顺序引导？</h2><p style="color:var(--muted);line-height:1.75">新用户先建立整体使用方向，再进入真实操作。路线图只负责显示进度，不作为自由功能菜单；真正的功能入口仍由当前身份的工作台和快捷导航承担。</p></section></main>';
     screen.querySelector('#cy-guide-start').onclick=()=>startPersona(persona.id);
     screen.querySelector('#cy-guide-restart').onclick=()=>{updatePersona(persona.id,s=>({...s,index:0,status:{}}));startPersona(persona.id,0)};
   }
@@ -263,7 +289,7 @@ _GUIDE_SNIPPET = r'''
   if(screen){
     const guideObserver=new MutationObserver(()=>{
       if(location.pathname!=='/v1/guide')return;
-      if(screen.querySelector('#cy-v1-product-guide-page[data-guide-version="v6"]'))return;
+      if(screen.querySelector('#cy-v1-product-guide-page[data-guide-version="v7"]'))return;
       queueMicrotask(sync);
     });
     guideObserver.observe(screen,{childList:true,subtree:false});
