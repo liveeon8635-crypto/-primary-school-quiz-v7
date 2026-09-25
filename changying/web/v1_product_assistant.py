@@ -229,7 +229,7 @@ _ASSISTANT_SNIPPET = r'''
     <div class="cy-pa-compose"><textarea id="cy-pa-input" placeholder="例如：这个页面应该先做什么？"></textarea><button class="btn primary" id="cy-pa-send">发送</button></div>
   </div>
   <div class="cy-pa-body" id="cy-pa-feedback" hidden>
-    <div class="cy-pa-feedback"><input type="hidden" id="cy-pa-category" value="这里不好懂"><div class="cy-pa-feedback-cats"><button class="active" data-pa-category="这里不好懂">不好懂</button><button data-pa-category="没找到入口">找不到</button><button data-pa-category="流程不直观">流程不顺</button><button data-pa-category="功能与预期不符">不符合预期</button><button data-pa-category="希望增加功能">想加功能</button><button data-pa-category="其他反馈">其他</button></div><textarea id="cy-pa-feedback-text" placeholder="一句话描述问题或建议（不要填写密码、API Key）"></textarea><button class="btn primary" id="cy-pa-submit-feedback">提交</button><div class="cy-pa-note">自动带上当前页面、身份和新手步骤。</div></div>
+    <div class="cy-pa-feedback"><input type="hidden" id="cy-pa-category" value="这里不好懂"><div class="cy-pa-feedback-cats"><button class="active" data-pa-category="这里不好懂">不好懂</button><button data-pa-category="没找到入口">找不到</button><button data-pa-category="流程不直观">流程不顺</button><button data-pa-category="功能与预期不符">不符合预期</button><button data-pa-category="希望增加功能">想加功能</button><button data-pa-category="其他反馈">其他</button></div><textarea id="cy-pa-feedback-text" placeholder="一句话描述问题或建议（不要填写密码、API Key 等敏感信息）"></textarea><button class="btn primary" id="cy-pa-submit-feedback">提交</button><div class="cy-pa-note">自动带上当前页面、身份和新手步骤。</div></div>
   </div>
 </section>
 <script id="changying_v1_product_assistant_v1-script">
