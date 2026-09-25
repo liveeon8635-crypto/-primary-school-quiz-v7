@@ -189,7 +189,9 @@ _GUIDE_SNIPPET = r'''
   const currentPersona=()=>personas.find(p=>p.id===currentPersonaId())||null;
   const seenKey=id=>'cyV1RoleTutorialSeenV5:'+id;
   const SESSION_SHOWN_KEY='cyV1RoleTutorialShownThisLoginV7';
-  const authToken=()=>sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||'';
+  const authRemember=()=>localStorage.getItem('v717Remember')==='1';
+  const authStore=()=>authRemember()?localStorage:sessionStorage;
+  const authToken=()=>authStore().getItem('v717Token')||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||'';
   const loginMarker=()=>currentPersonaId()+':'+authToken().slice(-24);
   const sessionShownFor=()=>sessionStorage.getItem(SESSION_SHOWN_KEY)||'';
   const markSessionShown=()=>sessionStorage.setItem(SESSION_SHOWN_KEY,loginMarker());
