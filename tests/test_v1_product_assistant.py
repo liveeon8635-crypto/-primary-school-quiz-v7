@@ -144,3 +144,12 @@ def test_product_assistant_visual_guides_are_not_empty_placeholder_markup():
     assert "grid.innerHTML=guideCandidates(text).map" in html
     assert "当前班级、课程、学生与待办" in html
     assert "连续学情、作业、错题与时间线" in html
+
+
+def test_product_assistant_rechecks_auth_after_classic_refresh_hydration():
+    html = rendered_v1()
+
+    assert "authReadyPoll=setInterval(syncUntilReady,400)" in html
+    assert "setTimeout(()=>{if(authReadyPoll){clearInterval(authReadyPoll);authReadyPoll=null}sync()},12000)" in html
+    assert "window.addEventListener('focus',sync)" in html
+    assert "document.addEventListener('visibilitychange'" in html
