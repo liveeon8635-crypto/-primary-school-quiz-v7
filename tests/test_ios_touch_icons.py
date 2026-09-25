@@ -15,11 +15,13 @@ from fastapi.testclient import TestClient
 from app import app
 
 with TestClient(app) as client:
+    reference = client.get("/icon-180.png")
+    assert reference.status_code == 200, reference.text
     for path in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"):
         response = client.get(path)
         assert response.status_code == 200, (path, response.text)
         assert response.headers["content-type"].startswith("image/png")
-        assert response.content.startswith(b"\\x89PNG")
+        assert response.content == reference.content
 '''
 
     env = os.environ.copy()
