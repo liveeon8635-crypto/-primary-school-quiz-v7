@@ -46,6 +46,8 @@ def test_training_workbench_is_interactive_not_static_screenshot_tutorial():
     assert "return_primary_role" in html
     assert "load_scenario" in html
     assert "/v1/product-assistant/query" in html
+    assert "/v1/product-feedback" in html
+    assert "角色关系不清楚" in html
 
 
 def test_training_workbench_supports_progress_review_and_reset_controls():
