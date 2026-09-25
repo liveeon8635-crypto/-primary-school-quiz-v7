@@ -1,8 +1,9 @@
-import os, io, json, secrets, hashlib, time, threading, base64, zipfile, re
+import os, io, json, secrets, hashlib, time, threading, base64, zipfile, re, socket
 import requests
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from datetime import datetime, timedelta, timezone
+from ipaddress import ip_address
 from typing import Optional
 
 import jwt
@@ -782,8 +783,12 @@ REMEMBER_DAYS=int(os.getenv("REMEMBER_TOKEN_DAYS","30"))
 
 LOGIN_RATE_WINDOW_SECONDS=int(os.getenv("LOGIN_RATE_WINDOW_SECONDS","900"))
 LOGIN_RATE_MAX_ATTEMPTS=int(os.getenv("LOGIN_RATE_MAX_ATTEMPTS","30"))
-_login_rate_hits={}
-_login_rate_lock=threading.Lock()
+LOGIN_RATE_MAX_CLIENTS=max(128,min(int(os.getenv("LOGIN_RATE_MAX_CLIENTS","4096") or 4096),65536))
+_login_rate_limiter=BoundedLoginRateLimiter(
+    window_seconds=LOGIN_RATE_WINDOW_SECONDS,
+    max_attempts=LOGIN_RATE_MAX_ATTEMPTS,
+    max_keys=LOGIN_RATE_MAX_CLIENTS,
+)
 
 def _client_ip(request:Request):
     return trusted_client_ip(
@@ -792,19 +797,21 @@ def _client_ip(request:Request):
     )
 
 def login_rate_check(request:Request):
-    key=_client_ip(request);now=time.time()
-    with _login_rate_lock:
-        hits=[x for x in _login_rate_hits.get(key,[]) if now-x<LOGIN_RATE_WINDOW_SECONDS]
-        _login_rate_hits[key]=hits
-        if len(hits)>=LOGIN_RATE_MAX_ATTEMPTS:
-            raise HTTPException(429,"登录请求过于频繁，请稍后再试")
+    key=_client_ip(request)
+    try:
+        _login_rate_limiter.check(key)
+    except LoginRateLimitExceeded:
+        raise HTTPException(429,"登录请求过于频繁，请稍后再试")
     return key
 
 def login_rate_failure(key):
-    with _login_rate_lock:_login_rate_hits.setdefault(key,[]).append(time.time())
+    try:
+        _login_rate_limiter.failure(key)
+    except LoginRateLimitExceeded:
+        pass
 
 def login_rate_clear(key):
-    with _login_rate_lock:_login_rate_hits.pop(key,None)
+    _login_rate_limiter.clear(key)
 
 def hash_password(password,salt=None):
     salt=salt or secrets.token_hex(16)
@@ -3072,6 +3079,38 @@ AI_RESOURCE_MAX_CHARS=24000
 AI_GRADE_MAX_IMAGES=4
 AI_GRADE_MAX_IMAGE_BYTES=8*1024*1024
 
+def _ai_host_is_forbidden(hostname:str)->bool:
+    host=(hostname or "").strip().strip("[]").lower()
+    if not host:return True
+    if host in ("localhost","localhost.localdomain") or host.endswith(".local"):return True
+    try:
+        addr=ip_address(host)
+    except ValueError:
+        return False
+    return not addr.is_global
+
+def _validate_ai_base_url(base:str,*,runtime:bool=False)->str:
+    value=(base or "").strip().rstrip("/")
+    try:parsed=urlsplit(value)
+    except Exception:raise HTTPException(400,"AI 接口地址格式无效")
+    if parsed.username or parsed.password or parsed.fragment:
+        raise HTTPException(400,"AI 接口地址不能包含账号、密码或片段")
+    if parsed.scheme!="https":
+        local_dev=raw_url.startswith("sqlite") and os.getenv("ALLOW_LOCAL_AI_BASE","0")=="1"
+        if not (local_dev and parsed.scheme=="http" and (parsed.hostname or "").lower() in ("localhost","127.0.0.1","::1")):
+            raise HTTPException(400,"AI 接口地址必须使用 HTTPS")
+    host=(parsed.hostname or "").strip()
+    if _ai_host_is_forbidden(host):
+        raise HTTPException(400,"AI 接口地址不能指向本机、内网或保留地址")
+    if runtime:
+        try:
+            resolved={item[4][0] for item in socket.getaddrinfo(host,parsed.port or 443,type=socket.SOCK_STREAM)}
+        except socket.gaierror:
+            raise HTTPException(502,"AI 接口域名暂时无法解析")
+        if not resolved or any(_ai_host_is_forbidden(x) for x in resolved):
+            raise HTTPException(502,"AI 接口域名解析到了不允许的网络地址")
+    return value
+
 def _ai_is_official_deepseek_base(base):
     value=(base or "").strip().rstrip("/").lower()
     return value in ("https://api.deepseek.com","https://api.deepseek.com/v1")
@@ -3124,7 +3163,7 @@ def _ai_active_config(db,school_id):
     if not row or not row.enabled:raise HTTPException(503,"AI 教学助手尚未启用，请联系学校管理员完成 AI 设置")
     provider=(row.provider or "").strip()
     if provider not in AI_PROVIDERS:raise HTTPException(500,"AI 服务商配置无效")
-    base=(row.base_url or AI_DEFAULT_BASE).strip().rstrip("/") or AI_DEFAULT_BASE
+    base=_validate_ai_base_url((row.base_url or AI_DEFAULT_BASE).strip().rstrip("/") or AI_DEFAULT_BASE,runtime=True)
     configured_model=(row.model or os.getenv("AI_MODEL","")).strip()
     if not configured_model:raise HTTPException(503,"尚未配置 AI 模型")
     model=_ai_effective_model(provider,base,configured_model)
@@ -3461,22 +3500,22 @@ def legal_page(title,body):
 
 # ---------------- App ----------------
 app=FastAPI(title="长缨辅学 小学教学系统",version=APP_VERSION)
-_cors_raw=os.getenv("CORS_ORIGINS","*").strip()
+_cors_raw=os.getenv("CORS_ORIGINS","").strip()
 _cors_origins=["*"] if _cors_raw=="*" else [x.strip() for x in _cors_raw.split(",") if x.strip()]
-app.add_middleware(CORSMiddleware,allow_origins=_cors_origins,allow_credentials=False,allow_methods=["*"],allow_headers=["*"])
+app.add_middleware(CORSMiddleware,allow_origins=_cors_origins,allow_credentials=False,allow_methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS"],allow_headers=["*"])
 app.add_middleware(GZipMiddleware,minimum_size=1000)
 
 @app.middleware("http")
 async def production_security_headers(request:Request,call_next):
     started=time.perf_counter()
-    request_id=(request.headers.get("x-request-id") or secrets.token_hex(8)).strip()[:64]
+    request_id=re.sub(r"[^A-Za-z0-9._:-]","",(request.headers.get("x-request-id") or "").strip())[:64] or secrets.token_hex(8)
     response=await call_next(request)
     elapsed_ms=max(0,(time.perf_counter()-started)*1000)
     response.headers["X-Content-Type-Options"]="nosniff"
     response.headers["X-Frame-Options"]="DENY"
     response.headers["Referrer-Policy"]="strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"]="camera=(self), microphone=(self), geolocation=()"
-    response.headers["Content-Security-Policy"]="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' https: http:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    response.headers["Content-Security-Policy"]="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' https:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
     response.headers["Cross-Origin-Opener-Policy"]="same-origin-allow-popups"
     response.headers["X-Request-ID"]=request_id
     response.headers["Server-Timing"]=f"app;dur={elapsed_ms:.1f}"
@@ -3555,7 +3594,7 @@ def production_readiness_payload(db):
     if demo_seed:blockers.append("ENABLE_DEMO_SEED 必须关闭，避免正式环境自动创建演示账号。")
     if migration_version!=SCHEMA_VERSION:blockers.append(f"数据库迁移版本为 {migration_version or '未知'}，当前要求 {SCHEMA_VERSION}。")
     if missing_tables:blockers.append("缺少关键数据表："+"、".join(missing_tables))
-    if _cors_raw=="*":advisories.append("CORS_ORIGINS 当前为 *；确定正式域名后建议收紧允许来源。")
+    if _cors_raw=="*":blockers.append("CORS_ORIGINS 不得为 *；正式环境必须同源运行或显式配置可信来源。")
     if not COMMERCIAL_CONTACT:advisories.append("COMMERCIAL_CONTACT 尚未配置，建议填写正式售后/续费联系方式。")
     if active_schools and active_admins<active_schools:advisories.append("部分已启用学校可能缺少可用管理员，请在客户正式交付前核对。")
     if unpaid_orders:advisories.append(f"当前有 {unpaid_orders} 笔待收订单，累计待收 ¥{outstanding/100:.2f}。")
@@ -3572,7 +3611,9 @@ def production_readiness_payload(db):
             "securityHeaders":{"ok":True,"value":"CSP/HSTS/Frame/Referrer 已启用"},
             "gzip":{"ok":True,"value":"≥1KB 响应压缩"},
             "requestTracing":{"ok":True,"value":"X-Request-ID + Server-Timing"},
-            "operatorRateLimit":{"ok":True,"value":f"{COMMERCIAL_AUTH_MAX_ATTEMPTS}次/{COMMERCIAL_AUTH_WINDOW_SECONDS//60}分钟"}
+            "operatorRateLimit":{"ok":True,"value":f"{COMMERCIAL_AUTH_MAX_ATTEMPTS}次/{COMMERCIAL_AUTH_WINDOW_SECONDS//60}分钟"},
+            "loginRateLimit":{"ok":True,"value":f"{LOGIN_RATE_MAX_ATTEMPTS}次/{LOGIN_RATE_WINDOW_SECONDS//60}分钟；最多跟踪 {LOGIN_RATE_MAX_CLIENTS} 个客户端"},
+            "cors":{"ok":_cors_raw!="*","value":_cors_raw or "同源限定"}
         },
         "counts":{"schools":school_count,"activeSchools":active_schools,"activeAdmins":active_admins,"unpaidOrders":unpaid_orders,"outstandingYuan":round(outstanding/100,2)},
         "backup":{"commercialExport":True,"databaseBackup":"请同时启用托管 PostgreSQL 的平台级备份/快照"},
@@ -4288,8 +4329,7 @@ def admin_ai_config(u:User=Depends(current_user),db:Session=Depends(get_db)):
 def save_admin_ai_config(b:AIConfigBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"admin");provider=(b.provider or "").strip()
     if provider not in AI_PROVIDERS:raise HTTPException(400,"AI 接口类型无效")
-    base=(b.base_url or AI_DEFAULT_BASE).strip().rstrip("/")
-    if not (base.startswith("https://") or base.startswith("http://localhost") or base.startswith("http://127.0.0.1")):raise HTTPException(400,"AI 接口地址必须使用 HTTPS")
+    base=_validate_ai_base_url(b.base_url or AI_DEFAULT_BASE)
     configured_model=(b.model or "").strip();model=_ai_effective_model(provider,base,configured_model)
     if b.enabled and not model:raise HTTPException(400,"启用 AI 前请填写模型名称")
     row=ai_config_for(db,u.school_id,True);row.provider=provider;row.base_url=base[:300];row.model=model[:120];row.enabled=bool(b.enabled);row.allow_student_data=bool(b.allow_student_data);row.updated_by=u.id;row.updated_at=datetime.utcnow()
@@ -5020,7 +5060,7 @@ def admin_system_health(u:User=Depends(current_user),db:Session=Depends(get_db))
     if db_backend!="PostgreSQL":warnings.append("当前不是 PostgreSQL；正式多用户上线建议使用托管 PostgreSQL。")
     if _cors_raw=="*":warnings.append("CORS_ORIGINS 当前为 *；原生 App 域名确定后建议收紧允许来源。")
     if os.getenv("ENABLE_DEMO_SEED","0")=="1":warnings.append("ENABLE_DEMO_SEED 已开启；正式生产环境应关闭演示数据自动创建。")
-    return {"appVersion":APP_VERSION,"schemaVersion":SCHEMA_VERSION,"database":"ok","databaseBackend":db_backend,"jwtConfigured":jwt_configured,"corsOrigins":_cors_raw,"demoSeedEnabled":os.getenv("ENABLE_DEMO_SEED","0")=="1","loginRateLimit":{"windowSeconds":LOGIN_RATE_WINDOW_SECONDS,"maxAttempts":LOGIN_RATE_MAX_ATTEMPTS},"securityHeaders":True,"contentSecurityPolicy":True,"gzipEnabled":True,"requestTracing":True,"pendingDeletionRequests":pending,"migrations":[{"version":x.version,"description":x.description,"appliedAt":school_local_iso(x.applied_at)} for x in migrations[:20]],"warnings":warnings,"serverTime":school_local_iso(datetime.utcnow())}
+    return {"appVersion":APP_VERSION,"schemaVersion":SCHEMA_VERSION,"database":"ok","databaseBackend":db_backend,"jwtConfigured":jwt_configured,"corsOrigins":_cors_raw or "same-origin","demoSeedEnabled":os.getenv("ENABLE_DEMO_SEED","0")=="1","loginRateLimit":{"windowSeconds":LOGIN_RATE_WINDOW_SECONDS,"maxAttempts":LOGIN_RATE_MAX_ATTEMPTS,"maxClients":LOGIN_RATE_MAX_CLIENTS,"trackedClients":_login_rate_limiter.size()},"securityHeaders":True,"contentSecurityPolicy":True,"gzipEnabled":True,"requestTracing":True,"pendingDeletionRequests":pending,"migrations":[{"version":x.version,"description":x.description,"appliedAt":school_local_iso(x.applied_at)} for x in migrations[:20]],"warnings":warnings,"serverTime":school_local_iso(datetime.utcnow())}
 
 
 @app.get("/admin/release-readiness")
@@ -5044,7 +5084,7 @@ def admin_release_readiness(u:User=Depends(current_user),db:Session=Depends(get_
     if migration_version!=SCHEMA_VERSION:
         blockers.append(f"数据库迁移版本为 {migration_version or '未知'}，当前应用要求 {SCHEMA_VERSION}。")
     if _cors_raw=="*":
-        advisories.append("CORS_ORIGINS 当前为 *。网页版同源运行可继续使用，但确定正式域名后建议收紧允许来源。")
+        blockers.append("CORS_ORIGINS 不得为 *；正式环境必须同源运行或显式配置可信来源。")
 
     pending=db.scalar(select(func.count()).select_from(AccountDeletionRequest).where(
         AccountDeletionRequest.school_id==u.school_id,
@@ -5070,7 +5110,8 @@ def admin_release_readiness(u:User=Depends(current_user),db:Session=Depends(get_
             "securityHeaders":{"ok":True,"value":"CSP/HSTS/Frame/Referrer 已启用"},
             "gzip":{"ok":True,"value":"≥1KB 响应压缩"},
             "requestTracing":{"ok":True,"value":"X-Request-ID + Server-Timing"},
-            "loginRateLimit":{"ok":True,"value":f"{LOGIN_RATE_MAX_ATTEMPTS}/{round(LOGIN_RATE_WINDOW_SECONDS/60)}分钟"},
+            "loginRateLimit":{"ok":True,"value":f"{LOGIN_RATE_MAX_ATTEMPTS}/{round(LOGIN_RATE_WINDOW_SECONDS/60)}分钟；最多跟踪 {LOGIN_RATE_MAX_CLIENTS} 个客户端"},
+            "cors":{"ok":_cors_raw!="*","value":_cors_raw or "同源限定"},
             "legacyPwaCache":{"ok":True,"value":"已停用"}
         },
         "serverTime":school_local_iso(datetime.utcnow())
@@ -5117,7 +5158,7 @@ def admin_stability_check(u:User=Depends(current_user),db:Session=Depends(get_db
     if demo_seed:blockers.append("ENABLE_DEMO_SEED 必须关闭。")
     if migration_version!=SCHEMA_VERSION:blockers.append(f"数据库迁移版本 {migration_version or '未知'} 与要求 {SCHEMA_VERSION} 不一致。")
     if missing:blockers.append("缺少关键数据表："+"、".join(missing))
-    if _cors_raw=="*":advisories.append("CORS_ORIGINS 仍为 *；正式域名稳定后建议收紧。")
+    if _cors_raw=="*":blockers.append("CORS_ORIGINS 不得为 *；正式环境必须同源运行或显式配置可信来源。")
     if not ai_cfg or not ai_cfg.enabled:advisories.append("学校 AI 服务当前未启用；不影响其他教学功能。")
     if ai_failures:advisories.append(f"最近7天有 {ai_failures} 次 AI 调用失败，可在 AI 设置中检查余额/模型/密钥。")
     total_bytes=int(resource_bytes)+int(media_bytes)
@@ -5134,7 +5175,9 @@ def admin_stability_check(u:User=Depends(current_user),db:Session=Depends(get_db
             "securityHeaders":{"ok":True,"value":"CSP/HSTS/Frame/Referrer 已启用"},
             "gzip":{"ok":True,"value":"≥1KB 响应压缩"},
             "requestTracing":{"ok":True,"value":"X-Request-ID + Server-Timing"},
-            "backupExport":{"ok":True,"value":"学校 JSON 业务快照可导出"}
+            "backupExport":{"ok":True,"value":"学校 JSON 业务快照可导出"},
+            "loginRateLimit":{"ok":True,"value":f"有界跟踪 {LOGIN_RATE_MAX_CLIENTS} 个客户端"},
+            "cors":{"ok":_cors_raw!="*","value":_cors_raw or "同源限定"}
         },
         "counts":counts,
         "storage":{"bytes":total_bytes,"mb":round(total_bytes/1024/1024,2),"resourceMB":round(int(resource_bytes)/1024/1024,2),"homeworkMediaMB":round(int(media_bytes)/1024/1024,2)},
@@ -5294,6 +5337,30 @@ def import_active(v):
     if s in ("停用","否","no","n","false","0","禁用"):return False
     raise ValueError("启用状态请填写 启用/停用")
 
+ADMIN_IMPORT_MAX_FILE=10*1024*1024
+ADMIN_IMPORT_MAX_UNCOMPRESSED=80*1024*1024
+ADMIN_IMPORT_MAX_ZIP_ENTRIES=2048
+ADMIN_IMPORT_MAX_ROWS_PER_SHEET=5000
+
+def _validate_admin_xlsx_upload(data:bytes):
+    if len(data)>ADMIN_IMPORT_MAX_FILE:
+        raise HTTPException(413,"批量导入文件不能超过 10MB")
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            entries=archive.infolist()
+            if len(entries)>ADMIN_IMPORT_MAX_ZIP_ENTRIES:
+                raise HTTPException(413,"Excel 文件内部条目过多")
+            expanded=sum(max(0,int(x.file_size or 0)) for x in entries)
+            if expanded>ADMIN_IMPORT_MAX_UNCOMPRESSED:
+                raise HTTPException(413,"Excel 解压后内容过大")
+            names={x.filename for x in entries}
+            if "[Content_Types].xml" not in names or "xl/workbook.xml" not in names:
+                raise HTTPException(400,"XLSX 文件结构无效")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(400,"XLSX 文件损坏或格式无效")
+
 @app.get("/admin/import-template")
 def import_template(u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"admin");require_plan_feature(db,u.school_id,"bulk_import")
@@ -5326,7 +5393,10 @@ async def import_xlsx(file:UploadFile=File(...),u:User=Depends(current_user),db:
     need(u,"admin");require_plan_feature(db,u.school_id,"bulk_import")
     if not (file.filename or "").lower().endswith(".xlsx"):raise HTTPException(400,"请上传 XLSX")
     from openpyxl import load_workbook
-    try:wb=load_workbook(io.BytesIO(await file.read()),data_only=True)
+    data=await file.read(ADMIN_IMPORT_MAX_FILE+1)
+    if not data:raise HTTPException(400,"Excel 文件为空")
+    _validate_admin_xlsx_upload(data)
+    try:wb=load_workbook(io.BytesIO(data),data_only=True,read_only=True)
     except Exception:raise HTTPException(400,"Excel 无法读取")
     recognized={"题库导入","教师导入","学生导入"}
     if not recognized.intersection(wb.sheetnames):raise HTTPException(400,"未找到题库导入、教师导入或学生导入工作表")
@@ -5339,6 +5409,7 @@ async def import_xlsx(file:UploadFile=File(...),u:User=Depends(current_user),db:
 
     if "题库导入" in wb.sheetnames:
         for rn,row in enumerate(wb["题库导入"].iter_rows(min_row=2,values_only=True),start=2):
+            if rn>ADMIN_IMPORT_MAX_ROWS_PER_SHEET+1:raise HTTPException(413,"单个工作表最多导入 5000 行")
             if not row or not any(v is not None and import_cell(v) for v in row):continue
             try:
                 grade=int(row[0]);sub=import_cell(row[1]);text=import_cell(row[6]);opts=[import_cell(row[i]) for i in range(7,11)];correct=int(row[11])-1
@@ -5352,6 +5423,7 @@ async def import_xlsx(file:UploadFile=File(...),u:User=Depends(current_user),db:
 
     if "教师导入" in wb.sheetnames:
         for rn,row in enumerate(wb["教师导入"].iter_rows(min_row=2,values_only=True),start=2):
+            if rn>ADMIN_IMPORT_MAX_ROWS_PER_SHEET+1:raise HTTPException(413,"单个工作表最多导入 5000 行")
             if not row or not any(v is not None and import_cell(v) for v in row):continue
             try:
                 name=import_cell(row[0]);username=import_cell(row[1]);password=import_cell(row[2]);active=import_active(row[3] if len(row)>3 else None)
@@ -5366,6 +5438,7 @@ async def import_xlsx(file:UploadFile=File(...),u:User=Depends(current_user),db:
 
     if "学生导入" in wb.sheetnames:
         for rn,row in enumerate(wb["学生导入"].iter_rows(min_row=2,values_only=True),start=2):
+            if rn>ADMIN_IMPORT_MAX_ROWS_PER_SHEET+1:raise HTTPException(413,"单个工作表最多导入 5000 行")
             if not row or not any(v is not None and import_cell(v) for v in row):continue
             try:
                 name=import_cell(row[0]);username=import_cell(row[1]);password=import_cell(row[2]);grade=int(row[3]);class_name=import_cell(row[4]);parent_username=import_cell(row[5] if len(row)>5 else None);active=import_active(row[6] if len(row)>6 else None)
