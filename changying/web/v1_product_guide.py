@@ -137,6 +137,10 @@ _GUIDE_SNIPPET = r'''
   };
   const currentPersona=()=>personas.find(p=>p.id===currentPersonaId())||null;
   const seenKey=id=>'cyV1RoleTutorialSeenV4:'+id;
+  const SESSION_SHOWN_KEY='cyV1RoleTutorialShownThisLoginV6';
+  const sessionShownFor=()=>sessionStorage.getItem(SESSION_SHOWN_KEY)||'';
+  const markSessionShown=id=>sessionStorage.setItem(SESSION_SHOWN_KEY,id||'');
+  const clearSessionShown=()=>sessionStorage.removeItem(SESSION_SHOWN_KEY);
   const identityReady=()=>Boolean(identityButton&&identityButton.hidden===false&&currentPersonaId());
   const loadState=()=>{try{return JSON.parse(localStorage.getItem(STATE_KEY)||'{}')||{}}catch{return{}}};
   const saveState=s=>localStorage.setItem(STATE_KEY,JSON.stringify(s));
@@ -227,15 +231,15 @@ _GUIDE_SNIPPET = r'''
   function renderPersistentGuide(){
     if(!screen)return;
     const existing=screen.querySelector('#cy-v1-product-guide-page');
-    if(existing?.dataset?.guideVersion==='v5')return;
+    if(existing?.dataset?.guideVersion==='v6')return;
     if(existing)existing.remove();
     const persona=currentPersona();
     if(!persona){
-      screen.innerHTML='<main id="cy-v1-product-guide-page" data-guide-version="v5"><section class="cy-guide-hero"><span class="tag">新手教学</span><h1>请先完成账号登录并选择身份</h1><p>新手教学会根据你真实登录后的身份显示对应流程；未登录或尚未选择身份时不会提前展示。</p></section></main>';
+      screen.innerHTML='<main id="cy-v1-product-guide-page" data-guide-version="v6"><section class="cy-guide-hero"><span class="tag">新手教学</span><h1>请先完成账号登录并选择身份</h1><p>新手教学会根据你真实登录后的身份显示对应流程；未登录或尚未选择身份时不会提前展示。</p></section></main>';
       return;
     }
     const progress=completion(persona);
-    screen.innerHTML='<main id="cy-v1-product-guide-page" data-guide-version="v5"><section class="cy-guide-hero"><span class="tag">'+persona.icon+' '+esc(persona.name)+'</span><h1>当前身份的新手教学</h1><p>系统会按顺序带你走完整流程，而不是让你先自己选择功能。每一步都有“为什么先做这一步 / 现在要做什么 / 完成后得到什么”。</p><div class="cy-guide-actions"><button class="btn primary" id="cy-guide-start">'+(progress.settled?'继续新手教学':'开始新手教学')+'</button><button class="btn" id="cy-guide-restart">从头开始</button></div><div class="cy-guide-summary"><div><b>'+progress.total+' 步</b><small>当前身份完整主线</small></div><div><b>'+progress.settled+' 步已处理</b><small>包含完成和主动跳过</small></div><div><b>随时可回来</b><small>右上角“新手教学”长期保留</small></div></div></section><section class="card" style="margin-top:18px"><h2>为什么采用顺序引导？</h2><p style="color:var(--muted);line-height:1.75">新用户先建立整体使用方向，再进入真实操作。路线图只负责显示进度，不作为自由功能菜单；真正的功能入口仍由当前身份的工作台和快捷导航承担。</p></section></main>';
+    screen.innerHTML='<main id="cy-v1-product-guide-page" data-guide-version="v6"><section class="cy-guide-hero"><span class="tag">'+persona.icon+' '+esc(persona.name)+'</span><h1>当前身份的新手教学</h1><p>系统会按顺序带你走完整流程，而不是让你先自己选择功能。每一步都有“为什么先做这一步 / 现在要做什么 / 完成后得到什么”。</p><div class="cy-guide-actions"><button class="btn primary" id="cy-guide-start">'+(progress.settled?'继续新手教学':'开始新手教学')+'</button><button class="btn" id="cy-guide-restart">从头开始</button></div><div class="cy-guide-summary"><div><b>'+progress.total+' 步</b><small>当前身份完整主线</small></div><div><b>'+progress.settled+' 步已处理</b><small>包含完成和主动跳过</small></div><div><b>随时可回来</b><small>右上角“新手教学”长期保留</small></div></div></section><section class="card" style="margin-top:18px"><h2>为什么采用顺序引导？</h2><p style="color:var(--muted);line-height:1.75">新用户先建立整体使用方向，再进入真实操作。路线图只负责显示进度，不作为自由功能菜单；真正的功能入口仍由当前身份的工作台和快捷导航承担。</p></section></main>';
     screen.querySelector('#cy-guide-start').onclick=()=>startPersona(persona.id);
     screen.querySelector('#cy-guide-restart').onclick=()=>{updatePersona(persona.id,s=>({...s,index:0,status:{}}));startPersona(persona.id,0)};
   }
@@ -247,20 +251,26 @@ _GUIDE_SNIPPET = r'''
   function sync(){
     const ready=identityReady(),persona=currentPersona();
     if(tutorialButton)tutorialButton.hidden=!ready;
-    if(!ready)return;
+    if(!ready){clearSessionShown();return}
     if(location.pathname==='/v1/guide'){markSeen(persona.id);renderPersistentGuide();return}
-    if(localStorage.getItem(seenKey(persona.id))!=='1')showCurrentIntro({firstVisit:true});
+    if(sessionShownFor()!==persona.id){
+      markSessionShown(persona.id);
+      showCurrentIntro({firstVisit:true});
+    }
   }
 
   if(tutorialButton)tutorialButton.onclick=()=>showCurrentIntro();
   if(screen){
     const guideObserver=new MutationObserver(()=>{
       if(location.pathname!=='/v1/guide')return;
-      if(screen.querySelector('#cy-v1-product-guide-page[data-guide-version="v5"]'))return;
+      if(screen.querySelector('#cy-v1-product-guide-page[data-guide-version="v6"]'))return;
       queueMicrotask(sync);
     });
     guideObserver.observe(screen,{childList:true,subtree:false});
   }
+  const identityObserver=new MutationObserver(()=>queueMicrotask(sync));
+  if(identityButton)identityObserver.observe(identityButton,{attributes:true,attributeFilter:['hidden']});
+  if(identityChip)identityObserver.observe(identityChip,{childList:true,characterData:true,subtree:true});
   window.addEventListener('pageshow',sync);
   window.addEventListener('popstate',sync);
   setTimeout(sync,0);setTimeout(sync,300);
