@@ -227,11 +227,11 @@ _ASSISTANT_SNIPPET = r'''
   <div class="cy-pa-body" id="cy-pa-ask">
     <div class="cy-pa-quick"><button data-pa-question="我现在该做什么？">下一步做什么</button><button data-pa-question="这个页面是干什么的？">页面用途</button><button data-pa-question="这一步为什么排在这里？">为什么这样走</button></div>
     <div class="cy-pa-guide" id="cy-pa-guide">
-      <div class="cy-pa-guide-title">功能导航 · 点图直达</div>
+      <div class="cy-pa-guide-title">页面示意 · 点卡片直达</div>
       <div class="cy-pa-guide-grid" id="cy-pa-guide-grid"></div>
-      <div class="cy-pa-note">图片加载失败时自动回退为文字步骤，弱网/无图仍可用。</div>
+      <div class="cy-pa-note">页面示意直接随助手生成，不依赖额外图片下载；点击即可进入对应功能页。</div>
     </div>
-    <div class="cy-pa-chat" id="cy-pa-chat"><div class="cy-pa-msg assistant">我会结合你当前登录身份、所在页面和新手教学步骤回答长缨怎么用；也可以直接点上面的功能导航图跳到对应页面。</div></div>
+    <div class="cy-pa-chat" id="cy-pa-chat"><div class="cy-pa-msg assistant">我会结合你当前登录身份、所在页面和新手教学步骤回答长缨怎么用；也会用页面示意卡标出相关入口。</div></div>
     <div class="cy-pa-compose"><textarea id="cy-pa-input" placeholder="例如：这个页面应该先做什么？"></textarea><button class="btn primary" id="cy-pa-send">发送</button></div>
   </div>
   <div class="cy-pa-body" id="cy-pa-feedback" hidden>
