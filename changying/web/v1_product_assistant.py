@@ -35,6 +35,12 @@ class ProductAssistantBody(BaseModel):
     identity: str = Field(default="", max_length=160)
     tutorial_step: str = Field(default="", max_length=200)
     child_id: int | None = None
+    active_assessment: bool = False
+    active_question_text: str = Field(default="", max_length=1600)
+    active_question_options: list[str] = Field(default_factory=list, max_length=8)
+    active_question_meta: str = Field(default="", max_length=500)
+    active_question_position: str = Field(default="", max_length=80)
+    active_question_response: str = Field(default="", max_length=600)
 
 
 class ProductFeedbackBody(BaseModel):
@@ -77,7 +83,11 @@ _PRODUCT_CONTEXT = """你是“长缨辅学”的站内学习与产品助手。�
 """
 
 
-def _student_direct_answer_request(question: str, page: str = "") -> bool:
+def _student_direct_answer_request(
+    question: str,
+    page: str = "",
+    active_assessment: bool = False,
+) -> bool:
     text = (question or "").strip().lower()
     if any(
         k in text
@@ -93,11 +103,33 @@ def _student_direct_answer_request(question: str, page: str = "") -> bool:
         )
     ):
         return True
-    in_assessment = any(k in (page or "") for k in ("assignments", "practice", "quiz", "assessment", "test"))
+    in_assessment = bool(active_assessment) or any(k in (page or "") for k in ("assignments", "practice", "quiz", "assessment", "test"))
     academic_hint = in_assessment or any(k in text for k in ("这题", "题目", "作业", "练习", "测验", "考试", "选择题"))
     if academic_hint and any(k in text for k in ("选哪个", "应该选哪个", "第几项")):
         return True
     return in_assessment and any(k in text for k in ("答案", "直接算出", "直接做完", "告诉我结果"))
+
+
+def _active_question_context(body: ProductAssistantBody) -> str:
+    if not body.active_question_text.strip():
+        return "当前没有检测到正在作答的题目。"
+    options = [
+        str(item).strip()
+        for item in body.active_question_options[:8]
+        if str(item).strip()
+    ]
+    option_text = "；".join(options) if options else "无可见选项"
+    response = body.active_question_response.strip() or "学生尚未填写/选择"
+    position = body.active_question_position.strip() or "当前题"
+    meta = body.active_question_meta.strip() or "无额外题目信息"
+    return (
+        "当前正在作答上下文（只包含学生屏幕当前可见信息，不含正确答案或解析）："
+        f"位置={position}；题干={body.active_question_text.strip()}；"
+        f"可见选项={option_text}；题目信息={meta}；学生当前输入/选择={response}。"
+        "如果仍在提交前，不得确认、暗示或排除某个选项是否正确，也不得给出最终数值结果。"
+        "可以帮助识别已知条件、解释概念、指出第一步、给相似例子或检查方法。"
+        "如果学生只说“这题不会/帮我看看”，直接基于这道当前题帮助，不要要求他重新粘贴题目。"
+    )
 
 
 def _assignment_counts(implementation: ModuleType, db, student_id: int, school_id: int) -> tuple[int, int]:
@@ -314,16 +346,28 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             body.child_id,
             question,
         )
-        if role == "student" and _student_direct_answer_request(question, body.page):
+        active_question_context = (
+            _active_question_context(body)
+            if role == "student"
+            else "当前角色不读取学生答题中的临时题目上下文。"
+        )
+        if role == "student" and _student_direct_answer_request(
+            question,
+            body.page,
+            body.active_assessment,
+        ):
             return {
                 "ok": True,
-                "reply": _local_answer(
-                    question,
-                    body.identity,
-                    body.page,
-                    body.tutorial_step,
-                    role=role,
-                    learning_context=learning_context,
+                "reply": (
+                    ("我已经关联到你当前正在做的这题。 " if body.active_question_text.strip() else "")
+                    + _local_answer(
+                        question,
+                        body.identity,
+                        body.page,
+                        body.tutorial_step,
+                        role=role,
+                        learning_context=learning_context,
+                    )
                 ),
                 "source": "learning_guard",
                 "degraded": False,
@@ -334,6 +378,8 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             + f"账号角色={role}; 身份={body.identity}; 页面={body.page}; 新手步骤={body.tutorial_step or '无'}。"
             + "\n角色内学习数据："
             + learning_context
+            + "\n当前作答题目："
+            + active_question_context
             + "\n用户问题："
             + question
         )
