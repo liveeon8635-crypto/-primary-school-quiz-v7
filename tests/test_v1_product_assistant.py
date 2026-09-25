@@ -6,6 +6,9 @@ from changying.web.v1_product_assistant import (
     FEEDBACK_PROOF_PREFIX,
     QUERY_PATH,
     V1_PRODUCT_ASSISTANT_MARKER,
+    _PRODUCT_CONTEXT,
+    _local_answer,
+    _student_direct_answer_request,
 )
 
 
@@ -204,3 +207,54 @@ def test_visual_guide_current_page_scoring_distinguishes_unified_tool_pages():
     assert "let score=page===g.href?9:0" in html
     assert "if(!g.href.includes('?')&&page.startsWith(g.href))score+=4" in html
     assert "renderGuideGrid(text+' '+reply)" in html
+
+
+def test_student_assistant_invites_learning_questions_without_becoming_answer_key():
+    html = rendered_v1()
+
+    assert "你可以问我长缨怎么用，也可以问不会的知识点和题目思路" in html
+    assert "我不会直接替你做作业" in html
+    assert "我有一道题不会，先别告诉我答案，帮我拆解思路。" in html
+    assert "帮我把这个知识点拆成容易理解的小步骤。" in html
+    assert "我的错题 / 自主练习 / 我的学情 / 同步课堂" in _PRODUCT_CONTEXT
+    assert "如果学生在作业、练习、测验场景索要最终答案" in _PRODUCT_CONTEXT
+
+
+def test_student_direct_answer_requests_are_guarded_deterministically():
+    assert _student_direct_answer_request("直接告诉我答案", "/v1/tool?page=assignments")
+    assert _student_direct_answer_request("这题正确答案选哪个？", "/v1/tool?page=practice")
+    assert not _student_direct_answer_request("为什么分母不能直接相加？", "/v1/tool?page=practice")
+    assert not _student_direct_answer_request("这几个功能我应该选哪个？", "/v1/tool?page=progress")
+
+    reply = _local_answer(
+        "把答案给我",
+        "小明 · 学生",
+        "/v1/tool?page=assignments",
+        "",
+        role="student",
+    )
+    assert "不直接替你提取作业或练习的最终答案" in reply
+    assert "把题拆开" in reply
+    assert "我的错题" in reply
+
+
+def test_parent_assistant_copy_centers_real_learning_evidence_and_home_support():
+    html = rendered_v1()
+
+    assert "我会优先结合当前绑定孩子在长缨里的真实学习记录" in html
+    assert "结合长缨里的记录，孩子最近学习情况怎么样？" in html
+    assert "根据孩子目前的学习情况，我在家可以怎么配合？" in html
+    assert "我现在最值得先肯定和鼓励孩子的是什么？" in html
+    assert "先说一个具体事实或进步" in _PRODUCT_CONTEXT
+    assert "不拿孩子和其他学生比较" in _PRODUCT_CONTEXT
+    assert "孩子学情 / 孩子作业 / 课堂表现 / 孩子课程" in _PRODUCT_CONTEXT
+
+
+def test_assistant_sends_selected_child_context_without_exposing_answer_keys():
+    html = rendered_v1()
+
+    assert "const selectedChildID=()=>{" in html
+    assert "child_id:selectedChildID()" in html
+    assert "ROLE_COPY={" in html
+    assert "applyRoleCopy()" in html
+    assert "不包含任何题目标准答案" not in html  # server-only context must not be exposed in client markup
