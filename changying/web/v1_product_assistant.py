@@ -56,7 +56,7 @@ _PRODUCT_CONTEXT = """你是“长缨辅学”的产品内智能助手。只回�
 8. 教师审核是重要边界；AI 可以生成建议或草稿，但不应自动替教师发布、评分确认或推进课堂。
 9. 不要声称你读取了用户未提供的学生、班级、成绩或数据库数据。不要编造按钮、数据或已经发生的操作。
 10. 用户问“我现在该做什么”时，根据身份、页面和新手步骤给 1-3 个明确动作；用户描述问题时，先解释当前功能，再指出应去哪个入口。
-回答使用简洁中文，优先给可执行步骤。"""
+回答使用简洁中文，优先给可执行步骤。最多 6 个短行；不要使用 Markdown 粗体、标题、代码块或反引号，直接输出普通文字。"""
 
 
 def _local_answer(question: str, identity: str, page: str, tutorial_step: str) -> str:
@@ -209,27 +209,28 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
 
 _ASSISTANT_SNIPPET = r'''
 <style id="changying_v1_product_assistant_v1-css">
-  #cy-product-assistant-fab{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:125;border:0;border-radius:999px;background:#173a78;color:#fff;padding:13px 16px;font-weight:850;box-shadow:0 12px 34px rgba(23,58,120,.28);display:flex;align-items:center;gap:7px}
-  #cy-product-assistant-panel{position:fixed;right:14px;bottom:calc(142px + env(safe-area-inset-bottom));z-index:126;width:min(390px,calc(100vw - 28px));max-height:min(620px,70dvh);background:#fff;border:1px solid #dbe4f1;border-radius:20px;box-shadow:0 22px 70px rgba(17,34,64,.28);overflow:hidden;display:flex;flex-direction:column}
-  .cy-pa-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:14px 15px;border-bottom:1px solid #e2e8f1}.cy-pa-head b{display:block}.cy-pa-head small{color:var(--muted);line-height:1.45}
-  .cy-pa-tabs{display:grid;grid-template-columns:1fr 1fr;padding:9px;gap:7px;background:#f7f9fc}.cy-pa-tab{border:1px solid #dbe4f1;background:#fff;border-radius:11px;padding:9px;font-weight:750}.cy-pa-tab.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78}
-  .cy-pa-body{padding:12px;overflow:auto}.cy-pa-quick{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.cy-pa-quick button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:7px 9px;font-size:12px}
-  .cy-pa-chat{display:grid;gap:9px;margin-bottom:10px}.cy-pa-msg{max-width:92%;padding:10px 11px;border-radius:13px;line-height:1.55;font-size:13px;white-space:pre-wrap}.cy-pa-msg.user{justify-self:end;background:#173a78;color:#fff}.cy-pa-msg.assistant{justify-self:start;background:#f1f5fb;color:#1c2940}
-  .cy-pa-compose{display:grid;grid-template-columns:1fr auto;gap:7px}.cy-pa-compose textarea{min-height:68px;resize:none}.cy-pa-compose .btn{align-self:end}
-  .cy-pa-feedback{display:grid;gap:9px}.cy-pa-feedback textarea{min-height:110px}.cy-pa-note{font-size:11px;color:var(--muted);line-height:1.5}
-  @media(max-width:640px){#cy-product-assistant-fab{right:12px;bottom:calc(78px + env(safe-area-inset-bottom));padding:12px 14px}#cy-product-assistant-panel{left:8px;right:8px;bottom:calc(132px + env(safe-area-inset-bottom));width:auto;max-height:68dvh}}
+  #cy-product-assistant-fab{position:fixed;right:14px;bottom:calc(82px + env(safe-area-inset-bottom));z-index:125;width:48px;height:48px;border:0;border-radius:50%;background:#173a78;color:#fff;padding:0;font-size:20px;font-weight:900;box-shadow:0 10px 28px rgba(23,58,120,.26);display:grid;place-items:center}
+  #cy-product-assistant-panel{position:fixed;right:12px;bottom:calc(138px + env(safe-area-inset-bottom));z-index:126;width:min(360px,calc(100vw - 24px));max-height:min(520px,58dvh);background:#fff;border:1px solid #dbe4f1;border-radius:18px;box-shadow:0 18px 56px rgba(17,34,64,.24);overflow:hidden;display:flex;flex-direction:column}
+  #cy-product-assistant-panel.compact{width:190px;max-height:none}.compact .cy-pa-tabs,.compact .cy-pa-body{display:none!important}.compact .cy-pa-context{display:none}.compact .cy-pa-head{border-bottom:0;padding:10px 11px}
+  .cy-pa-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:12px 13px;border-bottom:1px solid #e2e8f1}.cy-pa-head b{display:block;font-size:14px}.cy-pa-head small{display:block;color:var(--muted);line-height:1.35;font-size:11px;margin-top:2px}.cy-pa-head-actions{display:flex;gap:5px}.cy-pa-head-actions button{min-width:36px;min-height:36px;padding:6px 8px}
+  .cy-pa-tabs{display:grid;grid-template-columns:1fr 1fr;padding:7px;gap:6px;background:#f7f9fc}.cy-pa-tab{border:1px solid #dbe4f1;background:#fff;border-radius:10px;padding:8px;font-weight:750;font-size:13px}.cy-pa-tab.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78}
+  .cy-pa-body{padding:10px;overflow:auto}.cy-pa-quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.cy-pa-quick button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 8px;font-size:11px}
+  .cy-pa-chat{display:grid;gap:7px;margin-bottom:8px;max-height:220px;overflow:auto}.cy-pa-msg{max-width:94%;padding:9px 10px;border-radius:12px;line-height:1.48;font-size:13px;white-space:pre-wrap}.cy-pa-msg.user{justify-self:end;background:#173a78;color:#fff}.cy-pa-msg.assistant{justify-self:start;background:#f1f5fb;color:#1c2940}
+  .cy-pa-compose{display:grid;grid-template-columns:1fr auto;gap:6px}.cy-pa-compose textarea{min-height:52px;max-height:96px;resize:vertical;border:1px solid #d5ddea;border-radius:10px;padding:9px 10px;font-size:14px}.cy-pa-compose .btn{align-self:end;min-height:40px;padding:8px 11px}
+  .cy-pa-feedback{display:grid;gap:8px}.cy-pa-feedback label{font-size:11px;color:var(--muted);font-weight:750}.cy-pa-feedback select{height:40px;border:1px solid #d5ddea;border-radius:10px;padding:0 9px;background:#fff;font-size:13px}.cy-pa-feedback textarea{min-height:76px;max-height:130px;resize:vertical;border:1px solid #d5ddea;border-radius:10px;padding:9px 10px;font-size:14px}.cy-pa-note{font-size:11px;color:var(--muted);line-height:1.4}
+  @media(max-width:640px){#cy-product-assistant-fab{right:12px;bottom:calc(76px + env(safe-area-inset-bottom));width:44px;height:44px;font-size:18px}#cy-product-assistant-panel{right:10px;bottom:calc(128px + env(safe-area-inset-bottom));width:min(350px,calc(100vw - 20px));max-height:56dvh}#cy-product-assistant-panel.compact{width:176px}}
 </style>
-<button id="cy-product-assistant-fab" hidden>✦ 产品助手</button>
+<button id="cy-product-assistant-fab" hidden aria-label="打开产品助手" title="产品助手">✦</button>
 <section id="cy-product-assistant-panel" hidden aria-label="长缨产品助手">
-  <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><button class="btn" id="cy-pa-close">关闭</button></header>
-  <div class="cy-pa-tabs"><button class="cy-pa-tab active" data-pa-tab="ask">问产品</button><button class="cy-pa-tab" data-pa-tab="feedback">提反馈</button></div>
+  <header class="cy-pa-head"><div><b>产品助手</b><small class="cy-pa-context" id="cy-pa-context">当前页面</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-size" aria-label="收起助手">—</button><button class="btn" id="cy-pa-close" aria-label="关闭助手">×</button></div></header>
+  <div class="cy-pa-tabs"><button class="cy-pa-tab active" data-pa-tab="ask">提问</button><button class="cy-pa-tab" data-pa-tab="feedback">反馈</button></div>
   <div class="cy-pa-body" id="cy-pa-ask">
-    <div class="cy-pa-quick"><button data-pa-question="我现在该做什么？">我现在该做什么？</button><button data-pa-question="这个页面是干什么的？">这个页面是干什么的？</button><button data-pa-question="这一步为什么排在这里？">为什么先做这一步？</button></div>
-    <div class="cy-pa-chat" id="cy-pa-chat"><div class="cy-pa-msg assistant">我会结合你当前登录身份、所在页面和新手教学步骤回答长缨怎么用。</div></div>
-    <div class="cy-pa-compose"><textarea id="cy-pa-input" placeholder="例如：这个页面应该先做什么？"></textarea><button class="btn primary" id="cy-pa-send">发送</button></div>
+    <div class="cy-pa-quick"><button data-pa-question="我现在该做什么？">下一步</button><button data-pa-question="这个页面是干什么的？">页面用途</button><button data-pa-question="这一步为什么排在这里？">为什么这一步</button></div>
+    <div class="cy-pa-chat" id="cy-pa-chat"><div class="cy-pa-msg assistant">问我当前页面怎么用，或下一步做什么。</div></div>
+    <div class="cy-pa-compose"><textarea id="cy-pa-input" placeholder="输入产品问题…"></textarea><button class="btn primary" id="cy-pa-send">发送</button></div>
   </div>
   <div class="cy-pa-body" id="cy-pa-feedback" hidden>
-    <div class="cy-pa-feedback"><select id="cy-pa-category"><option>这里不好懂</option><option>没找到入口</option><option>流程不直观</option><option>功能与预期不符</option><option>希望增加功能</option><option>其他反馈</option></select><textarea id="cy-pa-feedback-text" placeholder="请描述你遇到的问题或建议。不要填写密码、API Key 等敏感信息。"></textarea><button class="btn primary" id="cy-pa-submit-feedback">提交反馈</button><div class="cy-pa-note">会自动附带当前页面、当前身份和正在进行的新手步骤，便于定位问题。</div></div>
+    <div class="cy-pa-feedback"><label for="cy-pa-category">问题类型</label><select id="cy-pa-category"><option>这里不好懂</option><option>没找到入口</option><option>流程不直观</option><option>功能与预期不符</option><option>希望增加功能</option><option>其他反馈</option></select><textarea id="cy-pa-feedback-text" placeholder="一句话说明问题或建议。不要填写密码、API Key。"></textarea><button class="btn primary" id="cy-pa-submit-feedback">提交反馈</button><div class="cy-pa-note">自动带上当前页面、身份和新手步骤。</div></div>
   </div>
 </section>
 <script id="changying_v1_product_assistant_v1-script">
@@ -247,7 +248,8 @@ _ASSISTANT_SNIPPET = r'''
   const tutorialStep=()=>document.querySelector('.cy-lesson-top h2')?.textContent?.trim()||'';
   const context=()=>({page:location.pathname+location.search,identity:String(identityChip?.textContent||'').trim(),tutorial_step:tutorialStep()});
   const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-  const addMessage=(kind,text)=>{const el=document.createElement('div');el.className='cy-pa-msg '+kind;el.textContent=text;chat.appendChild(el);chat.scrollTop=chat.scrollHeight};
+  const normalizeReply=text=>String(text||'').replace(/\*\*/g,'').replace(/\x60/g,'').trim();
+  const addMessage=(kind,text)=>{const el=document.createElement('div');el.className='cy-pa-msg '+kind;el.textContent=normalizeReply(text);chat.appendChild(el);chat.scrollTop=chat.scrollHeight};
   const updateContext=()=>{const c=context();document.getElementById('cy-pa-context').textContent=(c.identity||'当前身份')+' · '+c.page+(c.tutorial_step?' · '+c.tutorial_step:'')};
 
   async function postJson(path,body){
@@ -275,8 +277,11 @@ _ASSISTANT_SNIPPET = r'''
     updateContext();
   }
 
-  fab.onclick=()=>{panel.hidden=false;updateContext()};
-  document.getElementById('cy-pa-close').onclick=()=>panel.hidden=true;
+  const sizeButton=document.getElementById('cy-pa-size');
+  const syncSizeButton=()=>{const compact=panel.classList.contains('compact');sizeButton.textContent=compact?'展开':'—';sizeButton.setAttribute('aria-label',compact?'展开助手':'收起助手')};
+  fab.onclick=()=>{panel.hidden=false;panel.classList.remove('compact');syncSizeButton();updateContext()};
+  sizeButton.onclick=()=>{panel.classList.toggle('compact');syncSizeButton()};
+  document.getElementById('cy-pa-close').onclick=()=>{panel.hidden=true;panel.classList.remove('compact');syncSizeButton()};
   document.querySelectorAll('.cy-pa-tab').forEach(x=>x.onclick=()=>setTab(x.dataset.paTab));
   document.querySelectorAll('[data-pa-question]').forEach(x=>x.onclick=()=>ask(x.dataset.paQuestion));
   send.onclick=()=>ask(input.value);

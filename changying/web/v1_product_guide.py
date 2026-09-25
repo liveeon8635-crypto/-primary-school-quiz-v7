@@ -136,13 +136,14 @@ _GUIDE_SNIPPET = r'''
     return '';
   };
   const currentPersona=()=>personas.find(p=>p.id===currentPersonaId())||null;
-  const seenKey=id=>'cyV1RoleTutorialSeenV4:'+id;
+  const seenKey=id=>'cyV1RoleTutorialSessionSeenV6:'+id;
   const identityReady=()=>Boolean(identityButton&&identityButton.hidden===false&&currentPersonaId());
   const loadState=()=>{try{return JSON.parse(localStorage.getItem(STATE_KEY)||'{}')||{}}catch{return{}}};
   const saveState=s=>localStorage.setItem(STATE_KEY,JSON.stringify(s));
   const personaState=id=>loadState()[id]||{index:0,status:{}};
   const completion=p=>{const st=personaState(p.id),total=p.steps.length,settled=Object.values(st.status||{}).filter(x=>x==='done'||x==='skipped').length;return{settled,total,pct:Math.round((settled/Math.max(1,total))*100)}};
-  const markSeen=id=>{if(id)localStorage.setItem(seenKey(id),'1')};
+  const markSeen=id=>{if(id)sessionStorage.setItem(seenKey(id),'1')};
+  const resetAutoPromptForLogin=()=>personas.forEach(p=>sessionStorage.removeItem(seenKey(p.id)));
   const statusText=s=>s==='done'?'已完成':s==='skipped'?'已跳过':'未开始';
 
   function closeOverlay(){document.getElementById('cy-onboarding-overlay')?.remove()}
@@ -249,9 +250,12 @@ _GUIDE_SNIPPET = r'''
     if(tutorialButton)tutorialButton.hidden=!ready;
     if(!ready)return;
     if(location.pathname==='/v1/guide'){markSeen(persona.id);renderPersistentGuide();return}
-    if(localStorage.getItem(seenKey(persona.id))!=='1')showCurrentIntro({firstVisit:true});
+    if(sessionStorage.getItem(seenKey(persona.id))!=='1')showCurrentIntro({firstVisit:true});
   }
 
+  document.addEventListener('submit',event=>{
+    if(event.target?.id==='loginForm')resetAutoPromptForLogin();
+  },true);
   if(tutorialButton)tutorialButton.onclick=()=>showCurrentIntro();
   if(screen){
     const guideObserver=new MutationObserver(()=>{

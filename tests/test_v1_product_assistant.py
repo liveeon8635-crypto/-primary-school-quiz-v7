@@ -6,6 +6,7 @@ from changying.web.v1_product_assistant import (
     FEEDBACK_PROOF_PREFIX,
     QUERY_PATH,
     V1_PRODUCT_ASSISTANT_MARKER,
+    _PRODUCT_CONTEXT,
 )
 
 
@@ -27,8 +28,8 @@ def test_product_assistant_ui_is_present_but_hidden_before_authenticated_identit
 def test_product_assistant_has_question_and_feedback_modes():
     html = rendered_v1()
 
-    assert "问产品" in html
-    assert "提反馈" in html
+    assert ">提问</button>" in html
+    assert ">反馈</button>" in html
     assert "我现在该做什么？" in html
     assert "这个页面是干什么的？" in html
     assert "这一步为什么排在这里？" in html
@@ -62,8 +63,8 @@ def test_product_assistant_and_feedback_routes_require_authentication():
 def test_feedback_ui_warns_against_sensitive_information():
     html = rendered_v1()
 
-    assert "不要填写密码、API Key 等敏感信息" in html
-    assert "会自动附带当前页面、当前身份和正在进行的新手步骤" in html
+    assert "不要填写密码、API Key" in html
+    assert "自动带上当前页面、身份和新手步骤" in html
 
 
 def test_product_assistant_observer_does_not_watch_its_own_body_mutations():
@@ -81,3 +82,25 @@ def test_feedback_bridge_uses_short_lived_proof_and_shows_sync_state():
     assert "freemanSynced" in html
     assert "已同步到 Freeman" in html
     assert "Freeman 同步待确认" in html
+
+
+def test_product_assistant_is_compact_expandable_and_plain_text():
+    html = rendered_v1()
+
+    assert 'id="cy-product-assistant-fab" hidden aria-label="打开产品助手"' in html
+    assert "width:44px;height:44px" in html
+    assert 'id="cy-pa-size"' in html
+    assert "panel.classList.toggle('compact')" in html
+    assert "compact?'展开':'—'" in html
+    assert "normalizeReply" in html
+    assert "replace(/\\*\\*/g,'')" in html
+    assert "不要使用 Markdown 粗体" in _PRODUCT_CONTEXT
+
+
+def test_feedback_surface_is_short_and_clear():
+    html = rendered_v1()
+
+    assert "问题类型" in html
+    assert "一句话说明问题或建议" in html
+    assert "min-height:76px" in html
+    assert "提交反馈" in html

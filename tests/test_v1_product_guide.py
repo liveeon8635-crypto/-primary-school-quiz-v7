@@ -131,7 +131,11 @@ def test_every_step_can_be_done_or_skipped_and_progress_resumes_per_identity():
     assert "localStorage.setItem(STATE_KEY" in script
     assert "localStorage.getItem(STATE_KEY)" in script
     assert "firstIncomplete" in script
-    assert "seenKey=id=>'cyV1RoleTutorialSeenV4:'+id" in script
+    assert "seenKey=id=>'cyV1RoleTutorialSessionSeenV6:'+id" in script
+    assert "sessionStorage.setItem(seenKey(id),'1')" in script
+    assert "sessionStorage.getItem(seenKey(persona.id))!=='1'" in script
+    assert "event.target?.id==='loginForm'" in script
+    assert "resetAutoPromptForLogin()" in script
     assert "重新开始本身份教学" in html
 
 
