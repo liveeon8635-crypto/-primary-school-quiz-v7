@@ -360,6 +360,7 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
         if preset not in SCENARIO_PRESETS:
             raise HTTPException(400, "未知练习场景")
         if preset == "empty":
+            session.current_role = session.primary_role
             session.data = SandboxSession(
                 session_id=session.session_id,
                 owner_user_id=session.owner_user_id,
@@ -370,6 +371,7 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
             session.progress = {}
             session.events = []
             session.next_id = 1
+            _seed_role_context(session)
             _event(session, action, "preset=empty")
             return
         if session.primary_role != "teacher":
