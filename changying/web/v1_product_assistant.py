@@ -237,13 +237,13 @@ _ASSISTANT_SNIPPET = r'''
   if(window.__cyV1ProductAssistantInstalled)return;
   window.__cyV1ProductAssistantInstalled=true;
   const fab=document.getElementById('cy-product-assistant-fab'),panel=document.getElementById('cy-product-assistant-panel');
-  const identityButton=document.getElementById('identityButton'),identityChip=document.getElementById('identityChip');
+  const identityButton=document.getElementById('identityButton'),identityChip=document.getElementById('identityChip')||document.getElementById('identity');
   const chat=document.getElementById('cy-pa-chat'),input=document.getElementById('cy-pa-input'),send=document.getElementById('cy-pa-send');
   const REMEMBER_KEY='v717Remember';
   const authRemember=()=>localStorage.getItem(REMEMBER_KEY)==='1';
   const authStore=()=>authRemember()?localStorage:sessionStorage;
   const readToken=()=>authStore().getItem('v717Token')||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||'';
-  const identityReady=()=>Boolean(identityButton&&identityButton.hidden===false&&readToken());
+  const identityReady=()=>Boolean(readToken()&&(identityButton?identityButton.hidden===false:Boolean(identityChip&&!String(identityChip.textContent||'').includes('正在识别'))));
   const tutorialStep=()=>document.querySelector('.cy-lesson-top h2')?.textContent?.trim()||'';
   const context=()=>({page:location.pathname+location.search,identity:String(identityChip?.textContent||'').trim(),tutorial_step:tutorialStep()});
   const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
