@@ -224,7 +224,7 @@ _GUIDE_SNIPPET = r'''
     body.querySelector('#cy-complete-exit').onclick=closeOverlay;
   }
 
-  function renderPersistentGuide  function renderPersistentGuide(){
+  function renderPersistentGuide(){
     if(!screen||screen.querySelector('#cy-v1-product-guide-page'))return;
     const persona=currentPersona();
     if(!persona){
