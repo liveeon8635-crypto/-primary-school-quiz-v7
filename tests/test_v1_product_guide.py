@@ -154,7 +154,19 @@ def test_guide_screen_observer_is_idempotent_on_v1_guide():
     html = rendered_guide()
     script = tutorial_script(html)
 
-    assert 'data-guide-version="v5"' in script
-    assert "existing?.dataset?.guideVersion==='v5'" in script
-    assert "screen.querySelector('#cy-v1-product-guide-page[data-guide-version=\"v5\"]')" in script
+    assert 'data-guide-version="v6"' in script
+    assert "existing?.dataset?.guideVersion==='v6'" in script
+    assert "screen.querySelector('#cy-v1-product-guide-page[data-guide-version=\"v6\"]')" in script
     assert "if(location.pathname!=='/v1/guide')return" in script
+
+
+def test_onboarding_reacts_to_post_login_identity_selection_and_shows_once_per_login_session():
+    html = rendered_guide()
+    script = tutorial_script(html)
+
+    assert "SESSION_SHOWN_KEY='cyV1RoleTutorialShownThisLoginV6'" in script
+    assert "if(!ready){clearSessionShown();return}" in script
+    assert "if(sessionShownFor()!==persona.id)" in script
+    assert "markSessionShown(persona.id)" in script
+    assert "identityObserver.observe(identityButton" in script
+    assert "identityObserver.observe(identityChip" in script
