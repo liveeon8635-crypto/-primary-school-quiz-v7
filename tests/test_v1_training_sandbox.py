@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
 from changying.web.v1_training_sandbox import (
     ROLE_FLOW,
@@ -30,11 +31,21 @@ def test_training_routes_are_registered_without_new_schema():
 
     implementation = SimpleNamespace(app=app, current_user=current_user)
     install_v1_training_sandbox_routes(implementation)
-    paths = {route.path for route in app.routes if hasattr(route, "path")}
-    assert "/v1/training-sandbox/start" in paths
-    assert "/v1/training-sandbox/{session_id}" in paths
-    assert "/v1/training-sandbox/{session_id}/action" in paths
-    assert "/v1/training-sandbox/{session_id}/reset" in paths
+    client = TestClient(app)
+
+    started = client.post("/v1/training-sandbox/start", json={"linked_mode": "choose"})
+    assert started.status_code == 200
+    payload = started.json()
+    assert payload["training"] is True
+    assert payload["persistent"] is False
+
+    session_id = payload["sessionID"]
+    assert client.get(f"/v1/training-sandbox/{session_id}").status_code == 200
+    assert client.post(
+        f"/v1/training-sandbox/{session_id}/action",
+        json={"action": "visit_step", "payload": {"step": "purpose", "status": "done"}},
+    ).status_code == 200
+    assert client.post(f"/v1/training-sandbox/{session_id}/reset", json={}).status_code == 200
 
 
 def test_role_flows_cover_each_identity_page_relationship():
