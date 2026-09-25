@@ -263,3 +263,32 @@ def test_admin_role_can_practice_account_class_points_and_system_settings():
     apply_training_action(s, "admin_set_system", {"key": "trainingFeature", "value": "开启"})
     assert s.data["system_settings"]["trainingFeature"] == "开启"
     assert len(s.data["audit"]) >= 4
+
+
+def test_teacher_can_rewind_one_training_step_without_losing_upstream_context():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"name": "练习班", "grade": 5})
+    apply_training_action(s, "add_student", {"name": "小禾", "username": "xiaohe01"})
+    apply_training_action(s, "create_paper", {"questionCount": 4})
+    apply_training_action(s, "review_paper", {})
+    apply_training_action(s, "assign", {})
+    apply_training_action(s, "simulate_student_submission", {"correct": 3})
+    apply_training_action(s, "rewind_step", {"step": "student_submission"})
+    assert s.data["assignments"]
+    assert s.data["submissions"] == []
+    assert s.data["points"] == []
+
+
+def test_student_can_rewind_answer_step_and_submit_again():
+    store = TrainingSandboxStore(ttl_seconds=3600, max_sessions=10)
+    s = store.create(22, "student")
+    paper = s.data["papers"][0]
+    answers = {str(q["id"]): q["correctIndex"] for q in paper["questions"]}
+    apply_training_action(s, "student_submit_self", {"answers": answers})
+    assert s.data["submissions"]
+    apply_training_action(s, "rewind_step", {"step": "answer"})
+    assert s.data["submissions"] == []
+    assert s.data["wrong_questions"] == []
+    assert s.data["points"] == []
+    apply_training_action(s, "student_submit_self", {"answers": answers})
+    assert s.data["submissions"][0]["score"] == 100
