@@ -3095,14 +3095,18 @@ def _validate_ai_base_url(base:str,*,runtime:bool=False)->str:
     except Exception:raise HTTPException(400,"AI 接口地址格式无效")
     if parsed.username or parsed.password or parsed.fragment:
         raise HTTPException(400,"AI 接口地址不能包含账号、密码或片段")
-    if parsed.scheme!="https":
-        local_dev=raw_url.startswith("sqlite") and os.getenv("ALLOW_LOCAL_AI_BASE","0")=="1"
-        if not (local_dev and parsed.scheme=="http" and (parsed.hostname or "").lower() in ("localhost","127.0.0.1","::1")):
-            raise HTTPException(400,"AI 接口地址必须使用 HTTPS")
     host=(parsed.hostname or "").strip()
-    if _ai_host_is_forbidden(host):
+    local_dev=(
+        raw_url.startswith("sqlite")
+        and os.getenv("ALLOW_LOCAL_AI_BASE","0")=="1"
+        and parsed.scheme=="http"
+        and host.lower() in ("localhost","127.0.0.1","::1")
+    )
+    if parsed.scheme!="https" and not local_dev:
+        raise HTTPException(400,"AI 接口地址必须使用 HTTPS")
+    if _ai_host_is_forbidden(host) and not local_dev:
         raise HTTPException(400,"AI 接口地址不能指向本机、内网或保留地址")
-    if runtime:
+    if runtime and not local_dev:
         try:
             resolved={item[4][0] for item in socket.getaddrinfo(host,parsed.port or 443,type=socket.SOCK_STREAM)}
         except socket.gaierror:
