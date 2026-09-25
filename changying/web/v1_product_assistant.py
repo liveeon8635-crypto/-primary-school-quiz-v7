@@ -79,22 +79,24 @@ _PRODUCT_CONTEXT = """你是“长缨辅学”的站内学习与产品助手。�
 
 def _student_direct_answer_request(question: str, page: str = "") -> bool:
     text = (question or "").strip().lower()
-    explicit = (
-        "直接告诉我答案",
-        "直接给我答案",
-        "把答案给我",
-        "答案是什么",
-        "正确答案",
-        "标准答案",
-        "选哪个",
-        "应该选哪个",
-        "第几项",
-        "抄答案",
-        "代做",
-    )
-    if any(k in text for k in explicit):
+    if any(
+        k in text
+        for k in (
+            "直接告诉我答案",
+            "直接给我答案",
+            "把答案给我",
+            "答案是什么",
+            "正确答案",
+            "标准答案",
+            "抄答案",
+            "代做",
+        )
+    ):
         return True
     in_assessment = any(k in (page or "") for k in ("assignments", "practice", "quiz", "assessment", "test"))
+    academic_hint = in_assessment or any(k in text for k in ("这题", "题目", "作业", "练习", "测验", "考试", "选择题"))
+    if academic_hint and any(k in text for k in ("选哪个", "应该选哪个", "第几项")):
+        return True
     return in_assessment and any(k in text for k in ("答案", "直接算出", "直接做完", "告诉我结果"))
 
 
