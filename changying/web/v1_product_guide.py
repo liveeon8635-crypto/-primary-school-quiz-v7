@@ -65,69 +65,19 @@ _GUIDE_SNIPPET = r'''
   if(window.__cyV1ProductGuideInstalled)return;
   window.__cyV1ProductGuideInstalled=true;
 
-  const STATE_KEY='cyV1RoleTutorialStateV7';
   const screen=document.getElementById('screen');
   const tutorialButton=document.getElementById('tutorialButton');
   const identityButton=document.getElementById('identityButton');
   const identityChip=document.getElementById('identityChip');
   const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
-  const teacherSteps=[
-    ['purpose','先认识长缨解决什么问题','长缨把“班级—学生—作业—证据—针对练习—课堂—历史”连成一条连续教学链，不只是一个出题工具。','确认我理解教师主线','产品总览','当前教学：今天要做什么|学生档案：长期发生了什么|AI 助手：下一步怎么教','已建立教师角色的产品全景。','先知道整条链为什么存在，再学习按钮在哪里；这样后面的每一步都有方向。'],
-    ['createClass','建立第一个班级','先建立真实教学容器，后续学生、作业、课堂和统计才有明确归属。','创建我的练习班级','建立班级','班级：{className}|年级：{grade}|学科：{subject}','班级练习已在本机教学沙盒中建立。','真实系统里班级是当前教学关系，不会替代学生长期档案。'],
-    ['addStudents','添加学生账号','把学生加入班级，并理解“学生账号”和“学生连续档案”是同一个长期实体。','添加一个练习学生账号','添加学生','学生：{studentName}|账号：{studentAccount}|归属：{className}','练习学生已加入练习班级。','以后换班、换老师或升年级仍然沿用同一个学生档案，不应重复建学生。'],
-    ['student','打开学生连续档案','确认这个学生的成绩、错题、积分、课堂表现和历史都从这里持续累积。','查看练习学生档案','学生连续档案','学生：{studentName}|当前班级：{className}|状态：当前在读','已打开同一学生 ID 的连续档案。','教师日常教学是短周期，学生档案是长期主线。'],
-    ['paper','组一份真实感作业','选择年级、科目、教材、题量和知识范围，体验手工组卷与 AI 生成的定位。','生成我的练习试卷','组卷 / 自动出题','科目：{subject}|教材：{textbook}|题量：{questionCount} 题','已生成练习试卷草稿。','AI 可以帮你生成草稿，但教师应检查题型、答案方式、图示和难度。'],
-    ['review','审核题目并确认积分','像真实发布前一样检查题目，必要时删改题、改分值或重新生成。','完成发布前审核','教师审核','题目：{questionCount} 题|答案方式：题型匹配|积分：按规则赋值','练习试卷已经通过教师审核。','审核是重要的人机边界：AI 提建议，教师做最终教学决定。'],
-    ['assign','布置给班级或个人','选择对象和截止时间，理解“班级作业”和“个别针对练习”的差别。','布置这份练习作业','布置作业','班级：{className}|对象：{studentName} 等学生|截止：本周五','练习作业已进入学生待办。','真实发布后学生端应立即看到任务，教师端能追踪完成状态。'],
-    ['studentPreview','切到学生视角完成一次作答','亲自体验学生怎样看到作业、切换题目、提交以及为什么不能在提交前看到答案。','模拟学生完成并提交','学生作答','学生：{studentName}|进度：{questionCount}/{questionCount}|提交：一次有效提交','练习提交完成，开始形成学习证据。','教师只有体验过学生路径，才容易判断题型、交互和反馈是否真的好用。'],
-    ['submission','查看结果如何回流','回到教师视角看分数、逐题证据、知识点正确率、错题和积分如何进入同一档案。','查看这次练习结果','结果回流','得分：75%|薄弱点：{knowledge}|错题：2 道','本次提交已经形成可继续使用的学习证据。','长缨的价值不在“做完一套题”，而在结果能继续驱动下一轮教学。'],
-    ['targeted','生成下一轮针对性练习','根据最近测试、薄弱知识点和具体错题生成下一轮练习，而不是重新随机出题。','生成针对性练习','AI 针对性练习','依据：最近测试 + 错题|知识点：{knowledge}|对象：{studentName}','已生成下一轮针对性练习草稿。','针对性练习仍要由教师审核后再布置，且可以只给某个学生。'],
-    ['reviewHandout','把全班数据变成课堂复盘','当同班学生完成练习后，汇总共性问题，由教师决定是否生成课堂复盘讲义。','生成复盘讲义草稿','课堂复盘','班级：{className}|共性薄弱点：{knowledge}|草稿：1 份','课堂复盘讲义草稿已生成。','系统不会自动发布讲义；教师确认后才冻结版本。'],
-    ['interactive','用互动课堂把问题讲透','在知识点处选择教师讲、学生讲、共同讲或讨论，再用随堂检测收口。','完成一次互动课堂演示','互动课堂','讲解方式：师生共讲|学生邀请：可接受/拒绝|随堂检测：1 题','互动课堂演示完成。','课堂互动是为了验证“讲懂没有”，而不是为了自动给学生贴标签。'],
-    ['points','理解积分和课堂评价','查看自动积分与教师自定义课堂评价怎样进入积分动态，并保持来源可追溯。','查看练习积分动态','积分奖励','学生：{studentName}|练习积分：+6|课堂评价：教师自定义','已理解积分如何从行为进入动态。','重复提交不重复加分，教师评价与自动积分都应能追溯来源。'],
-    ['history','把结束的教学放进历史','学期或班级结束后，当前教学退出工作台，但事实仍可按时间回看。','打开一次往期教学记录','往期教学','班级：{className}|状态：已结束|学生档案：继续保留','已看到当前教学和历史教学的边界。','历史教学只读回看；学生不会因为教学关系结束而消失。'],
-    ['transition','处理升年级和升学衔接','用同一学生档案表达阶段变化、前置知识检查和下一阶段计划。','建立一个练习衔接计划','升学衔接','学生：{studentName}|上一阶段：{grade}|下一阶段：继续同一档案','练习衔接计划已建立。','阶段变化应记录在同一个 student_id 上，而不是重新创建“新学生”。'],
-    ['hub','认识全部功能并进入真实使用','最后把刚学过的主线映射到全部功能中心；以后可以边用边学、随时回来复习某一步。','打开完整功能地图','全部功能','班级 / 学生 / 组卷 / 作业|学情 / AI / 课堂 / 积分|历史 / 衔接 / 账号 / 设置','教师主线教学已经完成。','新手教学不是一次性说明书：任何一步都能跳过，以后需要时再回来复习。']
-  ];
-
-  const adminSteps=[
-    ['overview','平台总览','从管理员视角理解机构/学校的账号、班级、教学与异常概况。','打开总览卡片','平台总览','教师账号：12|学生账号：238|当前班级：9','已打开演示总览。','总览用于发现问题，不直接改动学生学习证据。'],
-    ['users','账号管理','认识教师、学生、家长账号与角色边界。','查看演示账号清单','账号管理','教师：12|学生：238|家长：176','已打开账号清单。','角色权限不同，不能用管理员入口替代教师教学操作。'],
-    ['classes','班级与教学归属','查看班级、教师、学生之间的当前教学关系。','打开演示五年级一班','班级管理','班级：五年级一班|教师：钟老师（演示）|学生：32','已打开班级归属。','调班或换老师应改变教学归属，不应复制学生档案。'],
-    ['pointsAdmin','积分奖励规则','查看积分规则、来源和审计，而不是直接覆盖历史积分。','查看积分规则','积分奖励','作业完成：+2|课堂表现：教师自定义|重复提交：不重复加分','已打开积分规则。','积分必须能追溯来源，修改规则不应改写历史事实。'],
-    ['audit','全校审计','查看关键操作、发布、评分和关系变化的审计记录。','筛选今日审计事件','全校审计','发布讲义：3|评分确认：18|身份变更：2','已筛选演示审计。','审计用于追溯谁在什么时候做了什么。'],
-    ['system','系统设置','认识系统级设置与教学数据之间的边界。','打开系统设置','系统设置','登录安全|教学周期|功能开关','已打开系统设置。','系统设置不能绕过业务权限或直接篡改学习证据。'],
-    ['historyAdmin','历史与连续性','从管理员视角确认历史班级、学生关系和阶段变化仍可追踪。','查看历史班级','历史查询','往期班级：14|连续学生档案：238|历史关系：保留','已完成连续性检查。','管理员应能核对关系历史，但学生仍是一份连续档案。']
-  ];
-
-  const studentSteps=[
-    ['classroom','进入课堂','查看当前课堂、教师邀请和随堂检测。','进入演示课堂','我的课堂','当前知识点：小数乘法|互动状态：可参与|Quick check：待完成','已进入演示课堂。','学生可接受或拒绝讲解邀请，拒绝不会形成负面学习证据。'],
-    ['assignments','查看作业','区分待完成、已完成和逾期作业。','打开“数学巩固练习”','我的作业','待完成：1|已完成：5|逾期：0','已打开待完成作业。','作业与教师布置、截止时间和学生提交状态关联。'],
-    ['answer','逐题作答','体验不同题型、上下题切换和必要图示。','完成演示第 1 题','练习作答','题型：计算题|进度：1 / 8|可切换上下题','演示答案已保存。','作答过程允许切题，题干与答案输入方式应匹配。'],
-    ['submit','提交与查看结果','提交后查看得分、知识点正确率、错题和积分变化。','提交演示练习','提交结果','得分：75%|薄弱点：小数乘法|新增积分：+6','演示提交完成。','真实系统会防止重复提交重复加分。'],
-    ['practice','做针对性练习','查看教师审核后只针对自己的下一轮练习。','打开针对性练习','针对性练习','来源：上次测试|知识点：小数乘法|题数：6','已进入针对性练习。','针对性练习应能说明“为什么给我这些题”。'],
-    ['progress','查看学情','从自己的长期档案看成绩、知识点和近期变化。','打开我的学情','我的学情','数学：82|英语：88|最近提升：阅读概括','已打开学情页。','这里看的是长期趋势，不只是一次考试。'],
-    ['rewards','查看积分与表现','查看积分来源、课堂表现和奖励记录。','打开积分动态','积分动态','总积分：29|本周：+8|最近来源：练习完成','已打开积分动态。','积分来源应清晰，不能只显示一个总数。'],
-    ['more','认识更多功能','认识错题、历史记录、账号和其他学生入口。','打开更多功能地图','更多','错题本|历史练习|账号设置|课堂记录','学生新手教学已走完。','以后可随时从“新手教学”回来继续或重做。']
-  ];
-
-  const parentSteps=[
-    ['childLearning','查看孩子课程','先找到孩子当前课程、班级和教师。','打开孩子课程','孩子课程','学生：演示学生·小禾|班级：五年级一班|教师：钟老师（演示）','已打开孩子当前课程。','家长看到的是已授权孩子，不是任意学生。'],
-    ['childAssignments','查看孩子作业','查看待完成、已完成和截止时间。','打开孩子作业','孩子作业','待完成：1|本周已完成：3|逾期：0','已打开孩子作业。','家长看到状态，不替学生直接完成作答。'],
-    ['childProgress','查看孩子学情','理解分数、知识点正确率和长期趋势。','打开孩子学情','孩子学情','数学：82|薄弱点：小数乘法|近 4 周：上升','已打开孩子学情。','重点是趋势和需要支持的知识点，而不是单次排名。'],
-    ['childRewards','查看课堂表现','查看课堂参与、积分与教师评价。','打开课堂表现','课堂表现','积分：29|讲解参与：1 次|教师评价：积极','已打开课堂表现。','课堂评价与积分要能看到来源和时间。'],
-    ['historyParent','理解连续档案','查看孩子换班、升年级后历史是否仍在同一档案里。','查看往期记录','连续档案','五年级：保留|六年级：继续同一 ID|家长关系：持续','已查看连续档案。','升年级不会重新生成一个“新孩子”。'],
-    ['account','我的与账号','查看自己的账号、关联孩子和安全设置。','打开我的账号','我的','关联孩子：1|账号安全：正常|通知：演示','家长新手教学已走完。','以后可从右上角“新手教学”返回任一步。']
-  ];
-
   const personas=[
-    {id:'institution_teacher',icon:'👩‍🏫',name:'机构老师',account:'演示账号 · 周老师',desc:'从教学、作业、练习、AI 针对性、课堂复盘到升年级，走完整教师闭环。',steps:teacherSteps},
-    {id:'school_teacher',icon:'📚',name:'学校教师',account:'演示账号 · 林老师',desc:'与教师主线相同，但用学校班级、课表和校内教学语境演示。',steps:teacherSteps},
-    {id:'institution_admin',icon:'🏫',name:'机构管理员',account:'演示账号 · 机构负责人',desc:'学习账号、班级、积分、审计和系统设置等管理能力。',steps:adminSteps},
-    {id:'school_admin',icon:'🏛️',name:'学校管理员',account:'演示账号 · 教务管理员',desc:'以学校数据域演示账号、班级、审计和系统治理。',steps:adminSteps},
-    {id:'student',icon:'🎒',name:'学生',account:'演示账号 · 小禾',desc:'亲自走课堂、作业、练习、提交、学情、积分和更多功能。',steps:studentSteps},
-    {id:'parent',icon:'👪',name:'家长',account:'演示账号 · 小禾家长',desc:'从家长视角查看课程、作业、学情、课堂表现与连续档案。',steps:parentSteps}
+    {id:'institution_teacher',icon:'👩‍🏫',name:'机构老师'},
+    {id:'school_teacher',icon:'📚',name:'学校教师'},
+    {id:'institution_admin',icon:'🏫',name:'机构管理员'},
+    {id:'school_admin',icon:'🏛️',name:'学校管理员'},
+    {id:'student',icon:'🎒',name:'学生'},
+    {id:'parent',icon:'👪',name:'家长'}
   ];
 
   const currentPersonaId=()=>{
@@ -143,30 +93,11 @@ _GUIDE_SNIPPET = r'''
     return '';
   };
   const currentPersona=()=>personas.find(p=>p.id===currentPersonaId())||null;
-  const seenKey=id=>'cyV1RoleTutorialSeenV7:'+id;
   const SESSION_SHOWN_KEY='cyV1RoleTutorialShownThisLoginV7';
   const sessionShownFor=()=>sessionStorage.getItem(SESSION_SHOWN_KEY)||'';
   const markSessionShown=id=>sessionStorage.setItem(SESSION_SHOWN_KEY,id||'');
   const clearSessionShown=()=>sessionStorage.removeItem(SESSION_SHOWN_KEY);
   const identityReady=()=>Boolean(identityButton&&identityButton.hidden===false&&currentPersonaId());
-  const loadState=()=>{try{return JSON.parse(localStorage.getItem(STATE_KEY)||'{}')||{}}catch{return{}}};
-  const saveState=s=>localStorage.setItem(STATE_KEY,JSON.stringify(s));
-  const personaState=id=>loadState()[id]||{index:0,status:{}};
-  const completion=p=>{const st=personaState(p.id),total=p.steps.length,settled=Object.values(st.status||{}).filter(x=>x==='done'||x==='skipped').length;return{settled,total,pct:Math.round((settled/Math.max(1,total))*100)}};
-  const markSeen=id=>{if(id)localStorage.setItem(seenKey(id),'1')};
-  const statusText=s=>s==='done'?'已完成':s==='skipped'?'已跳过':'未开始';
-  const DEFAULT_DEMO={className:'五年级一班',grade:'五年级',subject:'数学',studentName:'小禾',studentAccount:'xiaohe01',textbook:'人教版',questionCount:'8',knowledge:'小数乘法'};
-  const demoState=id=>({...DEFAULT_DEMO,...(personaState(id).demo||{})});
-  const applyDemo=(text,demo)=>String(text||'').replace(/\{(\w+)\}/g,(_,key)=>demo[key]??'');
-  function customizerHtml(persona,stepId){
-    if(!['createClass','addStudents','paper','assign','targeted'].includes(stepId))return '';
-    const d=demoState(persona.id);
-    if(stepId==='createClass')return '<div class="cy-practice-form"><label>班级名称<input data-demo-field="className" value="'+esc(d.className)+'"></label><label>年级<select data-demo-field="grade"><option>五年级</option><option>四年级</option><option>六年级</option></select></label><label>主要学科<select data-demo-field="subject"><option>数学</option><option>语文</option><option>英语</option></select></label></div>';
-    if(stepId==='addStudents')return '<div class="cy-practice-form"><label>学生姓名<input data-demo-field="studentName" value="'+esc(d.studentName)+'"></label><label>学生账号<input data-demo-field="studentAccount" value="'+esc(d.studentAccount)+'"></label><div class="cy-practice-tip">这里只写入浏览器练习沙盒，不会创建真实学生。</div></div>';
-    if(stepId==='paper')return '<div class="cy-practice-form"><label>教材<select data-demo-field="textbook"><option>人教版</option></select></label><label>题量<select data-demo-field="questionCount"><option>5</option><option selected>8</option><option>10</option><option>15</option></select></label><label>重点知识<input data-demo-field="knowledge" value="'+esc(d.knowledge)+'"></label></div>';
-    if(stepId==='assign')return '<div class="cy-practice-tip">你将把“'+esc(d.subject)+' · '+esc(d.questionCount)+' 题”布置给“'+esc(d.className)+'”，并体验学生端如何收到任务。</div>';
-    return '<div class="cy-practice-tip">系统会把“最近一次提交 + '+esc(d.knowledge)+' 错题”作为练习依据，并只针对 '+esc(d.studentName)+' 生成下一轮内容。</div>';
-  }
 
 
   function closeOverlay(){document.getElementById('cy-onboarding-overlay')?.remove()}
@@ -180,78 +111,13 @@ _GUIDE_SNIPPET = r'''
     return overlay;
   }
 
-  function roleCards(){
-    return personas.map(p=>{
-      const c=completion(p);
-      return '<button class="cy-role-card" data-persona="'+p.id+'"><span class="cy-role-icon">'+p.icon+'</span><b>'+esc(p.name)+'</b><span class="cy-role-meta">'+esc(p.account)+' · '+c.settled+'/'+c.total+' 步</span><p>'+esc(p.desc)+'</p><span class="cy-role-progress"><i style="width:'+c.pct+'%"></i></span></button>';
-    }).join('');
-  }
-
   function showCurrentIntro({firstVisit=false}={}){
     const persona=currentPersona();
     if(!persona)return;
-    markSeen(persona.id);
-    const overlay=mountShell(),body=overlay.querySelector('.cy-onboarding-body'),progress=completion(persona);
+    const overlay=mountShell(),body=overlay.querySelector('.cy-onboarding-body');
     body.innerHTML='<section class="cy-lesson-card" style="max-width:760px;margin:0 auto"><span class="tag">'+(firstVisit?'首次登录引导':'继续新手教学')+'</span><h1 style="margin:10px 0 7px">'+persona.icon+' '+esc(persona.name)+'：进入同身份实操沙盒</h1><p class="subtitle">不是看说明图。你会在临时虚拟环境里真实建班、加学生、组卷、布置、作答、查看结果和继续教学；需要关联角色时可选择亲自切换虚拟账号，或由系统自动模拟关联数据。所有训练业务数据都不会写入正式档案。</p><div class="cy-guide-summary"><div><b>真实操作</b><small>按长缨实际业务顺序完成每个页面任务</small></div><div><b>跨角色可选</b><small>亲自切换体验，或自动模拟后继续主身份</small></div><div><b>可反复重练</b><small>支持跳过、回退、场景起点和整条重置</small></div></div><div class="cy-guide-actions"><button class="btn primary" id="cy-current-start">进入实操沙盒</button><button class="btn" id="cy-current-exit">暂不学习</button></div></section>';
     body.querySelector('#cy-current-start').onclick=()=>{location.href='/v1/training'};
     body.querySelector('#cy-current-exit').onclick=closeOverlay;
-  }
-
-  function startPersona(id,index=null){
-    markSeen(id);
-    const persona=personas.find(p=>p.id===id);if(!persona)return;
-    const st=personaState(id);
-    const firstIncomplete=persona.steps.findIndex(step=>!['done','skipped'].includes(st.status?.[step[0]]));
-    const target=index===null?(firstIncomplete>=0?firstIncomplete:Math.min(Number(st.index)||0,persona.steps.length-1)):index;
-    renderLesson(persona,Math.max(0,Math.min(persona.steps.length-1,target)));
-  }
-
-  function updatePersona(id,updater){
-    const state=loadState(),current=state[id]||{index:0,status:{}};
-    state[id]=updater({...current,status:{...(current.status||{})}})||current;
-    saveState(state);
-  }
-
-  function renderLesson(persona,index){
-    const overlay=document.getElementById('cy-onboarding-overlay')||mountShell();
-    const body=overlay.querySelector('.cy-onboarding-body');
-    const st=personaState(persona.id),step=persona.steps[index],stepId=step[0],pct=Math.round(((index+1)/persona.steps.length)*100),demo=demoState(persona.id);
-    updatePersona(persona.id,s=>({...s,index}));
-    const rail=persona.steps.map((x,i)=>{
-      const status=personaState(persona.id).status?.[x[0]]||'';
-      return '<div class="cy-step-item '+(i===index?'active ':'')+(status||'')+'"><span class="cy-step-no">'+(i+1)+'</span><span><b>'+esc(x[1])+'</b><small class="cy-step-state">'+statusText(status)+'</small></span><span class="cy-step-state">'+(status==='done'?'✓':status==='skipped'?'↷':'')+'</span></div>';
-    }).join('');
-    const items=applyDemo(step[5],demo).split('|').map(x=>{const parts=x.split('：');return '<div class="cy-demo-card"><b>'+esc(parts.shift())+'</b><small>'+esc(parts.join('：'))+'</small></div>'}).join('');
-    const practice=customizerHtml(persona,stepId);
-    body.innerHTML='<div class="cy-tutorial-layout"><aside class="cy-tutorial-rail"><div><span class="cy-badge">'+persona.icon+' '+esc(persona.name)+'</span><p style="font-size:12px;color:var(--muted);line-height:1.5;margin:8px 2px">'+esc(persona.account)+'</p><p style="font-size:11px;color:var(--muted);line-height:1.5">步骤路线仅用于查看进度，系统会按顺序引导，不需要你自己选择下一项。</p></div><div class="cy-step-list">'+rail+'</div></aside><section class="cy-tutorial-stage"><article class="cy-lesson-card"><div class="cy-lesson-top"><div><span class="tag">新手任务 '+(index+1)+'</span><h2>'+esc(step[1])+'</h2><p>'+esc(step[2])+'</p></div><span class="cy-badge">'+(st.status?.[stepId]==='done'?'✓ 已完成':st.status?.[stepId]==='skipped'?'↷ 已跳过':'进行中')+'</span></div><div class="cy-progress-row"><span>第 '+(index+1)+' / '+persona.steps.length+' 步</span><div class="cy-progress-track"><i style="width:'+pct+'%"></i></div><span>'+pct+'%</span></div><div class="cy-mission"><strong>这一关你要做</strong><p>'+esc(step[3])+'</p></div><section class="cy-demo-app"><div class="cy-demo-appbar"><b>'+persona.icon+' '+esc(persona.account)+'</b><span>虚拟演示 · '+esc(persona.name)+'</span></div><div class="cy-demo-canvas"><div class="cy-demo-screen-title">'+esc(step[4])+'</div><div class="cy-demo-screen-sub">以下均为演示数据，不会写入真实学生、积分、作业、课堂或学习证据。</div><div class="cy-demo-cards">'+items+'</div>'+practice+'<div class="cy-demo-action"><button class="btn primary" id="cy-do-action">'+esc(step[3])+'</button></div><div class="cy-demo-feedback" id="cy-demo-feedback">'+esc(applyDemo(step[6],demo))+'</div></div></section><div class="cy-lesson-notes"><div class="cy-note"><strong>你刚做了什么</strong><p>'+esc(step[3])+'</p></div><div class="cy-note"><strong>系统为什么这样做</strong><p>'+esc(step[7])+'</p></div><div class="cy-note"><strong>真实使用时注意</strong><p>演示不会产生真实业务写入；进入真实系统后仍按当前账号权限、教师审核和审计规则执行。</p></div></div><div class="cy-lesson-actions"><button class="btn" id="cy-prev" '+(index===0?'disabled':'')+'>上一步</button><button class="btn" id="cy-skip">跳过本步</button><button class="btn primary" id="cy-next" disabled>完成本步并继续</button></div><p class="cy-skip-note">“跳过本步”只影响新手教学进度；退出后仍可从右上角“新手教学”继续整条引导，完成后也可以重新开始。</p></article></section></div>';
-    let actionDone=false;
-    const doAction=body.querySelector('#cy-do-action'),feedback=body.querySelector('#cy-demo-feedback'),next=body.querySelector('#cy-next');
-    doAction.onclick=()=>{
-      const fields={};body.querySelectorAll('[data-demo-field]').forEach(el=>{fields[el.dataset.demoField]=String(el.value||'').trim()});
-      if(Object.keys(fields).length)updatePersona(persona.id,s=>({...s,demo:{...DEFAULT_DEMO,...(s.demo||{}),...fields}}));
-      actionDone=true;doAction.disabled=true;doAction.textContent='练习操作已完成 ✓';feedback.classList.add('show');next.disabled=false
-    };
-    if(st.status?.[stepId]==='done'){actionDone=true;doAction.disabled=true;doAction.textContent='演示操作已完成 ✓';feedback.classList.add('show');next.disabled=false}
-     body.querySelector('#cy-prev').onclick=()=>index>0&&renderLesson(persona,index-1);
-    body.querySelector('#cy-skip').onclick=()=>{
-      updatePersona(persona.id,s=>{s.status[stepId]='skipped';s.index=Math.min(index+1,persona.steps.length-1);return s});
-      if(index===persona.steps.length-1)showCompletion(persona);else renderLesson(persona,index+1);
-    };
-    next.onclick=()=>{
-      if(!actionDone)return;
-      updatePersona(persona.id,s=>{s.status[stepId]='done';s.index=Math.min(index+1,persona.steps.length-1);return s});
-      if(index===persona.steps.length-1)showCompletion(persona);else renderLesson(persona,index+1);
-    };
-  }
-
-  function showCompletion(persona){
-    const overlay=document.getElementById('cy-onboarding-overlay')||mountShell(),body=overlay.querySelector('.cy-onboarding-body'),c=completion(persona);
-    body.innerHTML='<section class="cy-lesson-card" style="max-width:720px;margin:0 auto"><span class="cy-badge">'+persona.icon+' '+esc(persona.name)+'</span><h1 style="margin:12px 0 8px">你已经建立了这个身份的完整使用概览</h1><p class="subtitle">本轮已处理 '+c.settled+' / '+c.total+' 步。跳过的步骤仍保留记录；以后登录这个身份时，可以从右上角“新手教学”重新开始或继续复习。</p><div class="cy-guide-actions"><button class="btn primary" id="cy-complete-restart">重新开始本身份教学</button><button class="btn" id="cy-complete-exit">退出并保存</button></div></section>';
-    body.querySelector('#cy-complete-restart').onclick=()=>{
-      updatePersona(persona.id,s=>({...s,index:0,status:{}}));
-      renderLesson(persona,0);
-    };
-    body.querySelector('#cy-complete-exit').onclick=closeOverlay;
   }
 
   function renderPersistentGuide(){
@@ -264,7 +130,6 @@ _GUIDE_SNIPPET = r'''
       screen.innerHTML='<main id="cy-v1-product-guide-page" data-guide-version="v7"><section class="cy-guide-hero"><span class="tag">新手教学</span><h1>请先完成账号登录并选择身份</h1><p>新手教学会根据你真实登录后的身份显示对应流程；未登录或尚未选择身份时不会提前展示。</p></section></main>';
       return;
     }
-    const progress=completion(persona);
     screen.innerHTML='<main id="cy-v1-product-guide-page" data-guide-version="v7"><section class="cy-guide-hero"><span class="tag">'+persona.icon+' '+esc(persona.name)+'</span><h1>当前身份 · 实操沙盒</h1><p>使用临时虚拟账号和真实操作流程学习长缨。训练主体是可操作页面；路线图只负责导航、角色关系解释和复习。</p><div class="cy-guide-actions"><button class="btn primary" id="cy-guide-start">进入 / 继续实操沙盒</button><button class="btn" id="cy-guide-restart">清空训练进度后进入</button></div><div class="cy-guide-summary"><div><b>完整主线</b><small>了解每个功能页面的上游、下游与角色关系</small></div><div><b>关联角色二选一</b><small>切虚拟账号亲自体验 / 自动模拟数据</small></div><div><b>正式数据 0 写入</b><small>沙盒过期或重置后临时业务数据消失</small></div></div></section><section class="card" style="margin-top:18px"><h2>边用边学</h2><p style="color:var(--muted);line-height:1.75">第一次建议从零走完整闭环；以后可直接从“已布置作业 / 已有提交 / 课堂复盘”等场景开始复习，不必重复已经熟悉的步骤。</p></section></main>';
     screen.querySelector('#cy-guide-start').onclick=()=>{location.href='/v1/training'};
     screen.querySelector('#cy-guide-restart').onclick=()=>{sessionStorage.removeItem('cyTrainingSandboxSessionV1');sessionStorage.setItem('cyTrainingStepIndexV1','0');location.href='/v1/training'};
@@ -278,7 +143,7 @@ _GUIDE_SNIPPET = r'''
     const ready=identityReady(),persona=currentPersona();
     if(tutorialButton)tutorialButton.hidden=!ready;
     if(!ready){clearSessionShown();return}
-    if(location.pathname==='/v1/guide'){markSeen(persona.id);renderPersistentGuide();return}
+    if(location.pathname==='/v1/guide'){renderPersistentGuide();return}
     if(sessionShownFor()!==persona.id){
       markSessionShown(persona.id);
       showCurrentIntro({firstVisit:true});
