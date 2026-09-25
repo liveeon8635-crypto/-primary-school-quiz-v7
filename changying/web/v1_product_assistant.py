@@ -7,6 +7,8 @@ recorded through the existing audit log so no new schema is required.
 
 from __future__ import annotations
 
+import base64
+import io
 import json
 import re
 import secrets
@@ -28,6 +30,18 @@ FEEDBACK_PATH = "/v1/product-feedback"
 FEEDBACK_PROOF_PREFIX = "/v1/product-feedback/proof"
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
 FEEDBACK_PROOF_TTL_MINUTES = 15
+ATTACHMENT_MAX_FILES = 3
+ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024
+ATTACHMENT_TOTAL_MAX_BYTES = 10 * 1024 * 1024
+ATTACHMENT_TEXT_MAX_CHARS = 18000
+ATTACHMENT_ALLOWED_IMAGE_MIME = {"image/jpeg", "image/png", "image/webp"}
+ATTACHMENT_ALLOWED_FILE_EXTS = {".txt", ".md", ".pdf", ".docx", ".pptx"}
+
+
+class ProductAssistantAttachment(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    mime_type: str = Field(default="", max_length=120)
+    data_url: str = Field(min_length=20, max_length=7_500_000)
 
 
 class ProductAssistantBody(BaseModel):
@@ -42,6 +56,7 @@ class ProductAssistantBody(BaseModel):
     active_question_meta: str = Field(default="", max_length=500)
     active_question_position: str = Field(default="", max_length=80)
     active_question_response: str = Field(default="", max_length=600)
+    attachments: list[ProductAssistantAttachment] = Field(default_factory=list, max_length=ATTACHMENT_MAX_FILES)
 
 
 class ProductFeedbackBody(BaseModel):
@@ -126,6 +141,98 @@ def _student_direct_answer_request(
     if academic_hint and any(k in text for k in ("选哪个", "应该选哪个", "第几项")):
         return True
     return in_assessment and any(k in text for k in ("答案", "直接算出", "直接做完", "告诉我结果"))
+
+
+def _attachment_context_and_images(
+    attachments: list[ProductAssistantAttachment],
+) -> tuple[str, list[str]]:
+    """Validate ephemeral assistant attachments and turn them into model context."""
+
+    if not attachments:
+        return "无附件。", []
+    if len(attachments) > ATTACHMENT_MAX_FILES:
+        raise HTTPException(413, f"一次最多发送 {ATTACHMENT_MAX_FILES} 个附件")
+
+    total_bytes = 0
+    images: list[str] = []
+    contexts: list[str] = []
+    for item in attachments:
+        name = item.name.strip() or "未命名附件"
+        match = re.fullmatch(r"data:([^;,]+);base64,(.+)", item.data_url, flags=re.S)
+        if not match:
+            raise HTTPException(400, f"附件格式无效：{name}")
+        inline_mime = match.group(1).strip().lower()
+        declared_mime = item.mime_type.strip().lower()
+        if declared_mime and inline_mime != declared_mime:
+            raise HTTPException(400, f"附件类型与内容不一致：{name}")
+        try:
+            raw = base64.b64decode(match.group(2), validate=True)
+        except Exception:
+            raise HTTPException(400, f"附件内容无法读取：{name}")
+        if not raw:
+            raise HTTPException(400, f"附件为空：{name}")
+        if len(raw) > ATTACHMENT_MAX_BYTES:
+            raise HTTPException(413, f"附件过大：{name}，单个文件不能超过 5MB")
+        total_bytes += len(raw)
+        if total_bytes > ATTACHMENT_TOTAL_MAX_BYTES:
+            raise HTTPException(413, "本次附件总大小不能超过 10MB")
+
+        suffix = ("." + name.rsplit(".", 1)[1].lower()) if "." in name else ""
+        if inline_mime.startswith("image/"):
+            if inline_mime not in ATTACHMENT_ALLOWED_IMAGE_MIME:
+                raise HTTPException(415, f"暂不支持这种图片格式：{name}")
+            images.append(f"data:{inline_mime};base64,{match.group(2)}")
+            contexts.append(
+                f"【图片附件：{name}】请结合图片中可见内容回答；看不清的部分要明确说明，不要臆测。"
+            )
+            continue
+        if suffix not in ATTACHMENT_ALLOWED_FILE_EXTS:
+            raise HTTPException(415, f"暂不支持这种文件：{name}")
+
+        text = ""
+        try:
+            if suffix in {".txt", ".md"}:
+                text = raw.decode("utf-8", errors="replace")
+            elif suffix == ".pdf":
+                from pypdf import PdfReader
+
+                reader = PdfReader(io.BytesIO(raw))
+                parts: list[str] = []
+                for page in reader.pages[:40]:
+                    value = page.extract_text() or ""
+                    if value:
+                        parts.append(value)
+                    if sum(len(x) for x in parts) >= 12000:
+                        break
+                text = "\n".join(parts)
+            elif suffix == ".docx":
+                from docx import Document
+
+                doc = Document(io.BytesIO(raw))
+                text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+            elif suffix == ".pptx":
+                from pptx import Presentation
+
+                prs = Presentation(io.BytesIO(raw))
+                parts = []
+                for slide in prs.slides:
+                    for shape in slide.shapes:
+                        value = getattr(shape, "text", "")
+                        if value and value.strip():
+                            parts.append(value.strip())
+                        if sum(len(x) for x in parts) >= 12000:
+                            break
+                    if sum(len(x) for x in parts) >= 12000:
+                        break
+                text = "\n".join(parts)
+        except Exception as exc:
+            text = f"[文件文字提取失败：{type(exc).__name__}]"
+        clean = re.sub(r"\x00", "", text).strip()
+        contexts.append(
+            f"【文件附件：{name}】\n{clean[:12000] or '[文件中没有可提取文字]'}"
+        )
+
+    return "\n\n".join(contexts)[:ATTACHMENT_TEXT_MAX_CHARS], images
 
 
 def _active_question_context(body: ProductAssistantBody) -> str:
@@ -390,6 +497,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "source": "learning_guard",
                 "degraded": False,
             }
+        attachment_context, attachment_images = _attachment_context_and_images(body.attachments)
         prompt = (
             _PRODUCT_CONTEXT
             + "\n\n当前上下文："
@@ -398,6 +506,8 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             + learning_context
             + "\n当前作答题目："
             + active_question_context
+            + "\n用户附件："
+            + attachment_context
             + "\n用户问题："
             + question
         )
@@ -407,6 +517,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 user,
                 "product_assistant",
                 prompt,
+                images=attachment_images,
                 timeout=45,
             )
             return {
@@ -416,6 +527,13 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "degraded": False,
             }
         except HTTPException:
+            if body.attachments:
+                return {
+                    "ok": True,
+                    "reply": "附件已收到，但当前 AI 服务暂时不可用，无法可靠解析附件内容。请稍后重试，或把关键文字直接粘贴到消息里。",
+                    "source": "local",
+                    "degraded": True,
+                }
             return {
                 "ok": True,
                 "reply": _clean_assistant_reply(
@@ -432,6 +550,13 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "degraded": True,
             }
         except Exception:
+            if body.attachments:
+                return {
+                    "ok": True,
+                    "reply": "附件已收到，但当前 AI 服务暂时不可用，无法可靠解析附件内容。请稍后重试，或把关键文字直接粘贴到消息里。",
+                    "source": "local",
+                    "degraded": True,
+                }
             return {
                 "ok": True,
                 "reply": _clean_assistant_reply(
@@ -536,7 +661,7 @@ _ASSISTANT_SNIPPET = r'''
   .cy-pa-body{padding:10px 11px;overflow:auto}.cy-pa-quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.cy-pa-quick button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 8px;font-size:11px}
   .cy-pa-chat{display:grid;gap:9px;margin-bottom:10px}.cy-pa-msg{max-width:92%;padding:10px 11px;border-radius:13px;line-height:1.55;font-size:13px;white-space:pre-wrap}.cy-pa-msg.user{justify-self:end;background:#173a78;color:#fff}.cy-pa-msg.assistant{justify-self:start;background:#f1f5fb;color:#1c2940}
   .cy-pa-learning-visual{justify-self:start;width:min(92%,330px);border:1px solid #dbe5f3;background:#fff;border-radius:14px;padding:10px;display:grid;gap:8px}.cy-pa-learning-visual b{font-size:12px;color:#173a78}.cy-pa-learning-visual small{font-size:10px;color:var(--muted);line-height:1.45}.cy-pa-fraction-grid{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px;height:42px}.cy-pa-fraction-cell{border:1px solid #9fb6da;border-radius:5px;background:#f5f8fd}.cy-pa-fraction-cell.is-given{background:#dbe8ff}.cy-pa-bar-model{display:grid;gap:5px}.cy-pa-bar-track{display:grid;grid-template-columns:1.15fr .85fr;height:42px;border:1px solid #9fb6da;border-radius:8px;overflow:hidden}.cy-pa-bar-known,.cy-pa-bar-unknown{display:grid;place-items:center;font-size:10px}.cy-pa-bar-known{background:#dbe8ff}.cy-pa-bar-unknown{background:#f7f9fc;border-left:1px dashed #9fb6da}.cy-pa-shape-box{height:86px;display:grid;place-items:center}.cy-pa-shape{border:2px solid #6c88b4;display:grid;place-items:center;color:#52647f;font-size:11px}.cy-pa-shape.rectangle{width:150px;height:68px}.cy-pa-shape.square{width:74px;height:74px}.cy-pa-shape.circle{width:74px;height:74px;border-radius:50%}.cy-pa-shape.triangle{width:0;height:0;border-left:48px solid transparent;border-right:48px solid transparent;border-bottom:78px solid #dbe8ff;border-top:0;position:relative}.cy-pa-numberline{position:relative;height:54px;margin:2px 8px}.cy-pa-numberline-line{position:absolute;left:0;right:0;top:24px;border-top:2px solid #6c88b4}.cy-pa-numberline-tick{position:absolute;top:17px;transform:translateX(-50%);font-size:9px;color:#52647f}.cy-pa-numberline-tick:before{content:'';display:block;width:1px;height:15px;background:#6c88b4;margin:0 auto 2px}
-  .cy-pa-compose{display:grid;grid-template-columns:1fr auto;gap:7px}.cy-pa-compose textarea{min-height:58px;resize:none}.cy-pa-compose .btn{align-self:end}
+  .cy-pa-compose{display:grid;grid-template-columns:auto 1fr auto;gap:7px}.cy-pa-compose textarea{min-height:58px;resize:none}.cy-pa-compose .btn{align-self:end}.cy-pa-attach-btn{width:42px;min-width:42px;padding:0;font-size:20px}.cy-pa-attachments{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.cy-pa-attachment-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid #dbe4f1;background:#f7f9fc;border-radius:999px;padding:5px 8px;font-size:10px;max-width:100%}.cy-pa-attachment-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}.cy-pa-attachment-chip button{border:0;background:transparent;padding:0;font-size:13px;cursor:pointer}
   .cy-pa-feedback{display:grid;gap:8px}.cy-pa-feedback textarea{min-height:76px;resize:none}.cy-pa-feedback-cats{display:flex;gap:6px;flex-wrap:wrap}.cy-pa-feedback-cats button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 9px;font-size:11px}.cy-pa-feedback-cats button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78;font-weight:800}.cy-pa-note{font-size:10px;color:var(--muted);line-height:1.45}.cy-pa-guide{border:1px solid #dbe5f3;background:#f8fbff;border-radius:14px;padding:9px}.cy-pa-guide-title{font-size:12px;font-weight:850;color:#173a78;margin-bottom:7px}.cy-pa-guide-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.cy-pa-guide-card{display:grid;gap:5px;text-decoration:none;color:#182238;background:#fff;border:1px solid #dbe5f3;border-radius:11px;overflow:hidden}.cy-pa-guide-visual{height:74px;background:#edf3ff;padding:8px;display:grid;grid-template-rows:12px 1fr;gap:7px}.cy-pa-guide-bar{border-radius:6px;background:#d5e2f6}.cy-pa-guide-page{display:grid;grid-template-columns:38px 1fr;gap:8px;align-items:center}.cy-pa-guide-icon{height:38px;border-radius:9px;background:#fff;display:grid;place-items:center;font-size:20px;color:#244c91}.cy-pa-guide-lines{display:grid;gap:5px}.cy-pa-guide-lines i{display:block;height:6px;border-radius:3px;background:#fff}.cy-pa-guide-lines i:last-child{width:66%}.cy-pa-guide-copy{padding:0 7px 7px;display:grid;gap:2px}.cy-pa-guide-copy b{font-size:11px}.cy-pa-guide-copy small{font-size:9px;color:var(--muted);line-height:1.35}
   @media(max-width:640px){#cy-product-assistant-fab{right:12px;bottom:calc(78px + env(safe-area-inset-bottom));width:44px;height:44px;font-size:18px}#cy-product-assistant-panel{left:10px;right:10px;bottom:calc(128px + env(safe-area-inset-bottom));width:auto;max-height:62dvh}}
 </style>
@@ -552,7 +677,7 @@ _ASSISTANT_SNIPPET = r'''
       <div class="cy-pa-note">页面示意直接随助手生成，不依赖额外图片下载；点击即可进入对应功能页。</div>
     </div>
     <div class="cy-pa-chat" id="cy-pa-chat"><div class="cy-pa-msg assistant" id="cy-pa-welcome">我会结合你当前登录身份、所在页面和新手教学步骤回答长缨怎么用；也会用页面示意卡标出相关入口。</div></div>
-    <div class="cy-pa-compose"><textarea id="cy-pa-input" placeholder="例如：这个页面应该先做什么？"></textarea><button class="btn primary" id="cy-pa-send">发送</button></div>
+    <div class="cy-pa-compose"><input id="cy-pa-file-input" type="file" accept="image/jpeg,image/png,image/webp,.txt,.md,.pdf,.docx,.pptx" multiple hidden><button class="btn cy-pa-attach-btn" id="cy-pa-attach" type="button" aria-label="添加照片或文件" title="添加照片或文件">＋</button><textarea id="cy-pa-input" placeholder="例如：这个页面应该先做什么？"></textarea><button class="btn primary" id="cy-pa-send">发送</button></div><div class="cy-pa-attachments" id="cy-pa-attachments"></div>
   </div>
   <div class="cy-pa-body" id="cy-pa-feedback" hidden>
     <div class="cy-pa-feedback"><input type="hidden" id="cy-pa-category" value="这里不好懂"><div class="cy-pa-feedback-cats"><button class="active" data-pa-category="这里不好懂">不好懂</button><button data-pa-category="没找到入口">找不到</button><button data-pa-category="流程不直观">流程不顺</button><button data-pa-category="功能与预期不符">不符合预期</button><button data-pa-category="希望增加功能">想加功能</button><button data-pa-category="其他反馈">其他</button></div><textarea id="cy-pa-feedback-text" placeholder="一句话描述问题或建议（不要填写密码、API Key 等敏感信息）"></textarea><button class="btn primary" id="cy-pa-submit-feedback">提交</button><div class="cy-pa-note">会自动附带当前页面、当前身份和正在进行的新手步骤。</div></div>
@@ -566,6 +691,8 @@ _ASSISTANT_SNIPPET = r'''
   const getIdentityButton=()=>document.getElementById('identityButton');
   const getIdentityChip=()=>document.getElementById('cy-v1-unified-identity')||document.getElementById('identityChip')||document.getElementById('identity');
   const chat=document.getElementById('cy-pa-chat'),input=document.getElementById('cy-pa-input'),send=document.getElementById('cy-pa-send');
+  const attachButton=document.getElementById('cy-pa-attach'),fileInput=document.getElementById('cy-pa-file-input'),attachmentList=document.getElementById('cy-pa-attachments');
+  let pendingAttachments=[];
   const REMEMBER_KEY='v717Remember';
   const authRemember=()=>localStorage.getItem(REMEMBER_KEY)==='1';
   const authStore=()=>authRemember()?localStorage:sessionStorage;
@@ -772,15 +899,40 @@ _ASSISTANT_SNIPPET = r'''
     return data;
   }
 
+  const attachmentLabel=a=>a?.name||'附件';
+  const renderAttachments=()=>{
+    if(!attachmentList)return;
+    attachmentList.innerHTML=pendingAttachments.map((a,i)=>'<span class="cy-pa-attachment-chip"><span>'+escapeHtml(attachmentLabel(a))+'</span><button type="button" data-pa-remove-attachment="'+i+'" aria-label="移除附件">×</button></span>').join('');
+    attachmentList.querySelectorAll('[data-pa-remove-attachment]').forEach(btn=>btn.onclick=()=>{pendingAttachments.splice(Number(btn.dataset.paRemoveAttachment),1);renderAttachments()});
+  };
+  const fileAsDataUrl=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(new Error('文件读取失败'));reader.readAsDataURL(file)});
+  if(attachButton&&fileInput){
+    attachButton.onclick=()=>fileInput.click();
+    fileInput.onchange=async()=>{
+      const files=[...(fileInput.files||[])];
+      fileInput.value='';
+      for(const file of files){
+        if(pendingAttachments.length>=3){addMessage('assistant','一次最多添加 3 个附件。');break}
+        if(file.size>5*1024*1024){addMessage('assistant','附件“'+file.name+'”超过 5MB，暂时不能发送。');continue}
+        try{pendingAttachments.push({name:file.name,mime_type:file.type||'application/octet-stream',data_url:await fileAsDataUrl(file)})}
+        catch(err){addMessage('assistant','附件“'+file.name+'”读取失败。')}
+      }
+      renderAttachments();
+    };
+  }
+
   async function ask(question){
-    const text=String(question||'').trim();if(!text)return;
-    const askContext=context();
-    addMessage('user',text);input.value='';send.disabled=true;send.textContent='回答中…';
+    const rawText=String(question||'').trim(),attachments=pendingAttachments.slice();
+    if(!rawText&&!attachments.length)return;
+    const text=rawText||'请结合我发送的附件内容帮助我。';
+    const askContext=context(),attachmentNames=attachments.map(attachmentLabel);
+    addMessage('user',rawText+(attachmentNames.length?(rawText?'\n':'')+'附件：'+attachmentNames.join('、'):''));
+    input.value='';pendingAttachments=[];renderAttachments();send.disabled=true;send.textContent='回答中…';
     try{
-      const data=await postJson('/v1/product-assistant/query',{question:text,...askContext});
+      const data=await postJson('/v1/product-assistant/query',{question:text,attachments,...askContext});
       const reply=data.reply||'暂时没有可用回答。';
       addMessage('assistant',reply);maybeAddLearningVisual(text,askContext);renderGuideGrid(text+' '+reply);
-    }catch(err){addMessage('assistant','产品助手暂时无法回答：'+err.message)}
+    }catch(err){pendingAttachments=attachments;renderAttachments();addMessage('assistant','产品助手暂时无法回答：'+err.message)}
     finally{send.disabled=false;send.textContent='发送'}
   }
 
