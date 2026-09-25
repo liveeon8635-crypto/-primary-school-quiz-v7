@@ -88,7 +88,7 @@ def test_all_roles_have_actionable_training_pages():
         "逐题作答",
         "我的学情",
         "我的错题",
-        "孩子课程",
+        "家长端重点是理解孩子发生了什么",
         "家长只查看状态",
         "平台总览",
         "账号管理",
