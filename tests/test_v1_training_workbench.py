@@ -143,3 +143,24 @@ def test_training_workbench_inline_script_parses_in_node(tmp_path):
         check=False,
     )
     assert checked.returncode == 0, checked.stderr
+
+
+def test_mobile_training_navigation_is_compact_and_recoverable():
+    html = training_workbench_html()
+    assert 'id="moreBtn"' in html
+    assert "function openMobileMore()" in html
+    assert "连接超时，请重试" in html
+    assert "练习环境没有启动" in html
+    assert 'id="retryTraining"' in html
+    assert ".bottom #skipBtn,.bottom #relationBtn,.bottom #resetStepBtn{display:none}" in html
+    assert "grid-template-columns:minmax(0,1fr) auto minmax(0,1.25fr)" in html
+    assert "progressText.textContent='未连接'" in html
+
+
+def test_training_navigation_is_disabled_before_session_loads():
+    html = training_workbench_html()
+    assert 'id="prevBtn" disabled' in html
+    assert 'id="skipBtn" disabled' in html
+    assert 'id="relationBtn" disabled' in html
+    assert 'id="resetStepBtn" disabled' in html
+    assert 'id="nextBtn" disabled' in html
