@@ -282,6 +282,53 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
         _event(session, action, f"preset={preset}")
         return
 
+    if action == "rewind_step":
+        step = str(p.get("step", "")).strip()
+        flow = ROLE_FLOW.get(session.primary_role, [])
+        ids = [x["id"] for x in flow]
+        if step not in ids:
+            raise HTTPException(400, "未知教学步骤")
+        start = ids.index(step)
+        for step_id in ids[start:]:
+            session.progress.pop(step_id, None)
+        session.current_role = session.primary_role
+        if session.primary_role == "teacher":
+            if step == "create_class":
+                for key in ("classes", "students", "papers", "assignments", "submissions", "targeted_practices", "class_reviews", "classroom_events", "points", "history", "transitions"):
+                    session.data[key].clear()
+            elif step == "add_student":
+                for key in ("students", "papers", "assignments", "submissions", "targeted_practices", "class_reviews", "classroom_events", "points", "history", "transitions"):
+                    session.data[key].clear()
+            elif step in {"paper", "review"}:
+                if step == "paper":
+                    session.data["papers"].clear()
+                elif session.data["papers"]:
+                    session.data["papers"][-1]["reviewed"] = False
+                for key in ("assignments", "submissions", "targeted_practices", "class_reviews", "classroom_events", "points", "history", "transitions"):
+                    session.data[key].clear()
+            elif step == "assign":
+                for key in ("assignments", "submissions", "targeted_practices", "class_reviews", "classroom_events", "points", "history", "transitions"):
+                    session.data[key].clear()
+            elif step == "student_submission":
+                for key in ("submissions", "targeted_practices", "class_reviews", "classroom_events", "points", "history", "transitions"):
+                    session.data[key].clear()
+            elif step == "targeted":
+                session.data["targeted_practices"].clear()
+                for key in ("class_reviews", "classroom_events", "history", "transitions"):
+                    session.data[key].clear()
+            elif step == "class_review":
+                session.data["class_reviews"].clear()
+                session.data["classroom_events"].clear()
+            elif step == "interactive":
+                session.data["classroom_events"].clear()
+            elif step == "history":
+                session.data["history"].clear()
+                session.data["transitions"].clear()
+            elif step == "transition":
+                session.data["transitions"].clear()
+        _event(session, action, f"step={step}")
+        return
+
     if action == "set_linked_mode":
         mode = str(p.get("mode", "")).strip()
         if mode not in {"choose", "switch", "simulate"}:
