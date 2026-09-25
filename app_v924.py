@@ -2037,19 +2037,30 @@ def latest_teaching_session(db,student_id,program_id,lesson_id=None,stage="lesso
 POINT_CATEGORIES=("activity","discipline","reward","adjustment")
 REDEMPTION_ACTIVE_STATUSES=("pending","fulfilled")
 
-def v750_seed_point_rules(db):
-    """Create a small editable starter rule set only when a school has no point rules."""
-    defaults=[
-        ("主动回答","activity",1,False,10),("高质量回答","activity",2,False,20),
-        ("课堂任务完成","activity",2,False,30),("小组合作","activity",1,False,40),
-        ("按时到课","discipline",1,False,50),("专注听讲","discipline",1,False,60),
-        ("影响课堂","discipline",-1,True,70),("多次违纪","discipline",-2,True,80),
-    ]
-    for school in db.scalars(select(School)).all():
-        exists=db.scalar(select(PointRule.id).where(PointRule.school_id==school.id).limit(1))
-        if exists: continue
-        for name,category,points,require_note,sort_order in defaults:
-            db.add(PointRule(school_id=school.id,name=name,category=category,points=points,active=True,require_note=require_note,sort_order=sort_order))
+DEFAULT_POINT_RULES=(
+    ("主动回答","activity",1,False,10),("高质量回答","activity",2,False,20),
+    ("课堂任务完成","activity",2,False,30),("小组合作","activity",1,False,40),
+    ("按时到课","discipline",1,False,50),("专注听讲","discipline",1,False,60),
+    ("影响课堂","discipline",-1,True,70),("多次违纪","discipline",-2,True,80),
+)
+
+def ensure_default_point_rules(db,school_id):
+    """Provision the editable starter rules as part of an explicit school bootstrap."""
+    exists=db.scalar(select(PointRule.id).where(PointRule.school_id==school_id).limit(1))
+    if exists:
+        return False
+    for name,category,points,require_note,sort_order in DEFAULT_POINT_RULES:
+        db.add(PointRule(
+            school_id=school_id,name=name,category=category,points=points,
+            active=True,require_note=require_note,sort_order=sort_order,
+        ))
+    return True
+
+def v750_seed_point_rules(db, *, create_missing=True):
+    """Legacy compatibility: only bootstrap missing rules when explicitly allowed."""
+    if create_missing:
+        for school in db.scalars(select(School)).all():
+            ensure_default_point_rules(db,school.id)
     db.commit()
 
 def point_balance(db,student_id,school_id):
@@ -3586,7 +3597,9 @@ def startup():
             or os.getenv("ENABLE_LEGACY_TEACHING_SEED","0")=="1"
         )
         v740_seed_teaching(db,create_missing=allow_legacy_teaching_seed)
-        v750_seed_point_rules(db)
+        # Starter point rules now belong to explicit school creation. Keep the
+        # old SQLite/demo bootstrap for isolated development only.
+        v750_seed_point_rules(db,create_missing=raw_url.startswith("sqlite"))
         run_schema_migrations(db)
 
 
@@ -4171,6 +4184,7 @@ def operator_create_school(b:OperatorSchoolCreateBody,_ok:bool=Depends(commercia
     if db.scalar(select(School).where(School.code==school_code)):raise HTTPException(400,"学校代码已存在")
     if db.scalar(select(User).where(User.username==admin_username)):raise HTTPException(400,"管理员账号已存在")
     school=School(name=school_name,code=school_code,active=True);db.add(school);db.flush()
+    ensure_default_point_rules(db,school.id)
     admin=User(school_id=school.id,username=admin_username,password_hash=hash_password(admin_password),name=admin_name,role="admin",active=True);db.add(admin);db.flush();db.add(UserSecurity(user_id=admin.id,must_change_password=True,failed_login_count=0))
     now=datetime.utcnow();status=(b.status or "trial").lower()
     if status not in ("trial","active","grace","expired"):raise HTTPException(400,"订阅状态无效")
