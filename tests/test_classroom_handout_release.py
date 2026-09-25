@@ -63,6 +63,7 @@ def test_v1_handout_release_requires_teacher_confirmation_and_exposes_student_en
     assert "教师加分" in html
     assert "不自动改变学生长期掌握状态" in html
     assert "window.__cyClassroomClosureSummary=summary" in html
+    assert "const existingClosure=document.getElementById('cy-classroom-closure-overview');if(existingClosure)existingClosure.remove();" in html
 
 
 def test_runtime_handout_release_version_snapshot_and_revoke(tmp_path):
