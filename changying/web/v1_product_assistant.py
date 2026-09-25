@@ -8,6 +8,7 @@ recorded through the existing audit log so no new schema is required.
 from __future__ import annotations
 
 import json
+import re
 import secrets
 from datetime import datetime, timedelta
 from types import ModuleType
@@ -82,6 +83,23 @@ _PRODUCT_CONTEXT = """你是“长缨辅学”的站内学习与产品助手。�
 - 保持产品与工作流导向，优先解释功能、数据来源、操作边界和下一步入口。
 """
 
+
+def _clean_assistant_reply(value: str) -> str:
+    text = str(value or "")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\u200b", "").replace("\ufeff", "").replace("\ufffd", "")
+    text = re.sub(r"```[A-Za-z0-9_-]*\s*", "", text)
+    text = text.replace("```", "")
+    text = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", text)
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"__(.*?)__", r"\1", text)
+    text = text.replace("`", "")
+    text = re.sub(r"(?m)^\s*[-*+]\s+", "• ", text)
+    text = re.sub(r"(?m)^\s*(?:[-_=*#]){3,}\s*$", "", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"([!?！？。])\1{2,}", r"\1", text)
+    return text.strip()
 
 def _student_direct_answer_request(
     question: str,
@@ -358,7 +376,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         ):
             return {
                 "ok": True,
-                "reply": (
+                "reply": _clean_assistant_reply(
                     ("我已经关联到你当前正在做的这题。 " if body.active_question_text.strip() else "")
                     + _local_answer(
                         question,
@@ -391,17 +409,24 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 prompt,
                 timeout=45,
             )
-            return {"ok": True, "reply": reply[:5000], "source": "ai", "degraded": False}
+            return {
+                "ok": True,
+                "reply": _clean_assistant_reply(reply)[:5000],
+                "source": "ai",
+                "degraded": False,
+            }
         except HTTPException:
             return {
                 "ok": True,
-                "reply": _local_answer(
-                    question,
-                    body.identity,
-                    body.page,
-                    body.tutorial_step,
-                    role=role,
-                    learning_context=learning_context,
+                "reply": _clean_assistant_reply(
+                    _local_answer(
+                        question,
+                        body.identity,
+                        body.page,
+                        body.tutorial_step,
+                        role=role,
+                        learning_context=learning_context,
+                    )
                 ),
                 "source": "local",
                 "degraded": True,
@@ -409,13 +434,15 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         except Exception:
             return {
                 "ok": True,
-                "reply": _local_answer(
-                    question,
-                    body.identity,
-                    body.page,
-                    body.tutorial_step,
-                    role=role,
-                    learning_context=learning_context,
+                "reply": _clean_assistant_reply(
+                    _local_answer(
+                        question,
+                        body.identity,
+                        body.page,
+                        body.tutorial_step,
+                        role=role,
+                        learning_context=learning_context,
+                    )
                 ),
                 "source": "local",
                 "degraded": True,
@@ -508,6 +535,7 @@ _ASSISTANT_SNIPPET = r'''
   .cy-pa-tabs{display:grid;grid-template-columns:1fr 1fr;padding:9px;gap:7px;background:#f7f9fc}.cy-pa-tab{border:1px solid #dbe4f1;background:#fff;border-radius:11px;padding:9px;font-weight:750}.cy-pa-tab.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78}
   .cy-pa-body{padding:10px 11px;overflow:auto}.cy-pa-quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.cy-pa-quick button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 8px;font-size:11px}
   .cy-pa-chat{display:grid;gap:9px;margin-bottom:10px}.cy-pa-msg{max-width:92%;padding:10px 11px;border-radius:13px;line-height:1.55;font-size:13px;white-space:pre-wrap}.cy-pa-msg.user{justify-self:end;background:#173a78;color:#fff}.cy-pa-msg.assistant{justify-self:start;background:#f1f5fb;color:#1c2940}
+  .cy-pa-learning-visual{justify-self:start;width:min(92%,330px);border:1px solid #dbe5f3;background:#fff;border-radius:14px;padding:10px;display:grid;gap:8px}.cy-pa-learning-visual b{font-size:12px;color:#173a78}.cy-pa-learning-visual small{font-size:10px;color:var(--muted);line-height:1.45}.cy-pa-fraction-grid{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px;height:42px}.cy-pa-fraction-cell{border:1px solid #9fb6da;border-radius:5px;background:#f5f8fd}.cy-pa-fraction-cell.is-given{background:#dbe8ff}.cy-pa-bar-model{display:grid;gap:5px}.cy-pa-bar-track{display:grid;grid-template-columns:1.15fr .85fr;height:42px;border:1px solid #9fb6da;border-radius:8px;overflow:hidden}.cy-pa-bar-known,.cy-pa-bar-unknown{display:grid;place-items:center;font-size:10px}.cy-pa-bar-known{background:#dbe8ff}.cy-pa-bar-unknown{background:#f7f9fc;border-left:1px dashed #9fb6da}.cy-pa-shape-box{height:86px;display:grid;place-items:center}.cy-pa-shape{border:2px solid #6c88b4;display:grid;place-items:center;color:#52647f;font-size:11px}.cy-pa-shape.rectangle{width:150px;height:68px}.cy-pa-shape.square{width:74px;height:74px}.cy-pa-shape.circle{width:74px;height:74px;border-radius:50%}.cy-pa-shape.triangle{width:0;height:0;border-left:48px solid transparent;border-right:48px solid transparent;border-bottom:78px solid #dbe8ff;border-top:0;position:relative}.cy-pa-numberline{position:relative;height:54px;margin:2px 8px}.cy-pa-numberline-line{position:absolute;left:0;right:0;top:24px;border-top:2px solid #6c88b4}.cy-pa-numberline-tick{position:absolute;top:17px;transform:translateX(-50%);font-size:9px;color:#52647f}.cy-pa-numberline-tick:before{content:'';display:block;width:1px;height:15px;background:#6c88b4;margin:0 auto 2px}
   .cy-pa-compose{display:grid;grid-template-columns:1fr auto;gap:7px}.cy-pa-compose textarea{min-height:58px;resize:none}.cy-pa-compose .btn{align-self:end}
   .cy-pa-feedback{display:grid;gap:8px}.cy-pa-feedback textarea{min-height:76px;resize:none}.cy-pa-feedback-cats{display:flex;gap:6px;flex-wrap:wrap}.cy-pa-feedback-cats button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 9px;font-size:11px}.cy-pa-feedback-cats button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78;font-weight:800}.cy-pa-note{font-size:10px;color:var(--muted);line-height:1.45}.cy-pa-guide{border:1px solid #dbe5f3;background:#f8fbff;border-radius:14px;padding:9px}.cy-pa-guide-title{font-size:12px;font-weight:850;color:#173a78;margin-bottom:7px}.cy-pa-guide-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.cy-pa-guide-card{display:grid;gap:5px;text-decoration:none;color:#182238;background:#fff;border:1px solid #dbe5f3;border-radius:11px;overflow:hidden}.cy-pa-guide-visual{height:74px;background:#edf3ff;padding:8px;display:grid;grid-template-rows:12px 1fr;gap:7px}.cy-pa-guide-bar{border-radius:6px;background:#d5e2f6}.cy-pa-guide-page{display:grid;grid-template-columns:38px 1fr;gap:8px;align-items:center}.cy-pa-guide-icon{height:38px;border-radius:9px;background:#fff;display:grid;place-items:center;font-size:20px;color:#244c91}.cy-pa-guide-lines{display:grid;gap:5px}.cy-pa-guide-lines i{display:block;height:6px;border-radius:3px;background:#fff}.cy-pa-guide-lines i:last-child{width:66%}.cy-pa-guide-copy{padding:0 7px 7px;display:grid;gap:2px}.cy-pa-guide-copy b{font-size:11px}.cy-pa-guide-copy small{font-size:9px;color:var(--muted);line-height:1.35}
   @media(max-width:640px){#cy-product-assistant-fab{right:12px;bottom:calc(78px + env(safe-area-inset-bottom));width:44px;height:44px;font-size:18px}#cy-product-assistant-panel{left:10px;right:10px;bottom:calc(128px + env(safe-area-inset-bottom));width:auto;max-height:62dvh}}
@@ -569,8 +597,64 @@ _ASSISTANT_SNIPPET = r'''
   };
   const context=()=>{const chip=getIdentityChip();return {page:location.pathname+location.search,identity:String(chip?.textContent||'').trim(),tutorial_step:tutorialStep(),child_id:selectedChildID(),...currentQuestionContext()}};
   const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-  const cleanReplyText=text=>String(text||'').replace(/\*\*/g,'').replace(/\`/g,'').replace(/^#{1,4}\s*/gm,'').trim();
+  const cleanReplyText=text=>String(text||'')
+    .replace(/[\u200B\uFEFF\uFFFD]/g,'')
+    .replace(/\`\`\`[A-Za-z0-9_-]*\s*/g,'')
+    .replace(/\`\`\`/g,'')
+    .replace(/\*\*(.*?)\*\*/g,'$1')
+    .replace(/__(.*?)__/g,'$1')
+    .replace(/\`/g,'')
+    .replace(/^\s*#{1,6}\s*/gm,'')
+    .replace(/^\s*[-*+]\s+/gm,'• ')
+    .replace(/^\s*[-_=*#]{3,}\s*$/gm,'')
+    .replace(/[ \t]{2,}/g,' ')
+    .replace(/\n{3,}/g,'\n\n')
+    .trim();
   const addMessage=(kind,text)=>{const el=document.createElement('div');el.className='cy-pa-msg '+kind;el.textContent=kind==='assistant'?cleanReplyText(text):text;chat.appendChild(el);chat.scrollTop=chat.scrollHeight};
+  const questionVisualSpec=ctx=>{
+    if(!ctx?.active_assessment||!ctx.active_question_text)return null;
+    const q=String(ctx.active_question_text);
+    const fraction=q.match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
+    if(fraction){
+      const numerator=Number(fraction[1]),denominator=Number(fraction[2]);
+      if(denominator>=2&&denominator<=12&&numerator>=0&&numerator<=denominator)return{type:'fraction',numerator,denominator,label:fraction[0]};
+    }
+    const nums=(q.match(/\d+(?:\.\d+)?/g)||[]).slice(0,4);
+    if(/(?:一共|总共|全长|共有|剩下|还剩|用去|用了)/.test(q)&&nums.length)return{type:'bar',numbers:nums};
+    if(/长方形|矩形/.test(q))return{type:'shape',shape:'rectangle',label:'长方形'};
+    if(/正方形/.test(q))return{type:'shape',shape:'square',label:'正方形'};
+    if(/三角形/.test(q))return{type:'shape',shape:'triangle',label:'三角形'};
+    if(/圆形|圆的|圆 /.test(q))return{type:'shape',shape:'circle',label:'圆'};
+    if(/数轴|向前|向后|相差|温度|加法|减法/.test(q)&&nums.length)return{type:'numberline',numbers:[...new Set(nums)].slice(0,4)};
+    return null;
+  };
+  const addLearningVisual=spec=>{
+    if(!spec)return;
+    const el=document.createElement('div');el.className='cy-pa-learning-visual';
+    let visual='',caption='';
+    if(spec.type==='fraction'){
+      visual='<div class="cy-pa-fraction-grid">'+Array.from({length:spec.denominator},(_,i)=>'<span class="cy-pa-fraction-cell '+(i<spec.numerator?'is-given':'')+'"></span>').join('')+'</div>';
+      caption=spec.label+'：把一个整体平均分成 '+spec.denominator+' 份，先看题目说的是其中哪 '+spec.numerator+' 份。';
+    }else if(spec.type==='bar'){
+      const labels=spec.numbers.map(x=>escapeHtml(x)).join('、');
+      visual='<div class="cy-pa-bar-model"><div class="cy-pa-bar-track"><span class="cy-pa-bar-known">已知部分</span><span class="cy-pa-bar-unknown">待求 ?</span></div></div>';
+      caption='先把数量关系看成“整体—已知部分—待求部分”。题目里出现的数有：'+labels+'。先别急着计算，先判断每个数属于哪一部分。';
+    }else if(spec.type==='shape'){
+      visual='<div class="cy-pa-shape-box"><span class="cy-pa-shape '+spec.shape+'">'+(spec.shape==='triangle'?'':escapeHtml(spec.label)+' · ?')+'</span></div>';
+      caption='先把'+spec.label+'画出来，再把题目给出的长度、角度或位置标在对应边上；问号只放在题目真正要求的量上。';
+    }else if(spec.type==='numberline'){
+      const values=spec.numbers.map(Number).filter(Number.isFinite),min=Math.min(...values),max=Math.max(...values),span=Math.max(1,max-min);
+      visual='<div class="cy-pa-numberline"><div class="cy-pa-numberline-line"></div>'+values.map(v=>'<span class="cy-pa-numberline-tick" style="left:'+((v-min)/span*88+6)+'%">'+escapeHtml(v)+'</span>').join('')+'</div>';
+      caption='把题目给出的数先放到数轴上，再判断是向前、向后，还是比较两点之间的距离。';
+    }
+    el.innerHTML='<b>理解小图</b>'+visual+'<small>'+caption+'</small>';
+    chat.appendChild(el);chat.scrollTop=chat.scrollHeight;
+  };
+  const maybeAddLearningVisual=(questionText,ctx)=>{
+    if(guideRole(ctx.identity)!=='student'||!ctx.active_assessment)return;
+    if(!/(图|画|看不懂|怎么想|不会|提示|关系|为什么)/.test(String(questionText||'')))return;
+    addLearningVisual(questionVisualSpec(ctx));
+  };
   const updateContext=()=>{const c=context();document.getElementById('cy-pa-context').textContent=(c.identity||'当前身份')+' · '+c.page+(c.tutorial_step?' · '+c.tutorial_step:'')+(c.active_assessment?' · 已关联当前题目':'')};
   const GUIDE_SETS={
     teacher:[
@@ -690,11 +774,12 @@ _ASSISTANT_SNIPPET = r'''
 
   async function ask(question){
     const text=String(question||'').trim();if(!text)return;
+    const askContext=context();
     addMessage('user',text);input.value='';send.disabled=true;send.textContent='回答中…';
     try{
-      const data=await postJson('/v1/product-assistant/query',{question:text,...context()});
+      const data=await postJson('/v1/product-assistant/query',{question:text,...askContext});
       const reply=data.reply||'暂时没有可用回答。';
-      addMessage('assistant',reply);renderGuideGrid(text+' '+reply);
+      addMessage('assistant',reply);maybeAddLearningVisual(text,askContext);renderGuideGrid(text+' '+reply);
     }catch(err){addMessage('assistant','产品助手暂时无法回答：'+err.message)}
     finally{send.disabled=false;send.textContent='发送'}
   }
