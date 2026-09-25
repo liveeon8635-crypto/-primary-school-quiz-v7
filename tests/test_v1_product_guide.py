@@ -11,7 +11,7 @@ def rendered_guide() -> str:
 
 
 def tutorial_script(html: str) -> str:
-    start = html.index('id="changying_v1_product_guide_v4-script"')
+    start = html.index('id="changying_v1_product_guide_v7-script"')
     end = html.index("</script>", start)
     return html[start:end]
 
@@ -81,18 +81,22 @@ def test_teacher_tutorial_covers_full_learning_and_classroom_loop():
     html = rendered_guide()
 
     for label in (
-        "进入当前教学",
+        "先认识长缨解决什么问题",
+        "建立第一个班级",
+        "添加学生账号",
         "打开学生连续档案",
-        "生成综合测试",
-        "审核并布置",
-        "查看学生提交",
-        "生成针对性练习",
-        "生成课堂复盘讲义",
-        "开展互动课堂",
-        "查看积分与课堂评价",
-        "查询往期教学",
-        "处理升年级衔接",
-        "认识全部功能中心",
+        "组一份真实感作业",
+        "审核题目并确认积分",
+        "布置给班级或个人",
+        "切到学生视角完成一次作答",
+        "查看结果如何回流",
+        "生成下一轮针对性练习",
+        "把全班数据变成课堂复盘",
+        "用互动课堂把问题讲透",
+        "理解积分和课堂评价",
+        "把结束的教学放进历史",
+        "处理升年级和升学衔接",
+        "认识全部功能并进入真实使用",
     ):
         assert label in html
 
@@ -131,7 +135,7 @@ def test_every_step_can_be_done_or_skipped_and_progress_resumes_per_identity():
     assert "localStorage.setItem(STATE_KEY" in script
     assert "localStorage.getItem(STATE_KEY)" in script
     assert "firstIncomplete" in script
-    assert "seenKey=id=>'cyV1RoleTutorialSeenV4:'+id" in script
+    assert "seenKey=id=>'cyV1RoleTutorialSeenV7:'+id" in script
     assert "重新开始本身份教学" in html
 
 
@@ -140,7 +144,7 @@ def test_demo_actions_remain_virtual_and_do_not_write_business_data():
     script = tutorial_script(html)
 
     assert "这一关你要做" in html
-    assert "演示操作已完成 ✓" in html
+    assert "练习操作已完成 ✓" in html
     assert "虚拟演示 · " in html
     assert "以下均为演示数据" in html
     assert "0 条真实业务写入" in html
@@ -154,9 +158,9 @@ def test_guide_screen_observer_is_idempotent_on_v1_guide():
     html = rendered_guide()
     script = tutorial_script(html)
 
-    assert 'data-guide-version="v6"' in script
-    assert "existing?.dataset?.guideVersion==='v6'" in script
-    assert "screen.querySelector('#cy-v1-product-guide-page[data-guide-version=\"v6\"]')" in script
+    assert 'data-guide-version="v7"' in script
+    assert "existing?.dataset?.guideVersion==='v7'" in script
+    assert "screen.querySelector('#cy-v1-product-guide-page[data-guide-version=\"v7\"]')" in script
     assert "if(location.pathname!=='/v1/guide')return" in script
 
 
@@ -164,9 +168,33 @@ def test_onboarding_reacts_to_post_login_identity_selection_and_shows_once_per_l
     html = rendered_guide()
     script = tutorial_script(html)
 
-    assert "SESSION_SHOWN_KEY='cyV1RoleTutorialShownThisLoginV6'" in script
+    assert "SESSION_SHOWN_KEY='cyV1RoleTutorialShownThisLoginV7'" in script
     assert "if(!ready){clearSessionShown();return}" in script
     assert "if(sessionShownFor()!==persona.id)" in script
     assert "markSessionShown(persona.id)" in script
     assert "identityObserver.observe(identityButton" in script
     assert "identityObserver.observe(identityChip" in script
+
+
+def test_teacher_tutorial_is_practice_led_and_customizable_without_business_writes():
+    html = rendered_guide()
+    script = tutorial_script(html)
+
+    assert 'data-demo-field="className"' in script
+    assert 'data-demo-field="studentName"' in script
+    assert 'data-demo-field="studentAccount"' in script
+    assert 'data-demo-field="questionCount"' in script
+    assert 'data-demo-field="knowledge"' in script
+    assert "demoState=id=>" in script
+    assert "updatePersona(persona.id" in script
+    assert "method:'POST'" not in script
+    assert "fetch(" not in script
+
+
+def test_generic_teacher_identity_label_still_maps_to_teacher_onboarding():
+    html = rendered_guide()
+    script = tutorial_script(html)
+
+    assert "label.includes('教师')||label.includes('老师')" in script
+    assert "label.includes('管理员')" in script
+    assert "assistantPanel.hidden=true" in script
