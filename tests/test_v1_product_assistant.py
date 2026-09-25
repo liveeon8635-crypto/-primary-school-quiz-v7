@@ -115,3 +115,32 @@ def test_all_functions_shell_keeps_product_assistant_available():
     assert "state?.token" in html
     assert QUERY_PATH in html
     assert FEEDBACK_PATH in html
+
+
+def test_product_assistant_visual_guides_follow_reply_context():
+    html = rendered_v1()
+
+    assert 'id="cy-pa-guide-grid"' in html
+    assert "const PAGE_GUIDES=[" in html
+    assert "const renderGuideGrid=text=>" in html
+    assert "renderGuideGrid(reply)" in html
+    assert "renderGuideGrid()" in html
+    assert 'data-pa-guide="' in html
+    assert 'role="img"' in html
+    assert "页面示意图" in html
+    assert "/v1/workspace" in html
+    assert "/v1/student" in html
+    assert "/v1/history" in html
+    assert "/v1/transition" in html
+    assert "/v1/tool" in html
+
+
+def test_product_assistant_visual_guides_are_not_empty_placeholder_markup():
+    html = rendered_v1()
+
+    assert ".cy-pa-guide-card" in html
+    assert ".cy-pa-guide-visual" in html
+    assert "guideCandidates(text)" in html
+    assert "grid.innerHTML=guideCandidates(text).map" in html
+    assert "当前班级、课程、学生与待办" in html
+    assert "连续学情、作业、错题与时间线" in html
