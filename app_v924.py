@@ -2649,7 +2649,7 @@ def validate_class_grade(name,grade):
 
 
 APP_VERSION="10.7"
-SCHEMA_VERSION="10.6.5"
+SCHEMA_VERSION="10.6.6"
 RELEASE_CHANNEL="stable"
 RELEASE_NAME="小学教学版"
 
@@ -3333,7 +3333,8 @@ def run_schema_migrations(db):
         ("10.6.2","课堂积分班级自定义规则"),
         ("10.6.3","修复明确年级班级的名称/年级字段不一致，并同步当前学生年级"),
         ("10.6.4","将已完成的 AI 针对性练习错题回填到连续学习反馈，并纳入后续针对性练习"),
-        ("10.6.5","AI 针对性练习支持多题型、文本自动判分与按需规则图示")
+        ("10.6.5","AI 针对性练习支持多题型、文本自动判分与按需规则图示"),
+        ("10.6.6","公开推广收口：停用历史默认演示账号，保留已承载真实用户的学校与全部历史记录")
     ]
     changed=False
     for version,description in migrations:
@@ -3433,6 +3434,8 @@ def run_schema_migrations(db):
                 "UPDATE questions SET question_type='single_choice' "
                 "WHERE COALESCE(question_type,'')='' AND correct_index>=0"
             ))
+        elif version=="10.6.6":
+            retire_legacy_demo_identities(db)
         db.add(SchemaMigration(version=version,description=description));changed=True
     if changed:db.commit()
 
@@ -3605,6 +3608,48 @@ def startup():
 
 LEGACY_DEMO_USERNAMES=("teacher1","student1","parent1")
 
+
+def retire_legacy_demo_identities(db):
+    """Deactivate only default legacy demo accounts; never disable a repurposed school."""
+
+    schools=db.scalars(
+        select(School).where(
+            (func.lower(School.code)=="demo") | (School.name=="演示小学")
+        ).order_by(School.id)
+    ).all()
+    demo_school_ids=[school.id for school in schools]
+    retired_users=[]
+    for school in schools:
+        users=db.scalars(
+            select(User).where(
+                User.school_id==school.id,
+                User.username.in_(LEGACY_DEMO_USERNAMES),
+            ).order_by(User.id)
+        ).all()
+        retired_here=[]
+        for user in users:
+            if not user.active:
+                continue
+            user.active=False
+            retired_users.append(user.username)
+            retired_here.append(user.username)
+        if retired_here:
+            db.add(AuditLog(
+                school_id=school.id,
+                user_id=None,
+                action="legacy_demo.accounts_retired",
+                detail=(
+                    f"school={school.id};users="
+                    + ",".join(retired_here)
+                    + ";school_preserved=true;history_preserved=true"
+                ),
+            ))
+    return {
+        "demoSchoolIDs":demo_school_ids,
+        "retiredLegacyUsers":retired_users,
+    }
+
+
 def production_demo_identity_status(db):
     """Detect seeded demo identities that must not survive a public launch."""
 
@@ -3624,7 +3669,7 @@ def production_demo_identity_status(db):
             )
         ).all()
     return {
-        "ok":not demo_school_ids and not active_demo_users,
+        "ok":not active_demo_users,
         "activeDemoSchoolIDs":demo_school_ids,
         "activeLegacyDemoUsers":[row.username for row in active_demo_users],
     }
@@ -3698,7 +3743,7 @@ def production_readiness_payload(db):
     if not LEGAL_PRIVACY_CONTACT:blockers.append("LEGAL_PRIVACY_CONTACT/COMMERCIAL_CONTACT 未配置；公开推广前必须提供隐私与服务联系渠道。")
     if not LEGAL_EFFECTIVE_DATE:blockers.append("LEGAL_EFFECTIVE_DATE 未配置；公开推广前应标明隐私政策/用户协议生效日期。")
     if demo_seed:blockers.append("ENABLE_DEMO_SEED 必须关闭，避免正式环境自动创建演示账号。")
-    if not demo_identity["ok"]:blockers.append("生产环境仍包含启用的演示学校或默认演示账号；公开推广前必须停用/迁出这些演示身份并建立真实运营学校。")
+    if not demo_identity["ok"]:blockers.append("生产环境仍包含启用的默认演示账号；公开推广前必须停用这些演示登录，历史数据继续保留。")
     if migration_version!=SCHEMA_VERSION:blockers.append(f"数据库迁移版本为 {migration_version or '未知'}，当前要求 {SCHEMA_VERSION}。")
     if missing_tables:blockers.append("缺少关键数据表："+"、".join(missing_tables))
     if _cors_raw=="*":blockers.append("CORS_ORIGINS 不得为 *；正式环境必须同源运行或显式配置可信来源。")
@@ -5210,7 +5255,7 @@ def admin_release_readiness(u:User=Depends(current_user),db:Session=Depends(get_
     if demo_seed:
         blockers.append("ENABLE_DEMO_SEED 必须关闭，避免正式环境自动创建演示数据。")
     if not demo_identity["ok"]:
-        blockers.append("生产环境仍包含启用的演示学校或默认演示账号；公开推广前必须清理。")
+        blockers.append("生产环境仍包含启用的默认演示账号；公开推广前必须停用这些演示登录。")
     if not PRODUCTION_DB_DURABILITY_CONFIRMED:
         blockers.append("生产数据库持久性尚未确认。")
     if not PRODUCTION_DB_BACKUP_CONFIRMED:
@@ -5306,7 +5351,7 @@ def admin_stability_check(u:User=Depends(current_user),db:Session=Depends(get_db
     if not LEGAL_OPERATOR_NAME or not LEGAL_PRIVACY_CONTACT or not LEGAL_EFFECTIVE_DATE:
         blockers.append("公开推广法律标识尚未完整配置（运营主体、联系渠道、生效日期）。")
     if demo_seed:blockers.append("ENABLE_DEMO_SEED 必须关闭。")
-    if not demo_identity["ok"]:blockers.append("生产环境仍包含启用的演示学校或默认演示账号。")
+    if not demo_identity["ok"]:blockers.append("生产环境仍包含启用的默认演示账号。")
     if not PRODUCTION_DB_DURABILITY_CONFIRMED:blockers.append("生产数据库持久性尚未确认。")
     if not PRODUCTION_DB_BACKUP_CONFIRMED:blockers.append("生产数据库备份/恢复能力尚未确认。")
     if not PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED:blockers.append("生产数据库网络边界尚未确认。")
