@@ -74,7 +74,7 @@ def test_full_demo_covers_eight_end_to_end_learning_and_classroom_steps():
     assert '你做什么' in html
     assert '系统记录什么' in html
     assert '最终得到什么' in html
-    assert '第 '+"'"+'+(i+1)+'+"'"+' / '+"'"+'+demoSteps.length+'+"'"+' 步' in html
+    assert "'第 '+(i+1)+' / '+demoSteps.length+' 步'" in html
     assert '从头开始' in html
     assert '继续上次演示' in html
     assert '打开对应功能' in html
