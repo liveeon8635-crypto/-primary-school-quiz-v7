@@ -384,3 +384,33 @@ def test_teacher_submission_does_not_auto_complete_evidence_review():
     assert "evidence" not in s.progress
     apply_training_action(s, "visit_step", {"step": "evidence", "status": "done"})
     assert s.progress["evidence"] == "done"
+
+
+def test_manual_virtual_student_must_return_before_teacher_flow_advances():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"grade": 5})
+    apply_training_action(s, "add_student", {})
+    apply_training_action(s, "create_paper", {"questionCount": 4})
+    apply_training_action(s, "review_paper", {})
+    apply_training_action(s, "assign", {})
+    apply_training_action(s, "switch_to_student", {})
+    paper = s.data["papers"][0]
+    apply_training_action(s, "student_submit", {"answers": _correct_answers(paper)})
+    assert s.current_role == "student"
+    assert "student_submission" not in s.progress
+    apply_training_action(s, "return_primary_role", {})
+    apply_training_action(s, "visit_step", {"step": "student_submission", "status": "done"})
+    assert s.current_role == "teacher"
+    assert s.progress["student_submission"] == "done"
+
+
+def test_simulated_linked_submission_can_complete_teacher_submission_step_directly():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"grade": 5})
+    apply_training_action(s, "add_student", {})
+    apply_training_action(s, "create_paper", {"questionCount": 4})
+    apply_training_action(s, "review_paper", {})
+    apply_training_action(s, "assign", {})
+    apply_training_action(s, "simulate_student_submission", {})
+    assert s.current_role == "teacher"
+    assert s.progress["student_submission"] == "done"
