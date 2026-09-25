@@ -48,7 +48,12 @@ _GUIDE_SNIPPET = r'''
   const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const flow=()=>steps.map(x=>'<article class="cy-guide-step"><span class="tag">STEP '+x[0]+'</span><b>'+esc(x[1])+'</b><p>'+esc(x[2])+'</p><a class="btn" data-cy-guide-target href="'+x[3]+'" style="margin-top:12px">打开这个入口</a></article>').join('');
   const markSeen=()=>localStorage.setItem(KEY,'1');
-  const authenticated=()=>identityButton&&identityButton.hidden===false;
+  const authenticated=()=>{
+    if(identityButton)return identityButton.hidden===false;
+    const chip=document.getElementById('identityChip');
+    if(chip&&/已登录|切换身份/.test(chip.textContent||''))return true;
+    return false;
+  };
 
   function closeOverlay(){
     markSeen();
