@@ -24,7 +24,8 @@ def test_completion_patch_keeps_truthful_history_boundary():
     assert "还没有标准化的“学年/学期”字段" in html
     assert "不伪造学年数据" in html
     assert "不会被此页面自动修改" in html
-    assert "计划保存、自动分析和年级变更仍未开放" in html
+    assert "衔接计划需教师/管理员明确确认保存" in html
+    assert "自动分析和年级变更仍不开放" in html
 
 
 def test_completion_patch_requires_body_marker():

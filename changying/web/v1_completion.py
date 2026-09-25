@@ -57,14 +57,14 @@ _COMPLETION_SNIPPET = r'''
         ['下一阶段要求','目标学段要求仍由教师确认，系统不自动替教师决定。',false],
         ['前置知识检查',weak.length?`当前有 ${weak.length} 个需关注知识点。`:'现有记录未识别明确薄弱知识点。',true],
         ['差距识别',a.avgScore!=null?`阶段成绩 ${esc(a.avgScore)}；结合薄弱项继续人工判断。`:'暂无足够成绩事实，继续积累测验和作业记录。',a.avgScore!=null||weak.length>0],
-        ['衔接计划',suggestions.length?`已有 ${suggestions.length} 条教学建议可作为计划输入。`:'尚无明确教学建议；当前不生成虚构计划。',suggestions.length>0],
-        ['假期干预','可复用寒暑假班与现有作业/测验能力；尚未保存为独立衔接计划。',false],
+        ['衔接计划',suggestions.length?`已有 ${suggestions.length} 条教学建议可作为计划输入；教师可在下方确认后保存。`:'尚无明确教学建议；教师仍可根据事实人工填写并确认计划。',suggestions.length>0],
+        ['假期干预','可复用寒暑假班与现有作业/测验能力；需要时由教师在下方衔接计划中明确记录。',false],
         ['开学诊断','等待真实开学测验或课堂记录后更新，不预填诊断结果。',false],
         ['进入下一阶段','保持同一 student_id；年级、学校和教学归属不会被此页面自动修改。',true]
       ];
       stepsBox.id='cy-cmp-transition-readiness';stepsBox.classList.add('cy-cmp-steps');stepsBox.innerHTML=steps.map((x,i)=>`<div class="cy-cmp-step ${x[2]?'done':'wait'}"><em>STEP ${String(i+1).padStart(2,'0')}</em><b>${x[0]}</b><small>${x[1]}</small></div>`).join('');
-      const head=stepsBox.closest('.section')?.querySelector('.section-head p');if(head)head.textContent='已有事实、教师判断与尚未落表的步骤分开显示。';
-      stepsBox.insertAdjacentHTML('afterend','<div class="cy-cmp-note" style="margin-top:12px;margin-bottom:0">绿色只表示“已有事实可读取”，不代表自动诊断完成。计划保存、自动分析和年级变更仍未开放。</div>')
+      const head=stepsBox.closest('.section')?.querySelector('.section-head p');if(head)head.textContent='已有事实、教师判断与教师确认的计划记录分开显示。';
+      stepsBox.insertAdjacentHTML('afterend','<div class="cy-cmp-note" style="margin-top:12px;margin-bottom:0">绿色只表示“已有事实可读取”，不代表自动诊断完成。衔接计划需教师/管理员明确确认保存；自动分析和年级变更仍不开放。</div>')
     }catch{}
   }
   let timer=null;function run(){clearTimeout(timer);timer=setTimeout(()=>{studentListFilter();historyFilter();transitionReadiness()},90)}

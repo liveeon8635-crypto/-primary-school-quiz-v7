@@ -37,7 +37,7 @@ _TRANSITION_SELECTION_SNIPPET = r'''
     const host=list[0].parentElement;if(!host)return;
     let note=document.getElementById('cy-transition-choice');
     if(!note){note=document.createElement('div');note.id='cy-transition-choice';note.className='cy-transition-choice';host.insertAdjacentElement('afterend',note)}
-    const text=value?`已选择：${value}。当前仅保存在本次浏览会话，不写入学生档案；正式衔接计划数据模型将在后续版本单独建立。`:'请选择一个衔接类型。';
+    const text=value?`已选择：${value}。类型选择本身只保存在本次浏览会话；只有教师或管理员点击“保存衔接计划”后才会写入学生档案。`:'请选择一个衔接类型。';
     if(note.textContent!==text)note.textContent=text;
   }
   function restore(){const list=buttons();if(!list.length)return;showChoice(sessionStorage.getItem(key())||'')}
@@ -104,7 +104,7 @@ def patch_v1_transition_selection(html: str) -> str:
     if "</body>" not in html:
         raise RuntimeError("V1 transition selection patch: closing body marker not found")
     old = "V1 预留结构，尚未启用自动分析"
-    new = "可先选择衔接类型；当前选择仅保存在本次浏览会话，尚未写入学生档案"
+    new = "可先选择衔接类型；类型选择本身不写档案，教师或管理员确认保存后才形成衔接计划"
     if old in html:
         html = html.replace(old, new, 1)
     return html.replace("</body>", _TRANSITION_SELECTION_SNIPPET + "\n</body>", 1)
