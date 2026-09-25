@@ -1903,8 +1903,8 @@ def _resource_accessible_to_student(db,row,u):
         if not lesson or lesson.school_id!=u.school_id or not lesson.published:return False
     return True
 
-def v740_seed_teaching(db):
-    """Additive, idempotent course shell for the requested 2026 autumn Grade 5 program."""
+def v740_seed_teaching(db, *, create_missing=True):
+    """Maintain the legacy Grade-5 template without silently provisioning it for new production schools."""
     schools=db.scalars(select(School)).all()
     for school in schools:
         p=db.scalar(select(TeachingProgram).where(
@@ -1912,6 +1912,8 @@ def v740_seed_teaching(db):
             TeachingProgram.term=="秋季",TeachingProgram.grade==5
         ))
         if not p:
+            if not create_missing:
+                continue
             p=TeachingProgram(school_id=school.id,title="2026年秋五年级上册语数定制教学",academic_year=2026,term="秋季",grade=5,semester="上册",chinese_textbook="人教版",math_textbook="人教版",pass_threshold=60,active=True)
             db.add(p);db.flush()
         blueprints={
@@ -3575,7 +3577,15 @@ def startup():
             conn.execute(sa_text("ALTER TABLE submissions ADD COLUMN completion_actor VARCHAR(30) NULL"))
     with SessionLocal() as db:
         v730_backfill(db)
-        v740_seed_teaching(db)
+        # The old V7.4 template is a Grade-5/2026-autumn convenience shell,
+        # not a universal product default. Keep SQLite/demo behavior for tests
+        # and demos, but never create it for a new production school merely
+        # because the service restarted or deployed.
+        allow_legacy_teaching_seed=(
+            raw_url.startswith("sqlite")
+            or os.getenv("ENABLE_LEGACY_TEACHING_SEED","0")=="1"
+        )
+        v740_seed_teaching(db,create_missing=allow_legacy_teaching_seed)
         v750_seed_point_rules(db)
         run_schema_migrations(db)
 
