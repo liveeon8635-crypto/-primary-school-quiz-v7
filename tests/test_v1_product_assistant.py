@@ -21,7 +21,7 @@ def test_product_assistant_ui_is_present_but_hidden_before_authenticated_identit
 
     assert V1_PRODUCT_ASSISTANT_MARKER in html
     assert 'id="cy-product-assistant-fab" hidden' in html
-    assert "identityButton&&identityButton.hidden===false&&readToken()" in html
+    assert "readToken()&&(identityButton?identityButton.hidden===false" in html
     assert "fab.hidden=!ready" in html
 
 
@@ -84,14 +84,14 @@ def test_feedback_bridge_uses_short_lived_proof_and_shows_sync_state():
     assert "Freeman 同步待确认" in html
 
 
-def test_product_assistant_is_compact_expandable_and_plain_text():
+def test_product_assistant_collapses_to_bubble_and_uses_plain_text():
     html = rendered_v1()
 
     assert 'id="cy-product-assistant-fab" hidden aria-label="打开产品助手"' in html
     assert "width:44px;height:44px" in html
     assert 'id="cy-pa-size"' in html
-    assert "panel.classList.toggle('compact')" in html
-    assert "compact?'展开':'—'" in html
+    assert "sizeButton.onclick=()=>{panel.hidden=true}" in html
+    assert "fab.onclick=()=>{panel.hidden=false;updateContext()}" in html
     assert "normalizeReply" in html
     assert "replace(/\\*\\*/g,'')" in html
     assert "不要使用 Markdown 粗体" in _PRODUCT_CONTEXT
@@ -104,3 +104,15 @@ def test_feedback_surface_is_short_and_clear():
     assert "一句话说明问题或建议" in html
     assert "min-height:76px" in html
     assert "提交反馈" in html
+
+
+def test_all_functions_shell_also_includes_product_assistant():
+    response = TestClient(app).get("/v1/tool")
+    assert response.status_code == 200
+    html = response.text
+
+    assert V1_PRODUCT_ASSISTANT_MARKER in html
+    assert 'id="cy-product-assistant-fab" hidden' in html
+    assert "document.getElementById('identityChip')||document.getElementById('identity')" in html
+    assert QUERY_PATH in html
+    assert FEEDBACK_PATH in html
