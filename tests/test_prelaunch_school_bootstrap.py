@@ -19,7 +19,7 @@ import app_v924 as legacy
 
 with TestClient(app) as client:
     response = client.post(
-        "/operator/schools",
+        "/operator/schools/create",
         headers={"X-Commercial-Key": "bootstrap-commercial-key-0123456789"},
         json={
             "school_name": "正式客户学校",
