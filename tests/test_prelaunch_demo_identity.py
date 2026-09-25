@@ -14,11 +14,11 @@ def test_public_launch_detects_seeded_demo_school_and_accounts():
     assert "parent1" in legacy.LEGACY_DEMO_USERNAMES
 
 
-def test_operator_launch_readiness_blocks_live_demo_identity():
+def test_operator_launch_readiness_blocks_live_demo_logins_not_repurposed_school():
     source = inspect.getsource(legacy.production_readiness_payload)
 
     assert "production_demo_identity_status(db)" in source
-    assert "生产环境仍包含启用的演示学校或默认演示账号" in source
+    assert "生产环境仍包含启用的默认演示账号" in source
     assert '"demoIdentity"' in source
 
 
