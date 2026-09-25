@@ -218,7 +218,7 @@ _ASSISTANT_SNIPPET = r'''
   .cy-pa-body{padding:10px 11px;overflow:auto}.cy-pa-quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.cy-pa-quick button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 8px;font-size:11px}
   .cy-pa-chat{display:grid;gap:9px;margin-bottom:10px}.cy-pa-msg{max-width:92%;padding:10px 11px;border-radius:13px;line-height:1.55;font-size:13px;white-space:pre-wrap}.cy-pa-msg.user{justify-self:end;background:#173a78;color:#fff}.cy-pa-msg.assistant{justify-self:start;background:#f1f5fb;color:#1c2940}
   .cy-pa-compose{display:grid;grid-template-columns:1fr auto;gap:7px}.cy-pa-compose textarea{min-height:58px;resize:none}.cy-pa-compose .btn{align-self:end}
-  .cy-pa-feedback{display:grid;gap:8px}.cy-pa-feedback textarea{min-height:76px;resize:none}.cy-pa-feedback-cats{display:flex;gap:6px;flex-wrap:wrap}.cy-pa-feedback-cats button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 9px;font-size:11px}.cy-pa-feedback-cats button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78;font-weight:800}.cy-pa-note{font-size:10px;color:var(--muted);line-height:1.45}
+  .cy-pa-feedback{display:grid;gap:8px}.cy-pa-feedback textarea{min-height:76px;resize:none}.cy-pa-feedback-cats{display:flex;gap:6px;flex-wrap:wrap}.cy-pa-feedback-cats button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 9px;font-size:11px}.cy-pa-feedback-cats button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78;font-weight:800}.cy-pa-note{font-size:10px;color:var(--muted);line-height:1.45}.cy-pa-guide{border:1px solid #dbe5f3;background:#f8fbff;border-radius:14px;padding:9px}.cy-pa-guide-title{font-size:12px;font-weight:850;color:#173a78;margin-bottom:7px}.cy-pa-guide-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.cy-pa-guide-card{display:grid;gap:5px;text-decoration:none;color:#182238;background:#fff;border:1px solid #dbe5f3;border-radius:11px;overflow:hidden}.cy-pa-guide-visual{height:74px;background:#edf3ff;padding:8px;display:grid;grid-template-rows:12px 1fr;gap:7px}.cy-pa-guide-bar{border-radius:6px;background:#d5e2f6}.cy-pa-guide-page{display:grid;grid-template-columns:38px 1fr;gap:8px;align-items:center}.cy-pa-guide-icon{height:38px;border-radius:9px;background:#fff;display:grid;place-items:center;font-size:20px;color:#244c91}.cy-pa-guide-lines{display:grid;gap:5px}.cy-pa-guide-lines i{display:block;height:6px;border-radius:3px;background:#fff}.cy-pa-guide-lines i:last-child{width:66%}.cy-pa-guide-copy{padding:0 7px 7px;display:grid;gap:2px}.cy-pa-guide-copy b{font-size:11px}.cy-pa-guide-copy small{font-size:9px;color:var(--muted);line-height:1.35}
   @media(max-width:640px){#cy-product-assistant-fab{right:12px;bottom:calc(78px + env(safe-area-inset-bottom));width:44px;height:44px;font-size:18px}#cy-product-assistant-panel{left:10px;right:10px;bottom:calc(128px + env(safe-area-inset-bottom));width:auto;max-height:62dvh}}
 </style>
 <button id="cy-product-assistant-fab" hidden aria-label="打开产品助手" title="产品助手">✦<span class="cy-pa-fab-label">产品助手</span></button>
@@ -227,7 +227,12 @@ _ASSISTANT_SNIPPET = r'''
   <div class="cy-pa-tabs"><button class="cy-pa-tab active" data-pa-tab="ask">问产品</button><button class="cy-pa-tab" data-pa-tab="feedback">提反馈</button></div>
   <div class="cy-pa-body" id="cy-pa-ask">
     <div class="cy-pa-quick"><button data-pa-question="我现在该做什么？">下一步做什么</button><button data-pa-question="这个页面是干什么的？">页面用途</button><button data-pa-question="这一步为什么排在这里？">为什么这样走</button></div>
-    <div class="cy-pa-chat" id="cy-pa-chat"><div class="cy-pa-msg assistant">我会结合你当前登录身份、所在页面和新手教学步骤回答长缨怎么用。</div></div>
+    <div class="cy-pa-guide" id="cy-pa-guide">
+      <div class="cy-pa-guide-title">页面示意 · 点卡片直达</div>
+      <div class="cy-pa-guide-grid" id="cy-pa-guide-grid"></div>
+      <div class="cy-pa-note">页面示意直接随助手生成，不依赖额外图片下载；点击即可进入对应功能页。</div>
+    </div>
+    <div class="cy-pa-chat" id="cy-pa-chat"><div class="cy-pa-msg assistant">我会结合你当前登录身份、所在页面和新手教学步骤回答长缨怎么用；也会用页面示意卡标出相关入口。</div></div>
     <div class="cy-pa-compose"><textarea id="cy-pa-input" placeholder="例如：这个页面应该先做什么？"></textarea><button class="btn primary" id="cy-pa-send">发送</button></div>
   </div>
   <div class="cy-pa-body" id="cy-pa-feedback" hidden>
@@ -253,6 +258,34 @@ _ASSISTANT_SNIPPET = r'''
   const cleanReplyText=text=>String(text||'').replace(/\*\*/g,'').replace(/\`/g,'').replace(/^#{1,4}\s*/gm,'').trim();
   const addMessage=(kind,text)=>{const el=document.createElement('div');el.className='cy-pa-msg '+kind;el.textContent=kind==='assistant'?cleanReplyText(text):text;chat.appendChild(el);chat.scrollTop=chat.scrollHeight};
   const updateContext=()=>{const c=context();document.getElementById('cy-pa-context').textContent=(c.identity||'当前身份')+' · '+c.page+(c.tutorial_step?' · '+c.tutorial_step:'')};
+  const PAGE_GUIDES=[
+    {id:'workspace',title:'当前教学',href:'/v1/workspace',icon:'▦',hint:'当前班级、课程、学生与待办',keywords:'当前教学 工作台 班级 课程 待办 晚托 周末课'},
+    {id:'student',title:'学生档案',href:'/v1/student',icon:'◉',hint:'连续学情、作业、错题与时间线',keywords:'学生 档案 学情 作业 错题 成绩 时间线'},
+    {id:'history',title:'往期教学',href:'/v1/history',icon:'◷',hint:'按学年和教学周期回看历史',keywords:'往期 历史 学年 学期 寒假 暑假'},
+    {id:'transition',title:'升学衔接',href:'/v1/transition',icon:'↗',hint:'阶段变化、差距与衔接计划',keywords:'升学 升年级 衔接 阶段 差距 计划'},
+    {id:'tools',title:'全部功能',href:'/v1/tool',icon:'⌘',hint:'进入当前身份的完整功能页',keywords:'全部功能 更多 功能 页面 入口'},
+    {id:'assignments',title:'作业',href:'/v1/tool?page=assignments',icon:'✓',hint:'学生查看和完成待办作业',keywords:'作业 待完成 提交'},
+    {id:'practice',title:'练习',href:'/v1/tool?page=practice',icon:'✎',hint:'练习、针对性训练与错题巩固',keywords:'练习 针对性 错题 巩固'},
+    {id:'progress',title:'学情',href:'/v1/tool?page=progress',icon:'◎',hint:'查看学习进度与掌握情况',keywords:'学情 进度 掌握 正确率'}
+  ];
+  const guideScore=(g,text,currentPage)=>{
+    const hay=String(text||'')+' '+String(currentPage||'');
+    let score=currentPage&&currentPage.startsWith(g.href.split('?')[0])?5:0;
+    String(g.keywords||'').split(/\s+/).forEach(k=>{if(k&&hay.includes(k))score+=2});
+    return score;
+  };
+  const guideCandidates=text=>{
+    const c=context(),identity=String(c.identity||'');
+    let pool=PAGE_GUIDES;
+    if(identity.includes('学生'))pool=PAGE_GUIDES.filter(g=>['assignments','practice','progress','tools'].includes(g.id));
+    const ranked=pool.map((g,order)=>({g,order,score:guideScore(g,text,c.page)})).sort((a,b)=>b.score-a.score||a.order-b.order);
+    const picked=ranked.filter(x=>x.score>0).slice(0,3).map(x=>x.g);
+    return picked.length?picked:pool.slice(0,3);
+  };
+  const renderGuideGrid=text=>{
+    const grid=document.getElementById('cy-pa-guide-grid');if(!grid)return;
+    grid.innerHTML=guideCandidates(text).map(g=>'<a class="cy-pa-guide-card" href="'+escapeHtml(g.href)+'" data-pa-guide="'+escapeHtml(g.id)+'"><span class="cy-pa-guide-visual" role="img" aria-label="'+escapeHtml(g.title)+'页面示意图"><span class="cy-pa-guide-bar"></span><span class="cy-pa-guide-page"><span class="cy-pa-guide-icon">'+escapeHtml(g.icon)+'</span><span class="cy-pa-guide-lines"><i></i><i></i></span></span></span><span class="cy-pa-guide-copy"><b>'+escapeHtml(g.title)+'</b><small>'+escapeHtml(g.hint)+'</small></span></a>').join('');
+  };
 
   async function postJson(path,body){
     const token=readToken();if(!token)throw new Error('登录状态已失效，请重新登录');
@@ -267,7 +300,8 @@ _ASSISTANT_SNIPPET = r'''
     addMessage('user',text);input.value='';send.disabled=true;send.textContent='回答中…';
     try{
       const data=await postJson('/v1/product-assistant/query',{question:text,...context()});
-      addMessage('assistant',data.reply||'暂时没有可用回答。');
+      const reply=data.reply||'暂时没有可用回答。';
+      addMessage('assistant',reply);renderGuideGrid(reply);
     }catch(err){addMessage('assistant','产品助手暂时无法回答：'+err.message)}
     finally{send.disabled=false;send.textContent='发送'}
   }
@@ -280,7 +314,7 @@ _ASSISTANT_SNIPPET = r'''
   }
 
   const closePanel=()=>{panel.hidden=true;fab.hidden=!identityReady();fab.setAttribute('aria-label','打开产品助手')};
-  const openPanel=()=>{if(!identityReady())return;panel.hidden=false;fab.hidden=true;fab.setAttribute('aria-label','收起产品助手');updateContext()};
+  const openPanel=()=>{if(!identityReady())return;panel.hidden=false;fab.hidden=true;fab.setAttribute('aria-label','收起产品助手');updateContext();renderGuideGrid()};
   fab.onclick=()=>panel.hidden?openPanel():closePanel();
   document.getElementById('cy-pa-close').onclick=closePanel;
   document.getElementById('cy-pa-collapse').onclick=closePanel;
@@ -305,7 +339,7 @@ _ASSISTANT_SNIPPET = r'''
     }catch(err){btn.textContent='提交失败，重试';btn.disabled=false}
   };
 
-  const sync=()=>{const ready=identityReady();if(!ready){fab.hidden=true;panel.hidden=true;return}fab.hidden=!panel.hidden;updateContext()};
+  const sync=()=>{const ready=identityReady();if(!ready){fab.hidden=true;panel.hidden=true;return}fab.hidden=!panel.hidden;updateContext();if(!panel.hidden)renderGuideGrid()};
   const identityObserver=new MutationObserver(()=>queueMicrotask(sync));
   if(identityButton)identityObserver.observe(identityButton,{attributes:true,attributeFilter:['hidden']});
   if(identityChip)identityObserver.observe(identityChip,{childList:true,characterData:true,subtree:true});
