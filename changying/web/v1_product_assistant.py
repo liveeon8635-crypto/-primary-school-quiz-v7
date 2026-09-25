@@ -18,7 +18,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from changying.web import v1 as v1_module
-from changying.web import v1_unified_tools as unified_tools_module
 
 
 V1_PRODUCT_ASSISTANT_MARKER = "changying_v1_product_assistant_v1"
@@ -323,23 +322,15 @@ def patch_v1_product_assistant(html: str) -> str:
 
 
 def install_v1_product_assistant_patch() -> None:
-    if not getattr(v1_module, "_product_assistant_patch_installed", False):
-        original = v1_module.v1_html
+    if getattr(v1_module, "_product_assistant_patch_installed", False):
+        return
+    original = v1_module.v1_html
 
-        def patched_v1_html() -> str:
-            return patch_v1_product_assistant(original())
+    def patched_v1_html() -> str:
+        return patch_v1_product_assistant(original())
 
-        v1_module.v1_html = patched_v1_html
-        v1_module._product_assistant_patch_installed = True
-
-    if not getattr(unified_tools_module, "_product_assistant_patch_installed", False):
-        original_tool_html = unified_tools_module.unified_tool_html
-
-        def patched_tool_html() -> str:
-            return patch_v1_product_assistant(original_tool_html())
-
-        unified_tools_module.unified_tool_html = patched_tool_html
-        unified_tools_module._product_assistant_patch_installed = True
+    v1_module.v1_html = patched_v1_html
+    v1_module._product_assistant_patch_installed = True
 
 
 __all__ = [
