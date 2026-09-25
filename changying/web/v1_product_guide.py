@@ -77,17 +77,23 @@ def patch_v1_product_guide(html: str) -> str:
         raise RuntimeError("V1 product guide: render marker not found")
     html = html.replace(render_marker, guide_function + render_marker, 1)
 
-    render_route_marker = "chip.textContent=identity.label+' · '+(session.name||'');identityButton.hidden=false;const path=location.pathname;if(path==='/v1'||path==='/v1/'){pendingIdentityReturnPath='';chooseIdentity();return}if(path.includes('/student'))await studentPage();else if(path.includes('/history'))await historyPage();else if(path.includes('/transition'))transitionPage();else await workspace()"
-    render_route_replacement = "chip.textContent=identity.label+' · '+(session.name||'');identityButton.hidden=false;guideButton.hidden=false;const path=location.pathname;if(path==='/v1'||path==='/v1/'){pendingIdentityReturnPath='';chooseIdentity();return}if(localStorage.getItem(GUIDE_KEY)!=='1'&&path!=='/v1/guide'){const target=path+location.search;history.replaceState({},'', '/v1/guide?first=1&return='+encodeURIComponent(target));productGuidePage();return}if(path.includes('/guide'))productGuidePage();else if(path.includes('/student'))await studentPage();else if(path.includes('/history'))await historyPage();else if(path.includes('/transition'))transitionPage();else await workspace()"
-    if render_route_marker not in html:
+    route_tail = "const path=location.pathname;if(path==='/v1'||path==='/v1/'){pendingIdentityReturnPath='';chooseIdentity();return}if(path.includes('/student'))await studentPage();else if(path.includes('/history'))await historyPage();else if(path.includes('/transition'))transitionPage();else await workspace()"
+    route_replacement = "const path=location.pathname;if(path==='/v1'||path==='/v1/'){pendingIdentityReturnPath='';chooseIdentity();return}if(localStorage.getItem(GUIDE_KEY)!=='1'&&path!=='/v1/guide'){const target=path+location.search;history.replaceState({},'', '/v1/guide?first=1&return='+encodeURIComponent(target));productGuidePage();return}if(path.includes('/guide'))productGuidePage();else if(path.includes('/student'))await studentPage();else if(path.includes('/history'))await historyPage();else if(path.includes('/transition'))transitionPage();else await workspace()"
+    if route_tail not in html:
         raise RuntimeError("V1 product guide: render route marker not found")
-    html = html.replace(render_route_marker, render_route_replacement, 1)
+    html = html.replace(route_tail, route_replacement, 1)
 
-    click_marker = "identityButton.onclick=chooseIdentity;"
-    click_replacement = "guideButton.onclick=()=>navigate('/v1/guide');identityButton.onclick=chooseIdentity;"
-    if click_marker not in html:
-        raise RuntimeError("V1 product guide: top guide click marker not found")
-    html = html.replace(click_marker, click_replacement, 1)
+    identity_visible_marker = "identityButton.hidden=false;"
+    identity_visible_index = html.find(identity_visible_marker, html.find("async function render()"))
+    if identity_visible_index < 0:
+        raise RuntimeError("V1 product guide: authenticated identity marker not found")
+    html = html[:identity_visible_index] + "guideButton.hidden=false;" + html[identity_visible_index:]
+
+    click_marker = "identityButton.onclick="
+    click_index = html.find(click_marker, html.find("async function render()"))
+    if click_index < 0:
+        raise RuntimeError("V1 product guide: identity click marker not found")
+    html = html[:click_index] + "guideButton.onclick=()=>navigate('/v1/guide');" + html[click_index:]
 
     css = (
         "<style id='changying_v1_product_guide_css_v1'>"
