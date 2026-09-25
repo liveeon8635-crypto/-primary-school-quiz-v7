@@ -119,11 +119,8 @@ def install_v1_unified_tool_route(app: FastAPI) -> None:
 
     @router.get(V1_UNIFIED_TOOL_PATH, include_in_schema=False)
     def v1_unified_tool():
-        from changying.web.v1_product_assistant import patch_v1_product_assistant
-
-        html = patch_v1_product_assistant(unified_tool_html())
         return HTMLResponse(
-            html,
+            unified_tool_html(),
             headers={
                 "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
                 "X-Changying-V1": V1_UNIFIED_TOOLS_MARKER,
