@@ -206,6 +206,7 @@ def patch_v1_classroom_handout_release_html(html: str) -> str:
       const state=window.__cyHandoutReleaseState,aid=Number(window.__cyHandoutReleaseAssignment||0);
       if(!state||!aid)return;
       const existing=document.getElementById('cy-handout-release-card');if(existing)existing.remove();
+      const existingClosure=document.getElementById('cy-classroom-closure-overview');if(existingClosure)existingClosure.remove();
       const draftSection=[...document.querySelectorAll('section.card')].find(x=>x.querySelector('h2')?.textContent.trim()==='课堂练习情况讲义草稿');
       if(!draftSection)return;
       const history=(state.history||[]).map(x=>'<div class="row"><span class="row-main"><b>V'+x.version+' · '+esc(x.title||'课堂讲义')+'</b><small>'+esc([x.publishedAt,x.status==='published'?'当前发布':x.status==='superseded'?'历史版本':'已撤回'].filter(Boolean).join(' · '))+'</small></span><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="tag">'+esc(x.status==='published'?'已发布':x.status==='superseded'?'历史':'已撤回')+'</span><button class="btn cy-handout-history-open" data-release="'+x.id+'">查看版本</button></span></div>').join('')||'<div class="empty">还没有发布版本。</div>';
