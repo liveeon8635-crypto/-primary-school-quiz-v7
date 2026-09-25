@@ -3580,6 +3580,43 @@ def startup():
         run_schema_migrations(db)
 
 
+def production_semantic_integrity(db):
+    """Check live operational relationships without rewriting historical snapshots."""
+    stranded=[]
+    inactive_classes=db.scalars(
+        select(SchoolClass)
+        .join(User,User.id==SchoolClass.teacher_id)
+        .where(User.role=="teacher",User.active==False)
+        .order_by(SchoolClass.id)
+    ).all()
+    for cls in inactive_classes:
+        histories=db.scalars(
+            select(StudentClassHistory).where(
+                StudentClassHistory.school_id==cls.school_id,
+                StudentClassHistory.class_id==cls.id,
+                StudentClassHistory.left_at.is_(None),
+            )
+        ).all()
+        active_students=[]
+        for history in histories:
+            student=db.get(User,history.student_id)
+            if student and student.active and student.role=="student" and student.school_id==cls.school_id:
+                active_students.append(student.id)
+        if active_students:
+            stranded.append({
+                "classID":cls.id,
+                "className":cls.name,
+                "studentCount":len(set(active_students)),
+            })
+    return {
+        "ok":not stranded,
+        "classesWithInactiveTeacher":stranded,
+        "strandedActiveStudents":sum(x["studentCount"] for x in stranded),
+        "assignmentRecipientSnapshotSemantics":True,
+        "mixedPurposeClassGradeSemantics":True,
+    }
+
+
 def production_readiness_payload(db):
     db_backend="PostgreSQL" if raw_url.startswith("postgresql") else "SQLite"
     jwt_secret=(os.getenv("JWT_SECRET") or "").strip()
@@ -3601,6 +3638,7 @@ def production_readiness_payload(db):
     tables=set(sa_inspect(engine).get_table_names())
     required_tables={"schools","users","school_subscriptions","commercial_customers","commercial_operation_logs","commercial_renewals","commercial_orders","commercial_payments","teaching_resources","school_ai_configs","ai_usage_logs","class_point_rules","homework_media","ai_grading_reviews","wrong_question_records","reinforcement_links","learning_evidence_events","schema_migrations"}
     missing_tables=sorted(required_tables-tables)
+    semantic=production_semantic_integrity(db)
     blockers=[];advisories=[]
     if db_backend!="PostgreSQL":blockers.append("正式商业环境必须使用托管 PostgreSQL。")
     if len(jwt_secret)<32:blockers.append("JWT_SECRET 未固定或长度不足 32 位。")
@@ -3615,6 +3653,7 @@ def production_readiness_payload(db):
     if not PRODUCTION_DB_DURABILITY_CONFIRMED:blockers.append("生产数据库持久性尚未确认；正式推广前必须使用不会自动到期的生产级数据库方案。")
     if not PRODUCTION_DB_BACKUP_CONFIRMED:blockers.append("生产数据库备份/恢复能力尚未确认；正式推广前必须启用平台级备份并完成至少一次恢复演练。")
     if not PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED:blockers.append("生产数据库网络边界尚未确认；正式推广前应限制数据库公网访问来源，不应保持 0.0.0.0/0 全网开放。")
+    if not semantic["ok"]:blockers.append(f"存在 {semantic['strandedActiveStudents']} 名启用学生仍归属到已停用教师负责的班级；正式推广前必须重新指派教师或完成班级历史收口。")
     if not COMMERCIAL_CONTACT:advisories.append("COMMERCIAL_CONTACT 尚未配置，建议填写正式售后/续费联系方式。")
     if active_schools and active_admins<active_schools:advisories.append("部分已启用学校可能缺少可用管理员，请在客户正式交付前核对。")
     if unpaid_orders:advisories.append(f"当前有 {unpaid_orders} 笔待收订单，累计待收 ¥{outstanding/100:.2f}。")
@@ -3639,7 +3678,8 @@ def production_readiness_payload(db):
             "cors":{"ok":_cors_raw!="*","value":_cors_raw or "同源限定"},
             "databaseDurability":{"ok":PRODUCTION_DB_DURABILITY_CONFIRMED,"value":"已确认" if PRODUCTION_DB_DURABILITY_CONFIRMED else "未确认"},
             "databaseBackup":{"ok":PRODUCTION_DB_BACKUP_CONFIRMED,"value":"已确认并演练" if PRODUCTION_DB_BACKUP_CONFIRMED else "未确认"},
-            "databaseNetworkBoundary":{"ok":PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED,"value":"已限制" if PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED else "未确认"}
+            "databaseNetworkBoundary":{"ok":PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED,"value":"已限制" if PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED else "未确认"},
+            "semanticIntegrity":{"ok":semantic["ok"],"value":"完整" if semantic["ok"] else f"{semantic['strandedActiveStudents']} 名启用学生处于停用教师班级","detail":semantic}
         },
         "counts":{"schools":school_count,"activeSchools":active_schools,"activeAdmins":active_admins,"unpaidOrders":unpaid_orders,"outstandingYuan":round(outstanding/100,2)},
         "backup":{"commercialExport":True,"databaseBackup":"已确认平台级备份/恢复演练" if PRODUCTION_DB_BACKUP_CONFIRMED else "待确认：必须启用平台级备份/快照并完成恢复演练"},
