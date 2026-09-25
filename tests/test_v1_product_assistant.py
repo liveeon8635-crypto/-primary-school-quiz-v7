@@ -6,6 +6,7 @@ from changying.web.v1_product_assistant import (
     FEEDBACK_PROOF_PREFIX,
     QUERY_PATH,
     V1_PRODUCT_ASSISTANT_MARKER,
+    _PRODUCT_CONTEXT,
     _local_answer,
     _student_direct_answer_request,
 )
@@ -215,8 +216,8 @@ def test_student_assistant_invites_learning_questions_without_becoming_answer_ke
     assert "我不会直接替你做作业" in html
     assert "我有一道题不会，先别告诉我答案，帮我拆解思路。" in html
     assert "帮我把这个知识点拆成容易理解的小步骤。" in html
-    assert "我的错题 / 自主练习 / 我的学情 / 同步课堂" in html
-    assert "如果学生在作业、练习、测验场景索要最终答案" in html
+    assert "我的错题 / 自主练习 / 我的学情 / 同步课堂" in _PRODUCT_CONTEXT
+    assert "如果学生在作业、练习、测验场景索要最终答案" in _PRODUCT_CONTEXT
 
 
 def test_student_direct_answer_requests_are_guarded_deterministically():
@@ -243,9 +244,9 @@ def test_parent_assistant_copy_centers_real_learning_evidence_and_home_support()
     assert "结合长缨里的记录，孩子最近学习情况怎么样？" in html
     assert "根据孩子目前的学习情况，我在家可以怎么配合？" in html
     assert "我现在最值得先肯定和鼓励孩子的是什么？" in html
-    assert "先说一个具体事实或进步" in html
-    assert "不拿孩子和其他学生比较" in html
-    assert "孩子学情 / 孩子作业 / 课堂表现 / 孩子课程" in html
+    assert "先说一个具体事实或进步" in _PRODUCT_CONTEXT
+    assert "不拿孩子和其他学生比较" in _PRODUCT_CONTEXT
+    assert "孩子学情 / 孩子作业 / 课堂表现 / 孩子课程" in _PRODUCT_CONTEXT
 
 
 def test_assistant_sends_selected_child_context_without_exposing_answer_keys():
