@@ -55,7 +55,7 @@ _DETAIL_MOBILE_TARGETS = (
 )
 
 
-STUDENT_DETAIL_MOBILE_CSS_MARKER = "changying_v1_student_detail_mobile_css_v1"
+STUDENT_DETAIL_MOBILE_CSS_MARKER = "changying_v1_student_detail_mobile_css_v2"
 
 _MOBILE_LAYOUT_CSS = (
     f"<style id='{STUDENT_DETAIL_MOBILE_CSS_MARKER}'>"
@@ -63,6 +63,10 @@ _MOBILE_LAYOUT_CSS = (
     "#suggestions,#assignments,#weak,#timeline{min-width:0;max-width:100%;overflow-x:auto;"
     "-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}"
     "#suggestions>*,#assignments>*,#weak>*,#timeline>*{min-width:0;overflow-wrap:anywhere}"
+    "html,body{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:auto}"
+    "body{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 96px)}"
+    ".card{overflow:visible;max-height:none}"
+    ".card .list,.card .timeline{max-height:none;overflow-y:visible;overscroll-behavior-y:auto}"
     "}"
     "</style>"
 )
