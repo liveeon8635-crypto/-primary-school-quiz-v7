@@ -61,7 +61,7 @@ def test_tutorial_maps_authenticated_identity_to_its_own_role_flow():
         assert persona_id in script
 
     assert "showCurrentIntro({firstVisit:true})" in script
-    assert "startPersona(persona.id)" in script
+    assert "location.href='/v1/training'" in script
 
 
 def test_tutorial_is_sequential_not_a_free_step_picker():
@@ -147,7 +147,7 @@ def test_demo_actions_remain_virtual_and_do_not_write_business_data():
     assert "练习操作已完成 ✓" in html
     assert "虚拟演示 · " in html
     assert "以下均为演示数据" in html
-    assert "0 条真实业务写入" in html
+    assert "正式数据 0 写入" in html
     assert "method:'POST'" not in script
     assert "method:'PUT'" not in script
     assert "method:'DELETE'" not in script
