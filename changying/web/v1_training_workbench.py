@@ -103,6 +103,8 @@ function render(){
   progressBar.style.width=Math.round(((index+1)/Math.max(1,session.flow.length))*100)+'%';progressText.textContent=(index+1)+'/'+session.flow.length;
   stepsEl.innerHTML=session.flow.map((s,i)=>'<button class="step '+(i===index?'active ':'')+statusClass(s.id)+'" data-i="'+i+'"><span class="step-no">'+(i+1)+'</span><span><b>'+esc(s.title)+'</b><small>'+esc(s.page)+'</small></span><span>'+({done:'✓',skipped:'↷'}[session.progress?.[s.id]]||'')+'</span></button>').join('');
   stepsEl.querySelectorAll('.step').forEach(b=>b.onclick=()=>setIndex(Number(b.dataset.i)));
+  const scenario=document.getElementById('scenario');
+  if(session.primaryRole!=='teacher'&&scenario&&scenario.options.length>1)scenario.innerHTML='<option value="empty">重新载入本身份练习</option>';
   document.getElementById('prevBtn').disabled=index===0;document.getElementById('nextBtn').disabled=index===session.flow.length-1;
   renderStep(step);
 }
@@ -139,9 +141,84 @@ function renderStudentSubmission(step){
   return pageIntro(step,'这里由你选择：亲自切到关联虚拟学生完成作答，或者保持教师身份由沙盒自动模拟一次学生提交。')+pageCard('关联角色体验方式',a?esc(a.title):'请先布置作业','<div class="mode-grid"><button class="mode" id="switchStudent"><b>亲自体验学生端</b><small>临时切换到小禾，不重新登录；真正逐题选择答案并提交，然后返回教师身份。</small></button><button class="mode" id="simulateStudent"><b>自动模拟关联数据</b><small>保持教师身份，由沙盒生成一次合理的学生提交，直接继续教师端结果回流。</small></button></div>','');
 }
 function renderNonTeacher(step){
-  const rel=relation(step);
-  stage.innerHTML=pageIntro(step,'当前阶段先提供完整页面关系和角色任务训练；教师闭环完成后将继续把本身份所有操作接入同一沙盒。')+pageCard(step.title,'页面：'+step.page,'<div class="notice">当前身份：'+roleName(session.primaryRole)+'。本步重点理解自己的操作权限、上游来源与下游去向。</div><div class="relation"><div><b>可见范围</b><span>'+esc(rel.visible_to||'按角色权限')+'</span></div><div><b>沟通提示</b><span>'+esc(rel.communication_tip||'确认任务名称、状态和下一步责任人')+'</span></div><div><b>下一步</b><span>'+esc(rel.next||'继续角色主线')+'</span></div></div>','<button class="btn primary" id="genericDone">完成本页学习</button>');
+  const role=session.primaryRole,d=session.data||{},rel=relation(step);
+  if(role==='student')return renderStudentRole(step,d,rel);
+  if(role==='parent')return renderParentRole(step,d,rel);
+  if(role==='admin')return renderAdminRole(step,d,rel);
+  stage.innerHTML=pageIntro(step)+pageCard(step.title,'页面：'+step.page,'<div class="notice">当前身份暂未配置实操页面。</div>','<button class="btn primary" id="genericDone">完成本页学习</button>');
   document.getElementById('genericDone').onclick=()=>markStep();
+}
+function roleRelationBlock(rel){
+  return '<div class="relation"><div><b>可见范围</b><span>'+esc(rel.visible_to||'按角色权限')+'</span></div><div><b>沟通提示</b><span>'+esc(rel.communication_tip||'确认任务状态、入口和下一步责任人')+'</span></div><div><b>下一步</b><span>'+esc(rel.next||'继续角色主线')+'</span></div></div>';
+}
+function renderStudentRole(step,d,rel){
+  const s=d.students?.at(-1),a=d.assignments?.at(-1),p=d.papers?.at(-1),sub=d.submissions?.at(-1);
+  const done='<button class="btn primary" id="roleDone">完成本页实操</button>';
+  if(step.id==='classroom'){
+    stage.innerHTML=pageIntro(step,'先理解课堂邀请、随堂检测与教师课堂控制之间的关系。')+pageCard('同步课堂',s?esc(s.className)+' · 教师 '+esc(d.classes?.at(-1)?.teacher||'周老师'):'虚拟课堂','<div class="notice">当前课堂知识点：小数乘法。讲解邀请可以接受或拒绝；拒绝不会形成负面学习证据。</div>'+roleRelationBlock(rel),done);
+  }else if(step.id==='assignments'){
+    stage.innerHTML=pageIntro(step,'找到教师刚布置的任务，确认名称、截止时间和提交状态。')+pageCard('我的作业','待完成 / 已完成状态来自教师布置和你的提交。',listItems(d.assignments,x=>'<div class="item"><b>'+esc(x.title)+'</b><small>截止 '+esc(x.due)+' · '+(sub?'已完成':'待完成')+'</small></div>')+roleRelationBlock(rel),done);
+  }else if(step.id==='answer'){
+    stage.innerHTML=pageIntro(step,'像正式学生一样逐题选择答案，再正式提交。')+pageCard('逐题作答',a?esc(a.title):'暂无作业',sub?'<div class="notice ok">这份练习已经提交。可继续查看结果，或重置沙盒后再练。</div>':(p?'<div>'+p.questions.map(q=>'<div class="question"><b>'+q.index+'. '+esc(q.prompt)+'</b><small class="muted">'+esc(q.knowledge)+'</small><div class="options">'+q.options.map((o,i)=>'<button class="option studentSelfOption" data-q="'+q.id+'" data-i="'+i+'">'+String.fromCharCode(65+i)+'. '+esc(o)+'</button>').join('')+'</div></div>').join('')+'</div>':'<div class="notice">暂无题目。</div>'),sub?done:'<button class="btn primary" id="studentSelfSubmit">正式提交</button>');
+  }else if(step.id==='result'){
+    stage.innerHTML=pageIntro(step,'提交后才形成结果。一次分数只是一次证据，不代表长期掌握结论。')+pageCard('提交结果',sub?esc(sub.studentName):'尚未提交',sub?'<div class="metric-grid"><div class="metric"><strong>'+sub.score+'%</strong><small>得分</small></div><div class="metric"><strong>'+sub.correct+'/'+sub.total+'</strong><small>答对</small></div><div class="metric"><strong>'+sub.wrongCount+'</strong><small>错题</small></div><div class="metric"><strong>'+esc(sub.knowledge)+'</strong><small>知识点</small></div></div>'+roleRelationBlock(rel):'<div class="notice warn">请先完成上一页的正式提交。</div>',done);
+  }else if(step.id==='practice'){
+    stage.innerHTML=pageIntro(step,'针对性练习说明“为什么给我这些题”，并继续把结果回流到同一档案。')+pageCard('针对性练习','依据最近提交和错题生成。',listItems(d.targeted_practices,x=>'<div class="item"><b>'+esc(x.knowledge)+' · '+x.questionCount+'题</b><small>状态：'+esc(x.status)+'</small></div>')+roleRelationBlock(rel),d.targeted_practices?.length?'<button class="btn primary" id="completeStudentPractice">完成这组针对练习</button>':done);
+  }else if(step.id==='progress'){
+    stage.innerHTML=pageIntro(step,'学情看长期趋势和证据来源，不只是一个考试分数。')+pageCard('我的学情','来自作业、练习和课堂事实。',sub?'<div class="metric-grid"><div class="metric"><strong>'+sub.score+'%</strong><small>最近练习</small></div><div class="metric"><strong>'+esc(sub.knowledge)+'</strong><small>当前关注</small></div><div class="metric"><strong>'+d.wrong_questions.length+'</strong><small>待巩固错题</small></div><div class="metric"><strong>'+d.points.reduce((n,x)=>n+Number(x.points||0),0)+'</strong><small>积分</small></div></div>'+roleRelationBlock(rel):'<div class="notice">提交一次练习后这里会出现证据。</div>',done);
+  }else if(step.id==='rewards'){
+    stage.innerHTML=pageIntro(step,'积分用于激励，必须能看到来源，不能把积分误解成学习成绩。')+pageCard('积分奖励','每一笔都可追溯来源。',listItems(d.points,x=>'<div class="item"><b>+'+esc(x.points)+' 积分</b><small>'+esc(x.source)+'</small></div>')+roleRelationBlock(rel),done);
+  }else if(step.id==='wrongbook'){
+    stage.innerHTML=pageIntro(step,'错题用于下一轮学习，不是给学生贴负面标签。')+pageCard('我的错题','来自刚才的提交结果。',listItems(d.wrong_questions,x=>'<div class="item"><b>'+esc(x.prompt)+'</b><small>'+esc(x.knowledge)+'</small></div>')+roleRelationBlock(rel),done);
+  }else{
+    stage.innerHTML=pageIntro(step,'理解账号、身份和当前教学归属。')+pageCard('我的账号',s?esc(s.name)+' · 学生':'学生账号','<div class="item"><b>当前班级</b><small>'+esc(s?.className||'五年级实操班')+'</small></div>'+roleRelationBlock(rel),done);
+  }
+  bindStudentRole();
+}
+function bindStudentRole(){
+  const done=document.getElementById('roleDone');if(done)done.onclick=()=>markStep();
+  document.querySelectorAll('.studentSelfOption').forEach(b=>b.onclick=()=>{answers[b.dataset.q]=+b.dataset.i;document.querySelectorAll('.studentSelfOption[data-q="'+b.dataset.q+'"]').forEach(x=>x.classList.toggle('selected',x===b))});
+  const submit=document.getElementById('studentSelfSubmit');if(submit)submit.onclick=()=>act('student_submit_self',{answers});
+  const practice=document.getElementById('completeStudentPractice');if(practice)practice.onclick=()=>act('complete_student_practice',{});
+}
+function renderParentRole(step,d,rel){
+  const child=d.students?.at(-1),cls=d.classes?.at(-1),assignment=d.assignments?.at(-1),sub=d.submissions?.at(-1);
+  let body='';
+  if(step.id==='learning')body='<div class="item"><b>'+esc(child?.name||'小禾')+'</b><small>'+esc(cls?.name||'五年级实操班')+' · 教师 '+esc(cls?.teacher||'周老师')+'</small></div>';
+  else if(step.id==='assignments')body='<div class="item"><b>'+esc(assignment?.title||'小数乘法练习')+'</b><small>截止 '+esc(assignment?.due||'本周五')+' · '+(sub?'已完成':'待完成')+'。家长只查看状态，不代替孩子作答。</small></div>';
+  else if(step.id==='progress')body=sub?'<div class="metric-grid"><div class="metric"><strong>'+sub.score+'%</strong><small>最近练习</small></div><div class="metric"><strong>'+esc(sub.knowledge)+'</strong><small>需要关注</small></div><div class="metric"><strong>'+sub.wrongCount+'</strong><small>错题</small></div><div class="metric"><strong>趋势</strong><small>看长期变化</small></div></div>':'<div class="notice">暂无结果。</div>';
+  else if(step.id==='rewards')body=listItems(d.points,x=>'<div class="item"><b>+'+esc(x.points)+' 积分</b><small>'+esc(x.source)+' · 积分不是成绩</small></div>');
+  else if(step.id==='history')body='<div class="item"><b>连续档案</b><small>当前：'+esc(cls?.name||'五年级实操班')+'；往期：'+esc(d.history?.at(-1)?.className||'四年级实操班')+'。升年级仍是同一个孩子。</small></div>';
+  else body='<div class="item"><b>关联孩子</b><small>'+esc(child?.name||'小禾')+' · 家长只能看到已授权关联的孩子。</small></div>';
+  stage.innerHTML=pageIntro(step,'家长端重点是理解孩子发生了什么，而不是替教师或孩子操作。')+pageCard(step.title,'家长可见范围与教师/学生端不同。',body+roleRelationBlock(rel),'<button class="btn primary" id="parentDone">完成本页实操</button>');
+  document.getElementById('parentDone').onclick=()=>markStep();
+}
+function renderAdminRole(step,d,rel){
+  const done='<button class="btn primary" id="adminDone">完成本页实操</button>';
+  if(step.id==='overview'){
+    stage.innerHTML=pageIntro(step,'管理员先看平台关系和异常，不直接替教师完成教学。')+pageCard('平台总览','虚拟机构数据','<div class="metric-grid"><div class="metric"><strong>'+d.accounts.filter(x=>x.role==='teacher').length+'</strong><small>教师账号</small></div><div class="metric"><strong>'+d.accounts.filter(x=>x.role==='student').length+'</strong><small>学生账号</small></div><div class="metric"><strong>'+d.classes.length+'</strong><small>班级</small></div><div class="metric"><strong>'+d.audit.length+'</strong><small>审计事件</small></div></div>'+roleRelationBlock(rel),done);
+  }else if(step.id==='users'){
+    stage.innerHTML=pageIntro(step,'真实创建一个临时教师或家长账号，理解角色边界。')+pageCard('账号管理','创建的账号只存在于沙盒。','<div class="form-grid"><div class="field"><label>姓名</label><input id="adminUserName" value="林老师"></div><div class="field"><label>账号</label><input id="adminUsername" value="teacher02"></div><div class="field"><label>角色</label><select id="adminRole"><option value="teacher">教师</option><option value="parent">家长</option></select></div></div>'+listItems(d.accounts,x=>'<div class="item"><b>'+esc(x.name)+' · '+esc(x.role)+'</b><small>'+esc(x.username)+' · '+esc(x.status)+'</small></div>'),'<button class="btn primary" id="adminCreateAccount">创建练习账号</button>');
+  }else if(step.id==='classes'){
+    stage.innerHTML=pageIntro(step,'班级关系决定谁在教谁；调班换老师应改变关系，不复制学生档案。')+pageCard('班级与教学归属','把班级关联到虚拟教师。','<div class="form-grid"><div class="field"><label>班级名称</label><input id="adminClassName" value="五年级二班"></div><div class="field"><label>年级</label><select id="adminClassGrade"><option>4</option><option selected>5</option><option>6</option></select></div></div>'+listItems(d.classes,x=>'<div class="item"><b>'+esc(x.name)+'</b><small>'+x.grade+'年级 · 教师 '+esc(x.teacher)+'</small></div>'),'<button class="btn primary" id="adminCreateClass">建立班级归属</button>');
+  }else if(step.id==='points'){
+    stage.innerHTML=pageIntro(step,'管理员维护规则，教师课堂评价和学生实际积分仍保持来源可追溯。')+pageCard('积分规则','修改规则不应回写历史积分。','<div class="form-grid"><div class="field"><label>规则名称</label><input id="pointRuleName" value="课堂参与"></div><div class="field"><label>积分</label><input id="pointRuleValue" type="number" value="2"></div></div>'+listItems(d.point_rules,x=>'<div class="item"><b>'+esc(x.name)+' +'+esc(x.points)+'</b><small>状态：'+(x.active?'启用':'停用')+'</small></div>'),'<button class="btn primary" id="adminPointRule">保存练习规则</button>');
+  }else if(step.id==='audit'){
+    stage.innerHTML=pageIntro(step,'审计用于回答“谁在什么时候做了什么”，不是修改业务事实的入口。')+pageCard('全校审计','刚才的沙盒管理动作已经进入临时审计时间线。',listItems(d.audit,x=>'<div class="item"><b>'+esc(x.action)+'</b><small>'+esc(x.actor)+' · '+esc(x.detail)+'</small></div>')+roleRelationBlock(rel),done);
+  }else if(step.id==='system'){
+    stage.innerHTML=pageIntro(step,'系统设置影响功能可用性，但不能绕过权限或改写历史学习证据。')+pageCard('系统设置','在沙盒中练习一个设置变更。','<div class="form-grid"><div class="field"><label>设置项</label><input id="systemKey" value="trainingFeature"></div><div class="field"><label>值</label><select id="systemValue"><option>开启</option><option>关闭</option></select></div></div><div class="notice">当前设置：'+esc(JSON.stringify(d.system_settings))+'</div>','<button class="btn primary" id="adminSystemSave">保存练习设置</button>');
+  }else{
+    stage.innerHTML=pageIntro(step,'从管理员视角确认历史班级、账号关系和学生连续性仍能追踪。')+pageCard('历史连续性','管理关系变化，不能删除学生历史事实。','<div class="notice">班级、教师和账号关系可以变化；学生连续档案仍保持同一主体。沙盒审计事件：'+d.audit.length+' 条。</div>'+roleRelationBlock(rel),done);
+  }
+  bindAdminRole();
+}
+function bindAdminRole(){
+  const $=id=>document.getElementById(id);
+  if($('adminDone'))$('adminDone').onclick=()=>markStep();
+  if($('adminCreateAccount'))$('adminCreateAccount').onclick=()=>act('admin_create_account',{name:$('adminUserName').value,username:$('adminUsername').value,role:$('adminRole').value});
+  if($('adminCreateClass'))$('adminCreateClass').onclick=()=>act('admin_create_class',{name:$('adminClassName').value,grade:+$('adminClassGrade').value});
+  if($('adminPointRule'))$('adminPointRule').onclick=()=>act('admin_set_point_rule',{name:$('pointRuleName').value,points:+$('pointRuleValue').value});
+  if($('adminSystemSave'))$('adminSystemSave').onclick=()=>act('admin_set_system',{key:$('systemKey').value,value:$('systemValue').value});
 }
 function bindTeacher(step){
   const $=id=>document.getElementById(id);
