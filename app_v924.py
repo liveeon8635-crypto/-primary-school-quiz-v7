@@ -3435,7 +3435,10 @@ def run_schema_migrations(db):
                 "WHERE COALESCE(question_type,'')='' AND correct_index>=0"
             ))
         elif version=="10.6.6":
-            retire_legacy_demo_identities(db)
+            # Production-only retirement: SQLite and intentional demo environments
+            # still rely on the seeded teacher1/student1/parent1 accounts for tests/demos.
+            if raw_url.startswith("postgresql") and os.getenv("ENABLE_DEMO_SEED","0")!="1":
+                retire_legacy_demo_identities(db)
         db.add(SchemaMigration(version=version,description=description));changed=True
     if changed:db.commit()
 
