@@ -8191,6 +8191,10 @@ def icon():return Response(ICON_SVG,media_type="image/svg+xml")
 @app.get("/icon-180.png")
 def icon_180():return Response(ICON_180_PNG,media_type="image/png",headers={"Cache-Control":"public, max-age=86400"})
 
+@app.get("/apple-touch-icon.png")
+@app.get("/apple-touch-icon-precomposed.png")
+def apple_touch_icon():return Response(ICON_180_PNG,media_type="image/png",headers={"Cache-Control":"public, max-age=86400"})
+
 @app.get("/icon-192.png")
 def icon_192():return Response(ICON_192_PNG,media_type="image/png",headers={"Cache-Control":"public, max-age=86400"})
 
