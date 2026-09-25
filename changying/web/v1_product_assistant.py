@@ -248,7 +248,8 @@ _ASSISTANT_SNIPPET = r'''
   const tutorialStep=()=>document.querySelector('.cy-lesson-top h2')?.textContent?.trim()||'';
   const context=()=>({page:location.pathname+location.search,identity:String(identityChip?.textContent||'').trim(),tutorial_step:tutorialStep()});
   const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-  const addMessage=(kind,text)=>{const el=document.createElement('div');el.className='cy-pa-msg '+kind;el.textContent=text;chat.appendChild(el);chat.scrollTop=chat.scrollHeight};
+  const normalizeReply=text=>String(text||'').replace(/\*\*/g,'').replace(/\x60/g,'').trim();
+  const addMessage=(kind,text)=>{const el=document.createElement('div');el.className='cy-pa-msg '+kind;el.textContent=normalizeReply(text);chat.appendChild(el);chat.scrollTop=chat.scrollHeight};
   const updateContext=()=>{const c=context();document.getElementById('cy-pa-context').textContent=(c.identity||'当前身份')+' · '+c.page+(c.tutorial_step?' · '+c.tutorial_step:'')};
 
   async function postJson(path,body){
@@ -276,8 +277,11 @@ _ASSISTANT_SNIPPET = r'''
     updateContext();
   }
 
-  fab.onclick=()=>{panel.hidden=false;updateContext()};
-  document.getElementById('cy-pa-close').onclick=()=>panel.hidden=true;
+  const sizeButton=document.getElementById('cy-pa-size');
+  const syncSizeButton=()=>{const compact=panel.classList.contains('compact');sizeButton.textContent=compact?'展开':'—';sizeButton.setAttribute('aria-label',compact?'展开助手':'收起助手')};
+  fab.onclick=()=>{panel.hidden=false;panel.classList.remove('compact');syncSizeButton();updateContext()};
+  sizeButton.onclick=()=>{panel.classList.toggle('compact');syncSizeButton()};
+  document.getElementById('cy-pa-close').onclick=()=>{panel.hidden=true;panel.classList.remove('compact');syncSizeButton()};
   document.querySelectorAll('.cy-pa-tab').forEach(x=>x.onclick=()=>setTab(x.dataset.paTab));
   document.querySelectorAll('[data-pa-question]').forEach(x=>x.onclick=()=>ask(x.dataset.paQuestion));
   send.onclick=()=>ask(input.value);
