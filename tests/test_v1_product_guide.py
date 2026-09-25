@@ -162,3 +162,12 @@ def test_guide_screen_observer_is_idempotent_on_v1_guide():
     assert "existing?.dataset?.guideVersion==='v5'" in script
     assert "screen.querySelector('#cy-v1-product-guide-page[data-guide-version=\"v5\"]')" in script
     assert "if(location.pathname!=='/v1/guide')return" in script
+
+
+def test_identity_completion_observer_triggers_post_login_onboarding():
+    html = rendered_guide()
+    script = tutorial_script(html)
+
+    assert "identityObserver.observe(identityButton" in script
+    assert "identityObserver.observe(identityChip" in script
+    assert "new MutationObserver(()=>queueMicrotask(sync))" in script
