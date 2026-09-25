@@ -674,6 +674,8 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
         count = max(1, min(int(p.get("questionCount", 8)), 30))
         subject = str(p.get("subject", "数学"))[:30]
         knowledge = str(p.get("knowledge", "小数乘法"))[:120]
+        if knowledge == "小数乘法" and subject in {"语文", "英语"}:
+            knowledge = {"语文": "词语理解与表达", "英语": "基础词汇与句型"}[subject]
         textbook = str(p.get("textbook", "人教版"))[:80]
         questions = _sample_questions(session, knowledge=knowledge, count=count, subject=subject)
         obj = {
