@@ -10,11 +10,11 @@ from __future__ import annotations
 from changying.web import v1 as v1_module
 
 
-V1_PRODUCT_GUIDE_MARKER = "changying_v1_product_guide_v3"
+V1_PRODUCT_GUIDE_MARKER = "changying_v1_product_guide_v4"
 GUIDE_PATH = "/v1/guide"
 
 _GUIDE_SNIPPET = r'''
-<style id="changying_v1_product_guide_css_v3">
+<style id="changying_v1_product_guide_css_v4">
   #cy-onboarding-overlay{position:fixed;inset:0;z-index:140;background:rgba(12,25,47,.58);display:grid;place-items:center;padding:12px}
   .cy-onboarding-shell{width:min(980px,100%);max-height:94dvh;overflow:auto;background:#f5f8fd;border-radius:24px;box-shadow:0 26px 90px rgba(12,25,47,.32);border:1px solid rgba(255,255,255,.4)}
   .cy-onboarding-head{position:sticky;top:0;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-bottom:1px solid #dfe7f2}
@@ -27,7 +27,7 @@ _GUIDE_SNIPPET = r'''
   .cy-role-meta{font-size:12px;color:var(--muted)}
   .cy-tutorial-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px}
   .cy-tutorial-rail{background:#fff;border:1px solid #dfe7f2;border-radius:18px;padding:12px;align-self:start}
-  .cy-step-list{display:grid;gap:7px;margin-top:10px}.cy-step-item{display:grid;grid-template-columns:30px 1fr auto;align-items:center;gap:8px;padding:9px;border-radius:12px;border:1px solid transparent;background:#f8faff;cursor:pointer;text-align:left;width:100%}
+  .cy-step-list{display:grid;gap:7px;margin-top:10px}.cy-step-item{display:grid;grid-template-columns:30px 1fr auto;align-items:center;gap:8px;padding:9px;border-radius:12px;border:1px solid transparent;background:#f8faff;text-align:left;width:100%}
   .cy-step-item.active{background:#eaf1ff;border-color:#bfd2f4}.cy-step-item.done{background:#f0f8f1}.cy-step-item.skipped{background:#fff8ec}
   .cy-step-no{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:#fff;border:1px solid #dce5f1;font-weight:800;font-size:12px}
   .cy-step-state{font-size:11px;color:var(--muted)}
@@ -59,17 +59,16 @@ _GUIDE_SNIPPET = r'''
     #cy-v1-product-guide-page{padding:18px 12px 100px}
   }
 </style>
-<script id="changying_v1_product_guide_v3-script">
+<script id="changying_v1_product_guide_v4-script">
 (()=>{
   if(window.__cyV1ProductGuideInstalled)return;
   window.__cyV1ProductGuideInstalled=true;
 
-  const SEEN_KEY='cyV1RoleTutorialSeenV3';
-  const STATE_KEY='cyV1RoleTutorialStateV3';
+  const STATE_KEY='cyV1RoleTutorialStateV4';
   const screen=document.getElementById('screen');
   const tutorialButton=document.getElementById('tutorialButton');
   const identityButton=document.getElementById('identityButton');
-  const demoButton=()=>document.getElementById('demoButton');
+  const identityChip=document.getElementById('identityChip');
   const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
   const teacherSteps=[
@@ -126,11 +125,24 @@ _GUIDE_SNIPPET = r'''
     {id:'parent',icon:'👪',name:'家长',account:'演示账号 · 小禾家长',desc:'从家长视角查看课程、作业、学情、课堂表现与连续档案。',steps:parentSteps}
   ];
 
+  const currentPersonaId=()=>{
+    const label=String(identityChip?.textContent||'');
+    if(label.includes('学校教师'))return 'school_teacher';
+    if(label.includes('机构老师'))return 'institution_teacher';
+    if(label.includes('学校管理员'))return 'school_admin';
+    if(label.includes('机构管理员'))return 'institution_admin';
+    if(label.includes('家长'))return 'parent';
+    if(label.includes('学生'))return 'student';
+    return '';
+  };
+  const currentPersona=()=>personas.find(p=>p.id===currentPersonaId())||null;
+  const seenKey=id=>'cyV1RoleTutorialSeenV4:'+id;
+  const identityReady=()=>Boolean(identityButton&&identityButton.hidden===false&&currentPersonaId());
   const loadState=()=>{try{return JSON.parse(localStorage.getItem(STATE_KEY)||'{}')||{}}catch{return{}}};
   const saveState=s=>localStorage.setItem(STATE_KEY,JSON.stringify(s));
   const personaState=id=>loadState()[id]||{index:0,status:{}};
   const completion=p=>{const st=personaState(p.id),total=p.steps.length,settled=Object.values(st.status||{}).filter(x=>x==='done'||x==='skipped').length;return{settled,total,pct:Math.round((settled/Math.max(1,total))*100)}};
-  const markSeen=()=>localStorage.setItem(SEEN_KEY,'1');
+  const markSeen=id=>{if(id)localStorage.setItem(seenKey(id),'1')};
   const statusText=s=>s==='done'?'已完成':s==='skipped'?'已跳过':'未开始';
 
   function closeOverlay(){document.getElementById('cy-onboarding-overlay')?.remove()}
@@ -150,17 +162,18 @@ _GUIDE_SNIPPET = r'''
     }).join('');
   }
 
-  function showHub({firstVisit=false}={}){
-    markSeen();
-    const overlay=mountShell(),body=overlay.querySelector('.cy-onboarding-body');
-    body.innerHTML='<span class="tag">'+(firstVisit?'第一次使用':'新手教学中心')+'</span><h1 style="margin:10px 0 7px">先选一个虚拟身份，再像玩新手关卡一样走完整流程</h1><p class="subtitle">每个身份有独立进度。每一步都可以亲自做一次演示操作，也可以选择跳过；退出后进度会保留，右上角“新手教学”随时可以回来。</p><div class="cy-role-grid">'+roleCards()+'</div><div class="cy-guide-actions"><button class="btn" id="cy-open-guide-page">查看产品说明</button><button class="btn" id="cy-reset-all">清除全部演示进度</button></div>';
-    body.querySelectorAll('[data-persona]').forEach(btn=>btn.onclick=()=>startPersona(btn.dataset.persona));
-    body.querySelector('#cy-open-guide-page').onclick=()=>{closeOverlay();location.href='/v1/guide'};
-    body.querySelector('#cy-reset-all').onclick=()=>{localStorage.removeItem(STATE_KEY);showHub()};
+  function showCurrentIntro({firstVisit=false}={}){
+    const persona=currentPersona();
+    if(!persona)return;
+    markSeen(persona.id);
+    const overlay=mountShell(),body=overlay.querySelector('.cy-onboarding-body'),progress=completion(persona);
+    body.innerHTML='<section class="cy-lesson-card" style="max-width:760px;margin:0 auto"><span class="tag">'+(firstVisit?'首次登录引导':'继续新手教学')+'</span><h1 style="margin:10px 0 7px">'+persona.icon+' '+esc(persona.name)+'：系统会按顺序带你走完整条主线</h1><p class="subtitle">这是与你当前登录身份匹配的虚拟教学流程。不会让你先自己挑功能；系统会从第 1 步开始解释“为什么先做这一步”，完成后再带到下一步。每一步可以跳过，退出后会保存进度。</p><div class="cy-guide-summary"><div><b>'+progress.total+' 个连续步骤</b><small>按真实使用顺序建立整体产品概览</small></div><div><b>'+progress.settled+' 步已处理</b><small>完成与跳过都会保留在本机浏览器</small></div><div><b>0 条真实业务写入</b><small>全部使用虚拟演示页面与合成数据</small></div></div><div class="cy-guide-actions"><button class="btn primary" id="cy-current-start">'+(progress.settled?'继续当前进度':'从第 1 步开始')+'</button><button class="btn" id="cy-current-exit">暂不学习</button></div></section>';
+    body.querySelector('#cy-current-start').onclick=()=>startPersona(persona.id);
+    body.querySelector('#cy-current-exit').onclick=closeOverlay;
   }
 
   function startPersona(id,index=null){
-    markSeen();
+    markSeen(id);
     const persona=personas.find(p=>p.id===id);if(!persona)return;
     const st=personaState(id);
     const firstIncomplete=persona.steps.findIndex(step=>!['done','skipped'].includes(st.status?.[step[0]]));
@@ -181,17 +194,15 @@ _GUIDE_SNIPPET = r'''
     updatePersona(persona.id,s=>({...s,index}));
     const rail=persona.steps.map((x,i)=>{
       const status=personaState(persona.id).status?.[x[0]]||'';
-      return '<button class="cy-step-item '+(i===index?'active ':'')+(status||'')+'" data-step-index="'+i+'"><span class="cy-step-no">'+(i+1)+'</span><span><b>'+esc(x[1])+'</b><small class="cy-step-state">'+statusText(status)+'</small></span><span class="cy-step-state">'+(status==='done'?'✓':status==='skipped'?'↷':'')+'</span></button>';
+      return '<div class="cy-step-item '+(i===index?'active ':'')+(status||'')+'"><span class="cy-step-no">'+(i+1)+'</span><span><b>'+esc(x[1])+'</b><small class="cy-step-state">'+statusText(status)+'</small></span><span class="cy-step-state">'+(status==='done'?'✓':status==='skipped'?'↷':'')+'</span></div>';
     }).join('');
     const items=String(step[5]).split('|').map(x=>{const parts=x.split('：');return '<div class="cy-demo-card"><b>'+esc(parts.shift())+'</b><small>'+esc(parts.join('：'))+'</small></div>'}).join('');
-    body.innerHTML='<div class="cy-tutorial-layout"><aside class="cy-tutorial-rail"><button class="btn" id="cy-back-roles" style="width:100%">← 切换演示账号</button><div style="margin-top:12px"><span class="cy-badge">'+persona.icon+' '+esc(persona.name)+'</span><p style="font-size:12px;color:var(--muted);line-height:1.5;margin:8px 2px">'+esc(persona.account)+'</p></div><div class="cy-step-list">'+rail+'</div></aside><section class="cy-tutorial-stage"><article class="cy-lesson-card"><div class="cy-lesson-top"><div><span class="tag">新手任务 '+(index+1)+'</span><h2>'+esc(step[1])+'</h2><p>'+esc(step[2])+'</p></div><span class="cy-badge">'+(st.status?.[stepId]==='done'?'✓ 已完成':st.status?.[stepId]==='skipped'?'↷ 已跳过':'进行中')+'</span></div><div class="cy-progress-row"><span>第 '+(index+1)+' / '+persona.steps.length+' 步</span><div class="cy-progress-track"><i style="width:'+pct+'%"></i></div><span>'+pct+'%</span></div><div class="cy-mission"><strong>这一关你要做</strong><p>'+esc(step[3])+'</p></div><section class="cy-demo-app"><div class="cy-demo-appbar"><b>'+persona.icon+' '+esc(persona.account)+'</b><span>虚拟演示 · '+esc(persona.name)+'</span></div><div class="cy-demo-canvas"><div class="cy-demo-screen-title">'+esc(step[4])+'</div><div class="cy-demo-screen-sub">以下均为演示数据，不会写入真实学生、积分、作业、课堂或学习证据。</div><div class="cy-demo-cards">'+items+'</div><div class="cy-demo-action"><button class="btn primary" id="cy-do-action">'+esc(step[3])+'</button></div><div class="cy-demo-feedback" id="cy-demo-feedback">'+esc(step[6])+'</div></div></section><div class="cy-lesson-notes"><div class="cy-note"><strong>你刚做了什么</strong><p>'+esc(step[3])+'</p></div><div class="cy-note"><strong>系统为什么这样做</strong><p>'+esc(step[7])+'</p></div><div class="cy-note"><strong>真实使用时注意</strong><p>演示不会产生真实业务写入；进入真实系统后仍按当前账号权限、教师审核和审计规则执行。</p></div></div><div class="cy-lesson-actions"><button class="btn" id="cy-prev" '+(index===0?'disabled':'')+'>上一步</button><button class="btn" id="cy-skip">跳过本步</button><button class="btn primary" id="cy-next" disabled>完成本步并继续</button></div><p class="cy-skip-note">“跳过本步”只影响你的新手教学进度，不会关闭这个功能；以后仍可从步骤列表回来重做。</p></article></section></div>';
+    body.innerHTML='<div class="cy-tutorial-layout"><aside class="cy-tutorial-rail"><div><span class="cy-badge">'+persona.icon+' '+esc(persona.name)+'</span><p style="font-size:12px;color:var(--muted);line-height:1.5;margin:8px 2px">'+esc(persona.account)+'</p><p style="font-size:11px;color:var(--muted);line-height:1.5">步骤路线仅用于查看进度，系统会按顺序引导，不需要你自己选择下一项。</p></div><div class="cy-step-list">'+rail+'</div></aside><section class="cy-tutorial-stage"><article class="cy-lesson-card"><div class="cy-lesson-top"><div><span class="tag">新手任务 '+(index+1)+'</span><h2>'+esc(step[1])+'</h2><p>'+esc(step[2])+'</p></div><span class="cy-badge">'+(st.status?.[stepId]==='done'?'✓ 已完成':st.status?.[stepId]==='skipped'?'↷ 已跳过':'进行中')+'</span></div><div class="cy-progress-row"><span>第 '+(index+1)+' / '+persona.steps.length+' 步</span><div class="cy-progress-track"><i style="width:'+pct+'%"></i></div><span>'+pct+'%</span></div><div class="cy-mission"><strong>这一关你要做</strong><p>'+esc(step[3])+'</p></div><section class="cy-demo-app"><div class="cy-demo-appbar"><b>'+persona.icon+' '+esc(persona.account)+'</b><span>虚拟演示 · '+esc(persona.name)+'</span></div><div class="cy-demo-canvas"><div class="cy-demo-screen-title">'+esc(step[4])+'</div><div class="cy-demo-screen-sub">以下均为演示数据，不会写入真实学生、积分、作业、课堂或学习证据。</div><div class="cy-demo-cards">'+items+'</div><div class="cy-demo-action"><button class="btn primary" id="cy-do-action">'+esc(step[3])+'</button></div><div class="cy-demo-feedback" id="cy-demo-feedback">'+esc(step[6])+'</div></div></section><div class="cy-lesson-notes"><div class="cy-note"><strong>你刚做了什么</strong><p>'+esc(step[3])+'</p></div><div class="cy-note"><strong>系统为什么这样做</strong><p>'+esc(step[7])+'</p></div><div class="cy-note"><strong>真实使用时注意</strong><p>演示不会产生真实业务写入；进入真实系统后仍按当前账号权限、教师审核和审计规则执行。</p></div></div><div class="cy-lesson-actions"><button class="btn" id="cy-prev" '+(index===0?'disabled':'')+'>上一步</button><button class="btn" id="cy-skip">跳过本步</button><button class="btn primary" id="cy-next" disabled>完成本步并继续</button></div><p class="cy-skip-note">“跳过本步”只影响新手教学进度；退出后仍可从右上角“新手教学”继续整条引导，完成后也可以重新开始。</p></article></section></div>';
     let actionDone=false;
     const doAction=body.querySelector('#cy-do-action'),feedback=body.querySelector('#cy-demo-feedback'),next=body.querySelector('#cy-next');
     doAction.onclick=()=>{actionDone=true;doAction.disabled=true;doAction.textContent='演示操作已完成 ✓';feedback.classList.add('show');next.disabled=false};
     if(st.status?.[stepId]==='done'){actionDone=true;doAction.disabled=true;doAction.textContent='演示操作已完成 ✓';feedback.classList.add('show');next.disabled=false}
-    body.querySelector('#cy-back-roles').onclick=()=>showHub();
-    body.querySelectorAll('[data-step-index]').forEach(btn=>btn.onclick=()=>renderLesson(persona,Number(btn.dataset.stepIndex)));
-    body.querySelector('#cy-prev').onclick=()=>index>0&&renderLesson(persona,index-1);
+     body.querySelector('#cy-prev').onclick=()=>index>0&&renderLesson(persona,index-1);
     body.querySelector('#cy-skip').onclick=()=>{
       updatePersona(persona.id,s=>{s.status[stepId]='skipped';s.index=Math.min(index+1,persona.steps.length-1);return s});
       if(index===persona.steps.length-1)showCompletion(persona);else renderLesson(persona,index+1);
@@ -205,19 +216,25 @@ _GUIDE_SNIPPET = r'''
 
   function showCompletion(persona){
     const overlay=document.getElementById('cy-onboarding-overlay')||mountShell(),body=overlay.querySelector('.cy-onboarding-body'),c=completion(persona);
-    body.innerHTML='<section class="cy-lesson-card" style="max-width:720px;margin:0 auto"><span class="cy-badge">'+persona.icon+' '+esc(persona.name)+'</span><h1 style="margin:12px 0 8px">这个身份的新手流程已经走到最后</h1><p class="subtitle">已处理 '+c.settled+' / '+c.total+' 步。跳过的步骤仍然保留，可以随时回来补做；进度已经保存在本机浏览器。</p><div class="cy-guide-actions"><button class="btn primary" id="cy-complete-review">查看并补做步骤</button><button class="btn" id="cy-complete-roles">体验其他身份</button><button class="btn" id="cy-complete-exit">退出并保存</button></div></section>';
-    body.querySelector('#cy-complete-review').onclick=()=>startPersona(persona.id,0);
-    body.querySelector('#cy-complete-roles').onclick=()=>showHub();
+    body.innerHTML='<section class="cy-lesson-card" style="max-width:720px;margin:0 auto"><span class="cy-badge">'+persona.icon+' '+esc(persona.name)+'</span><h1 style="margin:12px 0 8px">你已经建立了这个身份的完整使用概览</h1><p class="subtitle">本轮已处理 '+c.settled+' / '+c.total+' 步。跳过的步骤仍保留记录；以后登录这个身份时，可以从右上角“新手教学”重新开始或继续复习。</p><div class="cy-guide-actions"><button class="btn primary" id="cy-complete-restart">重新开始本身份教学</button><button class="btn" id="cy-complete-exit">退出并保存</button></div></section>';
+    body.querySelector('#cy-complete-restart').onclick=()=>{
+      updatePersona(persona.id,s=>({...s,index:0,status:{}}));
+      renderLesson(persona,0);
+    };
     body.querySelector('#cy-complete-exit').onclick=closeOverlay;
   }
 
-  function renderPersistentGuide(){
+  function renderPersistentGuide  function renderPersistentGuide(){
     if(!screen||screen.querySelector('#cy-v1-product-guide-page'))return;
-    const total=personas.reduce((n,p)=>n+p.steps.length,0);
-    screen.innerHTML='<main id="cy-v1-product-guide-page"><section class="cy-guide-hero"><span class="tag">新手教学中心</span><h1>不是读说明，而是换成虚拟身份亲自走一遍</h1><p>长缨把新手教学拆成 6 个虚拟演示账号。教师、管理员、学生、家长各走自己的功能路径；每一步都有演示操作、解释、跳过选项和独立进度。退出后可以从右上角“新手教学”继续。</p><div class="cy-guide-actions"><button class="btn primary" id="cy-guide-start">选择虚拟身份开始</button><button class="btn" id="cy-guide-reset">清除演示进度</button></div><div class="cy-guide-summary"><div><b>6 个身份</b><small>机构老师 / 学校教师 / 机构管理员 / 学校管理员 / 学生 / 家长</small></div><div><b>'+total+' 个角色步骤</b><small>覆盖各身份快捷入口与关键业务闭环</small></div><div><b>0 条真实业务写入</b><small>全部使用浏览器内虚拟数据与本地进度</small></div></div></section><section style="margin-top:18px"><div class="section-head"><div><h2>各身份进度</h2><p>点任意身份即可从未完成步骤继续。</p></div></div><div class="cy-role-grid">'+roleCards()+'</div></section><section class="card" style="margin-top:18px"><h2>产品主线</h2><p style="color:var(--muted);line-height:1.75">学生始终是一份连续档案。当前教学负责正在发生的事；练习、作业、测验、课堂表现、积分和 AI 针对性练习不断回流学生；课堂复盘与互动课堂建立在真实学习证据上；家长关系、往期教学和升年级衔接继续引用同一个学生 ID。</p></section></main>';
-    screen.querySelector('#cy-guide-start').onclick=()=>showHub();
-    screen.querySelector('#cy-guide-reset').onclick=()=>{localStorage.removeItem(STATE_KEY);renderPersistentGuideRefresh()};
-    screen.querySelectorAll('[data-persona]').forEach(btn=>btn.onclick=()=>startPersona(btn.dataset.persona));
+    const persona=currentPersona();
+    if(!persona){
+      screen.innerHTML='<main id="cy-v1-product-guide-page"><section class="cy-guide-hero"><span class="tag">新手教学</span><h1>请先完成账号登录并选择身份</h1><p>新手教学会根据你真实登录后的身份显示对应流程；未登录或尚未选择身份时不会提前展示。</p></section></main>';
+      return;
+    }
+    const progress=completion(persona);
+    screen.innerHTML='<main id="cy-v1-product-guide-page"><section class="cy-guide-hero"><span class="tag">'+persona.icon+' '+esc(persona.name)+'</span><h1>当前身份的新手教学</h1><p>系统会按顺序带你走完整流程，而不是让你先自己选择功能。每一步都有“为什么先做这一步 / 现在要做什么 / 完成后得到什么”。</p><div class="cy-guide-actions"><button class="btn primary" id="cy-guide-start">'+(progress.settled?'继续新手教学':'开始新手教学')+'</button><button class="btn" id="cy-guide-restart">从头开始</button></div><div class="cy-guide-summary"><div><b>'+progress.total+' 步</b><small>当前身份完整主线</small></div><div><b>'+progress.settled+' 步已处理</b><small>包含完成和主动跳过</small></div><div><b>随时可回来</b><small>右上角“新手教学”长期保留</small></div></div></section><section class="card" style="margin-top:18px"><h2>为什么采用顺序引导？</h2><p style="color:var(--muted);line-height:1.75">新用户先建立整体使用方向，再进入真实操作。路线图只负责显示进度，不作为自由功能菜单；真正的功能入口仍由当前身份的工作台和快捷导航承担。</p></section></main>';
+    screen.querySelector('#cy-guide-start').onclick=()=>startPersona(persona.id);
+    screen.querySelector('#cy-guide-restart').onclick=()=>{updatePersona(persona.id,s=>({...s,index:0,status:{}}));startPersona(persona.id,0)};
   }
 
   function renderPersistentGuideRefresh(){
@@ -225,18 +242,14 @@ _GUIDE_SNIPPET = r'''
   }
 
   function sync(){
-    if(tutorialButton)tutorialButton.hidden=false;
-    const loginDemo=demoButton();
-    if(loginDemo&&!loginDemo.dataset.cyTutorialBound){
-      loginDemo.dataset.cyTutorialBound='1';
-      loginDemo.textContent='体验虚拟演示账号';
-      loginDemo.onclick=()=>showHub({firstVisit:true});
-    }
-    if(location.pathname==='/v1/guide'){markSeen();renderPersistentGuide();return}
-    if(localStorage.getItem(SEEN_KEY)!=='1'&&identityButton?.hidden===false)showHub({firstVisit:true});
+    const ready=identityReady(),persona=currentPersona();
+    if(tutorialButton)tutorialButton.hidden=!ready;
+    if(!ready)return;
+    if(location.pathname==='/v1/guide'){markSeen(persona.id);renderPersistentGuide();return}
+    if(localStorage.getItem(seenKey(persona.id))!=='1')showCurrentIntro({firstVisit:true});
   }
 
-  if(tutorialButton)tutorialButton.onclick=()=>showHub();
+  if(tutorialButton)tutorialButton.onclick=()=>showCurrentIntro();
   if(screen)new MutationObserver(()=>queueMicrotask(sync)).observe(screen,{childList:true,subtree:false});
   window.addEventListener('pageshow',sync);
   window.addEventListener('popstate',sync);
@@ -251,7 +264,7 @@ def patch_v1_product_guide(html: str) -> str:
         return html
 
     top_marker = '<span class="identity-chip" id="identityChip">检查登录状态</span><button class="btn" id="identityButton" hidden>切换身份</button>'
-    top_replacement = '<span class="identity-chip" id="identityChip">检查登录状态</span><button class="btn" id="tutorialButton">新手教学</button><button class="btn" id="identityButton" hidden>切换身份</button>'
+    top_replacement = '<span class="identity-chip" id="identityChip">检查登录状态</span><button class="btn" id="tutorialButton" hidden>新手教学</button><button class="btn" id="identityButton" hidden>切换身份</button>'
     if top_marker not in html:
         raise RuntimeError("V1 role tutorial: top action marker not found")
     html = html.replace(top_marker, top_replacement, 1)
