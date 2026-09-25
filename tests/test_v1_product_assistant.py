@@ -20,7 +20,7 @@ def test_product_assistant_ui_is_present_but_hidden_before_authenticated_identit
 
     assert V1_PRODUCT_ASSISTANT_MARKER in html
     assert 'id="cy-product-assistant-fab" hidden' in html
-    assert "readToken()&&(identityButton?identityButton.hidden===false" in html
+    assert "identityChipReady()||identityButtonReady()" in html
     assert "if(!ready){fab.hidden=true;panel.hidden=true;return}" in html
     assert "fab.hidden=!panel.hidden" in html
 
@@ -153,3 +153,11 @@ def test_product_assistant_rechecks_auth_after_classic_refresh_hydration():
     assert "setTimeout(()=>{if(authReadyPoll){clearInterval(authReadyPoll);authReadyPoll=null}sync()},12000)" in html
     assert "window.addEventListener('focus',sync)" in html
     assert "document.addEventListener('visibilitychange'" in html
+
+
+def test_product_assistant_uses_unified_identity_even_if_legacy_identity_button_is_hidden():
+    html = rendered_v1()
+
+    assert "const identityChipReady=()=>Boolean(identityChip&&String(identityChip.textContent||'').trim()" in html
+    assert "const identityButtonReady=()=>Boolean(identityButton&&identityButton.hidden===false)" in html
+    assert "identityChipReady()||identityButtonReady()" in html
