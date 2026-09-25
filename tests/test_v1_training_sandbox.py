@@ -359,3 +359,12 @@ def test_training_text_answers_accept_normalized_units_and_reject_missing_unit()
     answers2[str(app2["id"])] = "10"
     apply_training_action(s2, "student_submit", {"answers": answers2})
     assert s2.data["submissions"][0]["score"] < 100
+
+
+def test_training_subject_default_knowledge_stays_coherent():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"grade": 5})
+    apply_training_action(s, "create_paper", {"subject": "英语", "knowledge": "小数乘法", "questionCount": 4})
+    paper = s.data["papers"][0]
+    assert paper["knowledge"] == "基础词汇与句型"
+    assert all(q["knowledge"] == "基础词汇与句型" for q in paper["questions"])
