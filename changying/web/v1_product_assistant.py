@@ -211,18 +211,18 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
 _ASSISTANT_SNIPPET = r'''
 <style id="changying_v1_product_assistant_v1-css">
   #cy-product-assistant-fab{position:fixed;right:14px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:125;border:0;border-radius:999px;background:#173a78;color:#fff;width:48px;height:48px;padding:0;font-weight:900;box-shadow:0 10px 28px rgba(23,58,120,.24);display:grid;place-items:center;font-size:20px}#cy-product-assistant-fab .cy-pa-fab-label{display:none}
-  #cy-product-assistant-panel{position:fixed;right:14px;bottom:calc(142px + env(safe-area-inset-bottom));z-index:126;width:min(390px,calc(100vw - 28px));max-height:min(620px,70dvh);background:#fff;border:1px solid #dbe4f1;border-radius:20px;box-shadow:0 22px 70px rgba(17,34,64,.28);overflow:hidden;display:flex;flex-direction:column}
-  .cy-pa-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid #e2e8f1}.cy-pa-head b{display:block}.cy-pa-head small{display:block;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);line-height:1.35}.cy-pa-head-actions{display:flex;gap:6px}.cy-pa-head-actions .btn{min-height:36px;padding:7px 10px}
+  #cy-product-assistant-panel{position:fixed;right:14px;bottom:calc(142px + env(safe-area-inset-bottom));z-index:126;width:min(390px,calc(100vw - 28px));max-height:min(560px,62dvh);background:#fff;border:1px solid #dbe4f1;border-radius:20px;box-shadow:0 22px 70px rgba(17,34,64,.28);overflow:hidden;display:flex;flex-direction:column;overscroll-behavior:contain}
+  .cy-pa-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid #e2e8f1;flex:0 0 auto}.cy-pa-head b{display:block}.cy-pa-head small{display:block;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);line-height:1.35}.cy-pa-head-actions{display:flex;gap:6px}.cy-pa-head-actions .btn{min-height:36px;padding:7px 10px;touch-action:manipulation}
   .cy-pa-tabs{display:grid;grid-template-columns:1fr 1fr;padding:9px;gap:7px;background:#f7f9fc}.cy-pa-tab{border:1px solid #dbe4f1;background:#fff;border-radius:11px;padding:9px;font-weight:750}.cy-pa-tab.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78}
-  .cy-pa-body{padding:10px 11px;overflow:auto}.cy-pa-quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.cy-pa-quick button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 8px;font-size:11px}
+  .cy-pa-body{padding:10px 11px;overflow:auto;min-height:0;-webkit-overflow-scrolling:touch}.cy-pa-quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.cy-pa-quick button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 8px;font-size:11px;touch-action:manipulation}
   .cy-pa-chat{display:grid;gap:9px;margin-bottom:10px}.cy-pa-msg{max-width:92%;padding:10px 11px;border-radius:13px;line-height:1.55;font-size:13px;white-space:pre-wrap}.cy-pa-msg.user{justify-self:end;background:#173a78;color:#fff}.cy-pa-msg.assistant{justify-self:start;background:#f1f5fb;color:#1c2940}
   .cy-pa-compose{display:grid;grid-template-columns:1fr auto;gap:7px}.cy-pa-compose textarea{min-height:58px;resize:none}.cy-pa-compose .btn{align-self:end}
   .cy-pa-feedback{display:grid;gap:8px}.cy-pa-feedback textarea{min-height:76px;resize:none}.cy-pa-feedback-cats{display:flex;gap:6px;flex-wrap:wrap}.cy-pa-feedback-cats button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 9px;font-size:11px}.cy-pa-feedback-cats button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78;font-weight:800}.cy-pa-note{font-size:10px;color:var(--muted);line-height:1.45}
-  @media(max-width:640px){#cy-product-assistant-fab{right:12px;bottom:calc(78px + env(safe-area-inset-bottom));width:44px;height:44px;font-size:18px}#cy-product-assistant-panel{left:10px;right:10px;bottom:calc(128px + env(safe-area-inset-bottom));width:auto;max-height:62dvh}}
+  @media(max-width:640px){#cy-product-assistant-fab{right:12px;bottom:calc(78px + env(safe-area-inset-bottom));width:44px;height:44px;font-size:18px}#cy-product-assistant-panel{left:12px;right:12px;bottom:calc(128px + env(safe-area-inset-bottom));width:auto;max-height:min(390px,46dvh);border-radius:18px}.cy-pa-head{padding:9px 10px}.cy-pa-tabs{padding:7px}.cy-pa-body{padding:8px 9px}.cy-pa-compose textarea{min-height:48px}}
 </style>
 <button id="cy-product-assistant-fab" hidden aria-label="打开产品助手" title="产品助手">✦<span class="cy-pa-fab-label">产品助手</span></button>
 <section id="cy-product-assistant-panel" hidden aria-label="长缨产品助手">
-  <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-collapse" aria-label="收起">−</button><button class="btn" id="cy-pa-close">×</button></div></header>
+  <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-collapse" aria-label="收起">收起</button><button class="btn" id="cy-pa-close" aria-label="关闭">×</button></div></header>
   <div class="cy-pa-tabs"><button class="cy-pa-tab active" data-pa-tab="ask">问产品</button><button class="cy-pa-tab" data-pa-tab="feedback">提反馈</button></div>
   <div class="cy-pa-body" id="cy-pa-ask">
     <div class="cy-pa-quick"><button data-pa-question="我现在该做什么？">下一步做什么</button><button data-pa-question="这个页面是干什么的？">页面用途</button><button data-pa-question="这一步为什么排在这里？">为什么这样走</button></div>
@@ -289,6 +289,12 @@ _ASSISTANT_SNIPPET = r'''
   });
   document.querySelectorAll('.cy-pa-tab').forEach(x=>x.onclick=()=>setTab(x.dataset.paTab));
   document.querySelectorAll('[data-pa-question]').forEach(x=>x.onclick=()=>ask(x.dataset.paQuestion));
+  window.addEventListener('cy:collapse-product-assistant',closePanel);
+  window.addEventListener('cy:open-product-feedback',event=>{
+    openPanel();setTab('feedback');
+    const field=document.getElementById('cy-pa-feedback-text'),step=String(event.detail?.step||'').trim();
+    if(field&&step&&!field.value.trim())field.value='新手教学「'+step+'」：';
+  });
   send.onclick=()=>ask(input.value);
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask(input.value)}});
 
@@ -308,7 +314,7 @@ _ASSISTANT_SNIPPET = r'''
   const identityObserver=new MutationObserver(()=>queueMicrotask(sync));
   if(identityButton)identityObserver.observe(identityButton,{attributes:true,attributeFilter:['hidden']});
   if(identityChip)identityObserver.observe(identityChip,{childList:true,characterData:true,subtree:true});
-  window.addEventListener('pageshow',sync);window.addEventListener('popstate',sync);
+  window.addEventListener('pageshow',()=>{closePanel();sync()});window.addEventListener('popstate',()=>{closePanel();sync()});
   setTimeout(sync,0);setTimeout(sync,300);
 })();
 </script>
