@@ -108,3 +108,21 @@ def test_all_roles_have_actionable_training_pages():
         "admin_set_system",
     ):
         assert action in html
+
+
+def test_workbench_explains_auxiliary_pages_instead_of_falling_back_to_wrong_role_screen():
+    html = training_workbench_html()
+    for text in (
+        "教材、教案和课件",
+        "浏览题库不等于给学生布置任务",
+        "班级排行用于激励",
+        "套餐和功能授权",
+        "AI 服务和学生数据授权边界",
+        "批量导入账号和基础关系",
+        "学习首页只负责汇总今天要做什么",
+        "家长端重点是理解孩子发生了什么",
+    ):
+        assert text in html
+
+    assert "views[step.id]||(()=>auxiliaryPage(step,'教师'" in html
+    assert "adminAuxDetail(step.id)" in html

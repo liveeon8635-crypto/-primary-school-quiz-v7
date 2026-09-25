@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from changying.web.v1_training_sandbox import (
     ROLE_FLOW,
+    ROLE_MENU_PAGE_IDS,
     SCENARIO_PRESETS,
     STEP_RELATIONSHIPS,
     SandboxSession,
@@ -43,7 +44,7 @@ def test_training_routes_are_registered_without_new_schema():
     assert client.get(f"/v1/training-sandbox/{session_id}").status_code == 200
     assert client.post(
         f"/v1/training-sandbox/{session_id}/action",
-        json={"action": "visit_step", "payload": {"step": "purpose", "status": "done"}},
+        json={"action": "visit_step", "payload": {"step": "teacher_dashboard", "status": "done"}},
     ).status_code == 200
     assert client.post(f"/v1/training-sandbox/{session_id}/reset", json={}).status_code == 200
 
@@ -292,3 +293,21 @@ def test_student_can_rewind_answer_step_and_submit_again():
     assert s.data["points"] == []
     apply_training_action(s, "student_submit_self", {"answers": answers})
     assert s.data["submissions"][0]["score"] == 100
+
+
+def test_training_flow_covers_every_visible_role_menu_page():
+    for role, page_ids in ROLE_MENU_PAGE_IDS.items():
+        flow_pages = {step["page"].split("page=", 1)[1] for step in ROLE_FLOW[role] if "page=" in step["page"]}
+        assert set(page_ids).issubset(flow_pages), (role, set(page_ids) - flow_pages)
+
+
+def test_every_training_step_has_role_relationship_context_or_is_core_action():
+    core_actions = {
+        "create_class", "add_student", "student_profile", "paper", "review", "assign",
+        "student_submission", "evidence", "targeted", "class_review", "interactive",
+        "points", "history", "transition", "hub", "answer", "result", "practice",
+        "progress", "rewards", "wrongbook", "users", "classes", "audit", "system",
+    }
+    for role, steps in ROLE_FLOW.items():
+        for step in steps:
+            assert step["id"] in STEP_RELATIONSHIPS or step["id"] in core_actions, (role, step["id"])
