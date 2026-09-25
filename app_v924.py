@@ -22,6 +22,7 @@ from changying.services.assessment_feedback import (
 )
 from changying.services.question_figure_quality import normalize_question_figure
 from changying.security.login_rate import BoundedLoginRateLimiter, LoginRateLimitExceeded
+from changying.security.client_ip import trusted_client_ip
 
 # ---------------- Database ----------------
 BASE = Path(__file__).resolve().parent
@@ -785,8 +786,10 @@ _login_rate_hits={}
 _login_rate_lock=threading.Lock()
 
 def _client_ip(request:Request):
-    forwarded=(request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-    return forwarded or (request.client.host if request.client else "unknown")
+    return trusted_client_ip(
+        request.headers,
+        request.client.host if request.client else None,
+    )
 
 def login_rate_check(request:Request):
     key=_client_ip(request);now=time.time()
@@ -2806,7 +2809,7 @@ _commercial_auth_limiter=BoundedLoginRateLimiter(
 def commercial_operator(request:Request,x_commercial_key:Optional[str]=Header(default=None)):
     if not COMMERCIAL_ADMIN_KEY:
         raise HTTPException(503,"尚未配置 COMMERCIAL_ADMIN_KEY，商业运营控制台暂不可用")
-    client=(request.headers.get("x-forwarded-for") or (request.client.host if request.client else "unknown")).split(",")[0].strip()[:120]
+    client=_client_ip(request)[:120]
     try:
         _commercial_auth_limiter.check(client)
     except LoginRateLimitExceeded:
