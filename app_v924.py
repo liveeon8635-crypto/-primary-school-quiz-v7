@@ -2647,6 +2647,7 @@ LEGAL_PRIVACY_CONTACT=(os.getenv("LEGAL_PRIVACY_CONTACT") or COMMERCIAL_CONTACT)
 LEGAL_EFFECTIVE_DATE=os.getenv("LEGAL_EFFECTIVE_DATE","").strip()
 PRODUCTION_DB_DURABILITY_CONFIRMED=os.getenv("PRODUCTION_DB_DURABILITY_CONFIRMED","0")=="1"
 PRODUCTION_DB_BACKUP_CONFIRMED=os.getenv("PRODUCTION_DB_BACKUP_CONFIRMED","0")=="1"
+PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED=os.getenv("PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED","0")=="1"
 
 COMMERCIAL_PLANS={
     "free":{
@@ -3613,6 +3614,7 @@ def production_readiness_payload(db):
     if _cors_raw=="*":blockers.append("CORS_ORIGINS 不得为 *；正式环境必须同源运行或显式配置可信来源。")
     if not PRODUCTION_DB_DURABILITY_CONFIRMED:blockers.append("生产数据库持久性尚未确认；正式推广前必须使用不会自动到期的生产级数据库方案。")
     if not PRODUCTION_DB_BACKUP_CONFIRMED:blockers.append("生产数据库备份/恢复能力尚未确认；正式推广前必须启用平台级备份并完成至少一次恢复演练。")
+    if not PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED:blockers.append("生产数据库网络边界尚未确认；正式推广前应限制数据库公网访问来源，不应保持 0.0.0.0/0 全网开放。")
     if not COMMERCIAL_CONTACT:advisories.append("COMMERCIAL_CONTACT 尚未配置，建议填写正式售后/续费联系方式。")
     if active_schools and active_admins<active_schools:advisories.append("部分已启用学校可能缺少可用管理员，请在客户正式交付前核对。")
     if unpaid_orders:advisories.append(f"当前有 {unpaid_orders} 笔待收订单，累计待收 ¥{outstanding/100:.2f}。")
@@ -3636,7 +3638,8 @@ def production_readiness_payload(db):
             "loginRateLimit":{"ok":True,"value":f"{LOGIN_RATE_MAX_ATTEMPTS}次/{LOGIN_RATE_WINDOW_SECONDS//60}分钟；最多跟踪 {LOGIN_RATE_MAX_CLIENTS} 个客户端"},
             "cors":{"ok":_cors_raw!="*","value":_cors_raw or "同源限定"},
             "databaseDurability":{"ok":PRODUCTION_DB_DURABILITY_CONFIRMED,"value":"已确认" if PRODUCTION_DB_DURABILITY_CONFIRMED else "未确认"},
-            "databaseBackup":{"ok":PRODUCTION_DB_BACKUP_CONFIRMED,"value":"已确认并演练" if PRODUCTION_DB_BACKUP_CONFIRMED else "未确认"}
+            "databaseBackup":{"ok":PRODUCTION_DB_BACKUP_CONFIRMED,"value":"已确认并演练" if PRODUCTION_DB_BACKUP_CONFIRMED else "未确认"},
+            "databaseNetworkBoundary":{"ok":PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED,"value":"已限制" if PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED else "未确认"}
         },
         "counts":{"schools":school_count,"activeSchools":active_schools,"activeAdmins":active_admins,"unpaidOrders":unpaid_orders,"outstandingYuan":round(outstanding/100,2)},
         "backup":{"commercialExport":True,"databaseBackup":"已确认平台级备份/恢复演练" if PRODUCTION_DB_BACKUP_CONFIRMED else "待确认：必须启用平台级备份/快照并完成恢复演练"},
