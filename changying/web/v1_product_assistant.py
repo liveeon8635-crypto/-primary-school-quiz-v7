@@ -309,8 +309,13 @@ _ASSISTANT_SNIPPET = r'''
   const identityObserver=new MutationObserver(()=>queueMicrotask(sync));
   if(identityButton)identityObserver.observe(identityButton,{attributes:true,attributeFilter:['hidden']});
   if(identityChip)identityObserver.observe(identityChip,{childList:true,characterData:true,subtree:true});
-  window.addEventListener('pageshow',sync);window.addEventListener('popstate',sync);
-  setTimeout(sync,0);setTimeout(sync,300);
+  window.addEventListener('pageshow',sync);window.addEventListener('popstate',sync);window.addEventListener('focus',sync);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
+  let authReadyPoll=null;
+  const syncUntilReady=()=>{sync();if(identityReady()&&authReadyPoll){clearInterval(authReadyPoll);authReadyPoll=null}};
+  authReadyPoll=setInterval(syncUntilReady,400);
+  setTimeout(()=>{if(authReadyPoll){clearInterval(authReadyPoll);authReadyPoll=null}sync()},12000);
+  setTimeout(syncUntilReady,0);setTimeout(syncUntilReady,300);
 })();
 </script>
 '''
