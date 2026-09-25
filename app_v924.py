@@ -3580,6 +3580,33 @@ def startup():
         run_schema_migrations(db)
 
 
+LEGACY_DEMO_USERNAMES=("teacher1","student1","parent1")
+
+def production_demo_identity_status(db):
+    """Detect seeded demo identities that must not survive a public launch."""
+
+    demo_schools=db.scalars(
+        select(School).where(
+            (func.lower(School.code)=="demo") | (School.name=="演示小学")
+        )
+    ).all()
+    demo_school_ids=[row.id for row in demo_schools if row.active]
+    active_demo_users=[]
+    if demo_school_ids:
+        active_demo_users=db.scalars(
+            select(User).where(
+                User.school_id.in_(demo_school_ids),
+                User.username.in_(LEGACY_DEMO_USERNAMES),
+                User.active==True,
+            )
+        ).all()
+    return {
+        "ok":not demo_school_ids and not active_demo_users,
+        "activeDemoSchoolIDs":demo_school_ids,
+        "activeLegacyDemoUsers":[row.username for row in active_demo_users],
+    }
+
+
 def production_semantic_integrity(db):
     """Check live operational relationships without rewriting historical snapshots."""
     stranded=[]
@@ -3639,6 +3666,7 @@ def production_readiness_payload(db):
     required_tables={"schools","users","school_subscriptions","commercial_customers","commercial_operation_logs","commercial_renewals","commercial_orders","commercial_payments","teaching_resources","school_ai_configs","ai_usage_logs","class_point_rules","homework_media","ai_grading_reviews","wrong_question_records","reinforcement_links","learning_evidence_events","schema_migrations"}
     missing_tables=sorted(required_tables-tables)
     semantic=production_semantic_integrity(db)
+    demo_identity=production_demo_identity_status(db)
     blockers=[];advisories=[]
     if db_backend!="PostgreSQL":blockers.append("正式商业环境必须使用托管 PostgreSQL。")
     if len(jwt_secret)<32:blockers.append("JWT_SECRET 未固定或长度不足 32 位。")
@@ -3647,6 +3675,7 @@ def production_readiness_payload(db):
     if not LEGAL_PRIVACY_CONTACT:blockers.append("LEGAL_PRIVACY_CONTACT/COMMERCIAL_CONTACT 未配置；公开推广前必须提供隐私与服务联系渠道。")
     if not LEGAL_EFFECTIVE_DATE:blockers.append("LEGAL_EFFECTIVE_DATE 未配置；公开推广前应标明隐私政策/用户协议生效日期。")
     if demo_seed:blockers.append("ENABLE_DEMO_SEED 必须关闭，避免正式环境自动创建演示账号。")
+    if not demo_identity["ok"]:blockers.append("生产环境仍包含启用的演示学校或默认演示账号；公开推广前必须停用/迁出这些演示身份并建立真实运营学校。")
     if migration_version!=SCHEMA_VERSION:blockers.append(f"数据库迁移版本为 {migration_version or '未知'}，当前要求 {SCHEMA_VERSION}。")
     if missing_tables:blockers.append("缺少关键数据表："+"、".join(missing_tables))
     if _cors_raw=="*":blockers.append("CORS_ORIGINS 不得为 *；正式环境必须同源运行或显式配置可信来源。")
@@ -3669,6 +3698,7 @@ def production_readiness_payload(db):
             "legalEffectiveDate":{"ok":bool(LEGAL_EFFECTIVE_DATE),"value":LEGAL_EFFECTIVE_DATE or "未配置"},
             "schema":{"ok":migration_version==SCHEMA_VERSION,"value":migration_version or "未知"},
             "demoSeed":{"ok":not demo_seed,"value":"已关闭" if not demo_seed else "已开启"},
+            "demoIdentity":{"ok":demo_identity["ok"],"value":"已清理" if demo_identity["ok"] else "仍有演示身份","detail":demo_identity},
             "criticalTables":{"ok":not missing_tables,"value":"完整" if not missing_tables else "缺失 "+"、".join(missing_tables)},
             "securityHeaders":{"ok":True,"value":"CSP/HSTS/Frame/Referrer 已启用"},
             "gzip":{"ok":True,"value":"≥1KB 响应压缩"},
@@ -5138,6 +5168,8 @@ def admin_release_readiness(u:User=Depends(current_user),db:Session=Depends(get_
     demo_seed=os.getenv("ENABLE_DEMO_SEED","0")=="1"
     latest_migration=db.scalar(select(SchemaMigration).order_by(SchemaMigration.applied_at.desc()).limit(1))
     migration_version=latest_migration.version if latest_migration else ""
+    semantic=production_semantic_integrity(db)
+    demo_identity=production_demo_identity_status(db)
 
     blockers=[]
     advisories=[]
@@ -5153,6 +5185,16 @@ def admin_release_readiness(u:User=Depends(current_user),db:Session=Depends(get_
         blockers.append("公开推广前必须配置 LEGAL_EFFECTIVE_DATE。")
     if demo_seed:
         blockers.append("ENABLE_DEMO_SEED 必须关闭，避免正式环境自动创建演示数据。")
+    if not demo_identity["ok"]:
+        blockers.append("生产环境仍包含启用的演示学校或默认演示账号；公开推广前必须清理。")
+    if not PRODUCTION_DB_DURABILITY_CONFIRMED:
+        blockers.append("生产数据库持久性尚未确认。")
+    if not PRODUCTION_DB_BACKUP_CONFIRMED:
+        blockers.append("生产数据库备份/恢复能力尚未确认。")
+    if not PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED:
+        blockers.append("生产数据库网络边界尚未确认。")
+    if not semantic["ok"]:
+        blockers.append(f"存在 {semantic['strandedActiveStudents']} 名启用学生仍归属到已停用教师负责的班级。")
     if migration_version!=SCHEMA_VERSION:
         blockers.append(f"数据库迁移版本为 {migration_version or '未知'}，当前应用要求 {SCHEMA_VERSION}。")
     if _cors_raw=="*":
@@ -5182,6 +5224,11 @@ def admin_release_readiness(u:User=Depends(current_user),db:Session=Depends(get_
             "legalEffectiveDate":{"ok":bool(LEGAL_EFFECTIVE_DATE),"value":LEGAL_EFFECTIVE_DATE or "未配置"},
             "schemaMigration":{"ok":migration_version==SCHEMA_VERSION,"value":migration_version or "未知"},
             "demoSeed":{"ok":not demo_seed,"value":"已关闭" if not demo_seed else "已开启"},
+            "demoIdentity":{"ok":demo_identity["ok"],"value":"已清理" if demo_identity["ok"] else "仍有演示身份","detail":demo_identity},
+            "databaseDurability":{"ok":PRODUCTION_DB_DURABILITY_CONFIRMED,"value":"已确认" if PRODUCTION_DB_DURABILITY_CONFIRMED else "未确认"},
+            "databaseBackup":{"ok":PRODUCTION_DB_BACKUP_CONFIRMED,"value":"已确认并演练" if PRODUCTION_DB_BACKUP_CONFIRMED else "未确认"},
+            "databaseNetworkBoundary":{"ok":PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED,"value":"已限制" if PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED else "未确认"},
+            "semanticIntegrity":{"ok":semantic["ok"],"value":"完整" if semantic["ok"] else f"{semantic['strandedActiveStudents']} 名启用学生处于停用教师班级","detail":semantic},
             "securityHeaders":{"ok":True,"value":"CSP/HSTS/Frame/Referrer 已启用"},
             "gzip":{"ok":True,"value":"≥1KB 响应压缩"},
             "requestTracing":{"ok":True,"value":"X-Request-ID + Server-Timing"},
@@ -5201,6 +5248,8 @@ def admin_stability_check(u:User=Depends(current_user),db:Session=Depends(get_db
     demo_seed=os.getenv("ENABLE_DEMO_SEED","0")=="1"
     latest=db.scalar(select(SchemaMigration).order_by(SchemaMigration.applied_at.desc()).limit(1))
     migration_version=latest.version if latest else ""
+    semantic=production_semantic_integrity(db)
+    demo_identity=production_demo_identity_status(db)
     tables=set(sa_inspect(engine).get_table_names())
     required={
         "schools","users","user_security","classes","class_students","questions","papers","assignments","submissions",
@@ -5233,6 +5282,11 @@ def admin_stability_check(u:User=Depends(current_user),db:Session=Depends(get_db
     if not LEGAL_OPERATOR_NAME or not LEGAL_PRIVACY_CONTACT or not LEGAL_EFFECTIVE_DATE:
         blockers.append("公开推广法律标识尚未完整配置（运营主体、联系渠道、生效日期）。")
     if demo_seed:blockers.append("ENABLE_DEMO_SEED 必须关闭。")
+    if not demo_identity["ok"]:blockers.append("生产环境仍包含启用的演示学校或默认演示账号。")
+    if not PRODUCTION_DB_DURABILITY_CONFIRMED:blockers.append("生产数据库持久性尚未确认。")
+    if not PRODUCTION_DB_BACKUP_CONFIRMED:blockers.append("生产数据库备份/恢复能力尚未确认。")
+    if not PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED:blockers.append("生产数据库网络边界尚未确认。")
+    if not semantic["ok"]:blockers.append(f"存在 {semantic['strandedActiveStudents']} 名启用学生仍归属到已停用教师负责的班级。")
     if migration_version!=SCHEMA_VERSION:blockers.append(f"数据库迁移版本 {migration_version or '未知'} 与要求 {SCHEMA_VERSION} 不一致。")
     if missing:blockers.append("缺少关键数据表："+"、".join(missing))
     if _cors_raw=="*":blockers.append("CORS_ORIGINS 不得为 *；正式环境必须同源运行或显式配置可信来源。")
@@ -5248,6 +5302,11 @@ def admin_stability_check(u:User=Depends(current_user),db:Session=Depends(get_db
             "jwtSecret":{"ok":len(jwt_secret)>=32,"value":"已固定" if len(jwt_secret)>=32 else "未固定/过短"},
             "schema":{"ok":migration_version==SCHEMA_VERSION,"value":migration_version or "未知"},
             "demoSeed":{"ok":not demo_seed,"value":"已关闭" if not demo_seed else "已开启"},
+            "demoIdentity":{"ok":demo_identity["ok"],"value":"已清理" if demo_identity["ok"] else "仍有演示身份","detail":demo_identity},
+            "databaseDurability":{"ok":PRODUCTION_DB_DURABILITY_CONFIRMED,"value":"已确认" if PRODUCTION_DB_DURABILITY_CONFIRMED else "未确认"},
+            "databaseBackup":{"ok":PRODUCTION_DB_BACKUP_CONFIRMED,"value":"已确认并演练" if PRODUCTION_DB_BACKUP_CONFIRMED else "未确认"},
+            "databaseNetworkBoundary":{"ok":PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED,"value":"已限制" if PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED else "未确认"},
+            "semanticIntegrity":{"ok":semantic["ok"],"value":"完整" if semantic["ok"] else f"{semantic['strandedActiveStudents']} 名启用学生处于停用教师班级","detail":semantic},
             "coreTables":{"ok":not missing,"value":"完整" if not missing else "缺失 "+str(len(missing))+" 张"},
             "securityHeaders":{"ok":True,"value":"CSP/HSTS/Frame/Referrer 已启用"},
             "gzip":{"ok":True,"value":"≥1KB 响应压缩"},
