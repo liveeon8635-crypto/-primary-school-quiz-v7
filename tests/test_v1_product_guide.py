@@ -1,7 +1,11 @@
 from fastapi.testclient import TestClient
 
 from app import app
-from changying.web.v1_product_guide import GUIDE_PATH, V1_PRODUCT_GUIDE_MARKER
+from changying.web.v1_product_guide import (
+    CLASSIC_GUIDE_RESUME_MARKER,
+    GUIDE_PATH,
+    V1_PRODUCT_GUIDE_MARKER,
+)
 
 
 def rendered_guide() -> str:
@@ -11,7 +15,7 @@ def rendered_guide() -> str:
 
 
 def tutorial_script(html: str) -> str:
-    start = html.index('id="changying_v1_product_guide_v4-script"')
+    start = html.index('id="changying_v1_product_guide_v5-script"')
     end = html.index("</script>", start)
     return html[start:end]
 
@@ -27,123 +31,123 @@ def test_role_tutorial_is_hidden_until_login_and_identity_selection():
     assert "tutorialButton.hidden=!ready" in script
 
 
-def test_login_page_is_not_replaced_by_pre_auth_tutorial():
-    html = rendered_guide()
-    script = tutorial_script(html)
+def test_generic_teacher_identity_from_real_ui_is_recognized():
+    script = tutorial_script(rendered_guide())
 
-    assert "体验虚拟演示账号" not in script
-    assert "loginDemo" not in script
-    assert "showHub(" not in script
-
-
-def test_tutorial_maps_authenticated_identity_to_its_own_role_flow():
-    html = rendered_guide()
-    script = tutorial_script(html)
-
-    for mapping in (
-        "学校教师",
-        "机构老师",
-        "学校管理员",
-        "机构管理员",
-        "家长",
-        "学生",
-    ):
-        assert mapping in script
-
-    for persona_id in (
-        "school_teacher",
-        "institution_teacher",
-        "school_admin",
-        "institution_admin",
-        "parent",
-        "student",
-    ):
-        assert persona_id in script
-
-    assert "showCurrentIntro({firstVisit:true})" in script
-    assert "startPersona(persona.id)" in script
+    assert "label.includes('教师')||label.includes('老师')" in script
+    assert "label.includes('管理员')" in script
+    assert "institution_teacher" in script
+    assert "institution_admin" in script
 
 
-def test_tutorial_is_sequential_not_a_free_step_picker():
-    html = rendered_guide()
-    script = tutorial_script(html)
+def test_onboarding_is_bound_to_each_real_login_token_not_only_role():
+    script = tutorial_script(rendered_guide())
 
-    assert "步骤路线仅用于查看进度，系统会按顺序引导" in html
-    assert 'data-step-index' not in script
-    assert "cy-step-item" in script
-    assert "完成本步并继续" in html
-    assert "跳过本步" in html
-    assert "上一步" in html
-    assert "退出并保存" in html
+    assert "SESSION_SHOWN_KEY='cyV1RoleTutorialShownThisLoginV7'" in script
+    assert "const authToken=()" in script
+    assert "const loginMarker=()=>currentPersonaId()+':'+authToken().slice(-24)" in script
+    assert "if(sessionShownFor()!==loginMarker())" in script
+    assert "markSessionShown()" in script
 
 
-def test_teacher_tutorial_covers_full_learning_and_classroom_loop():
+def test_teacher_tutorial_starts_with_product_value_then_real_setup_workflow():
     html = rendered_guide()
 
     for label in (
-        "进入当前教学",
-        "打开学生连续档案",
-        "生成综合测试",
-        "审核并布置",
-        "查看学生提交",
-        "生成针对性练习",
-        "生成课堂复盘讲义",
-        "开展互动课堂",
-        "查看积分与课堂评价",
-        "查询往期教学",
-        "处理升年级衔接",
-        "认识全部功能中心",
+        "先认识长缨解决什么问题",
+        "建立第一个班级",
+        "添加学生账号并加入班级",
+        "按需绑定家长",
+        "准备教材与教学资料",
+        "准备题目：题库或 AI 出题",
+        "组卷并布置作业",
+        "理解学生实际会经历什么",
+        "查看提交、错题和学情反馈",
+        "生成并审核 AI 针对性练习",
+        "把练习反馈带回课堂",
+        "理解积分与教师评价",
+        "学会回看往期教学",
+        "处理升年级与升学衔接",
+        "学会边用边反馈",
     ):
         assert label in html
 
+    for route in (
+        "/v1/tool?page=classes",
+        "/v1/tool?page=resources",
+        "/v1/tool?page=ai",
+        "/v1/tool?page=papers",
+        "/v1/tool?page=classPoints",
+        "/v1/student",
+        "/v1/history",
+        "/v1/transition",
+    ):
+        assert route in html
 
-def test_student_parent_and_admin_tutorials_cover_role_specific_workflows():
+
+def test_student_parent_and_admin_tutorials_are_role_specific_and_actionable():
     html = rendered_guide()
 
     for label in (
-        "平台总览",
-        "账号管理",
-        "积分奖励规则",
-        "全校审计",
-        "系统设置",
-        "进入课堂",
-        "查看作业",
-        "逐题作答",
-        "提交与查看结果",
-        "做针对性练习",
-        "查看学情",
-        "查看积分与表现",
+        "建立教师/家长等账号",
+        "建立班级与教学归属",
+        "按需配置 AI 能力",
+        "学会用审计追溯操作",
+        "先认识学生端是做什么的",
+        "逐题作答并检查输入方式",
+        "使用错题本",
+        "查看长期学情",
+        "先认识家长端能做什么",
         "查看孩子课程",
         "查看孩子作业",
         "查看孩子学情",
-        "查看课堂表现",
-        "我的与账号",
+        "检查自己的账号与关联",
     ):
         assert label in html
 
 
-def test_every_step_can_be_done_or_skipped_and_progress_resumes_per_identity():
+def test_live_coaching_can_jump_to_real_feature_and_resume_later():
+    html = rendered_guide()
+    script = tutorial_script(html)
+
+    assert "边用边学" in html
+    assert "去真实页面边用边学 →" in script
+    assert "location.href=liveRoute" in script
+    assert "ACTIVE_PERSONA_KEY='cyV1RoleTutorialActivePersonaV5'" in script
+    assert "tutorial=1" in script
+    assert "new URLSearchParams(location.search).get('resume')==='1'" in script
+    assert "queueMicrotask(()=>startPersona(persona.id))" in script
+
+
+def test_every_step_can_be_done_skipped_and_revisited():
     html = rendered_guide()
     script = tutorial_script(html)
 
     assert "s.status[stepId]='done'" in script
     assert "s.status[stepId]='skipped'" in script
-    assert "localStorage.setItem(STATE_KEY" in script
-    assert "localStorage.getItem(STATE_KEY)" in script
+    assert "暂时跳过" in html
+    assert "我已理解/完成，继续" in html
+    assert "上一步" in html
+    assert "退出并保存" in html
     assert "firstIncomplete" in script
-    assert "seenKey=id=>'cyV1RoleTutorialSeenV4:'+id" in script
+    assert "localStorage.setItem(STATE_KEY" in script
     assert "重新开始本身份教学" in html
 
 
-def test_demo_actions_remain_virtual_and_do_not_write_business_data():
+def test_tutorial_feedback_opens_product_assistant_with_current_step():
+    script = tutorial_script(rendered_guide())
+
+    assert "cy:open-product-feedback" in script
+    assert "detail:{step:step[1]}" in script
+    assert "这一步不清楚 / 提建议" in script
+
+
+def test_tutorial_never_writes_business_data_itself():
     html = rendered_guide()
     script = tutorial_script(html)
 
-    assert "这一关你要做" in html
-    assert "演示操作已完成 ✓" in html
-    assert "虚拟演示 · " in html
-    assert "以下均为演示数据" in html
-    assert "0 条真实业务写入" in html
+    assert "教学本身不自动写业务数据" in html
+    assert "是否保存真实数据由你自己决定" in html
     assert "method:'POST'" not in script
     assert "method:'PUT'" not in script
     assert "method:'DELETE'" not in script
@@ -151,22 +155,19 @@ def test_demo_actions_remain_virtual_and_do_not_write_business_data():
 
 
 def test_guide_screen_observer_is_idempotent_on_v1_guide():
-    html = rendered_guide()
-    script = tutorial_script(html)
+    script = tutorial_script(rendered_guide())
 
-    assert 'data-guide-version="v6"' in script
-    assert "existing?.dataset?.guideVersion==='v6'" in script
-    assert "screen.querySelector('#cy-v1-product-guide-page[data-guide-version=\"v6\"]')" in script
+    assert 'data-guide-version="v7"' in script
+    assert "existing?.dataset?.guideVersion==='v7'" in script
+    assert "screen.querySelector('#cy-v1-product-guide-page[data-guide-version=\"v7\"]')" in script
     assert "if(location.pathname!=='/v1/guide')return" in script
 
 
-def test_onboarding_reacts_to_post_login_identity_selection_and_shows_once_per_login_session():
-    html = rendered_guide()
-    script = tutorial_script(html)
+def test_all_functions_runtime_has_resume_entry_for_learning_by_doing():
+    client = TestClient(app)
+    response = client.get("/classic?legacy=1&unified=1&from=v1&page=classes")
 
-    assert "SESSION_SHOWN_KEY='cyV1RoleTutorialShownThisLoginV6'" in script
-    assert "if(!ready){clearSessionShown();return}" in script
-    assert "if(sessionShownFor()!==persona.id)" in script
-    assert "markSessionShown(persona.id)" in script
-    assert "identityObserver.observe(identityButton" in script
-    assert "identityObserver.observe(identityChip" in script
+    assert response.status_code == 200
+    assert CLASSIC_GUIDE_RESUME_MARKER in response.text
+    assert 'id="cy-live-guide-resume"' in response.text
+    assert '/v1/guide?resume=1' in response.text
