@@ -81,3 +81,18 @@ def test_feedback_bridge_uses_short_lived_proof_and_shows_sync_state():
     assert "freemanSynced" in html
     assert "已同步到 Freeman" in html
     assert "Freeman 同步待确认" in html
+
+
+def test_product_assistant_fab_is_compact_collapsible_and_feedback_is_quick():
+    html = rendered_v1()
+
+    assert 'width:48px;height:48px' in html
+    assert 'width:44px;height:44px' in html
+    assert 'id="cy-pa-collapse"' in html
+    assert "fab.onclick=()=>panel.hidden?openPanel():closePanel()" in html
+    assert "document.getElementById('cy-pa-collapse').onclick=closePanel" in html
+    assert 'data-pa-category="这里不好懂"' in html
+    assert 'data-pa-category="没找到入口"' in html
+    assert 'data-pa-category="流程不直观"' in html
+    assert 'placeholder="一句话描述问题或建议' in html
+    assert "cleanReplyText" in html
