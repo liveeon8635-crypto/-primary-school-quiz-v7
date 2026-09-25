@@ -223,7 +223,7 @@ _ASSISTANT_SNIPPET = r'''
 </style>
 <button id="cy-product-assistant-fab" hidden aria-label="打开产品助手" title="产品助手">✦<span class="cy-pa-fab-label">产品助手</span></button>
 <section id="cy-product-assistant-panel" hidden aria-label="长缨产品助手">
-  <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-collapse" aria-label="收起">−</button><button class="btn" id="cy-pa-close">×</button></div></header>
+  <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-collapse" aria-label="收起">−</button></div></header>
   <div class="cy-pa-tabs"><button class="cy-pa-tab active" data-pa-tab="ask">问产品</button><button class="cy-pa-tab" data-pa-tab="feedback">提反馈</button></div>
   <div class="cy-pa-body" id="cy-pa-ask">
     <div class="cy-pa-quick"><button data-pa-question="我现在该做什么？">下一步做什么</button><button data-pa-question="这个页面是干什么的？">页面用途</button><button data-pa-question="这一步为什么排在这里？">为什么这样走</button></div>
@@ -355,7 +355,6 @@ _ASSISTANT_SNIPPET = r'''
   const closePanel=()=>{panel.hidden=true;fab.hidden=!identityReady();fab.setAttribute('aria-label','打开产品助手')};
   const openPanel=()=>{if(!identityReady())return;panel.hidden=false;fab.hidden=true;fab.setAttribute('aria-label','收起产品助手');updateContext();renderGuideGrid()};
   fab.onclick=()=>panel.hidden?openPanel():closePanel();
-  document.getElementById('cy-pa-close').onclick=closePanel;
   document.getElementById('cy-pa-collapse').onclick=closePanel;
   document.querySelectorAll('[data-pa-category]').forEach(btn=>btn.onclick=()=>{
     document.querySelectorAll('[data-pa-category]').forEach(x=>x.classList.toggle('active',x===btn));
