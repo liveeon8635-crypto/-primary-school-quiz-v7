@@ -257,6 +257,9 @@ _GUIDE_SNIPPET = r'''
     if(event.target?.id==='loginForm')resetAutoPromptForLogin();
   },true);
   if(tutorialButton)tutorialButton.onclick=()=>showCurrentIntro();
+  const identityObserver=new MutationObserver(()=>queueMicrotask(sync));
+  if(identityButton)identityObserver.observe(identityButton,{attributes:true,attributeFilter:['hidden']});
+  if(identityChip)identityObserver.observe(identityChip,{childList:true,characterData:true,subtree:true});
   if(screen){
     const guideObserver=new MutationObserver(()=>{
       if(location.pathname!=='/v1/guide')return;
