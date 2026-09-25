@@ -148,3 +148,13 @@ def test_demo_actions_remain_virtual_and_do_not_write_business_data():
     assert "method:'PUT'" not in script
     assert "method:'DELETE'" not in script
     assert "fetch(" not in script
+
+
+def test_guide_screen_observer_is_idempotent_on_v1_guide():
+    html = rendered_guide()
+    script = tutorial_script(html)
+
+    assert 'data-guide-version="v5"' in script
+    assert "existing?.dataset?.guideVersion==='v5'" in script
+    assert "screen.querySelector('#cy-v1-product-guide-page[data-guide-version=\"v5\"]')" in script
+    assert "if(location.pathname!=='/v1/guide')return" in script
