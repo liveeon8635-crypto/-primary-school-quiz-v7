@@ -115,7 +115,7 @@ def test_workbench_explains_auxiliary_pages_instead_of_falling_back_to_wrong_rol
     for text in (
         "教材、教案和课件",
         "浏览题库不等于给学生布置任务",
-        "排行榜用于激励",
+        "班级排行用于激励",
         "套餐和功能授权",
         "AI 服务和学生数据授权边界",
         "批量导入账号和基础关系",
