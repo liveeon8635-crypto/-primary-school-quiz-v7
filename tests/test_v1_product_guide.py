@@ -129,3 +129,20 @@ def test_generic_identity_labels_still_map_and_assistant_yields_to_onboarding():
     assert "label.includes('教师')||label.includes('老师')" in script
     assert "label.includes('管理员')" in script
     assert "assistantPanel.hidden=true" in script
+
+
+def test_product_guide_inline_script_parses_in_node(tmp_path):
+    import subprocess
+
+    html = rendered_guide()
+    script = tutorial_script(html)
+    script_text = script.split(">", 1)[1]
+    js = tmp_path / "product-guide.js"
+    js.write_text(script_text, encoding="utf-8")
+    checked = subprocess.run(
+        ["node", "--check", str(js)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert checked.returncode == 0, checked.stderr
