@@ -35,6 +35,12 @@ class ProductAssistantBody(BaseModel):
     identity: str = Field(default="", max_length=160)
     tutorial_step: str = Field(default="", max_length=200)
     child_id: int | None = None
+    active_assessment: bool = False
+    active_question_text: str = Field(default="", max_length=1600)
+    active_question_options: list[str] = Field(default_factory=list, max_length=8)
+    active_question_meta: str = Field(default="", max_length=500)
+    active_question_position: str = Field(default="", max_length=80)
+    active_question_response: str = Field(default="", max_length=600)
 
 
 class ProductFeedbackBody(BaseModel):
@@ -77,7 +83,11 @@ _PRODUCT_CONTEXT = """你是“长缨辅学”的站内学习与产品助手。�
 """
 
 
-def _student_direct_answer_request(question: str, page: str = "") -> bool:
+def _student_direct_answer_request(
+    question: str,
+    page: str = "",
+    active_assessment: bool = False,
+) -> bool:
     text = (question or "").strip().lower()
     if any(
         k in text
@@ -93,11 +103,33 @@ def _student_direct_answer_request(question: str, page: str = "") -> bool:
         )
     ):
         return True
-    in_assessment = any(k in (page or "") for k in ("assignments", "practice", "quiz", "assessment", "test"))
+    in_assessment = bool(active_assessment) or any(k in (page or "") for k in ("assignments", "practice", "quiz", "assessment", "test"))
     academic_hint = in_assessment or any(k in text for k in ("这题", "题目", "作业", "练习", "测验", "考试", "选择题"))
     if academic_hint and any(k in text for k in ("选哪个", "应该选哪个", "第几项")):
         return True
     return in_assessment and any(k in text for k in ("答案", "直接算出", "直接做完", "告诉我结果"))
+
+
+def _active_question_context(body: ProductAssistantBody) -> str:
+    if not body.active_question_text.strip():
+        return "当前没有检测到正在作答的题目。"
+    options = [
+        str(item).strip()
+        for item in body.active_question_options[:8]
+        if str(item).strip()
+    ]
+    option_text = "；".join(options) if options else "无可见选项"
+    response = body.active_question_response.strip() or "学生尚未填写/选择"
+    position = body.active_question_position.strip() or "当前题"
+    meta = body.active_question_meta.strip() or "无额外题目信息"
+    return (
+        "当前正在作答上下文（只包含学生屏幕当前可见信息，不含正确答案或解析）："
+        f"位置={position}；题干={body.active_question_text.strip()}；"
+        f"可见选项={option_text}；题目信息={meta}；学生当前输入/选择={response}。"
+        "如果仍在提交前，不得确认、暗示或排除某个选项是否正确，也不得给出最终数值结果。"
+        "可以帮助识别已知条件、解释概念、指出第一步、给相似例子或检查方法。"
+        "如果学生只说“这题不会/帮我看看”，直接基于这道当前题帮助，不要要求他重新粘贴题目。"
+    )
 
 
 def _assignment_counts(implementation: ModuleType, db, student_id: int, school_id: int) -> tuple[int, int]:
@@ -314,16 +346,28 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             body.child_id,
             question,
         )
-        if role == "student" and _student_direct_answer_request(question, body.page):
+        active_question_context = (
+            _active_question_context(body)
+            if role == "student"
+            else "当前角色不读取学生答题中的临时题目上下文。"
+        )
+        if role == "student" and _student_direct_answer_request(
+            question,
+            body.page,
+            body.active_assessment,
+        ):
             return {
                 "ok": True,
-                "reply": _local_answer(
-                    question,
-                    body.identity,
-                    body.page,
-                    body.tutorial_step,
-                    role=role,
-                    learning_context=learning_context,
+                "reply": (
+                    ("我已经关联到你当前正在做的这题。 " if body.active_question_text.strip() else "")
+                    + _local_answer(
+                        question,
+                        body.identity,
+                        body.page,
+                        body.tutorial_step,
+                        role=role,
+                        learning_context=learning_context,
+                    )
                 ),
                 "source": "learning_guard",
                 "degraded": False,
@@ -334,6 +378,8 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             + f"账号角色={role}; 身份={body.identity}; 页面={body.page}; 新手步骤={body.tutorial_step or '无'}。"
             + "\n角色内学习数据："
             + learning_context
+            + "\n当前作答题目："
+            + active_question_context
             + "\n用户问题："
             + question
         )
@@ -502,11 +548,30 @@ _ASSISTANT_SNIPPET = r'''
   const identityReady=()=>Boolean(readToken()&&(identityChipReady()||identityButtonReady()));
   const tutorialStep=()=>document.querySelector('.cy-lesson-top h2')?.textContent?.trim()||'';
   const selectedChildID=()=>{try{return typeof state!=='undefined'&&state?.childID?Number(state.childID):null}catch{return null}};
-  const context=()=>{const chip=getIdentityChip();return {page:location.pathname+location.search,identity:String(chip?.textContent||'').trim(),tutorial_step:tutorialStep(),child_id:selectedChildID()}};
+  const currentQuestionContext=()=>{
+    const page=document.getElementById('page'),question=page?.querySelector('.question'),next=page?.querySelector('#quizNext');
+    if(!question||!next)return {active_assessment:false,active_question_text:'',active_question_options:[],active_question_meta:'',active_question_position:'',active_question_response:''};
+    const options=[...page.querySelectorAll('.option')].map(x=>String(x.textContent||'').trim()).filter(Boolean).slice(0,8);
+    const selected=page.querySelector('.option.selected');
+    const textInput=page.querySelector('#quizTextAnswer');
+    const response=selected?String(selected.textContent||'').trim():(textInput?String(textInput.value||'').trim():'');
+    const badges=[...page.querySelectorAll('.badge')].map(x=>String(x.textContent||'').trim()).filter(Boolean).slice(0,4);
+    const pageText=String(page.innerText||'');
+    const pos=pageText.match(/第\s*\d+\s*\/\s*\d+\s*题/)?.[0]||'当前题';
+    return {
+      active_assessment:true,
+      active_question_text:String(question.textContent||'').trim().slice(0,1600),
+      active_question_options:options,
+      active_question_meta:badges.join(' · ').slice(0,500),
+      active_question_position:pos,
+      active_question_response:response.slice(0,600)
+    };
+  };
+  const context=()=>{const chip=getIdentityChip();return {page:location.pathname+location.search,identity:String(chip?.textContent||'').trim(),tutorial_step:tutorialStep(),child_id:selectedChildID(),...currentQuestionContext()}};
   const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const cleanReplyText=text=>String(text||'').replace(/\*\*/g,'').replace(/\`/g,'').replace(/^#{1,4}\s*/gm,'').trim();
   const addMessage=(kind,text)=>{const el=document.createElement('div');el.className='cy-pa-msg '+kind;el.textContent=kind==='assistant'?cleanReplyText(text):text;chat.appendChild(el);chat.scrollTop=chat.scrollHeight};
-  const updateContext=()=>{const c=context();document.getElementById('cy-pa-context').textContent=(c.identity||'当前身份')+' · '+c.page+(c.tutorial_step?' · '+c.tutorial_step:'')};
+  const updateContext=()=>{const c=context();document.getElementById('cy-pa-context').textContent=(c.identity||'当前身份')+' · '+c.page+(c.tutorial_step?' · '+c.tutorial_step:'')+(c.active_assessment?' · 已关联当前题目':'')};
   const GUIDE_SETS={
     teacher:[
       {id:'workspace',title:'当前教学',href:'/v1/workspace',icon:'▦',hint:'当前班级、课程、学生与待办',keywords:'当前教学 工作台 班级 课程 待办 晚托 周末课'},
@@ -583,6 +648,15 @@ _ASSISTANT_SNIPPET = r'''
     const c=context(),role=guideRole(c.identity),cfg=ROLE_COPY[role]||ROLE_COPY.teacher;
     const tab=document.getElementById('cy-pa-ask-tab'),welcome=document.getElementById('cy-pa-welcome');
     if(tab)tab.textContent=cfg.tab;
+    if(role==='student'&&c.active_assessment){
+      if(welcome)welcome.textContent='我已经关联到你正在做的当前题目，只读取你屏幕上能看到的题干、选项和你自己的输入，不读取正确答案或解析。你可以直接问“这题怎么想”。';
+      input.placeholder='直接问：这题我哪里没想明白？';
+      const btn1=document.getElementById('cy-pa-quick-1'),btn2=document.getElementById('cy-pa-quick-2'),btn3=document.getElementById('cy-pa-quick-3');
+      if(btn1){btn1.textContent='帮我看当前题';btn1.dataset.paQuestion='我不会做当前这题，先别告诉我答案，帮我找出已知条件和第一步。'}
+      if(btn2){btn2.textContent='给我一个提示';btn2.dataset.paQuestion='针对当前这题只给我一条提示，不要给答案。'}
+      if(btn3){btn3.textContent='画个简图';btn3.dataset.paQuestion='如果这题适合用简化图示理解，请告诉我应该画什么图，并先用文字解释图里的关系。'}
+      return;
+    }
     if(welcome)welcome.textContent=cfg.welcome;
     input.placeholder=cfg.placeholder;
     cfg.quick.forEach((item,i)=>{const btn=document.getElementById('cy-pa-quick-'+(i+1));if(btn){btn.textContent=item[0];btn.dataset.paQuestion=item[1]}});

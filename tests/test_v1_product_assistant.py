@@ -6,7 +6,9 @@ from changying.web.v1_product_assistant import (
     FEEDBACK_PROOF_PREFIX,
     QUERY_PATH,
     V1_PRODUCT_ASSISTANT_MARKER,
+    ProductAssistantBody,
     _PRODUCT_CONTEXT,
+    _active_question_context,
     _local_answer,
     _student_direct_answer_request,
 )
@@ -258,3 +260,71 @@ def test_assistant_sends_selected_child_context_without_exposing_answer_keys():
     assert "ROLE_COPY={" in html
     assert "applyRoleCopy()" in html
     assert "不包含任何题目标准答案" not in html  # server-only context must not be exposed in client markup
+
+
+def test_student_assistant_detects_the_current_visible_quiz_question():
+    html = rendered_v1()
+
+    assert "const currentQuestionContext=()=>{" in html
+    assert "page?.querySelector('.question')" in html
+    assert "page?.querySelector('#quizNext')" in html
+    assert "active_assessment:true" in html
+    assert "active_question_text:String(question.textContent||'').trim().slice(0,1600)" in html
+    assert "active_question_options:options" in html
+    assert "active_question_response:response.slice(0,600)" in html
+    assert "已关联当前题目" in html
+
+
+def test_student_assistant_current_question_ui_becomes_contextual():
+    html = rendered_v1()
+
+    assert "帮我看当前题" in html
+    assert "针对当前这题只给我一条提示，不要给答案。" in html
+    assert "画个简图" in html
+    assert "我已经关联到你正在做的当前题目" in html
+    assert "不读取正确答案或解析" in html
+
+
+def test_active_question_context_contains_only_student_visible_fields():
+    body = ProductAssistantBody(
+        question="这题怎么想？",
+        page="/v1/tool?page=assignments",
+        identity="小明 · 学生",
+        active_assessment=True,
+        active_question_text="一根绳子长12米，用去1/3，还剩多少米？",
+        active_question_options=["A. 4米", "B. 8米", "C. 9米", "D. 11米"],
+        active_question_meta="数学 · 分数应用",
+        active_question_position="第 2/5 题",
+        active_question_response="B. 8米",
+    )
+    value = _active_question_context(body)
+
+    assert "一根绳子长12米" in value
+    assert "B. 8米" in value
+    assert "第 2/5 题" in value
+    assert "不含正确答案或解析" in value
+    assert "不得确认、暗示或排除某个选项是否正确" in value
+
+
+def test_direct_answer_guard_treats_active_quiz_as_assessment_even_without_page_hint():
+    assert _student_direct_answer_request(
+        "告诉我结果",
+        "/v1/tool",
+        active_assessment=True,
+    )
+    assert not _student_direct_answer_request(
+        "帮我找出这题的已知条件",
+        "/v1/tool",
+        active_assessment=True,
+    )
+
+
+def test_current_question_dom_capture_does_not_read_answer_keys():
+    html = rendered_v1()
+    start = html.index("const currentQuestionContext=()=>{")
+    end = html.index("const context=()=>", start)
+    snippet = html[start:end]
+
+    assert "correctIndex" not in snippet
+    assert "explanation" not in snippet
+    assert "correctAnswer" not in snippet
