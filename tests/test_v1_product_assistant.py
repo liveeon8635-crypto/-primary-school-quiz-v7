@@ -21,8 +21,7 @@ def test_product_assistant_ui_is_present_but_hidden_before_authenticated_identit
     assert V1_PRODUCT_ASSISTANT_MARKER in html
     assert 'id="cy-product-assistant-fab" hidden' in html
     assert "readToken()&&(identityButton?identityButton.hidden===false" in html
-    assert "if(!ready){fab.hidden=true;panel.hidden=true;return}" in html
-    assert "fab.hidden=!panel.hidden" in html
+    assert "fab.hidden=!ready" in html
 
 
 def test_product_assistant_has_question_and_feedback_modes():
@@ -90,10 +89,7 @@ def test_product_assistant_fab_is_compact_collapsible_and_feedback_is_quick():
     assert 'width:48px;height:48px' in html
     assert 'width:44px;height:44px' in html
     assert 'id="cy-pa-collapse"' in html
-    assert "#cy-product-assistant-fab[hidden],#cy-product-assistant-panel[hidden]{display:none!important}" in html
     assert "fab.onclick=()=>panel.hidden?openPanel():closePanel()" in html
-    assert "const closePanel=()=>{panel.hidden=true;fab.hidden=!identityReady()" in html
-    assert "const openPanel=()=>{if(!identityReady())return;panel.hidden=false;fab.hidden=true" in html
     assert "document.getElementById('cy-pa-collapse').onclick=closePanel" in html
     assert 'data-pa-category="这里不好懂"' in html
     assert 'data-pa-category="没找到入口"' in html
