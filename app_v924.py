@@ -8183,10 +8183,7 @@ def icon_192():return Response(ICON_192_PNG,media_type="image/png",headers={"Cac
 @app.get("/icon-512.png")
 def icon_512():return Response(ICON_512_PNG,media_type="image/png",headers={"Cache-Control":"public, max-age=86400"})
 
-@app.get("/sw.js")
-def service_worker():
-    return Response(
-        SERVICE_WORKER,
+RETIRED_SERVICE_WORKER = r"""\nself.addEventListener("install", event => { self.skipWaiting(); });\nself.addEventListener("activate", event => {\n  event.waitUntil((async () => {\n    const keys = await caches.keys();\n    await Promise.all(keys.filter(key => key.startsWith("changying-fuxue-")).map(key => caches.delete(key)));\n    await self.registration.unregister();\n  })());\n});\n"""\n\n@app.get("/sw.js")\ndef service_worker():\n    return Response(\n        RETIRED_SERVICE_WORKER,
         media_type="application/javascript",
         headers={
             "Cache-Control":"no-store, no-cache, must-revalidate, max-age=0",
