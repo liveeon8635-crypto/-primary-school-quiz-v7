@@ -8,6 +8,7 @@ recorded through the existing audit log so no new schema is required.
 from __future__ import annotations
 
 import json
+import re
 import secrets
 from datetime import datetime, timedelta
 from types import ModuleType
@@ -82,6 +83,23 @@ _PRODUCT_CONTEXT = """你是“长缨辅学”的站内学习与产品助手。�
 - 保持产品与工作流导向，优先解释功能、数据来源、操作边界和下一步入口。
 """
 
+
+def _clean_assistant_reply(value: str) -> str:
+    text = str(value or "")
+    text = text.replace("\\r\\n", "\\n").replace("\\r", "\\n")
+    text = text.replace("\\u200b", "").replace("\\ufeff", "").replace("\\ufffd", "")
+    text = re.sub(r"```[A-Za-z0-9_-]*\\s*", "", text)
+    text = text.replace("```", "")
+    text = re.sub(r"(?m)^\\s{0,3}#{1,6}\\s*", "", text)
+    text = re.sub(r"\\*\\*(.*?)\\*\\*", r"\\1", text)
+    text = re.sub(r"__(.*?)__", r"\\1", text)
+    text = text.replace("`", "")
+    text = re.sub(r"(?m)^\\s*[-*+]\\s+", "• ", text)
+    text = re.sub(r"(?m)^\\s*(?:[-_=*#]){3,}\\s*$", "", text)
+    text = re.sub(r"[ \\t]{2,}", " ", text)
+    text = re.sub(r"\\n{3,}", "\\n\\n", text)
+    text = re.sub(r"([!?！？。])\\1{2,}", r"\\1", text)
+    return text.strip()
 
 def _student_direct_answer_request(
     question: str,
@@ -358,7 +376,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         ):
             return {
                 "ok": True,
-                "reply": (
+                "reply": _clean_assistant_reply(
                     ("我已经关联到你当前正在做的这题。 " if body.active_question_text.strip() else "")
                     + _local_answer(
                         question,
@@ -391,17 +409,24 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 prompt,
                 timeout=45,
             )
-            return {"ok": True, "reply": reply[:5000], "source": "ai", "degraded": False}
+            return {
+                "ok": True,
+                "reply": _clean_assistant_reply(reply)[:5000],
+                "source": "ai",
+                "degraded": False,
+            }
         except HTTPException:
             return {
                 "ok": True,
-                "reply": _local_answer(
-                    question,
-                    body.identity,
-                    body.page,
-                    body.tutorial_step,
-                    role=role,
-                    learning_context=learning_context,
+                "reply": _clean_assistant_reply(
+                    _local_answer(
+                        question,
+                        body.identity,
+                        body.page,
+                        body.tutorial_step,
+                        role=role,
+                        learning_context=learning_context,
+                    )
                 ),
                 "source": "local",
                 "degraded": True,
@@ -409,13 +434,15 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         except Exception:
             return {
                 "ok": True,
-                "reply": _local_answer(
-                    question,
-                    body.identity,
-                    body.page,
-                    body.tutorial_step,
-                    role=role,
-                    learning_context=learning_context,
+                "reply": _clean_assistant_reply(
+                    _local_answer(
+                        question,
+                        body.identity,
+                        body.page,
+                        body.tutorial_step,
+                        role=role,
+                        learning_context=learning_context,
+                    )
                 ),
                 "source": "local",
                 "degraded": True,
