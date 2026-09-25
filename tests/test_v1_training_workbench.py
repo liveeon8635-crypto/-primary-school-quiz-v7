@@ -164,3 +164,21 @@ def test_training_navigation_is_disabled_before_session_loads():
     assert 'id="relationBtn" disabled' in html
     assert 'id="resetStepBtn" disabled' in html
     assert 'id="nextBtn" disabled' in html
+
+
+def test_training_flow_gates_future_steps_and_keeps_review_available():
+    html = training_workbench_html()
+    assert "function stepSettled(id)" in html
+    assert "function firstUnsettledIndex()" in html
+    assert "i<=frontier||stepSettled(s.id)" in html
+    assert "step:not(:disabled)" in html
+    assert "next.disabled=!settled||index===session.flow.length-1" in html
+    assert "先完成本步" in html
+    assert "完成后“下一步”会自动解锁" in html
+
+
+def test_mobile_training_hides_verbose_relationship_cards_until_requested():
+    html = training_workbench_html()
+    assert ".rail.open{display:block}.relation{display:none}.form-grid" in html
+    assert "角色关系" in html
+    assert "mobileRelation" in html
