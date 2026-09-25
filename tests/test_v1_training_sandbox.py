@@ -44,7 +44,7 @@ def test_training_routes_are_registered_without_new_schema():
     assert client.get(f"/v1/training-sandbox/{session_id}").status_code == 200
     assert client.post(
         f"/v1/training-sandbox/{session_id}/action",
-        json={"action": "visit_step", "payload": {"step": "purpose", "status": "done"}},
+        json={"action": "visit_step", "payload": {"step": "teacher_dashboard", "status": "done"}},
     ).status_code == 200
     assert client.post(f"/v1/training-sandbox/{session_id}/reset", json={}).status_code == 200
 
