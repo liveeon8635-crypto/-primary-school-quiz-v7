@@ -249,6 +249,7 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
         if preset not in SCENARIO_PRESETS:
             raise HTTPException(400, "未知练习场景")
         if preset == "empty":
+            session.current_role = session.primary_role
             session.data = SandboxSession(
                 session_id=session.session_id,
                 owner_user_id=session.owner_user_id,
@@ -279,6 +280,53 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
         if preset == "classroom" and not session.data["class_reviews"]:
             apply_training_action(session, "create_class_review", {})
         _event(session, action, f"preset={preset}")
+        return
+
+    if action == "rewind_step":
+        step = str(p.get("step", "")).strip()
+        flow = ROLE_FLOW.get(session.primary_role, [])
+        ids = [x["id"] for x in flow]
+        if step not in ids:
+            raise HTTPException(400, "未知教学步骤")
+        start = ids.index(step)
+        for step_id in ids[start:]:
+            session.progress.pop(step_id, None)
+        session.current_role = session.primary_role
+        if session.primary_role == "teacher":
+            if step == "create_class":
+                for key in ("classes", "students", "papers", "assignments", "submissions", "targeted_practices", "class_reviews", "classroom_events", "points", "history", "transitions"):
+                    session.data[key].clear()
+            elif step == "add_student":
+                for key in ("students", "papers", "assignments", "submissions", "targeted_practices", "class_reviews", "classroom_events", "points", "history", "transitions"):
+                    session.data[key].clear()
+            elif step in {"paper", "review"}:
+                if step == "paper":
+                    session.data["papers"].clear()
+                elif session.data["papers"]:
+                    session.data["papers"][-1]["reviewed"] = False
+                for key in ("assignments", "submissions", "targeted_practices", "class_reviews", "classroom_events", "points", "history", "transitions"):
+                    session.data[key].clear()
+            elif step == "assign":
+                for key in ("assignments", "submissions", "targeted_practices", "class_reviews", "classroom_events", "points", "history", "transitions"):
+                    session.data[key].clear()
+            elif step == "student_submission":
+                for key in ("submissions", "targeted_practices", "class_reviews", "classroom_events", "points", "history", "transitions"):
+                    session.data[key].clear()
+            elif step == "targeted":
+                session.data["targeted_practices"].clear()
+                for key in ("class_reviews", "classroom_events", "history", "transitions"):
+                    session.data[key].clear()
+            elif step == "class_review":
+                session.data["class_reviews"].clear()
+                session.data["classroom_events"].clear()
+            elif step == "interactive":
+                session.data["classroom_events"].clear()
+            elif step == "history":
+                session.data["history"].clear()
+                session.data["transitions"].clear()
+            elif step == "transition":
+                session.data["transitions"].clear()
+        _event(session, action, f"step={step}")
         return
 
     if action == "set_linked_mode":
@@ -339,9 +387,16 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
             {
                 "id": session.new_id(),
                 "index": i + 1,
-                "type": ["单选", "填空", "计算", "应用"][i % 4],
+                "type": "单选",
                 "knowledge": knowledge,
                 "prompt": f"{knowledge} · 沙盒练习题 {i + 1}",
+                "options": [
+                    f"选项 A · {i + 1}",
+                    f"选项 B · {i + 1}",
+                    f"选项 C · {i + 1}",
+                    f"选项 D · {i + 1}",
+                ],
+                "correctIndex": i % 4,
             }
             for i in range(count)
         ]
@@ -402,7 +457,17 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
         if action == "student_submit" and session.current_role != "student":
             raise HTTPException(409, "请先切换到虚拟学生视角，或选择自动模拟")
         total = len(paper["questions"])
-        correct = max(0, min(total, int(p.get("correct", max(1, round(total * 0.75))))))
+        submitted_answers = p.get("answers")
+        if action == "student_submit" and isinstance(submitted_answers, dict):
+            normalized = {str(key): value for key, value in submitted_answers.items()}
+            correct = sum(
+                1
+                for question in paper["questions"]
+                if str(question["id"]) in normalized
+                and int(normalized[str(question["id"])]) == int(question["correctIndex"])
+            )
+        else:
+            correct = max(0, min(total, int(p.get("correct", max(1, round(total * 0.75))))))
         score = round(correct * 100 / max(1, total))
         existing = [x for x in session.data["submissions"] if x["assignmentID"] == assignment["id"] and x["studentID"] == student["id"]]
         if existing:

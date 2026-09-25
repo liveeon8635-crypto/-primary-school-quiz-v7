@@ -192,8 +192,8 @@ _GUIDE_SNIPPET = r'''
     if(!persona)return;
     markSeen(persona.id);
     const overlay=mountShell(),body=overlay.querySelector('.cy-onboarding-body'),progress=completion(persona);
-    body.innerHTML='<section class="cy-lesson-card" style="max-width:760px;margin:0 auto"><span class="tag">'+(firstVisit?'首次登录引导':'继续新手教学')+'</span><h1 style="margin:10px 0 7px">'+persona.icon+' '+esc(persona.name)+'：系统会按顺序带你走完整条主线</h1><p class="subtitle">这是与你当前登录身份匹配的虚拟教学流程。不会让你先自己挑功能；系统会从第 1 步开始解释“为什么先做这一步”，完成后再带到下一步。每一步可以跳过，退出后会保存进度。</p><div class="cy-guide-summary"><div><b>'+progress.total+' 个连续步骤</b><small>按真实使用顺序建立整体产品概览</small></div><div><b>'+progress.settled+' 步已处理</b><small>完成与跳过都会保留在本机浏览器</small></div><div><b>0 条真实业务写入</b><small>全部使用虚拟演示页面与合成数据</small></div></div><div class="cy-guide-actions"><button class="btn primary" id="cy-current-start">'+(progress.settled?'继续当前进度':'从第 1 步开始')+'</button><button class="btn" id="cy-current-exit">暂不学习</button></div></section>';
-    body.querySelector('#cy-current-start').onclick=()=>startPersona(persona.id);
+    body.innerHTML='<section class="cy-lesson-card" style="max-width:760px;margin:0 auto"><span class="tag">'+(firstVisit?'首次登录引导':'继续新手教学')+'</span><h1 style="margin:10px 0 7px">'+persona.icon+' '+esc(persona.name)+'：进入同身份实操沙盒</h1><p class="subtitle">不是看说明图。你会在临时虚拟环境里真实建班、加学生、组卷、布置、作答、查看结果和继续教学；需要关联角色时可选择亲自切换虚拟账号，或由系统自动模拟关联数据。所有训练业务数据都不会写入正式档案。</p><div class="cy-guide-summary"><div><b>真实操作</b><small>按长缨实际业务顺序完成每个页面任务</small></div><div><b>跨角色可选</b><small>亲自切换体验，或自动模拟后继续主身份</small></div><div><b>可反复重练</b><small>支持跳过、回退、场景起点和整条重置</small></div></div><div class="cy-guide-actions"><button class="btn primary" id="cy-current-start">进入实操沙盒</button><button class="btn" id="cy-current-exit">暂不学习</button></div></section>';
+    body.querySelector('#cy-current-start').onclick=()=>{location.href='/v1/training'};
     body.querySelector('#cy-current-exit').onclick=closeOverlay;
   }
 
@@ -265,9 +265,9 @@ _GUIDE_SNIPPET = r'''
       return;
     }
     const progress=completion(persona);
-    screen.innerHTML='<main id="cy-v1-product-guide-page" data-guide-version="v7"><section class="cy-guide-hero"><span class="tag">'+persona.icon+' '+esc(persona.name)+'</span><h1>当前身份的新手教学</h1><p>系统会按顺序带你走完整流程，而不是让你先自己选择功能。每一步都有“为什么先做这一步 / 现在要做什么 / 完成后得到什么”。</p><div class="cy-guide-actions"><button class="btn primary" id="cy-guide-start">'+(progress.settled?'继续新手教学':'开始新手教学')+'</button><button class="btn" id="cy-guide-restart">从头开始</button></div><div class="cy-guide-summary"><div><b>'+progress.total+' 步</b><small>当前身份完整主线</small></div><div><b>'+progress.settled+' 步已处理</b><small>包含完成和主动跳过</small></div><div><b>随时可回来</b><small>右上角“新手教学”长期保留</small></div></div></section><section class="card" style="margin-top:18px"><h2>为什么采用顺序引导？</h2><p style="color:var(--muted);line-height:1.75">新用户先建立整体使用方向，再进入真实操作。路线图只负责显示进度，不作为自由功能菜单；真正的功能入口仍由当前身份的工作台和快捷导航承担。</p></section></main>';
-    screen.querySelector('#cy-guide-start').onclick=()=>startPersona(persona.id);
-    screen.querySelector('#cy-guide-restart').onclick=()=>{updatePersona(persona.id,s=>({...s,index:0,status:{}}));startPersona(persona.id,0)};
+    screen.innerHTML='<main id="cy-v1-product-guide-page" data-guide-version="v7"><section class="cy-guide-hero"><span class="tag">'+persona.icon+' '+esc(persona.name)+'</span><h1>当前身份 · 实操沙盒</h1><p>使用临时虚拟账号和真实操作流程学习长缨。训练主体是可操作页面；路线图只负责导航、角色关系解释和复习。</p><div class="cy-guide-actions"><button class="btn primary" id="cy-guide-start">进入 / 继续实操沙盒</button><button class="btn" id="cy-guide-restart">清空训练进度后进入</button></div><div class="cy-guide-summary"><div><b>完整主线</b><small>了解每个功能页面的上游、下游与角色关系</small></div><div><b>关联角色二选一</b><small>切虚拟账号亲自体验 / 自动模拟数据</small></div><div><b>正式数据 0 写入</b><small>沙盒过期或重置后临时业务数据消失</small></div></div></section><section class="card" style="margin-top:18px"><h2>边用边学</h2><p style="color:var(--muted);line-height:1.75">第一次建议从零走完整闭环；以后可直接从“已布置作业 / 已有提交 / 课堂复盘”等场景开始复习，不必重复已经熟悉的步骤。</p></section></main>';
+    screen.querySelector('#cy-guide-start').onclick=()=>{location.href='/v1/training'};
+    screen.querySelector('#cy-guide-restart').onclick=()=>{sessionStorage.removeItem('cyTrainingSandboxSessionV1');sessionStorage.setItem('cyTrainingStepIndexV1','0');location.href='/v1/training'};
   }
 
   function renderPersistentGuideRefresh(){
