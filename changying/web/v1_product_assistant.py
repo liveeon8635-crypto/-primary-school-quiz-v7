@@ -40,6 +40,7 @@ class ProductAssistantBody(BaseModel):
     active_question_text: str = Field(default="", max_length=1600)
     active_question_options: list[str] = Field(default_factory=list, max_length=8)
     active_question_meta: str = Field(default="", max_length=500)
+    active_question_figure: str = Field(default="", max_length=900)
     active_question_position: str = Field(default="", max_length=80)
     active_question_response: str = Field(default="", max_length=600)
 
@@ -65,6 +66,7 @@ _PRODUCT_CONTEXT = """你是“长缨辅学”的站内学习与产品助手。�
 8. 只能使用当前账号有权看到、并明确提供在“角色内学习数据”中的事实；不要编造学生、班级、成绩、按钮或已经发生的操作。
 9. 用户问“我现在该做什么”时，根据身份、页面和新手步骤给 1-3 个明确动作；用户描述产品问题时，先解释当前功能，再指出应去哪个入口。
 10. 回答简洁、友好、可执行，不贴标签、不羞辱、不用同伴比较刺激用户。
+11. 当前产品助手没有图片/拍照上传入口。不要要求用户“拍照发来”“上传图片”或使用并不存在的控件；学生在答题页时优先使用已经关联到的当前题目和题目图示可见文字。
 
 学生模式：
 - 除了介绍长缨功能，也允许学生问学科知识、错题思路和“为什么”。优先把问题拆成小步骤，连接到生活例子、已有知识或一个小挑战，帮助学生产生兴趣。
@@ -143,7 +145,9 @@ def _active_question_context(body: ProductAssistantBody) -> str:
     return (
         "当前正在作答上下文（只包含学生屏幕当前可见信息，不含正确答案或解析）："
         f"位置={position}；题干={body.active_question_text.strip()}；"
-        f"可见选项={option_text}；题目信息={meta}；学生当前输入/选择={response}。"
+        f"可见选项={option_text}；题目信息={meta}；"
+        f"题目图示可见文字={body.active_question_figure.strip() or '无'}；"
+        f"学生当前输入/选择={response}。"
         "如果仍在提交前，不得确认、暗示或排除某个选项是否正确，也不得给出最终数值结果。"
         "可以帮助识别已知条件、解释概念、指出第一步、给相似例子或检查方法。"
         "如果学生只说“这题不会/帮我看看”，直接基于这道当前题帮助，不要要求他重新粘贴题目。"
@@ -576,21 +580,36 @@ _ASSISTANT_SNIPPET = r'''
   const identityReady=()=>Boolean(readToken()&&(identityChipReady()||identityButtonReady()));
   const tutorialStep=()=>document.querySelector('.cy-lesson-top h2')?.textContent?.trim()||'';
   const selectedChildID=()=>{try{return typeof state!=='undefined'&&state?.childID?Number(state.childID):null}catch{return null}};
+  const emptyQuestionContext=()=>({active_assessment:false,active_question_text:'',active_question_options:[],active_question_meta:'',active_question_figure:'',active_question_position:'',active_question_response:''});
+  const isVisibleQuestionNode=el=>Boolean(el&&(el.offsetParent!==null||el.getClientRects().length));
   const currentQuestionContext=()=>{
-    const page=document.getElementById('page'),question=page?.querySelector('.question'),next=page?.querySelector('#quizNext');
-    if(!question||!next)return {active_assessment:false,active_question_text:'',active_question_options:[],active_question_meta:'',active_question_position:'',active_question_response:''};
-    const options=[...page.querySelectorAll('.option')].map(x=>String(x.textContent||'').trim()).filter(Boolean).slice(0,8);
-    const selected=page.querySelector('.option.selected');
-    const textInput=page.querySelector('#quizTextAnswer');
+    const page=document.getElementById('page')||document.body;
+    const selectors=['.question','[data-question-text]','.question-text','.question-stem','.stem'];
+    let question=null;
+    for(const selector of selectors){
+      question=[...page.querySelectorAll(selector)].find(isVisibleQuestionNode)||null;
+      if(question)break;
+    }
+    if(!question)return emptyQuestionContext();
+    const root=question.closest('.card')||question.parentElement||page;
+    const options=[...root.querySelectorAll('.option,[data-option]')].filter(isVisibleQuestionNode).map(x=>String(x.textContent||'').trim()).filter(Boolean).slice(0,8);
+    const selected=root.querySelector('.option.selected,[data-option].selected,[aria-checked="true"]');
+    const textInput=root.querySelector('#quizTextAnswer,input[type="text"],input[inputmode],textarea');
     const response=selected?String(selected.textContent||'').trim():(textInput?String(textInput.value||'').trim():'');
-    const badges=[...page.querySelectorAll('.badge')].map(x=>String(x.textContent||'').trim()).filter(Boolean).slice(0,4);
-    const pageText=String(page.innerText||'');
+    const badges=[...root.querySelectorAll('.badge')].filter(isVisibleQuestionNode).map(x=>String(x.textContent||'').trim()).filter(Boolean).slice(0,4);
+    const figureTexts=[...root.querySelectorAll('svg[aria-label="题目图示"] text,[role="img"][aria-label="题目图示"] text')]
+      .filter(isVisibleQuestionNode).map(x=>String(x.textContent||'').trim()).filter(Boolean).slice(0,12);
+    const figureTitle=[...root.querySelectorAll('.muted')].filter(isVisibleQuestionNode).map(x=>String(x.textContent||'').trim()).find(x=>x&&x.length<=80)||'';
+    const pageText=String(root.innerText||page.innerText||'');
     const pos=pageText.match(/第\s*\d+\s*\/\s*\d+\s*题/)?.[0]||'当前题';
+    const assessmentSignals=options.length>0||Boolean(textInput)||Boolean(root.querySelector('.progress,#quizNext,#quitQuiz'))||/第\s*\d+\s*\/\s*\d+\s*题|提交答案|保存并下一题|提交整份|下一题/.test(pageText);
+    if(!assessmentSignals)return emptyQuestionContext();
     return {
       active_assessment:true,
       active_question_text:String(question.textContent||'').trim().slice(0,1600),
       active_question_options:options,
       active_question_meta:badges.join(' · ').slice(0,500),
+      active_question_figure:[figureTitle,...figureTexts].filter(Boolean).join(' · ').slice(0,900),
       active_question_position:pos,
       active_question_response:response.slice(0,600)
     };
