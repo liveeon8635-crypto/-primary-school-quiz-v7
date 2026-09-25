@@ -267,11 +267,13 @@ def test_student_assistant_detects_the_current_visible_quiz_question():
     html = rendered_v1()
 
     assert "const currentQuestionContext=()=>{" in html
-    assert "page?.querySelector('.question')" in html
-    assert "page?.querySelector('#quizNext')" in html
+    assert "selectors=['.question','[data-question-text]','.question-text','.question-stem','.stem']" in html
+    assert "const assessmentSignals=options.length>0||Boolean(textInput)" in html
+    assert "root.querySelector('.progress,#quizNext,#quitQuiz')" in html
     assert "active_assessment:true" in html
     assert "active_question_text:String(question.textContent||'').trim().slice(0,1600)" in html
     assert "active_question_options:options" in html
+    assert "active_question_figure:[figureTitle,...figureTexts]" in html
     assert "active_question_response:response.slice(0,600)" in html
     assert "已关联当前题目" in html
 
@@ -295,6 +297,7 @@ def test_active_question_context_contains_only_student_visible_fields():
         active_question_text="一根绳子长12米，用去1/3，还剩多少米？",
         active_question_options=["A. 4米", "B. 8米", "C. 9米", "D. 11米"],
         active_question_meta="数学 · 分数应用",
+        active_question_figure="外长 12 · 外宽 8",
         active_question_position="第 2/5 题",
         active_question_response="B. 8米",
     )
@@ -303,6 +306,7 @@ def test_active_question_context_contains_only_student_visible_fields():
     assert "一根绳子长12米" in value
     assert "B. 8米" in value
     assert "第 2/5 题" in value
+    assert "外长 12 · 外宽 8" in value
     assert "不含正确答案或解析" in value
     assert "不得确认、暗示或排除某个选项是否正确" in value
 
@@ -385,3 +389,31 @@ def test_client_reply_cleaner_handles_markdown_and_invisible_noise():
     assert "replace(/^\\s*#{1,6}\\s*/gm,'')" in html
     assert "replace(/^\\s*[-*+]\\s+/gm,'• ')" in html
     assert "replace(/\\n{3,}/g,'\\n\\n')" in html
+
+
+def test_current_question_detection_does_not_require_one_specific_next_button():
+    html = rendered_v1()
+    start = html.index("const currentQuestionContext=()=>{")
+    end = html.index("const context=()=>", start)
+    snippet = html[start:end]
+
+    assert "if(!question||!next)" not in snippet
+    assert "const assessmentSignals=" in snippet
+    assert "提交答案|保存并下一题|提交整份|下一题" in snippet
+
+
+def test_current_question_context_captures_visible_figure_labels_only():
+    html = rendered_v1()
+    start = html.index("const currentQuestionContext=()=>{")
+    end = html.index("const context=()=>", start)
+    snippet = html[start:end]
+
+    assert 'svg[aria-label="题目图示"] text' in snippet
+    assert "active_question_figure:" in snippet
+    assert "correctIndex" not in snippet
+    assert "explanation" not in snippet
+
+
+def test_assistant_never_invents_photo_upload_when_the_control_does_not_exist():
+    assert "当前产品助手没有图片/拍照上传入口" in _PRODUCT_CONTEXT
+    assert "不要要求用户“拍照发来”“上传图片”" in _PRODUCT_CONTEXT
