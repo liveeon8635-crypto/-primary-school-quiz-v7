@@ -105,7 +105,7 @@ def test_all_functions_shell_keeps_product_assistant_available():
 
     assert V1_PRODUCT_ASSISTANT_MARKER in html
     assert 'id="cy-product-assistant-fab" hidden' in html
-    assert "document.getElementById('identityChip')||document.getElementById('identity')" in html
+    assert "document.getElementById('identityChip')||document.getElementById('cy-v1-unified-identity')||document.getElementById('identity')" in html
     assert "正在识别" in html
     assert QUERY_PATH in html
     assert FEEDBACK_PATH in html
