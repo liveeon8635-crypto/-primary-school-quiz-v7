@@ -9,6 +9,7 @@ from changying.web.v1_product_assistant import (
     ProductAssistantBody,
     _PRODUCT_CONTEXT,
     _active_question_context,
+    _clean_assistant_reply,
     _local_answer,
     _student_direct_answer_request,
 )
@@ -328,3 +329,59 @@ def test_current_question_dom_capture_does_not_read_answer_keys():
     assert "correctIndex" not in snippet
     assert "explanation" not in snippet
     assert "correctAnswer" not in snippet
+
+
+def test_assistant_reply_normalizer_removes_common_model_formatting_noise():
+    raw = "### 提示\n**先看条件**\n---\n- 找已知量\n\n\n\`\`\`text\n再试一步\n\`\`\`\n"
+    cleaned = _clean_assistant_reply(raw)
+
+    assert "###" not in cleaned
+    assert "**" not in cleaned
+    assert "---" not in cleaned
+    assert "\`" not in cleaned
+    assert "• 找已知量" in cleaned
+    assert "\n\n\n" not in cleaned
+    assert "先看条件" in cleaned
+    assert "再试一步" in cleaned
+
+
+def test_student_assistant_has_rule_based_learning_visuals_for_current_question():
+    html = rendered_v1()
+
+    assert "const questionVisualSpec=ctx=>" in html
+    assert "type:'fraction'" in html
+    assert "type:'bar'" in html
+    assert "type:'shape'" in html
+    assert "type:'numberline'" in html
+    assert "const addLearningVisual=spec=>" in html
+    assert "理解小图" in html
+    assert "maybeAddLearningVisual(text,askContext)" in html
+
+
+def test_learning_visuals_use_only_current_visible_question_context():
+    html = rendered_v1()
+    start = html.index("const questionVisualSpec=ctx=>")
+    end = html.index("const addLearningVisual=spec=>", start)
+    snippet = html[start:end]
+
+    assert "active_question_text" in snippet
+    assert "correctIndex" not in snippet
+    assert "explanation" not in snippet
+    assert "correctAnswer" not in snippet
+
+
+def test_fraction_learning_visual_explains_structure_without_answer_key():
+    html = rendered_v1()
+
+    assert "把一个整体平均分成" in html
+    assert "先看题目说的是其中哪" in html
+    assert "正确答案" not in html[html.index("const addLearningVisual=spec=>"):html.index("const maybeAddLearningVisual=", html.index("const addLearningVisual=spec=>"))]
+
+
+def test_client_reply_cleaner_handles_markdown_and_invisible_noise():
+    html = rendered_v1()
+
+    assert "replace(/[\\u200B\\uFEFF\\uFFFD]/g,'')" in html
+    assert "replace(/^\\s*#{1,6}\\s*/gm,'')" in html
+    assert "replace(/^\\s*[-*+]\\s+/gm,'• ')" in html
+    assert "replace(/\\n{3,}/g,'\\n\\n')" in html
