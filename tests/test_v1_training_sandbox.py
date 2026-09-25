@@ -214,3 +214,24 @@ def test_virtual_student_can_submit_real_question_choices():
     assert submission["total"] == 4
     assert submission["score"] == 100
     assert submission["source"] == "manual_virtual_student"
+
+
+def test_teacher_can_rewind_one_training_step_without_losing_upstream_context():
+    s = teacher_session()
+    apply_training_action(s, "create_class", {"name": "练习班", "grade": 5})
+    apply_training_action(s, "add_student", {"name": "小禾", "username": "xiaohe01"})
+    apply_training_action(s, "create_paper", {"questionCount": 4})
+    apply_training_action(s, "review_paper", {})
+    apply_training_action(s, "assign", {})
+    apply_training_action(s, "simulate_student_submission", {"correct": 3})
+
+    apply_training_action(s, "rewind_step", {"step": "student_submission"})
+    assert s.current_role == "teacher"
+    assert s.data["classes"]
+    assert s.data["students"]
+    assert s.data["papers"]
+    assert s.data["assignments"]
+    assert s.data["submissions"] == []
+    assert s.data["points"] == []
+    assert "student_submission" not in s.progress
+    assert "evidence" not in s.progress
