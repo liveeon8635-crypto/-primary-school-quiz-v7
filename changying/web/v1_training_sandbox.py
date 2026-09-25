@@ -189,20 +189,71 @@ class SandboxSession:
 
 
 
-def _sample_questions(session: SandboxSession, knowledge: str = "小数乘法", count: int = 4) -> list[dict[str, Any]]:
-    return [
-        {
-            "id": session.new_id(),
-            "index": i + 1,
-            "type": "单选",
-            "knowledge": knowledge,
-            "prompt": f"{knowledge} · 沙盒练习题 {i + 1}",
-            "options": [f"选项 A · {i + 1}", f"选项 B · {i + 1}", f"选项 C · {i + 1}", f"选项 D · {i + 1}"],
-            "correctIndex": i % 4,
-        }
-        for i in range(count)
-    ]
+def _sample_questions(
+    session: SandboxSession,
+    knowledge: str = "小数乘法",
+    count: int = 4,
+    subject: str = "数学",
+) -> list[dict[str, Any]]:
+    subject = str(subject or "数学").strip()
+    if subject == "语文":
+        templates = [
+            {"type": "单选", "prompt": "“僻静”的意思更接近哪一项？", "options": ["热闹嘈杂", "安静偏僻", "宽阔明亮", "整齐干净"], "correctIndex": 1},
+            {"type": "判断", "prompt": "判断：“拟人”是把事物当作人来写的一种表达方式。", "options": ["正确", "错误"], "correctIndex": 0},
+            {"type": "填空", "prompt": "填空：“白日依山尽”的下一句是____。", "correctAnswer": "黄河入海流"},
+            {"type": "填空", "prompt": "“一丝不苟”中的“苟”在这个词里更接近____的意思。", "correctAnswer": "马虎"},
+            {"type": "简短回答", "prompt": "写出“安静”的一个近义词。", "correctAnswer": "宁静", "acceptedAnswers": ["宁静", "寂静", "清静"]},
+            {"type": "单选", "prompt": "下面哪一项属于比喻句？", "options": ["月亮像一只小船。", "我今天去学校。", "请把门关上。", "天气真好。"], "correctIndex": 0},
+        ]
+    elif subject == "英语":
+        templates = [
+            {"type": "单选", "prompt": "Choose the correct word: She ___ to school every day.", "options": ["go", "goes", "going", "gone"], "correctIndex": 1},
+            {"type": "判断", "prompt": "判断：“I am happy.” 的意思是“我很开心”。", "options": ["正确", "错误"], "correctIndex": 0},
+            {"type": "填空", "prompt": "Complete: I ___ a book every evening.", "correctAnswer": "read"},
+            {"type": "单选", "prompt": "Choose the best word for “健康的”.", "options": ["healthy", "hungry", "heavy", "helpful"], "correctIndex": 0},
+            {"type": "填空", "prompt": "Complete: We ___ friends.", "correctAnswer": "are"},
+            {"type": "简短回答", "prompt": "Write the English word for “自然”.", "correctAnswer": "nature"},
+        ]
+    else:
+        templates = [
+            {"type": "单选", "prompt": "0.8 × 0.5 的结果是？", "options": ["0.4", "4", "0.04", "40"], "correctIndex": 0},
+            {"type": "判断", "prompt": "判断：2.4 × 0.5 = 1.2。", "options": ["正确", "错误"], "correctIndex": 0},
+            {"type": "填空", "prompt": "填空：1.25 × 4 = ____。", "correctAnswer": "5"},
+            {"type": "计算", "prompt": "计算：3.6 × 2.5 = ____。", "correctAnswer": "9"},
+            {"type": "简短应用题", "prompt": "每本练习册 2.5 元，买 4 本一共 ____。", "correctAnswer": "10元", "acceptedAnswers": ["10元", "10 元"], "placeholder": "例如：10元（含单位）"},
+            {"type": "单选", "prompt": "0.06 × 10 的结果是？", "options": ["0.006", "0.06", "0.6", "6"], "correctIndex": 2},
+            {"type": "填空", "prompt": "填空：7.2 × 0.1 = ____。", "correctAnswer": "0.72"},
+            {"type": "简短应用题", "prompt": "一段路每千米用时 0.75 小时，8 千米共用时 ____。", "correctAnswer": "6小时", "acceptedAnswers": ["6小时", "6 小时"], "placeholder": "例如：6小时（含单位）"},
+        ]
 
+    questions: list[dict[str, Any]] = []
+    for i in range(max(1, count)):
+        template = deepcopy(templates[i % len(templates)])
+        template["id"] = session.new_id()
+        template["index"] = i + 1
+        template["knowledge"] = knowledge
+        template["answerKind"] = "choice" if "options" in template else "text"
+        template.setdefault("placeholder", "输入答案")
+        questions.append(template)
+    return questions
+
+
+def _answer_correct(question: dict[str, Any], value: Any) -> bool:
+    if value is None:
+        return False
+    if question.get("answerKind") == "choice":
+        try:
+            return int(value) == int(question.get("correctIndex"))
+        except (TypeError, ValueError):
+            return False
+
+    actual = "".join(str(value).strip().lower().split())
+    accepted = [question.get("correctAnswer"), *(question.get("acceptedAnswers") or [])]
+    return any(
+        actual == "".join(str(candidate).strip().lower().split())
+        for candidate in accepted
+        if candidate is not None
+    )
 
 def _seed_role_context(session: SandboxSession) -> None:
     """Prepare only the upstream facts a role needs in order to practice."""
@@ -219,7 +270,7 @@ def _seed_role_context(session: SandboxSession) -> None:
             "className": cls["name"],
             "grade": 5,
         }
-        questions = _sample_questions(session, count=6)
+        questions = _sample_questions(session, count=6, subject="数学")
         paper = {
             "id": session.new_id(),
             "title": "小数乘法练习",
@@ -512,8 +563,7 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
         correct = sum(
             1
             for question in paper["questions"]
-            if str(question["id"]) in normalized
-            and int(normalized[str(question["id"])]) == int(question["correctIndex"])
+            if _answer_correct(question, normalized.get(str(question["id"])))
         )
         score = round(correct * 100 / max(1, total))
         sub = {
@@ -533,7 +583,7 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
         session.data["points"].append({"id": session.new_id(), "studentID": student["id"], "points": correct, "source": "练习完成"})
         for question in paper["questions"]:
             answer = normalized.get(str(question["id"]))
-            if answer is None or int(answer) != int(question["correctIndex"]):
+            if not _answer_correct(question, answer):
                 session.data["wrong_questions"].append({"id": session.new_id(), "questionID": question["id"], "knowledge": question["knowledge"], "prompt": question["prompt"]})
         session.data["targeted_practices"].append({"id": session.new_id(), "studentID": student["id"], "knowledge": paper["knowledge"], "basedOnSubmissionID": sub["id"], "questionCount": 4, "status": "assigned"})
         session.progress["answer"] = "done"
@@ -625,23 +675,7 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
         subject = str(p.get("subject", "数学"))[:30]
         knowledge = str(p.get("knowledge", "小数乘法"))[:120]
         textbook = str(p.get("textbook", "人教版"))[:80]
-        questions = [
-            {
-                "id": session.new_id(),
-                "index": i + 1,
-                "type": "单选",
-                "knowledge": knowledge,
-                "prompt": f"{knowledge} · 沙盒练习题 {i + 1}",
-                "options": [
-                    f"选项 A · {i + 1}",
-                    f"选项 B · {i + 1}",
-                    f"选项 C · {i + 1}",
-                    f"选项 D · {i + 1}",
-                ],
-                "correctIndex": i % 4,
-            }
-            for i in range(count)
-        ]
+        questions = _sample_questions(session, knowledge=knowledge, count=count, subject=subject)
         obj = {
             "id": session.new_id(),
             "title": str(p.get("title", f"{subject}练习"))[:160],
@@ -705,8 +739,7 @@ def apply_training_action(session: SandboxSession, action: str, payload: dict[st
             correct = sum(
                 1
                 for question in paper["questions"]
-                if str(question["id"]) in normalized
-                and int(normalized[str(question["id"])]) == int(question["correctIndex"])
+                if _answer_correct(question, normalized.get(str(question["id"])))
             )
         else:
             correct = max(0, min(total, int(p.get("correct", max(1, round(total * 0.75))))))
