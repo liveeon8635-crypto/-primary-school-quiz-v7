@@ -1,7 +1,7 @@
 """Interactive role training workbench for Changying V1.
 
 This is the primary onboarding surface. It uses the ephemeral training sandbox
-API so users operate a complete workflow instead of reading static screenshots.
+API so users operate a complete workflow instead of reading static screenshots.\nThe training bar remains secondary to the actual task surface.
 """
 
 from __future__ import annotations
