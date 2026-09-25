@@ -106,7 +106,7 @@ def test_guide_screen_observer_is_idempotent_on_v1_guide():
 
     assert 'data-guide-version="v7"' in script
     assert "existing?.dataset?.guideVersion==='v7'" in script
-    assert "screen.querySelector('#cy-v1-product-guide-page[data-guide-version=\\\"v7\\\"]')" in script
+    assert """screen.querySelector('#cy-v1-product-guide-page[data-guide-version="v7"]')""" in script
     assert "if(location.pathname!=='/v1/guide')return" in script
 
 
