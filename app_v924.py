@@ -1803,6 +1803,8 @@ TEACHING_RESOURCE_MIMES={
     ".pptx":"application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 TEACHING_RESOURCE_MAX_FILE=20*1024*1024
+TEACHING_RESOURCE_MAX_UNCOMPRESSED=120*1024*1024
+TEACHING_RESOURCE_MAX_ZIP_ENTRIES=4096
 TEACHING_RESOURCE_SCHOOL_LIMIT=200*1024*1024
 
 
@@ -1886,7 +1888,13 @@ def _validate_office_upload(ext,data):
         return
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as z:
-            names=set(z.namelist())
+            entries=z.infolist()
+            if len(entries)>TEACHING_RESOURCE_MAX_ZIP_ENTRIES:
+                raise HTTPException(413,"Office 文件内部条目过多")
+            expanded=sum(max(0,int(x.file_size or 0)) for x in entries)
+            if expanded>TEACHING_RESOURCE_MAX_UNCOMPRESSED:
+                raise HTTPException(413,"Office 文件解压后内容过大")
+            names={x.filename for x in entries}
             if "[Content_Types].xml" not in names:raise HTTPException(400,"Office 文件格式无效")
             prefix="word/" if ext==".docx" else "ppt/"
             if not any(n.startswith(prefix) for n in names):raise HTTPException(400,"文件扩展名与实际格式不一致")
@@ -3108,6 +3116,15 @@ def _ai_host_is_forbidden(hostname:str)->bool:
         return False
     return not addr.is_global
 
+def _ai_allowed_hosts()->set[str]:
+    defaults={"api.openai.com","api.deepseek.com"}
+    configured={
+        x.strip().lower().strip(".")
+        for x in (os.getenv("AI_ALLOWED_HOSTS") or "").split(",")
+        if x.strip()
+    }
+    return defaults|configured
+
 def _validate_ai_base_url(base:str,*,runtime:bool=False)->str:
     value=(base or "").strip().rstrip("/")
     try:parsed=urlsplit(value)
@@ -3123,6 +3140,8 @@ def _validate_ai_base_url(base:str,*,runtime:bool=False)->str:
     )
     if parsed.scheme!="https" and not local_dev:
         raise HTTPException(400,"AI 接口地址必须使用 HTTPS")
+    if not local_dev and not raw_url.startswith("sqlite") and host.lower().strip(".") not in _ai_allowed_hosts():
+        raise HTTPException(400,"生产环境 AI 接口域名未列入平台允许清单")
     if _ai_host_is_forbidden(host) and not local_dev:
         raise HTTPException(400,"AI 接口地址不能指向本机、内网或保留地址")
     if runtime and not local_dev:
@@ -6115,7 +6134,7 @@ async def upload_homework_media(aid:int,file:UploadFile=File(...),u:User=Depends
     if used+len(data)>HOMEWORK_MEDIA_TOTAL_MAX:raise HTTPException(413,"本份作业照片/视频合计不能超过 100MB")
     digest=hashlib.sha256(data).hexdigest()
     if db.scalar(select(HomeworkMedia.id).where(HomeworkMedia.school_id==u.school_id,HomeworkMedia.assignment_id==aid,HomeworkMedia.student_id==u.id,HomeworkMedia.sha256==digest).limit(1)):raise HTTPException(409,"这张照片/这个视频已经上传过了")
-    row=HomeworkMedia(school_id=u.school_id,assignment_id=aid,student_id=u.id,media_type=media_type,file_name=(safe_name or f"homework{ext}")[:255],file_ext=ext,mime_type=(file.content_type or canonical_mime)[:120],size_bytes=len(data),sha256=digest,file_data=data)
+    row=HomeworkMedia(school_id=u.school_id,assignment_id=aid,student_id=u.id,media_type=media_type,file_name=(safe_name or f"homework{ext}")[:255],file_ext=ext,mime_type=canonical_mime,size_bytes=len(data),sha256=digest,file_data=data)
     db.add(row);db.flush();audit(db,u,"homework.media.upload",f"assignment={aid}:media={row.id}:type={media_type}:bytes={len(data)}");db.commit();db.refresh(row);return homework_media_payload(row)
 
 @app.delete("/student/assignments/{aid}/media/{mid}")

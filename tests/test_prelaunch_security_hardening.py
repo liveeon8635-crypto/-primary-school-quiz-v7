@@ -29,6 +29,21 @@ def test_admin_xlsx_upload_has_pre_decompression_limits():
     assert "ADMIN_IMPORT_MAX_ROWS_PER_SHEET" in source
 
 
+def test_homework_media_uses_validated_mime_type():
+    source = inspect.getsource(legacy.upload_homework_media)
+    assert "mime_type=canonical_mime" in source
+    assert "file.content_type or canonical_mime" not in source
+
+
+def test_teaching_office_upload_has_pre_parse_archive_limits():
+    source = inspect.getsource(legacy._validate_office_upload)
+    assert "infolist()" in source
+    assert "TEACHING_RESOURCE_MAX_ZIP_ENTRIES" in source
+    assert "TEACHING_RESOURCE_MAX_UNCOMPRESSED" in source
+    assert "Office 文件内部条目过多" in source
+    assert "Office 文件解压后内容过大" in source
+
+
 def test_ai_base_url_rejects_non_global_targets():
     assert legacy._ai_host_is_forbidden("127.0.0.1")
     assert legacy._ai_host_is_forbidden("192.0.2.1")
@@ -38,6 +53,22 @@ def test_ai_base_url_rejects_non_global_targets():
         legacy._validate_ai_base_url("https://localhost/v1")
 
     assert legacy._validate_ai_base_url("https://8.8.8.8/v1") == "https://8.8.8.8/v1"
+
+
+def test_production_ai_base_requires_operator_host_allowlist(monkeypatch):
+    monkeypatch.setattr(legacy, "raw_url", "postgresql+psycopg://production")
+    monkeypatch.delenv("AI_ALLOWED_HOSTS", raising=False)
+
+    assert legacy._validate_ai_base_url("https://api.openai.com/v1") == "https://api.openai.com/v1"
+    assert legacy._validate_ai_base_url("https://api.deepseek.com/v1") == "https://api.deepseek.com/v1"
+
+    with pytest.raises(HTTPException) as exc:
+        legacy._validate_ai_base_url("https://customer-controlled.example/v1")
+    assert exc.value.status_code == 400
+    assert "允许清单" in str(exc.value.detail)
+
+    monkeypatch.setenv("AI_ALLOWED_HOSTS", "api.openrouter.ai")
+    assert legacy._validate_ai_base_url("https://api.openrouter.ai/v1") == "https://api.openrouter.ai/v1"
 
 
 def test_ai_runtime_resolution_rejects_non_global_dns(monkeypatch):
