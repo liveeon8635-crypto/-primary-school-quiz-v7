@@ -29,6 +29,15 @@ def test_admin_xlsx_upload_has_pre_decompression_limits():
     assert "ADMIN_IMPORT_MAX_ROWS_PER_SHEET" in source
 
 
+def test_teaching_office_upload_has_pre_parse_archive_limits():
+    source = inspect.getsource(legacy._validate_office_upload)
+    assert "infolist()" in source
+    assert "TEACHING_RESOURCE_MAX_ZIP_ENTRIES" in source
+    assert "TEACHING_RESOURCE_MAX_UNCOMPRESSED" in source
+    assert "Office 文件内部条目过多" in source
+    assert "Office 文件解压后内容过大" in source
+
+
 def test_ai_base_url_rejects_non_global_targets():
     assert legacy._ai_host_is_forbidden("127.0.0.1")
     assert legacy._ai_host_is_forbidden("192.0.2.1")
