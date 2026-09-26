@@ -29,6 +29,12 @@ def test_admin_xlsx_upload_has_pre_decompression_limits():
     assert "ADMIN_IMPORT_MAX_ROWS_PER_SHEET" in source
 
 
+def test_homework_media_uses_validated_mime_type():
+    source = inspect.getsource(legacy.upload_homework_media)
+    assert "mime_type=canonical_mime" in source
+    assert "file.content_type or canonical_mime" not in source
+
+
 def test_teaching_office_upload_has_pre_parse_archive_limits():
     source = inspect.getsource(legacy._validate_office_upload)
     assert "infolist()" in source
