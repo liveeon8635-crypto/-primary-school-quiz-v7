@@ -7,6 +7,9 @@ recorded through the existing audit log so no new schema is required.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 import json
 import re
 import secrets
@@ -16,7 +19,7 @@ from types import ModuleType
 import requests
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, LargeBinary, String, Table, insert, select
 
 from changying.web import v1 as v1_module
 from changying.web import v1_classic_gzip_embed as classic_embed_module
@@ -28,6 +31,7 @@ FEEDBACK_PATH = "/v1/product-feedback"
 FEEDBACK_PROOF_PREFIX = "/v1/product-feedback/proof"
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
 FEEDBACK_PROOF_TTL_MINUTES = 15
+FEEDBACK_ATTACHMENT_MAX_BYTES = 1_000_000
 
 
 class ProductAssistantBody(BaseModel):
@@ -53,8 +57,8 @@ class ProductFeedbackBody(BaseModel):
     tutorial_step: str = Field(default="", max_length=200)
     attachment_name: str = Field(default="", max_length=240)
     attachment_type: str = Field(default="", max_length=120)
-    attachment_size: int = Field(default=0, ge=0, le=8_000_000)
-    attachment_data: str = Field(default="", max_length=12_000_000)
+    attachment_size: int = Field(default=0, ge=0, le=FEEDBACK_ATTACHMENT_MAX_BYTES)
+    attachment_data: str = Field(default="", max_length=1_400_000)
 
 
 _PRODUCT_CONTEXT = """你是“长缨辅学”的站内学习与产品助手。你既帮助用户理解长缨怎么用，也要根据账号身份采用不同的沟通方式。
@@ -70,7 +74,7 @@ _PRODUCT_CONTEXT = """你是“长缨辅学”的站内学习与产品助手。�
 8. 只能使用当前账号有权看到、并明确提供在“角色内学习数据”中的事实；不要编造学生、班级、成绩、按钮或已经发生的操作。
 9. 用户问“我现在该做什么”时，根据身份、页面和新手步骤给 1-3 个明确动作；用户描述产品问题时，先解释当前功能，再指出应去哪个入口。
 10. 回答简洁、友好、可执行，不贴标签、不羞辱、不用同伴比较刺激用户。
-11. 当前产品助手没有图片/拍照上传入口。不要要求用户“拍照发来”“上传图片”或使用并不存在的控件；学生在答题页时优先使用已经关联到的当前题目和题目图示可见文字。
+11. 产品反馈页可附一张照片或一个小文件；学生在答题页时优先使用已经关联的当前题目和图示可见文字，不要求为解题上传照片。
 
 学生模式：
 - 除了介绍长缨功能，也允许学生问学科知识、错题思路和“为什么”。优先把问题拆成小步骤，连接到生活例子、已有知识或一个小挑战，帮助学生产生兴趣。
@@ -350,12 +354,59 @@ def _local_answer(
         "如果你是在反馈产品问题，也可以切到“反馈”直接提交当前页面问题。"
     )
 
+def _decode_feedback_attachment(body: ProductFeedbackBody) -> tuple[bytes, str, str] | None:
+    if not body.attachment_data:
+        if body.attachment_name or body.attachment_type or body.attachment_size:
+            raise HTTPException(422, "附件内容缺失")
+        return None
+    name = re.sub(r"[\\/\x00-\x1f\x7f]", "_", body.attachment_name).strip(" .")
+    mime = body.attachment_type.strip().lower()
+    if not name or not mime or not body.attachment_size:
+        raise HTTPException(422, "附件信息不完整")
+    if not re.fullmatch(r"[A-Za-z0-9._\-\u4e00-\u9fff ]{1,120}", name):
+        raise HTTPException(422, "附件名称无效")
+    try:
+        raw = base64.b64decode(body.attachment_data, validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(422, "附件编码无效")
+    if not raw or len(raw) != body.attachment_size or len(raw) > FEEDBACK_ATTACHMENT_MAX_BYTES:
+        raise HTTPException(422, "附件大小无效或超过 1 MB")
+    signatures = {
+        "image/jpeg": raw.startswith(b"\xff\xd8\xff") and name.lower().endswith((".jpg", ".jpeg")),
+        "image/png": raw.startswith(b"\x89PNG\r\n\x1a\n") and name.lower().endswith(".png"),
+        "image/webp": raw.startswith(b"RIFF") and raw[8:12] == b"WEBP" and name.lower().endswith(".webp"),
+        "application/pdf": raw.startswith(b"%PDF-") and name.lower().endswith(".pdf"),
+        "text/plain": name.lower().endswith(".txt") and b"\x00" not in raw,
+    }
+    if mime == "text/plain":
+        try:
+            raw.decode("utf-8")
+        except UnicodeDecodeError:
+            signatures[mime] = False
+    if not signatures.get(mime, False):
+        raise HTTPException(422, "仅支持 JPG、PNG、WebP、PDF 或 UTF-8 TXT 文件")
+    return raw, name, mime
+
+
 def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
     app = implementation.app
     if getattr(app.state, "v1_product_assistant_routes_installed", False):
         return
 
     router = APIRouter()
+    attachment_table = Table(
+        "product_feedback_attachments", implementation.Base.metadata,
+        Column("id", Integer, primary_key=True),
+        Column("audit_id", Integer, ForeignKey("audit_logs.id"), unique=True, nullable=False),
+        Column("school_id", Integer, ForeignKey("schools.id"), nullable=False),
+        Column("user_id", Integer, ForeignKey("users.id"), nullable=False),
+        Column("file_name", String(120), nullable=False),
+        Column("mime_type", String(120), nullable=False),
+        Column("size_bytes", Integer, nullable=False),
+        Column("sha256", String(64), nullable=False),
+        Column("file_data", LargeBinary, nullable=False),
+        Column("created_at", DateTime, default=datetime.utcnow, nullable=False),
+    )
 
     @router.post(QUERY_PATH, include_in_schema=False)
     def product_assistant_query(
@@ -462,6 +513,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         user=Depends(implementation.current_user),
         db=Depends(implementation.get_db),
     ):
+        attachment = _decode_feedback_attachment(body)
         proof_token = secrets.token_urlsafe(24)
         payload = {
             "category": body.category.strip() or "其他反馈",
@@ -471,12 +523,31 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             "tutorialStep": body.tutorial_step.strip(),
             "transferToken": proof_token,
         }
+        if attachment:
+            raw, name, mime = attachment
+            payload["attachment"] = {
+                "name": name, "type": mime, "size": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            }
         implementation.audit(
             db,
             user,
             "product.feedback",
             json.dumps(payload, ensure_ascii=False)[:1800],
         )
+        db.flush()
+        if attachment:
+            audit_row = db.scalar(
+                select(implementation.AuditLog)
+                .where(implementation.AuditLog.action == "product.feedback",
+                       implementation.AuditLog.detail.contains(proof_token))
+                .order_by(implementation.AuditLog.id.desc()).limit(1)
+            )
+            db.execute(insert(attachment_table).values(
+                audit_id=audit_row.id, school_id=user.school_id, user_id=user.id,
+                file_name=name, mime_type=mime, size_bytes=len(raw),
+                sha256=hashlib.sha256(raw).hexdigest(), file_data=raw,
+            ))
         db.commit()
 
         synced = False
@@ -516,6 +587,18 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             raise HTTPException(404, "反馈凭证无效")
         if payload.get("transferToken") != token:
             raise HTTPException(404, "反馈凭证无效")
+        attachment_row = db.execute(
+            select(attachment_table).where(attachment_table.c.audit_id == row.id)
+        ).mappings().first()
+        attachment_payload = None
+        if attachment_row:
+            attachment_payload = {
+                "name": attachment_row["file_name"],
+                "type": attachment_row["mime_type"],
+                "size": attachment_row["size_bytes"],
+                "sha256": attachment_row["sha256"],
+                "data": base64.b64encode(attachment_row["file_data"]).decode("ascii"),
+            }
         return {
             "ok": True,
             "projectId": "longying",
@@ -527,6 +610,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "identity": str(payload.get("identity") or "")[:160],
                 "tutorialStep": str(payload.get("tutorialStep") or "")[:200],
                 "createdAt": created_at.isoformat() + "Z",
+                "attachment": attachment_payload,
             },
         }
 
@@ -545,7 +629,7 @@ _ASSISTANT_SNIPPET = r'''
   .cy-pa-chat{display:grid;gap:9px;margin-bottom:10px}.cy-pa-msg{max-width:92%;padding:10px 11px;border-radius:13px;line-height:1.55;font-size:13px;white-space:pre-wrap}.cy-pa-msg.user{justify-self:end;background:#173a78;color:#fff}.cy-pa-msg.assistant{justify-self:start;background:#f1f5fb;color:#1c2940}
   .cy-pa-learning-visual{justify-self:start;width:min(92%,330px);border:1px solid #dbe5f3;background:#fff;border-radius:14px;padding:10px;display:grid;gap:8px}.cy-pa-learning-visual b{font-size:12px;color:#173a78}.cy-pa-learning-visual small{font-size:10px;color:var(--muted);line-height:1.45}.cy-pa-fraction-grid{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px;height:42px}.cy-pa-fraction-cell{border:1px solid #9fb6da;border-radius:5px;background:#f5f8fd}.cy-pa-fraction-cell.is-given{background:#dbe8ff}.cy-pa-bar-model{display:grid;gap:5px}.cy-pa-bar-track{display:grid;grid-template-columns:1.15fr .85fr;height:42px;border:1px solid #9fb6da;border-radius:8px;overflow:hidden}.cy-pa-bar-known,.cy-pa-bar-unknown{display:grid;place-items:center;font-size:10px}.cy-pa-bar-known{background:#dbe8ff}.cy-pa-bar-unknown{background:#f7f9fc;border-left:1px dashed #9fb6da}.cy-pa-shape-box{height:86px;display:grid;place-items:center}.cy-pa-shape{border:2px solid #6c88b4;display:grid;place-items:center;color:#52647f;font-size:11px}.cy-pa-shape.rectangle{width:150px;height:68px}.cy-pa-shape.square{width:74px;height:74px}.cy-pa-shape.circle{width:74px;height:74px;border-radius:50%}.cy-pa-shape.triangle{width:0;height:0;border-left:48px solid transparent;border-right:48px solid transparent;border-bottom:78px solid #dbe8ff;border-top:0;position:relative}.cy-pa-numberline{position:relative;height:54px;margin:2px 8px}.cy-pa-numberline-line{position:absolute;left:0;right:0;top:24px;border-top:2px solid #6c88b4}.cy-pa-numberline-tick{position:absolute;top:17px;transform:translateX(-50%);font-size:9px;color:#52647f}.cy-pa-numberline-tick:before{content:'';display:block;width:1px;height:15px;background:#6c88b4;margin:0 auto 2px}
   .cy-pa-compose{display:grid;grid-template-columns:1fr auto;gap:7px}.cy-pa-compose textarea{min-height:58px;resize:none}.cy-pa-compose .btn{align-self:end}
-  .cy-pa-feedback{display:grid;gap:8px}.cy-pa-feedback textarea{min-height:76px;resize:none}.cy-pa-feedback-cats{display:flex;gap:6px;flex-wrap:wrap}.cy-pa-feedback-cats button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 9px;font-size:11px}.cy-pa-feedback-cats button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78;font-weight:800}.cy-pa-note{font-size:10px;color:var(--muted);line-height:1.45}.cy-pa-guide{border:1px solid #dbe5f3;background:#f8fbff;border-radius:14px;padding:9px}.cy-pa-guide-title{font-size:12px;font-weight:850;color:#173a78;margin-bottom:7px}.cy-pa-guide-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.cy-pa-guide-card{display:grid;gap:5px;text-decoration:none;color:#182238;background:#fff;border:1px solid #dbe5f3;border-radius:11px;overflow:hidden}.cy-pa-guide-visual{height:74px;background:#edf3ff;padding:8px;display:grid;grid-template-rows:12px 1fr;gap:7px}.cy-pa-guide-bar{border-radius:6px;background:#d5e2f6}.cy-pa-guide-page{display:grid;grid-template-columns:38px 1fr;gap:8px;align-items:center}.cy-pa-guide-icon{height:38px;border-radius:9px;background:#fff;display:grid;place-items:center;font-size:20px;color:#244c91}.cy-pa-guide-lines{display:grid;gap:5px}.cy-pa-guide-lines i{display:block;height:6px;border-radius:3px;background:#fff}.cy-pa-guide-lines i:last-child{width:66%}.cy-pa-guide-copy{padding:0 7px 7px;display:grid;gap:2px}.cy-pa-guide-copy b{font-size:11px}.cy-pa-guide-copy small{font-size:9px;color:var(--muted);line-height:1.35}
+  .cy-pa-feedback{display:grid;gap:8px}.cy-pa-feedback textarea{min-height:76px;resize:none}.cy-pa-attachment{display:grid;gap:5px;font-size:11px}.cy-pa-attachment input{max-width:100%}.cy-pa-attachment-status{overflow-wrap:anywhere;color:#52647f}.cy-pa-feedback-cats{display:flex;gap:6px;flex-wrap:wrap}.cy-pa-feedback-cats button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 9px;font-size:11px}.cy-pa-feedback-cats button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78;font-weight:800}.cy-pa-note{font-size:10px;color:var(--muted);line-height:1.45}.cy-pa-guide{border:1px solid #dbe5f3;background:#f8fbff;border-radius:14px;padding:9px}.cy-pa-guide-title{font-size:12px;font-weight:850;color:#173a78;margin-bottom:7px}.cy-pa-guide-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.cy-pa-guide-card{display:grid;gap:5px;text-decoration:none;color:#182238;background:#fff;border:1px solid #dbe5f3;border-radius:11px;overflow:hidden}.cy-pa-guide-visual{height:74px;background:#edf3ff;padding:8px;display:grid;grid-template-rows:12px 1fr;gap:7px}.cy-pa-guide-bar{border-radius:6px;background:#d5e2f6}.cy-pa-guide-page{display:grid;grid-template-columns:38px 1fr;gap:8px;align-items:center}.cy-pa-guide-icon{height:38px;border-radius:9px;background:#fff;display:grid;place-items:center;font-size:20px;color:#244c91}.cy-pa-guide-lines{display:grid;gap:5px}.cy-pa-guide-lines i{display:block;height:6px;border-radius:3px;background:#fff}.cy-pa-guide-lines i:last-child{width:66%}.cy-pa-guide-copy{padding:0 7px 7px;display:grid;gap:2px}.cy-pa-guide-copy b{font-size:11px}.cy-pa-guide-copy small{font-size:9px;color:var(--muted);line-height:1.35}
   @media(max-width:640px){#cy-product-assistant-fab{right:12px;bottom:calc(78px + env(safe-area-inset-bottom));width:44px;height:44px;font-size:18px}#cy-product-assistant-panel{left:10px;right:10px;bottom:calc(128px + env(safe-area-inset-bottom));width:auto;max-height:62dvh}}
 </style>
 <button id="cy-product-assistant-fab" hidden aria-label="打开产品助手" title="产品助手">✦<span class="cy-pa-fab-label">产品助手</span></button>
@@ -563,7 +647,7 @@ _ASSISTANT_SNIPPET = r'''
     <div class="cy-pa-compose"><textarea id="cy-pa-input" placeholder="例如：这个页面应该先做什么？"></textarea><button class="btn primary" id="cy-pa-send">发送</button></div>
   </div>
   <div class="cy-pa-body" id="cy-pa-feedback" hidden>
-    <div class="cy-pa-feedback"><input type="hidden" id="cy-pa-category" value="这里不好懂"><div class="cy-pa-feedback-cats"><button class="active" data-pa-category="这里不好懂">不好懂</button><button data-pa-category="没找到入口">找不到</button><button data-pa-category="流程不直观">流程不顺</button><button data-pa-category="功能与预期不符">不符合预期</button><button data-pa-category="希望增加功能">想加功能</button><button data-pa-category="其他反馈">其他</button></div><textarea id="cy-pa-feedback-text" placeholder="一句话描述问题或建议（不要填写密码、API Key 等敏感信息）"></textarea><button class="btn primary" id="cy-pa-submit-feedback">提交</button><div class="cy-pa-note">会自动附带当前页面、当前身份和正在进行的新手步骤。</div></div>
+    <div class="cy-pa-feedback"><input type="hidden" id="cy-pa-category" value="这里不好懂"><div class="cy-pa-feedback-cats"><button class="active" data-pa-category="这里不好懂">不好懂</button><button data-pa-category="没找到入口">找不到</button><button data-pa-category="流程不直观">流程不顺</button><button data-pa-category="功能与预期不符">不符合预期</button><button data-pa-category="希望增加功能">想加功能</button><button data-pa-category="其他反馈">其他</button></div><textarea id="cy-pa-feedback-text" placeholder="一句话描述问题或建议（不要填写密码、API Key 等敏感信息）"></textarea><label class="cy-pa-attachment">附照片或文件（最多 1 MB）<input type="file" id="cy-pa-feedback-file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" capture="environment"><span class="cy-pa-attachment-status" id="cy-pa-attachment-status">未选择文件</span></label><button class="btn primary" id="cy-pa-submit-feedback">提交</button><div class="cy-pa-note">会自动附带当前页面、当前身份和正在进行的新手步骤。</div></div>
   </div>
 </section>
 <script id="changying_v1_product_assistant_v1-script">
@@ -827,13 +911,31 @@ _ASSISTANT_SNIPPET = r'''
   send.onclick=()=>ask(input.value);
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask(input.value)}});
 
+  const feedbackFile=document.getElementById('cy-pa-feedback-file');
+  const attachmentStatus=document.getElementById('cy-pa-attachment-status');
+  feedbackFile.onchange=()=>{
+    const file=feedbackFile.files?.[0];
+    attachmentStatus.textContent=file?file.name+' · '+Math.ceil(file.size/1024)+' KB · 点击可重新选择':'未选择文件';
+  };
+  const readFeedbackFile=file=>new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error('文件读取失败'));
+    reader.onload=()=>resolve(String(reader.result||'').split(',')[1]||'');
+    reader.readAsDataURL(file);
+  });
   document.getElementById('cy-pa-submit-feedback').onclick=async()=>{
     const message=document.getElementById('cy-pa-feedback-text').value.trim();
     if(!message)return;
+    const file=feedbackFile.files?.[0];
+    if(file&&(!file.size||file.size>1000000)){attachmentStatus.textContent='文件需在 1 MB 以内';return}
     const btn=document.getElementById('cy-pa-submit-feedback');btn.disabled=true;btn.textContent='提交中…';
     try{
-      const result=await postJson('/v1/product-feedback',{category:document.getElementById('cy-pa-category').value,message,...context()});
-      document.getElementById('cy-pa-feedback-text').value='';
+      const attachment=file?{
+        attachment_name:file.name,attachment_type:file.type,
+        attachment_size:file.size,attachment_data:await readFeedbackFile(file)
+      }:{};
+      const result=await postJson('/v1/product-feedback',{category:document.getElementById('cy-pa-category').value,message,...context(),...attachment});
+      document.getElementById('cy-pa-feedback-text').value='';feedbackFile.value='';attachmentStatus.textContent='未选择文件';
       btn.textContent=result.freemanSynced?'已同步到 Freeman ✓':'反馈已收到 · Freeman 同步待确认';
       setTimeout(()=>{btn.textContent='提交反馈';btn.disabled=false},2200);
     }catch(err){btn.textContent='提交失败，重试';btn.disabled=false}
