@@ -1,6 +1,12 @@
 import base64
 
 import pytest
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
@@ -459,3 +465,51 @@ def test_feedback_attachment_rejects_missing_data_and_unsafe_file():
             message="问题", attachment_name="../x.pdf", attachment_type="application/pdf",
             attachment_size=len(raw), attachment_data=base64.b64encode(raw).decode("ascii"),
         ))
+
+
+def test_feedback_attachment_is_saved_and_transferred_through_proof(monkeypatch):
+    import app_v924 as implementation
+    from changying.web import v1_product_assistant as assistant
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    attachment_table = implementation.Base.metadata.tables["product_feedback_attachments"]
+    implementation.Base.metadata.create_all(
+        engine, tables=[implementation.AuditLog.__table__, attachment_table]
+    )
+    session_factory = sessionmaker(bind=engine)
+    user = SimpleNamespace(id=42, school_id=7, role="teacher")
+    def db_override():
+        with session_factory() as db:
+            yield db
+    app.dependency_overrides[implementation.current_user] = lambda: user
+    app.dependency_overrides[implementation.get_db] = db_override
+    monkeypatch.setattr(assistant.requests, "post", lambda *args, **kwargs: Mock(ok=True))
+    raw = b"%PDF-1.4\\nfeedback"
+    try:
+        client = TestClient(app)
+        posted = client.post(FEEDBACK_PATH, json={
+            "message": "附件无法打开", "attachment_name": "problem.pdf",
+            "attachment_type": "application/pdf", "attachment_size": len(raw),
+            "attachment_data": base64.b64encode(raw).decode("ascii"),
+        })
+        assert posted.status_code == 200
+        assert posted.json()["freemanSynced"] is True
+        with session_factory() as db:
+            audit = db.scalar(select(implementation.AuditLog).where(
+                implementation.AuditLog.action == "product.feedback"
+            ))
+            assert audit is not None
+            assert base64.b64encode(raw).decode("ascii") not in audit.detail
+            token = __import__("json").loads(audit.detail)["transferToken"]
+            saved = db.execute(select(attachment_table)).mappings().one()
+            assert saved["file_data"] == raw
+            assert saved["audit_id"] == audit.id
+        proof = client.get(FEEDBACK_PROOF_PREFIX + "/" + token)
+        assert proof.status_code == 200
+        attachment = proof.json()["feedback"]["attachment"]
+        assert attachment["name"] == "problem.pdf"
+        assert base64.b64decode(attachment["data"]) == raw
+    finally:
+        app.dependency_overrides.pop(implementation.current_user, None)
+        app.dependency_overrides.pop(implementation.get_db, None)
+        engine.dispose()
