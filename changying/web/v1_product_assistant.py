@@ -51,6 +51,10 @@ class ProductFeedbackBody(BaseModel):
     page: str = Field(default="", max_length=240)
     identity: str = Field(default="", max_length=160)
     tutorial_step: str = Field(default="", max_length=200)
+    attachment_name: str = Field(default="", max_length=240)
+    attachment_type: str = Field(default="", max_length=120)
+    attachment_size: int = Field(default=0, ge=0, le=8_000_000)
+    attachment_data: str = Field(default="", max_length=12_000_000)
 
 
 _PRODUCT_CONTEXT = """你是“长缨辅学”的站内学习与产品助手。你既帮助用户理解长缨怎么用，也要根据账号身份采用不同的沟通方式。
