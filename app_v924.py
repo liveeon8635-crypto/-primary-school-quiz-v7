@@ -1803,6 +1803,8 @@ TEACHING_RESOURCE_MIMES={
     ".pptx":"application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 TEACHING_RESOURCE_MAX_FILE=20*1024*1024
+TEACHING_RESOURCE_MAX_UNCOMPRESSED=120*1024*1024
+TEACHING_RESOURCE_MAX_ZIP_ENTRIES=4096
 TEACHING_RESOURCE_SCHOOL_LIMIT=200*1024*1024
 
 
@@ -1886,7 +1888,13 @@ def _validate_office_upload(ext,data):
         return
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as z:
-            names=set(z.namelist())
+            entries=z.infolist()
+            if len(entries)>TEACHING_RESOURCE_MAX_ZIP_ENTRIES:
+                raise HTTPException(413,"Office 文件内部条目过多")
+            expanded=sum(max(0,int(x.file_size or 0)) for x in entries)
+            if expanded>TEACHING_RESOURCE_MAX_UNCOMPRESSED:
+                raise HTTPException(413,"Office 文件解压后内容过大")
+            names={x.filename for x in entries}
             if "[Content_Types].xml" not in names:raise HTTPException(400,"Office 文件格式无效")
             prefix="word/" if ext==".docx" else "ppt/"
             if not any(n.startswith(prefix) for n in names):raise HTTPException(400,"文件扩展名与实际格式不一致")
