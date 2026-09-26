@@ -2668,6 +2668,7 @@ LEGAL_PRIVACY_CONTACT=(os.getenv("LEGAL_PRIVACY_CONTACT") or COMMERCIAL_CONTACT)
 LEGAL_EFFECTIVE_DATE=os.getenv("LEGAL_EFFECTIVE_DATE","").strip()
 PRODUCTION_DB_DURABILITY_CONFIRMED=os.getenv("PRODUCTION_DB_DURABILITY_CONFIRMED","0")=="1"
 PRODUCTION_DB_BACKUP_CONFIRMED=os.getenv("PRODUCTION_DB_BACKUP_CONFIRMED","0")=="1"
+PRODUCTION_DB_RESTORE_DRILL_CONFIRMED=os.getenv("PRODUCTION_DB_RESTORE_DRILL_CONFIRMED","0")=="1"
 PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED=os.getenv("PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED","0")=="1"
 
 COMMERCIAL_PLANS={
@@ -3770,7 +3771,8 @@ def production_readiness_payload(db):
     if missing_tables:blockers.append("缺少关键数据表："+"、".join(missing_tables))
     if _cors_raw=="*":blockers.append("CORS_ORIGINS 不得为 *；正式环境必须同源运行或显式配置可信来源。")
     if not PRODUCTION_DB_DURABILITY_CONFIRMED:blockers.append("生产数据库持久性尚未确认；正式推广前必须使用不会自动到期的生产级数据库方案。")
-    if not PRODUCTION_DB_BACKUP_CONFIRMED:blockers.append("生产数据库备份/恢复能力尚未确认；正式推广前必须启用平台级备份并完成至少一次恢复演练。")
+    if not PRODUCTION_DB_BACKUP_CONFIRMED:blockers.append("生产数据库备份能力尚未确认；正式推广前必须确认平台级备份并完成至少一次完整逻辑导出。")
+    if not PRODUCTION_DB_RESTORE_DRILL_CONFIRMED:advisories.append("PITR 隔离恢复演练尚未完成；当前已确认恢复能力，但扩大推广前建议创建独立恢复实例完成一次真实恢复校验。")
     if not PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED:blockers.append("生产数据库网络边界尚未确认；正式推广前应限制数据库公网访问来源，不应保持 0.0.0.0/0 全网开放。")
     if not semantic["ok"]:blockers.append(f"存在 {semantic['strandedActiveStudents']} 名启用学生仍归属到已停用教师负责的班级；正式推广前必须重新指派教师或完成班级历史收口。")
     if not COMMERCIAL_CONTACT:advisories.append("COMMERCIAL_CONTACT 尚未配置，建议填写正式售后/续费联系方式。")
@@ -3797,12 +3799,13 @@ def production_readiness_payload(db):
             "loginRateLimit":{"ok":True,"value":f"{LOGIN_RATE_MAX_ATTEMPTS}次/{LOGIN_RATE_WINDOW_SECONDS//60}分钟；最多跟踪 {LOGIN_RATE_MAX_CLIENTS} 个客户端"},
             "cors":{"ok":_cors_raw!="*","value":_cors_raw or "同源限定"},
             "databaseDurability":{"ok":PRODUCTION_DB_DURABILITY_CONFIRMED,"value":"已确认" if PRODUCTION_DB_DURABILITY_CONFIRMED else "未确认"},
-            "databaseBackup":{"ok":PRODUCTION_DB_BACKUP_CONFIRMED,"value":"已确认并演练" if PRODUCTION_DB_BACKUP_CONFIRMED else "未确认"},
+            "databaseBackup":{"ok":PRODUCTION_DB_BACKUP_CONFIRMED,"value":"已确认并完成逻辑导出" if PRODUCTION_DB_BACKUP_CONFIRMED else "未确认"},
+            "databaseRestoreDrill":{"ok":PRODUCTION_DB_RESTORE_DRILL_CONFIRMED,"value":"已完成隔离恢复演练" if PRODUCTION_DB_RESTORE_DRILL_CONFIRMED else "待执行（不覆盖生产库）"},
             "databaseNetworkBoundary":{"ok":PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED,"value":"已限制" if PRODUCTION_DB_NETWORK_RESTRICTED_CONFIRMED else "未确认"},
             "semanticIntegrity":{"ok":semantic["ok"],"value":"完整" if semantic["ok"] else f"{semantic['strandedActiveStudents']} 名启用学生处于停用教师班级","detail":semantic}
         },
         "counts":{"schools":school_count,"activeSchools":active_schools,"activeAdmins":active_admins,"unpaidOrders":unpaid_orders,"outstandingYuan":round(outstanding/100,2)},
-        "backup":{"commercialExport":True,"databaseBackup":"已确认平台级备份/恢复演练" if PRODUCTION_DB_BACKUP_CONFIRMED else "待确认：必须启用平台级备份/快照并完成恢复演练"},
+        "backup":{"commercialExport":True,"databaseBackup":"已确认平台级备份并完成逻辑导出" if PRODUCTION_DB_BACKUP_CONFIRMED else "待确认：必须确认平台级备份并完成完整逻辑导出","restoreDrill":"已完成隔离恢复演练" if PRODUCTION_DB_RESTORE_DRILL_CONFIRMED else "待执行：仅恢复到独立实例，不覆盖生产库"},
         "serverTime":school_local_iso(datetime.utcnow())
     }
 
