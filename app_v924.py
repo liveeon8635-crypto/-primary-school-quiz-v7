@@ -3108,6 +3108,15 @@ def _ai_host_is_forbidden(hostname:str)->bool:
         return False
     return not addr.is_global
 
+def _ai_allowed_hosts()->set[str]:
+    defaults={"api.openai.com","api.deepseek.com"}
+    configured={
+        x.strip().lower().strip(".")
+        for x in (os.getenv("AI_ALLOWED_HOSTS") or "").split(",")
+        if x.strip()
+    }
+    return defaults|configured
+
 def _validate_ai_base_url(base:str,*,runtime:bool=False)->str:
     value=(base or "").strip().rstrip("/")
     try:parsed=urlsplit(value)
@@ -3123,6 +3132,8 @@ def _validate_ai_base_url(base:str,*,runtime:bool=False)->str:
     )
     if parsed.scheme!="https" and not local_dev:
         raise HTTPException(400,"AI 接口地址必须使用 HTTPS")
+    if not local_dev and not raw_url.startswith("sqlite") and host.lower().strip(".") not in _ai_allowed_hosts():
+        raise HTTPException(400,"生产环境 AI 接口域名未列入平台允许清单")
     if _ai_host_is_forbidden(host) and not local_dev:
         raise HTTPException(400,"AI 接口地址不能指向本机、内网或保留地址")
     if runtime and not local_dev:
