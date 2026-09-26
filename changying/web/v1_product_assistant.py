@@ -647,7 +647,7 @@ _ASSISTANT_SNIPPET = r'''
     <div class="cy-pa-compose"><textarea id="cy-pa-input" placeholder="例如：这个页面应该先做什么？"></textarea><button class="btn primary" id="cy-pa-send">发送</button></div>
   </div>
   <div class="cy-pa-body" id="cy-pa-feedback" hidden>
-    <div class="cy-pa-feedback"><input type="hidden" id="cy-pa-category" value="这里不好懂"><div class="cy-pa-feedback-cats"><button class="active" data-pa-category="这里不好懂">不好懂</button><button data-pa-category="没找到入口">找不到</button><button data-pa-category="流程不直观">流程不顺</button><button data-pa-category="功能与预期不符">不符合预期</button><button data-pa-category="希望增加功能">想加功能</button><button data-pa-category="其他反馈">其他</button></div><textarea id="cy-pa-feedback-text" placeholder="一句话描述问题或建议（不要填写密码、API Key 等敏感信息）"></textarea><label class="cy-pa-attachment">附照片或文件（最多 1 MB）<input type="file" id="cy-pa-feedback-file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" capture="environment"><span class="cy-pa-attachment-status" id="cy-pa-attachment-status">未选择文件</span></label><button class="btn primary" id="cy-pa-submit-feedback">提交</button><div class="cy-pa-note">会自动附带当前页面、当前身份和正在进行的新手步骤。</div></div>
+    <div class="cy-pa-feedback"><input type="hidden" id="cy-pa-category" value="这里不好懂"><div class="cy-pa-feedback-cats"><button class="active" data-pa-category="这里不好懂">不好懂</button><button data-pa-category="没找到入口">找不到</button><button data-pa-category="流程不直观">流程不顺</button><button data-pa-category="功能与预期不符">不符合预期</button><button data-pa-category="希望增加功能">想加功能</button><button data-pa-category="其他反馈">其他</button></div><textarea id="cy-pa-feedback-text" placeholder="一句话描述问题或建议（不要填写密码、API Key 等敏感信息）"></textarea><label class="cy-pa-attachment">附照片或文件（最多 1 MB）<input type="file" id="cy-pa-feedback-file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain"><span class="cy-pa-attachment-status" id="cy-pa-attachment-status">未选择文件</span></label><button class="btn primary" id="cy-pa-submit-feedback">提交</button><div class="cy-pa-note">会自动附带当前页面、当前身份和正在进行的新手步骤。</div></div>
   </div>
 </section>
 <script id="changying_v1_product_assistant_v1-script">
@@ -923,22 +923,43 @@ _ASSISTANT_SNIPPET = r'''
     reader.onload=()=>resolve(String(reader.result||'').split(',')[1]||'');
     reader.readAsDataURL(file);
   });
+  const prepareFeedbackFile=async file=>{
+    if(file.size<=1000000)return {
+      attachment_name:file.name,attachment_type:file.type,
+      attachment_size:file.size,attachment_data:await readFeedbackFile(file)
+    };
+    if(!file.type.startsWith('image/'))throw new Error('文件需在 1 MB 以内');
+    const url=URL.createObjectURL(file);
+    try{
+      const image=new Image();
+      await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url});
+      const scale=Math.min(1,1200/Math.max(image.width,image.height));
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.max(1,Math.round(image.width*scale));
+      canvas.height=Math.max(1,Math.round(image.height*scale));
+      const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(image,0,0,canvas.width,canvas.height);
+      let encoded=canvas.toDataURL('image/jpeg',.76).split(',')[1];
+      if(atob(encoded).length>1000000)encoded=canvas.toDataURL('image/jpeg',.55).split(',')[1];
+      const size=atob(encoded).length;
+      if(size>1000000)throw new Error('照片压缩后仍超过 1 MB');
+      return {attachment_name:file.name.replace(/\\.[^.]+$/,'')+'.jpg',
+        attachment_type:'image/jpeg',attachment_size:size,attachment_data:encoded};
+    }finally{URL.revokeObjectURL(url)}
+  };
   document.getElementById('cy-pa-submit-feedback').onclick=async()=>{
     const message=document.getElementById('cy-pa-feedback-text').value.trim();
     if(!message)return;
     const file=feedbackFile.files?.[0];
-    if(file&&(!file.size||file.size>1000000)){attachmentStatus.textContent='文件需在 1 MB 以内';return}
+    if(file&&!file.size){attachmentStatus.textContent='不能发送空文件';return}
     const btn=document.getElementById('cy-pa-submit-feedback');btn.disabled=true;btn.textContent='提交中…';
     try{
-      const attachment=file?{
-        attachment_name:file.name,attachment_type:file.type,
-        attachment_size:file.size,attachment_data:await readFeedbackFile(file)
-      }:{};
+      const attachment=file?await prepareFeedbackFile(file):{};
       const result=await postJson('/v1/product-feedback',{category:document.getElementById('cy-pa-category').value,message,...context(),...attachment});
       document.getElementById('cy-pa-feedback-text').value='';feedbackFile.value='';attachmentStatus.textContent='未选择文件';
       btn.textContent=result.freemanSynced?'已同步到 Freeman ✓':'反馈已收到 · Freeman 同步待确认';
       setTimeout(()=>{btn.textContent='提交反馈';btn.disabled=false},2200);
-    }catch(err){btn.textContent='提交失败，重试';btn.disabled=false}
+    }catch(err){attachmentStatus.textContent=err.message||'附件发送失败';btn.textContent='提交失败，重试';btn.disabled=false}
   };
 
   const observedIdentityNodes=new WeakSet();
