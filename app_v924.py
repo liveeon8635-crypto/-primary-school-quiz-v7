@@ -6134,7 +6134,7 @@ async def upload_homework_media(aid:int,file:UploadFile=File(...),u:User=Depends
     if used+len(data)>HOMEWORK_MEDIA_TOTAL_MAX:raise HTTPException(413,"本份作业照片/视频合计不能超过 100MB")
     digest=hashlib.sha256(data).hexdigest()
     if db.scalar(select(HomeworkMedia.id).where(HomeworkMedia.school_id==u.school_id,HomeworkMedia.assignment_id==aid,HomeworkMedia.student_id==u.id,HomeworkMedia.sha256==digest).limit(1)):raise HTTPException(409,"这张照片/这个视频已经上传过了")
-    row=HomeworkMedia(school_id=u.school_id,assignment_id=aid,student_id=u.id,media_type=media_type,file_name=(safe_name or f"homework{ext}")[:255],file_ext=ext,mime_type=(file.content_type or canonical_mime)[:120],size_bytes=len(data),sha256=digest,file_data=data)
+    row=HomeworkMedia(school_id=u.school_id,assignment_id=aid,student_id=u.id,media_type=media_type,file_name=(safe_name or f"homework{ext}")[:255],file_ext=ext,mime_type=canonical_mime,size_bytes=len(data),sha256=digest,file_data=data)
     db.add(row);db.flush();audit(db,u,"homework.media.upload",f"assignment={aid}:media={row.id}:type={media_type}:bytes={len(data)}");db.commit();db.refresh(row);return homework_media_payload(row)
 
 @app.delete("/student/assignments/{aid}/media/{mid}")
