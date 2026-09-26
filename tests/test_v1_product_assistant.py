@@ -1,3 +1,7 @@
+import base64
+
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app import app
@@ -7,6 +11,8 @@ from changying.web.v1_product_assistant import (
     QUERY_PATH,
     V1_PRODUCT_ASSISTANT_MARKER,
     ProductAssistantBody,
+    ProductFeedbackBody,
+    _decode_feedback_attachment,
     _PRODUCT_CONTEXT,
     _active_question_context,
     _clean_assistant_reply,
@@ -414,6 +420,42 @@ def test_current_question_context_captures_visible_figure_labels_only():
     assert "explanation" not in snippet
 
 
-def test_assistant_never_invents_photo_upload_when_the_control_does_not_exist():
-    assert "当前产品助手没有图片/拍照上传入口" in _PRODUCT_CONTEXT
-    assert "不要要求用户“拍照发来”“上传图片”" in _PRODUCT_CONTEXT
+def test_feedback_attachment_ui_and_product_copy():
+    html = rendered_v1()
+    assert 'id="cy-pa-feedback-file"' in html
+    assert 'accept="image/jpeg,image/png,image/webp,application/pdf,text/plain"' in html
+    assert "readFeedbackFile(file)" in html
+    assert "attachment_data:await readFeedbackFile(file)" in html
+    assert "产品反馈页可附一张照片或一个小文件" in _PRODUCT_CONTEXT
+
+
+def test_feedback_attachment_validates_bytes_and_mime():
+    raw = b"%PDF-1.4\\nsmall example"
+    body = ProductFeedbackBody(
+        message="PDF 预览异常", attachment_name="example.pdf",
+        attachment_type="application/pdf", attachment_size=len(raw),
+        attachment_data=base64.b64encode(raw).decode("ascii"),
+    )
+    assert _decode_feedback_attachment(body) == (raw, "example.pdf", "application/pdf")
+
+    body.attachment_type = "image/png"
+    with pytest.raises(HTTPException) as error:
+        _decode_feedback_attachment(body)
+    assert error.value.status_code == 422
+
+    body.attachment_type = "application/pdf"
+    body.attachment_size += 1
+    with pytest.raises(HTTPException):
+        _decode_feedback_attachment(body)
+
+
+def test_feedback_attachment_rejects_missing_data_and_unsafe_file():
+    with pytest.raises(HTTPException):
+        _decode_feedback_attachment(ProductFeedbackBody(message="问题", attachment_name="x.pdf"))
+
+    raw = b"not really a PDF"
+    with pytest.raises(HTTPException):
+        _decode_feedback_attachment(ProductFeedbackBody(
+            message="问题", attachment_name="../x.pdf", attachment_type="application/pdf",
+            attachment_size=len(raw), attachment_data=base64.b64encode(raw).decode("ascii"),
+        ))
