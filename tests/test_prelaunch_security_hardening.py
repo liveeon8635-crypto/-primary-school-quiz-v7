@@ -40,6 +40,22 @@ def test_ai_base_url_rejects_non_global_targets():
     assert legacy._validate_ai_base_url("https://8.8.8.8/v1") == "https://8.8.8.8/v1"
 
 
+def test_production_ai_base_requires_operator_host_allowlist(monkeypatch):
+    monkeypatch.setattr(legacy, "raw_url", "postgresql+psycopg://production")
+    monkeypatch.delenv("AI_ALLOWED_HOSTS", raising=False)
+
+    assert legacy._validate_ai_base_url("https://api.openai.com/v1") == "https://api.openai.com/v1"
+    assert legacy._validate_ai_base_url("https://api.deepseek.com/v1") == "https://api.deepseek.com/v1"
+
+    with pytest.raises(HTTPException) as exc:
+        legacy._validate_ai_base_url("https://customer-controlled.example/v1")
+    assert exc.value.status_code == 400
+    assert "允许清单" in str(exc.value.detail)
+
+    monkeypatch.setenv("AI_ALLOWED_HOSTS", "api.openrouter.ai")
+    assert legacy._validate_ai_base_url("https://api.openrouter.ai/v1") == "https://api.openrouter.ai/v1"
+
+
 def test_ai_runtime_resolution_rejects_non_global_dns(monkeypatch):
     monkeypatch.setattr(
         legacy.socket,
