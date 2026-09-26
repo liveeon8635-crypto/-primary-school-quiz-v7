@@ -110,3 +110,13 @@ def test_request_id_is_sanitized_before_reflection():
     source = inspect.getsource(legacy.production_security_headers)
     assert "A-Za-z0-9._:-" in source
     assert "secrets.token_hex(8)" in source
+
+
+def test_launch_readiness_separates_backup_proof_from_paid_restore_drill():
+    source = inspect.getsource(legacy.production_readiness_payload)
+    assert "PRODUCTION_DB_BACKUP_CONFIRMED" in source
+    assert "PRODUCTION_DB_RESTORE_DRILL_CONFIRMED" in source
+    assert "完成至少一次完整逻辑导出" in source
+    assert "PITR 隔离恢复演练尚未完成" in source
+    assert '"databaseRestoreDrill"' in source
+    assert "不覆盖生产库" in source
