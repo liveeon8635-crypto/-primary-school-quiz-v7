@@ -19,6 +19,7 @@ from changying.web.v1_product_assistant import (
     ProductAssistantBody,
     ProductFeedbackBody,
     _decode_feedback_attachment,
+    _decode_assistant_image,
     _PRODUCT_CONTEXT,
     _active_question_context,
     _clean_assistant_reply,
@@ -513,3 +514,78 @@ def test_feedback_attachment_is_saved_and_transferred_through_proof(monkeypatch)
         app.dependency_overrides.pop(implementation.current_user, None)
         app.dependency_overrides.pop(implementation.get_db, None)
         engine.dispose()
+
+def test_product_assistant_image_ui_and_request_path():
+    html = rendered_v1()
+    assert 'id="cy-pa-query-image"' in html
+    assert 'accept="image/jpeg,image/png,image/webp"' in html
+    assert "image_data:attachment.attachment_data" in html
+    assert "cy-pa-sent-image" in html
+    assert "if(!data.ok)throw new Error" in html
+
+
+def test_product_assistant_image_validation_and_ai_handoff(monkeypatch):
+    import app_v924 as implementation
+
+    raw = b"\x89PNG\r\n\x1a\n" + b"test image"
+    encoded = base64.b64encode(raw).decode("ascii")
+    body = ProductAssistantBody(
+        question="这张图是什么？", image_name="sample.png",
+        image_type="image/png", image_size=len(raw), image_data=encoded,
+    )
+    assert _decode_assistant_image(body) == "data:image/png;base64," + encoded
+    body.image_type = "application/pdf"
+    with pytest.raises(HTTPException):
+        _decode_assistant_image(body)
+    body.image_type = "image/png"
+    body.image_size += 1
+    with pytest.raises(HTTPException):
+        _decode_assistant_image(body)
+
+    received = {}
+    def fake_ai(db, user, feature, prompt, images=None, timeout=90):
+        received.update(feature=feature, prompt=prompt, images=images)
+        return "图片里是测试图。"
+    monkeypatch.setattr(implementation, "_ai_call", fake_ai)
+    app.dependency_overrides[implementation.current_user] = lambda: SimpleNamespace(
+        id=42, school_id=7, role="teacher"
+    )
+    app.dependency_overrides[implementation.get_db] = lambda: None
+    try:
+        response = TestClient(app).post(QUERY_PATH, json={
+            "question": "这张图是什么？", "image_name": "sample.png",
+            "image_type": "image/png", "image_size": len(raw), "image_data": encoded,
+        })
+        assert response.status_code == 200
+        assert response.json()["reply"] == "图片里是测试图。"
+        assert received["feature"] == "product_assistant"
+        assert received["images"] == ["data:image/png;base64," + encoded]
+    finally:
+        app.dependency_overrides.pop(implementation.current_user, None)
+        app.dependency_overrides.pop(implementation.get_db, None)
+
+
+def test_product_assistant_image_failure_does_not_claim_to_see_it(monkeypatch):
+    import app_v924 as implementation
+
+    def unavailable(*args, **kwargs):
+        raise HTTPException(502, "model has no vision")
+    monkeypatch.setattr(implementation, "_ai_call", unavailable)
+    app.dependency_overrides[implementation.current_user] = lambda: SimpleNamespace(
+        id=42, school_id=7, role="teacher"
+    )
+    app.dependency_overrides[implementation.get_db] = lambda: None
+    raw = b"\x89PNG\r\n\x1a\n" + b"test image"
+    try:
+        response = TestClient(app).post(QUERY_PATH, json={
+            "question": "看这张图", "image_name": "sample.png",
+            "image_type": "image/png", "image_size": len(raw),
+            "image_data": base64.b64encode(raw).decode("ascii"),
+        })
+        assert response.status_code == 200
+        assert response.json()["ok"] is False
+        assert response.json()["source"] == "image_unavailable"
+        assert "图片暂时无法识别" in response.json()["reply"]
+    finally:
+        app.dependency_overrides.pop(implementation.current_user, None)
+        app.dependency_overrides.pop(implementation.get_db, None)
