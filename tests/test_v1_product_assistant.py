@@ -527,7 +527,7 @@ def test_product_assistant_image_ui_and_request_path():
 def test_product_assistant_image_validation_and_ai_handoff(monkeypatch):
     import app_v924 as implementation
 
-    raw = b"\\x89PNG\\r\\n\\x1a\\n" + b"test image"
+    raw = b"\x89PNG\r\n\x1a\n" + b"test image"
     encoded = base64.b64encode(raw).decode("ascii")
     body = ProductAssistantBody(
         question="这张图是什么？", image_name="sample.png",
@@ -575,7 +575,7 @@ def test_product_assistant_image_failure_does_not_claim_to_see_it(monkeypatch):
         id=42, school_id=7, role="teacher"
     )
     app.dependency_overrides[implementation.get_db] = lambda: None
-    raw = b"\\x89PNG\\r\\n\\x1a\\n" + b"test image"
+    raw = b"\x89PNG\r\n\x1a\n" + b"test image"
     try:
         response = TestClient(app).post(QUERY_PATH, json={
             "question": "看这张图", "image_name": "sample.png",
