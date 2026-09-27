@@ -28,6 +28,7 @@ from changying.web import v1_classic_gzip_embed as classic_embed_module
 V1_PRODUCT_ASSISTANT_MARKER = "changying_v1_product_assistant_v1"
 QUERY_PATH = "/v1/product-assistant/query"
 FEEDBACK_PATH = "/v1/product-feedback"
+ASSIGNMENT_PHOTO_PATH = "/v1/assignment/photo-questions"
 FEEDBACK_PROOF_PREFIX = "/v1/product-feedback/proof"
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
 FEEDBACK_PROOF_TTL_MINUTES = 15
