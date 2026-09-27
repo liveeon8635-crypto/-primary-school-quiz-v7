@@ -83,6 +83,32 @@ def grade5_knowledge_modules(textbook_edition: str | None = None) -> list[dict[s
     return modules
 
 
+def grade5_knowledge_module_names(textbook_edition: str | None = None) -> list[str]:
+    """Return just the Grade-5 module display names for the given edition.
+
+    Runtime callers (e.g. the student detail / knowledge-module practice
+    surface) use this to render the current 人教版 module list without
+    duplicating the edition-selection logic.
+    """
+    return [module["name"] for module in grade5_knowledge_modules(textbook_edition)]
+
+
+def grade5_knowledge_modules_payload(textbook_edition: str | None = None) -> dict[str, Any]:
+    """Return a JSON-ready payload describing the Grade-5 module list.
+
+    This is the single runtime entry point used by the web layer so the
+    practice surface always reflects the requested textbook edition.
+    """
+    edition = textbook_edition or "legacy"
+    return {
+        "grade": 5,
+        "textbookEdition": edition,
+        "latestEdition": TEXTBOOK_EDITION_RENMIN_2024,
+        "isLatest": edition == TEXTBOOK_EDITION_RENMIN_2024,
+        "modules": grade5_knowledge_modules(edition),
+    }
+
+
 __all__ = [
     "TEXTBOOK_EDITION_RENMIN_2024",
     "attach_learning_evidence",
