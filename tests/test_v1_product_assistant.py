@@ -1,4 +1,5 @@
 import base64
+import hashlib
 
 import pytest
 from types import SimpleNamespace
@@ -511,6 +512,15 @@ def test_feedback_attachment_is_saved_and_transferred_through_proof(monkeypatch)
         attachment = proof.json()["feedback"]["attachment"]
         assert attachment["name"] == "problem.pdf"
         assert base64.b64decode(attachment["data"]) == raw
+        downloaded = client.get(FEEDBACK_PROOF_PREFIX + "/" + token + "/attachment")
+        assert downloaded.status_code == 200
+        assert downloaded.content == raw
+        assert downloaded.headers["content-type"] == "application/pdf"
+        assert 'filename="problem.pdf"' in downloaded.headers["content-disposition"]
+        assert downloaded.headers["x-attachment-sha256"] == hashlib.sha256(raw).hexdigest()
+
+        invalid = client.get(FEEDBACK_PROOF_PREFIX + "/" + ("x" * 24) + "/attachment")
+        assert invalid.status_code == 404
     finally:
         app.dependency_overrides.pop(implementation.current_user, None)
         app.dependency_overrides.pop(implementation.get_db, None)
