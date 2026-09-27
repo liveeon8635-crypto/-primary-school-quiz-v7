@@ -53,6 +53,25 @@ class ProductAssistantBody(BaseModel):
     image_data: str = Field(default="", max_length=1_400_000)
 
 
+def _image_failure_reason(exc: Exception) -> str:
+    if not isinstance(exc, HTTPException):
+        return "internal_error"
+    detail = str(exc.detail or "").lower()
+    if exc.status_code == 429:
+        return "hourly_limit"
+    if exc.status_code == 504:
+        return "provider_timeout"
+    if exc.status_code == 503:
+        return "ai_not_configured"
+    if any(term in detail for term in ("insufficient_quota", "quota", "credits", "余额", "额度")):
+        return "provider_quota"
+    if any(term in detail for term in ("invalid_api_key", "authentication", "unauthorized", "api key")):
+        return "provider_auth"
+    if any(term in detail for term in ("vision", "image", "multimodal", "unsupported", "看图", "图片")):
+        return "vision_model_unsupported"
+    return "provider_error"
+
+
 class ProductFeedbackBody(BaseModel):
     category: str = Field(default="其他反馈", max_length=60)
     message: str = Field(min_length=1, max_length=1200)
@@ -498,10 +517,13 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "source": "ai",
                 "degraded": False,
             }
-        except HTTPException:
+        except HTTPException as exc:
             if image:
+                reason = _image_failure_reason(exc)
+                print(json.dumps({"event": "PRODUCT_ASSISTANT_IMAGE_UNAVAILABLE", "reason": reason,
+                                  "status": exc.status_code}, ensure_ascii=False), flush=True)
                 return {"ok": False, "reply": "图片暂时无法识别，请稍后重试或联系管理员检查图片模型配置。",
-                        "source": "image_unavailable", "degraded": True}
+                        "source": "image_unavailable", "reason": reason, "degraded": True}
             return {
                 "ok": True,
                 "reply": _clean_assistant_reply(
@@ -517,10 +539,13 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "source": "local",
                 "degraded": True,
             }
-        except Exception:
+        except Exception as exc:
             if image:
+                reason = _image_failure_reason(exc)
+                print(json.dumps({"event": "PRODUCT_ASSISTANT_IMAGE_UNAVAILABLE", "reason": reason,
+                                  "status": None}, ensure_ascii=False), flush=True)
                 return {"ok": False, "reply": "图片暂时无法识别，请稍后重试。",
-                        "source": "image_unavailable", "degraded": True}
+                        "source": "image_unavailable", "reason": reason, "degraded": True}
             return {
                 "ok": True,
                 "reply": _clean_assistant_reply(

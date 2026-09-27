@@ -20,6 +20,7 @@ from changying.web.v1_product_assistant import (
     ProductFeedbackBody,
     _decode_feedback_attachment,
     _decode_assistant_image,
+    _image_failure_reason,
     _PRODUCT_CONTEXT,
     _active_question_context,
     _clean_assistant_reply,
@@ -585,7 +586,20 @@ def test_product_assistant_image_failure_does_not_claim_to_see_it(monkeypatch):
         assert response.status_code == 200
         assert response.json()["ok"] is False
         assert response.json()["source"] == "image_unavailable"
+        assert response.json()["reason"] == "vision_model_unsupported"
         assert "图片暂时无法识别" in response.json()["reply"]
     finally:
         app.dependency_overrides.pop(implementation.current_user, None)
         app.dependency_overrides.pop(implementation.get_db, None)
+
+
+@pytest.mark.parametrize(("error", "reason"), [
+    (HTTPException(503, "尚未配置 AI 模型"), "ai_not_configured"),
+    (HTTPException(429, "hourly limit"), "hourly_limit"),
+    (HTTPException(502, "insufficient_quota"), "provider_quota"),
+    (HTTPException(502, "invalid_api_key"), "provider_auth"),
+    (HTTPException(504, "timeout"), "provider_timeout"),
+    (RuntimeError("unexpected"), "internal_error"),
+])
+def test_assistant_image_failure_reason_excludes_provider_detail(error, reason):
+    assert _image_failure_reason(error) == reason
