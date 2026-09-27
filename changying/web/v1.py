@@ -167,7 +167,7 @@ def v1_html() -> str:
     }}
     function v1RenderQuestionFigure(fig){{
       if(!fig||!fig.type)return '';
-      const type=String(fig.type||'').toLowerCase(),w=320,h=210,m=28,num=(v,d=0)=>Number.isFinite(+v)?+v:d;let body='';
+      const type=String(fig.type||'').toLowerCase(),w=320,h=210,m=28,num=(v,d=0)=>Number.isFinite(+v)?+v:d;\n      if(type==='uploaded_image'&&/^data:image\\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(String(fig.data_url||''))&&String(fig.data_url).length<=700000)return '<div style="margin:12px 0;padding:10px;border:1px solid #e5e7eb;border-radius:12px;background:#fff"><img src="'+fig.data_url+'" alt="'+esc(fig.alt||'题目照片')+'" style="display:block;max-width:100%;max-height:360px;object-fit:contain;margin:auto"></div>';\n      let body='';
       if(type==='coordinate_grid'){{
         const xm=Math.max(1,Math.min(12,num(fig.xMax,8))),ym=Math.max(1,Math.min(12,num(fig.yMax,8))),sx=(w-2*m)/xm,sy=(h-2*m)/ym;
         for(let x=0;x<=xm;x++){{const px=m+x*sx;body+='<line x1="'+px+'" y1="'+m+'" x2="'+px+'" y2="'+(h-m)+'" stroke="#d8dee9" stroke-width="1"/><text x="'+px+'" y="'+(h-m+17)+'" text-anchor="middle" font-size="10">'+x+'</text>'}}
