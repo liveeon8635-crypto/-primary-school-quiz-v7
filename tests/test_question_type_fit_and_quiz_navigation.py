@@ -89,3 +89,26 @@ def test_runtime_student_quiz_supports_back_forward_and_answer_revision():
 
     quiz = html.split("function startQuiz(qs,title,aid){", 1)[1].split("async function progress(){", 1)[0]
     assert "answers.push(item)" not in quiz
+
+
+
+def test_teacher_photo_question_figure_is_bounded_and_visible_to_students():
+    import app_v924 as legacy
+
+    valid = {
+        "type": "uploaded_image",
+        "data_url": "data:image/jpeg;base64,AA==",
+        "alt": "题目照片",
+    }
+    assert legacy._sanitize_figure(valid) == valid
+    assert legacy._sanitize_figure(
+        {"type": "uploaded_image", "data_url": "data:image/svg+xml;base64,PHN2Zz4="}
+    ) == {}
+    assert legacy._sanitize_figure(
+        {"type": "uploaded_image", "data_url": "data:image/jpeg;base64," + "A" * 700001}
+    ) == {}
+
+    html = legacy.INDEX_HTML
+    assert 'id="assignmentQuestionPhoto"' in html
+    assert "给本次作业添加一道题目照片" in html
+    assert "_sanitize_figure" in legacy.addq.__code__.co_names
