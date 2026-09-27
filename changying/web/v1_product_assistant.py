@@ -617,6 +617,46 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             synced = False
         return {"ok": True, "received": True, "freemanSynced": synced}
 
+    @router.get(FEEDBACK_PROOF_PREFIX + "/{proof_token}/attachment", include_in_schema=False)
+    def product_feedback_attachment_download(proof_token: str, db=Depends(implementation.get_db)):
+        token = str(proof_token or "").strip()
+        if len(token) < 24 or len(token) > 96:
+            raise HTTPException(404, "反馈凭证不存在")
+        row = db.scalar(
+            select(implementation.AuditLog)
+            .where(
+                implementation.AuditLog.action == "product.feedback",
+                implementation.AuditLog.detail.contains(token),
+            )
+            .order_by(implementation.AuditLog.id.desc())
+            .limit(1)
+        )
+        if not row:
+            raise HTTPException(404, "反馈凭证不存在")
+        created_at = row.created_at or datetime.utcnow()
+        if datetime.utcnow() - created_at > timedelta(minutes=FEEDBACK_PROOF_TTL_MINUTES):
+            raise HTTPException(410, "反馈凭证已过期")
+        try:
+            payload = json.loads(row.detail or "{}")
+        except Exception:
+            raise HTTPException(404, "反馈凭证无效")
+        if payload.get("transferToken") != token:
+            raise HTTPException(404, "反馈凭证无效")
+        attachment_row = db.execute(
+            select(attachment_table).where(attachment_table.c.audit_id == row.id)
+        ).mappings().first()
+        if not attachment_row:
+            raise HTTPException(404, "该反馈没有附件")
+        from fastapi.responses import Response
+        return Response(
+            content=bytes(attachment_row["file_data"]),
+            media_type=attachment_row["mime_type"],
+            headers={
+                "Content-Disposition": f"attachment; filename=\"{attachment_row['file_name']}\"",
+                "X-Attachment-Sha256": attachment_row["sha256"],
+            },
+        )
+
     @router.get(FEEDBACK_PROOF_PREFIX + "/{proof_token}", include_in_schema=False)
     def product_feedback_proof(proof_token: str, db=Depends(implementation.get_db)):
         token = str(proof_token or "").strip()
