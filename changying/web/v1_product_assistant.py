@@ -29,6 +29,38 @@ V1_PRODUCT_ASSISTANT_MARKER = "changying_v1_product_assistant_v1"
 QUERY_PATH = "/v1/product-assistant/query"
 FEEDBACK_PATH = "/v1/product-feedback"
 FEEDBACK_PROOF_PREFIX = "/v1/product-feedback/proof"
+KNOWLEDGE_POINTS_PATH = "/v1/ai-question/knowledge-points"
+
+
+def _unit_knowledge_points(implementation: ModuleType, db, school_id: int, unit: str) -> list[str]:
+    """Return the concrete knowledge points available for a unit so the AI
+    question generator can present them as selectable options instead of a
+    free-text field. Falls back to the implementation's knowledge catalog.
+    """
+    unit_text = str(unit or "").strip()
+    points: list[str] = []
+    catalog = getattr(implementation, "KNOWLEDGE_POINTS", None)
+    if isinstance(catalog, dict):
+        raw = catalog.get(unit_text) or []
+        points = [str(x).strip() for x in raw if str(x).strip()]
+    if not points:
+        try:
+            rows = db.scalars(
+                select(implementation.KnowledgePoint)
+                .where(implementation.KnowledgePoint.school_id == school_id)
+                .order_by(implementation.KnowledgePoint.id)
+            ).all()
+            points = [str(getattr(r, "name", "") or "").strip() for r in rows]
+            points = [p for p in points if p]
+        except Exception:
+            points = []
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for p in points:
+        if p not in seen:
+            seen.add(p)
+            ordered.append(p)
+    return ordered
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
 FEEDBACK_PROOF_TTL_MINUTES = 15
 FEEDBACK_ATTACHMENT_MAX_BYTES = 1_000_000
