@@ -520,6 +520,7 @@ def test_product_assistant_image_ui_and_request_path():
     assert 'id="cy-pa-query-image"' in html
     assert 'accept="image/jpeg,image/png,image/webp"' in html
     assert "image_data:attachment.attachment_data" in html
+    assert "cy-pa-sent-image" in html
     assert "if(!data.ok)throw new Error" in html
 
 
