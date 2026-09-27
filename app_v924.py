@@ -3264,6 +3264,12 @@ def _ai_call(db,u,feature,prompt,images=None,timeout=90):
         except Exception:data={}
         if not r.ok:
             e=data.get("error") if isinstance(data,dict) else None;detail=e.get("message") if isinstance(e,dict) else str(e or (data.get("detail") if isinstance(data,dict) else "") or "")
+            if feature=="product_assistant" and images:
+                raw_code=(e.get("code") or e.get("type") or "") if isinstance(e,dict) else ""
+                code=str(raw_code)[:80] if re.fullmatch(r"[A-Za-z0-9_.-]{1,80}",str(raw_code)) else "unclassified"
+                print(json.dumps({"event":"PRODUCT_ASSISTANT_IMAGE_PROVIDER_REJECTED",
+                                  "provider":provider,"upstreamStatus":r.status_code,"errorCode":code},
+                                 ensure_ascii=False),flush=True)
             raise HTTPException(502,(detail or f"AI 服务请求失败 HTTP {r.status_code}")[:500])
         out=_ai_extract_text(data)
         if not out:raise HTTPException(502,"AI 服务没有返回可用文本")
