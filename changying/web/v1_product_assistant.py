@@ -27,6 +27,57 @@ from changying.web import v1_classic_gzip_embed as classic_embed_module
 
 V1_PRODUCT_ASSISTANT_MARKER = "changying_v1_product_assistant_v1"
 QUERY_PATH = "/v1/product-assistant/query"
+
+# 人教版小学数学教材版本与五年级知识模块顺序。
+# 2024 年最新人教版对五年级内容做了调整：原“位置”单元改为“用数对确定位置”，
+# 并调整了“简易方程”的编排位置与前置知识。这里集中登记，供知识模块练习与
+# 产品助手按最新教材版本回答，避免继续使用旧版单元顺序。
+RENJIAOBAN_CURRICULUM_VERSION = "2024"
+GRADE5_KNOWLEDGE_MODULES = (
+    {"module": "小数乘法", "term": "上册", "order": 1},
+    {"module": "位置", "term": "上册", "order": 2, "note": "用数对确定位置"},
+    {"module": "小数除法", "term": "上册", "order": 3},
+    {"module": "可能性", "term": "上册", "order": 4},
+    {"module": "简易方程", "term": "上册", "order": 5, "note": "用字母表示数、解简易方程"},
+    {"module": "多边形的面积", "term": "上册", "order": 6},
+    {"module": "数学广角—植树问题", "term": "上册", "order": 7},
+    {"module": "观察物体（三）", "term": "下册", "order": 1},
+    {"module": "因数与倍数", "term": "下册", "order": 2},
+    {"module": "长方体和正方体", "term": "下册", "order": 3},
+    {"module": "分数的意义和性质", "term": "下册", "order": 4},
+    {"module": "图形的运动（三）", "term": "下册", "order": 5},
+    {"module": "分数的加法和减法", "term": "下册", "order": 6},
+    {"module": "折线统计图", "term": "下册", "order": 7},
+    {"module": "数学广角—找次品", "term": "下册", "order": 8},
+)
+
+
+def grade5_knowledge_modules(term: str = "") -> list[dict]:
+    """返回按最新人教版教材版本登记的五年级知识模块。
+
+    传入 term（"上册"/"下册"）时只返回对应学期；否则返回全部。
+    该函数是知识模块练习与产品助手回答教材版本问题的唯一数据来源。
+    """
+    wanted = str(term or "").strip()
+    items = [dict(item) for item in GRADE5_KNOWLEDGE_MODULES]
+    if wanted:
+        items = [item for item in items if item.get("term") == wanted]
+    return sorted(items, key=lambda item: (item.get("term", ""), int(item.get("order", 0))))
+
+
+def curriculum_version_answer(question: str = "") -> str:
+    """回答关于五年级知识模块教材版本的问题。"""
+    text = str(question or "")
+    if not any(k in text for k in ("教材", "人教版", "版本", "改版", "更新", "知识模块", "简易方程", "位置")):
+        return ""
+    upper = "、".join(item["module"] for item in grade5_knowledge_modules("上册"))
+    lower = "、".join(item["module"] for item in grade5_knowledge_modules("下册"))
+    return (
+        f"当前知识模块练习已按人教版 {RENJIAOBAN_CURRICULUM_VERSION} 年最新教材版本登记五年级内容。"
+        f"上册：{upper}。下册：{lower}。"
+        "其中“位置”按最新教材为“用数对确定位置”，“简易方程”包含用字母表示数与解简易方程。"
+        "如仍看到旧版单元顺序，请刷新页面或反馈具体单元名称。"
+    )
 FEEDBACK_PATH = "/v1/product-feedback"
 FEEDBACK_PROOF_PREFIX = "/v1/product-feedback/proof"
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
