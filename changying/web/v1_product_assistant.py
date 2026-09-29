@@ -450,6 +450,31 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         Column("file_data", LargeBinary, nullable=False),
         Column("created_at", DateTime, default=datetime.utcnow, nullable=False),
     )
+    reward_table = Table(
+        "product_feedback_rewards", implementation.Base.metadata,
+        Column("id", Integer, primary_key=True),
+        Column("audit_id", Integer, ForeignKey("audit_logs.id"), unique=True, nullable=False),
+        Column("school_id", Integer, ForeignKey("schools.id"), nullable=False),
+        Column("user_id", Integer, ForeignKey("users.id"), nullable=False),
+        Column("points", Integer, nullable=False, default=1),
+        Column("status", String(20), nullable=False, default="pending"),
+        Column("created_at", DateTime, default=datetime.utcnow, nullable=False),
+    )
+
+    def _feedback_reward_summary(db, user) -> dict:
+        rows = db.execute(
+            select(reward_table.c.points, reward_table.c.status)
+            .where(reward_table.c.user_id == user.id, reward_table.c.school_id == user.school_id)
+        ).all()
+        earned = sum(int(r[0] or 0) for r in rows if str(r[1]) == "granted")
+        pending = sum(int(r[0] or 0) for r in rows if str(r[1]) == "pending")
+        return {
+            "earnedPoints": earned,
+            "pendingPoints": pending,
+            "totalPoints": earned + pending,
+            "redeemable": earned,
+            "rule": "每条被采纳的产品反馈获得 1 个反馈奖励分；奖励分可用于兑换账号时长，兑换比例将根据总体数据消费情况确定。",
+        }
 
     @router.post(QUERY_PATH, include_in_schema=False)
     def product_assistant_query(
