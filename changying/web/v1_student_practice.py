@@ -48,6 +48,7 @@ class StudentPracticeCreateBody(BaseModel):
     textbook: str = ""
     kind: str = "comprehensive"
     knowledge: str = ""
+    difficulty: str = ""
     question_count: int = 10
     due_date: str = ""
     class_id: int | None = None
