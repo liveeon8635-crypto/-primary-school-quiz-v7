@@ -117,11 +117,20 @@ def patch_v1_student_detail_visibility(html: str) -> str:
             raise RuntimeError(f"V1 student detail visibility patch: marker not found: {old}")
         html = html.replace(old, new, 1)
 
-    return html.replace(
+    html = html.replace(
         "</body>",
         f"{_MOBILE_LAYOUT_CSS}<!-- {V1_STUDENT_DETAIL_VISIBILITY_MARKER} --></body>",
         1,
     )
+
+    if FEEDBACK_STATUS_CHAIN_MARKER not in html:
+        html = html.replace(
+            "</body>",
+            f"{_FEEDBACK_STATUS_CHAIN_HTML}{_FEEDBACK_REWARD_PANEL_HTML}</body>",
+            1,
+        )
+
+    return html
 
 
 def install_v1_student_detail_visibility_patch() -> None:
