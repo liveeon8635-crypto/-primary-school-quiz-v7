@@ -1,4 +1,4 @@
-"""School-local date/time helpers extracted from the legacy application."""
+"""School-local date/time helpers shared by the Changying application."""
 
 from __future__ import annotations
 
