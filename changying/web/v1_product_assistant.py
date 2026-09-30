@@ -1280,6 +1280,14 @@ _ASSISTANT_SNIPPET = r'''
     ['ask','feedback','records'].forEach(id=>{const el=document.getElementById('cy-pa-'+id);if(el)el.hidden=id!==name});
     if(name==='records')loadFeedbackHistory();
   }
+  const closePanel=()=>{panel.hidden=true;fab.hidden=!identityReady();fab.setAttribute('aria-label','打开产品助手')};
+  const openPanel=()=>{if(!identityReady())return;panel.hidden=false;fab.hidden=true;fab.setAttribute('aria-label','收起产品助手');updateContext();applyRoleCopy();renderGuideGrid()};
+  fab.onclick=()=>panel.hidden?openPanel():closePanel();
+  document.getElementById('cy-pa-collapse').onclick=closePanel;
+  document.querySelectorAll('[data-pa-category]').forEach(btn=>btn.onclick=()=>{
+    document.querySelectorAll('[data-pa-category]').forEach(x=>x.classList.toggle('active',x===btn));
+    document.getElementById('cy-pa-category').value=btn.dataset.paCategory;
+  });
   document.querySelectorAll('.cy-pa-tab').forEach(x=>x.onclick=()=>setTab(x.dataset.paTab));
   if(new URLSearchParams(location.search).get('tab')==='feedback-records'){setTab('records');panel.hidden=false;fab.hidden=true;}
   document.querySelectorAll('[data-pa-question]').forEach(x=>x.onclick=()=>ask(x.dataset.paQuestion));
