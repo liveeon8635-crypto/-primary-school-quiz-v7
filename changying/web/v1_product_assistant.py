@@ -664,7 +664,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             .where(
                 audit.school_id == user.school_id,
                 audit.user_id == user.id,
-                audit.action == "product_feedback",
+                audit.action == "product.feedback",
             )
             .order_by(audit.id.desc())
             .limit(100)
@@ -718,7 +718,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 audit.id == feedback_id,
                 audit.school_id == user.school_id,
                 audit.user_id == user.id,
-                audit.action == "product_feedback",
+                audit.action == "product.feedback",
             )
         )
         if not row:
