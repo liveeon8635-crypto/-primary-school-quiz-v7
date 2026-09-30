@@ -67,3 +67,12 @@ def test_production_v1_contains_transition_plan_view():
     assert "教师确认的衔接计划" in html
     assert "/v1/students/" in html
     assert "/transition-plans" in html
+
+
+
+def test_snippet_no_longer_requires_main():
+    from changying.web.v1_transition_plan_view import _SNIPPET
+
+    assert "document.querySelector('#screen main');if(!main)return;" not in _SNIPPET
+    assert "mountTP" in _SNIPPET
+    assert "cy-transition-plan-section" in _SNIPPET
