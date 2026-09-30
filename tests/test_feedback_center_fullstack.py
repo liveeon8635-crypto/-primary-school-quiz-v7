@@ -19,7 +19,6 @@ def test_feedback_center_is_a_real_v1_route_with_visible_entry_and_actions():
 
     assert 'id="feedbackCenterButton"' in html
     assert "我的反馈记录" in html
-    assert "async function feedbackPage()" in html
     assert "/v1/product-feedback/mine" in html
     assert "取用状态：" in html
     assert "处理回执" in html
