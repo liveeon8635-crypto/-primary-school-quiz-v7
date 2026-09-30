@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
 V1_UI_MARKER = "changying_v1_20260915"
 V1_PATHS = ("/v1", "/v1/workspace", "/v1/student", "/v1/history", "/v1/transition", "/v1/feedback")
+
+
+def _feedback_center_script() -> str:
+    return Path(__file__).with_name("feedback_center.js").read_text(encoding="utf-8")
 
 
 def current_v1_build_id() -> str:
@@ -22,6 +27,7 @@ def current_v1_build_id() -> str:
 
 def v1_html() -> str:
     build_id = json.dumps(current_v1_build_id())
+    feedback_center_script = _feedback_center_script()
     return f'''<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -51,6 +57,7 @@ def v1_html() -> str:
 <body>
   <div class="app" id="app"><header class="top"><a class="brand" href="/v1"><span class="mark">长</span><span>长缨辅学<small>学生连续发展档案 · V1</small></span></a><div class="top-actions"><button class="btn" id="feedbackCenterButton" hidden>我的反馈记录</button><span class="identity-chip" id="identityChip">检查登录状态</span><button class="btn" id="identityButton" hidden>切换身份</button></div></header><div id="screen"></div></div>
   <div class="toast" id="toast"></div>
+  <script id="changying-feedback-center-script">{feedback_center_script}</script>
   <script id="{V1_UI_MARKER}-script">
   (()=>{{
     const TOKEN_KEY='v717Token', USER_KEY='v717User', REMEMBER_KEY='v717Remember', IDENTITY_KEY='cyV1Identity', CYCLE_KEY='cyV1Cycle';
@@ -244,13 +251,14 @@ def v1_html() -> str:
       let data={{ok:true,records:[],rewardSummary:{{}}}};
       try{{data=await api('/v1/product-feedback/mine')}}catch(err){{screen.innerHTML=shell(heading('我的反馈记录','查看提交记录、处理回执与反馈奖励。')+`<div class="notice error">${{esc(err.message||'反馈记录读取失败')}}</div>`,'feedback');bindNav();return}}
       const records=Array.isArray(data.records)?data.records:[],summary=data.rewardSummary||{{}};
-      const rewardText=r=>String(r.rewardStatus||'')==='granted'?('已获得 +'+Number(r.rewardPoints||0)+' 分'):('待发放 '+Number(r.rewardPoints||0)+' 分');
+      const feedbackUI=window.ChangyingFeedbackCenter;
+      const rewardText=r=>feedbackUI.rewardText(r);
       const recordsHtml=records.length?records.map(r=>{{
         const followups=Array.isArray(r.followUps)?r.followUps:[];
-        const statusClass=String(r.rewardStatus||'')==='granted'?'granted':'pending';
+        const statusClass=feedbackUI.statusClass(r);
         return `<article class="card feedback-record" data-feedback-record="${{esc(r.id)}}">
-          <div class="feedback-record-head"><div><div class="feedback-record-meta"><span class="tag feedback-status ${{statusClass}}">取用状态：${{esc(r.statusLabel||'待处理')}}</span><span class="tag feedback-reward">奖励分：${{esc(rewardText(r))}}</span></div><h2 style="margin-top:10px">${{esc(r.category||'产品反馈')}}</h2><p>${{esc(r.message||'')}}</p></div><small>${{esc(r.createdAt||'')}}</small></div>
-          <div class="feedback-receipt"><b>处理回执</b><div style="margin-top:5px">${{esc(r.receipt||'已收到，等待处理回执')}}</div></div>
+          <div class="feedback-record-head"><div><div class="feedback-record-meta"><span class="tag feedback-status ${{statusClass}}">取用状态：${{esc(feedbackUI.statusLabel(r))}}</span><span class="tag feedback-reward">奖励分：${{esc(rewardText(r))}}</span></div><h2 style="margin-top:10px">${{esc(r.category||'产品反馈')}}</h2><p>${{esc(r.message||'')}}</p></div><small>${{esc(r.createdAt||'')}}</small></div>
+          <div class="feedback-receipt"><b>处理回执</b><div style="margin-top:5px">${{esc(feedbackUI.receiptText(r))}}</div></div>
           ${{followups.length?`<div class="feedback-followups"><b>追加反馈</b>${{followups.map(x=>`<div class="feedback-followup">${{esc(x.message||'')}}<small style="display:block;color:var(--muted);margin-top:3px">${{esc(x.at||'')}}</small></div>`).join('')}}</div>`:''}}
           <div class="feedback-actions"><button class="btn" data-feedback-followup-toggle="${{esc(r.id)}}">追加反馈</button>${{r.acknowledged?'<span class="tag">已查收（满意）</span>':`<button class="btn green" data-feedback-ack="${{esc(r.id)}}">查收（满意）</button>`}}</div>
           <div class="feedback-composer" data-feedback-followup-form="${{esc(r.id)}}" hidden><textarea data-feedback-followup-input="${{esc(r.id)}}" maxlength="1200" placeholder="补充新的现象、截图说明或后续建议"></textarea><div class="feedback-actions"><button class="btn primary" data-feedback-followup-submit="${{esc(r.id)}}">提交追加反馈</button><button class="btn" data-feedback-followup-cancel="${{esc(r.id)}}">取消</button></div></div>
