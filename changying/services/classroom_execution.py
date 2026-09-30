@@ -82,6 +82,64 @@ def unique_knowledge_keys(values:Iterable[str])->list[str]:
             seen.add(value);out.append(value)
     return out
 
+# 人教版小学数学教材版本与知识模块目录。
+# 反馈 #304：五年级“简易方程”和“位置”在最新人教版教材中已改版，
+# 旧版目录会把这两个模块归到过时的单元/学期，导致“知识模块练习”
+# 展示的不是最新版本。这里以显式版本目录作为唯一事实来源，
+# 供知识模块练习按教材版本选择正确的模块归属。
+TEXTBOOK_EDITIONS={"2013","2024"}
+CURRENT_TEXTBOOK_EDITION="2024"
+
+# 每个模块记录其在各教材版本中的年级/学期归属。
+# 2024 版：简易方程与位置均调整到五年级上册，且位置单元内容改为
+# 用数对确定位置（原 2013 版为五年级上册“位置”+ 五年级下册“简易方程”）。
+KNOWLEDGE_MODULE_EDITIONS={
+    "简易方程":{
+        "2013":{"grade":5,"term":"下","unit":"简易方程"},
+        "2024":{"grade":5,"term":"上","unit":"简易方程"},
+    },
+    "位置":{
+        "2013":{"grade":5,"term":"上","unit":"位置"},
+        "2024":{"grade":5,"term":"上","unit":"位置（用数对确定位置）"},
+    },
+}
+
+def normalize_textbook_edition(edition:str|None)->str:
+    value=str(edition or "").strip()
+    if value in TEXTBOOK_EDITIONS:
+        return value
+    return CURRENT_TEXTBOOK_EDITION
+
+def knowledge_module_placement(module:str,edition:str|None=None)->dict|None:
+    """返回指定教材版本下知识模块的年级/学期/单元归属。
+
+    未登记的模块返回 None，由调用方决定回退策略；
+    已登记模块在未知版本下回退到当前版本，避免展示过时目录。
+    """
+    name=str(module or "").strip()
+    placements=KNOWLEDGE_MODULE_EDITIONS.get(name)
+    if not placements:
+        return None
+    resolved=normalize_textbook_edition(edition)
+    placement=placements.get(resolved) or placements.get(CURRENT_TEXTBOOK_EDITION)
+    if not placement:
+        return None
+    result=dict(placement)
+    result["module"]=name
+    result["edition"]=resolved
+    return result
+
+def knowledge_modules_for_grade(grade:int,edition:str|None=None)->list[dict]:
+    """返回某年级在当前教材版本下应展示的知识模块目录。"""
+    resolved=normalize_textbook_edition(edition)
+    out=[]
+    for name in KNOWLEDGE_MODULE_EDITIONS:
+        placement=knowledge_module_placement(name,resolved)
+        if placement and int(placement.get("grade") or 0)==int(grade):
+            out.append(placement)
+    out.sort(key=lambda item:(str(item.get("term") or ""),str(item.get("module") or "")))
+    return out
+
 __all__=[
     "PRESENTER_STATUSES","SEGMENT_MODES","SEGMENT_STATUSES","SESSION_STATUSES",
     "can_complete_session","can_start_segment","candidate_signals","candidate_sort_key","presenter_required","presenter_turn_is_open",
