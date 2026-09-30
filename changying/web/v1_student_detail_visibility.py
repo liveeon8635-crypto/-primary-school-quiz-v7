@@ -147,6 +147,13 @@ def patch_v1_student_detail_visibility(html: str) -> str:
             1,
         )
 
+    if ASSISTANT_LAUNCHER_BINDING_MARKER not in html:
+        html = html.replace(
+            "</body>",
+            f"{_ASSISTANT_LAUNCHER_BINDING_SCRIPT}</body>",
+            1,
+        )
+
     return html
 
 
