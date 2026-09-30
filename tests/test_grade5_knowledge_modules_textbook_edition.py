@@ -9,16 +9,18 @@ from changying.web import v1_product_assistant as assistant
 
 
 def test_grade5_modules_include_renjiao_current_modules():
-    modules = set(assistant.GRADE5_KNOWLEDGE_MODULES)
-    assert "简易方程" in modules
-    assert "位置" in modules
+    modules = assistant.grade5_knowledge_modules()
+    names = {item["module"] for item in modules}
+    assert "简易方程" in names
+    assert "位置" in names
+    assert all({"module", "term", "order"} <= set(item) for item in modules)
 
 
 def test_grade5_modules_do_not_use_retired_old_edition_modules():
-    modules = set(assistant.GRADE5_KNOWLEDGE_MODULES)
+    names = {item["module"] for item in assistant.grade5_knowledge_modules()}
     retired = set(assistant.GRADE5_RETIRED_MODULES)
     assert retired, "必须显式记录已停用的旧版模块，避免误用"
-    assert not (modules & retired), "五年级模块清单不得包含旧版已改版模块"
+    assert not (names & retired), "五年级模块清单不得包含旧版已改版模块"
 
 
 def test_textbook_edition_marker_is_current():
