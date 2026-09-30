@@ -29,6 +29,7 @@ V1_PRODUCT_ASSISTANT_MARKER = "changying_v1_product_assistant_v1"
 QUERY_PATH = "/v1/product-assistant/query"
 FEEDBACK_PATH = "/v1/product-feedback"
 FEEDBACK_PROOF_PREFIX = "/v1/product-feedback/proof"
+FEEDBACK_MINE_PATH = "/v1/product-feedback/mine"
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
 FEEDBACK_PROOF_TTL_MINUTES = 15
 FEEDBACK_ATTACHMENT_MAX_BYTES = 1_000_000
