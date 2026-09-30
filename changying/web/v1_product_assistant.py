@@ -13,6 +13,7 @@ import hashlib
 import json
 import re
 import secrets
+from pathlib import Path
 from datetime import datetime, timedelta
 from types import ModuleType
 
@@ -1485,9 +1486,14 @@ def patch_v1_product_assistant(html: str) -> str:
         return html
     if "</body>" not in html:
         raise RuntimeError("V1 product assistant: closing body marker not found")
+    feedback_center = Path(__file__).with_name("feedback_center.js").read_text(encoding="utf-8")
     return html.replace(
         "</body>",
-        _ASSISTANT_SNIPPET + f"\n<!-- {V1_PRODUCT_ASSISTANT_MARKER} -->\n</body>",
+        _ASSISTANT_SNIPPET
+        + "\n<script id=\"changying-feedback-center-script\">"
+        + feedback_center
+        + "</script>"
+        + f"\n<!-- {V1_PRODUCT_ASSISTANT_MARKER} -->\n</body>",
         1,
     )
 
