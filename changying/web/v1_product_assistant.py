@@ -652,6 +652,90 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             "rule": "每条被采纳的产品反馈获得 1 个反馈奖励分；奖励分可用于兑换账号时长，兑换比例将根据总体数据消费情况确定。",
         }
 
+    @router.get(FEEDBACK_MINE_PATH, include_in_schema=False)
+    def product_feedback_mine(
+        user=Depends(implementation.current_user),
+        db=Depends(implementation.get_db),
+    ):
+        """反馈记录：返回当前用户提交过的反馈、回执状态与反馈奖励分。"""
+        audit = implementation.AuditLog
+        rows = db.scalars(
+            select(audit)
+            .where(
+                audit.school_id == user.school_id,
+                audit.user_id == user.id,
+                audit.action == "product_feedback",
+            )
+            .order_by(audit.id.desc())
+            .limit(100)
+        ).all()
+        reward_rows = db.execute(
+            select(reward_table.c.audit_id, reward_table.c.points, reward_table.c.status)
+            .where(reward_table.c.user_id == user.id, reward_table.c.school_id == user.school_id)
+        ).all()
+        reward_by_audit = {int(r[0]): (int(r[1] or 0), str(r[2])) for r in reward_rows}
+        records = []
+        for row in rows:
+            detail = {}
+            try:
+                detail = json.loads(row.detail or "{}")
+            except (ValueError, TypeError):
+                detail = {}
+            points, reward_status = reward_by_audit.get(int(row.id), (0, "pending"))
+            records.append({
+                "id": int(row.id),
+                "category": str(detail.get("category") or "其他反馈"),
+                "message": str(detail.get("message") or ""),
+                "page": str(detail.get("page") or ""),
+                "createdAt": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
+                "receipt": str(detail.get("receipt") or "已收到，等待处理回执"),
+                "rewardPoints": points,
+                "rewardStatus": reward_status,
+                "acknowledged": bool(detail.get("acknowledged")),
+                "followUps": list(detail.get("followUps") or []),
+            })
+        return {
+            "ok": True,
+            "records": records,
+            "rewardSummary": _feedback_reward_summary(db, user),
+        }
+
+    @router.post(FEEDBACK_MINE_PATH + "/{feedback_id}/follow-up", include_in_schema=False)
+    def product_feedback_follow_up(
+        feedback_id: int,
+        body: ProductFeedbackBody,
+        user=Depends(implementation.current_user),
+        db=Depends(implementation.get_db),
+    ):
+        """对已有反馈记录追加反馈或查收（满意）。"""
+        audit = implementation.AuditLog
+        row = db.scalar(
+            select(audit).where(
+                audit.id == feedback_id,
+                audit.school_id == user.school_id,
+                audit.user_id == user.id,
+                audit.action == "product_feedback",
+            )
+        )
+        if not row:
+            raise HTTPException(404, "反馈记录不存在")
+        try:
+            detail = json.loads(row.detail or "{}")
+        except (ValueError, TypeError):
+            detail = {}
+        message = body.message.strip()
+        if message:
+            follow_ups = list(detail.get("followUps") or [])
+            follow_ups.append({"message": message, "at": datetime.utcnow().isoformat()})
+            detail["followUps"] = follow_ups
+        if body.category == "查收满意":
+            detail["acknowledged"] = True
+            detail["receipt"] = "用户已查收并确认满意"
+        row.detail = json.dumps(detail, ensure_ascii=False)
+        db.commit()
+        return {"ok": True, "id": int(row.id), "acknowledged": bool(detail.get("acknowledged")),
+                "followUps": list(detail.get("followUps") or [])}
+
     @router.post(QUERY_PATH, include_in_schema=False)
     def product_assistant_query(
         body: ProductAssistantBody,
