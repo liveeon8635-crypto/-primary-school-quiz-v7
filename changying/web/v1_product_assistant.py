@@ -796,17 +796,26 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             json.dumps(payload, ensure_ascii=False)[:1800],
         )
         db.flush()
-        if attachment:
-            audit_row = db.scalar(
-                select(implementation.AuditLog)
-                .where(implementation.AuditLog.action == "product.feedback",
-                       implementation.AuditLog.detail.contains(proof_token))
-                .order_by(implementation.AuditLog.id.desc()).limit(1)
+        audit_row = db.scalar(
+            select(implementation.AuditLog)
+            .where(
+                implementation.AuditLog.action == "product.feedback",
+                implementation.AuditLog.detail.contains(proof_token),
+                implementation.AuditLog.user_id == user.id,
+                implementation.AuditLog.school_id == user.school_id,
             )
+            .order_by(implementation.AuditLog.id.desc()).limit(1)
+        )
+        if attachment:
             db.execute(insert(attachment_table).values(
                 audit_id=audit_row.id, school_id=user.school_id, user_id=user.id,
                 file_name=name, mime_type=mime, size_bytes=len(raw),
                 sha256=hashlib.sha256(raw).hexdigest(), file_data=raw,
+            ))
+        if audit_row and not db.execute(select(reward_table.c.id).where(reward_table.c.audit_id == audit_row.id)).first():
+            db.execute(insert(reward_table).values(
+                audit_id=audit_row.id, school_id=user.school_id, user_id=user.id,
+                points=1, status="pending",
             ))
         db.commit()
 
@@ -821,6 +830,48 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         except requests.RequestException:
             synced = False
         return {"ok": True, "received": True, "freemanSynced": synced}
+
+    @router.get("/v1/product-feedback/history", include_in_schema=False)
+    def product_feedback_history(
+        user=Depends(implementation.current_user),
+        db=Depends(implementation.get_db),
+    ):
+        rows = db.scalars(
+            select(implementation.AuditLog)
+            .where(
+                implementation.AuditLog.action == "product.feedback",
+                implementation.AuditLog.user_id == user.id,
+                implementation.AuditLog.school_id == user.school_id,
+            )
+            .order_by(implementation.AuditLog.id.desc()).limit(50)
+        ).all()
+        audit_ids = [row.id for row in rows]
+        reward_rows = db.execute(
+            select(reward_table.c.audit_id, reward_table.c.points, reward_table.c.status)
+            .where(reward_table.c.audit_id.in_(audit_ids))
+        ).all() if audit_ids else []
+        rewards = {int(r[0]): {"points": int(r[1] or 0), "status": str(r[2] or "pending")} for r in reward_rows}
+        items = []
+        for row in rows:
+            try:
+                payload = json.loads(row.detail or "{}")
+            except Exception:
+                payload = {}
+            reward = rewards.get(row.id, {"points": 0, "status": "received"})
+            status = reward["status"]
+            items.append({
+                "sourceId": row.id,
+                "category": str(payload.get("category") or "其他反馈")[:60],
+                "message": str(payload.get("message") or "")[:500],
+                "page": str(payload.get("page") or "")[:240],
+                "createdAt": (row.created_at or datetime.utcnow()).isoformat() + "Z",
+                "status": status,
+                "statusLabel": "已采纳" if status == "granted" else ("待处理" if status == "pending" else "已收到"),
+                "rewardPoints": reward["points"] if status == "granted" else 0,
+            })
+        summary = _feedback_reward_summary(db, user)
+        summary["pendingFeedbackCount"] = sum(1 for item in items if item["status"] != "granted")
+        return {"ok": True, "items": items, "summary": summary}
 
     @router.get(FEEDBACK_PROOF_PREFIX + "/{proof_token}/attachment", include_in_schema=False)
     def product_feedback_attachment_download(proof_token: str, db=Depends(implementation.get_db)):
@@ -924,18 +975,18 @@ _ASSISTANT_SNIPPET = r'''
   #cy-product-assistant-fab[hidden],#cy-product-assistant-panel[hidden]{display:none!important}
   #cy-product-assistant-panel{position:fixed;right:14px;bottom:calc(142px + env(safe-area-inset-bottom));z-index:126;width:min(390px,calc(100vw - 28px));max-height:min(620px,70dvh);background:#fff;border:1px solid #dbe4f1;border-radius:20px;box-shadow:0 22px 70px rgba(17,34,64,.28);overflow:hidden;display:flex;flex-direction:column}
   .cy-pa-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid #e2e8f1}.cy-pa-head b{display:block}.cy-pa-head small{display:block;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);line-height:1.35}.cy-pa-head-actions{display:flex;gap:6px}.cy-pa-head-actions .btn{min-height:36px;padding:7px 10px}
-  .cy-pa-tabs{display:grid;grid-template-columns:1fr 1fr;padding:9px;gap:7px;background:#f7f9fc}.cy-pa-tab{border:1px solid #dbe4f1;background:#fff;border-radius:11px;padding:9px;font-weight:750}.cy-pa-tab.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78}
+  .cy-pa-tabs{display:grid;grid-template-columns:repeat(3,1fr);padding:9px;gap:7px;background:#f7f9fc}.cy-pa-tab{border:1px solid #dbe4f1;background:#fff;border-radius:11px;padding:9px;font-weight:750}.cy-pa-tab.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78}
   .cy-pa-body{padding:10px 11px;overflow:auto}.cy-pa-quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.cy-pa-quick button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 8px;font-size:11px}
   .cy-pa-chat{display:grid;gap:9px;margin-bottom:10px}.cy-pa-msg{max-width:92%;padding:10px 11px;border-radius:13px;line-height:1.55;font-size:13px;white-space:pre-wrap}.cy-pa-msg.user{justify-self:end;background:#173a78;color:#fff}.cy-pa-msg.assistant{justify-self:start;background:#f1f5fb;color:#1c2940}.cy-pa-sent-image{display:block;max-width:180px;max-height:180px;margin-top:7px;border-radius:9px;object-fit:contain;background:#fff}
   .cy-pa-learning-visual{justify-self:start;width:min(92%,330px);border:1px solid #dbe5f3;background:#fff;border-radius:14px;padding:10px;display:grid;gap:8px}.cy-pa-learning-visual b{font-size:12px;color:#173a78}.cy-pa-learning-visual small{font-size:10px;color:var(--muted);line-height:1.45}.cy-pa-fraction-grid{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px;height:42px}.cy-pa-fraction-cell{border:1px solid #9fb6da;border-radius:5px;background:#f5f8fd}.cy-pa-fraction-cell.is-given{background:#dbe8ff}.cy-pa-bar-model{display:grid;gap:5px}.cy-pa-bar-track{display:grid;grid-template-columns:1.15fr .85fr;height:42px;border:1px solid #9fb6da;border-radius:8px;overflow:hidden}.cy-pa-bar-known,.cy-pa-bar-unknown{display:grid;place-items:center;font-size:10px}.cy-pa-bar-known{background:#dbe8ff}.cy-pa-bar-unknown{background:#f7f9fc;border-left:1px dashed #9fb6da}.cy-pa-shape-box{height:86px;display:grid;place-items:center}.cy-pa-shape{border:2px solid #6c88b4;display:grid;place-items:center;color:#52647f;font-size:11px}.cy-pa-shape.rectangle{width:150px;height:68px}.cy-pa-shape.square{width:74px;height:74px}.cy-pa-shape.circle{width:74px;height:74px;border-radius:50%}.cy-pa-shape.triangle{width:0;height:0;border-left:48px solid transparent;border-right:48px solid transparent;border-bottom:78px solid #dbe8ff;border-top:0;position:relative}.cy-pa-numberline{position:relative;height:54px;margin:2px 8px}.cy-pa-numberline-line{position:absolute;left:0;right:0;top:24px;border-top:2px solid #6c88b4}.cy-pa-numberline-tick{position:absolute;top:17px;transform:translateX(-50%);font-size:9px;color:#52647f}.cy-pa-numberline-tick:before{content:'';display:block;width:1px;height:15px;background:#6c88b4;margin:0 auto 2px}
   .cy-pa-compose{display:grid;grid-template-columns:1fr auto;gap:7px}.cy-pa-compose textarea{min-height:58px;resize:none}.cy-pa-compose .btn{align-self:end}.cy-pa-image-picker{display:flex;align-items:center;gap:7px;font-size:11px;margin-top:7px}.cy-pa-image-picker input{max-width:205px}.cy-pa-image-status{color:#52647f;overflow-wrap:anywhere}
-  .cy-pa-feedback{display:grid;gap:8px}.cy-pa-feedback textarea{min-height:76px;resize:none}.cy-pa-attachment{display:grid;gap:5px;font-size:11px}.cy-pa-attachment input{max-width:100%}.cy-pa-attachment-status{overflow-wrap:anywhere;color:#52647f}.cy-pa-feedback-cats{display:flex;gap:6px;flex-wrap:wrap}.cy-pa-feedback-cats button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 9px;font-size:11px}.cy-pa-feedback-cats button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78;font-weight:800}.cy-pa-note{font-size:10px;color:var(--muted);line-height:1.45}.cy-pa-guide{border:1px solid #dbe5f3;background:#f8fbff;border-radius:14px;padding:9px}.cy-pa-guide-title{font-size:12px;font-weight:850;color:#173a78;margin-bottom:7px}.cy-pa-guide-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.cy-pa-guide-card{display:grid;gap:5px;text-decoration:none;color:#182238;background:#fff;border:1px solid #dbe5f3;border-radius:11px;overflow:hidden}.cy-pa-guide-visual{height:74px;background:#edf3ff;padding:8px;display:grid;grid-template-rows:12px 1fr;gap:7px}.cy-pa-guide-bar{border-radius:6px;background:#d5e2f6}.cy-pa-guide-page{display:grid;grid-template-columns:38px 1fr;gap:8px;align-items:center}.cy-pa-guide-icon{height:38px;border-radius:9px;background:#fff;display:grid;place-items:center;font-size:20px;color:#244c91}.cy-pa-guide-lines{display:grid;gap:5px}.cy-pa-guide-lines i{display:block;height:6px;border-radius:3px;background:#fff}.cy-pa-guide-lines i:last-child{width:66%}.cy-pa-guide-copy{padding:0 7px 7px;display:grid;gap:2px}.cy-pa-guide-copy b{font-size:11px}.cy-pa-guide-copy small{font-size:9px;color:var(--muted);line-height:1.35}
+  .cy-pa-feedback{display:grid;gap:8px}.cy-pa-history{display:grid;gap:8px}.cy-pa-history-item{border:1px solid #dbe4f1;border-radius:12px;padding:9px;background:#f8fbff}.cy-pa-history-item b{font-size:12px}.cy-pa-history-item small{display:block;color:#667085;margin-top:4px;line-height:1.45}.cy-pa-feedback textarea{min-height:76px;resize:none}.cy-pa-attachment{display:grid;gap:5px;font-size:11px}.cy-pa-attachment input{max-width:100%}.cy-pa-attachment-status{overflow-wrap:anywhere;color:#52647f}.cy-pa-feedback-cats{display:flex;gap:6px;flex-wrap:wrap}.cy-pa-feedback-cats button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 9px;font-size:11px}.cy-pa-feedback-cats button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78;font-weight:800}.cy-pa-note{font-size:10px;color:var(--muted);line-height:1.45}.cy-pa-guide{border:1px solid #dbe5f3;background:#f8fbff;border-radius:14px;padding:9px}.cy-pa-guide-title{font-size:12px;font-weight:850;color:#173a78;margin-bottom:7px}.cy-pa-guide-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.cy-pa-guide-card{display:grid;gap:5px;text-decoration:none;color:#182238;background:#fff;border:1px solid #dbe5f3;border-radius:11px;overflow:hidden}.cy-pa-guide-visual{height:74px;background:#edf3ff;padding:8px;display:grid;grid-template-rows:12px 1fr;gap:7px}.cy-pa-guide-bar{border-radius:6px;background:#d5e2f6}.cy-pa-guide-page{display:grid;grid-template-columns:38px 1fr;gap:8px;align-items:center}.cy-pa-guide-icon{height:38px;border-radius:9px;background:#fff;display:grid;place-items:center;font-size:20px;color:#244c91}.cy-pa-guide-lines{display:grid;gap:5px}.cy-pa-guide-lines i{display:block;height:6px;border-radius:3px;background:#fff}.cy-pa-guide-lines i:last-child{width:66%}.cy-pa-guide-copy{padding:0 7px 7px;display:grid;gap:2px}.cy-pa-guide-copy b{font-size:11px}.cy-pa-guide-copy small{font-size:9px;color:var(--muted);line-height:1.35}
   @media(max-width:640px){#cy-product-assistant-fab{right:12px;bottom:calc(78px + env(safe-area-inset-bottom));width:44px;height:44px;font-size:18px}#cy-product-assistant-panel{left:10px;right:10px;bottom:calc(128px + env(safe-area-inset-bottom));width:auto;max-height:62dvh}}
 </style>
 <button id="cy-product-assistant-fab" hidden aria-label="打开产品助手" title="产品助手">✦<span class="cy-pa-fab-label">产品助手</span></button>
 <section id="cy-product-assistant-panel" hidden aria-label="长缨产品助手">
   <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-collapse" aria-label="收起">−</button></div></header>
-  <div class="cy-pa-tabs"><button class="cy-pa-tab active" id="cy-pa-ask-tab" data-pa-tab="ask">问产品</button><button class="cy-pa-tab" data-pa-tab="feedback">提反馈</button></div>
+  <div class="cy-pa-tabs"><button class="cy-pa-tab active" id="cy-pa-ask-tab" data-pa-tab="ask">问产品</button><button class="cy-pa-tab" data-pa-tab="feedback">提反馈</button><button class="cy-pa-tab" data-pa-tab="records">反馈记录</button></div>
   <div class="cy-pa-body" id="cy-pa-ask">
     <div class="cy-pa-quick"><button id="cy-pa-quick-1" data-pa-question="我现在该做什么？">下一步做什么</button><button id="cy-pa-quick-2" data-pa-question="这个页面是干什么的？">页面用途</button><button id="cy-pa-quick-3" data-pa-question="这一步为什么排在这里？">为什么这样走</button></div>
     <div class="cy-pa-guide" id="cy-pa-guide">
@@ -950,6 +1001,7 @@ _ASSISTANT_SNIPPET = r'''
   <div class="cy-pa-body" id="cy-pa-feedback" hidden>
     <div class="cy-pa-feedback"><input type="hidden" id="cy-pa-category" value="这里不好懂"><div class="cy-pa-feedback-cats"><button class="active" data-pa-category="这里不好懂">不好懂</button><button data-pa-category="没找到入口">找不到</button><button data-pa-category="流程不直观">流程不顺</button><button data-pa-category="功能与预期不符">不符合预期</button><button data-pa-category="希望增加功能">想加功能</button><button data-pa-category="其他反馈">其他</button></div><textarea id="cy-pa-feedback-text" placeholder="一句话描述问题或建议（不要填写密码、API Key 等敏感信息）"></textarea><label class="cy-pa-attachment">附照片或文件（最多 1 MB）<input type="file" id="cy-pa-feedback-file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain"><span class="cy-pa-attachment-status" id="cy-pa-attachment-status">未选择文件</span></label><button class="btn primary" id="cy-pa-submit-feedback">提交</button><div class="cy-pa-note">会自动附带当前页面、当前身份和正在进行的新手步骤。</div></div>
   </div>
+  <div class="cy-pa-body" id="cy-pa-records" hidden><div class="cy-pa-history" id="cy-pa-history"><div class="cy-pa-note">正在读取你的反馈记录…</div></div></div>
 </section>
 <script id="changying_v1_product_assistant_v1-script">
 (()=>{
@@ -1161,8 +1213,9 @@ _ASSISTANT_SNIPPET = r'''
     String(g.keywords||'').split(/\s+/).forEach(k=>{if(k&&hay.includes(k))score+=2});
     return score;
   };
+  const FEEDBACK_RECORDS_GUIDE={id:'feedbackRecords',title:'我的反馈记录',href:'/v1/workspace?tab=feedback-records',icon:'◷',hint:'查看处理回执与反馈奖励',keywords:'反馈记录 我的反馈 历史记录 回执 处理状况 反馈状态 追加反馈 奖励明细'};
   const guideCandidates=text=>{
-    const c=context(),role=guideRole(c.identity),pool=GUIDE_SETS[role]||GUIDE_SETS.teacher;
+    const c=context(),role=guideRole(c.identity),pool=[...(GUIDE_SETS[role]||GUIDE_SETS.teacher),FEEDBACK_RECORDS_GUIDE];
     const ranked=pool.map((g,order)=>({g,order,score:guideScore(g,text,c.page)})).sort((a,b)=>b.score-a.score||a.order-b.order);
     const picked=ranked.filter(x=>x.score>0).slice(0,3).map(x=>x.g);
     return picked.length?picked:pool.slice(0,3);
@@ -1210,22 +1263,25 @@ _ASSISTANT_SNIPPET = r'''
     finally{send.disabled=false;send.textContent='发送'}
   }
 
+  async function loadFeedbackHistory(){
+    const box=document.getElementById('cy-pa-history');if(!box)return;
+    box.innerHTML='<div class="cy-pa-note">正在读取你的反馈记录…</div>';
+    try{
+      const token=readToken();if(!token)throw new Error('登录状态已失效，请重新登录');
+      const r=await fetch('/v1/product-feedback/history',{headers:{Authorization:'Bearer '+token}});
+      const data=await r.json();if(!r.ok)throw new Error(data.detail||'读取失败');
+      const summary=data.summary||{},items=Array.isArray(data.items)?data.items:[];
+      const head='<div class="cy-pa-history-item"><b>反馈奖励</b><small>已采纳 '+Number(summary.adoptedFeedbackCount||0)+' 条 · 待处理 '+Number(summary.pendingFeedbackCount||0)+' 条 · 已获得 '+Number(summary.earnedPoints||0)+' 分</small></div>';
+      box.innerHTML=head+(items.length?items.map(x=>'<div class="cy-pa-history-item"><b>'+escapeHtml(x.category||'产品反馈')+' · '+escapeHtml(x.statusLabel||'已收到')+'</b><small>'+escapeHtml(x.message||'')+'</small><small>'+escapeHtml(x.createdAt||'')+(x.rewardPoints?' · 奖励 '+Number(x.rewardPoints)+' 分':'')+'</small></div>').join(''):'<div class="cy-pa-note">还没有提交过反馈。</div>');
+    }catch(err){box.innerHTML='<div class="cy-pa-note">反馈记录读取失败：'+escapeHtml(err.message||'请稍后重试')+'</div>'}
+  }
   function setTab(name){
     document.querySelectorAll('.cy-pa-tab').forEach(x=>x.classList.toggle('active',x.dataset.paTab===name));
-    document.getElementById('cy-pa-ask').hidden=name!=='ask';
-    document.getElementById('cy-pa-feedback').hidden=name!=='feedback';
-    updateContext();
+    ['ask','feedback','records'].forEach(id=>{const el=document.getElementById('cy-pa-'+id);if(el)el.hidden=id!==name});
+    if(name==='records')loadFeedbackHistory();
   }
-
-  const closePanel=()=>{panel.hidden=true;fab.hidden=!identityReady();fab.setAttribute('aria-label','打开产品助手')};
-  const openPanel=()=>{if(!identityReady())return;panel.hidden=false;fab.hidden=true;fab.setAttribute('aria-label','收起产品助手');updateContext();applyRoleCopy();renderGuideGrid()};
-  fab.onclick=()=>panel.hidden?openPanel():closePanel();
-  document.getElementById('cy-pa-collapse').onclick=closePanel;
-  document.querySelectorAll('[data-pa-category]').forEach(btn=>btn.onclick=()=>{
-    document.querySelectorAll('[data-pa-category]').forEach(x=>x.classList.toggle('active',x===btn));
-    document.getElementById('cy-pa-category').value=btn.dataset.paCategory;
-  });
   document.querySelectorAll('.cy-pa-tab').forEach(x=>x.onclick=()=>setTab(x.dataset.paTab));
+  if(new URLSearchParams(location.search).get('tab')==='feedback-records'){setTab('records');panel.hidden=false;fab.hidden=true;}
   document.querySelectorAll('[data-pa-question]').forEach(x=>x.onclick=()=>ask(x.dataset.paQuestion));
   send.onclick=()=>ask(input.value);
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask(input.value)}});
