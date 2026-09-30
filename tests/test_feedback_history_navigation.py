@@ -10,3 +10,11 @@ def test_assistant_client_has_feedback_records_tab_and_history_endpoint():
     assert "FEEDBACK_RECORDS_GUIDE" in html
     assert "/v1/product-feedback/history" in html
     assert "feedback-records" in html
+
+
+def test_assistant_fab_and_collapse_bindings_survive_feedback_records_ui():
+    html = patch_v1_product_assistant("<html><body></body></html>")
+    assert "fab.onclick=()=>panel.hidden?openPanel():closePanel()" in html
+    assert "document.getElementById('cy-pa-collapse').onclick=closePanel" in html
+    assert "const openPanel=()=>{if(!identityReady())return;" in html
+    assert "const closePanel=()=>{panel.hidden=true;" in html
