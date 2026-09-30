@@ -682,16 +682,20 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             except (ValueError, TypeError):
                 detail = {}
             points, reward_status = reward_by_audit.get(int(row.id), (0, "pending"))
+            acknowledged = bool(detail.get("acknowledged"))
+            receipt = str(detail.get("receipt") or "")
+            if not receipt:
+                receipt = "已查收（满意）" if acknowledged else "已收到，等待处理回执"
             records.append({
                 "id": int(row.id),
                 "category": str(detail.get("category") or "其他反馈"),
                 "message": str(detail.get("message") or ""),
                 "page": str(detail.get("page") or ""),
                 "createdAt": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
-                "receipt": str(detail.get("receipt") or "已收到，等待处理回执"),
+                "receipt": receipt,
                 "rewardPoints": points,
                 "rewardStatus": reward_status,
-                "acknowledged": bool(detail.get("acknowledged")),
+                "acknowledged": acknowledged,
                 "followUps": list(detail.get("followUps") or []),
             })
         return {
