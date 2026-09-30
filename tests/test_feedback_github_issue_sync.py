@@ -10,6 +10,7 @@ from changying.web import v1_product_assistant as assistant
 def test_feedback_issue_sync_payload(monkeypatch):
     monkeypatch.setenv("CHANGYING_FEEDBACK_GITHUB_TOKEN", "test-token")
     monkeypatch.setenv("CHANGYING_FEEDBACK_GITHUB_REPO", "owner/repo")
+    monkeypatch.setattr(assistant, "FEEDBACK_GITHUB_REPO", "owner/repo")
     captured = {}
 
     def fake_post(url, **kwargs):
