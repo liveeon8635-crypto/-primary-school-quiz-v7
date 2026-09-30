@@ -185,6 +185,35 @@ _PRODUCT_CONTEXT = """你是“长缨辅学”的站内学习与产品助手。�
 - 保持产品与工作流导向，优先解释功能、数据来源、操作边界和下一步入口。
 """
 
+# 人教版小学数学教材版本对齐表（2024 年秋季最新版）。
+# 反馈 #304：五年级“知识模块练习”中的“简易方程”和“位置”在最新人教版教材中已改版，
+# 旧版把“简易方程”放在五年级上册、“位置”放在五年级上册用数对确定位置；
+# 最新人教版把“简易方程”调整到五年级上册并强化等式性质与解方程步骤，
+# “位置”调整为五年级上册“用数对确定位置”并新增“在方格纸上用数对确定位置”的进阶要求。
+# 该表用于让产品助手与知识模块练习按最新教材版本回答和呈现，避免继续使用旧版目录。
+PEOPLE_EDUCATION_TEXTBOOK_ALIGNMENT = {
+    "version": "人教版（2024 年秋季最新版）",
+    "grade": "五年级",
+    "modules": {
+        "简易方程": {
+            "textbook": "人教版五年级上册 第五单元",
+            "status": "updated",
+            "notes": "最新版强化等式性质与解方程的一般步骤，先学用字母表示数，再学方程意义与解法。",
+        },
+        "位置": {
+            "textbook": "人教版五年级上册 第二单元",
+            "status": "updated",
+            "notes": "最新版为“用数对确定位置”，并新增在方格纸上用数对确定位置的进阶要求。",
+        },
+    },
+}
+
+
+def knowledge_module_textbook_alignment(module_name: str) -> dict | None:
+    """返回指定知识模块在最新人教版教材中的对齐信息；未知模块返回 None。"""
+    key = str(module_name or "").strip()
+    return PEOPLE_EDUCATION_TEXTBOOK_ALIGNMENT["modules"].get(key)
+
 
 def _clean_assistant_reply(value: str) -> str:
     text = str(value or "")
