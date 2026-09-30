@@ -83,21 +83,38 @@ _SNIPPET = r'''
     let session;try{session=await fetchJson('/session')}catch(_e){return}
     let sid=sidFromUrl();
     if(!sid&&session.role==='student')sid=String(session.userID||'');
-    const main=document.querySelector('#screen main');if(!main)return;
+    const main=document.querySelector('#screen main')
+      ||document.querySelector('#screen .shell')
+      ||document.getElementById('screen')
+      ||document.getElementById('app')
+      ||document.body;
+    if(!main)return;
+    function mountTP(root,sec){
+      if(!root||!sec)return false;
+      if(sec.id){var old=document.getElementById(sec.id);
+        if(old&&old!==sec&&old.parentNode)old.parentNode.removeChild(old);}
+      if(root.tagName!=='MAIN'&&!root.classList.contains('shell')){
+        sec.setAttribute('data-standalone','1');
+        var s=sec.style;s.boxSizing='border-box';s.width='100%';
+        s.maxWidth='960px';s.margin='0 auto';s.padding='16px';
+      }
+      root.appendChild(sec);
+      return true;
+    }
     const section=document.createElement('section');section.id='cy-transition-plan-section';section.className='section cy-transition-plans';
     if(!sid){
       section.innerHTML='<div class="card"><h2>衔接计划</h2><div class="empty">请先选择一个学生，再查看或建立衔接计划。</div></div>';
-      main.appendChild(section);return;
+      if(!mountTP(main,section))return;return;
     }
     const editable=session.role==='teacher'||session.role==='admin';
     let payload;try{payload=await fetchJson('/v1/students/'+encodeURIComponent(sid)+'/transition-plans')}catch(err){
-      section.innerHTML='<div class="card"><h2>衔接计划</h2><div class="notice error">'+esc(err.message)+'</div></div>';main.appendChild(section);return
+      section.innerHTML='<div class="card"><h2>衔接计划</h2><div class="notice error">'+esc(err.message)+'</div></div>';if(!mountTP(main,section))return;return
     }
     const plans=payload.plans||[];
     section.innerHTML='<div class="section-head"><div><h2>教师确认的衔接计划</h2><p>与同一 student_id 绑定；已关闭计划仍作为历史保留。</p></div><span class="tag">'+plans.length+' 条</span></div>'
       +'<div class="cy-transition-plan-list">'+(plans.map(x=>listItem(x,editable,sid)).join('')||'<div class="empty">暂无已保存的衔接计划。</div>')+'</div>'
       +(editable?formHtml(sid):'<div class="notice" style="margin-top:12px">当前身份为只读查看；只有教师或管理员可保存/关闭衔接计划。</div>');
-    main.appendChild(section);
+    if(!mountTP(main,section))return;
     section.querySelectorAll('[data-cy-close-plan]').forEach(btn=>btn.addEventListener('click',async()=>{
       if(!confirm('确认关闭这条衔接计划？关闭后仍保留历史记录。'))return;
       btn.disabled=true;
