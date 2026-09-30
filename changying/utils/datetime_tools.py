@@ -1,4 +1,4 @@
-"""School-local date/time helpers shared by the Changying application."""
+"""School-local date/time helpers shared across Changying business workflows."""
 
 from __future__ import annotations
 
