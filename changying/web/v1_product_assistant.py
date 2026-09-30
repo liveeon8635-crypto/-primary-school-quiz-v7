@@ -103,7 +103,7 @@ FEEDBACK_MINE_PATH = "/v1/product-feedback/mine"
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
 FEEDBACK_PROOF_TTL_MINUTES = 15
 FEEDBACK_ATTACHMENT_MAX_BYTES = 1_000_000
-FEEDBACK_GITHUB_REPO = os.getenv("CHANGYING_FEEDBACK_GITHUB_REPO", "liveeon8635-crypto/-primary-school-quiz-v7")
+FEEDBACK_GITHUB_REPO = "liveeon8635-crypto/-primary-school-quiz-v7"
 FEEDBACK_GITHUB_TOKEN_ENV = "CHANGYING_FEEDBACK_GITHUB_TOKEN"
 _logger = logging.getLogger(__name__)
 
@@ -111,6 +111,7 @@ _logger = logging.getLogger(__name__)
 def _sync_feedback_github_issue(audit_row, payload: dict) -> dict | None:
     """Best-effort whiteboard sync. Feedback persistence never depends on GitHub."""
     token = os.getenv(FEEDBACK_GITHUB_TOKEN_ENV, "").strip()
+    repo = os.getenv("CHANGYING_FEEDBACK_GITHUB_REPO", FEEDBACK_GITHUB_REPO).strip() or FEEDBACK_GITHUB_REPO
     if not token or not audit_row:
         _logger.warning("feedback_issue_sync_skipped reason=missing_token_or_audit feedback_id=%s", getattr(audit_row, "id", None))
         return None
@@ -131,7 +132,7 @@ def _sync_feedback_github_issue(audit_row, payload: dict) -> dict | None:
     }
     try:
         response = requests.post(
-            f"https://api.github.com/repos/{FEEDBACK_GITHUB_REPO}/issues",
+            f"https://api.github.com/repos/{repo}/issues",
             headers={
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/vnd.github+json",
