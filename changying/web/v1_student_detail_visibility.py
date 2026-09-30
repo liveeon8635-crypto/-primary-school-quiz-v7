@@ -55,6 +55,18 @@ _DETAIL_MOBILE_TARGETS = (
 )
 
 
+ASSISTANT_LAUNCHER_MARKER = "changying_v1_assistant_launcher_v1"
+
+_ASSISTANT_LAUNCHER_HTML = (
+    f"<div class='card' id='assistant-launcher' data-marker='{ASSISTANT_LAUNCHER_MARKER}'>"
+    "<h2>智能助手</h2>"
+    "<p>遇到问题可直接向智能助手提问，或提交产品反馈。</p>"
+    "<div class='list' style='margin-top:12px'>"
+    "<div><a href='/v1/workspace?mode=institution'>打开智能助手</a></div>"
+    "</div>"
+    "</div>"
+)
+
 FEEDBACK_REWARD_PANEL_MARKER = "changying_v1_feedback_reward_panel_v1"
 
 FEEDBACK_STATUS_CHAIN_MARKER = "changying_v1_feedback_status_chain_v1"
