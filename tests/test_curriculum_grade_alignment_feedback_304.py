@@ -1,30 +1,27 @@
 import importlib
-import pytest
 
 
 def _load():
     return importlib.import_module("changying.domain.learning_evidence_growth_profile")
 
 
-def test_elementary_equation_not_in_grade5():
+def _latest_names():
     mod = _load()
-    text = "\n".join(
-        str(getattr(mod, name))
-        for name in dir(mod)
-        if not name.startswith("__")
-    )
-    assert "简易方程" not in text or "六年级" in text, (
-        "简易方程 must not be presented as a 五年级 module under the latest 人教版"
-    )
+    return mod, mod.grade5_knowledge_module_names(mod.TEXTBOOK_EDITION_RENMIN_2024)
 
 
-def test_position_not_in_grade5():
-    mod = _load()
-    text = "\n".join(
-        str(getattr(mod, name))
-        for name in dir(mod)
-        if not name.startswith("__")
+def test_elementary_equation_legacy_label_not_in_latest_grade5():
+    mod, names = _latest_names()
+    assert "简易方程" not in names, (
+        "legacy 简易方程 label must not be returned for the latest 人教版"
     )
-    assert "位置" not in text or "四年级" in text, (
-        "位置 must not be presented as a 五年级 module under the latest 人教版"
+    assert "用字母表示数与方程" in names
+    assert mod.TEXTBOOK_EDITION_RENMIN_2024 == "renmin-2024"
+
+
+def test_position_legacy_label_not_in_latest_grade5():
+    _, names = _latest_names()
+    assert "位置" not in names, (
+        "legacy 位置 label must not be returned for the latest 人教版"
     )
+    assert "位置（用数对确定位置）" in names

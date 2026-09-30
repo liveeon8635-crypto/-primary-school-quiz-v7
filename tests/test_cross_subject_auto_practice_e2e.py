@@ -202,7 +202,7 @@ with TestClient(app) as client:
                 "kind": "comprehensive",
                 "knowledge": "",
                 "question_count": 8,
-                "due_date": "2026-09-30",
+                "due_date": "2099-12-31",
                 "class_id": class_id,
             },
         )
@@ -302,7 +302,7 @@ with TestClient(app) as client:
             json={
                 "questions": generated_body["items"],
                 "title": f"{subject}针对性练习",
-                "due_date": "2026-09-30",
+                "due_date": "2099-12-31",
                 "wrong_ids": generated_body["wrongIDs"],
                 "instructions": "针对本次测试反馈完成巩固。",
             },
