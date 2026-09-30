@@ -13,6 +13,7 @@ import hashlib
 import json
 import re
 import secrets
+from pathlib import Path
 from datetime import datetime, timedelta
 from types import ModuleType
 
@@ -150,6 +151,10 @@ class ProductFeedbackBody(BaseModel):
     attachment_type: str = Field(default="", max_length=120)
     attachment_size: int = Field(default=0, ge=0, le=FEEDBACK_ATTACHMENT_MAX_BYTES)
     attachment_data: str = Field(default="", max_length=1_400_000)
+
+
+class ProductFeedbackFollowUpBody(BaseModel):
+    message: str = Field(min_length=1, max_length=1200)
 
 
 _PRODUCT_CONTEXT = """你是“长缨辅学”的站内学习与产品助手。你既帮助用户理解长缨怎么用，也要根据账号身份采用不同的沟通方式。
@@ -664,7 +669,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             .where(
                 audit.school_id == user.school_id,
                 audit.user_id == user.id,
-                audit.action == "product_feedback",
+                audit.action.in_(("product.feedback", "product_feedback")),
             )
             .order_by(audit.id.desc())
             .limit(100)
@@ -695,6 +700,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "receipt": receipt,
                 "rewardPoints": points,
                 "rewardStatus": reward_status,
+                "statusLabel": "已取用" if reward_status == "granted" else ("待处理" if reward_status == "pending" else "已收到"),
                 "acknowledged": acknowledged,
                 "followUps": list(detail.get("followUps") or []),
             })
@@ -704,41 +710,63 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             "rewardSummary": _feedback_reward_summary(db, user),
         }
 
-    @router.post(FEEDBACK_MINE_PATH + "/{feedback_id}/follow-up", include_in_schema=False)
-    def product_feedback_follow_up(
-        feedback_id: int,
-        body: ProductFeedbackBody,
-        user=Depends(implementation.current_user),
-        db=Depends(implementation.get_db),
-    ):
-        """对已有反馈记录追加反馈或查收（满意）。"""
+    def _owned_feedback(db, user, feedback_id: int):
         audit = implementation.AuditLog
         row = db.scalar(
             select(audit).where(
                 audit.id == feedback_id,
                 audit.school_id == user.school_id,
                 audit.user_id == user.id,
-                audit.action == "product_feedback",
+                audit.action.in_(("product.feedback", "product_feedback")),
             )
         )
         if not row:
             raise HTTPException(404, "反馈记录不存在")
+        return row
+
+    @router.post(FEEDBACK_MINE_PATH + "/{feedback_id}/follow-up", include_in_schema=False)
+    def product_feedback_follow_up(
+        feedback_id: int,
+        body: ProductFeedbackFollowUpBody,
+        user=Depends(implementation.current_user),
+        db=Depends(implementation.get_db),
+    ):
+        """向当前用户自己的已有反馈追加说明。"""
+        row = _owned_feedback(db, user, feedback_id)
         try:
             detail = json.loads(row.detail or "{}")
         except (ValueError, TypeError):
             detail = {}
-        message = body.message.strip()
-        if message:
-            follow_ups = list(detail.get("followUps") or [])
-            follow_ups.append({"message": message, "at": datetime.utcnow().isoformat()})
-            detail["followUps"] = follow_ups
-        if body.category == "查收满意":
-            detail["acknowledged"] = True
-            detail["receipt"] = "用户已查收并确认满意"
+        follow_ups = list(detail.get("followUps") or [])
+        follow_ups.append({"message": body.message.strip(), "at": datetime.utcnow().isoformat()})
+        detail["followUps"] = follow_ups
         row.detail = json.dumps(detail, ensure_ascii=False)
         db.commit()
-        return {"ok": True, "id": int(row.id), "acknowledged": bool(detail.get("acknowledged")),
-                "followUps": list(detail.get("followUps") or [])}
+        return {"ok": True, "id": int(row.id), "followUps": follow_ups}
+
+    @router.post(FEEDBACK_MINE_PATH + "/{feedback_id}/acknowledge", include_in_schema=False)
+    def product_feedback_acknowledge(
+        feedback_id: int,
+        user=Depends(implementation.current_user),
+        db=Depends(implementation.get_db),
+    ):
+        """由反馈提交者确认已查收当前处理结果。"""
+        row = _owned_feedback(db, user, feedback_id)
+        try:
+            detail = json.loads(row.detail or "{}")
+        except (ValueError, TypeError):
+            detail = {}
+        detail["acknowledged"] = True
+        detail["receipt"] = "用户已查收并确认满意"
+        detail["acknowledgedAt"] = datetime.utcnow().isoformat()
+        row.detail = json.dumps(detail, ensure_ascii=False)
+        db.commit()
+        return {
+            "ok": True,
+            "id": int(row.id),
+            "acknowledged": True,
+            "receipt": detail["receipt"],
+        }
 
     @router.post(QUERY_PATH, include_in_schema=False)
     def product_assistant_query(
@@ -1458,9 +1486,14 @@ def patch_v1_product_assistant(html: str) -> str:
         return html
     if "</body>" not in html:
         raise RuntimeError("V1 product assistant: closing body marker not found")
+    feedback_center = Path(__file__).with_name("feedback_center.js").read_text(encoding="utf-8")
     return html.replace(
         "</body>",
-        _ASSISTANT_SNIPPET + f"\n<!-- {V1_PRODUCT_ASSISTANT_MARKER} -->\n</body>",
+        _ASSISTANT_SNIPPET
+        + "\n<script id=\"changying-feedback-center-script\">"
+        + feedback_center
+        + "</script>"
+        + f"\n<!-- {V1_PRODUCT_ASSISTANT_MARKER} -->\n</body>",
         1,
     )
 
