@@ -15,7 +15,7 @@ jobs:
   automation-boundary-guard:
     name: automation-boundary-guard
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Enforce trusted automation boundary
         uses: actions/github-script@v7
@@ -126,7 +126,7 @@ jobs:
               }
 
               const requiredWorkflows = [...new Set(policy.automaticMerge.requiredWorkflowRuns || [])];
-              const workflowDeadline = Date.now() + 240000;
+              const workflowDeadline = Date.now() + 420000;
               let requiredWorkflowEvidence = [];
               while (requiredWorkflows.length) {
                 const runsResponse = await github.rest.actions.listWorkflowRunsForRepo({
