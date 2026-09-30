@@ -11,6 +11,8 @@ import base64
 import binascii
 import hashlib
 import json
+import logging
+import os
 import re
 import secrets
 from pathlib import Path
@@ -101,6 +103,50 @@ FEEDBACK_MINE_PATH = "/v1/product-feedback/mine"
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
 FEEDBACK_PROOF_TTL_MINUTES = 15
 FEEDBACK_ATTACHMENT_MAX_BYTES = 1_000_000
+FEEDBACK_GITHUB_REPO = os.getenv("CHANGYING_FEEDBACK_GITHUB_REPO", "liveeon8635-crypto/-primary-school-quiz-v7")
+FEEDBACK_GITHUB_TOKEN_ENV = "CHANGYING_FEEDBACK_GITHUB_TOKEN"
+_logger = logging.getLogger(__name__)
+
+
+def _sync_feedback_github_issue(audit_row, payload: dict) -> dict | None:
+    """Best-effort whiteboard sync. Feedback persistence never depends on GitHub."""
+    token = os.getenv(FEEDBACK_GITHUB_TOKEN_ENV, "").strip()
+    if not token or not audit_row:
+        _logger.warning("feedback_issue_sync_skipped reason=missing_token_or_audit feedback_id=%s", getattr(audit_row, "id", None))
+        return None
+    message = str(payload.get("message") or "").strip()
+    summary = " ".join(message.split())[:30] or "用户反馈"
+    created = getattr(audit_row, "created_at", None) or datetime.utcnow()
+    source_page = str(payload.get("page") or "").strip() or "/v1/feedback"
+    issue_payload = {
+        "title": f"[User Feedback] {summary}",
+        "body": (
+            "## 用户反馈\n" + message
+            + "\n\n## 提交信息\n"
+            + f"- 提交时间: {created.isoformat()}Z\n"
+            + f"- 来源页面: {source_page}\n"
+            + f"- 关联反馈 ID: {int(audit_row.id)}\n"
+        ),
+        "labels": ["user-feedback", "need-freeman-agent"],
+    }
+    try:
+        response = requests.post(
+            f"https://api.github.com/repos/{FEEDBACK_GITHUB_REPO}/issues",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            json=issue_payload,
+            timeout=4,
+        )
+        response.raise_for_status()
+        result = response.json()
+        return {"issue_number": int(result["number"]), "issue_url": str(result["html_url"])}
+    except (requests.RequestException, KeyError, TypeError, ValueError) as exc:
+        _logger.warning("feedback_issue_sync_failed feedback_id=%s error=%s", getattr(audit_row, "id", None), type(exc).__name__)
+        return None
+
 
 
 class ProductAssistantBody(BaseModel):
@@ -703,6 +749,8 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "statusLabel": "已取用" if reward_status == "granted" else ("待处理" if reward_status == "pending" else "已收到"),
                 "acknowledged": acknowledged,
                 "followUps": list(detail.get("followUps") or []),
+                "issueNumber": detail.get("issue_number"),
+                "issueUrl": str(detail.get("issue_url") or ""),
             })
         return {
             "ok": True,
@@ -934,6 +982,16 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 points=1, status="pending",
             ))
         db.commit()
+
+        issue_link = _sync_feedback_github_issue(audit_row, payload)
+        if issue_link and audit_row:
+            try:
+                persisted = json.loads(audit_row.detail or "{}")
+            except (ValueError, TypeError):
+                persisted = dict(payload)
+            persisted.update(issue_link)
+            audit_row.detail = json.dumps(persisted, ensure_ascii=False)[:1800]
+            db.commit()
 
         synced = False
         try:
