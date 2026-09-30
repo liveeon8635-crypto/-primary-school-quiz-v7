@@ -42,6 +42,31 @@ from changying.web import v1 as v1_module
 V1_STUDENT_PRACTICE_MARKER = "changying_v1_student_practice_v1"
 
 
+# 人教版（2024 修订）五年级数学知识模块名称对齐表。
+# 旧版教材中的“简易方程”“位置”等模块在最新人教版中已调整表述与编排，
+# 这里把历史题库中的模块键映射到当前教材使用的模块名称，保证“知识模块练习”
+# 展示与组卷都使用最新版本，而不是旧版单元名。
+_GRADE5_MATH_MODULE_ALIASES = {
+    "简易方程": "用字母表示数与方程",
+    "方程": "用字母表示数与方程",
+    "位置": "位置（用数对确定位置）",
+    "用数对确定位置": "位置（用数对确定位置）",
+}
+
+
+def normalize_knowledge_module(grade: int, subject: str, knowledge: str) -> str:
+    """把历史题库中的知识模块名对齐到当前人教版教材使用的模块名。
+
+    仅对五年级数学做映射，其他年级/科目原样返回，避免影响既有题库。
+    """
+    key = (knowledge or "").strip()
+    if not key:
+        return key
+    if int(grade or 0) == 5 and (subject or "").strip() == "数学":
+        return _GRADE5_MATH_MODULE_ALIASES.get(key, key)
+    return key
+
+
 class StudentPracticeCreateBody(BaseModel):
     grade: int
     subject: str
