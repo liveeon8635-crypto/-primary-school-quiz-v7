@@ -1,0 +1,137 @@
+name: automation-boundary-guard
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  automation-boundary-guard:
+    name: automation-boundary-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enforce trusted automation boundary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.setFailed('AUTOMATION_MERGE_DENIED: pull request payload missing');
+              return;
+            }
+
+            const headSha = String(pr.head.sha || '').toLowerCase();
+            const baseSha = String(pr.base.sha || '').toLowerCase();
+            const statusContext = 'automation-boundary-guard';
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            const setStatus = async (state, description) => {
+              await github.rest.repos.createCommitStatus({
+                owner,
+                repo,
+                sha: headSha,
+                state,
+                context: statusContext,
+                description: String(description).slice(0, 140),
+                target_url: runUrl
+              });
+            };
+
+            await setStatus('pending', 'trusted boundary evaluation in progress');
+
+            try {
+              if (!/^[0-9a-f]{40}$/.test(headSha) || !/^[0-9a-f]{40}$/.test(baseSha)) {
+                throw new Error('AUTOMATION_MERGE_DENIED: invalid PR commit identity');
+              }
+
+              const policyResponse = await github.rest.repos.getContent({
+                owner,
+                repo,
+                path: '.github/automation-policy.json',
+                ref: baseSha
+              });
+              const policyFile = policyResponse.data;
+              if (Array.isArray(policyFile) || !policyFile || policyFile.encoding !== 'base64' || !policyFile.content) {
+                throw new Error('AUTOMATION_MERGE_DENIED: trusted base automation policy unavailable');
+              }
+              const policy = JSON.parse(Buffer.from(policyFile.content, 'base64').toString('utf8'));
+
+              const files = await github.paginate(
+                github.rest.pulls.listFiles,
+                {owner, repo, pull_number: pr.number, per_page: 100}
+              );
+              if (!files.length) throw new Error('AUTOMATION_MERGE_DENIED: empty diff');
+              const maxFiles = Math.max(1, Math.min(Number(policy.automaticMerge.maxChangedFiles) || 1000, 5000));
+              if (files.length > maxFiles) throw new Error('AUTOMATION_MERGE_DENIED: diff exceeds bounded file limit');
+
+              const paths = [...new Set(files.flatMap(file => {
+                const values = [file.filename];
+                if (file.previous_filename) values.push(file.previous_filename);
+                return values.map(value => String(value || '').replace(/^\.\//, '')).filter(Boolean);
+              }))];
+
+              const allowedPrefixes = policy.automaticMerge.allowedPrefixes || [];
+              const allowedRegexes = (policy.automaticMerge.allowedPathRegexes || []).map(value => new RegExp(String(value), 'i'));
+              const protectedPaths = policy.automaticMerge.protectedPaths || [];
+              const protectedRegexes = (policy.automaticMerge.protectedPathRegexes || []).map(value => new RegExp(String(value), 'i'));
+              const migrationRegex = new RegExp(policy.migrationGuard.pathRegex, 'i');
+
+              const protectedMatch = (file) => protectedPaths.some(rule => {
+                if (rule.endsWith('/')) return file.startsWith(rule);
+                if (rule === 'Dockerfile.') return file === 'Dockerfile' || file.startsWith('Dockerfile.');
+                return file === rule;
+              }) || protectedRegexes.some(regex => regex.test(file));
+
+              const allowedMatch = (file) =>
+                allowedPrefixes.some(prefix => file.startsWith(prefix)) ||
+                allowedRegexes.some(regex => regex.test(file));
+
+              const migrationFiles = paths.filter(file => migrationRegex.test(file));
+              const protectedFiles = paths.filter(protectedMatch);
+              const outsideWhitelist = paths.filter(file => !allowedMatch(file));
+
+              console.log(JSON.stringify({
+                event: 'AUTOMATION_BOUNDARY_GUARD',
+                trustedEvent: 'pull_request_target',
+                executesPullRequestCode: false,
+                policyBaseSha: baseSha,
+                headSha,
+                changedPaths: paths,
+                protectedFiles,
+                migrationFiles,
+                outsideWhitelist
+              }));
+
+              if (migrationFiles.length) throw new Error('AUTOMATION_MERGE_DENIED: migration detected');
+              if (protectedFiles.length) throw new Error('AUTOMATION_MERGE_DENIED: protected infrastructure path detected');
+              if (outsideWhitelist.length) throw new Error('AUTOMATION_MERGE_DENIED: path outside changying/unit-test whitelist');
+              if (policy.productionAcceptance.expectedShaSource !== 'pull_request.merge_commit_sha') {
+                throw new Error('AUTOMATION_MERGE_DENIED: expected-sha contract invalid');
+              }
+              if (!(policy.productionAcceptance.required || []).some(item => String(item).includes('expected_sha'))) {
+                throw new Error('AUTOMATION_MERGE_DENIED: expected-sha assertion missing');
+              }
+              if (policy.repairCircuitBreaker.maxAutomaticRepairRounds !== 2 ||
+                  policy.repairCircuitBreaker.onExhausted !== 'waiting_human') {
+                throw new Error('AUTOMATION_MERGE_DENIED: repair circuit-breaker contract invalid');
+              }
+
+              await setStatus('success', 'bounded changying change passed trusted guard');
+              console.log('AUTOMATION_MERGE_ALLOWED: bounded changying business/unit-test change only');
+            } catch (error) {
+              const message = String(error?.message || error || 'automation boundary failed');
+              try {
+                await setStatus('failure', message);
+              } catch (statusError) {
+                console.error('failed to publish guard status:', String(statusError?.message || statusError));
+              }
+              core.setFailed(message);
+            }

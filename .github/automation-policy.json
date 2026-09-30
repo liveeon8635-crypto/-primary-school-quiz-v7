@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "trustedGuard": {
+    "event": "pull_request_target",
+    "statusContext": "automation-boundary-guard",
+    "executePullRequestCode": false,
+    "policySource": "pull_request.base.sha"
+  },
+  "automaticMerge": {
+    "allowedPrefixes": [
+      "changying/"
+    ],
+    "allowedPathRegexes": [
+      "^tests/test_[A-Za-z0-9_]+\\.py$"
+    ],
+    "protectedPaths": [
+      ".github/",
+      "render.yaml",
+      "Dockerfile",
+      "Dockerfile.",
+      "requirements.txt",
+      "requirements-dev.txt",
+      "pyproject.toml",
+      "poetry.lock",
+      "Pipfile",
+      "Pipfile.lock",
+      "package.json",
+      "package-lock.json",
+      "npm-shrinkwrap.json",
+      "pnpm-lock.yaml",
+      "yarn.lock",
+      "scripts/",
+      "tests/e2e/",
+      "migrations/",
+      "changying/migrations/"
+    ],
+    "protectedPathRegexes": [
+      "(^|/)[^/]*requirements[^/]*$",
+      "(^|/)tests/[^/]*e2e[^/]*\\.py$"
+    ],
+    "requiredWorkflowRuns": [
+      "CI",
+      "Harness Guard"
+    ],
+    "requiredCommitStatuses": [
+      "automation-boundary-guard"
+    ],
+    "maxChangedFiles": 1000
+  },
+  "migrationGuard": {
+    "pathRegex": "(^|/)(migrations?|alembic|schema)(/|\\.|_|-|$)|(^|/)[^/]*(migration|schema)[^/]*$|\\.sql$|(^|/)prisma/schema\\.prisma$"
+  },
+  "productionAcceptance": {
+    "expectedShaSource": "pull_request.merge_commit_sha",
+    "required": [
+      "deployed revision === expected_sha",
+      "production smoke passes"
+    ]
+  },
+  "repairCircuitBreaker": {
+    "maxAutomaticRepairRounds": 2,
+    "onExhausted": "waiting_human"
+  }
+}
