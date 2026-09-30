@@ -330,6 +330,69 @@ def _role_learning_context(
     return "当前角色不注入学生个人学习数据；按产品功能与当前页面回答。"
 
 
+_GUIDANCE_CARDS = (
+    {
+        "key": "current_teaching",
+        "title": "当前教学",
+        "description": "查看正在进行的班级、作业与课堂，从这里开始今天的教学。",
+        "path": "/v1/teaching",
+        "keywords": ("当前教学", "今天", "上课", "布置", "作业", "班级"),
+    },
+    {
+        "key": "student_profile",
+        "title": "学生连续档案",
+        "description": "同一学生的成绩、错题、知识点、积分与课堂表现长期累积。",
+        "path": "/v1/student",
+        "keywords": ("学生", "档案", "学情", "成绩", "错题", "知识点", "积分"),
+    },
+    {
+        "key": "targeted_practice",
+        "title": "AI 针对性练习",
+        "description": "基于最近测试与错题生成练习，教师审核后再布置。",
+        "path": "/v1/practice",
+        "keywords": ("针对性", "ai练习", "ai 练习", "练习", "巩固"),
+    },
+    {
+        "key": "classroom_review",
+        "title": "课堂复盘与互动课堂",
+        "description": "汇总班级练习数据，生成复盘讲义并开放随堂检测。",
+        "path": "/v1/classroom",
+        "keywords": ("课堂", "复盘", "讲义", "互动", "随堂", "检测"),
+    },
+    {
+        "key": "history_transition",
+        "title": "历史与升年级衔接",
+        "description": "换班或升年级不会重建学生，历史与衔接继续引用同一学生 ID。",
+        "path": "/v1/history",
+        "keywords": ("历史", "升年级", "升学", "衔接", "换班"),
+    },
+    {
+        "key": "feedback",
+        "title": "提交产品反馈",
+        "description": "遇到问题或希望增加功能，可直接提交反馈并附一张照片或文件。",
+        "path": "/v1/workspace",
+        "keywords": ("反馈", "建议", "问题", "功能", "增加"),
+    },
+)
+
+
+def _guidance_cards(question: str, page: str = "", limit: int = 3) -> list[dict]:
+    text = f"{question or ''} {page or ''}".lower()
+    scored: list[tuple[int, dict]] = []
+    for card in _GUIDANCE_CARDS:
+        score = sum(1 for kw in card["keywords"] if kw.lower() in text)
+        if score:
+            scored.append((score, card))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    chosen = [card for _, card in scored[:limit]]
+    if not chosen:
+        chosen = [card for card in _GUIDANCE_CARDS if card["key"] in ("current_teaching", "student_profile", "feedback")]
+    return [
+        {"key": c["key"], "title": c["title"], "description": c["description"], "path": c["path"]}
+        for c in chosen
+    ]
+
+
 def _local_answer(
     question: str,
     identity: str,
