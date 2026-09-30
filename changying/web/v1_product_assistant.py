@@ -627,13 +627,18 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             select(reward_table.c.points, reward_table.c.status)
             .where(reward_table.c.user_id == user.id, reward_table.c.school_id == user.school_id)
         ).all()
-        earned = sum(int(r[0] or 0) for r in rows if str(r[1]) == "granted")
-        pending = sum(int(r[0] or 0) for r in rows if str(r[1]) == "pending")
+        granted_rows = [r for r in rows if str(r[1]) == "granted"]
+        pending_rows = [r for r in rows if str(r[1]) == "pending"]
+        earned = sum(int(r[0] or 0) for r in granted_rows)
+        pending = sum(int(r[0] or 0) for r in pending_rows)
         return {
             "earnedPoints": earned,
             "pendingPoints": pending,
             "totalPoints": earned + pending,
             "redeemable": earned,
+            "adoptedFeedbackCount": len(granted_rows),
+            "receivedFeedbackCount": len(granted_rows) + len(pending_rows),
+            "statusHint": "每条反馈都有回执：已采纳的反馈显示奖励分，未采纳的反馈显示待处理回执。",
             "rule": "每条被采纳的产品反馈获得 1 个反馈奖励分；奖励分可用于兑换账号时长，兑换比例将根据总体数据消费情况确定。",
         }
 
