@@ -1,4 +1,4 @@
-"""JSON compatibility helpers extracted from the legacy application."""
+"""JSON compatibility helpers shared by the Changying application."""
 
 from __future__ import annotations
 
