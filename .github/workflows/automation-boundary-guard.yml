@@ -6,6 +6,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
+  actions: read
   contents: read
   pull-requests: read
   statuses: write
@@ -122,6 +123,59 @@ jobs:
               if (policy.repairCircuitBreaker.maxAutomaticRepairRounds !== 2 ||
                   policy.repairCircuitBreaker.onExhausted !== 'waiting_human') {
                 throw new Error('AUTOMATION_MERGE_DENIED: repair circuit-breaker contract invalid');
+              }
+
+              const requiredWorkflows = [...new Set(policy.automaticMerge.requiredWorkflowRuns || [])];
+              const workflowDeadline = Date.now() + 240000;
+              let requiredWorkflowEvidence = [];
+              while (requiredWorkflows.length) {
+                const runsResponse = await github.rest.actions.listWorkflowRunsForRepo({
+                  owner,
+                  repo,
+                  event: 'pull_request',
+                  head_sha: headSha,
+                  per_page: 100
+                });
+                const runs = Array.isArray(runsResponse.data.workflow_runs) ? runsResponse.data.workflow_runs : [];
+                const latestByName = new Map();
+                for (const run of runs.sort((a, b) => Number(b.run_number || 0) - Number(a.run_number || 0))) {
+                  const name = String(run.name || '');
+                  if (name && !latestByName.has(name)) latestByName.set(name, run);
+                }
+
+                requiredWorkflowEvidence = requiredWorkflows.map(name => {
+                  const run = latestByName.get(name);
+                  return run ? {
+                    name,
+                    id: run.id,
+                    status: run.status,
+                    conclusion: run.conclusion,
+                    headSha: String(run.head_sha || '').toLowerCase()
+                  } : {name, id: null, status: 'missing', conclusion: null, headSha: null};
+                });
+
+                console.log(JSON.stringify({
+                  event: 'AUTOMATION_REQUIRED_WORKFLOW_EVIDENCE',
+                  headSha,
+                  requiredWorkflowEvidence
+                }));
+
+                const failed = requiredWorkflowEvidence.filter(item =>
+                  item.headSha && item.headSha !== headSha ||
+                  item.status === 'completed' && item.conclusion !== 'success'
+                );
+                if (failed.length) {
+                  throw new Error('AUTOMATION_MERGE_DENIED: required workflow failed');
+                }
+
+                const waiting = requiredWorkflowEvidence.filter(item =>
+                  item.status === 'missing' || item.status !== 'completed'
+                );
+                if (!waiting.length) break;
+                if (Date.now() >= workflowDeadline) {
+                  throw new Error('AUTOMATION_MERGE_DENIED: required workflow timeout');
+                }
+                await new Promise(resolve => setTimeout(resolve, 5000));
               }
 
               await setStatus('success', 'bounded changying change passed trusted guard');
