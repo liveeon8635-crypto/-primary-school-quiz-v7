@@ -26,6 +26,22 @@ from changying.web import v1_classic_gzip_embed as classic_embed_module
 
 
 V1_PRODUCT_ASSISTANT_MARKER = "changying_v1_product_assistant_v1"
+# 人教版小学数学教材版本标记：五年级知识模块练习需与最新人教版一致。
+# 最新人教版五年级已调整“简易方程”与“位置”的编排，旧版模块名不再作为当前教材模块展示。
+RENJIAO_TEXTBOOK_EDITION = "人教版-2024"
+GRADE5_KNOWLEDGE_MODULES = (
+    "小数乘法",
+    "小数除法",
+    "位置",
+    "可能性",
+    "简易方程",
+    "多边形的面积",
+    "数学广角-植树问题",
+)
+GRADE5_RETIRED_MODULES = (
+    "观察物体",
+    "用字母表示数",
+)
 QUERY_PATH = "/v1/product-assistant/query"
 
 # 人教版小学数学教材版本与五年级知识模块顺序。
