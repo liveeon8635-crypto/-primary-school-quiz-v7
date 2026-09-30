@@ -62,7 +62,12 @@ _ASSISTANT_LAUNCHER_HTML = (
     "<h2>智能助手</h2>"
     "<p>遇到问题可直接向智能助手提问，或提交产品反馈。</p>"
     "<div class='list' style='margin-top:12px'>"
-    "<div><a href='/v1/workspace?mode=institution'>打开智能助手</a></div>"
+    "<div><button type='button' id='assistant-launcher-open' "
+    "style='display:inline-block;padding:10px 16px;border-radius:8px;border:0;"
+    "background:#2563eb;color:#fff;font-size:15px;cursor:pointer' "
+    "onclick=\"window.location.assign('/v1/workspace?mode=institution')\">打开智能助手</button></div>"
+    "<div style='margin-top:8px'><a id='assistant-launcher-link' "
+    "href='/v1/workspace?mode=institution'>若按钮无反应，点此打开智能助手</a></div>"
     "</div>"
     "</div>"
 )
