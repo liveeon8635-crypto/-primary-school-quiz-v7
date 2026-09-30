@@ -57,6 +57,17 @@ _DETAIL_MOBILE_TARGETS = (
 
 ASSISTANT_LAUNCHER_MARKER = "changying_v1_assistant_launcher_v1"
 
+ASSISTANT_LAUNCHER_BINDING_MARKER = "changying_v1_assistant_launcher_binding_v1"
+
+_ASSISTANT_LAUNCHER_BINDING_SCRIPT = (
+    f"<script id='{ASSISTANT_LAUNCHER_BINDING_MARKER}'>"
+    "(function(){const b=document.getElementById('assistant-launcher-open');"
+    "if(b&&!b.dataset.bound){b.dataset.bound='1';b.addEventListener('click',function(){"
+    "window.location.assign('/v1/workspace?mode=institution');});}})();"
+    "</script>"
+)
+
+
 _ASSISTANT_LAUNCHER_HTML = (
     f"<div class='card' id='assistant-launcher' data-marker='{ASSISTANT_LAUNCHER_MARKER}'>"
     "<h2>智能助手</h2>"
