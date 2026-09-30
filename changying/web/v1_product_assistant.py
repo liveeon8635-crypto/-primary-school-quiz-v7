@@ -471,6 +471,13 @@ _GUIDANCE_CARDS = (
         "path": "/v1/workspace",
         "keywords": ("反馈", "建议", "问题", "功能", "增加"),
     },
+    {
+        "key": "feedback_records",
+        "title": "我的反馈记录",
+        "description": "查看我提交过的每条反馈、处理回执与反馈奖励分状态。",
+        "path": "/v1/workspace?tab=feedback-records",
+        "keywords": ("反馈记录", "我的反馈", "提过什么反馈", "回执", "反馈奖励", "反馈状态", "查反馈"),
+    },
 )
 
 
