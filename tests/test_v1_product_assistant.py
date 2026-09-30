@@ -216,7 +216,7 @@ def test_visual_guides_are_role_scoped_and_never_send_teacher_to_student_only_pa
     assert "href:'/v1/tool?page=childProgress'" in html
     assert "href:'/v1/tool?page=users'" in html
     assert "href:'/v1/tool?page=adminAudit'" in html
-    assert "const c=context(),role=guideRole(c.identity),pool=GUIDE_SETS[role]||GUIDE_SETS.teacher" in html
+    assert "const c=context(),role=guideRole(c.identity),pool=[...(GUIDE_SETS[role]||GUIDE_SETS.teacher),FEEDBACK_RECORDS_GUIDE]" in html
 
 
 def test_visual_guide_current_page_scoring_distinguishes_unified_tool_pages():
@@ -476,8 +476,9 @@ def test_feedback_attachment_is_saved_and_transferred_through_proof(monkeypatch)
 
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     attachment_table = implementation.Base.metadata.tables["product_feedback_attachments"]
+    reward_table = implementation.Base.metadata.tables["product_feedback_rewards"]
     implementation.Base.metadata.create_all(
-        engine, tables=[implementation.AuditLog.__table__, attachment_table]
+        engine, tables=[implementation.AuditLog.__table__, attachment_table, reward_table]
     )
     session_factory = sessionmaker(bind=engine)
     user = SimpleNamespace(id=42, school_id=7, role="teacher")
