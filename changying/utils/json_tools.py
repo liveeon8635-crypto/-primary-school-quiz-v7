@@ -1,4 +1,4 @@
-"""JSON compatibility helpers shared by the Changying application."""
+"""JSON compatibility helpers used across Changying business flows."""
 
 from __future__ import annotations
 
