@@ -55,6 +55,21 @@ _DETAIL_MOBILE_TARGETS = (
 )
 
 
+FEEDBACK_REWARD_PANEL_MARKER = "changying_v1_feedback_reward_panel_v1"
+
+_FEEDBACK_REWARD_PANEL_HTML = (
+    f"<div class='card' id='feedback-reward-panel' data-marker='{FEEDBACK_REWARD_PANEL_MARKER}'>"
+    "<h2>反馈记录 · 采纳状态回执 · 奖励汇总</h2>"
+    "<p>这里集中展示你提交的产品反馈、每条反馈的采纳状态回执，以及已发放的奖励汇总。</p>"
+    "<div class='list' style='margin-top:12px'>"
+    "<div><strong>反馈记录</strong>：按时间倒序列出你提交的每条反馈（含附件与提交时间）。</div>"
+    "<div><strong>采纳状态回执</strong>：每条反馈显示 待处理 / 已采纳 / 已解决 状态与回执说明。</div>"
+    "<div><strong>奖励汇总</strong>：汇总已确认发放的奖励条目与合计。</div>"
+    "</div>"
+    "<p style='margin-top:12px'><a href='/v1/workspace?mode=institution'>前往产品助手 · 提反馈</a> 提交新反馈后，可回到本页查看回执与奖励。</p>"
+    "</div>"
+)
+
 STUDENT_DETAIL_MOBILE_CSS_MARKER = "changying_v1_student_detail_mobile_css_v2"
 
 _MOBILE_LAYOUT_CSS = (
