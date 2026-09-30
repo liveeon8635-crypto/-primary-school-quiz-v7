@@ -57,6 +57,24 @@ _DETAIL_MOBILE_TARGETS = (
 
 FEEDBACK_REWARD_PANEL_MARKER = "changying_v1_feedback_reward_panel_v1"
 
+FEEDBACK_STATUS_CHAIN_MARKER = "changying_v1_feedback_status_chain_v1"
+
+_FEEDBACK_STATUS_CHAIN_HTML = (
+    f"<div class='card' id='feedback-status-chain' data-marker='{FEEDBACK_STATUS_CHAIN_MARKER}'>"
+    "<h2>反馈处理状态链</h2>"
+    "<p>每条反馈按 待处理 → 处理中 → 待验收 → 已采纳/已解决 推进；未采用的反馈也会给出明确回执。</p>"
+    "<div class='list' style='margin-top:12px'>"
+    "<div><strong>待处理</strong>：反馈已提交，等待 Freeman 受理。</div>"
+    "<div><strong>处理中</strong>：Freeman 正在处理，已关联执行任务。</div>"
+    "<div><strong>待验收</strong>：Draft PR 已创建且 exact-head CI 通过，等待人工合并与生产验收。</div>"
+    "<div><strong>已采纳 / 已解决</strong>：目标 PR 已合并、生产部署包含对应 merge SHA、生产验收通过后自动更新。</div>"
+    "<div><strong>未采用</strong>：给出明确回执说明，不静默丢弃。</div>"
+    "<div><strong>奖励结算</strong>：仅当状态达到已采纳/已解决时，对应反馈奖励从 pending 幂等结算为 granted。</div>"
+    "</div>"
+    "<p style='margin-top:12px'>禁止仅凭健康检查判定反馈已完成；必须核对 PR 合并 SHA 与生产部署 revision。</p>"
+    "</div>"
+)
+
 _FEEDBACK_REWARD_PANEL_HTML = (
     f"<div class='card' id='feedback-reward-panel' data-marker='{FEEDBACK_REWARD_PANEL_MARKER}'>"
     "<h2>反馈记录 · 采纳状态回执 · 奖励汇总</h2>"
