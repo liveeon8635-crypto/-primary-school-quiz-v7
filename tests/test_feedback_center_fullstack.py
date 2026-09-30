@@ -28,6 +28,9 @@ def test_feedback_center_is_a_real_v1_route_with_visible_entry_and_actions():
     assert "查收（满意）" in html
     assert "/follow-up" in html
     assert "/acknowledge" in html
+    assert 'id="changying-feedback-center-script"' in html
+    assert "window.ChangyingFeedbackCenter" in html
+    assert "feedbackUI.statusLabel(r)" in html
 
 
 def test_feedback_center_backend_round_trip(monkeypatch):
