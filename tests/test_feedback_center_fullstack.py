@@ -7,18 +7,19 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app import app
-from changying.web.v1 import V1_PATHS
 from changying.web.v1_product_assistant import FEEDBACK_MINE_PATH, FEEDBACK_PATH
 
 
-def test_feedback_center_is_a_real_v1_route_with_visible_entry_and_actions():
-    assert "/v1/feedback" in V1_PATHS
-    response = TestClient(app).get("/v1/feedback")
+def test_feedback_center_is_mounted_as_real_frontend_with_visible_entry_and_actions():
+    response = TestClient(app).get("/v1")
     assert response.status_code == 200
     html = response.text
 
-    assert 'id="feedbackCenterButton"' in html
+    assert 'id="changying-feedback-center-script"' in html
+    assert "window.__cyFeedbackCenterInstalled=true" in html
+    assert "feedbackCenterButton" in html
     assert "我的反馈记录" in html
+    assert 'id="cy-feedback-center-modal"' in html
     assert "/v1/product-feedback/mine" in html
     assert "取用状态：" in html
     assert "处理回执" in html
@@ -27,9 +28,6 @@ def test_feedback_center_is_a_real_v1_route_with_visible_entry_and_actions():
     assert "查收（满意）" in html
     assert "/follow-up" in html
     assert "/acknowledge" in html
-    assert 'id="changying-feedback-center-script"' in html
-    assert "window.ChangyingFeedbackCenter" in html
-    assert "feedbackUI.statusLabel(r)" in html
 
 
 def test_feedback_center_backend_round_trip(monkeypatch):
