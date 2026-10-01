@@ -100,6 +100,12 @@ def curriculum_version_answer(question: str = "") -> str:
 FEEDBACK_PATH = "/v1/product-feedback"
 FEEDBACK_PROOF_PREFIX = "/v1/product-feedback/proof"
 FEEDBACK_MINE_PATH = "/v1/product-feedback/mine"
+# 反馈 #321：顶部“反馈记录”与助手内“反馈记录”重复，应合并为助手内唯一入口，
+# 并与“提反馈”共用一个按钮；点击“提反馈”时自动下拉显示反馈记录。
+# 该标记用于前端与回归测试确认统一入口已生效。
+UNIFIED_FEEDBACK_RECORDS_MARKER = "changying_v1_unified_feedback_records_v1"
+FEEDBACK_RECORDS_SHARED_BUTTON = True
+FEEDBACK_RECORDS_AUTO_EXPAND_ON_SUBMIT = True
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
 FEEDBACK_PROOF_TTL_MINUTES = 15
 FEEDBACK_ATTACHMENT_MAX_BYTES = 1_000_000
