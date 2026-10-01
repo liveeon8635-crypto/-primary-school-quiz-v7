@@ -1265,9 +1265,11 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "data": base64.b64encode(attachment_row["file_data"]).decode("ascii"),
             }
         follow_ups = list(payload.get("followUps") or [])
-        followup_rows = db.execute(
-            select(followup_attachment_table).where(followup_attachment_table.c.audit_id == row.id)
-        ).mappings().all()
+        followup_rows = []
+        if follow_ups:
+            followup_rows = db.execute(
+                select(followup_attachment_table).where(followup_attachment_table.c.audit_id == row.id)
+            ).mappings().all()
         followup_files = {str(item["follow_up_id"]): item for item in followup_rows}
         for follow_up in follow_ups:
             stored = followup_files.get(str(follow_up.get("id") or ""))
