@@ -221,6 +221,10 @@ class ProductFeedbackBody(BaseModel):
 
 class ProductFeedbackFollowUpBody(BaseModel):
     message: str = Field(min_length=1, max_length=1200)
+    attachment_name: str = Field(default="", max_length=240)
+    attachment_type: str = Field(default="", max_length=120)
+    attachment_size: int = Field(default=0, ge=0, le=FEEDBACK_ATTACHMENT_MAX_BYTES)
+    attachment_data: str = Field(default="", max_length=1_400_000)
 
 
 _PRODUCT_CONTEXT = """你是“长缨辅学”的站内学习与产品助手。你既帮助用户理解长缨怎么用，也要根据账号身份采用不同的沟通方式。
@@ -692,6 +696,20 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         Column("file_data", LargeBinary, nullable=False),
         Column("created_at", DateTime, default=datetime.utcnow, nullable=False),
     )
+    followup_attachment_table = Table(
+        "product_feedback_followup_attachments", implementation.Base.metadata,
+        Column("id", Integer, primary_key=True),
+        Column("audit_id", Integer, ForeignKey("audit_logs.id"), nullable=False),
+        Column("follow_up_id", String(80), unique=True, nullable=False),
+        Column("school_id", Integer, ForeignKey("schools.id"), nullable=False),
+        Column("user_id", Integer, ForeignKey("users.id"), nullable=False),
+        Column("file_name", String(120), nullable=False),
+        Column("mime_type", String(120), nullable=False),
+        Column("size_bytes", Integer, nullable=False),
+        Column("sha256", String(64), nullable=False),
+        Column("file_data", LargeBinary, nullable=False),
+        Column("created_at", DateTime, default=datetime.utcnow, nullable=False),
+    )
     reward_table = Table(
         "product_feedback_rewards", implementation.Base.metadata,
         Column("id", Integer, primary_key=True),
@@ -702,6 +720,13 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         Column("status", String(20), nullable=False, default="pending"),
         Column("created_at", DateTime, default=datetime.utcnow, nullable=False),
     )
+    # These extracted tables are registered after the legacy application's initial
+    # metadata bootstrap. Create only these tables idempotently before routes use them.
+    bind = implementation.engine
+    attachment_table.create(bind=bind, checkfirst=True)
+    followup_attachment_table.create(bind=bind, checkfirst=True)
+    reward_table.create(bind=bind, checkfirst=True)
+
 
     def _feedback_reward_summary(db, user) -> dict:
         reward_query = select(reward_table.c.points, reward_table.c.status).where(reward_table.c.school_id == user.school_id)
@@ -813,6 +838,24 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             "message": body.message.strip(),
             "at": now.isoformat() + "Z",
         }
+        attachment = _decode_feedback_attachment(ProductFeedbackBody(
+            message=body.message,
+            attachment_name=body.attachment_name,
+            attachment_type=body.attachment_type,
+            attachment_size=body.attachment_size,
+            attachment_data=body.attachment_data,
+        ))
+        if attachment:
+            raw, name, mime = attachment
+            follow_up["attachment"] = {
+                "name": name, "type": mime, "size": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            }
+            db.execute(insert(followup_attachment_table).values(
+                audit_id=row.id, follow_up_id=follow_up["id"], school_id=user.school_id, user_id=user.id,
+                file_name=name, mime_type=mime, size_bytes=len(raw),
+                sha256=follow_up["attachment"]["sha256"], file_data=raw,
+            ))
         follow_ups.append(follow_up)
         proof_token = secrets.token_urlsafe(24)
         detail["followUps"] = follow_ups
@@ -1222,6 +1265,19 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "data": base64.b64encode(attachment_row["file_data"]).decode("ascii"),
             }
         follow_ups = list(payload.get("followUps") or [])
+        followup_rows = []
+        if follow_ups:
+            followup_rows = db.execute(
+                select(followup_attachment_table).where(followup_attachment_table.c.audit_id == row.id)
+            ).mappings().all()
+        followup_files = {str(item["follow_up_id"]): item for item in followup_rows}
+        for follow_up in follow_ups:
+            stored = followup_files.get(str(follow_up.get("id") or ""))
+            if stored:
+                follow_up["attachment"] = {
+                    "name": stored["file_name"], "type": stored["mime_type"], "size": stored["size_bytes"],
+                    "sha256": stored["sha256"], "data": base64.b64encode(stored["file_data"]).decode("ascii"),
+                }
         revision = max(1, int(payload.get("revision") or (1 + len(follow_ups))))
         updated_at = str(payload.get("updatedAt") or (follow_ups[-1].get("at") if follow_ups else "") or (created_at.isoformat() + "Z"))
         hash_payload = {
