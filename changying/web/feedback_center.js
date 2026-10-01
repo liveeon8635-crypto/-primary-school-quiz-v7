@@ -38,7 +38,7 @@
     '.cy-fc-record{display:grid;gap:10px}.cy-fc-meta{display:flex;gap:7px;flex-wrap:wrap}.cy-fc-tag{display:inline-flex;padding:5px 8px;border:1px solid #dbe4f1;border-radius:999px;font-size:11px;background:#f8fbff}'+
     '.cy-fc-tag.granted{color:#166534;background:#eefbf2;border-color:#cdebd7}.cy-fc-tag.pending{color:#8a4b00;background:#fff8e8;border-color:#f5d79a}.cy-fc-receipt{padding:10px 11px;border-radius:10px;background:#f5f8fd;border:1px solid #e0e7f2}'+
     '.cy-fc-followup{padding:8px 10px;border-left:3px solid #bfd2f4;background:#f8fbff;border-radius:7px;font-size:12px}.cy-fc-actions{display:flex;gap:8px;flex-wrap:wrap}.cy-fc-actions button{border:1px solid #d7deea;background:#fff;border-radius:10px;padding:8px 11px;font-weight:700}.cy-fc-actions button.primary{background:#173a78;border-color:#173a78;color:#fff}.cy-fc-actions button.green{background:#15803d;border-color:#15803d;color:#fff}'+
-    '.cy-fc-compose{display:grid;gap:8px}.cy-fc-compose textarea{width:100%;min-height:74px;border:1px solid #cfd7e5;border-radius:10px;padding:10px 11px;resize:vertical;font:inherit}.cy-fc-empty{padding:22px;text-align:center;color:#667085;background:#f5f7fb;border-radius:12px}.cy-fc-error{padding:12px;background:#fff1f1;color:#991b1b;border-radius:12px}'+
+    '.cy-fc-compose{display:grid;gap:8px}.cy-fc-compose textarea{width:100%;min-height:74px;border:1px solid #cfd7e5;border-radius:10px;padding:10px 11px;resize:vertical;font:inherit}.cy-fc-photo{display:flex;align-items:center;gap:8px;font-size:12px;color:#475467}.cy-fc-photo input{max-width:220px}.cy-fc-empty{padding:22px;text-align:center;color:#667085;background:#f5f7fb;border-radius:12px}.cy-fc-error{padding:12px;background:#fff1f1;color:#991b1b;border-radius:12px}'+
     '@media(max-width:640px){#cy-feedback-center-backdrop{padding:8px;align-items:end}#cy-feedback-center-modal{max-height:84dvh;border-radius:18px 18px 0 0}.cy-fc-summary{grid-template-columns:1fr}.cy-fc-head{padding:13px 14px}.cy-fc-body{padding:12px}}';
   document.head.appendChild(style);
 
@@ -61,6 +61,14 @@
     let data={};try{data=await response.json()}catch{}
     if(!response.ok)throw new Error(data.detail||'请求失败');
     return data;
+  };
+
+  const filePayload=async file=>{
+    if(!file)return {};
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw new Error('追加反馈照片仅支持 JPG、PNG 或 WebP');
+    if(file.size<1||file.size>1000000)throw new Error('照片大小需在 1 MB 以内');
+    const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||'').split(',')[1]||'');reader.onerror=()=>reject(new Error('照片读取失败'));reader.readAsDataURL(file)});
+    return {attachment_name:file.name,attachment_type:file.type,attachment_size:file.size,attachment_data:data};
   };
 
   const renderRecords=data=>{
@@ -88,7 +96,7 @@
         '<div class="cy-fc-receipt"><b>处理回执</b><div style="margin-top:4px">'+escapeHtml(receiptText(record))+'</div></div>'+
         followupHtml+
         '<div class="cy-fc-actions">'+ack+(own?'<button data-cy-fc-followup-toggle="'+id+'">追加反馈</button><button data-cy-fc-reject="'+id+'">驳回</button>':'')+'</div>'+
-        '<div class="cy-fc-compose" data-cy-fc-followup-form="'+id+'" hidden><textarea maxlength="1200" data-cy-fc-followup-input="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><div class="cy-fc-actions"><button class="primary" data-cy-fc-followup-submit="'+id+'">提交追加反馈</button><button data-cy-fc-followup-cancel="'+id+'">取消</button></div></div>'+
+        '<div class="cy-fc-compose" data-cy-fc-followup-form="'+id+'" hidden><textarea maxlength="1200" data-cy-fc-followup-input="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><label class="cy-fc-photo">📷 添加照片 <input type="file" accept="image/jpeg,image/png,image/webp" data-cy-fc-followup-photo="'+id+'"></label><div class="cy-fc-actions"><button class="primary" data-cy-fc-followup-submit="'+id+'">提交追加反馈</button><button data-cy-fc-followup-cancel="'+id+'">取消</button></div></div>'+
         '</article>';
     }).join('');
     body.innerHTML=summaryHtml+(items||'<div class="cy-fc-empty">还没有提交过反馈。可以点击“提交新反馈”开始。</div>');
@@ -130,9 +138,13 @@
       const input=body.querySelector('[data-cy-fc-followup-input="'+id+'"]');
       const message=text(input&&input.value);
       if(!message){if(input)input.focus();return}
+      const photo=body.querySelector('[data-cy-fc-followup-photo="'+id+'"]');
       submit.disabled=true;
-      try{await api('/v1/product-feedback/mine/'+id+'/follow-up',{method:'POST',body:JSON.stringify({message})});await load()}
-      catch(error){submit.disabled=false;alert(error.message||'追加反馈失败')}
+      try{
+        const attachment=await filePayload(photo&&photo.files&&photo.files[0]);
+        await api('/v1/product-feedback/mine/'+id+'/follow-up',{method:'POST',body:JSON.stringify({message,...attachment})});
+        await load();
+      }catch(error){submit.disabled=false;alert(error.message||'追加反馈失败')}
       return;
     }
     const reject=event.target.closest('[data-cy-fc-reject]');
