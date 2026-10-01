@@ -78,14 +78,16 @@
         (followups.length?followups.map(item=>
           '<div class="cy-fc-followup">'+escapeHtml(item.message||'')+'<small style="display:block;color:#667085;margin-top:3px">'+escapeHtml(item.at||'')+'</small></div>'
         ).join(''):'<div class="cy-fc-followup">暂无追加反馈</div>')+'</div>';
+      const own=record.canFollowUp!==false;
       const ack=record.acknowledged?'<span class="cy-fc-tag granted">已查收（满意）</span>':
-        '<button class="green" data-cy-fc-ack="'+id+'">验收通过</button>';
+        (own?'<button class="green" data-cy-fc-ack="'+id+'">验收通过</button>':'');
+      const ownerMeta=record.submittedBy?'<span class="cy-fc-tag">提交人：'+escapeHtml(record.submittedBy)+'</span>':'';
       return '<article class="cy-fc-record" data-cy-fc-record="'+id+'">'+
-        '<div class="cy-fc-meta"><span class="cy-fc-tag '+statusClass(record)+'">取用状态：'+escapeHtml(statusLabel(record))+'</span><span class="cy-fc-tag" data-cy-fc-reward="'+id+'">奖励分：'+escapeHtml(rewardText(record))+'</span></div>'+
+        '<div class="cy-fc-meta"><span class="cy-fc-tag '+statusClass(record)+'">取用状态：'+escapeHtml(statusLabel(record))+'</span><span class="cy-fc-tag" data-cy-fc-reward="'+id+'">奖励分：'+escapeHtml(rewardText(record))+'</span>'+ownerMeta+'</div>'+
         '<div><b>'+escapeHtml(record.category||'产品反馈')+'</b><div style="margin-top:5px;line-height:1.55">'+escapeHtml(record.message||'')+'</div><small style="color:#667085">'+escapeHtml(record.createdAt||'')+'</small></div>'+
         '<div class="cy-fc-receipt"><b>处理回执</b><div style="margin-top:4px">'+escapeHtml(receiptText(record))+'</div></div>'+
         followupHtml+
-        '<div class="cy-fc-actions">'+ack+'<button data-cy-fc-followup-toggle="'+id+'">追加反馈</button><button data-cy-fc-reject="'+id+'">驳回</button></div>'+
+        '<div class="cy-fc-actions">'+ack+(own?'<button data-cy-fc-followup-toggle="'+id+'">追加反馈</button><button data-cy-fc-reject="'+id+'">驳回</button>':'')+'</div>'+
         '<div class="cy-fc-compose" data-cy-fc-followup-form="'+id+'" hidden><textarea maxlength="1200" data-cy-fc-followup-input="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><div class="cy-fc-actions"><button class="primary" data-cy-fc-followup-submit="'+id+'">提交追加反馈</button><button data-cy-fc-followup-cancel="'+id+'">取消</button></div></div>'+
         '</article>';
     }).join('');
