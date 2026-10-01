@@ -1609,13 +1609,38 @@ _ASSISTANT_SNIPPET = r'''
     box.innerHTML='<div class="cy-pa-note">正在读取你的反馈记录…</div>';
     try{
       const token=readToken();if(!token)throw new Error('登录状态已失效，请重新登录');
-      const r=await fetch('/v1/product-feedback/history',{headers:{Authorization:'Bearer '+token}});
+      const r=await fetch('/v1/product-feedback/mine',{headers:{Authorization:'Bearer '+token}});
       const data=await r.json();if(!r.ok)throw new Error(data.detail||'读取失败');
-      const summary=data.summary||{},items=Array.isArray(data.items)?data.items:[];
+      const summary=data.rewardSummary||{},items=Array.isArray(data.records)?data.records:[];
       const head='<div class="cy-pa-history-item"><b>反馈奖励</b><small>已采纳 '+Number(summary.adoptedFeedbackCount||0)+' 条 · 待处理 '+Number(summary.pendingFeedbackCount||0)+' 条 · 已获得 '+Number(summary.earnedPoints||0)+' 分</small></div>';
-      box.innerHTML=head+(items.length?items.map(x=>'<div class="cy-pa-history-item"><b>'+escapeHtml(x.category||'产品反馈')+' · '+escapeHtml(x.statusLabel||'已收到')+'</b><small>'+escapeHtml(x.message||'')+'</small><small>'+escapeHtml(x.createdAt||'')+(x.rewardPoints?' · 奖励 '+Number(x.rewardPoints)+' 分':'')+'</small></div>').join(''):'<div class="cy-pa-note">还没有提交过反馈。</div>');
+      box.innerHTML=head+(items.length?items.map(x=>{
+        const id=Number(x.id),own=x.canFollowUp!==false;
+        return '<div class="cy-pa-history-item" data-pa-history-id="'+id+'"><b>'+escapeHtml(x.category||'产品反馈')+' · '+escapeHtml(x.statusLabel||'已收到')+'</b><small>'+escapeHtml(x.message||'')+'</small><small>'+escapeHtml(x.createdAt||'')+(x.rewardPoints?' · 奖励 '+Number(x.rewardPoints)+' 分':'')+'</small>'+
+          (own?'<div class="cy-pa-history-actions"><button type="button" data-pa-followup-toggle="'+id+'">追加反馈</button></div><div data-pa-followup-form="'+id+'" hidden><textarea maxlength="1200" data-pa-followup-text="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><label class="cy-pa-attachment">📷 添加照片 <input type="file" accept="image/jpeg,image/png,image/webp" data-pa-followup-photo="'+id+'"></label><button class="btn primary" type="button" data-pa-followup-submit="'+id+'">提交追加反馈</button></div>':'')+
+          '</div>';
+      }).join(''):'<div class="cy-pa-note">还没有提交过反馈。</div>');
     }catch(err){box.innerHTML='<div class="cy-pa-note">反馈记录读取失败：'+escapeHtml(err.message||'请稍后重试')+'</div>'}
   }
+  document.getElementById('cy-pa-history')?.addEventListener('click',async event=>{
+    const toggle=event.target.closest('[data-pa-followup-toggle]');
+    if(toggle){const form=document.querySelector('[data-pa-followup-form="'+toggle.dataset.paFollowupToggle+'"]');if(form)form.hidden=!form.hidden;return}
+    const submit=event.target.closest('[data-pa-followup-submit]');
+    if(!submit)return;
+    const id=submit.dataset.paFollowupSubmit;
+    const input=document.querySelector('[data-pa-followup-text="'+id+'"]');
+    const message=String(input?.value||'').trim();if(!message){input?.focus();return}
+    const photo=document.querySelector('[data-pa-followup-photo="'+id+'"]')?.files?.[0];
+    submit.disabled=true;
+    try{
+      let attachment={};
+      if(photo){
+        if(!['image/jpeg','image/png','image/webp'].includes(photo.type))throw new Error('追加反馈照片仅支持 JPG、PNG 或 WebP');
+        attachment=await prepareFeedbackFile(photo);
+      }
+      await postJson('/v1/product-feedback/mine/'+id+'/follow-up',{message,...attachment});
+      await loadFeedbackHistory();
+    }catch(err){submit.disabled=false;alert(err.message||'追加反馈失败')}
+  });
   function setTab(name){
     document.querySelectorAll('.cy-pa-tab').forEach(x=>x.classList.toggle('active',x.dataset.paTab===name));
     ['ask','feedback','records'].forEach(id=>{const el=document.getElementById('cy-pa-'+id);if(el)el.hidden=id!==name});
