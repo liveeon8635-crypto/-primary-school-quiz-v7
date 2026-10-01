@@ -793,11 +793,38 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         except (ValueError, TypeError):
             detail = {}
         follow_ups = list(detail.get("followUps") or [])
-        follow_ups.append({"message": body.message.strip(), "at": datetime.utcnow().isoformat()})
+        now = datetime.utcnow()
+        follow_up = {
+            "id": f"{int(row.id)}-{int(detail.get('revision') or 1) + 1}",
+            "message": body.message.strip(),
+            "at": now.isoformat() + "Z",
+        }
+        follow_ups.append(follow_up)
+        proof_token = secrets.token_urlsafe(24)
         detail["followUps"] = follow_ups
-        row.detail = json.dumps(detail, ensure_ascii=False)
+        detail["revision"] = int(detail.get("revision") or 1) + 1
+        detail["updatedAt"] = now.isoformat() + "Z"
+        # Rotate the short-lived transfer token for this revision. Freeman never
+        # persists this token; it is only used to authenticate the upsert fetch.
+        detail["transferToken"] = proof_token
+        detail["transferTokenAt"] = now.isoformat() + "Z"
+        row.detail = json.dumps(detail, ensure_ascii=False)[:1800]
         db.commit()
-        return {"ok": True, "id": int(row.id), "followUps": follow_ups}
+        synced = False
+        try:
+            response = requests.post(
+                FREEMAN_FEEDBACK_IMPORT_URL,
+                json={"projectId": "longying", "proofToken": proof_token},
+                timeout=4,
+            )
+            synced = bool(response.ok)
+        except requests.RequestException:
+            synced = False
+        return {
+            "ok": True, "id": int(row.id), "followUps": follow_ups,
+            "revision": detail["revision"], "updatedAt": detail["updatedAt"],
+            "freemanSynced": synced,
+        }
 
     @router.post(FEEDBACK_MINE_PATH + "/{feedback_id}/acknowledge", include_in_schema=False)
     def product_feedback_acknowledge(
@@ -946,6 +973,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
     ):
         attachment = _decode_feedback_attachment(body)
         proof_token = secrets.token_urlsafe(24)
+        now = datetime.utcnow()
         payload = {
             "category": body.category.strip() or "其他反馈",
             "message": body.message.strip(),
@@ -953,6 +981,10 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             "identity": body.identity.strip(),
             "tutorialStep": body.tutorial_step.strip(),
             "transferToken": proof_token,
+            "transferTokenAt": now.isoformat() + "Z",
+            "revision": 1,
+            "updatedAt": now.isoformat() + "Z",
+            "followUps": [],
         }
         if attachment:
             raw, name, mime = attachment
@@ -1071,14 +1103,19 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         if not row:
             raise HTTPException(404, "反馈凭证不存在")
         created_at = row.created_at or datetime.utcnow()
-        if datetime.utcnow() - created_at > timedelta(minutes=FEEDBACK_PROOF_TTL_MINUTES):
-            raise HTTPException(410, "反馈凭证已过期")
         try:
             payload = json.loads(row.detail or "{}")
         except Exception:
             raise HTTPException(404, "反馈凭证无效")
         if payload.get("transferToken") != token:
             raise HTTPException(404, "反馈凭证无效")
+        token_at_raw = str(payload.get("transferTokenAt") or "")
+        try:
+            token_at = datetime.fromisoformat(token_at_raw.rstrip("Z")) if token_at_raw else created_at
+        except ValueError:
+            token_at = created_at
+        if datetime.utcnow() - token_at > timedelta(minutes=FEEDBACK_PROOF_TTL_MINUTES):
+            raise HTTPException(410, "反馈凭证已过期")
         attachment_row = db.execute(
             select(attachment_table).where(attachment_table.c.audit_id == row.id)
         ).mappings().first()
@@ -1111,14 +1148,19 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         if not row:
             raise HTTPException(404, "反馈凭证不存在")
         created_at = row.created_at or datetime.utcnow()
-        if datetime.utcnow() - created_at > timedelta(minutes=FEEDBACK_PROOF_TTL_MINUTES):
-            raise HTTPException(410, "反馈凭证已过期")
         try:
             payload = json.loads(row.detail or "{}")
         except Exception:
             raise HTTPException(404, "反馈凭证无效")
         if payload.get("transferToken") != token:
             raise HTTPException(404, "反馈凭证无效")
+        token_at_raw = str(payload.get("transferTokenAt") or "")
+        try:
+            token_at = datetime.fromisoformat(token_at_raw.rstrip("Z")) if token_at_raw else created_at
+        except ValueError:
+            token_at = created_at
+        if datetime.utcnow() - token_at > timedelta(minutes=FEEDBACK_PROOF_TTL_MINUTES):
+            raise HTTPException(410, "反馈凭证已过期")
         attachment_row = db.execute(
             select(attachment_table).where(attachment_table.c.audit_id == row.id)
         ).mappings().first()
@@ -1131,17 +1173,31 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "sha256": attachment_row["sha256"],
                 "data": base64.b64encode(attachment_row["file_data"]).decode("ascii"),
             }
+        follow_ups = list(payload.get("followUps") or [])
+        revision = max(1, int(payload.get("revision") or (1 + len(follow_ups))))
+        updated_at = str(payload.get("updatedAt") or (follow_ups[-1].get("at") if follow_ups else "") or (created_at.isoformat() + "Z"))
+        hash_payload = {
+            "category": str(payload.get("category") or "其他反馈")[:60],
+            "message": str(payload.get("message") or "")[:1200],
+            "page": str(payload.get("page") or "")[:240],
+            "identity": str(payload.get("identity") or "")[:160],
+            "tutorialStep": str(payload.get("tutorialStep") or "")[:200],
+            "attachment": ({k: attachment_payload.get(k) for k in ("name", "type", "size", "sha256")} if attachment_payload else None),
+            "followUps": follow_ups,
+        }
+        content_hash = hashlib.sha256(
+            json.dumps(hash_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
         return {
             "ok": True,
             "projectId": "longying",
             "feedback": {
                 "sourceId": row.id,
-                "category": str(payload.get("category") or "其他反馈")[:60],
-                "message": str(payload.get("message") or "")[:1200],
-                "page": str(payload.get("page") or "")[:240],
-                "identity": str(payload.get("identity") or "")[:160],
-                "tutorialStep": str(payload.get("tutorialStep") or "")[:200],
+                **hash_payload,
                 "createdAt": created_at.isoformat() + "Z",
+                "updatedAt": updated_at,
+                "revision": revision,
+                "contentHash": content_hash,
                 "attachment": attachment_payload,
             },
         }
