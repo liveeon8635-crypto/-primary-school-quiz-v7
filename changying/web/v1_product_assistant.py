@@ -1257,7 +1257,7 @@ _ASSISTANT_SNIPPET = r'''
 <button id="cy-product-assistant-fab" hidden aria-label="打开产品助手" title="产品助手">✦<span class="cy-pa-fab-label">产品助手</span></button>
 <section id="cy-product-assistant-panel" hidden aria-label="长缨产品助手">
   <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-collapse" aria-label="收起">−</button></div></header>
-  <div class="cy-pa-tabs"><button class="cy-pa-tab active" id="cy-pa-ask-tab" data-pa-tab="ask">问产品</button><div class="cy-pa-feedback-menu"><button id="cy-pa-feedback-menu-button" type="button" aria-haspopup="menu" aria-expanded="false">提反馈 ▾</button><div class="cy-pa-feedback-dropdown" id="cy-pa-feedback-dropdown" role="menu" hidden><button type="button" data-pa-tab="feedback" role="menuitem">提交新反馈</button><button type="button" data-pa-tab="records" role="menuitem">反馈记录</button></div></div></div>
+  <div class="cy-pa-tabs" data-feedback-ui-revision="2"><button class="cy-pa-tab active" id="cy-pa-ask-tab" data-pa-tab="ask">问产品</button><div class="cy-pa-feedback-menu"><button id="cy-pa-feedback-menu-button" type="button" aria-haspopup="menu" aria-expanded="false">提反馈 ▾</button><div class="cy-pa-feedback-dropdown" id="cy-pa-feedback-dropdown" role="menu" hidden><button type="button" data-pa-tab="feedback" role="menuitem">提交新反馈</button><button type="button" data-pa-tab="records" role="menuitem">反馈记录</button></div></div></div>
   <div class="cy-pa-body" id="cy-pa-ask">
     <div class="cy-pa-quick"><button id="cy-pa-quick-1" data-pa-question="我现在该做什么？">下一步做什么</button><button id="cy-pa-quick-2" data-pa-question="这个页面是干什么的？">页面用途</button><button id="cy-pa-quick-3" data-pa-question="这一步为什么排在这里？">为什么这样走</button></div>
     <div class="cy-pa-guide" id="cy-pa-guide">
@@ -1641,8 +1641,20 @@ _ASSISTANT_SNIPPET = r'''
 
 
 def patch_v1_product_assistant(html: str) -> str:
-    if V1_PRODUCT_ASSISTANT_MARKER in html:
+    feedback_ui_revision = 'data-feedback-ui-revision="2"'
+    if V1_PRODUCT_ASSISTANT_MARKER in html and feedback_ui_revision in html:
         return html
+    if V1_PRODUCT_ASSISTANT_MARKER in html:
+        # An older assistant injection must not suppress a newer feedback UI.
+        # Strip the old injected block so the current snippet becomes the sole
+        # feedback/assistant control surface in the final HTML response.
+        html = re.sub(
+            r'<style id="changying_v1_product_assistant_v1-css">.*?<!-- changying_v1_product_assistant_v1 -->',
+            '',
+            html,
+            count=1,
+            flags=re.S,
+        )
     if "</body>" not in html:
         raise RuntimeError("V1 product assistant: closing body marker not found")
     feedback_center = Path(__file__).with_name("feedback_center.js").read_text(encoding="utf-8")
