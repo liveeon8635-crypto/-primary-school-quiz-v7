@@ -133,3 +133,19 @@ def test_feedback_ui_revision_is_present_in_unified_classic_final_html():
     assert 'data-pa-tab="feedback"' in html
     assert 'data-pa-tab="records"' in html
     assert 'feedbackCenterButton' not in html
+
+
+def test_feedback_center_preserves_reward_and_followup_detail_in_merged_view():
+    from pathlib import Path
+
+    script = Path("changying/web/feedback_center.js").read_text(encoding="utf-8")
+    assert "rewardPoints" in script
+    assert "rewardStatus" in script
+    assert "rewardSummary" in script
+    assert 'data-cy-fc-reward="' in script
+    assert "followUps" in script
+    assert 'data-cy-fc-followups="' in script
+    assert "追加反馈（" in script
+    assert 'data-cy-fc-followup-toggle="' in script
+    assert 'data-cy-fc-followup-submit="' in script
+    assert "/follow-up" in script
