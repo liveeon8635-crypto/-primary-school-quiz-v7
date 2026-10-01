@@ -149,3 +149,17 @@ def test_feedback_center_preserves_reward_and_followup_detail_in_merged_view():
     assert 'data-cy-fc-followup-toggle="' in script
     assert 'data-cy-fc-followup-submit="' in script
     assert "/follow-up" in script
+
+
+def test_admin_feedback_records_are_school_scoped_but_actions_remain_owner_only():
+    from pathlib import Path
+
+    backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    frontend = Path("changying/web/feedback_center.js").read_text(encoding="utf-8")
+    assert 'getattr(user, "role", "") != "admin"' in backend
+    assert '"submittedBy"' in backend
+    assert '"canFollowUp"' in backend
+    assert "record.canFollowUp!==false" in frontend
+    assert "提交人：" in frontend
+    assert 'data-cy-fc-reward="' in frontend
+    assert "追加反馈（" in frontend
