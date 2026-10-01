@@ -140,33 +140,7 @@
     }
   });
 
-  const identityReady=()=>{
-    if(!readToken())return false;
-    const chip=document.getElementById('cy-v1-unified-identity')||document.getElementById('identityChip')||document.getElementById('identity');
-    const label=text(chip&&chip.textContent);
-    return Boolean(label&&!label.includes('正在识别')&&!label.includes('检查登录状态')&&!label.includes('尚未登录'));
-  };
-  const ensureEntry=()=>{
-    let entry=document.getElementById('feedbackCenterButton');
-    const host=document.querySelector('.top-actions')||document.querySelector('.cy-v1-unified-top-actions');
-    if(!entry&&host){
-      entry=document.createElement('button');
-      entry.id='feedbackCenterButton';
-      entry.type='button';
-      entry.className='btn';
-      entry.textContent='我的反馈记录';
-      host.prepend(entry);
-      entry.onclick=open;
-    }
-    if(entry)entry.hidden=!identityReady();
-  };
-  window.addEventListener('pageshow',ensureEntry);
-  window.addEventListener('popstate',ensureEntry);
-  window.addEventListener('focus',ensureEntry);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)ensureEntry()});
-  let polls=0;
-  const timer=setInterval(()=>{ensureEntry();polls+=1;if(polls>=24)clearInterval(timer)},500);
-  ensureEntry();
-
+  // Feedback records are intentionally exposed only through the product assistant
+  // dropdown. Do not create a second standalone top-navigation entry.
   window.ChangyingFeedbackCenter=Object.freeze({open,close,load,statusLabel,statusClass,rewardText,receiptText});
 })();
