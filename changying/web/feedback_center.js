@@ -74,13 +74,14 @@
     const items=records.map(record=>{
       const id=Number(record.id);
       const followups=Array.isArray(record.followUps)?record.followUps:[];
-      const followupHtml=followups.length?'<div><b>追加反馈</b>'+followups.map(item=>
-        '<div class="cy-fc-followup">'+escapeHtml(item.message||'')+'<small style="display:block;color:#667085;margin-top:3px">'+escapeHtml(item.at||'')+'</small></div>'
-      ).join('')+'</div>':'';
+      const followupHtml='<div class="cy-fc-followups" data-cy-fc-followups="'+id+'"><b>追加反馈（'+followups.length+'）</b>'+
+        (followups.length?followups.map(item=>
+          '<div class="cy-fc-followup">'+escapeHtml(item.message||'')+'<small style="display:block;color:#667085;margin-top:3px">'+escapeHtml(item.at||'')+'</small></div>'
+        ).join(''):'<div class="cy-fc-followup">暂无追加反馈</div>')+'</div>';
       const ack=record.acknowledged?'<span class="cy-fc-tag granted">已查收（满意）</span>':
         '<button class="green" data-cy-fc-ack="'+id+'">验收通过</button>';
       return '<article class="cy-fc-record" data-cy-fc-record="'+id+'">'+
-        '<div class="cy-fc-meta"><span class="cy-fc-tag '+statusClass(record)+'">取用状态：'+escapeHtml(statusLabel(record))+'</span><span class="cy-fc-tag">奖励分：'+escapeHtml(rewardText(record))+'</span></div>'+
+        '<div class="cy-fc-meta"><span class="cy-fc-tag '+statusClass(record)+'">取用状态：'+escapeHtml(statusLabel(record))+'</span><span class="cy-fc-tag" data-cy-fc-reward="'+id+'">奖励分：'+escapeHtml(rewardText(record))+'</span></div>'+
         '<div><b>'+escapeHtml(record.category||'产品反馈')+'</b><div style="margin-top:5px;line-height:1.55">'+escapeHtml(record.message||'')+'</div><small style="color:#667085">'+escapeHtml(record.createdAt||'')+'</small></div>'+
         '<div class="cy-fc-receipt"><b>处理回执</b><div style="margin-top:4px">'+escapeHtml(receiptText(record))+'</div></div>'+
         followupHtml+
