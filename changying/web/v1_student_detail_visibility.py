@@ -88,8 +88,7 @@ FEEDBACK_REWARD_PANEL_MARKER = "changying_v1_feedback_reward_panel_v1"
 FEEDBACK_STATUS_CHAIN_MARKER = "changying_v1_feedback_status_chain_v1"
 
 _FEEDBACK_STATUS_CHAIN_HTML = (
-    f"<div class='card' id='feedback-status-chain' data-marker='{FEEDBACK_STATUS_CHAIN_MARKER}'>"
-    "<h2>反馈处理状态链</h2>"
+    f"<div id='feedback-status-chain' data-marker='{FEEDBACK_STATUS_CHAIN_MARKER}'>"
     "<p>每条反馈按 待处理 → 处理中 → 待验收 → 已采纳/已解决 推进；未采用的反馈也会给出明确回执。</p>"
     "<div class='list' style='margin-top:12px'>"
     "<div><strong>待处理</strong>：反馈已提交，等待 Freeman 受理。</div>"
@@ -104,8 +103,7 @@ _FEEDBACK_STATUS_CHAIN_HTML = (
 )
 
 _FEEDBACK_REWARD_PANEL_HTML = (
-    f"<div class='card' id='feedback-reward-panel' data-marker='{FEEDBACK_REWARD_PANEL_MARKER}'>"
-    "<h2>反馈记录 · 采纳状态回执 · 奖励汇总</h2>"
+    f"<div id='feedback-reward-panel' data-marker='{FEEDBACK_REWARD_PANEL_MARKER}'>"
     "<p>这里集中展示你提交的产品反馈、每条反馈的采纳状态回执，以及已发放的奖励汇总。</p>"
     "<div class='list' style='margin-top:12px'>"
     "<div><strong>反馈记录</strong>：按时间倒序列出你提交的每条反馈（含附件与提交时间）。</div>"
