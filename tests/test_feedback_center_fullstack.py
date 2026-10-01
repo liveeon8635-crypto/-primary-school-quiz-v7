@@ -49,7 +49,7 @@ def test_feedback_center_backend_round_trip(monkeypatch):
     reward_table = implementation.Base.metadata.tables["product_feedback_rewards"]
     implementation.Base.metadata.create_all(
         engine,
-        tables=[implementation.AuditLog.__table__, attachment_table, reward_table],
+        tables=[implementation.User.__table__, implementation.AuditLog.__table__, attachment_table, reward_table],
     )
     session_factory = sessionmaker(bind=engine)
     user = SimpleNamespace(id=51, school_id=9, role="teacher")
