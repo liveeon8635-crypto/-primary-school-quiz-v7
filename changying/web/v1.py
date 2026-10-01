@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -13,11 +14,18 @@ V1_PATHS = ("/v1", "/v1/workspace", "/v1/student", "/v1/history", "/v1/transitio
 
 
 def current_v1_build_id() -> str:
-    return (
-        os.getenv("RENDER_GIT_COMMIT")
-        or os.getenv("GIT_COMMIT")
-        or V1_UI_MARKER
-    ).strip()
+    configured = (os.getenv("RENDER_GIT_COMMIT") or os.getenv("GIT_COMMIT") or "").strip()
+    if configured:
+        return configured
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        ).strip()
+    except (OSError, subprocess.SubprocessError):
+        return V1_UI_MARKER
 
 
 def v1_html() -> str:
@@ -26,6 +34,7 @@ def v1_html() -> str:
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
+  <meta name="build-sha" content={build_id}>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#173c78">
   <title>长缨辅学 V1</title>
