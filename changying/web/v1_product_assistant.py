@@ -704,10 +704,10 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
     )
 
     def _feedback_reward_summary(db, user) -> dict:
-        rows = db.execute(
-            select(reward_table.c.points, reward_table.c.status)
-            .where(reward_table.c.user_id == user.id, reward_table.c.school_id == user.school_id)
-        ).all()
+        reward_query = select(reward_table.c.points, reward_table.c.status).where(reward_table.c.school_id == user.school_id)
+        if getattr(user, "role", "") != "admin":
+            reward_query = reward_query.where(reward_table.c.user_id == user.id)
+        rows = db.execute(reward_query).all()
         granted_rows = [r for r in rows if str(r[1]) == "granted"]
         pending_rows = [r for r in rows if str(r[1]) == "pending"]
         earned = sum(int(r[0] or 0) for r in granted_rows)
@@ -730,20 +730,18 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
     ):
         """反馈记录：返回当前用户提交过的反馈、回执状态与反馈奖励分。"""
         audit = implementation.AuditLog
-        rows = db.scalars(
-            select(audit)
-            .where(
-                audit.school_id == user.school_id,
-                audit.user_id == user.id,
-                audit.action.in_(("product.feedback", "product_feedback")),
-            )
-            .order_by(audit.id.desc())
-            .limit(100)
-        ).all()
-        reward_rows = db.execute(
-            select(reward_table.c.audit_id, reward_table.c.points, reward_table.c.status)
-            .where(reward_table.c.user_id == user.id, reward_table.c.school_id == user.school_id)
-        ).all()
+        audit_query = select(audit).where(
+            audit.school_id == user.school_id,
+            audit.action.in_(("product.feedback", "product_feedback")),
+        )
+        reward_query = select(reward_table.c.audit_id, reward_table.c.points, reward_table.c.status).where(
+            reward_table.c.school_id == user.school_id
+        )
+        if getattr(user, "role", "") != "admin":
+            audit_query = audit_query.where(audit.user_id == user.id)
+            reward_query = reward_query.where(reward_table.c.user_id == user.id)
+        rows = db.scalars(audit_query.order_by(audit.id.desc()).limit(100)).all()
+        reward_rows = db.execute(reward_query).all()
         reward_by_audit = {int(r[0]): (int(r[1] or 0), str(r[2])) for r in reward_rows}
         records = []
         for row in rows:
@@ -757,8 +755,11 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             receipt = str(detail.get("receipt") or "")
             if not receipt:
                 receipt = "已查收（满意）" if acknowledged else "已收到，等待处理回执"
+            submitted_user = db.get(implementation.User, row.user_id) if getattr(row, "user_id", None) else None
             records.append({
                 "id": int(row.id),
+                "submittedBy": str(getattr(submitted_user, "name", "") or getattr(submitted_user, "username", "") or ""),
+                "canFollowUp": int(getattr(row, "user_id", 0) or 0) == int(user.id),
                 "category": str(detail.get("category") or "其他反馈"),
                 "message": str(detail.get("message") or ""),
                 "page": str(detail.get("page") or ""),
