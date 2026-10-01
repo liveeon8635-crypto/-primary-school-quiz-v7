@@ -850,6 +850,40 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             "receipt": detail["receipt"],
         }
 
+    @router.post(FEEDBACK_MINE_PATH + "/{feedback_id}/reject", include_in_schema=False)
+    def product_feedback_reject(
+        feedback_id: int,
+        body: ProductFeedbackFollowUpBody,
+        user=Depends(implementation.current_user),
+        db=Depends(implementation.get_db),
+    ):
+        """驳回当前处理结果，并把原因作为追加反馈重新同步到 Freeman。"""
+        row = _owned_feedback(db, user, feedback_id)
+        try:
+            detail = json.loads(row.detail or "{}")
+        except (ValueError, TypeError):
+            detail = {}
+        now = datetime.utcnow()
+        revision = int(detail.get("revision") or 1) + 1
+        message = body.message.strip()
+        follow_ups = list(detail.get("followUps") or [])
+        follow_ups.append({"id": f"{int(row.id)}-{revision}", "message": message, "at": now.isoformat() + "Z", "kind": "rejected"})
+        proof_token = secrets.token_urlsafe(24)
+        detail.update({
+            "followUps": follow_ups, "revision": revision, "updatedAt": now.isoformat() + "Z",
+            "transferToken": proof_token, "transferTokenAt": now.isoformat() + "Z",
+            "acknowledged": False, "receipt": "用户驳回处理结果，等待重新处理",
+        })
+        row.detail = json.dumps(detail, ensure_ascii=False)[:1800]
+        db.commit()
+        synced = False
+        try:
+            response = requests.post(FREEMAN_FEEDBACK_IMPORT_URL, json={"projectId": "longying", "proofToken": proof_token}, timeout=4)
+            synced = bool(response.ok)
+        except requests.RequestException:
+            synced = False
+        return {"ok": True, "id": int(row.id), "rejected": True, "revision": revision, "freemanSynced": synced}
+
     @router.post(QUERY_PATH, include_in_schema=False)
     def product_assistant_query(
         body: ProductAssistantBody,
