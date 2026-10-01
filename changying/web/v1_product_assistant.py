@@ -1258,6 +1258,17 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "data": base64.b64encode(attachment_row["file_data"]).decode("ascii"),
             }
         follow_ups = list(payload.get("followUps") or [])
+        followup_rows = db.execute(
+            select(followup_attachment_table).where(followup_attachment_table.c.audit_id == row.id)
+        ).mappings().all()
+        followup_files = {str(item["follow_up_id"]): item for item in followup_rows}
+        for follow_up in follow_ups:
+            stored = followup_files.get(str(follow_up.get("id") or ""))
+            if stored:
+                follow_up["attachment"] = {
+                    "name": stored["file_name"], "type": stored["mime_type"], "size": stored["size_bytes"],
+                    "sha256": stored["sha256"], "data": base64.b64encode(stored["file_data"]).decode("ascii"),
+                }
         revision = max(1, int(payload.get("revision") or (1 + len(follow_ups))))
         updated_at = str(payload.get("updatedAt") or (follow_ups[-1].get("at") if follow_ups else "") or (created_at.isoformat() + "Z"))
         hash_payload = {
