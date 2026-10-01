@@ -78,13 +78,13 @@
         '<div class="cy-fc-followup">'+escapeHtml(item.message||'')+'<small style="display:block;color:#667085;margin-top:3px">'+escapeHtml(item.at||'')+'</small></div>'
       ).join('')+'</div>':'';
       const ack=record.acknowledged?'<span class="cy-fc-tag granted">已查收（满意）</span>':
-        '<button class="green" data-cy-fc-ack="'+id+'">查收（满意）</button>';
+        '<button class="green" data-cy-fc-ack="'+id+'">验收通过</button>';
       return '<article class="cy-fc-record" data-cy-fc-record="'+id+'">'+
         '<div class="cy-fc-meta"><span class="cy-fc-tag '+statusClass(record)+'">取用状态：'+escapeHtml(statusLabel(record))+'</span><span class="cy-fc-tag">奖励分：'+escapeHtml(rewardText(record))+'</span></div>'+
         '<div><b>'+escapeHtml(record.category||'产品反馈')+'</b><div style="margin-top:5px;line-height:1.55">'+escapeHtml(record.message||'')+'</div><small style="color:#667085">'+escapeHtml(record.createdAt||'')+'</small></div>'+
         '<div class="cy-fc-receipt"><b>处理回执</b><div style="margin-top:4px">'+escapeHtml(receiptText(record))+'</div></div>'+
         followupHtml+
-        '<div class="cy-fc-actions"><button data-cy-fc-followup-toggle="'+id+'">追加反馈</button>'+ack+'</div>'+
+        '<div class="cy-fc-actions">'+ack+'<button data-cy-fc-followup-toggle="'+id+'">追加反馈</button><button data-cy-fc-reject="'+id+'">驳回</button></div>'+
         '<div class="cy-fc-compose" data-cy-fc-followup-form="'+id+'" hidden><textarea maxlength="1200" data-cy-fc-followup-input="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><div class="cy-fc-actions"><button class="primary" data-cy-fc-followup-submit="'+id+'">提交追加反馈</button><button data-cy-fc-followup-cancel="'+id+'">取消</button></div></div>'+
         '</article>';
     }).join('');
@@ -132,6 +132,16 @@
       catch(error){submit.disabled=false;alert(error.message||'追加反馈失败')}
       return;
     }
+    const reject=event.target.closest('[data-cy-fc-reject]');
+    if(reject){
+      const id=reject.dataset.cyFcReject;
+      const reason=prompt('请输入驳回原因或需要继续修改的内容：');
+      if(!text(reason))return;
+      reject.disabled=true;
+      try{await api('/v1/product-feedback/mine/'+id+'/reject',{method:'POST',body:JSON.stringify({message:text(reason)})});await load()}
+      catch(error){reject.disabled=false;alert(error.message||'驳回失败')}
+      return;
+    }
     const acknowledge=event.target.closest('[data-cy-fc-ack]');
     if(acknowledge){
       acknowledge.disabled=true;
@@ -140,33 +150,7 @@
     }
   });
 
-  const identityReady=()=>{
-    if(!readToken())return false;
-    const chip=document.getElementById('cy-v1-unified-identity')||document.getElementById('identityChip')||document.getElementById('identity');
-    const label=text(chip&&chip.textContent);
-    return Boolean(label&&!label.includes('正在识别')&&!label.includes('检查登录状态')&&!label.includes('尚未登录'));
-  };
-  const ensureEntry=()=>{
-    let entry=document.getElementById('feedbackCenterButton');
-    const host=document.querySelector('.top-actions')||document.querySelector('.cy-v1-unified-top-actions');
-    if(!entry&&host){
-      entry=document.createElement('button');
-      entry.id='feedbackCenterButton';
-      entry.type='button';
-      entry.className='btn';
-      entry.textContent='我的反馈记录';
-      host.prepend(entry);
-      entry.onclick=open;
-    }
-    if(entry)entry.hidden=!identityReady();
-  };
-  window.addEventListener('pageshow',ensureEntry);
-  window.addEventListener('popstate',ensureEntry);
-  window.addEventListener('focus',ensureEntry);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)ensureEntry()});
-  let polls=0;
-  const timer=setInterval(()=>{ensureEntry();polls+=1;if(polls>=24)clearInterval(timer)},500);
-  ensureEntry();
-
+  // Feedback records are intentionally exposed only through the product assistant
+  // dropdown. Do not create a second standalone top-navigation entry.
   window.ChangyingFeedbackCenter=Object.freeze({open,close,load,statusLabel,statusClass,rewardText,receiptText});
 })();

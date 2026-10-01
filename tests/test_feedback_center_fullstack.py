@@ -10,24 +10,30 @@ from app import app
 from changying.web.v1_product_assistant import FEEDBACK_MINE_PATH, FEEDBACK_PATH
 
 
-def test_feedback_center_is_mounted_as_real_frontend_with_visible_entry_and_actions():
+def test_feedback_center_is_mounted_only_through_assistant_dropdown_with_actions():
     response = TestClient(app).get("/v1")
     assert response.status_code == 200
     html = response.text
 
     assert 'id="changying-feedback-center-script"' in html
     assert "window.__cyFeedbackCenterInstalled=true" in html
-    assert "feedbackCenterButton" in html
-    assert "我的反馈记录" in html
+    assert "feedbackCenterButton" not in html
+    assert 'data-feedback-ui-revision="2"' in html
+    assert 'id="cy-pa-feedback-menu-button"' in html
+    assert ">提反馈 ▾</button>" in html
+    assert 'data-pa-tab="feedback"' in html
+    assert 'data-pa-tab="records"' in html
     assert 'id="cy-feedback-center-modal"' in html
     assert "/v1/product-feedback/mine" in html
     assert "取用状态：" in html
     assert "处理回执" in html
     assert "奖励分：" in html
     assert "追加反馈" in html
-    assert "查收（满意）" in html
+    assert "验收通过" in html
+    assert "驳回" in html
     assert "/follow-up" in html
     assert "/acknowledge" in html
+    assert "/reject" in html
 
 
 def test_feedback_center_backend_round_trip(monkeypatch):
@@ -114,3 +120,16 @@ def test_feedback_center_backend_round_trip(monkeypatch):
         app.dependency_overrides.pop(implementation.current_user, None)
         app.dependency_overrides.pop(implementation.get_db, None)
         engine.dispose()
+
+
+def test_feedback_ui_revision_is_present_in_unified_classic_final_html():
+    from changying.web.v1_product_assistant import patch_v1_product_assistant
+
+    classic = '<html><body><header><button>切换身份</button></header><main>classic</main></body></html>'
+    html = patch_v1_product_assistant(classic)
+    assert 'data-feedback-ui-revision="2"' in html
+    assert 'id="cy-pa-feedback-menu-button"' in html
+    assert '>提反馈 ▾</button>' in html
+    assert 'data-pa-tab="feedback"' in html
+    assert 'data-pa-tab="records"' in html
+    assert 'feedbackCenterButton' not in html
