@@ -83,36 +83,26 @@ _ASSISTANT_LAUNCHER_HTML = (
     "</div>"
 )
 
-FEEDBACK_REWARD_PANEL_MARKER = "changying_v1_feedback_reward_panel_v1"
+FEEDBACK_REWARD_PANEL_MARKER = "changying_v1_feedback_reward_panel_v2"
 
-FEEDBACK_STATUS_CHAIN_MARKER = "changying_v1_feedback_status_chain_v1"
+FEEDBACK_STATUS_CHAIN_MARKER = "changying_v1_feedback_status_chain_v2"
 
-_FEEDBACK_STATUS_CHAIN_HTML = (
-    f"<div class='card' id='feedback-status-chain' data-marker='{FEEDBACK_STATUS_CHAIN_MARKER}'>"
-    "<h2>反馈处理状态链</h2>"
-    "<p>每条反馈按 待处理 → 处理中 → 待验收 → 已采纳/已解决 推进；未采用的反馈也会给出明确回执。</p>"
-    "<div class='list' style='margin-top:12px'>"
-    "<div><strong>待处理</strong>：反馈已提交，等待 Freeman 受理。</div>"
-    "<div><strong>处理中</strong>：Freeman 正在处理，已关联执行任务。</div>"
-    "<div><strong>待验收</strong>：Draft PR 已创建且 exact-head CI 通过，等待人工合并与生产验收。</div>"
-    "<div><strong>已采纳 / 已解决</strong>：目标 PR 已合并、生产部署包含对应 merge SHA、生产验收通过后自动更新。</div>"
-    "<div><strong>未采用</strong>：给出明确回执说明，不静默丢弃。</div>"
-    "<div><strong>奖励结算</strong>：仅当状态达到已采纳/已解决时，对应反馈奖励从 pending 幂等结算为 granted。</div>"
-    "</div>"
-    "<p style='margin-top:12px'>禁止仅凭健康检查判定反馈已完成；必须核对 PR 合并 SHA 与生产部署 revision。</p>"
-    "</div>"
-)
+ASSISTANT_FEEDBACK_DROPDOWN_MARKER = "changying_v1_assistant_feedback_dropdown_v1"
 
-_FEEDBACK_REWARD_PANEL_HTML = (
-    f"<div class='card' id='feedback-reward-panel' data-marker='{FEEDBACK_REWARD_PANEL_MARKER}'>"
-    "<h2>反馈记录 · 采纳状态回执 · 奖励汇总</h2>"
-    "<p>这里集中展示你提交的产品反馈、每条反馈的采纳状态回执，以及已发放的奖励汇总。</p>"
+_ASSISTANT_FEEDBACK_DROPDOWN_HTML = (
+    f"<div class='card' id='assistant-feedback-dropdown' data-marker='{ASSISTANT_FEEDBACK_DROPDOWN_MARKER}'>"
+    "<h2>反馈与记录</h2>"
+    "<p>反馈记录、处理状态与奖励汇总已合并到此处，顶栏不再单独展示。</p>"
+    "<details style='margin-top:12px'>"
+    "<summary style='cursor:pointer;font-weight:600'>展开查看反馈记录 · 状态回执 · 奖励汇总</summary>"
     "<div class='list' style='margin-top:12px'>"
     "<div><strong>反馈记录</strong>：按时间倒序列出你提交的每条反馈（含附件与提交时间）。</div>"
-    "<div><strong>采纳状态回执</strong>：每条反馈显示 待处理 / 已采纳 / 已解决 状态与回执说明。</div>"
-    "<div><strong>奖励汇总</strong>：汇总已确认发放的奖励条目与合计。</div>"
+    "<div><strong>处理状态链</strong>：待处理 → 处理中 → 待验收 → 已采纳/已解决；未采用也会给出明确回执。</div>"
+    "<div><strong>奖励汇总</strong>：仅当状态达到已采纳/已解决时，对应奖励从 pending 幂等结算为 granted。</div>"
     "</div>"
-    "<p style='margin-top:12px'><a href='/v1/workspace?mode=institution'>前往产品助手 · 提反馈</a> 提交新反馈后，可回到本页查看回执与奖励。</p>"
+    "<p style='margin-top:12px'>禁止仅凭健康检查判定反馈已完成；必须核对 PR 合并 SHA 与生产部署 revision。</p>"
+    "<p style='margin-top:8px'><a href='/v1/workspace?mode=institution'>前往产品助手 · 提反馈</a> 提交新反馈后，可回到本页查看回执与奖励。</p>"
+    "</details>"
     "</div>"
 )
 
