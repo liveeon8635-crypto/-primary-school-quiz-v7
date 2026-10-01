@@ -720,6 +720,13 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         Column("status", String(20), nullable=False, default="pending"),
         Column("created_at", DateTime, default=datetime.utcnow, nullable=False),
     )
+    # These extracted tables are registered after the legacy application's initial
+    # metadata bootstrap. Create only these tables idempotently before routes use them.
+    bind = implementation.engine
+    attachment_table.create(bind=bind, checkfirst=True)
+    followup_attachment_table.create(bind=bind, checkfirst=True)
+    reward_table.create(bind=bind, checkfirst=True)
+
 
     def _feedback_reward_summary(db, user) -> dict:
         reward_query = select(reward_table.c.points, reward_table.c.status).where(reward_table.c.school_id == user.school_id)
