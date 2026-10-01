@@ -8,7 +8,7 @@ def test_assistant_client_has_feedback_records_tab_and_history_endpoint():
     html = patch_v1_product_assistant("<html><body></body></html>")
     assert 'data-pa-tab="records"' in html
     assert "FEEDBACK_RECORDS_GUIDE" in html
-    assert "/v1/product-feedback/history" in html
+    assert "/v1/product-feedback/mine" in html\n    assert "data-pa-followup-toggle" in html\n    assert "data-pa-followup-photo" in html
     assert "feedback-records" in html
 
 
