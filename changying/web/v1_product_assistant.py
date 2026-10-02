@@ -1194,6 +1194,19 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         _logger.info("freeman_feedback_reconcile feedback_id=%s revision=%s synced=%s", row.id, detail.get("revision"), synced)
         return synced
 
+    @router.post("/internal/product-feedback/{feedback_id}/reconcile", include_in_schema=False)
+    def reconcile_product_feedback(
+        feedback_id: int,
+        user=Depends(implementation.current_user),
+        db=Depends(implementation.get_db),
+    ):
+        if str(getattr(user, "role", "") or "") not in ("admin", "school_admin"):
+            raise HTTPException(403, "仅管理员可执行反馈补偿同步")
+        synced = _reconcile_feedback_handoff(db, feedback_id)
+        if not synced:
+            raise HTTPException(409, "反馈补偿同步未成功")
+        return {"ok": True, "feedbackId": feedback_id, "freemanSynced": True}
+
     @router.get(FEEDBACK_PROOF_PREFIX + "/{proof_token}/attachment", include_in_schema=False)
     def product_feedback_attachment_download(proof_token: str, db=Depends(implementation.get_db)):
         token = str(proof_token or "").strip()
