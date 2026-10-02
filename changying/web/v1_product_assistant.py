@@ -1242,10 +1242,6 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             raise HTTPException(409, "反馈补偿同步未成功")
         return {"ok": True, "feedbackId": feedback_id, "freemanSynced": True}
 
-    @router.on_event("startup")
-    def reconcile_known_dropped_feedback_on_startup():        finally:
-            db.close()
-
     @router.get(FEEDBACK_PROOF_PREFIX + "/{proof_token}/attachment", include_in_schema=False)
     def product_feedback_attachment_download(proof_token: str, db=Depends(implementation.get_db)):
         token = str(proof_token or "").strip()
