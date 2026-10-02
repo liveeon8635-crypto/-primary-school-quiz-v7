@@ -192,3 +192,19 @@ def test_feedback_mine_backfills_status_token_for_pre_loop_feedback(monkeypatch)
     assert 'missing_ids = [int(row.id) for row in rows if str(int(row.id)) not in freeman_status]' in source
     assert '_post_feedback_import(ref["statusToken"], int(ref["sourceId"]))' in source
     assert 'freeman_status.update(_freeman_feedback_status(refreshed_refs))' in source
+
+
+def test_handled_feedback_links_to_original_context_before_user_confirmation():
+    from pathlib import Path
+    backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    center = Path("changying/web/feedback_center.js").read_text(encoding="utf-8")
+    assert '"acceptanceUrl": str(detail.get("page") or "/v1")' in backend
+    assert "cy_feedback_review" in backend
+    assert "cy_feedback_return" in backend
+    assert "返回反馈记录" in backend
+    assert "已处理 · 去验收" in backend
+    assert "const reviewHref=record=>" in center
+    assert "已处理 · 去验收" in center
+    assert "确认通过" in center
+    assert "追加反馈" in center
+    assert "cy_feedback_return" in center
