@@ -111,6 +111,16 @@
         '</article>';
     }).join('');
     body.innerHTML=summaryHtml+(items||'<div class="cy-fc-empty">还没有提交过反馈。可以点击“提交新反馈”开始。</div>');
+    const focusId=new URLSearchParams(location.search).get('focus');
+    if(focusId){
+      const target=body.querySelector('[data-cy-fc-record="'+CSS.escape(String(focusId))+'"]');
+      if(target){
+        target.style.outline='3px solid #7aa2f7';
+        target.style.outlineOffset='2px';
+        target.scrollIntoView({behavior:'smooth',block:'center'});
+        setTimeout(()=>{target.style.outline='';target.style.outlineOffset=''},2600);
+      }
+    }
   };
 
   const load=async()=>{
