@@ -263,3 +263,12 @@ def test_feedback_review_link_remains_available_after_returning():
     center = Path("changying/web/feedback_center.js").read_text(encoding="utf-8")
     assert "reviewed?'重新去验收':'已处理 · 点击去验收'" in backend
     assert "reviewed?'重新去验收':'已处理 · 点击去验收'" in center
+
+
+def test_acceptance_target_prefers_assistant_navigation_over_generic_student_word():
+    from changying.web.v1_product_assistant import _feedback_acceptance_path
+    assert _feedback_acceptance_path({
+        "page": "/v1/workspace",
+        "message": "学生问助手产品功能时应该直接提供对应导航卡片，不要只给文字说明",
+        "followUps": [],
+    }) == "/v1/workspace?tab=ask"
