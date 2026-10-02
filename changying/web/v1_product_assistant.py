@@ -865,7 +865,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         # persists this token; it is only used to authenticate the upsert fetch.
         detail["transferToken"] = proof_token
         detail["transferTokenAt"] = now.isoformat() + "Z"
-        row.detail = json.dumps(detail, ensure_ascii=False)[:1800]
+        row.detail = json.dumps(detail, ensure_ascii=False)
         db.commit()
         synced = False
         try:
@@ -931,7 +931,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             "transferToken": proof_token, "transferTokenAt": now.isoformat() + "Z",
             "acknowledged": False, "receipt": "用户驳回处理结果，等待重新处理",
         })
-        row.detail = json.dumps(detail, ensure_ascii=False)[:1800]
+        row.detail = json.dumps(detail, ensure_ascii=False)
         db.commit()
         synced = False
         try:
@@ -1087,7 +1087,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             db,
             user,
             "product.feedback",
-            json.dumps(payload, ensure_ascii=False)[:1800],
+            json.dumps(payload, ensure_ascii=False),
         )
         db.flush()
         audit_row = db.scalar(
@@ -1120,7 +1120,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             except (ValueError, TypeError):
                 persisted = dict(payload)
             persisted.update(issue_link)
-            audit_row.detail = json.dumps(persisted, ensure_ascii=False)[:1800]
+            audit_row.detail = json.dumps(persisted, ensure_ascii=False)
             db.commit()
 
         synced = False
