@@ -246,3 +246,12 @@ def test_workspace_feedback_acceptance_targets_specific_product_surface():
         "message": "这里有一个显示问题",
         "followUps": [],
     }) == "/v1/classroom"
+
+
+def test_assistant_feedback_acceptance_targets_product_assistant():
+    from changying.web.v1_product_assistant import _feedback_acceptance_path
+    assert _feedback_acceptance_path({
+        "page": "/v1/workspace",
+        "message": "询问助手相关功能不能直接提供关联卡片 能不能提高助手的产品引导能力",
+        "followUps": [],
+    }) == "/v1/workspace?tab=ask"
