@@ -882,16 +882,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         detail["transferTokenAt"] = now.isoformat() + "Z"
         row.detail = json.dumps(detail, ensure_ascii=False)
         db.commit()
-        synced = False
-        try:
-            response = requests.post(
-                FREEMAN_FEEDBACK_IMPORT_URL,
-                json={"projectId": "longying", "proofToken": proof_token},
-                timeout=8,
-            )
-            synced = bool(response.ok)
-        except requests.RequestException:
-            synced = False
+        synced = _post_feedback_import(proof_token, int(row.id))
         return {
             "ok": True, "id": int(row.id), "followUps": follow_ups,
             "revision": detail["revision"], "updatedAt": detail["updatedAt"],
@@ -948,12 +939,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         })
         row.detail = json.dumps(detail, ensure_ascii=False)
         db.commit()
-        synced = False
-        try:
-            response = requests.post(FREEMAN_FEEDBACK_IMPORT_URL, json={"projectId": "longying", "proofToken": proof_token}, timeout=4)
-            synced = bool(response.ok)
-        except requests.RequestException:
-            synced = False
+        synced = _post_feedback_import(proof_token, int(row.id))
         return {"ok": True, "id": int(row.id), "rejected": True, "revision": revision, "freemanSynced": synced}
 
     @router.post(QUERY_PATH, include_in_schema=False)
@@ -1138,16 +1124,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             audit_row.detail = json.dumps(persisted, ensure_ascii=False)
             db.commit()
 
-        synced = False
-        try:
-            response = requests.post(
-                FREEMAN_FEEDBACK_IMPORT_URL,
-                json={"projectId": "longying", "proofToken": proof_token},
-                timeout=8,
-            )
-            synced = bool(response.ok)
-        except requests.RequestException:
-            synced = False
+        synced = _post_feedback_import(proof_token, int(row.id))
         return {"ok": True, "received": True, "freemanSynced": synced}
 
     @router.get("/v1/product-feedback/history", include_in_schema=False)
