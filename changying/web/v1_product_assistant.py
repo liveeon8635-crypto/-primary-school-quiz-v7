@@ -1243,15 +1243,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         return {"ok": True, "feedbackId": feedback_id, "freemanSynced": True}
 
     @router.on_event("startup")
-    def reconcile_known_dropped_feedback_on_startup():
-        # One-time bounded recovery for feedback #314, whose persisted revision
-        # predates durable handoff retries. Re-import is revision-idempotent.
-        db = next(implementation.get_db())
-        try:
-            _reconcile_feedback_handoff(db, 314)
-        except Exception as exc:
-            _logger.warning("freeman_feedback_startup_reconcile_failed feedback_id=314 error=%s", type(exc).__name__)
-        finally:
+    def reconcile_known_dropped_feedback_on_startup():        finally:
             db.close()
 
     @router.get(FEEDBACK_PROOF_PREFIX + "/{proof_token}/attachment", include_in_schema=False)
