@@ -1169,6 +1169,31 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         summary["pendingFeedbackCount"] = sum(1 for item in items if item["status"] != "granted")
         return {"ok": True, "items": items, "summary": summary}
 
+    def _reconcile_feedback_handoff(db, feedback_id: int) -> bool:
+        row = db.scalar(
+            select(implementation.AuditLog).where(
+                implementation.AuditLog.id == feedback_id,
+                implementation.AuditLog.action.in_(("product.feedback", "product_feedback")),
+            )
+        )
+        if not row:
+            return False
+        try:
+            detail = json.loads(row.detail or "{}")
+        except (ValueError, TypeError):
+            return False
+        if not list(detail.get("followUps") or []):
+            return False
+        now = datetime.utcnow()
+        proof_token = secrets.token_urlsafe(24)
+        detail["transferToken"] = proof_token
+        detail["transferTokenAt"] = now.isoformat() + "Z"
+        row.detail = json.dumps(detail, ensure_ascii=False)
+        db.commit()
+        synced = _post_feedback_import(proof_token, int(row.id))
+        _logger.info("freeman_feedback_reconcile feedback_id=%s revision=%s synced=%s", row.id, detail.get("revision"), synced)
+        return synced
+
     @router.get(FEEDBACK_PROOF_PREFIX + "/{proof_token}/attachment", include_in_schema=False)
     def product_feedback_attachment_download(proof_token: str, db=Depends(implementation.get_db)):
         token = str(proof_token or "").strip()
