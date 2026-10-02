@@ -127,6 +127,21 @@ FEEDBACK_GITHUB_TOKEN_ENV = "CHANGYING_FEEDBACK_GITHUB_TOKEN"
 _logger = logging.getLogger(__name__)
 
 
+def _post_feedback_import(proof_token: str, feedback_id: int | None = None) -> bool:
+    last_status = None
+    for attempt in range(1, 4):
+        try:
+            response = requests.post(FREEMAN_FEEDBACK_IMPORT_URL, json={"projectId": "longying", "proofToken": proof_token}, timeout=8)
+            last_status = response.status_code
+            if response.ok:
+                _logger.info("freeman_feedback_sync_ok feedback_id=%s attempt=%s status=%s", feedback_id, attempt, last_status)
+                return True
+        except requests.RequestException as exc:
+            _logger.warning("freeman_feedback_sync_retry feedback_id=%s attempt=%s error=%s", feedback_id, attempt, type(exc).__name__)
+    _logger.error("freeman_feedback_sync_failed feedback_id=%s status=%s", feedback_id, last_status)
+    return False
+
+
 def _sync_feedback_github_issue(audit_row, payload: dict) -> dict | None:
     """Best-effort whiteboard sync. Feedback persistence never depends on GitHub."""
     token = os.getenv(FEEDBACK_GITHUB_TOKEN_ENV, "").strip()
