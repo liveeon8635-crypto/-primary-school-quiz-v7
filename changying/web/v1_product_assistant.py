@@ -142,6 +142,36 @@ def _post_feedback_import(proof_token: str, feedback_id: int | None = None) -> b
     return False
 
 
+def reconcile_persisted_feedback_handoff(implementation: ModuleType, feedback_id: int) -> bool:
+    """Re-issue proof and replay one persisted feedback revision through normal Freeman verification."""
+    SessionLocal = getattr(implementation, "SessionLocal", None)
+    if SessionLocal is None:
+        raise RuntimeError("production implementation does not expose SessionLocal")
+    with SessionLocal() as db:
+        row = db.scalar(
+            select(implementation.AuditLog).where(
+                implementation.AuditLog.id == feedback_id,
+                implementation.AuditLog.action.in_(("product.feedback", "product_feedback")),
+            )
+        )
+        if not row:
+            return False
+        try:
+            detail = json.loads(row.detail or "{}")
+        except (ValueError, TypeError):
+            return False
+        if not list(detail.get("followUps") or []):
+            return False
+        proof_token = secrets.token_urlsafe(24)
+        detail["transferToken"] = proof_token
+        detail["transferTokenAt"] = datetime.utcnow().isoformat() + "Z"
+        row.detail = json.dumps(detail, ensure_ascii=False)
+        db.commit()
+        synced = _post_feedback_import(proof_token, int(row.id))
+        _logger.info("freeman_feedback_production_reconcile feedback_id=%s revision=%s synced=%s", row.id, detail.get("revision"), synced)
+        return synced
+
+
 def _sync_feedback_github_issue(audit_row, payload: dict) -> dict | None:
     """Best-effort whiteboard sync. Feedback persistence never depends on GitHub."""
     token = os.getenv(FEEDBACK_GITHUB_TOKEN_ENV, "").strip()
