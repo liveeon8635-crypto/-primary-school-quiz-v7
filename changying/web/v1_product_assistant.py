@@ -1768,16 +1768,29 @@ _ASSISTANT_SNIPPET = r'''
       const summary=data.rewardSummary||{},items=Array.isArray(data.records)?data.records:[];
       const head='<div class="cy-pa-history-item"><b>反馈奖励</b><small>已采纳 '+Number(summary.adoptedFeedbackCount||0)+' 条 · 待处理 '+Number(summary.pendingFeedbackCount||0)+' 条 · 已获得 '+Number(summary.earnedPoints||0)+' 分</small></div>';
       box.innerHTML=head+(items.length?items.map(x=>{
-        const id=Number(x.id),own=x.canFollowUp!==false;
-        return '<div class="cy-pa-history-item" data-pa-history-id="'+id+'"><b>'+escapeHtml(x.category||'产品反馈')+' · '+escapeHtml(x.statusLabel||'已收到')+'</b><small>'+escapeHtml(x.message||'')+'</small><small>'+escapeHtml(x.createdAt||'')+(x.rewardPoints?' · 奖励 '+Number(x.rewardPoints)+' 分':'')+'</small>'+
-          (own?'<div class="cy-pa-history-actions"><button type="button" data-pa-followup-toggle="'+id+'">追加反馈</button></div><div data-pa-followup-form="'+id+'" hidden><textarea maxlength="1200" data-pa-followup-text="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><label class="cy-pa-attachment">📷 添加照片 <input type="file" accept="image/jpeg,image/png,image/webp" data-pa-followup-photo="'+id+'"></label><button class="btn primary" type="button" data-pa-followup-submit="'+id+'">提交追加反馈</button></div>':'')+
-          '</div>';
+        const id=Number(x.id),canFollow=x.canFollowUp===true,canConfirm=x.canConfirm===true,accepted=x.terminalAccepted===true,confirmed=x.userDecision?.status==='confirmed';
+        const receipt=x.receipt?'<small><b>处理回执：</b>'+escapeHtml(x.receipt)+'</small>':'';
+        const terminal=accepted?'<small>该反馈已验收。如有新的问题或需求，请提交一条新反馈。</small>':'';
+        const actions=accepted?'':('<div class="cy-pa-history-actions">'+
+          (canFollow?'<button type="button" data-pa-followup-toggle="'+id+'">追加反馈</button>':'')+
+          (canConfirm?'<button class="btn primary" type="button" data-pa-confirm-feedback="'+id+'">确认已达预期</button>':'')+
+          (confirmed?'<span class="cy-pa-note">你已确认达到预期，等待最终验收。</span>':'')+
+          '</div>');
+        const followForm=canFollow?'<div data-pa-followup-form="'+id+'" hidden><textarea maxlength="1200" data-pa-followup-text="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><label class="cy-pa-attachment">📷 添加照片 <input type="file" accept="image/jpeg,image/png,image/webp" data-pa-followup-photo="'+id+'"></label><button class="btn primary" type="button" data-pa-followup-submit="'+id+'">提交追加反馈</button></div>':'';
+        return '<div class="cy-pa-history-item" data-pa-history-id="'+id+'"><b>'+escapeHtml(x.category||'产品反馈')+' · '+escapeHtml(x.statusLabel||'已收到')+'</b><small>'+escapeHtml(x.message||'')+'</small>'+receipt+'<small>'+escapeHtml(x.createdAt||'')+(x.rewardPoints?' · 奖励 '+Number(x.rewardPoints)+' 分':'')+'</small>'+terminal+actions+followForm+'</div>';
       }).join(''):'<div class="cy-pa-note">还没有提交过反馈。</div>');
     }catch(err){box.innerHTML='<div class="cy-pa-note">反馈记录读取失败：'+escapeHtml(err.message||'请稍后重试')+'</div>'}
   }
   document.getElementById('cy-pa-history')?.addEventListener('click',async event=>{
     const toggle=event.target.closest('[data-pa-followup-toggle]');
     if(toggle){const form=document.querySelector('[data-pa-followup-form="'+toggle.dataset.paFollowupToggle+'"]');if(form)form.hidden=!form.hidden;return}
+    const confirm=event.target.closest('[data-pa-confirm-feedback]');
+    if(confirm){
+      confirm.disabled=true;
+      try{await postJson('/v1/product-feedback/mine/'+confirm.dataset.paConfirmFeedback+'/acknowledge',{});await loadFeedbackHistory()}
+      catch(err){confirm.disabled=false;alert(err.message||'确认失败')}
+      return;
+    }
     const submit=event.target.closest('[data-pa-followup-submit]');
     if(!submit)return;
     const id=submit.dataset.paFollowupSubmit;
