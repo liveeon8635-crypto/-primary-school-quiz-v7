@@ -158,7 +158,7 @@ def _sync_feedback_github_issue(audit_row, payload: dict) -> dict | None:
                 "X-GitHub-Api-Version": "2022-11-28",
             },
             json=issue_payload,
-            timeout=4,
+            timeout=8,
         )
         response.raise_for_status()
         result = response.json()
@@ -872,7 +872,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             response = requests.post(
                 FREEMAN_FEEDBACK_IMPORT_URL,
                 json={"projectId": "longying", "proofToken": proof_token},
-                timeout=4,
+                timeout=8,
             )
             synced = bool(response.ok)
         except requests.RequestException:
@@ -1128,7 +1128,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             response = requests.post(
                 FREEMAN_FEEDBACK_IMPORT_URL,
                 json={"projectId": "longying", "proofToken": proof_token},
-                timeout=4,
+                timeout=8,
             )
             synced = bool(response.ok)
         except requests.RequestException:
