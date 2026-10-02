@@ -1432,6 +1432,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             "tutorialStep": str(payload.get("tutorialStep") or "")[:200],
             "attachment": ({k: attachment_payload.get(k) for k in ("name", "type", "size", "sha256")} if attachment_payload else None),
             "followUps": follow_ups,
+            "userDecision": payload.get("userDecision"),
         }
         content_hash = hashlib.sha256(
             json.dumps(hash_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
