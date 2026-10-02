@@ -944,6 +944,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "category": str(detail.get("category") or "其他反馈"),
                 "message": str(detail.get("message") or ""),
                 "page": str(detail.get("page") or ""),
+                "acceptanceUrl": str(detail.get("page") or "/v1"),
                 "createdAt": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
                 "receipt": receipt,
                 "rewardPoints": points,
@@ -1817,6 +1818,25 @@ _ASSISTANT_SNIPPET = r'''
     finally{send.disabled=false;send.textContent='发送'}
   }
 
+  const feedbackReviewHref=record=>{
+    const raw=String(record?.acceptanceUrl||record?.page||'/v1').trim()||'/v1';
+    let url;
+    try{url=new URL(raw,location.origin)}catch{return '/v1'}
+    if(url.origin!==location.origin)return '/v1';
+    url.searchParams.set('cy_feedback_review',String(record?.id||''));
+    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records');
+    return url.pathname+url.search+url.hash;
+  };
+  const mountFeedbackReviewReturn=()=>{
+    const params=new URLSearchParams(location.search);
+    const reviewId=params.get('cy_feedback_review'),returnTo=params.get('cy_feedback_return');
+    if(!reviewId||!returnTo||document.getElementById('cy-feedback-review-return'))return;
+    const bar=document.createElement('div');bar.id='cy-feedback-review-return';
+    bar.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:2147483000;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #bfd2f4;border-radius:14px;background:#fff;box-shadow:0 10px 30px rgba(16,24,40,.18)';
+    bar.innerHTML='<span style="font-size:12px;font-weight:800;color:#173a78">正在验收反馈 #'+escapeHtml(reviewId)+'</span><a href="'+escapeHtml(returnTo)+'" style="text-decoration:none;background:#173a78;color:#fff;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800">返回反馈记录</a>';
+    document.body.appendChild(bar);
+  };
+  mountFeedbackReviewReturn();
   async function loadFeedbackHistory(){
     const box=document.getElementById('cy-pa-history');if(!box)return;
     box.innerHTML='<div class="cy-pa-note">正在读取你的反馈记录…</div>';
@@ -1828,7 +1848,8 @@ _ASSISTANT_SNIPPET = r'''
       const head='<div class="cy-pa-history-item"><b>反馈奖励</b><small>已采纳 '+Number(summary.adoptedFeedbackCount||0)+' 条 · 待处理 '+Number(summary.pendingFeedbackCount||0)+' 条 · 已获得 '+Number(summary.earnedPoints||0)+' 分</small></div>';
       box.innerHTML=head+(items.length?items.map(x=>{
         const id=Number(x.id),canFollow=x.canFollowUp===true,canConfirm=x.canConfirm===true,accepted=x.terminalAccepted===true,confirmed=x.userDecision?.status==='confirmed';
-        const receipt=x.receipt?'<small><b>处理回执：</b>'+escapeHtml(x.receipt)+'</small>':'';
+        const reviewHref=x.canConfirm===true?feedbackReviewHref(x):'';
+        const receipt=x.receipt?'<small><b>处理回执：</b>'+escapeHtml(x.receipt)+(reviewHref?' · <a class="cy-pa-review-link" href="'+escapeHtml(reviewHref)+'">已处理 · 去验收</a>':'')+'</small>':'';
         const terminal=accepted?'<small>该反馈已验收。如有新的问题或需求，请提交一条新反馈。</small>':'';
         const actions=accepted?'':('<div class="cy-pa-history-actions">'+
           (canFollow?'<button type="button" data-pa-followup-toggle="'+id+'">追加反馈</button>':'')+
