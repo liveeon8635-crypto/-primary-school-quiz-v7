@@ -13,6 +13,28 @@ from changying.web import v1_unified_tools
 
 V1_UNIFIED_SESSION_BRIDGE_MARKER = "changying_v1_unified_session_bridge_v1"
 
+# Feedback #306: teacher 钟老师 requested that pre-launch test user data be
+# cleared before formal use.  The entry proxy exposes a guarded cleanup hook so
+# the server-side inbox flow can purge only records flagged as test data,
+# without touching real student archives.
+TEST_DATA_CLEANUP_MARKER = "changying_test_data_cleanup_v1"
+
+
+def is_test_data_record(record: dict) -> bool:
+    """Return True only for records explicitly flagged as pre-launch test data.
+
+    Real student archives are never treated as test data; the flag must be
+    present and truthy on the record itself.
+    """
+    if not isinstance(record, dict):
+        return False
+    return bool(record.get("is_test_data")) or bool(record.get("test_data"))
+
+
+def select_test_data_records(records):
+    """Filter an iterable of records down to the pre-launch test data set."""
+    return [r for r in records if is_test_data_record(r)]
+
 
 def patch_unified_tool_session_bridge(html: str) -> str:
     if V1_UNIFIED_SESSION_BRIDGE_MARKER in html:
