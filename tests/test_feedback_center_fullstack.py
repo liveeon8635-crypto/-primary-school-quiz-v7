@@ -198,7 +198,7 @@ def test_handled_feedback_links_to_original_context_before_user_confirmation():
     from pathlib import Path
     backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
     center = Path("changying/web/feedback_center.js").read_text(encoding="utf-8")
-    assert '"acceptanceUrl": str(detail.get("page") or "/v1")' in backend
+    assert '"acceptanceUrl": _feedback_acceptance_path(detail)' in backend
     assert "cy_feedback_review" in backend
     assert "cy_feedback_return" in backend
     assert "返回反馈记录" in backend
