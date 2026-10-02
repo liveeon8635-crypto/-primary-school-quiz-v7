@@ -118,7 +118,29 @@ FEEDBACK_RECORDS_FULL_FEATURES = (
     "receipt",
     "reward_points",
     "follow_up",
+    "acknowledge_satisfied",
 )
+# 反馈 #320：反馈记录需分别查看 取用/回执/奖励分 情况，并支持对记录追加反馈或查收（满意）。
+# 追加反馈入口放在助手“我要反馈”下拉里，并支持上传图片。
+FEEDBACK_RECORDS_STATUS_FIELDS = ("taken", "receipt", "reward_points")
+FEEDBACK_RECORDS_FOLLOWUP_ATTACHMENT = True
+FEEDBACK_RECORDS_ACKNOWLEDGE_SATISFIED = True
+FEEDBACK_RECORDS_PATH = "/v1/product-feedback/records"
+FEEDBACK_RECORDS_FOLLOWUP_PATH = "/v1/product-feedback/records/{feedback_id}/follow-up"
+FEEDBACK_RECORDS_ACK_PATH = "/v1/product-feedback/records/{feedback_id}/acknowledge"
+
+
+def _feedback_record_status(detail: dict) -> dict:
+    """Derive 取用/回执/奖励分 status for one feedback record."""
+    detail = detail or {}
+    follow_ups = list(detail.get("followUps") or [])
+    return {
+        "taken": bool(detail.get("takenAt") or detail.get("transferTokenAt")),
+        "receipt": str(detail.get("receipt") or detail.get("status") or "pending"),
+        "reward_points": int(detail.get("rewardPoints") or 0),
+        "follow_up_count": len(follow_ups),
+        "acknowledged_satisfied": bool(detail.get("acknowledgedSatisfied")),
+    }
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
 FREEMAN_FEEDBACK_STATUS_URL = "https://freeman-agent.onrender.com/api/project-feedback/status"
 FEEDBACK_PROOF_TTL_MINUTES = 15
