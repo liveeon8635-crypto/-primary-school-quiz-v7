@@ -22,6 +22,7 @@ from changying.web.v1_product_assistant import (
     _decode_feedback_attachment,
     _decode_assistant_image,
     _image_failure_reason,
+    _guidance_cards,
     _PRODUCT_CONTEXT,
     _active_question_context,
     _clean_assistant_reply,
@@ -146,8 +147,8 @@ def test_product_assistant_visual_guides_follow_reply_context():
 
     assert 'id="cy-pa-guide-grid"' in html
     assert "const GUIDE_SETS={" in html
-    assert "const renderGuideGrid=text=>" in html
-    assert "renderGuideGrid(text+' '+reply)" in html
+    assert "const renderGuideGrid=input=>" in html
+    assert "Array.isArray(data.cards)&&data.cards.length?data.cards:text+' '+reply" in html  # exact-head-ci
     assert "renderGuideGrid()" in html
     assert 'data-pa-guide="' in html
     assert 'role="img"' in html
@@ -164,8 +165,8 @@ def test_product_assistant_visual_guides_are_not_empty_placeholder_markup():
 
     assert ".cy-pa-guide-card" in html
     assert ".cy-pa-guide-visual" in html
-    assert "guideCandidates(text)" in html
-    assert "grid.innerHTML=guideCandidates(text).map" in html
+    assert "guideCandidates(input)" in html
+    assert "grid.innerHTML=guides.map" in html
     assert "当前班级、课程、学生与待办" in html
     assert "连续学情、作业、错题与时间线" in html
     assert "孩子作业" in html
@@ -224,7 +225,7 @@ def test_visual_guide_current_page_scoring_distinguishes_unified_tool_pages():
 
     assert "let score=page===g.href?9:0" in html
     assert "if(!g.href.includes('?')&&page.startsWith(g.href))score+=4" in html
-    assert "renderGuideGrid(text+' '+reply)" in html
+    assert "Array.isArray(data.cards)&&data.cards.length?data.cards:text+' '+reply" in html
 
 
 def test_student_assistant_invites_learning_questions_without_becoming_answer_key():
@@ -614,3 +615,38 @@ def test_product_assistant_image_failure_does_not_claim_to_see_it(monkeypatch):
 ])
 def test_assistant_image_failure_reason_excludes_provider_detail(error, reason):
     assert _image_failure_reason(error) == reason
+
+
+def test_feedback_314_precise_navigation_cards_are_returned_and_clickable(monkeypatch):
+    import app_v924 as implementation
+
+    def fake_ai(*args, **kwargs):
+        return "可以从对应功能入口直接进入。"
+
+    monkeypatch.setattr(implementation, "_ai_call", fake_ai)
+    app.dependency_overrides[implementation.current_user] = lambda: SimpleNamespace(
+        id=42, school_id=7, role="teacher"
+    )
+    app.dependency_overrides[implementation.get_db] = lambda: None
+    try:
+        response = TestClient(app).post(QUERY_PATH, json={"question": "我的反馈记录在哪里？", "page": "/v1"})
+        assert response.status_code == 200
+        cards = response.json()["cards"]
+        assert cards == [{
+            "key": "feedback_records",
+            "title": "我的反馈记录",
+            "description": "查看我提交过的每条反馈、处理回执与反馈奖励分状态。",
+            "path": "/v1/workspace?tab=feedback-records",
+        }]
+        html = rendered_v1()
+        assert "Array.isArray(data.cards)&&data.cards.length?data.cards" in html
+        assert "href=\"'+escapeHtml(g.href)+'\"" in html
+    finally:
+        app.dependency_overrides.pop(implementation.current_user, None)
+        app.dependency_overrides.pop(implementation.get_db, None)
+
+
+def test_feedback_314_targeted_practice_question_returns_only_best_matching_card():
+    cards = _guidance_cards("怎么做针对性练习？", "/v1")
+    assert [card["key"] for card in cards] == ["targeted_practice"]
+    assert cards[0]["path"] == "/v1/practice"

@@ -984,6 +984,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         db=Depends(implementation.get_db),
     ):
         question = body.question.strip()
+        navigation_cards = _guidance_cards(question, body.page)
         image = _decode_assistant_image(body)
         role = str(getattr(user, "role", "") or "")
         learning_context = _role_learning_context(
@@ -1018,6 +1019,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 ),
                 "source": "learning_guard",
                 "degraded": False,
+                "cards": navigation_cards,
             }
         prompt = (
             _PRODUCT_CONTEXT
@@ -1046,6 +1048,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "reply": _clean_assistant_reply(reply)[:5000],
                 "source": "ai",
                 "degraded": False,
+                "cards": navigation_cards,
             }
         except HTTPException as exc:
             if image:
@@ -1068,6 +1071,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 ),
                 "source": "local",
                 "degraded": True,
+                "cards": navigation_cards,
             }
         except Exception as exc:
             if image:
@@ -1626,9 +1630,10 @@ _ASSISTANT_SNIPPET = r'''
     const picked=ranked.filter(x=>x.score>0).slice(0,3).map(x=>x.g);
     return picked.length?picked:pool.slice(0,3);
   };
-  const renderGuideGrid=text=>{
+  const renderGuideGrid=input=>{
     const grid=document.getElementById('cy-pa-guide-grid');if(!grid)return;
-    grid.innerHTML=guideCandidates(text).map(g=>'<a class="cy-pa-guide-card" href="'+escapeHtml(g.href)+'" data-pa-guide="'+escapeHtml(g.id)+'"><span class="cy-pa-guide-visual" role="img" aria-label="'+escapeHtml(g.title)+'页面示意图"><span class="cy-pa-guide-bar"></span><span class="cy-pa-guide-page"><span class="cy-pa-guide-icon">'+escapeHtml(g.icon)+'</span><span class="cy-pa-guide-lines"><i></i><i></i></span></span></span><span class="cy-pa-guide-copy"><b>'+escapeHtml(g.title)+'</b><small>'+escapeHtml(g.hint)+'</small></span></a>').join('');
+    const guides=Array.isArray(input)?input.map(g=>({id:g.key||'guide',title:g.title||'功能入口',href:g.path||'/v1',icon:'↗',hint:g.description||'点击进入对应功能'})):guideCandidates(input);
+    grid.innerHTML=guides.map(g=>'<a class="cy-pa-guide-card" href="'+escapeHtml(g.href)+'" data-pa-guide="'+escapeHtml(g.id)+'"><span class="cy-pa-guide-visual" role="img" aria-label="'+escapeHtml(g.title)+'页面示意图"><span class="cy-pa-guide-bar"></span><span class="cy-pa-guide-page"><span class="cy-pa-guide-icon">'+escapeHtml(g.icon)+'</span><span class="cy-pa-guide-lines"><i></i><i></i></span></span></span><span class="cy-pa-guide-copy"><b>'+escapeHtml(g.title)+'</b><small>'+escapeHtml(g.hint)+'</small></span></a>').join('');
   };
 
   async function postJson(path,body){
@@ -1664,7 +1669,7 @@ _ASSISTANT_SNIPPET = r'''
       addMessage('user',text+(file?'\n[图片] '+file.name:''),attachment?'data:'+attachment.attachment_type+';base64,'+attachment.attachment_data:'');
       input.value='';queryImage.value='';queryImageStatus.textContent='未选择图片';
       const reply=data.reply||'暂时没有可用回答。';
-      addMessage('assistant',reply);maybeAddLearningVisual(text,askContext);renderGuideGrid(text+' '+reply);
+      addMessage('assistant',reply);maybeAddLearningVisual(text,askContext);renderGuideGrid(Array.isArray(data.cards)&&data.cards.length?data.cards:text+' '+reply);
     }catch(err){queryImageStatus.textContent=err.message||'图片发送失败';addMessage('assistant','产品助手暂时无法回答：'+err.message)}
     finally{send.disabled=false;send.textContent='发送'}
   }
