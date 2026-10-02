@@ -24,12 +24,6 @@ def load_production_app() -> FastAPI:
     apply_legacy_compatibility(implementation, asset_version=ASSET_VERSION)
     install_entry_policy(implementation.app)
     maybe_apply_one_time_migration(implementation)
-    # Bounded recovery for the persisted #314 revision; final replay after Freeman active-revision admission upgrade.
-    # Normal proof verification remains mandatory on the Freeman side; replay is revision-idempotent.
-    try:
-        reconcile_persisted_feedback_handoff(implementation, 314)
-    except Exception as exc:
-        print(f"CHANGYING_FEEDBACK_RECONCILE_FAILED feedback_id=314 error={type(exc).__name__}")
     return implementation.app
 
 
