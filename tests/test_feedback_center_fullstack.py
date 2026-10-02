@@ -255,3 +255,11 @@ def test_assistant_feedback_acceptance_targets_product_assistant():
         "message": "询问助手相关功能不能直接提供关联卡片 能不能提高助手的产品引导能力",
         "followUps": [],
     }) == "/v1/workspace?tab=ask"
+
+
+def test_feedback_review_link_remains_available_after_returning():
+    from pathlib import Path
+    backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    center = Path("changying/web/feedback_center.js").read_text(encoding="utf-8")
+    assert "reviewed?'重新去验收':'已处理 · 点击去验收'" in backend
+    assert "reviewed?'重新去验收':'已处理 · 点击去验收'" in center

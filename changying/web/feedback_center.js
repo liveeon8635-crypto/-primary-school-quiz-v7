@@ -99,7 +99,7 @@
       const reviewed=new URLSearchParams(location.search).get('reviewed')===String(id);
       const ack=record.acknowledged?'<span class="cy-fc-tag granted">用户已确认</span>':
         (reviewed&&canConfirm&&own?'<button class="green" data-cy-fc-ack="'+id+'">确认通过</button>':'');
-      const review=canConfirm&&!reviewed?'<a class="cy-fc-review" href="'+escapeHtml(reviewHref(record))+'">已处理 · 点击去验收</a>':'';
+      const review=canConfirm?'<a class="cy-fc-review" href="'+escapeHtml(reviewHref(record))+'">'+(reviewed?'重新去验收':'已处理 · 点击去验收')+'</a>':'';
       const ownerMeta=record.submittedBy?'<span class="cy-fc-tag">提交人：'+escapeHtml(record.submittedBy)+'</span>':'';
       return '<article class="cy-fc-record" data-cy-fc-record="'+id+'">'+
         '<div class="cy-fc-meta"><span class="cy-fc-tag '+statusClass(record)+'">取用状态：'+escapeHtml(statusLabel(record))+'</span><span class="cy-fc-tag" data-cy-fc-reward="'+id+'">奖励分：'+escapeHtml(rewardText(record))+'</span>'+ownerMeta+'</div>'+

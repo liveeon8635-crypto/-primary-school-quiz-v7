@@ -1896,7 +1896,7 @@ _ASSISTANT_SNIPPET = r'''
         const receipt=x.receipt?'<small><b>处理回执：</b>'+escapeHtml(x.receipt)+'</small>':'';
         const terminal=accepted?'<small>该反馈已验收。如有新的问题或需求，请提交一条新反馈。</small>':'';
         const actions=accepted?'':('<div class="cy-pa-history-actions">'+
-          (canConfirm&&!reviewed?'<a class="btn primary cy-pa-review-link" href="'+escapeHtml(reviewHref)+'">已处理 · 点击去验收</a>':'')+
+          (canConfirm?'<a class="btn cy-pa-review-link" href="'+escapeHtml(reviewHref)+'">'+(reviewed?'重新去验收':'已处理 · 点击去验收')+'</a>':'')+
           (reviewed&&canFollow?'<button type="button" data-pa-followup-toggle="'+id+'">追加反馈</button>':'')+
           (reviewed&&canConfirm?'<button class="btn primary" type="button" data-pa-confirm-feedback="'+id+'">确认已达预期</button>':'')+
           (confirmed?'<span class="cy-pa-note">你已确认达到预期，等待最终验收。</span>':'')+
