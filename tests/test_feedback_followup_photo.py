@@ -10,3 +10,15 @@ def test_followup_photo_is_wired_from_assistant_to_feedback_proof():
     assert "添加照片" in frontend
     assert "image/jpeg,image/png,image/webp" in frontend
     assert "attachment_data" in frontend
+
+
+def test_feedback_revisions_are_not_truncated_before_proof_sync():
+    backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    # AuditLog.detail is Text. Truncating JSON after appending a follow-up can cut
+    # transferToken/followUps mid-document, making /mine lose the record payload
+    # and Freeman's proof import return 404.
+    assert "json.dumps(detail, ensure_ascii=False)[:1800]" not in backend
+    assert "json.dumps(payload, ensure_ascii=False)[:1800]" not in backend
+    assert "json.dumps(persisted, ensure_ascii=False)[:1800]" not in backend
+    assert 'detail["transferToken"] = proof_token' in backend
+    assert 'detail["followUps"] = follow_ups' in backend
