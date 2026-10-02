@@ -927,6 +927,9 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
     ):
         """向当前用户自己的已有反馈追加说明。"""
         row = _owned_feedback(db, user, feedback_id)
+        remote = _freeman_feedback_status([feedback_id]).get(str(feedback_id), {})
+        if str(remote.get("status") or "") == "resolved":
+            raise HTTPException(409, "反馈已验收，请提交新反馈")
         try:
             detail = json.loads(row.detail or "{}")
         except (ValueError, TypeError):
@@ -980,22 +983,41 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         user=Depends(implementation.current_user),
         db=Depends(implementation.get_db),
     ):
-        """由反馈提交者确认已查收当前处理结果。"""
+        """由反馈提交者确认当前处理结果已达到预期，并同步给 Freeman 等待最终验收。"""
         row = _owned_feedback(db, user, feedback_id)
+        remote = _freeman_feedback_status([feedback_id]).get(str(feedback_id), {})
+        remote_status = str(remote.get("status") or "")
+        if remote_status == "resolved":
+            raise HTTPException(409, "反馈已验收，请提交新反馈")
+        if remote_status != "awaiting_acceptance":
+            raise HTTPException(409, "当前反馈尚未进入待确认状态")
         try:
             detail = json.loads(row.detail or "{}")
         except (ValueError, TypeError):
             detail = {}
-        detail["acknowledged"] = True
-        detail["receipt"] = "用户已查收并确认满意"
-        detail["acknowledgedAt"] = datetime.utcnow().isoformat()
+        now = datetime.utcnow()
+        revision = int(detail.get("revision") or 1) + 1
+        proof_token = secrets.token_urlsafe(24)
+        detail.update({
+            "acknowledged": True,
+            "receipt": "用户已确认达到预期，等待最终验收",
+            "acknowledgedAt": now.isoformat() + "Z",
+            "userDecision": {"status": "confirmed", "at": now.isoformat() + "Z"},
+            "revision": revision,
+            "updatedAt": now.isoformat() + "Z",
+            "transferToken": proof_token,
+            "transferTokenAt": now.isoformat() + "Z",
+        })
         row.detail = json.dumps(detail, ensure_ascii=False)
         db.commit()
+        synced = _post_feedback_import(proof_token, int(row.id))
         return {
             "ok": True,
             "id": int(row.id),
             "acknowledged": True,
             "receipt": detail["receipt"],
+            "revision": revision,
+            "freemanSynced": synced,
         }
 
     @router.post(FEEDBACK_MINE_PATH + "/{feedback_id}/reject", include_in_schema=False)
@@ -1007,6 +1029,9 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
     ):
         """驳回当前处理结果，并把原因作为追加反馈重新同步到 Freeman。"""
         row = _owned_feedback(db, user, feedback_id)
+        remote = _freeman_feedback_status([feedback_id]).get(str(feedback_id), {})
+        if str(remote.get("status") or "") == "resolved":
+            raise HTTPException(409, "反馈已验收，请提交新反馈")
         try:
             detail = json.loads(row.detail or "{}")
         except (ValueError, TypeError):
