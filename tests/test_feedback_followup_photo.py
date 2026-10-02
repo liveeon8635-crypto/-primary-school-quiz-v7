@@ -22,3 +22,12 @@ def test_feedback_revisions_are_not_truncated_before_proof_sync():
     assert "json.dumps(persisted, ensure_ascii=False)[:1800]" not in backend
     assert 'detail["transferToken"] = proof_token' in backend
     assert 'detail["followUps"] = follow_ups' in backend
+
+
+def test_feedback_handoff_has_bounded_retry_and_observable_failure():
+    backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    assert "def _post_feedback_import(" in backend
+    assert "for attempt in range(1, 4):" in backend
+    assert "freeman_feedback_sync_ok" in backend
+    assert "freeman_feedback_sync_failed" in backend
+    assert "synced = _post_feedback_import(proof_token, int(row.id))" in backend
