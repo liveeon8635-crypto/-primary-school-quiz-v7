@@ -632,6 +632,13 @@ _GUIDANCE_CARDS = (
         "keywords": ("历史", "升年级", "升学", "衔接", "换班"),
     },
     {
+        "key": "product_assistant",
+        "title": "产品助手",
+        "description": "打开产品助手，询问产品功能并通过关联卡片直达对应页面。",
+        "path": "/v1/workspace?tab=ask",
+        "keywords": ("产品助手", "助手", "产品引导", "关联卡片", "导航卡片", "功能卡片", "问产品", "产品功能"),
+    },
+    {
         "key": "feedback",
         "title": "提交产品反馈",
         "description": "遇到问题或希望增加功能，可直接提交反馈并附一张照片或文件。",
@@ -1944,7 +1951,9 @@ _ASSISTANT_SNIPPET = r'''
   if(feedbackMenuButton)feedbackMenuButton.onclick=()=>{const opening=feedbackDropdown?.hidden!==false;if(feedbackDropdown)feedbackDropdown.hidden=!opening;feedbackMenuButton.setAttribute('aria-expanded',opening?'true':'false')};
   document.querySelectorAll('[data-pa-tab]').forEach(x=>x.onclick=()=>{setTab(x.dataset.paTab);closeFeedbackMenu()});
   document.addEventListener('click',event=>{if(!event.target.closest('.cy-pa-feedback-menu'))closeFeedbackMenu()});
-  if(new URLSearchParams(location.search).get('tab')==='feedback-records'){setTab('records');panel.hidden=false;fab.hidden=true;}
+  const initialAssistantTab=new URLSearchParams(location.search).get('tab');
+  if(initialAssistantTab==='feedback-records'){setTab('records');panel.hidden=false;fab.hidden=true;}
+  else if(initialAssistantTab==='ask'){setTab('ask');panel.hidden=false;fab.hidden=true;}
   document.querySelectorAll('[data-pa-question]').forEach(x=>x.onclick=()=>ask(x.dataset.paQuestion));
   send.onclick=()=>ask(input.value);
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask(input.value)}});
