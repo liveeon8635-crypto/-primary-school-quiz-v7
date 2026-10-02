@@ -550,6 +550,13 @@ def _role_learning_context(
 
 _GUIDANCE_CARDS = (
     {
+        "key": "homework_create",
+        "title": "组卷作业",
+        "description": "进入组卷与作业工具，新建题目后布置给当前班级或课程。",
+        "path": "/v1/tool?page=papers",
+        "keywords": ("布置作业", "新建作业", "发布作业", "作业在哪里", "组卷作业", "组卷"),
+    },
+    {
         "key": "current_teaching",
         "title": "当前教学",
         "description": "查看正在进行的班级、作业与课堂，从这里开始今天的教学。",
