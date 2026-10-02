@@ -1646,10 +1646,18 @@ _ASSISTANT_SNIPPET = r'''
     const picked=ranked.filter(x=>x.score>0).slice(0,3).map(x=>x.g);
     return picked.length?picked:pool.slice(0,3);
   };
+  const normalizeGuides=input=>Array.isArray(input)?input.map(g=>({id:g.key||'guide',title:g.title||'功能入口',href:g.path||'/v1',icon:'↗',hint:g.description||'点击进入对应功能'})):guideCandidates(input);
+  const guideCardsHtml=guides=>guides.map(g=>'<a class="cy-pa-guide-card" href="'+escapeHtml(g.href)+'" data-pa-guide="'+escapeHtml(g.id)+'"><span class="cy-pa-guide-visual" role="img" aria-label="'+escapeHtml(g.title)+'页面示意图"><span class="cy-pa-guide-bar"></span><span class="cy-pa-guide-page"><span class="cy-pa-guide-icon">'+escapeHtml(g.icon)+'</span><span class="cy-pa-guide-lines"><i></i><i></i></span></span></span><span class="cy-pa-guide-copy"><b>'+escapeHtml(g.title)+'</b><small>'+escapeHtml(g.hint)+'</small></span></a>').join('');
   const renderGuideGrid=input=>{
     const grid=document.getElementById('cy-pa-guide-grid');if(!grid)return;
-    const guides=Array.isArray(input)?input.map(g=>({id:g.key||'guide',title:g.title||'功能入口',href:g.path||'/v1',icon:'↗',hint:g.description||'点击进入对应功能'})):guideCandidates(input);
-    grid.innerHTML=guides.map(g=>'<a class="cy-pa-guide-card" href="'+escapeHtml(g.href)+'" data-pa-guide="'+escapeHtml(g.id)+'"><span class="cy-pa-guide-visual" role="img" aria-label="'+escapeHtml(g.title)+'页面示意图"><span class="cy-pa-guide-bar"></span><span class="cy-pa-guide-page"><span class="cy-pa-guide-icon">'+escapeHtml(g.icon)+'</span><span class="cy-pa-guide-lines"><i></i><i></i></span></span></span><span class="cy-pa-guide-copy"><b>'+escapeHtml(g.title)+'</b><small>'+escapeHtml(g.hint)+'</small></span></a>').join('');
+    grid.innerHTML=guideCardsHtml(normalizeGuides(input));
+  };
+  const addInlineGuideCards=input=>{
+    const guides=normalizeGuides(input);if(!guides.length)return;
+    const box=document.createElement('div');box.className='cy-pa-guide cy-pa-inline-guide';
+    box.innerHTML='<div class="cy-pa-guide-title">对应功能 · 点卡片直达</div><div class="cy-pa-guide-grid">'+guideCardsHtml(guides)+'</div>';
+    chat.appendChild(box);
+    box.scrollIntoView({block:'nearest'});
   };
 
   async function postJson(path,body){
@@ -1685,7 +1693,7 @@ _ASSISTANT_SNIPPET = r'''
       addMessage('user',text+(file?'\n[图片] '+file.name:''),attachment?'data:'+attachment.attachment_type+';base64,'+attachment.attachment_data:'');
       input.value='';queryImage.value='';queryImageStatus.textContent='未选择图片';
       const reply=data.reply||'暂时没有可用回答。';
-      addMessage('assistant',reply);maybeAddLearningVisual(text,askContext);renderGuideGrid(Array.isArray(data.cards)&&data.cards.length?data.cards:text+' '+reply);
+      addMessage('assistant',reply);maybeAddLearningVisual(text,askContext);const guideInput=Array.isArray(data.cards)&&data.cards.length?data.cards:text+' '+reply;renderGuideGrid(guideInput);addInlineGuideCards(guideInput);
     }catch(err){queryImageStatus.textContent=err.message||'图片发送失败';addMessage('assistant','产品助手暂时无法回答：'+err.message)}
     finally{send.disabled=false;send.textContent='发送'}
   }

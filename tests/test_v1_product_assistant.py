@@ -148,6 +148,8 @@ def test_product_assistant_visual_guides_follow_reply_context():
     assert 'id="cy-pa-guide-grid"' in html
     assert "const GUIDE_SETS={" in html
     assert "const renderGuideGrid=input=>" in html
+    assert "const addInlineGuideCards=input=>" in html
+    assert "addInlineGuideCards(guideInput)" in html
     assert "Array.isArray(data.cards)&&data.cards.length?data.cards:text+' '+reply" in html  # exact-head-ci
     assert "renderGuideGrid()" in html
     assert 'data-pa-guide="' in html
@@ -166,7 +168,8 @@ def test_product_assistant_visual_guides_are_not_empty_placeholder_markup():
     assert ".cy-pa-guide-card" in html
     assert ".cy-pa-guide-visual" in html
     assert "guideCandidates(input)" in html
-    assert "grid.innerHTML=guides.map" in html
+    assert "grid.innerHTML=guideCardsHtml(normalizeGuides(input))" in html
+    assert "box.innerHTML='<div class=\"cy-pa-guide-title\">对应功能 · 点卡片直达</div><div class=\"cy-pa-guide-grid\">'+guideCardsHtml(guides)+'</div>'" in html
     assert "当前班级、课程、学生与待办" in html
     assert "连续学情、作业、错题与时间线" in html
     assert "孩子作业" in html
