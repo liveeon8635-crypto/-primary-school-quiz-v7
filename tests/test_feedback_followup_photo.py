@@ -43,8 +43,11 @@ def test_feedback_reconciliation_is_admin_gated_and_rotates_proof_token():
     assert '"freemanSynced": True' in backend
 
 
-def test_feedback_314_is_reconciled_on_startup_without_browser_action():
+def test_feedback_314_one_time_startup_replay_is_removed_after_recovery():
     backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
-    assert 'reconcile_known_dropped_feedback_on_startup' in backend
-    assert '_reconcile_feedback_handoff(db, 314)' in backend
-    assert 'freeman_feedback_startup_reconcile_failed feedback_id=314' in backend
+    production = Path("changying/production.py").read_text(encoding="utf-8")
+    assert 'reconcile_known_dropped_feedback_on_startup' not in backend
+    assert '_reconcile_feedback_handoff(db, 314)' not in backend
+    assert 'reconcile_persisted_feedback_handoff(implementation, 314)' not in production
+    # Generic bounded recovery remains available for future operational reconciliation.
+    assert '"/internal/product-feedback/{feedback_id}/reconcile"' in backend
