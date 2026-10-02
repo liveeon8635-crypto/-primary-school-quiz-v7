@@ -272,3 +272,23 @@ def test_acceptance_target_prefers_assistant_navigation_over_generic_student_wor
         "message": "学生问助手产品功能时应该直接提供对应导航卡片，不要只给文字说明",
         "followUps": [],
     }) == "/v1/workspace?tab=ask"
+
+
+def test_specific_feedback_subject_overrides_raw_source_page_for_acceptance():
+    from changying.web.v1_product_assistant import _feedback_acceptance_path
+    assert _feedback_acceptance_path({
+        "page": "/v1/student?id=10",
+        "message": "学生问产品助手时应该直接给导航卡片，不要只显示文字说明",
+        "followUps": [],
+    }) == "/v1/workspace?tab=ask"
+
+
+def test_feedback_review_return_focuses_exact_record():
+    from pathlib import Path
+    backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    center = Path("changying/web/feedback_center.js").read_text(encoding="utf-8")
+    assert "&focus='+encodeURIComponent" in backend
+    assert "get('focus')" in backend
+    assert "scrollIntoView({behavior:'smooth',block:'center'})" in backend
+    assert "&focus='+encodeURIComponent" in center
+    assert "get('focus')" in center

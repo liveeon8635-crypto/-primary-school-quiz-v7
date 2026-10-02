@@ -30,7 +30,7 @@
     let url;try{url=new URL(raw,location.origin)}catch{return '/v1'}
     if(url.origin!==location.origin)return '/v1';
     url.searchParams.set('cy_feedback_review',String(record&&record.id||''));
-    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(record&&record.id||'')));
+    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(record&&record.id||''))+'&focus='+encodeURIComponent(String(record&&record.id||'')));
     return url.pathname+url.search+url.hash;
   };
 
@@ -111,6 +111,16 @@
         '</article>';
     }).join('');
     body.innerHTML=summaryHtml+(items||'<div class="cy-fc-empty">还没有提交过反馈。可以点击“提交新反馈”开始。</div>');
+    const focusId=new URLSearchParams(location.search).get('focus');
+    if(focusId){
+      const target=body.querySelector('[data-cy-fc-record="'+CSS.escape(String(focusId))+'"]');
+      if(target){
+        target.style.outline='3px solid #7aa2f7';
+        target.style.outlineOffset='2px';
+        target.scrollIntoView({behavior:'smooth',block:'center'});
+        setTimeout(()=>{target.style.outline='';target.style.outlineOffset=''},2600);
+      }
+    }
   };
 
   const load=async()=>{

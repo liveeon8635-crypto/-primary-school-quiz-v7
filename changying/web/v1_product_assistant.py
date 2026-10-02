@@ -669,8 +669,6 @@ def _feedback_acceptance_path(detail: dict) -> str:
     feedback records rather than the tutorial.
     """
     source_page = str(detail.get("page") or "").strip()
-    if source_page.startswith("/") and not source_page.startswith("/v1/workspace"):
-        return source_page[:240]
 
     text_parts = [str(detail.get("message") or "")]
     for followup in list(detail.get("followUps") or []):
@@ -678,10 +676,10 @@ def _feedback_acceptance_path(detail: dict) -> str:
             text_parts.append(str(followup.get("message") or ""))
     text = " ".join(text_parts).lower()
 
-    # Prefer high-specificity product concepts before generic role nouns such
-    # as “学生”, “作业”, or “功能”; otherwise a feedback sentence about the
-    # assistant can be misrouted to Student Profile merely because it mentions
-    # students while describing assistant navigation behavior.
+    # High-specificity product concepts override the raw source page. A user
+    # can submit assistant/navigation feedback while physically viewing a
+    # student page; acceptance must validate the feature being discussed, not
+    # merely the page that happened to be open when the report was filed.
     if any(term in text for term in ("反馈记录", "追加反馈", "反馈回执", "反馈中心")):
         return "/v1/workspace?tab=feedback-records"
     if any(term in text for term in (
@@ -689,6 +687,9 @@ def _feedback_acceptance_path(detail: dict) -> str:
         "产品引导", "问产品", "智能助手",
     )):
         return "/v1/workspace?tab=ask"
+
+    if source_page.startswith("/") and not source_page.startswith("/v1/workspace"):
+        return source_page[:240]
 
     candidates = []
     for index, card in enumerate(_GUIDANCE_CARDS):
@@ -1878,7 +1879,7 @@ _ASSISTANT_SNIPPET = r'''
     try{url=new URL(raw,location.origin)}catch{return '/v1'}
     if(url.origin!==location.origin)return '/v1';
     url.searchParams.set('cy_feedback_review',String(record?.id||''));
-    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(record?.id||'')));
+    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(record?.id||''))+'&focus='+encodeURIComponent(String(record?.id||'')));
     return url.pathname+url.search+url.hash;
   };
   const mountFeedbackReviewReturn=()=>{
@@ -1916,6 +1917,16 @@ _ASSISTANT_SNIPPET = r'''
         const followForm=canFollow?'<div data-pa-followup-form="'+id+'" hidden><textarea maxlength="1200" data-pa-followup-text="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><label class="cy-pa-attachment">📷 添加照片 <input type="file" accept="image/jpeg,image/png,image/webp" data-pa-followup-photo="'+id+'"></label><button class="btn primary" type="button" data-pa-followup-submit="'+id+'">提交追加反馈</button></div>':'';
         return '<div class="cy-pa-history-item" data-pa-history-id="'+id+'"><b>'+escapeHtml(x.category||'产品反馈')+' · '+escapeHtml(x.statusLabel||'已收到')+'</b><small>'+escapeHtml(x.message||'')+'</small>'+receipt+'<small>'+escapeHtml(x.createdAt||'')+(x.rewardPoints?' · 奖励 '+Number(x.rewardPoints)+' 分':'')+'</small>'+terminal+actions+followForm+'</div>';
       }).join(''):'<div class="cy-pa-note">还没有提交过反馈。</div>');
+      const focusId=new URLSearchParams(location.search).get('focus');
+      if(focusId){
+        const target=box.querySelector('[data-pa-history-id="'+CSS.escape(String(focusId))+'"]');
+        if(target){
+          target.style.outline='3px solid #7aa2f7';
+          target.style.outlineOffset='2px';
+          target.scrollIntoView({behavior:'smooth',block:'center'});
+          setTimeout(()=>{target.style.outline='';target.style.outlineOffset=''},2600);
+        }
+      }
     }catch(err){box.innerHTML='<div class="cy-pa-note">反馈记录读取失败：'+escapeHtml(err.message||'请稍后重试')+'</div>'}
   }
   document.getElementById('cy-pa-history')?.addEventListener('click',async event=>{
