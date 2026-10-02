@@ -148,6 +148,8 @@ def test_product_assistant_visual_guides_follow_reply_context():
     assert 'id="cy-pa-guide-grid"' in html
     assert "const GUIDE_SETS={" in html
     assert "const renderGuideGrid=input=>" in html
+    assert "const addInlineGuideCards=input=>" in html
+    assert "addInlineGuideCards(guideInput)" in html
     assert "Array.isArray(data.cards)&&data.cards.length?data.cards:text+' '+reply" in html  # exact-head-ci
     assert "renderGuideGrid()" in html
     assert 'data-pa-guide="' in html
