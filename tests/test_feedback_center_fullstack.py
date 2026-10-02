@@ -202,7 +202,7 @@ def test_handled_feedback_links_to_original_context_before_user_confirmation():
     assert "cy_feedback_review" in backend
     assert "cy_feedback_return" in backend
     assert "返回反馈记录" in backend
-    assert "已处理 · 去验收" in backend
+    assert "已处理 · 点击去验收" in backend
     assert "const reviewHref=record=>" in center
     assert "已处理 · 去验收" in center
     assert "确认通过" in center
