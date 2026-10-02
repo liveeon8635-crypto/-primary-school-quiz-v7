@@ -225,7 +225,7 @@ def test_visual_guide_current_page_scoring_distinguishes_unified_tool_pages():
 
     assert "let score=page===g.href?9:0" in html
     assert "if(!g.href.includes('?')&&page.startsWith(g.href))score+=4" in html
-    assert "renderGuideGrid(text+' '+reply)" in html
+    assert "Array.isArray(data.cards)&&data.cards.length?data.cards:text+' '+reply" in html
 
 
 def test_student_assistant_invites_learning_questions_without_becoming_answer_key():
