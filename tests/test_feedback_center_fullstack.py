@@ -208,3 +208,17 @@ def test_handled_feedback_links_to_original_context_before_user_confirmation():
     assert "确认通过" in center
     assert "追加反馈" in center
     assert "cy_feedback_return" in center
+
+
+def test_feedback_confirmation_is_gated_until_user_returns_from_review():
+    from pathlib import Path
+    backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    center = Path("changying/web/feedback_center.js").read_text(encoding="utf-8")
+    assert "reviewed='+encodeURIComponent" in backend
+    assert "验收完成，返回反馈记录" in backend
+    assert "已处理 · 点击去验收" in backend
+    assert "reviewed&&canConfirm" in backend
+    assert "reviewed&&canFollow" in backend
+    assert "reviewed='+encodeURIComponent" in center
+    assert "已处理 · 点击去验收" in center
+    assert "reviewed&&canConfirm" in center
