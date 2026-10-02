@@ -142,12 +142,17 @@ def _post_feedback_import(proof_token: str, feedback_id: int | None = None) -> b
     _logger.error("freeman_feedback_sync_failed feedback_id=%s status=%s", feedback_id, last_status)
     return False
 
-def _freeman_feedback_status(source_ids: list[int]) -> dict[str, dict]:
-    ids=[str(int(x)) for x in source_ids if int(x)>0][:100]
-    if not ids:
+def _freeman_feedback_status(refs: list[dict]) -> dict[str, dict]:
+    safe_refs=[]
+    for ref in refs[:100]:
+        source_id=str(ref.get("sourceId") or "").strip()
+        token=str(ref.get("statusToken") or "").strip()
+        if source_id.isdigit() and 24 <= len(token) <= 96:
+            safe_refs.append({"sourceId": source_id, "statusToken": token})
+    if not safe_refs:
         return {}
     try:
-        response=requests.get(FREEMAN_FEEDBACK_STATUS_URL,params={"projectId":"longying","sourceIds":",".join(ids)},timeout=4)
+        response=requests.post(FREEMAN_FEEDBACK_STATUS_URL,json={"projectId":"longying","refs":safe_refs},timeout=4)
         if response.status_code != 200:
             return {}
         payload=response.json()
@@ -849,7 +854,14 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         rows = db.scalars(audit_query.order_by(audit.id.desc()).limit(100)).all()
         reward_rows = db.execute(reward_query).all()
         reward_by_audit = {int(r[0]): (int(r[1] or 0), str(r[2])) for r in reward_rows}
-        freeman_status = _freeman_feedback_status([int(row.id) for row in rows])
+        status_refs = []
+        for row in rows:
+            try:
+                status_detail = json.loads(row.detail or "{}")
+            except (ValueError, TypeError):
+                status_detail = {}
+            status_refs.append({"sourceId": int(row.id), "statusToken": str(status_detail.get("transferToken") or "")})
+        freeman_status = _freeman_feedback_status(status_refs)
         records = []
         for row in rows:
             detail = {}
