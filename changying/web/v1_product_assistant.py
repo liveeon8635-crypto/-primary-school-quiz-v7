@@ -118,7 +118,27 @@ FEEDBACK_RECORDS_FULL_FEATURES = (
     "receipt",
     "reward_points",
     "follow_up",
+    "follow_up_attachment",
 )
+
+
+def unified_feedback_records_contract() -> dict:
+    """反馈 #321/#322：助手内唯一反馈记录入口的对外契约。
+
+    顶部“反馈记录”面板不再单独渲染，其全部功能（提交、附件、回执、奖励分、
+    追加反馈）合并进助手内“提反馈”按钮的下拉；点击“提反馈”时自动下拉显示
+    反馈记录，追加反馈同样支持发送图片附件。
+    """
+    return {
+        "marker": UNIFIED_FEEDBACK_RECORDS_MARKER,
+        "mergedIntoAssistant": FEEDBACK_RECORDS_MERGED_INTO_ASSISTANT,
+        "topPanelHidden": FEEDBACK_TOP_PANEL_HIDDEN,
+        "sharedButton": FEEDBACK_RECORDS_SHARED_BUTTON,
+        "autoExpandOnSubmit": FEEDBACK_RECORDS_AUTO_EXPAND_ON_SUBMIT,
+        "dropdownActions": list(FEEDBACK_SUBMIT_DROPDOWN_ACTIONS),
+        "fullFeatures": list(FEEDBACK_RECORDS_FULL_FEATURES),
+        "followUpAttachmentSupported": True,
+    }
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
 FREEMAN_FEEDBACK_STATUS_URL = "https://freeman-agent.onrender.com/api/project-feedback/status"
 FEEDBACK_PROOF_TTL_MINUTES = 15
