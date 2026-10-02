@@ -14,7 +14,6 @@ from fastapi import FastAPI
 from changying.compat.legacy import apply_legacy_compatibility
 from changying.ops.one_time_migrations import maybe_apply_one_time_migration
 from changying.web.entry_policy import install_entry_policy
-from changying.web.v1_product_assistant import reconcile_persisted_feedback_handoff
 
 PRODUCTION_MODULE = "app_v924"
 ASSET_VERSION = "924"
