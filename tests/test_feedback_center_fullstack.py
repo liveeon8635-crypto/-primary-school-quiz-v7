@@ -222,3 +222,27 @@ def test_feedback_confirmation_is_gated_until_user_returns_from_review():
     assert "reviewed='+encodeURIComponent" in center
     assert "已处理 · 点击去验收" in center
     assert "reviewed&&canConfirm" in center
+
+
+def test_workspace_feedback_acceptance_targets_specific_product_surface():
+    from changying.web.v1_product_assistant import _feedback_acceptance_path
+    assert _feedback_acceptance_path({
+        "page": "/v1/workspace?tab=feedback-records",
+        "message": "学生测试与练习里面缺少难度选择",
+        "followUps": [],
+    }) == "/v1/student"
+    assert _feedback_acceptance_path({
+        "page": "/v1/workspace",
+        "message": "顶部反馈记录和助手里的反馈记录应该合并",
+        "followUps": [],
+    }) == "/v1/workspace?tab=feedback-records"
+    assert _feedback_acceptance_path({
+        "page": "/v1/workspace",
+        "message": "一个无法匹配具体功能的普通界面建议",
+        "followUps": [],
+    }) == "/v1/workspace?tab=feedback-records"
+    assert _feedback_acceptance_path({
+        "page": "/v1/classroom",
+        "message": "这里有一个显示问题",
+        "followUps": [],
+    }) == "/v1/classroom"
