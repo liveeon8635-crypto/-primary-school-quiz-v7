@@ -173,7 +173,7 @@ def _sync_feedback_github_issue(audit_row, payload: dict) -> dict | None:
                 "X-GitHub-Api-Version": "2022-11-28",
             },
             json=issue_payload,
-            timeout=8,
+            timeout=4,
         )
         response.raise_for_status()
         result = response.json()
