@@ -31,3 +31,13 @@ def test_feedback_handoff_has_bounded_retry_and_observable_failure():
     assert "freeman_feedback_sync_ok" in backend
     assert "freeman_feedback_sync_failed" in backend
     assert "synced = _post_feedback_import(proof_token, int(row.id))" in backend
+
+
+def test_feedback_reconciliation_is_admin_gated_and_rotates_proof_token():
+    backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    assert '"/internal/product-feedback/{feedback_id}/reconcile"' in backend
+    assert 'not in ("admin", "school_admin")' in backend
+    assert 'detail["transferToken"] = proof_token' in backend
+    assert 'detail["transferTokenAt"] = now.isoformat() + "Z"' in backend
+    assert '_post_feedback_import(proof_token, int(row.id))' in backend
+    assert '"freemanSynced": True' in backend
