@@ -120,6 +120,7 @@ FEEDBACK_RECORDS_FULL_FEATURES = (
     "follow_up",
 )
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
+FREEMAN_FEEDBACK_STATUS_URL = "https://freeman-agent.onrender.com/api/project-feedback/status"
 FEEDBACK_PROOF_TTL_MINUTES = 15
 FEEDBACK_ATTACHMENT_MAX_BYTES = 1_000_000
 FEEDBACK_GITHUB_REPO = "liveeon8635-crypto/-primary-school-quiz-v7"
@@ -140,6 +141,20 @@ def _post_feedback_import(proof_token: str, feedback_id: int | None = None) -> b
             _logger.warning("freeman_feedback_sync_retry feedback_id=%s attempt=%s error=%s", feedback_id, attempt, type(exc).__name__)
     _logger.error("freeman_feedback_sync_failed feedback_id=%s status=%s", feedback_id, last_status)
     return False
+
+def _freeman_feedback_status(source_ids: list[int]) -> dict[str, dict]:
+    ids=[str(int(x)) for x in source_ids if int(x)>0][:100]
+    if not ids:
+        return {}
+    try:
+        response=requests.get(FREEMAN_FEEDBACK_STATUS_URL,params={"projectId":"longying","sourceIds":",".join(ids)},timeout=4)
+        if response.status_code != 200:
+            return {}
+        payload=response.json()
+        return {str(item.get("sourceId")):item for item in list(payload.get("items") or []) if item.get("sourceId")}
+    except Exception:
+        return {}
+
 
 
 def reconcile_persisted_feedback_handoff(implementation: ModuleType, feedback_id: int) -> bool:
