@@ -625,7 +625,16 @@ def _guidance_cards(question: str, page: str = "", limit: int = 3) -> list[dict]
     scored.sort(key=lambda item: (-item[0], item[1]))
     if scored:
         best_score = scored[0][0]
-        chosen = [card for score, _, card in scored if score == best_score][:limit]
+        # Specific multi-word intents must win over generic cards on score ties.
+        max_keyword_len = max(
+            max((len(kw) for kw in card["keywords"] if kw.lower() in text), default=0)
+            for score, _, card in scored if score == best_score
+        )
+        chosen = [
+            card for score, _, card in scored
+            if score == best_score
+            and max((len(kw) for kw in card["keywords"] if kw.lower() in text), default=0) == max_keyword_len
+        ][:limit]
     else:
         chosen = [card for card in _GUIDANCE_CARDS if card["key"] in ("current_teaching", "student_profile", "feedback")]
     return [
