@@ -862,6 +862,30 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 status_detail = {}
             status_refs.append({"sourceId": int(row.id), "statusToken": str(status_detail.get("transferToken") or "")})
         freeman_status = _freeman_feedback_status(status_refs)
+        # Backfill pre-status-loop feedback cards lazily. Existing cards imported
+        # before Freeman learned status-token hashes would otherwise return no
+        # operator reply even though Freeman had already replied to the user.
+        missing_ids = [int(row.id) for row in rows if str(int(row.id)) not in freeman_status]
+        if missing_ids:
+            refreshed_refs = []
+            now = datetime.utcnow()
+            for row in rows:
+                if int(row.id) not in missing_ids:
+                    continue
+                try:
+                    status_detail = json.loads(row.detail or "{}")
+                except (ValueError, TypeError):
+                    status_detail = {}
+                proof_token = secrets.token_urlsafe(24)
+                status_detail["transferToken"] = proof_token
+                status_detail["transferTokenAt"] = now.isoformat() + "Z"
+                row.detail = json.dumps(status_detail, ensure_ascii=False)
+                refreshed_refs.append({"sourceId": int(row.id), "statusToken": proof_token})
+            if refreshed_refs:
+                db.commit()
+                for ref in refreshed_refs:
+                    _post_feedback_import(ref["statusToken"], int(ref["sourceId"]))
+                freeman_status.update(_freeman_feedback_status(refreshed_refs))
         records = []
         for row in rows:
             detail = {}
