@@ -550,6 +550,13 @@ def _role_learning_context(
 
 _GUIDANCE_CARDS = (
     {
+        "key": "homework_create",
+        "title": "组卷作业",
+        "description": "进入组卷与作业工具，新建题目后布置给当前班级或课程。",
+        "path": "/v1/tool?page=papers",
+        "keywords": ("布置作业", "新建作业", "发布作业", "作业在哪里", "组卷作业", "组卷"),
+    },
+    {
         "key": "current_teaching",
         "title": "当前教学",
         "description": "查看正在进行的班级、作业与课堂，从这里开始今天的教学。",
@@ -618,7 +625,16 @@ def _guidance_cards(question: str, page: str = "", limit: int = 3) -> list[dict]
     scored.sort(key=lambda item: (-item[0], item[1]))
     if scored:
         best_score = scored[0][0]
-        chosen = [card for score, _, card in scored if score == best_score][:limit]
+        # Specific multi-word intents must win over generic cards on score ties.
+        max_keyword_len = max(
+            max((len(kw) for kw in card["keywords"] if kw.lower() in text), default=0)
+            for score, _, card in scored if score == best_score
+        )
+        chosen = [
+            card for score, _, card in scored
+            if score == best_score
+            and max((len(kw) for kw in card["keywords"] if kw.lower() in text), default=0) == max_keyword_len
+        ][:limit]
     else:
         chosen = [card for card in _GUIDANCE_CARDS if card["key"] in ("current_teaching", "student_profile", "feedback")]
     return [
