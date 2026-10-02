@@ -946,9 +946,6 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
         if str(remote.get("status") or "") == "resolved":
             raise HTTPException(409, "反馈已验收，请提交新反馈")
-        remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
-        if str(remote.get("status") or "") == "resolved":
-            raise HTTPException(409, "反馈已验收，请提交新反馈")
         follow_ups = list(detail.get("followUps") or [])
         now = datetime.utcnow()
         follow_up = {
@@ -1004,12 +1001,6 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             detail = json.loads(row.detail or "{}")
         except (ValueError, TypeError):
             detail = {}
-        remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
-        remote_status = str(remote.get("status") or "")
-        if remote_status == "resolved":
-            raise HTTPException(409, "反馈已验收，请提交新反馈")
-        if remote_status != "awaiting_acceptance":
-            raise HTTPException(409, "当前反馈尚未进入待确认状态")
         remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
         remote_status = str(remote.get("status") or "")
         if remote_status == "resolved":
