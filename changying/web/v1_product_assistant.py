@@ -849,6 +849,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         rows = db.scalars(audit_query.order_by(audit.id.desc()).limit(100)).all()
         reward_rows = db.execute(reward_query).all()
         reward_by_audit = {int(r[0]): (int(r[1] or 0), str(r[2])) for r in reward_rows}
+        freeman_status = _freeman_feedback_status([int(row.id) for row in rows])
         records = []
         for row in rows:
             detail = {}
@@ -858,14 +859,32 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 detail = {}
             points, reward_status = reward_by_audit.get(int(row.id), (0, "pending"))
             acknowledged = bool(detail.get("acknowledged"))
-            receipt = str(detail.get("receipt") or "")
+            remote = freeman_status.get(str(int(row.id)), {})
+            remote_status = str(remote.get("status") or "")
+            operator_reply = str(remote.get("operatorReply") or "")
+            terminal_accepted = remote_status == "resolved"
+            waiting_confirmation = remote_status == "awaiting_acceptance"
+            status_label = (
+                "已验收" if terminal_accepted else
+                ("已处理 · 待你确认" if waiting_confirmation else
+                 ("处理中" if remote_status in ("selected", "processing", "needs_attention") else
+                  ("待处理" if remote_status == "new" else
+                   ("已取用" if reward_status == "granted" else ("待处理" if reward_status == "pending" else "已收到")))))
+            )
+            receipt = operator_reply or str(detail.get("receipt") or "")
             if not receipt:
-                receipt = "已查收（满意）" if acknowledged else "已收到，等待处理回执"
+                receipt = "反馈已验收；如有新问题请提交新反馈" if terminal_accepted else ("反馈已处理，请确认是否达到预期" if waiting_confirmation else "已收到，等待处理回执")
             submitted_user = db.get(implementation.User, row.user_id) if getattr(row, "user_id", None) else None
+            own = int(getattr(row, "user_id", 0) or 0) == int(user.id)
             records.append({
                 "id": int(row.id),
                 "submittedBy": str(getattr(submitted_user, "name", "") or getattr(submitted_user, "username", "") or ""),
-                "canFollowUp": int(getattr(row, "user_id", 0) or 0) == int(user.id),
+                "canFollowUp": own and not terminal_accepted,
+                "canConfirm": own and waiting_confirmation and str((remote.get("userDecision") or {}).get("status") or "") != "confirmed",
+                "terminalAccepted": terminal_accepted,
+                "freemanStatus": remote_status,
+                "operatorReply": operator_reply,
+                "userDecision": remote.get("userDecision"),
                 "category": str(detail.get("category") or "其他反馈"),
                 "message": str(detail.get("message") or ""),
                 "page": str(detail.get("page") or ""),
@@ -873,7 +892,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "receipt": receipt,
                 "rewardPoints": points,
                 "rewardStatus": reward_status,
-                "statusLabel": "已取用" if reward_status == "granted" else ("待处理" if reward_status == "pending" else "已收到"),
+                "statusLabel": status_label,
                 "acknowledged": acknowledged,
                 "followUps": list(detail.get("followUps") or []),
                 "issueNumber": detail.get("issue_number"),
