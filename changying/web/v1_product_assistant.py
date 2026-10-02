@@ -1124,7 +1124,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             audit_row.detail = json.dumps(persisted, ensure_ascii=False)
             db.commit()
 
-        synced = _post_feedback_import(proof_token, int(row.id))
+        synced = _post_feedback_import(proof_token, int(audit_row.id))
         return {"ok": True, "received": True, "freemanSynced": synced}
 
     @router.get("/v1/product-feedback/history", include_in_schema=False)
