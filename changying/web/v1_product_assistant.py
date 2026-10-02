@@ -651,6 +651,41 @@ _GUIDANCE_CARDS = (
 )
 
 
+def _feedback_acceptance_path(detail: dict) -> str:
+    """Choose the product surface the user should actually inspect.
+
+    Feedback is commonly submitted from the assistant workspace, so using the
+    raw submission page would send every acceptance check back to the generic
+    workspace/new-user flow. Keep a concrete non-workspace source page, but
+    resolve workspace-origin feedback by the feedback text to a specific
+    product surface. When no specific surface can be inferred, return to the
+    feedback records rather than the tutorial.
+    """
+    source_page = str(detail.get("page") or "").strip()
+    if source_page.startswith("/") and not source_page.startswith("/v1/workspace"):
+        return source_page[:240]
+
+    text_parts = [str(detail.get("message") or "")]
+    for followup in list(detail.get("followUps") or []):
+        if isinstance(followup, dict):
+            text_parts.append(str(followup.get("message") or ""))
+    text = " ".join(text_parts).lower()
+
+    candidates = []
+    for index, card in enumerate(_GUIDANCE_CARDS):
+        if card["key"] in ("feedback", "current_teaching"):
+            continue
+        score = sum(1 for kw in card["keywords"] if kw.lower() in text)
+        if score:
+            longest = max((len(kw) for kw in card["keywords"] if kw.lower() in text), default=0)
+            candidates.append((score, longest, -index, card["path"]))
+    if candidates:
+        candidates.sort(reverse=True)
+        return str(candidates[0][3])
+
+    return "/v1/workspace?tab=feedback-records"
+
+
 # 反馈 #314：功能咨询应返回可点击的精准导航卡片；不是把所有功能卡片堆给用户。
 FEATURE_NAVIGATION_CARD_MARKER = "changying_v1_precise_feature_navigation_card_v1"
 
@@ -944,7 +979,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "category": str(detail.get("category") or "其他反馈"),
                 "message": str(detail.get("message") or ""),
                 "page": str(detail.get("page") or ""),
-                "acceptanceUrl": str(detail.get("page") or "/v1"),
+                "acceptanceUrl": _feedback_acceptance_path(detail),
                 "createdAt": row.created_at.isoformat() if getattr(row, "created_at", None) else "",
                 "receipt": receipt,
                 "rewardPoints": points,
