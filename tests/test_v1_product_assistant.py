@@ -650,3 +650,13 @@ def test_feedback_314_targeted_practice_question_returns_only_best_matching_card
     cards = _guidance_cards("怎么做针对性练习？", "/v1")
     assert [card["key"] for card in cards] == ["targeted_practice"]
     assert cards[0]["path"] == "/v1/practice"
+
+
+def test_feedback_314_homework_question_returns_direct_assignment_card():
+    cards = _guidance_cards("布置作业在哪里？", "/v1")
+    assert cards == [{
+        "key": "homework_create",
+        "title": "组卷作业",
+        "description": "进入组卷与作业工具，新建题目后布置给当前班级或课程。",
+        "path": "/v1/tool?page=papers",
+    }]
