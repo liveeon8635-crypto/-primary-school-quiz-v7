@@ -1824,7 +1824,7 @@ _ASSISTANT_SNIPPET = r'''
     try{url=new URL(raw,location.origin)}catch{return '/v1'}
     if(url.origin!==location.origin)return '/v1';
     url.searchParams.set('cy_feedback_review',String(record?.id||''));
-    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records');
+    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(record?.id||'')));
     return url.pathname+url.search+url.hash;
   };
   const mountFeedbackReviewReturn=()=>{
@@ -1833,7 +1833,7 @@ _ASSISTANT_SNIPPET = r'''
     if(!reviewId||!returnTo||document.getElementById('cy-feedback-review-return'))return;
     const bar=document.createElement('div');bar.id='cy-feedback-review-return';
     bar.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:2147483000;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #bfd2f4;border-radius:14px;background:#fff;box-shadow:0 10px 30px rgba(16,24,40,.18)';
-    bar.innerHTML='<span style="font-size:12px;font-weight:800;color:#173a78">正在验收反馈 #'+escapeHtml(reviewId)+'</span><a href="'+escapeHtml(returnTo)+'" style="text-decoration:none;background:#173a78;color:#fff;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800">返回反馈记录</a>';
+    bar.innerHTML='<span style="font-size:12px;font-weight:800;color:#173a78">请在当前页面验收反馈 #'+escapeHtml(reviewId)+'</span><a href="'+escapeHtml(returnTo)+'" style="text-decoration:none;background:#173a78;color:#fff;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800">验收完成，返回反馈记录</a>';
     document.body.appendChild(bar);
   };
   mountFeedbackReviewReturn();
@@ -1848,12 +1848,15 @@ _ASSISTANT_SNIPPET = r'''
       const head='<div class="cy-pa-history-item"><b>反馈奖励</b><small>已采纳 '+Number(summary.adoptedFeedbackCount||0)+' 条 · 待处理 '+Number(summary.pendingFeedbackCount||0)+' 条 · 已获得 '+Number(summary.earnedPoints||0)+' 分</small></div>';
       box.innerHTML=head+(items.length?items.map(x=>{
         const id=Number(x.id),canFollow=x.canFollowUp===true,canConfirm=x.canConfirm===true,accepted=x.terminalAccepted===true,confirmed=x.userDecision?.status==='confirmed';
-        const reviewHref=x.canConfirm===true?feedbackReviewHref(x):'';
-        const receipt=x.receipt?'<small><b>处理回执：</b>'+escapeHtml(x.receipt)+(reviewHref?' · <a class="cy-pa-review-link" href="'+escapeHtml(reviewHref)+'">已处理 · 去验收</a>':'')+'</small>':'';
+        const reviewedId=new URLSearchParams(location.search).get('reviewed');
+        const reviewed=String(reviewedId||'')===String(id);
+        const reviewHref=canConfirm?feedbackReviewHref(x):'';
+        const receipt=x.receipt?'<small><b>处理回执：</b>'+escapeHtml(x.receipt)+'</small>':'';
         const terminal=accepted?'<small>该反馈已验收。如有新的问题或需求，请提交一条新反馈。</small>':'';
         const actions=accepted?'':('<div class="cy-pa-history-actions">'+
-          (canFollow?'<button type="button" data-pa-followup-toggle="'+id+'">追加反馈</button>':'')+
-          (canConfirm?'<button class="btn primary" type="button" data-pa-confirm-feedback="'+id+'">确认已达预期</button>':'')+
+          (canConfirm&&!reviewed?'<a class="btn primary cy-pa-review-link" href="'+escapeHtml(reviewHref)+'">已处理 · 点击去验收</a>':'')+
+          (reviewed&&canFollow?'<button type="button" data-pa-followup-toggle="'+id+'">追加反馈</button>':'')+
+          (reviewed&&canConfirm?'<button class="btn primary" type="button" data-pa-confirm-feedback="'+id+'">确认已达预期</button>':'')+
           (confirmed?'<span class="cy-pa-note">你已确认达到预期，等待最终验收。</span>':'')+
           '</div>');
         const followForm=canFollow?'<div data-pa-followup-form="'+id+'" hidden><textarea maxlength="1200" data-pa-followup-text="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><label class="cy-pa-attachment">📷 添加照片 <input type="file" accept="image/jpeg,image/png,image/webp" data-pa-followup-photo="'+id+'"></label><button class="btn primary" type="button" data-pa-followup-submit="'+id+'">提交追加反馈</button></div>':'';
