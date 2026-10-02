@@ -1,3 +1,4 @@
+from pathlib import Path
 import base64
 import hashlib
 
@@ -663,3 +664,14 @@ def test_feedback_314_homework_question_returns_direct_assignment_card():
         "description": "进入组卷与作业工具，新建题目后布置给当前班级或课程。",
         "path": "/v1/tool?page=papers",
     }]
+
+
+def test_feedback_user_confirmation_loop_is_wired_end_to_end():
+    source = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    assert "FREEMAN_FEEDBACK_STATUS_URL" in source
+    assert 'remote_status == "awaiting_acceptance"' in source
+    assert '"userDecision": {"status": "confirmed"' in source
+    assert "反馈已验收，请提交新反馈" in source
+    assert "data-pa-confirm-feedback" in source
+    assert "确认已达预期" in source
+    assert "该反馈已验收。如有新的问题或需求，请提交一条新反馈。" in source

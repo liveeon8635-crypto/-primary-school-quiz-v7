@@ -60,7 +60,21 @@ def test_feedback_center_backend_round_trip(monkeypatch):
 
     app.dependency_overrides[implementation.current_user] = lambda: user
     app.dependency_overrides[implementation.get_db] = db_override
-    monkeypatch.setattr(assistant.requests, "post", lambda *args, **kwargs: Mock(ok=True))
+    freeman_state = {"status": "", "operatorReply": "", "userDecision": None}
+    def fake_post(url, *args, **kwargs):
+        if url == assistant.FREEMAN_FEEDBACK_STATUS_URL:
+            refs = (kwargs.get("json") or {}).get("refs") or []
+            items = []
+            if freeman_state["status"] and refs:
+                items = [{
+                    "sourceId": str(refs[0]["sourceId"]),
+                    "status": freeman_state["status"],
+                    "operatorReply": freeman_state["operatorReply"],
+                    "userDecision": freeman_state["userDecision"],
+                }]
+            return Mock(ok=True, status_code=200, json=lambda: {"items": items})
+        return Mock(ok=True, status_code=201)
+    monkeypatch.setattr(assistant.requests, "post", fake_post)
 
     try:
         client = TestClient(app)
@@ -101,20 +115,26 @@ def test_feedback_center_backend_round_trip(monkeypatch):
         assert follow_up.status_code == 200
         assert follow_up.json()["followUps"][-1]["message"] == "补充：希望手机端也能直接进入"
 
+        freeman_state.update({
+            "status": "awaiting_acceptance",
+            "operatorReply": "反馈已处理，请确认是否达到预期。",
+        })
         acknowledged = client.post(
             f"{FEEDBACK_MINE_PATH}/{record['id']}/acknowledge",
         )
         assert acknowledged.status_code == 200
         assert acknowledged.json()["acknowledged"] is True
-        assert "确认满意" in acknowledged.json()["receipt"]
+        assert "达到预期" in acknowledged.json()["receipt"]
+        freeman_state["userDecision"] = {"status": "confirmed", "at": "2026-10-02T15:00:00Z"}
 
         refreshed = client.get(FEEDBACK_MINE_PATH)
         assert refreshed.status_code == 200
         item = refreshed.json()["records"][0]
-        assert item["statusLabel"] == "已取用"
+        assert item["statusLabel"] == "已处理 · 待你确认"
         assert item["rewardPoints"] == 1
         assert item["acknowledged"] is True
-        assert "确认满意" in item["receipt"]
+        assert item["operatorReply"] == "反馈已处理，请确认是否达到预期。"
+        assert item["userDecision"]["status"] == "confirmed"
         assert item["followUps"][-1]["message"] == "补充：希望手机端也能直接进入"
     finally:
         app.dependency_overrides.pop(implementation.current_user, None)

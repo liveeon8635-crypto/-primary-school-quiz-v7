@@ -120,6 +120,7 @@ FEEDBACK_RECORDS_FULL_FEATURES = (
     "follow_up",
 )
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
+FREEMAN_FEEDBACK_STATUS_URL = "https://freeman-agent.onrender.com/api/project-feedback/status"
 FEEDBACK_PROOF_TTL_MINUTES = 15
 FEEDBACK_ATTACHMENT_MAX_BYTES = 1_000_000
 FEEDBACK_GITHUB_REPO = "liveeon8635-crypto/-primary-school-quiz-v7"
@@ -140,6 +141,25 @@ def _post_feedback_import(proof_token: str, feedback_id: int | None = None) -> b
             _logger.warning("freeman_feedback_sync_retry feedback_id=%s attempt=%s error=%s", feedback_id, attempt, type(exc).__name__)
     _logger.error("freeman_feedback_sync_failed feedback_id=%s status=%s", feedback_id, last_status)
     return False
+
+def _freeman_feedback_status(refs: list[dict]) -> dict[str, dict]:
+    safe_refs=[]
+    for ref in refs[:100]:
+        source_id=str(ref.get("sourceId") or "").strip()
+        token=str(ref.get("statusToken") or "").strip()
+        if source_id.isdigit() and 24 <= len(token) <= 96:
+            safe_refs.append({"sourceId": source_id, "statusToken": token})
+    if not safe_refs:
+        return {}
+    try:
+        response=requests.post(FREEMAN_FEEDBACK_STATUS_URL,json={"projectId":"longying","refs":safe_refs},timeout=4)
+        if response.status_code != 200:
+            return {}
+        payload=response.json()
+        return {str(item.get("sourceId")):item for item in list(payload.get("items") or []) if item.get("sourceId")}
+    except Exception:
+        return {}
+
 
 
 def reconcile_persisted_feedback_handoff(implementation: ModuleType, feedback_id: int) -> bool:
@@ -834,6 +854,14 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         rows = db.scalars(audit_query.order_by(audit.id.desc()).limit(100)).all()
         reward_rows = db.execute(reward_query).all()
         reward_by_audit = {int(r[0]): (int(r[1] or 0), str(r[2])) for r in reward_rows}
+        status_refs = []
+        for row in rows:
+            try:
+                status_detail = json.loads(row.detail or "{}")
+            except (ValueError, TypeError):
+                status_detail = {}
+            status_refs.append({"sourceId": int(row.id), "statusToken": str(status_detail.get("transferToken") or "")})
+        freeman_status = _freeman_feedback_status(status_refs)
         records = []
         for row in rows:
             detail = {}
@@ -843,14 +871,32 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 detail = {}
             points, reward_status = reward_by_audit.get(int(row.id), (0, "pending"))
             acknowledged = bool(detail.get("acknowledged"))
-            receipt = str(detail.get("receipt") or "")
+            remote = freeman_status.get(str(int(row.id)), {})
+            remote_status = str(remote.get("status") or "")
+            operator_reply = str(remote.get("operatorReply") or "")
+            terminal_accepted = remote_status == "resolved"
+            waiting_confirmation = remote_status == "awaiting_acceptance"
+            status_label = (
+                "已验收" if terminal_accepted else
+                ("已处理 · 待你确认" if waiting_confirmation else
+                 ("处理中" if remote_status in ("selected", "processing", "needs_attention") else
+                  ("待处理" if remote_status == "new" else
+                   ("已取用" if reward_status == "granted" else ("待处理" if reward_status == "pending" else "已收到")))))
+            )
+            receipt = operator_reply or str(detail.get("receipt") or "")
             if not receipt:
-                receipt = "已查收（满意）" if acknowledged else "已收到，等待处理回执"
+                receipt = "反馈已验收；如有新问题请提交新反馈" if terminal_accepted else ("反馈已处理，请确认是否达到预期" if waiting_confirmation else "已收到，等待处理回执")
             submitted_user = db.get(implementation.User, row.user_id) if getattr(row, "user_id", None) else None
+            own = int(getattr(row, "user_id", 0) or 0) == int(user.id)
             records.append({
                 "id": int(row.id),
                 "submittedBy": str(getattr(submitted_user, "name", "") or getattr(submitted_user, "username", "") or ""),
-                "canFollowUp": int(getattr(row, "user_id", 0) or 0) == int(user.id),
+                "canFollowUp": own and not terminal_accepted,
+                "canConfirm": own and waiting_confirmation and str((remote.get("userDecision") or {}).get("status") or "") != "confirmed",
+                "terminalAccepted": terminal_accepted,
+                "freemanStatus": remote_status,
+                "operatorReply": operator_reply,
+                "userDecision": remote.get("userDecision"),
                 "category": str(detail.get("category") or "其他反馈"),
                 "message": str(detail.get("message") or ""),
                 "page": str(detail.get("page") or ""),
@@ -858,7 +904,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 "receipt": receipt,
                 "rewardPoints": points,
                 "rewardStatus": reward_status,
-                "statusLabel": "已取用" if reward_status == "granted" else ("待处理" if reward_status == "pending" else "已收到"),
+                "statusLabel": status_label,
                 "acknowledged": acknowledged,
                 "followUps": list(detail.get("followUps") or []),
                 "issueNumber": detail.get("issue_number"),
@@ -897,6 +943,9 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             detail = json.loads(row.detail or "{}")
         except (ValueError, TypeError):
             detail = {}
+        remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
+        if str(remote.get("status") or "") == "resolved":
+            raise HTTPException(409, "反馈已验收，请提交新反馈")
         follow_ups = list(detail.get("followUps") or [])
         now = datetime.utcnow()
         follow_up = {
@@ -946,22 +995,41 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
         user=Depends(implementation.current_user),
         db=Depends(implementation.get_db),
     ):
-        """由反馈提交者确认已查收当前处理结果。"""
+        """由反馈提交者确认当前处理结果已达到预期，并同步给 Freeman 等待最终验收。"""
         row = _owned_feedback(db, user, feedback_id)
         try:
             detail = json.loads(row.detail or "{}")
         except (ValueError, TypeError):
             detail = {}
-        detail["acknowledged"] = True
-        detail["receipt"] = "用户已查收并确认满意"
-        detail["acknowledgedAt"] = datetime.utcnow().isoformat()
+        remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
+        remote_status = str(remote.get("status") or "")
+        if remote_status == "resolved":
+            raise HTTPException(409, "反馈已验收，请提交新反馈")
+        if remote_status != "awaiting_acceptance":
+            raise HTTPException(409, "当前反馈尚未进入待确认状态")
+        now = datetime.utcnow()
+        revision = int(detail.get("revision") or 1) + 1
+        proof_token = secrets.token_urlsafe(24)
+        detail.update({
+            "acknowledged": True,
+            "receipt": "用户已确认达到预期，等待最终验收",
+            "acknowledgedAt": now.isoformat() + "Z",
+            "userDecision": {"status": "confirmed", "at": now.isoformat() + "Z"},
+            "revision": revision,
+            "updatedAt": now.isoformat() + "Z",
+            "transferToken": proof_token,
+            "transferTokenAt": now.isoformat() + "Z",
+        })
         row.detail = json.dumps(detail, ensure_ascii=False)
         db.commit()
+        synced = _post_feedback_import(proof_token, int(row.id))
         return {
             "ok": True,
             "id": int(row.id),
             "acknowledged": True,
             "receipt": detail["receipt"],
+            "revision": revision,
+            "freemanSynced": synced,
         }
 
     @router.post(FEEDBACK_MINE_PATH + "/{feedback_id}/reject", include_in_schema=False)
@@ -977,6 +1045,12 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             detail = json.loads(row.detail or "{}")
         except (ValueError, TypeError):
             detail = {}
+        remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
+        if str(remote.get("status") or "") == "resolved":
+            raise HTTPException(409, "反馈已验收，请提交新反馈")
+        remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
+        if str(remote.get("status") or "") == "resolved":
+            raise HTTPException(409, "反馈已验收，请提交新反馈")
         now = datetime.utcnow()
         revision = int(detail.get("revision") or 1) + 1
         message = body.message.strip()
@@ -1373,6 +1447,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             "tutorialStep": str(payload.get("tutorialStep") or "")[:200],
             "attachment": ({k: attachment_payload.get(k) for k in ("name", "type", "size", "sha256")} if attachment_payload else None),
             "followUps": follow_ups,
+            "userDecision": payload.get("userDecision"),
         }
         content_hash = hashlib.sha256(
             json.dumps(hash_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -1708,16 +1783,29 @@ _ASSISTANT_SNIPPET = r'''
       const summary=data.rewardSummary||{},items=Array.isArray(data.records)?data.records:[];
       const head='<div class="cy-pa-history-item"><b>反馈奖励</b><small>已采纳 '+Number(summary.adoptedFeedbackCount||0)+' 条 · 待处理 '+Number(summary.pendingFeedbackCount||0)+' 条 · 已获得 '+Number(summary.earnedPoints||0)+' 分</small></div>';
       box.innerHTML=head+(items.length?items.map(x=>{
-        const id=Number(x.id),own=x.canFollowUp!==false;
-        return '<div class="cy-pa-history-item" data-pa-history-id="'+id+'"><b>'+escapeHtml(x.category||'产品反馈')+' · '+escapeHtml(x.statusLabel||'已收到')+'</b><small>'+escapeHtml(x.message||'')+'</small><small>'+escapeHtml(x.createdAt||'')+(x.rewardPoints?' · 奖励 '+Number(x.rewardPoints)+' 分':'')+'</small>'+
-          (own?'<div class="cy-pa-history-actions"><button type="button" data-pa-followup-toggle="'+id+'">追加反馈</button></div><div data-pa-followup-form="'+id+'" hidden><textarea maxlength="1200" data-pa-followup-text="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><label class="cy-pa-attachment">📷 添加照片 <input type="file" accept="image/jpeg,image/png,image/webp" data-pa-followup-photo="'+id+'"></label><button class="btn primary" type="button" data-pa-followup-submit="'+id+'">提交追加反馈</button></div>':'')+
-          '</div>';
+        const id=Number(x.id),canFollow=x.canFollowUp===true,canConfirm=x.canConfirm===true,accepted=x.terminalAccepted===true,confirmed=x.userDecision?.status==='confirmed';
+        const receipt=x.receipt?'<small><b>处理回执：</b>'+escapeHtml(x.receipt)+'</small>':'';
+        const terminal=accepted?'<small>该反馈已验收。如有新的问题或需求，请提交一条新反馈。</small>':'';
+        const actions=accepted?'':('<div class="cy-pa-history-actions">'+
+          (canFollow?'<button type="button" data-pa-followup-toggle="'+id+'">追加反馈</button>':'')+
+          (canConfirm?'<button class="btn primary" type="button" data-pa-confirm-feedback="'+id+'">确认已达预期</button>':'')+
+          (confirmed?'<span class="cy-pa-note">你已确认达到预期，等待最终验收。</span>':'')+
+          '</div>');
+        const followForm=canFollow?'<div data-pa-followup-form="'+id+'" hidden><textarea maxlength="1200" data-pa-followup-text="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><label class="cy-pa-attachment">📷 添加照片 <input type="file" accept="image/jpeg,image/png,image/webp" data-pa-followup-photo="'+id+'"></label><button class="btn primary" type="button" data-pa-followup-submit="'+id+'">提交追加反馈</button></div>':'';
+        return '<div class="cy-pa-history-item" data-pa-history-id="'+id+'"><b>'+escapeHtml(x.category||'产品反馈')+' · '+escapeHtml(x.statusLabel||'已收到')+'</b><small>'+escapeHtml(x.message||'')+'</small>'+receipt+'<small>'+escapeHtml(x.createdAt||'')+(x.rewardPoints?' · 奖励 '+Number(x.rewardPoints)+' 分':'')+'</small>'+terminal+actions+followForm+'</div>';
       }).join(''):'<div class="cy-pa-note">还没有提交过反馈。</div>');
     }catch(err){box.innerHTML='<div class="cy-pa-note">反馈记录读取失败：'+escapeHtml(err.message||'请稍后重试')+'</div>'}
   }
   document.getElementById('cy-pa-history')?.addEventListener('click',async event=>{
     const toggle=event.target.closest('[data-pa-followup-toggle]');
     if(toggle){const form=document.querySelector('[data-pa-followup-form="'+toggle.dataset.paFollowupToggle+'"]');if(form)form.hidden=!form.hidden;return}
+    const confirm=event.target.closest('[data-pa-confirm-feedback]');
+    if(confirm){
+      confirm.disabled=true;
+      try{await postJson('/v1/product-feedback/mine/'+confirm.dataset.paConfirmFeedback+'/acknowledge',{});await loadFeedbackHistory()}
+      catch(err){confirm.disabled=false;alert(err.message||'确认失败')}
+      return;
+    }
     const submit=event.target.closest('[data-pa-followup-submit]');
     if(!submit)return;
     const id=submit.dataset.paFollowupSubmit;
