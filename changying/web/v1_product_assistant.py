@@ -682,13 +682,13 @@ def _feedback_acceptance_path(detail: dict) -> str:
     # as “学生”, “作业”, or “功能”; otherwise a feedback sentence about the
     # assistant can be misrouted to Student Profile merely because it mentions
     # students while describing assistant navigation behavior.
+    if any(term in text for term in ("反馈记录", "追加反馈", "反馈回执", "反馈中心")):
+        return "/v1/workspace?tab=feedback-records"
     if any(term in text for term in (
         "产品助手", "助手", "关联卡片", "导航卡片", "功能卡片",
         "产品引导", "问产品", "智能助手",
     )):
         return "/v1/workspace?tab=ask"
-    if any(term in text for term in ("反馈记录", "追加反馈", "反馈回执", "反馈中心")):
-        return "/v1/workspace?tab=feedback-records"
 
     candidates = []
     for index, card in enumerate(_GUIDANCE_CARDS):
