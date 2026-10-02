@@ -614,3 +614,38 @@ def test_product_assistant_image_failure_does_not_claim_to_see_it(monkeypatch):
 ])
 def test_assistant_image_failure_reason_excludes_provider_detail(error, reason):
     assert _image_failure_reason(error) == reason
+
+
+def test_feedback_314_precise_navigation_cards_are_returned_and_clickable(monkeypatch):
+    import app_v924 as implementation
+
+    def fake_ai(*args, **kwargs):
+        return "可以从对应功能入口直接进入。"
+
+    monkeypatch.setattr(implementation, "_ai_call", fake_ai)
+    app.dependency_overrides[implementation.current_user] = lambda: SimpleNamespace(
+        id=42, school_id=7, role="teacher"
+    )
+    app.dependency_overrides[implementation.get_db] = lambda: None
+    try:
+        response = TestClient(app).post(QUERY_PATH, json={"question": "我的反馈记录在哪里？", "page": "/v1"})
+        assert response.status_code == 200
+        cards = response.json()["cards"]
+        assert cards == [{
+            "key": "feedback_records",
+            "title": "我的反馈记录",
+            "description": "查看反馈处理进度、回执和奖励记录",
+            "path": "/v1/workspace?tab=feedback-records",
+        }]
+        html = rendered_v1()
+        assert "Array.isArray(data.cards)&&data.cards.length?data.cards" in html
+        assert "href=\"'+escapeHtml(g.href)+'\"" in html
+    finally:
+        app.dependency_overrides.pop(implementation.current_user, None)
+        app.dependency_overrides.pop(implementation.get_db, None)
+
+
+def test_feedback_314_targeted_practice_question_returns_only_best_matching_card():
+    cards = _guidance_cards("怎么做针对性练习？", "/v1")
+    assert [card["key"] for card in cards] == ["targeted_practice"]
+    assert cards[0]["path"] == "/v1/practice"
