@@ -939,13 +939,16 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
     ):
         """向当前用户自己的已有反馈追加说明。"""
         row = _owned_feedback(db, user, feedback_id)
-        remote = _freeman_feedback_status([feedback_id]).get(str(feedback_id), {})
-        if str(remote.get("status") or "") == "resolved":
-            raise HTTPException(409, "反馈已验收，请提交新反馈")
         try:
             detail = json.loads(row.detail or "{}")
         except (ValueError, TypeError):
             detail = {}
+        remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
+        if str(remote.get("status") or "") == "resolved":
+            raise HTTPException(409, "反馈已验收，请提交新反馈")
+        remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
+        if str(remote.get("status") or "") == "resolved":
+            raise HTTPException(409, "反馈已验收，请提交新反馈")
         follow_ups = list(detail.get("followUps") or [])
         now = datetime.utcnow()
         follow_up = {
@@ -997,16 +1000,22 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
     ):
         """由反馈提交者确认当前处理结果已达到预期，并同步给 Freeman 等待最终验收。"""
         row = _owned_feedback(db, user, feedback_id)
-        remote = _freeman_feedback_status([feedback_id]).get(str(feedback_id), {})
+        try:
+            detail = json.loads(row.detail or "{}")
+        except (ValueError, TypeError):
+            detail = {}
+        remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
         remote_status = str(remote.get("status") or "")
         if remote_status == "resolved":
             raise HTTPException(409, "反馈已验收，请提交新反馈")
         if remote_status != "awaiting_acceptance":
             raise HTTPException(409, "当前反馈尚未进入待确认状态")
-        try:
-            detail = json.loads(row.detail or "{}")
-        except (ValueError, TypeError):
-            detail = {}
+        remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
+        remote_status = str(remote.get("status") or "")
+        if remote_status == "resolved":
+            raise HTTPException(409, "反馈已验收，请提交新反馈")
+        if remote_status != "awaiting_acceptance":
+            raise HTTPException(409, "当前反馈尚未进入待确认状态")
         now = datetime.utcnow()
         revision = int(detail.get("revision") or 1) + 1
         proof_token = secrets.token_urlsafe(24)
@@ -1041,13 +1050,16 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
     ):
         """驳回当前处理结果，并把原因作为追加反馈重新同步到 Freeman。"""
         row = _owned_feedback(db, user, feedback_id)
-        remote = _freeman_feedback_status([feedback_id]).get(str(feedback_id), {})
-        if str(remote.get("status") or "") == "resolved":
-            raise HTTPException(409, "反馈已验收，请提交新反馈")
         try:
             detail = json.loads(row.detail or "{}")
         except (ValueError, TypeError):
             detail = {}
+        remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
+        if str(remote.get("status") or "") == "resolved":
+            raise HTTPException(409, "反馈已验收，请提交新反馈")
+        remote = _freeman_feedback_status([{"sourceId": feedback_id, "statusToken": str(detail.get("transferToken") or "")}]).get(str(feedback_id), {})
+        if str(remote.get("status") or "") == "resolved":
+            raise HTTPException(409, "反馈已验收，请提交新反馈")
         now = datetime.utcnow()
         revision = int(detail.get("revision") or 1) + 1
         message = body.message.strip()
