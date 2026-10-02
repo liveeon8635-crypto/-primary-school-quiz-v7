@@ -22,6 +22,7 @@ from changying.web.v1_product_assistant import (
     _decode_feedback_attachment,
     _decode_assistant_image,
     _image_failure_reason,
+    _guidance_cards,
     _PRODUCT_CONTEXT,
     _active_question_context,
     _clean_assistant_reply,
@@ -146,8 +147,8 @@ def test_product_assistant_visual_guides_follow_reply_context():
 
     assert 'id="cy-pa-guide-grid"' in html
     assert "const GUIDE_SETS={" in html
-    assert "const renderGuideGrid=text=>" in html
-    assert "renderGuideGrid(text+' '+reply)" in html
+    assert "const renderGuideGrid=input=>" in html
+    assert "Array.isArray(data.cards)&&data.cards.length?data.cards:text+' '+reply" in html
     assert "renderGuideGrid()" in html
     assert 'data-pa-guide="' in html
     assert 'role="img"' in html
@@ -164,8 +165,8 @@ def test_product_assistant_visual_guides_are_not_empty_placeholder_markup():
 
     assert ".cy-pa-guide-card" in html
     assert ".cy-pa-guide-visual" in html
-    assert "guideCandidates(text)" in html
-    assert "grid.innerHTML=guideCandidates(text).map" in html
+    assert "guideCandidates(input)" in html
+    assert "grid.innerHTML=guides.map" in html
     assert "当前班级、课程、学生与待办" in html
     assert "连续学情、作业、错题与时间线" in html
     assert "孩子作业" in html
@@ -634,7 +635,7 @@ def test_feedback_314_precise_navigation_cards_are_returned_and_clickable(monkey
         assert cards == [{
             "key": "feedback_records",
             "title": "我的反馈记录",
-            "description": "查看反馈处理进度、回执和奖励记录",
+            "description": "查看我提交过的每条反馈、处理回执与反馈奖励分状态。",
             "path": "/v1/workspace?tab=feedback-records",
         }]
         html = rendered_v1()
