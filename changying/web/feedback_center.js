@@ -30,7 +30,7 @@
     let url;try{url=new URL(raw,location.origin)}catch{return '/v1'}
     if(url.origin!==location.origin)return '/v1';
     url.searchParams.set('cy_feedback_review',String(record&&record.id||''));
-    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(record&&record.id||'')));
+    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(record&&record.id||''))+'&focus='+encodeURIComponent(String(record&&record.id||'')));
     return url.pathname+url.search+url.hash;
   };
 
