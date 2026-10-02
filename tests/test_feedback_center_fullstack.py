@@ -183,3 +183,12 @@ def test_admin_feedback_records_are_school_scoped_but_actions_remain_owner_only(
     assert "提交人：" in frontend
     assert 'data-cy-fc-reward="' in frontend
     assert "追加反馈（" in frontend
+
+
+def test_feedback_mine_backfills_status_token_for_pre_loop_feedback(monkeypatch):
+    from pathlib import Path
+    source = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    assert "Backfill pre-status-loop feedback cards lazily" in source
+    assert 'missing_ids = [int(row.id) for row in rows if str(int(row.id)) not in freeman_status]' in source
+    assert '_post_feedback_import(ref["statusToken"], int(ref["sourceId"]))' in source
+    assert 'freeman_status.update(_freeman_feedback_status(refreshed_refs))' in source
