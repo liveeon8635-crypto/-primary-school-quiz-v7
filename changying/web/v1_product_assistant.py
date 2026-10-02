@@ -1207,6 +1207,18 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
             raise HTTPException(409, "反馈补偿同步未成功")
         return {"ok": True, "feedbackId": feedback_id, "freemanSynced": True}
 
+    @router.on_event("startup")
+    def reconcile_known_dropped_feedback_on_startup():
+        # One-time bounded recovery for feedback #314, whose persisted revision
+        # predates durable handoff retries. Re-import is revision-idempotent.
+        db = next(implementation.get_db())
+        try:
+            _reconcile_feedback_handoff(db, 314)
+        except Exception as exc:
+            _logger.warning("freeman_feedback_startup_reconcile_failed feedback_id=314 error=%s", type(exc).__name__)
+        finally:
+            db.close()
+
     @router.get(FEEDBACK_PROOF_PREFIX + "/{proof_token}/attachment", include_in_schema=False)
     def product_feedback_attachment_download(proof_token: str, db=Depends(implementation.get_db)):
         token = str(proof_token or "").strip()

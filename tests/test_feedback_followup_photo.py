@@ -41,3 +41,10 @@ def test_feedback_reconciliation_is_admin_gated_and_rotates_proof_token():
     assert 'detail["transferTokenAt"] = now.isoformat() + "Z"' in backend
     assert '_post_feedback_import(proof_token, int(row.id))' in backend
     assert '"freemanSynced": True' in backend
+
+
+def test_feedback_314_is_reconciled_on_startup_without_browser_action():
+    backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    assert 'reconcile_known_dropped_feedback_on_startup' in backend
+    assert '_reconcile_feedback_handoff(db, 314)' in backend
+    assert 'freeman_feedback_startup_reconcile_failed feedback_id=314' in backend
