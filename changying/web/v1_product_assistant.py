@@ -604,6 +604,21 @@ _GUIDANCE_CARDS = (
 )
 
 
+# 反馈 #314：用户询问长缨网站功能时，助手应提供与该功能相关的全部导航卡片，
+# 而不是只给前 3 张。该标记用于前端与回归测试确认“功能导航卡片全量返回”已生效。
+FEATURE_NAVIGATION_ALL_CARDS_MARKER = "changying_v1_feature_navigation_all_cards_v1"
+FEATURE_NAVIGATION_INTENT_KEYWORDS = (
+    "功能", "怎么用", "如何使用", "在哪里", "入口", "导航", "卡片", "页面",
+    "长缨", "网站", "有哪些", "全部", "所有", "相关", "介绍",
+)
+
+
+def _is_feature_navigation_question(question: str, page: str = "") -> bool:
+    """判断用户是否在询问长缨网站功能/入口，需要返回相关导航卡片。"""
+    text = f"{question or ''} {page or ''}"
+    return any(kw in text for kw in FEATURE_NAVIGATION_INTENT_KEYWORDS)
+
+
 def _guidance_cards(question: str, page: str = "", limit: int = 3) -> list[dict]:
     text = f"{question or ''} {page or ''}".lower()
     scored: list[tuple[int, dict]] = []
@@ -612,9 +627,16 @@ def _guidance_cards(question: str, page: str = "", limit: int = 3) -> list[dict]
         if score:
             scored.append((score, card))
     scored.sort(key=lambda item: item[0], reverse=True)
-    chosen = [card for _, card in scored[:limit]]
-    if not chosen:
-        chosen = [card for card in _GUIDANCE_CARDS if card["key"] in ("current_teaching", "student_profile", "feedback")]
+    # 反馈 #314：询问长缨网站功能时，返回与该功能相关的全部导航卡片，
+    # 不再截断为前 3 张，确保用户能看到所有相关入口。
+    if _is_feature_navigation_question(question, page):
+        chosen = [card for _, card in scored]
+        if not chosen:
+            chosen = list(_GUIDANCE_CARDS)
+    else:
+        chosen = [card for _, card in scored[:limit]]
+        if not chosen:
+            chosen = [card for card in _GUIDANCE_CARDS if card["key"] in ("current_teaching", "student_profile", "feedback")]
     return [
         {"key": c["key"], "title": c["title"], "description": c["description"], "path": c["path"]}
         for c in chosen
