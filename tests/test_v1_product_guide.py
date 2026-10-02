@@ -146,3 +146,11 @@ def test_product_guide_inline_script_parses_in_node(tmp_path):
         check=False,
     )
     assert checked.returncode == 0, checked.stderr
+
+
+def test_feedback_acceptance_bypasses_first_login_onboarding_overlay():
+    from pathlib import Path
+    source = Path("changying/web/v1_product_guide.py").read_text(encoding="utf-8")
+    assert "params.get('cy_feedback_review')" in source
+    assert "params.get('reviewed')" in source
+    assert "if(feedbackReview)return;" in source
