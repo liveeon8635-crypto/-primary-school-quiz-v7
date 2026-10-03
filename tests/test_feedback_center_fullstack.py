@@ -310,3 +310,12 @@ def test_review_bar_routes_failed_acceptance_into_exact_followup_form():
     assert "data-pa-followup-form" in source
     assert "form.hidden=false" in source
     assert "input?.focus()" in source
+
+
+def test_feedback_309_reward_acceptance_ignores_unrelated_student_source_page():
+    from changying.web.v1_product_assistant import _feedback_acceptance_path
+    assert _feedback_acceptance_path({
+        "page": "/v1/student?id=10",
+        "message": "每提交一条反馈，被取用后对应增加1个反馈奖励分，可用于兑换账号时长，具体兑换比例后续确定",
+        "followUps": [],
+    }) == "/v1/workspace?tab=feedback-records"
