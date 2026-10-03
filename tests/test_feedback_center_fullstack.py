@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select, update
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -99,14 +99,21 @@ def test_feedback_center_backend_round_trip(monkeypatch):
         assert record["receipt"] == "已收到，等待处理回执"
         assert record["acknowledged"] is False
 
+        freeman_state.update({
+            "status": "selected",
+            "operatorReply": "反馈已取用，正在处理。",
+        })
+        adopted = client.get(FEEDBACK_MINE_PATH)
+        assert adopted.status_code == 200
+        adopted_payload = adopted.json()
+        adopted_record = adopted_payload["records"][0]
+        assert adopted_record["rewardStatus"] == "granted"
+        assert adopted_record["rewardPoints"] == 1
+        assert adopted_payload["rewardSummary"]["earnedPoints"] == 1
         with session_factory() as db:
             reward = db.execute(select(reward_table)).mappings().one()
-            db.execute(
-                update(reward_table)
-                .where(reward_table.c.id == reward["id"])
-                .values(status="granted")
-            )
-            db.commit()
+            assert reward["status"] == "granted"
+            assert reward["points"] == 1
 
         follow_up = client.post(
             f"{FEEDBACK_MINE_PATH}/{record['id']}/follow-up",
