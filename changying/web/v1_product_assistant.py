@@ -144,6 +144,13 @@ def unified_feedback_records_contract() -> dict:
         "recordsShowStatus": ("取用", "回执", "奖励分"),
         "followUpImageUpload": True,
         "followUpEndpoint": FEEDBACK_PATH + "/{feedback_id}/follow-up",
+        # 反馈 #320 追加反馈 #1：助手内“我要反馈”下拉必须直接列出反馈记录，
+        # 每条记录可查看取用/回执/奖励分状态，并可对单条记录追加反馈（含图片上传）。
+        "recordsDropdownEndpoint": FEEDBACK_MINE_PATH,
+        "followUpAttachmentField": "attachment_data",
+        "followUpAttachmentMaxBytes": FEEDBACK_ATTACHMENT_MAX_BYTES,
+        "followUpAttachmentTypes": ("image/jpeg", "image/png", "image/webp"),
+        "recordsListedOnSubmitClick": True,
     }
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
 FREEMAN_FEEDBACK_STATUS_URL = "https://freeman-agent.onrender.com/api/project-feedback/status"
