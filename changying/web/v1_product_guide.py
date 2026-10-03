@@ -97,6 +97,12 @@ _GUIDE_SNIPPET = r'''
   const sessionShownFor=()=>sessionStorage.getItem(SESSION_SHOWN_KEY)||'';
   const markSessionShown=id=>sessionStorage.setItem(SESSION_SHOWN_KEY,id||'');
   const clearSessionShown=()=>sessionStorage.removeItem(SESSION_SHOWN_KEY);
+  const hasAuthToken=()=>Boolean(
+    sessionStorage.getItem('v717Token')||
+    localStorage.getItem('v717Token')||
+    sessionStorage.getItem('v6Token')||
+    localStorage.getItem('v6Token')
+  );
   const identityReady=()=>Boolean(identityButton&&identityButton.hidden===false&&currentPersonaId());
 
 
@@ -152,7 +158,11 @@ _GUIDE_SNIPPET = r'''
       tab==='feedback'
     );
     if(tutorialButton)tutorialButton.hidden=!ready;
-    if(!ready){if(!feedbackReview)clearSessionShown();return}
+    // Route changes briefly hide/reset identity controls while auth is still
+    // valid. Do not treat that transient loading state as a logout, otherwise
+    // every internal navigation can clear the session marker and relaunch the
+    // first-login tutorial. Clear only after auth itself is actually gone.
+    if(!ready){if(!hasAuthToken())clearSessionShown();return}
     if(location.pathname==='/v1/guide'){renderPersistentGuide();return}
     // Feedback acceptance/return is a focused product-validation flow. Never
     // cover it with first-login teaching, including standalone-page fallbacks.
