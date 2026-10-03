@@ -134,18 +134,24 @@ def ensure_student_practice_catalog(
     # 明细仍为空，导致晚托布置作业时无法选择知识模块。这里在教材已确定但模块为空时，
     # 主动补入该教材的标准题并重新取一次模块明细，保证教师始终能看到可用的知识模块。
     if not catalog and resolved_textbook and subject_value:
-        try:
-            ensure_built_in_questions(grade_value, subject_value)
-        except Exception:
-            pass
-        try:
-            catalog = potential_question_catalog(
-                grade=grade_value,
-                subject=subject_value,
-                textbook=resolved_textbook,
-            )
-        except Exception:
-            catalog = []
+        # 反馈 #310：教材已确定但知识模块明细为空时，先按学生年级补题；
+        # 若仍为空，再按该教材实际所属年级补题，避免“淦云凡”“翁舒言”
+        # 这类学生因年级/教材不一致而始终看不到知识模块练习明细。
+        for module_grade in (grade_value, 5, 4, 3, 6, 2, 1):
+            try:
+                ensure_built_in_questions(module_grade, subject_value)
+            except Exception:
+                pass
+            try:
+                catalog = potential_question_catalog(
+                    grade=module_grade,
+                    subject=subject_value,
+                    textbook=resolved_textbook,
+                )
+            except Exception:
+                catalog = []
+            if catalog:
+                break
     for item in catalog or []:
         knowledge = str(item.get("knowledge") or "").strip()
         if not knowledge:
