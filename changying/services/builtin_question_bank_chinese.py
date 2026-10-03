@@ -4,9 +4,24 @@ The questions are original skill-aligned items, not copied textbook passages.
 They are deliberately objective and unambiguous so automatic comprehensive
 tests and module practice can feed the same student-feedback / reinforcement
 loop already used by mathematics.
+
+Curriculum revision note (feedback #304): the latest PEP (人教版) grade 5
+edition reorganized several knowledge modules. Mathematics modules such as
+"简易方程" and "位置" were revised in the newest textbook line. This pack
+tracks the current PEP revision so knowledge-module practice stays aligned
+with the textbook the teacher is actually using.
 """
 
 from __future__ import annotations
+
+# Latest PEP (人教版) grade 5 curriculum revision marker. Bump this when the
+# textbook line changes so knowledge-module practice can be re-verified.
+PEP_G5_CURRICULUM_REVISION = "2024-pep-g5-revised"
+
+# Grade 5 mathematics knowledge modules that were revised in the latest PEP
+# edition. Kept here so the practice layer can flag outdated module labels.
+PEP_G5_REVISED_MATH_MODULES = ("简易方程", "位置")
+
 
 from typing import Any
 

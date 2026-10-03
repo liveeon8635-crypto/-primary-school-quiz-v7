@@ -134,19 +134,33 @@ def resolve_student_practice_catalog(
             subject=subject_value,
             textbook=selected_textbook,
         )
+        # 反馈 #304：人教版（2024 修订）五年级数学调整了单元编排，历史题库中
+        # 可能同时存在旧版单元名（如“简易方程”“位置”）与新版单元名
+        # （如“用字母表示数”“用数对确定位置”）。这里按对齐后的最新模块名
+        # 合并计数，保证“知识模块练习”下拉框只展示最新人教版模块名，
+        # 且同一模块的题量不会因新旧名称并存而被拆分或重复展示。
+        merged: dict[str, dict[str, Any]] = {}
         for item in catalog or []:
             knowledge = str(item.get("knowledge") or "").strip()
             if not knowledge:
                 continue
-            modules.append(
-                {
-                    "knowledge": normalize_knowledge_module(
-                        grade_value, subject_value, knowledge
-                    ),
-                    "unit": str(item.get("unit") or "").strip(),
-                    "count": int(item.get("count") or 0),
-                }
+            normalized_knowledge = normalize_knowledge_module(
+                grade_value, subject_value, knowledge
             )
+            unit = str(item.get("unit") or "").strip()
+            count = int(item.get("count") or 0)
+            existing = merged.get(normalized_knowledge)
+            if existing is None:
+                merged[normalized_knowledge] = {
+                    "knowledge": normalized_knowledge,
+                    "unit": unit,
+                    "count": count,
+                }
+            else:
+                existing["count"] = int(existing.get("count") or 0) + count
+                if not existing.get("unit") and unit:
+                    existing["unit"] = unit
+        modules = list(merged.values())
     return textbooks, selected_textbook, modules, int(available_count or 0)
 
 
