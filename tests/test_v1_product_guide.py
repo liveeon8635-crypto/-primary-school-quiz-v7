@@ -115,7 +115,7 @@ def test_onboarding_reacts_to_post_login_identity_selection_and_shows_once_per_s
     script = tutorial_script(html)
 
     assert "SESSION_SHOWN_KEY='cyV1RoleTutorialShownThisLoginV7'" in script
-    assert "if(!ready){clearSessionShown();return}" in script
+    assert "if(!ready){if(!feedbackReview)clearSessionShown();return}" in script
     assert "if(sessionShownFor()!==persona.id)" in script
     assert "markSessionShown(persona.id)" in script
     assert "identityObserver.observe(identityButton" in script
@@ -154,5 +154,8 @@ def test_feedback_acceptance_bypasses_first_login_onboarding_overlay():
     assert "params.get('cy_feedback_review')" in source
     assert "params.get('reviewed')" in source
     assert "params.get('from')==='feedback'" in source
-    assert "params.get('tab')==='feedback-records'" in source
-    assert "if(feedbackReview)return;" in source
+    assert "tab==='feedback-records'" in source
+    assert "tab==='feedback'" in source
+    assert "params.get('focus')" in source
+    assert "if(!ready){if(!feedbackReview)clearSessionShown();return}" in source
+    assert "if(feedbackReview){markSessionShown(persona.id);return}" in source

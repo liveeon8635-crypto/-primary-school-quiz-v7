@@ -142,13 +142,21 @@ _GUIDE_SNIPPET = r'''
   function sync(){
     const ready=identityReady(),persona=currentPersona();
     const params=new URLSearchParams(location.search);
-    const feedbackReview=Boolean(params.get('cy_feedback_review')||params.get('reviewed')||params.get('from')==='feedback'||params.get('tab')==='feedback-records');
+    const tab=String(params.get('tab')||'');
+    const feedbackReview=Boolean(
+      params.get('cy_feedback_review')||
+      params.get('reviewed')||
+      params.get('focus')||
+      params.get('from')==='feedback'||
+      tab==='feedback-records'||
+      tab==='feedback'
+    );
     if(tutorialButton)tutorialButton.hidden=!ready;
-    if(!ready){clearSessionShown();return}
+    if(!ready){if(!feedbackReview)clearSessionShown();return}
     if(location.pathname==='/v1/guide'){renderPersistentGuide();return}
-    // Feedback acceptance is a focused product-validation flow. Never cover
-    // the target page or the return-to-records page with first-login teaching.
-    if(feedbackReview)return;
+    // Feedback acceptance/return is a focused product-validation flow. Never
+    // cover it with first-login teaching, including standalone-page fallbacks.
+    if(feedbackReview){markSessionShown(persona.id);return}
     if(sessionShownFor()!==persona.id){
       markSessionShown(persona.id);
       showCurrentIntro({firstVisit:true});

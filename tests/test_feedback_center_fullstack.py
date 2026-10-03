@@ -345,7 +345,7 @@ def test_feedback_review_returns_to_assistant_history_with_exact_record_focus():
     from pathlib import Path
     backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
     center = Path("changying/web/feedback_center.js").read_text(encoding="utf-8")
-    expected = "/v1/workspace?tab=feedback-records&reviewed="
+    expected = "/v1/workspace?tab=feedback-records&from=feedback&reviewed="
     assert expected in backend
     assert expected in center
     assert "cy-feedback-back-records" in backend
@@ -362,3 +362,10 @@ def test_feedback_page_workspace_return_does_not_reenter_tutorial_flow():
     assert 'href="/v1/workspace?from=feedback"' in html
     assert "cyFeedbackWorkspace.href='/v1/workspace?from=feedback'" in html
     assert "reviewed='+encodeURIComponent(cyFeedbackId)" in html
+
+
+def test_standalone_feedback_fallback_keeps_feedback_origin_marker():
+    from pathlib import Path
+    center = Path("changying/web/feedback_center.js").read_text(encoding="utf-8")
+    assert "location.href='/v1/workspace?tab=feedback&from=feedback'" in center
+    assert "/v1/workspace?tab=feedback-records&from=feedback&reviewed=" in center
