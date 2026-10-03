@@ -152,7 +152,10 @@ _GUIDE_SNIPPET = r'''
       tab==='feedback'
     );
     if(tutorialButton)tutorialButton.hidden=!ready;
-    if(!ready){if(!feedbackReview)clearSessionShown();return}
+    // Route changes briefly hide/reset identity controls while auth is still
+    // valid. Never clear the per-login marker from this transient UI state.
+    // Explicit logout clears it together with V1 auth storage.
+    if(!ready)return
     if(location.pathname==='/v1/guide'){renderPersistentGuide();return}
     // Feedback acceptance/return is a focused product-validation flow. Never
     // cover it with first-login teaching, including standalone-page fallbacks.
