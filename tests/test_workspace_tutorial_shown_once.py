@@ -1,20 +1,23 @@
-"""反馈 #323 回归测试：/v1/workspace 新手指引只弹一次，点击卡片不再重复弹出。"""
+"""Feedback #323: card/internal navigation must not reopen the first-login guide."""
 
-from changying.web import v1_product_assistant as assistant
+from fastapi.testclient import TestClient
 
-
-def test_workspace_tutorial_contract_marker():
-    contract = assistant.workspace_tutorial_contract()
-    assert contract["marker"] == "changying_v1_workspace_tutorial_shown_once_v1"
+from app import app
 
 
-def test_workspace_tutorial_shows_once():
-    contract = assistant.workspace_tutorial_contract()
-    assert contract["showOnce"] is True
-    assert contract["page"] == "/v1/workspace"
+def test_workspace_tutorial_auto_open_is_once_per_login():
+    response = TestClient(app).get("/v1/workspace")
+    assert response.status_code == 200
+    html = response.text
+    assert "const shouldAutoOpenTutorial=" in html
+    assert "shownFor!==personaId" in html
+    assert "shouldAutoOpenTutorial(ready,persona.id,feedbackReview,sessionShownFor())" in html
 
 
-def test_workspace_tutorial_suppressed_on_card_click():
-    contract = assistant.workspace_tutorial_contract()
-    assert contract["suppressOnCardClick"] is True
-    assert contract["storageKey"] == "changying_v1_workspace_tutorial_seen"
+def test_internal_route_loading_does_not_clear_tutorial_marker():
+    response = TestClient(app).get("/v1/workspace")
+    assert response.status_code == 200
+    html = response.text
+    assert "if(!ready)return" in html
+    assert "clearSessionShown();return" not in html
+    assert "cyV1RoleTutorialShownThisLoginV7" in html
