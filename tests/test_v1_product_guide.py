@@ -115,7 +115,7 @@ def test_onboarding_reacts_to_post_login_identity_selection_and_shows_once_per_s
     script = tutorial_script(html)
 
     assert "SESSION_SHOWN_KEY='cyV1RoleTutorialShownThisLoginV7'" in script
-    assert "if(!ready){clearSessionShown();return}" in script
+    assert "if(!ready){if(!feedbackReview)clearSessionShown();return}" in script
     assert "if(sessionShownFor()!==persona.id)" in script
     assert "markSessionShown(persona.id)" in script
     assert "identityObserver.observe(identityButton" in script
