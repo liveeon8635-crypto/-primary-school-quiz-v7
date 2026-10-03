@@ -1893,8 +1893,10 @@ _ASSISTANT_SNIPPET = r'''
     const reviewId=params.get('cy_feedback_review'),returnTo=params.get('cy_feedback_return');
     if(!reviewId||!returnTo||document.getElementById('cy-feedback-review-return'))return;
     const bar=document.createElement('div');bar.id='cy-feedback-review-return';
-    bar.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:2147483000;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #bfd2f4;border-radius:14px;background:#fff;box-shadow:0 10px 30px rgba(16,24,40,.18)';
-    bar.innerHTML='<span style="font-size:12px;font-weight:800;color:#173a78">请在当前页面验收反馈 #'+escapeHtml(reviewId)+'</span><a href="'+escapeHtml(returnTo)+'" style="text-decoration:none;background:#173a78;color:#fff;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800">验收完成，返回反馈记录</a>';
+    let failTo=returnTo;
+    try{const u=new URL(returnTo,location.origin);u.searchParams.set('followup',String(reviewId));failTo=u.pathname+u.search+u.hash}catch{}
+    bar.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:2147483000;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px 12px;border:1px solid #bfd2f4;border-radius:14px;background:#fff;box-shadow:0 10px 30px rgba(16,24,40,.18)';
+    bar.innerHTML='<span style="font-size:12px;font-weight:800;color:#173a78;flex:1 1 100%">请在当前页面验收反馈 #'+escapeHtml(reviewId)+'</span><a href="'+escapeHtml(failTo)+'" style="text-decoration:none;background:#fff;color:#a33;border:1px solid #e2b8b8;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800">未通过 · 追加反馈</a><a href="'+escapeHtml(returnTo)+'" style="text-decoration:none;background:#173a78;color:#fff;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800">验收完成 · 返回</a>';
     document.body.appendChild(bar);
   };
   mountFeedbackReviewReturn();
@@ -1923,7 +1925,7 @@ _ASSISTANT_SNIPPET = r'''
         const followForm=canFollow?'<div data-pa-followup-form="'+id+'" hidden><textarea maxlength="1200" data-pa-followup-text="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><label class="cy-pa-attachment">📷 添加照片 <input type="file" accept="image/jpeg,image/png,image/webp" data-pa-followup-photo="'+id+'"></label><button class="btn primary" type="button" data-pa-followup-submit="'+id+'">提交追加反馈</button></div>':'';
         return '<div class="cy-pa-history-item" data-pa-history-id="'+id+'"><b>'+escapeHtml(x.category||'产品反馈')+' · '+escapeHtml(x.statusLabel||'已收到')+'</b><small>'+escapeHtml(x.message||'')+'</small>'+receipt+'<small>'+escapeHtml(x.createdAt||'')+(x.rewardPoints?' · 奖励 '+Number(x.rewardPoints)+' 分':'')+'</small>'+terminal+actions+followForm+'</div>';
       }).join(''):'<div class="cy-pa-note">还没有提交过反馈。</div>');
-      const focusId=new URLSearchParams(location.search).get('focus');
+      const params=new URLSearchParams(location.search),focusId=params.get('focus'),followupId=params.get('followup');
       if(focusId){
         const target=box.querySelector('[data-pa-history-id="'+CSS.escape(String(focusId))+'"]');
         if(target){
@@ -1932,6 +1934,11 @@ _ASSISTANT_SNIPPET = r'''
           target.scrollIntoView({behavior:'smooth',block:'center'});
           setTimeout(()=>{target.style.outline='';target.style.outlineOffset=''},2600);
         }
+      }
+      if(followupId){
+        const form=box.querySelector('[data-pa-followup-form="'+CSS.escape(String(followupId))+'"]');
+        const input=box.querySelector('[data-pa-followup-text="'+CSS.escape(String(followupId))+'"]');
+        if(form){form.hidden=false;setTimeout(()=>input?.focus(),80)}
       }
     }catch(err){box.innerHTML='<div class="cy-pa-note">反馈记录读取失败：'+escapeHtml(err.message||'请稍后重试')+'</div>'}
   }
