@@ -369,3 +369,11 @@ def test_standalone_feedback_fallback_keeps_feedback_origin_marker():
     center = Path("changying/web/feedback_center.js").read_text(encoding="utf-8")
     assert "location.href='/v1/workspace?tab=feedback&from=feedback'" in center
     assert "/v1/workspace?tab=feedback-records&from=feedback&reviewed=" in center
+
+
+def test_feedback_review_bar_reserves_mobile_space_for_underlying_actions():
+    from pathlib import Path
+    source = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    assert "--cy-feedback-review-clearance" in source
+    assert "getBoundingClientRect().height" in source
+    assert "requestAnimationFrame(syncReviewClearance)" in source

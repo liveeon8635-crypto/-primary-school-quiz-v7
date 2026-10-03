@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from changying.web.v1 import v1_html
 from changying.web.v1_student_practice import (
     V1_STUDENT_PRACTICE_MARKER,
-    ensure_student_practice_catalog,
+    resolve_student_practice_catalog,
     patch_v1_student_practice_html,
     select_student_practice_questions,
 )
@@ -299,6 +299,8 @@ def test_student_practice_patch_is_idempotent_and_exposes_both_modes():
     assert "状态：已布置 · " in once
     assert "cy-ai-assign-box" in once
     assert "bottom:calc(8px + env(safe-area-inset-bottom))" in once
+    assert "--cy-feedback-review-clearance" in once
+    assert "scroll-padding-bottom" in once
     assert "function dueDefault(){const d=new Date();d.setDate(d.getDate()+7);" in once
     assert "return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())" in once
     assert "if(btn.disabled)return" in once
@@ -422,34 +424,31 @@ def test_auto_practice_server_fallback_uses_school_local_date():
     assert "datetime.utcnow() + timedelta(days=7)" not in source
 
 
-def test_practice_catalog_falls_back_to_usable_subject_material_when_requested_grade_is_empty(monkeypatch):
-    import changying.web.v1_student_practice as module
+def test_practice_catalog_uses_existing_school_textbook_for_unregistered_grade():
+    rows = [
+        q(1, "10以内加法", textbook="人教版"),
+        q(2, "10以内减法", textbook="人教版"),
+    ]
 
-    seeded = []
-    def fake_ensure(grade, subject):
-        seeded.append((grade, subject))
-
-    def fake_textbooks(grade, subject):
-        if subject == "语文" and grade == 5:
-            return ["统编版（人民教育出版社）"]
-        return []
-
-    def fake_catalog(*, grade, subject, textbook):
-        if grade == 5 and subject == "语文" and textbook == "统编版（人民教育出版社）":
-            return [{"unit": "第一单元", "knowledge": "字音辨析", "count": 8}]
-        return []
-
-    monkeypatch.setattr(module, "ensure_built_in_questions", fake_ensure)
-    monkeypatch.setattr(module, "built_in_textbooks", fake_textbooks)
-    monkeypatch.setattr(module, "potential_question_catalog", fake_catalog)
-
-    textbooks, modules = ensure_student_practice_catalog(
-        grade=4,
-        subject="语文",
+    textbooks, selected, modules, total = resolve_student_practice_catalog(
+        rows,
+        grade=1,
+        subject="数学",
         textbook="",
     )
 
-    assert textbooks == ["统编版（人民教育出版社）"]
-    assert modules == [{"knowledge": "字音辨析", "unit": "第一单元", "count": 8}]
-    assert (4, "语文") in seeded
-    assert (5, "语文") in seeded
+    assert textbooks == ["人教版"]
+    assert selected == "人教版"
+    assert total == 2
+    assert {item["knowledge"] for item in modules} == {"10以内加法", "10以内减法"}
+
+
+def test_practice_options_route_uses_real_bank_catalog_and_unregistered_textbook_guard():
+    import inspect
+    import changying.web.v1_student_practice as module
+
+    source = inspect.getsource(module.install_v1_student_practice_routes)
+    assert "resolve_student_practice_catalog(" in source
+    assert "Question.textbook == textbook" in source
+    assert "if allowed_textbooks:" in source
+    assert "bank_textbook_exists = db.scalar(" in source
