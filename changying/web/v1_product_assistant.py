@@ -2058,7 +2058,7 @@ _ASSISTANT_SNIPPET = r'''
     try{url=new URL(raw,location.origin)}catch{return '/v1'}
     if(url.origin!==location.origin)return '/v1';
     url.searchParams.set('cy_feedback_review',String(record?.id||''));
-    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(record?.id||''))+'&focus='+encodeURIComponent(String(record?.id||'')));
+    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&from=feedback&reviewed='+encodeURIComponent(String(record?.id||''))+'&focus='+encodeURIComponent(String(record?.id||'')));
     return url.pathname+url.search+url.hash;
   };
   const repairFeedbackReviewTarget=async()=>{
@@ -2077,7 +2077,7 @@ _ASSISTANT_SNIPPET = r'''
       const sameTarget=current.pathname===target.pathname&&current.search===target.search&&current.hash===target.hash;
       if(sameTarget)return false;
       target.searchParams.set('cy_feedback_review',String(reviewId));
-      target.searchParams.set('cy_feedback_return',params.get('cy_feedback_return')||('/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(reviewId))+'&focus='+encodeURIComponent(String(reviewId))));
+      target.searchParams.set('cy_feedback_return',params.get('cy_feedback_return')||('/v1/workspace?tab=feedback-records&from=feedback&reviewed='+encodeURIComponent(String(reviewId))+'&focus='+encodeURIComponent(String(reviewId))));
       location.replace(target.pathname+target.search+target.hash);
       return true;
     }catch(_){return false}
@@ -2216,10 +2216,11 @@ _ASSISTANT_SNIPPET = r'''
   document.querySelectorAll('[data-pa-tab]').forEach(x=>x.onclick=()=>{setTab(x.dataset.paTab);closeFeedbackMenu()});
   document.addEventListener('click',event=>{if(!event.target.closest('.cy-pa-feedback-menu'))closeFeedbackMenu()});
   const initialAssistantTab=new URLSearchParams(location.search).get('tab');
-  let initialAssistantRoutePending=initialAssistantTab==='feedback-records'||initialAssistantTab==='ask';
+  let initialAssistantRoutePending=initialAssistantTab==='feedback-records'||initialAssistantTab==='feedback'||initialAssistantTab==='ask';
   const openInitialAssistantRoute=()=>{
     if(!initialAssistantRoutePending||!identityReady())return false;
     if(initialAssistantTab==='feedback-records')setTab('records');
+    else if(initialAssistantTab==='feedback')setTab('feedback');
     else if(initialAssistantTab==='ask')setTab('ask');
     panel.hidden=false;fab.hidden=true;initialAssistantRoutePending=false;
     return true;
