@@ -160,13 +160,39 @@ def ensure_student_practice_catalog(
                 catalog = []
             if catalog:
                 break
+    # 反馈 #310：部分学生（如“淦云凡”“翁舒言”）在晚托布置作业时既没有可用教材，
+    # 也没有“知识模块练习”明细。上面的回退已尽量补齐教材与模块；这里再做一次
+    # 兜底：只要教材已确定但模块仍为空，就按该教材所属年级补入标准题并重新取模块，
+    # 同时按知识模块名去重，保证教师始终能看到可用的知识模块练习明细。
+    if not catalog and resolved_textbook and subject_value:
+        for module_grade in (grade_value, 5, 4, 3, 6, 2, 1):
+            try:
+                ensure_built_in_questions(module_grade, subject_value)
+            except Exception:
+                pass
+            try:
+                catalog = potential_question_catalog(
+                    grade=module_grade,
+                    subject=subject_value,
+                    textbook=resolved_textbook,
+                )
+            except Exception:
+                catalog = []
+            if catalog:
+                break
+
+    seen_modules: set[str] = set()
     for item in catalog or []:
         knowledge = str(item.get("knowledge") or "").strip()
         if not knowledge:
             continue
+        normalized = normalize_knowledge_module(grade_value, subject_value, knowledge)
+        if normalized in seen_modules:
+            continue
+        seen_modules.add(normalized)
         modules.append(
             {
-                "knowledge": normalize_knowledge_module(grade_value, subject_value, knowledge),
+                "knowledge": normalized,
                 "unit": str(item.get("unit") or "").strip(),
                 "count": int(item.get("count") or 0),
             }
