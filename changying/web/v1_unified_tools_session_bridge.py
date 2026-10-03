@@ -42,6 +42,25 @@ def select_test_data_records(records) -> list:
     return [r for r in records if is_test_data_record(r)]
 
 
+def build_test_data_cleanup_plan(records) -> dict:
+    """Build a reversible cleanup plan for pre-launch test/demo data.
+
+    Feedback #306: teachers need to clear test data before formal use.
+    This never deletes real student history: only records explicitly
+    flagged as test/demo are eligible, and the plan is returned for
+    review before any destructive action is taken.
+    """
+    eligible = select_test_data_records(records)
+    return {
+        "marker": V1_TEST_DATA_CLEANUP_MARKER,
+        "eligibleCount": len(eligible),
+        "eligibleIds": [
+            r.get("id") for r in eligible if isinstance(r, dict) and r.get("id") is not None
+        ],
+        "reversible": True,
+    }
+
+
 def patch_unified_tool_session_bridge(html: str) -> str:
     if V1_UNIFIED_SESSION_BRIDGE_MARKER in html:
         return html
