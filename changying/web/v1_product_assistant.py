@@ -122,6 +122,38 @@ FEEDBACK_RECORDS_FULL_FEATURES = (
 )
 
 
+def feedback_records_dropdown_payload(records: list[dict] | None = None) -> dict:
+    """反馈 #320 追加反馈 #1：助手内“我要反馈”下拉直接展示反馈记录。
+
+    返回下拉所需的记录列表与状态字段（取用/回执/奖励分），并声明追加反馈
+    支持图片上传。该函数是前端下拉与回归测试的唯一契约来源。
+    """
+    items = []
+    for row in list(records or []):
+        if not isinstance(row, dict):
+            continue
+        items.append({
+            "feedbackId": row.get("feedbackId") or row.get("id"),
+            "message": str(row.get("message") or "")[:200],
+            "status": str(row.get("status") or "已提交"),
+            "receipt": str(row.get("receipt") or ""),
+            "rewardPoints": int(row.get("rewardPoints") or 0),
+            "followUpCount": int(row.get("followUpCount") or 0),
+            "followUpEndpoint": FEEDBACK_PATH + "/{feedback_id}/follow-up",
+            "followUpAttachmentField": "attachment_data",
+            "followUpAttachmentTypes": ("image/jpeg", "image/png", "image/webp"),
+            "followUpAttachmentMaxBytes": FEEDBACK_ATTACHMENT_MAX_BYTES,
+        })
+    return {
+        "marker": UNIFIED_FEEDBACK_RECORDS_MARKER,
+        "recordsEndpoint": FEEDBACK_MINE_PATH,
+        "recordsListedInDropdown": True,
+        "recordsShowStatus": ("取用", "回执", "奖励分"),
+        "followUpImageUpload": True,
+        "items": items,
+    }
+
+
 def unified_feedback_records_contract() -> dict:
     """反馈 #321/#322：助手内唯一反馈记录入口的对外契约。
 
