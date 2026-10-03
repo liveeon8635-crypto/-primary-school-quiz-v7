@@ -153,4 +153,6 @@ def test_feedback_acceptance_bypasses_first_login_onboarding_overlay():
     source = Path("changying/web/v1_product_guide.py").read_text(encoding="utf-8")
     assert "params.get('cy_feedback_review')" in source
     assert "params.get('reviewed')" in source
+    assert "params.get('from')==='feedback'" in source
+    assert "params.get('tab')==='feedback-records'" in source
     assert "if(feedbackReview)return;" in source
