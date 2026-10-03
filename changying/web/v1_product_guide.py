@@ -98,6 +98,9 @@ _GUIDE_SNIPPET = r'''
   const markSessionShown=id=>sessionStorage.setItem(SESSION_SHOWN_KEY,id||'');
   const clearSessionShown=()=>sessionStorage.removeItem(SESSION_SHOWN_KEY);
   const identityReady=()=>Boolean(identityButton&&identityButton.hidden===false&&currentPersonaId());
+  const shouldAutoOpenTutorial=(ready,personaId,feedbackReview,shownFor)=>Boolean(
+    ready&&personaId&&!feedbackReview&&shownFor!==personaId
+  );
 
 
   function closeOverlay(){document.getElementById('cy-onboarding-overlay')?.remove()}
@@ -160,7 +163,7 @@ _GUIDE_SNIPPET = r'''
     // Feedback acceptance/return is a focused product-validation flow. Never
     // cover it with first-login teaching, including standalone-page fallbacks.
     if(feedbackReview){markSessionShown(persona.id);return}
-    if(sessionShownFor()!==persona.id){
+    if(shouldAutoOpenTutorial(ready,persona.id,feedbackReview,sessionShownFor())){
       markSessionShown(persona.id);
       showCurrentIntro({firstVisit:true});
     }
