@@ -98,6 +98,9 @@ _GUIDE_SNIPPET = r'''
   const markSessionShown=id=>sessionStorage.setItem(SESSION_SHOWN_KEY,id||'');
   const clearSessionShown=()=>sessionStorage.removeItem(SESSION_SHOWN_KEY);
   const identityReady=()=>Boolean(identityButton&&identityButton.hidden===false&&currentPersonaId());
+  const shouldAutoOpenTutorial=(ready,personaId,feedbackReview,shownFor)=>Boolean(
+    ready&&personaId&&!feedbackReview&&shownFor!==personaId
+  );
 
 
   function closeOverlay(){document.getElementById('cy-onboarding-overlay')?.remove()}
@@ -142,14 +145,25 @@ _GUIDE_SNIPPET = r'''
   function sync(){
     const ready=identityReady(),persona=currentPersona();
     const params=new URLSearchParams(location.search);
-    const feedbackReview=Boolean(params.get('cy_feedback_review')||params.get('reviewed'));
+    const tab=String(params.get('tab')||'');
+    const feedbackReview=Boolean(
+      params.get('cy_feedback_review')||
+      params.get('reviewed')||
+      params.get('focus')||
+      params.get('from')==='feedback'||
+      tab==='feedback-records'||
+      tab==='feedback'
+    );
     if(tutorialButton)tutorialButton.hidden=!ready;
-    if(!ready){clearSessionShown();return}
+    // Route changes briefly hide/reset identity controls while auth is still
+    // valid. Never clear the per-login marker from this transient UI state.
+    // Explicit logout clears it together with V1 auth storage.
+    if(!ready)return
     if(location.pathname==='/v1/guide'){renderPersistentGuide();return}
-    // Feedback acceptance is a focused product-validation flow. Never cover
-    // the target page or the return-to-records page with first-login teaching.
-    if(feedbackReview)return;
-    if(sessionShownFor()!==persona.id){
+    // Feedback acceptance/return is a focused product-validation flow. Never
+    // cover it with first-login teaching, including standalone-page fallbacks.
+    if(feedbackReview){markSessionShown(persona.id);return}
+    if(shouldAutoOpenTutorial(ready,persona.id,feedbackReview,sessionShownFor())){
       markSessionShown(persona.id);
       showCurrentIntro({firstVisit:true});
     }
