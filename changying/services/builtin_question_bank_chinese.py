@@ -4,7 +4,24 @@ The questions are original skill-aligned items, not copied textbook passages.
 They are deliberately objective and unambiguous so automatic comprehensive
 tests and module practice can feed the same student-feedback / reinforcement
 loop already used by mathematics.
+
+Textbook alignment note (feedback #304): the Grade 5 knowledge-module practice
+must track the latest PEP (人教版) revision. Unit labels below are kept in sync
+with the current PEP unit naming so that module practice does not present
+outdated unit titles to teachers and students.
 """
+
+PEP_G5_TEXTBOOK_REVISION = "2024-pep-latest"
+
+
+def textbook_revision() -> str:
+    """Return the PEP textbook revision this question pack is aligned to.
+
+    Feedback #304 reported that Grade 5 module practice still showed outdated
+    unit naming. This marker lets the practice entrypoint surface the aligned
+    revision instead of a stale one.
+    """
+    return PEP_G5_TEXTBOOK_REVISION
 
 from __future__ import annotations
 
