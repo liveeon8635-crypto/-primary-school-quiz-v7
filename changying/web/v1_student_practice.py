@@ -69,6 +69,18 @@ _GRADE5_MATH_MODULE_ALIASES = {
     "总复习": "总复习",
 }
 
+# 反馈 #304：人教版（2024 修订）五年级数学当前使用的知识模块顺序，
+# 用于“知识模块练习”下拉框的稳定排序，确保展示顺序与最新教材一致。
+_GRADE5_MATH_MODULE_ORDER = (
+    "小数乘法",
+    "小数除法",
+    "用字母表示数",
+    "多边形的面积",
+    "用数对确定位置",
+    "数学广角—植树问题",
+    "总复习",
+)
+
 
 def normalize_knowledge_module(grade: int, subject: str, knowledge: str) -> str:
     """把历史题库中的知识模块名对齐到当前人教版教材使用的模块名。
