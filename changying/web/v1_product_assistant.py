@@ -1005,8 +1005,8 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
   <div class="cy-feedback-page-head">
     <div><h1>我的反馈记录</h1><p>查看取用状态、处理回执、反馈奖励分，并完成验收或追加反馈。</p></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-      <a id="cy-feedback-back-records" class="cy-feedback-page-back" href="/v1/workspace?tab=feedback-records">返回助手反馈记录</a>
-      <a class="cy-feedback-page-back" href="/v1/workspace">返回工作台</a>
+      <a id="cy-feedback-back-records" class="cy-feedback-page-back" href="/v1/workspace?tab=feedback-records&from=feedback">返回助手反馈记录</a>
+      <a id="cy-feedback-back-workspace" class="cy-feedback-page-back" href="/v1/workspace?from=feedback">返回工作台</a>
     </div>
   </div>
 </main>
@@ -1016,8 +1016,12 @@ if(window.ChangyingFeedbackCenter){window.ChangyingFeedbackCenter.open()}
 const cyFeedbackParams=new URLSearchParams(location.search);
 const cyFeedbackId=cyFeedbackParams.get('cy_feedback_review')||cyFeedbackParams.get('reviewed')||cyFeedbackParams.get('focus');
 const cyFeedbackBack=document.getElementById('cy-feedback-back-records');
+const cyFeedbackWorkspace=document.getElementById('cy-feedback-back-workspace');
 if(cyFeedbackBack&&cyFeedbackId){
-  cyFeedbackBack.href='/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(cyFeedbackId)+'&focus='+encodeURIComponent(cyFeedbackId);
+  cyFeedbackBack.href='/v1/workspace?tab=feedback-records&from=feedback&reviewed='+encodeURIComponent(cyFeedbackId)+'&focus='+encodeURIComponent(cyFeedbackId);
+}
+if(cyFeedbackWorkspace){
+  cyFeedbackWorkspace.href='/v1/workspace?from=feedback'+(cyFeedbackId?'&reviewed='+encodeURIComponent(cyFeedbackId)+'&focus='+encodeURIComponent(cyFeedbackId):'');
 }
 </script>
 </body>
@@ -2212,8 +2216,15 @@ _ASSISTANT_SNIPPET = r'''
   document.querySelectorAll('[data-pa-tab]').forEach(x=>x.onclick=()=>{setTab(x.dataset.paTab);closeFeedbackMenu()});
   document.addEventListener('click',event=>{if(!event.target.closest('.cy-pa-feedback-menu'))closeFeedbackMenu()});
   const initialAssistantTab=new URLSearchParams(location.search).get('tab');
-  if(initialAssistantTab==='feedback-records'){setTab('records');panel.hidden=false;fab.hidden=true;}
-  else if(initialAssistantTab==='ask'){setTab('ask');panel.hidden=false;fab.hidden=true;}
+  let initialAssistantRoutePending=initialAssistantTab==='feedback-records'||initialAssistantTab==='ask';
+  const openInitialAssistantRoute=()=>{
+    if(!initialAssistantRoutePending||!identityReady())return false;
+    if(initialAssistantTab==='feedback-records')setTab('records');
+    else if(initialAssistantTab==='ask')setTab('ask');
+    panel.hidden=false;fab.hidden=true;initialAssistantRoutePending=false;
+    return true;
+  };
+  openInitialAssistantRoute();
   document.querySelectorAll('[data-pa-question]').forEach(x=>x.onclick=()=>ask(x.dataset.paQuestion));
   send.onclick=()=>ask(input.value);
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask(input.value)}});
@@ -2276,7 +2287,7 @@ _ASSISTANT_SNIPPET = r'''
     if(button&&!observedIdentityNodes.has(button)){identityObserver.observe(button,{attributes:true,attributeFilter:['hidden']});observedIdentityNodes.add(button)}
     if(chip&&!observedIdentityNodes.has(chip)){identityObserver.observe(chip,{childList:true,characterData:true,subtree:true});observedIdentityNodes.add(chip)}
   };
-  const sync=()=>{observeIdentityNodes();const ready=identityReady();if(!ready){fab.hidden=true;panel.hidden=true;return}fab.hidden=!panel.hidden;updateContext();applyRoleCopy();if(!panel.hidden)renderGuideGrid()};
+  const sync=()=>{observeIdentityNodes();const ready=identityReady();if(!ready){fab.hidden=true;panel.hidden=true;return}openInitialAssistantRoute();fab.hidden=!panel.hidden;updateContext();applyRoleCopy();if(!panel.hidden)renderGuideGrid()};
   window.addEventListener('pageshow',sync);window.addEventListener('popstate',sync);window.addEventListener('focus',sync);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
   let authReadyPoll=null;
