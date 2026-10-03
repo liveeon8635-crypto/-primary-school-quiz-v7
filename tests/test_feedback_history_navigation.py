@@ -2,7 +2,7 @@ from changying.web.v1_product_assistant import _GUIDANCE_CARDS, patch_v1_product
 
 def test_feedback_records_server_card_is_real_route():
     card = next(c for c in _GUIDANCE_CARDS if c["key"] == "feedback_records")
-    assert card["path"] == "/v1/workspace?tab=feedback-records"
+    assert card["path"] == "/v1/feedback"
 
 def test_assistant_client_has_feedback_records_tab_and_history_endpoint():
     html = patch_v1_product_assistant("<html><body></body></html>")
