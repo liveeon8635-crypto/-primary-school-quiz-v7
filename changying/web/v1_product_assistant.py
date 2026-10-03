@@ -100,6 +100,31 @@ def curriculum_version_answer(question: str = "") -> str:
 FEEDBACK_PATH = "/v1/product-feedback"
 FEEDBACK_PROOF_PREFIX = "/v1/product-feedback/proof"
 FEEDBACK_MINE_PATH = "/v1/product-feedback/mine"
+# 反馈 #323：机构老师反馈“每次点击卡片这个新手指引都弹出来”。
+# 通过产品助手/引导卡片跳转时，不应再次触发新手指引；只有首次进入
+# 工作台且未完成引导时才展示。该标记供前端与回归测试确认引导抑制已生效。
+GUIDANCE_CARD_TUTORIAL_SUPPRESSION_MARKER = "changying_v1_guidance_card_tutorial_suppression_v1"
+GUIDANCE_CARD_NAV_SUPPRESSES_TUTORIAL = True
+GUIDANCE_CARD_TUTORIAL_SUPPRESS_PARAM = "from_guidance_card"
+
+
+def guidance_card_navigation_suppresses_tutorial(query: dict | None = None) -> bool:
+    """反馈 #323：判断本次导航是否来自引导卡片，从而抑制新手指引弹出。
+
+    当 URL 查询参数包含 from_guidance_card=1（或等价真值）时，说明用户是
+    通过产品助手/引导卡片进入目标页面，此时不应再次弹出新手指引。
+    该函数是前端引导抑制逻辑与回归测试的唯一契约来源。
+    """
+    if not GUIDANCE_CARD_NAV_SUPPRESSES_TUTORIAL:
+        return False
+    params = query or {}
+    raw = params.get(GUIDANCE_CARD_TUTORIAL_SUPPRESS_PARAM)
+    if isinstance(raw, (list, tuple)):
+        raw = raw[0] if raw else None
+    value = str(raw or "").strip().lower()
+    return value in ("1", "true", "yes", "on")
+
+
 # 反馈 #321/#322：顶部“反馈记录”与助手内“反馈记录”重复，应合并为助手内唯一入口，
 # 并与“提反馈”共用一个按钮；点击“提反馈”时自动下拉显示反馈记录。
 # 该标记用于前端与回归测试确认统一入口已生效。
