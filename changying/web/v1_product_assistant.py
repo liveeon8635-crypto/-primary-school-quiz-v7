@@ -21,6 +21,7 @@ from types import ModuleType
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, LargeBinary, String, Table, insert, select, update
 
@@ -100,6 +101,7 @@ def curriculum_version_answer(question: str = "") -> str:
 FEEDBACK_PATH = "/v1/product-feedback"
 FEEDBACK_PROOF_PREFIX = "/v1/product-feedback/proof"
 FEEDBACK_MINE_PATH = "/v1/product-feedback/mine"
+FEEDBACK_PAGE_PATH = "/v1/feedback"
 # 反馈 #321/#322：顶部“反馈记录”与助手内“反馈记录”重复，应合并为助手内唯一入口，
 # 并与“提反馈”共用一个按钮；点击“提反馈”时自动下拉显示反馈记录。
 # 该标记用于前端与回归测试确认统一入口已生效。
@@ -734,7 +736,7 @@ _GUIDANCE_CARDS = (
         "key": "feedback_records",
         "title": "我的反馈记录",
         "description": "查看我提交过的每条反馈、处理回执与反馈奖励分状态。",
-        "path": "/v1/workspace?tab=feedback-records",
+        "path": FEEDBACK_PAGE_PATH,
         "keywords": (
             "反馈记录", "我的反馈", "提过什么反馈", "回执", "反馈奖励", "反馈状态", "查反馈",
             "历史记录", "处理状况", "追加反馈", "奖励明细",
@@ -769,7 +771,7 @@ def _feedback_acceptance_path(detail: dict) -> str:
         "反馈记录", "追加反馈", "反馈回执", "反馈中心",
         "反馈奖励", "奖励分", "兑换账号时长", "兑换帐号时长", "账号时长", "帐号时长",
     )):
-        return "/v1/workspace?tab=feedback-records"
+        return FEEDBACK_PAGE_PATH
     if any(term in text for term in (
         "产品助手", "助手", "关联卡片", "导航卡片", "功能卡片",
         "产品引导", "问产品", "智能助手",
@@ -791,7 +793,7 @@ def _feedback_acceptance_path(detail: dict) -> str:
         candidates.sort(reverse=True)
         return str(candidates[0][3])
 
-    return "/v1/workspace?tab=feedback-records"
+    return FEEDBACK_PAGE_PATH
 
 
 # 反馈 #314：功能咨询应返回可点击的精准导航卡片；不是把所有功能卡片堆给用户。
@@ -975,6 +977,46 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
     attachment_table.create(bind=bind, checkfirst=True)
     followup_attachment_table.create(bind=bind, checkfirst=True)
     reward_table.create(bind=bind, checkfirst=True)
+
+    @router.get(FEEDBACK_PAGE_PATH, response_class=HTMLResponse, include_in_schema=False)
+    def product_feedback_page():
+        """独立反馈记录页：可直达查看回执、奖励分、追加反馈与验收。"""
+        feedback_center = Path(__file__).with_name("feedback_center.js").read_text(encoding="utf-8")
+        html = """<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>我的反馈记录 · 长缨辅学</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f7fb;color:#172033;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.cy-feedback-page{max-width:960px;margin:0 auto;padding:18px 14px 40px}
+.cy-feedback-page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.cy-feedback-page-head h1{margin:0;font-size:24px}.cy-feedback-page-head p{margin:4px 0 0;color:#667085;font-size:13px}
+.cy-feedback-page-back{display:inline-flex;text-decoration:none;border:1px solid #d5deeb;background:#fff;color:#173a78;border-radius:10px;padding:9px 12px;font-weight:800;font-size:13px}
+#cy-feedback-center-backdrop{position:static!important;display:block!important;background:transparent!important;padding:0!important}
+#cy-feedback-center-modal{width:100%!important;max-height:none!important;border-radius:16px!important}
+#cy-fc-close{display:none!important}
+@media(max-width:640px){.cy-feedback-page{padding:10px 8px 28px}.cy-feedback-page-head h1{font-size:20px}}
+</style>
+</head>
+<body data-feedback-page="standalone">
+<main class="cy-feedback-page">
+  <div class="cy-feedback-page-head">
+    <div><h1>我的反馈记录</h1><p>查看取用状态、处理回执、反馈奖励分，并完成验收或追加反馈。</p></div>
+    <a class="cy-feedback-page-back" href="/v1/workspace">返回工作台</a>
+  </div>
+</main>
+<script>""" + feedback_center + """</script>
+<script>
+if(window.ChangyingFeedbackCenter){window.ChangyingFeedbackCenter.open()}
+</script>
+</body>
+</html>"""
+        return HTMLResponse(
+            html,
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        )
 
 
     FEEDBACK_REWARD_GRANTED_REMOTE_STATUSES = {
@@ -2003,8 +2045,29 @@ _ASSISTANT_SNIPPET = r'''
     try{url=new URL(raw,location.origin)}catch{return '/v1'}
     if(url.origin!==location.origin)return '/v1';
     url.searchParams.set('cy_feedback_review',String(record?.id||''));
-    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(record?.id||''))+'&focus='+encodeURIComponent(String(record?.id||'')));
+    url.searchParams.set('cy_feedback_return','/v1/feedback?reviewed='+encodeURIComponent(String(record?.id||''))+'&focus='+encodeURIComponent(String(record?.id||'')));
     return url.pathname+url.search+url.hash;
+  };
+  const repairFeedbackReviewTarget=async()=>{
+    const params=new URLSearchParams(location.search),reviewId=params.get('cy_feedback_review');
+    if(!reviewId)return false;
+    const token=readToken();if(!token)return false;
+    try{
+      const r=await fetch('/v1/product-feedback/mine',{headers:{Authorization:'Bearer '+token}});
+      const data=await r.json();if(!r.ok)return false;
+      const record=(Array.isArray(data.records)?data.records:[]).find(x=>String(x.id)===String(reviewId));
+      if(!record)return false;
+      const target=new URL(String(record.acceptanceUrl||record.page||'/v1/feedback'),location.origin);
+      if(target.origin!==location.origin)return false;
+      const current=new URL(location.href);
+      current.searchParams.delete('cy_feedback_review');current.searchParams.delete('cy_feedback_return');
+      const sameTarget=current.pathname===target.pathname&&current.search===target.search&&current.hash===target.hash;
+      if(sameTarget)return false;
+      target.searchParams.set('cy_feedback_review',String(reviewId));
+      target.searchParams.set('cy_feedback_return',params.get('cy_feedback_return')||('/v1/feedback?reviewed='+encodeURIComponent(String(reviewId))+'&focus='+encodeURIComponent(String(reviewId))));
+      location.replace(target.pathname+target.search+target.hash);
+      return true;
+    }catch(_){return false}
   };
   const mountFeedbackReviewReturn=()=>{
     const params=new URLSearchParams(location.search);
@@ -2017,7 +2080,7 @@ _ASSISTANT_SNIPPET = r'''
     bar.innerHTML='<span style="font-size:12px;font-weight:800;color:#173a78;flex:1 1 100%">请在当前页面验收反馈 #'+escapeHtml(reviewId)+'</span><a href="'+escapeHtml(failTo)+'" style="text-decoration:none;background:#fff;color:#a33;border:1px solid #e2b8b8;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800">未通过 · 追加反馈</a><a href="'+escapeHtml(returnTo)+'" style="text-decoration:none;background:#173a78;color:#fff;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800">验收完成 · 返回</a>';
     document.body.appendChild(bar);
   };
-  mountFeedbackReviewReturn();
+  repairFeedbackReviewTarget().then(repaired=>{if(!repaired)mountFeedbackReviewReturn()});
   async function loadFeedbackHistory(){
     const box=document.getElementById('cy-pa-history');if(!box)return;
     box.innerHTML='<div class="cy-pa-note">正在读取你的反馈记录…</div>';
@@ -2269,6 +2332,7 @@ def install_v1_product_assistant_patch() -> None:
 __all__ = [
     "FEEDBACK_PATH",
     "FEEDBACK_PROOF_PREFIX",
+    "FEEDBACK_PAGE_PATH",
     "QUERY_PATH",
     "V1_PRODUCT_ASSISTANT_MARKER",
     "install_v1_product_assistant_patch",
