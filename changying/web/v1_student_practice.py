@@ -67,6 +67,55 @@ def normalize_knowledge_module(grade: int, subject: str, knowledge: str) -> str:
     return key
 
 
+def ensure_student_practice_catalog(
+    grade: int,
+    subject: str,
+    textbook: str = "",
+) -> tuple[list[str], list[dict[str, Any]]]:
+    """Return the textbooks and knowledge-module catalog for one student.
+
+    When the requested grade/subject has no usable textbook or knowledge-module
+    detail yet, seed the built-in question bank for that grade/subject first so
+    the teacher still sees a concrete catalog instead of an empty state.
+    """
+    grade_value = int(grade or 0)
+    subject_value = (subject or "").strip()
+    textbook_value = (textbook or "").strip()
+
+    textbooks = list(built_in_textbooks(grade_value, subject_value) or [])
+    if not textbooks and subject_value:
+        try:
+            ensure_built_in_questions(grade_value, subject_value)
+        except Exception:
+            pass
+        textbooks = list(built_in_textbooks(grade_value, subject_value) or [])
+
+    if textbook_value and textbook_value not in textbooks:
+        textbooks = [textbook_value, *textbooks]
+
+    modules: list[dict[str, Any]] = []
+    try:
+        catalog = potential_question_catalog(
+            grade=grade_value,
+            subject=subject_value,
+            textbook=textbook_value or (textbooks[0] if textbooks else ""),
+        )
+    except Exception:
+        catalog = []
+    for item in catalog or []:
+        knowledge = str(item.get("knowledge") or "").strip()
+        if not knowledge:
+            continue
+        modules.append(
+            {
+                "knowledge": normalize_knowledge_module(grade_value, subject_value, knowledge),
+                "unit": str(item.get("unit") or "").strip(),
+                "count": int(item.get("count") or 0),
+            }
+        )
+    return textbooks, modules
+
+
 class StudentPracticeCreateBody(BaseModel):
     grade: int
     subject: str
