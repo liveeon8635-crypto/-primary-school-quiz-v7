@@ -394,4 +394,57 @@ def grade5_chinese_specs() -> list[dict[str, Any]]:
     return rows
 
 
-__all__ = ["CHINESE_G5_TEXTBOOK", "grade5_chinese_specs"]
+def baseline_chinese_specs() -> list[dict[str, Any]]:
+    """Return a non-empty baseline Chinese practice set.
+
+    Used as a fallback when a student has no matched textbook so that the
+    knowledge-module practice detail is never empty for Chinese homework.
+    This covers students such as those without an assigned textbook who would
+    otherwise see no available material or knowledge-module practice detail.
+    """
+    rows = grade5_chinese_specs()
+    if rows:
+        return rows
+    return [
+        _spec(
+            unit="全册基础 · 字词积累",
+            knowledge="字音辨析",
+            text="“勉强”中“强”的正确读音是？",
+            answer="qiǎng",
+            distractors=["qiáng", "jiàng", "qiāng"],
+            explanation="结合词语中的实际读音判断多音字或易错字的读音。",
+            seed=0,
+        )
+    ]
+
+
+def has_usable_chinese_material(specs: list[dict[str, Any]] | None) -> bool:
+    """Return True when a Chinese practice set can be shown to a student.
+
+    Students without a matched textbook (for example 淦云凡 / 翁舒言 in the
+    late-care class) must still receive a non-empty knowledge-module practice
+    detail instead of an empty state.
+    """
+    if not specs:
+        return False
+    for row in specs:
+        if not isinstance(row, dict):
+            continue
+        if row.get("text") and row.get("options"):
+            return True
+    return False
+
+
+def resolve_chinese_specs(specs: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Return usable Chinese specs, falling back to the baseline pack.
+
+    When a student has no matched textbook the caller may pass an empty or
+    unusable list; in that case the baseline pack is returned so the
+    knowledge-module practice detail is never empty.
+    """
+    if has_usable_chinese_material(specs):
+        return list(specs or [])
+    return baseline_chinese_specs()
+
+
+__all__ = ["CHINESE_G5_TEXTBOOK", "grade5_chinese_specs", "baseline_chinese_specs"]

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from changying.web.v1 import v1_html
 from changying.web.v1_student_practice import (
     V1_STUDENT_PRACTICE_MARKER,
+    ensure_student_practice_catalog,
     patch_v1_student_practice_html,
     select_student_practice_questions,
 )
@@ -419,3 +420,36 @@ def test_auto_practice_server_fallback_uses_school_local_date():
     source = inspect.getsource(module.install_v1_student_practice_routes)
     assert "datetime.now(implementation.SCHOOL_TZ)" in source
     assert "datetime.utcnow() + timedelta(days=7)" not in source
+
+
+def test_practice_catalog_falls_back_to_usable_subject_material_when_requested_grade_is_empty(monkeypatch):
+    import changying.web.v1_student_practice as module
+
+    seeded = []
+    def fake_ensure(grade, subject):
+        seeded.append((grade, subject))
+
+    def fake_textbooks(grade, subject):
+        if subject == "语文" and grade == 5:
+            return ["统编版（人民教育出版社）"]
+        return []
+
+    def fake_catalog(*, grade, subject, textbook):
+        if grade == 5 and subject == "语文" and textbook == "统编版（人民教育出版社）":
+            return [{"unit": "第一单元", "knowledge": "字音辨析", "count": 8}]
+        return []
+
+    monkeypatch.setattr(module, "ensure_built_in_questions", fake_ensure)
+    monkeypatch.setattr(module, "built_in_textbooks", fake_textbooks)
+    monkeypatch.setattr(module, "potential_question_catalog", fake_catalog)
+
+    textbooks, modules = ensure_student_practice_catalog(
+        grade=4,
+        subject="语文",
+        textbook="",
+    )
+
+    assert textbooks == ["统编版（人民教育出版社）"]
+    assert modules == [{"knowledge": "字音辨析", "unit": "第一单元", "count": 8}]
+    assert (4, "语文") in seeded
+    assert (5, "语文") in seeded
