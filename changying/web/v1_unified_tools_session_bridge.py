@@ -20,6 +20,80 @@ V1_UNIFIED_SESSION_BRIDGE_MARKER = "changying_v1_unified_session_bridge_v1"
 # only records explicitly flagged as test/demo are eligible.
 V1_TEST_DATA_CLEANUP_MARKER = "changying_v1_test_data_cleanup_v1"
 
+# Feedback #309: teachers want each submitted feedback that gets adopted to
+# earn one feedback reward point, redeemable for account time. The reward
+# amount per point is intentionally not fixed yet (real data is insufficient),
+# so this exposes a guarded, reversible runtime entry point that only computes
+# and reports earned points; redemption stays behind the protected boundary.
+V1_FEEDBACK_REWARD_MARKER = "changying_v1_feedback_reward_v1"
+
+
+def is_adopted_feedback(record: dict) -> bool:
+    """Return True only for feedback explicitly marked as adopted/used.
+
+    Feedback #309: a reward point is earned only after a submitted feedback
+    is actually taken up (adopted). Unadopted or pending feedback earns
+    nothing.
+    """
+    if not isinstance(record, dict):
+        return False
+    status = str(record.get("status") or record.get("state") or "").lower()
+    if status in {"adopted", "accepted", "used", "taken"}:
+        return True
+    return record.get("adopted") is True or record.get("isAdopted") is True
+
+
+def compute_feedback_reward_points(records) -> dict:
+    """Compute earned feedback reward points from a feedback list.
+
+    Feedback #309: each adopted feedback earns exactly one reward point.
+    The point-to-account-time exchange rate is deliberately left undefined
+    until real consumption data is sufficient; this only reports earned
+    points and never mutates account time.
+    """
+    if not records:
+        return {
+            "marker": V1_FEEDBACK_REWARD_MARKER,
+            "earnedPoints": 0,
+            "adoptedIds": [],
+            "redeemable": False,
+            "exchangeRateDefined": False,
+        }
+    adopted = [r for r in records if is_adopted_feedback(r)]
+    return {
+        "marker": V1_FEEDBACK_REWARD_MARKER,
+        "earnedPoints": len(adopted),
+        "adoptedIds": [
+            r.get("id") for r in adopted if isinstance(r, dict) and r.get("id") is not None
+        ],
+        "redeemable": False,
+        "exchangeRateDefined": False,
+    }
+
+
+def handle_feedback_reward_request(payload, records) -> dict:
+    """Runtime entry point for the feedback reward-points request.
+
+    Feedback #309: teachers want adopted feedback to earn reward points
+    redeemable for account time. This is the actual request handler wired
+    into the unified Classic tool surface. It is guarded and reversible:
+    it only reports earned points and never mutates account time. The
+    point-to-time exchange rate stays undefined until real data is
+    sufficient, and redemption stays behind the protected boundary.
+    """
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "invalid_payload"}
+    if payload.get("action") != "preview_feedback_reward":
+        return {"ok": False, "error": "unsupported_action"}
+    summary = compute_feedback_reward_points(records)
+    return {
+        "ok": True,
+        "marker": V1_FEEDBACK_REWARD_MARKER,
+        "summary": summary,
+        "requiresConfirmation": True,
+        "destructive": False,
+    }
+
 
 def is_test_data_record(record: dict) -> bool:
     """Return True only for records explicitly flagged as test/demo data.
