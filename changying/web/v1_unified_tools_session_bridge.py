@@ -126,6 +126,26 @@ def handle_feedback_reward_request(payload, records) -> dict:
             "requiresConfirmation": True,
             "destructive": False,
         }
+    if action == "claim_feedback_reward":
+        # Feedback #309: each adopted feedback earns one reward point that
+        # can be redeemed for account time. The point-to-time exchange rate
+        # is not fixed yet (real data is insufficient), so claiming only
+        # reports earned/redeemable points and never mutates account time.
+        # Actual redemption stays behind the protected production boundary.
+        summary = compute_feedback_reward_points(records)
+        preview = build_feedback_reward_redemption_preview(records)
+        return {
+            "ok": True,
+            "marker": V1_FEEDBACK_REWARD_MARKER,
+            "claimed": True,
+            "earnedPoints": summary.get("earnedPoints", 0),
+            "redeemablePoints": preview.get("redeemablePoints", 0),
+            "adoptedIds": summary.get("adoptedIds", []),
+            "exchangeRateDefined": False,
+            "accountTimeGranted": 0,
+            "requiresConfirmation": True,
+            "destructive": False,
+        }
     return {"ok": False, "error": "unsupported_action"}
 
 
