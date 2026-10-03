@@ -264,8 +264,24 @@ def select_student_practice_questions(
         key = (knowledge or "").strip()
         if not key:
             return []
+        # 历史题库可能仍以旧版人教版单元名（如“简易方程”“位置”）存储，
+        # 而“知识模块练习”下拉框展示的是最新人教版模块名。这里把请求的模块名
+        # 与每道题的历史模块名都对齐到当前教材模块名后再匹配，避免因教材改版
+        # 导致模块练习选不到题或选到旧版单元题。
+        normalized_key = normalize_knowledge_module(
+            int(getattr(eligible[0], "grade", 0) or 0) if eligible else 0,
+            str(getattr(eligible[0], "subject", "") or "") if eligible else "",
+            key,
+        )
         module_rows = [
-            row for row in eligible if (getattr(row, "knowledge", "") or "").strip() == key
+            row
+            for row in eligible
+            if normalize_knowledge_module(
+                int(getattr(row, "grade", 0) or 0),
+                str(getattr(row, "subject", "") or ""),
+                (getattr(row, "knowledge", "") or "").strip(),
+            )
+            == normalized_key
         ]
         return _select_type_diverse_questions(module_rows, limit)
 
