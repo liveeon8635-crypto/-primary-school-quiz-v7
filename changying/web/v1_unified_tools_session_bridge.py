@@ -252,6 +252,26 @@ def patch_unified_tool_session_bridge(html: str) -> str:
     )
 
 
+def summarize_feedback_reward_for_record(record) -> dict:
+    """Report earned feedback reward points for a single feedback record.
+
+    Feedback #309: each adopted feedback earns exactly one reward point that
+    can be redeemed for account time. The point-to-time exchange rate is not
+    fixed yet (real data is insufficient), so this only reports earned points
+    for one record and never mutates account time. Redemption stays behind
+    the protected production boundary.
+    """
+    adopted = is_adopted_feedback(record)
+    return {
+        "marker": V1_FEEDBACK_REWARD_MARKER,
+        "adopted": adopted,
+        "earnedPoints": 1 if adopted else 0,
+        "exchangeRateDefined": False,
+        "accountTimeGranted": 0,
+        "reversible": True,
+    }
+
+
 def register_feedback_reward_handler(registry=None) -> dict:
     """Wire the feedback reward-points handler into the runtime surface.
 
