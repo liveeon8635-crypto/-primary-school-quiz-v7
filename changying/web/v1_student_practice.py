@@ -90,6 +90,21 @@ def ensure_student_practice_catalog(
             pass
         textbooks = list(built_in_textbooks(grade_value, subject_value) or [])
 
+    # 反馈 #310：部分学生（如“淦云凡”“翁舒言”）在当前年级/科目下既没有
+    # 可用教材，也没有“知识模块练习”明细，导致晚托布置作业时无法选择内容。
+    # 这里在按学生年级/科目仍为空时，回退到该科目已核定的标准教材集合，
+    # 保证教师始终能看到可用的教材与知识模块，而不是空白状态。
+    if not textbooks and subject_value:
+        for fallback_grade in (grade_value, 5, 4, 3, 6, 2, 1):
+            try:
+                ensure_built_in_questions(fallback_grade, subject_value)
+            except Exception:
+                pass
+            fallback = list(built_in_textbooks(fallback_grade, subject_value) or [])
+            if fallback:
+                textbooks = fallback
+                break
+
     if textbook_value and textbook_value not in textbooks:
         textbooks = [textbook_value, *textbooks]
 
