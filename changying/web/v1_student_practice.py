@@ -83,135 +83,71 @@ def normalize_knowledge_module(grade: int, subject: str, knowledge: str) -> str:
     return key
 
 
-def practice_catalog_fallback_grades(grade: int) -> tuple[int, ...]:
-    """Return deterministic fallback grades without duplicate seeding attempts."""
-    ordered = [int(grade or 0), 5, 4, 3, 6, 2, 1]
-    return tuple(value for index, value in enumerate(ordered) if value > 0 and value not in ordered[:index])
-
-
-def ensure_student_practice_catalog(
+def resolve_student_practice_catalog(
+    existing_rows: list[Any],
+    *,
     grade: int,
     subject: str,
     textbook: str = "",
-) -> tuple[list[str], list[dict[str, Any]]]:
-    """Return the textbooks and knowledge-module catalog for one student.
+) -> tuple[list[str], str, list[dict[str, Any]], int]:
+    """Resolve the real textbook/module inventory for the selected grade/subject.
 
-    When the requested grade/subject has no usable textbook or knowledge-module
-    detail yet, seed the built-in question bank for that grade/subject first so
-    the teacher still sees a concrete catalog instead of an empty state.
+    Registered automatic scopes keep using the central canonical textbook. For
+    older/unregistered grades, preserve the school's own existing question-bank
+    textbook labels instead of pretending the registry has no usable material.
     """
     grade_value = int(grade or 0)
     subject_value = (subject or "").strip()
-    textbook_value = (textbook or "").strip()
+    rows = list(existing_rows or [])
+    registered = list(built_in_textbooks(grade_value, subject_value) or [])
+    bank_textbooks = sorted(
+        {
+            str(getattr(row, "textbook", "") or "").strip()
+            for row in rows
+            if str(getattr(row, "textbook", "") or "").strip()
+        }
+    )
+    textbooks = registered if registered else bank_textbooks
 
-    textbooks = list(built_in_textbooks(grade_value, subject_value) or [])
-    if not textbooks and subject_value:
-        try:
-            ensure_built_in_questions(grade_value, subject_value)
-        except Exception:
-            pass
-        textbooks = list(built_in_textbooks(grade_value, subject_value) or [])
-
-    # 反馈 #310：部分学生（如“淦云凡”“翁舒言”）在当前年级/科目下既没有
-    # 可用教材，也没有“知识模块练习”明细，导致晚托布置作业时无法选择内容。
-    # 这里在按学生年级/科目仍为空时，回退到该科目已核定的标准教材集合，
-    # 保证教师始终能看到可用的教材与知识模块，而不是空白状态。
-    if not textbooks and subject_value:
-        for fallback_grade in practice_catalog_fallback_grades(grade_value):
-            try:
-                ensure_built_in_questions(fallback_grade, subject_value)
-            except Exception:
-                pass
-            fallback = list(built_in_textbooks(fallback_grade, subject_value) or [])
-            if fallback:
-                textbooks = fallback
-                # 反馈 #310：回退到标准教材后，必须同时用该教材重新取知识模块明细，
-                # 否则教师仍会看到“暂无可用教材/知识模块练习明细”的空白状态。
-                if not textbook_value:
-                    textbook_value = fallback[0]
-                break
-
-    if textbook_value and textbook_value not in textbooks:
-        textbooks = [textbook_value, *textbooks]
-
-    # 反馈 #310：若按学生年级/科目仍取不到任何教材，则回退到该科目已核定的
-    # 标准教材集合，保证“淦云凡”“翁舒言”这类学生也能看到可用教材，
-    # 而不是在晚托布置作业时出现“暂无可用教材”的空白状态。
-    if not textbooks and subject_value:
-        for fallback_grade in practice_catalog_fallback_grades(grade_value):
-            try:
-                ensure_built_in_questions(fallback_grade, subject_value)
-            except Exception:
-                pass
-            fallback = list(built_in_textbooks(fallback_grade, subject_value) or [])
-            if fallback:
-                textbooks = fallback
-                if not textbook_value:
-                    textbook_value = fallback[0]
-                break
-
-    modules: list[dict[str, Any]] = []
-    resolved_textbook = textbook_value or (textbooks[0] if textbooks else "")
+    requested = (textbook or "").strip()
     try:
-        catalog = potential_question_catalog(
+        normalized = normalize_textbook(
+            grade_value,
+            subject_value,
+            requested,
+            default_registered=bool(registered and not requested),
+        )
+    except TextbookRegistryError:
+        normalized = ""
+
+    selected_textbook = (
+        normalized
+        if normalized and normalized in textbooks
+        else (textbooks[0] if textbooks else "")
+    )
+    modules: list[dict[str, Any]] = []
+    available_count = 0
+    if selected_textbook:
+        catalog, available_count = potential_question_catalog(
+            rows,
             grade=grade_value,
             subject=subject_value,
-            textbook=resolved_textbook,
+            textbook=selected_textbook,
         )
-    except Exception:
-        catalog = []
-    # 反馈 #310：教材已确定但“知识模块练习”明细为空时，按学生年级补题；
-    # 若仍为空，再按该教材实际所属年级补题，保证教师始终能看到可用的知识模块。
-    if not catalog and resolved_textbook and subject_value:
-        for module_grade in practice_catalog_fallback_grades(grade_value):
-            try:
-                ensure_built_in_questions(module_grade, subject_value)
-            except Exception:
-                pass
-            try:
-                catalog = potential_question_catalog(
-                    grade=module_grade,
-                    subject=subject_value,
-                    textbook=resolved_textbook,
-                )
-            except Exception:
-                catalog = []
-            if catalog:
-                break
-    # 反馈 #310：部分学生（如“淦云凡”“翁舒言”）虽然能取到教材，但“知识模块练习”
-    # 明细仍为空，导致晚托布置作业时无法选择知识模块。这里在教材已确定但模块为空时，
-    # 主动补入该教材的标准题并重新取一次模块明细，保证教师始终能看到可用的知识模块。
-    if not catalog and resolved_textbook and subject_value:
-        # 反馈 #310：教材已确定但知识模块明细为空时，先按学生年级补题；
-        # 若仍为空，再按该教材实际所属年级补题，避免“淦云凡”“翁舒言”
-        # 这类学生因年级/教材不一致而始终看不到知识模块练习明细。
-        for module_grade in practice_catalog_fallback_grades(grade_value):
-            try:
-                ensure_built_in_questions(module_grade, subject_value)
-            except Exception:
-                pass
-            try:
-                catalog = potential_question_catalog(
-                    grade=module_grade,
-                    subject=subject_value,
-                    textbook=resolved_textbook,
-                )
-            except Exception:
-                catalog = []
-            if catalog:
-                break
-    for item in catalog or []:
-        knowledge = str(item.get("knowledge") or "").strip()
-        if not knowledge:
-            continue
-        modules.append(
-            {
-                "knowledge": normalize_knowledge_module(grade_value, subject_value, knowledge),
-                "unit": str(item.get("unit") or "").strip(),
-                "count": int(item.get("count") or 0),
-            }
-        )
-    return textbooks, modules
+        for item in catalog or []:
+            knowledge = str(item.get("knowledge") or "").strip()
+            if not knowledge:
+                continue
+            modules.append(
+                {
+                    "knowledge": normalize_knowledge_module(
+                        grade_value, subject_value, knowledge
+                    ),
+                    "unit": str(item.get("unit") or "").strip(),
+                    "count": int(item.get("count") or 0),
+                }
+            )
+    return textbooks, selected_textbook, modules, int(available_count or 0)
 
 
 class StudentPracticeCreateBody(BaseModel):
@@ -457,7 +393,7 @@ def _practice_patch_html() -> str:
 .cy-practice-ok{margin-top:12px;padding:12px;border-radius:12px;background:#ecfdf3;color:#166534;border:1px solid #bbf7d0}
 .cy-practice-error{margin-top:12px;padding:12px;border-radius:12px;background:#fff1f1;color:#991b1b;border:1px solid #fecaca}
 .cy-ai-assign-box{margin:12px 0;position:sticky;top:0;z-index:4}
-@media(max-width:720px){.cy-practice-layer{padding:0}.cy-practice-sheet{max-height:92dvh;border-radius:24px 24px 0 0;padding:16px 14px calc(28px + env(safe-area-inset-bottom))}.cy-practice-grid{grid-template-columns:1fr}.cy-ai-assign-box{top:auto;bottom:calc(8px + env(safe-area-inset-bottom));z-index:8;box-shadow:0 10px 34px rgba(23,60,120,.18)}.cy-ai-assign-box .cy-practice-submit{margin-top:10px}}
+@media(max-width:720px){.cy-practice-layer{padding:0}.cy-practice-sheet{max-height:92dvh;border-radius:24px 24px 0 0;padding:16px 14px calc(28px + env(safe-area-inset-bottom) + var(--cy-feedback-review-clearance,0px));scroll-padding-bottom:calc(28px + var(--cy-feedback-review-clearance,0px))}.cy-practice-grid{grid-template-columns:1fr}.cy-ai-assign-box{top:auto;bottom:calc(8px + env(safe-area-inset-bottom));z-index:8;box-shadow:0 10px 34px rgba(23,60,120,.18)}.cy-ai-assign-box .cy-practice-submit{margin-top:10px}}
 </style>
 <script id="changying_v1_student_practice_v1-script">
 (()=>{
@@ -666,26 +602,9 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
 
         textbooks: list[str] = []
         selected_textbook = ""
-        if selected_subject:
-            # Automatic tests/practice use the school's current PEP line only.
-            # Other publishers are distinct教材体系, not alternate "versions".
-            textbooks = built_in_textbooks(selected_grade, selected_subject)
-            try:
-                requested_textbook = normalize_textbook(
-                    selected_grade,
-                    selected_subject,
-                    (textbook or "").strip(),
-                )
-            except TextbookRegistryError:
-                requested_textbook = ""
-            if requested_textbook in textbooks:
-                selected_textbook = requested_textbook
-            else:
-                selected_textbook = textbooks[0] if textbooks else ""
-
         modules: list[dict[str, Any]] = []
         available_count = 0
-        if selected_subject and selected_textbook:
+        if selected_subject:
             rows = list(
                 db.scalars(
                     select(Question)
@@ -693,16 +612,17 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
                         Question.school_id == u.school_id,
                         Question.grade == selected_grade,
                         Question.subject == selected_subject,
-                        Question.textbook == selected_textbook,
                     )
                     .order_by(Question.unit, Question.knowledge, Question.id)
                 ).all()
             )
-            modules, available_count = potential_question_catalog(
-                rows,
-                grade=selected_grade,
-                subject=selected_subject,
-                textbook=selected_textbook,
+            textbooks, selected_textbook, modules, available_count = (
+                resolve_student_practice_catalog(
+                    rows,
+                    grade=selected_grade,
+                    subject=selected_subject,
+                    textbook=(textbook or "").strip(),
+                )
             )
 
         default_class = next(
@@ -748,12 +668,29 @@ def install_v1_student_practice_routes(implementation: Any) -> None:
             raise HTTPException(400, str(exc)) from exc
         allowed_textbooks = built_in_textbooks(body.grade, subject)
         if not textbook:
-            raise HTTPException(400, "当前自动测试尚未匹配到可用的核定教材")
-        if textbook not in allowed_textbooks:
-            raise HTTPException(
-                400,
-                "当前自动测试只允许使用该年级科目已核定的教材版本",
+            raise HTTPException(400, "当前自动测试尚未匹配到可用教材")
+        if allowed_textbooks:
+            if textbook not in allowed_textbooks:
+                raise HTTPException(
+                    400,
+                    "当前自动测试只允许使用该年级科目已核定的教材版本",
+                )
+        else:
+            bank_textbook_exists = db.scalar(
+                select(Question.id)
+                .where(
+                    Question.school_id == u.school_id,
+                    Question.grade == body.grade,
+                    Question.subject == subject,
+                    Question.textbook == textbook,
+                )
+                .limit(1)
             )
+            if not bank_textbook_exists:
+                raise HTTPException(
+                    400,
+                    "当前题库没有该年级科目与教材可用于自动测试",
+                )
         kind = (body.kind or "comprehensive").strip().lower()
         if kind not in {"comprehensive", "module"}:
             raise HTTPException(400, "内容类型无效")
