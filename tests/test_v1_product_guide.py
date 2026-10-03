@@ -115,7 +115,7 @@ def test_onboarding_reacts_to_post_login_identity_selection_and_shows_once_per_s
     script = tutorial_script(html)
 
     assert "SESSION_SHOWN_KEY='cyV1RoleTutorialShownThisLoginV7'" in script
-    assert "if(!ready){if(!hasAuthToken())clearSessionShown();return}" in script
+    assert "if(!ready)return" in script
     assert "if(sessionShownFor()!==persona.id)" in script
     assert "markSessionShown(persona.id)" in script
     assert "identityObserver.observe(identityButton" in script
@@ -157,7 +157,7 @@ def test_feedback_acceptance_bypasses_first_login_onboarding_overlay():
     assert "tab==='feedback-records'" in source
     assert "tab==='feedback'" in source
     assert "params.get('focus')" in source
-    assert "if(!ready){if(!hasAuthToken())clearSessionShown();return}" in source
+    assert "if(!ready)return" in source
     assert "if(feedbackReview){markSessionShown(persona.id);return}" in source
 
 
@@ -165,10 +165,9 @@ def test_internal_navigation_does_not_reset_first_login_tutorial_session():
     html = rendered_guide()
     script = tutorial_script(html)
 
-    assert "const hasAuthToken=()=>Boolean(" in script
-    assert "sessionStorage.getItem('v717Token')" in script
-    assert "localStorage.getItem('v717Token')" in script
-    assert "if(!ready){if(!hasAuthToken())clearSessionShown();return}" in script
+    assert "if(!ready)return" in script
+    assert "hasAuthToken" not in script
+    assert "localStorage" not in script
     assert "if(!ready){if(!feedbackReview)clearSessionShown();return}" not in script
 
 
@@ -177,4 +176,4 @@ def test_real_logout_can_still_reset_tutorial_session():
     script = tutorial_script(html)
 
     assert "const clearSessionShown=()=>sessionStorage.removeItem(SESSION_SHOWN_KEY)" in script
-    assert "if(!hasAuthToken())clearSessionShown()" in script
+    assert "if(!ready)return" in script
