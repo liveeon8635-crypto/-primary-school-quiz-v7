@@ -141,10 +141,10 @@ def patch_v1_student_detail_visibility(html: str) -> str:
         1,
     )
 
-    if FEEDBACK_STATUS_CHAIN_MARKER not in html:
+    if ASSISTANT_FEEDBACK_DROPDOWN_MARKER not in html:
         html = html.replace(
             "</body>",
-            f"{_FEEDBACK_STATUS_CHAIN_HTML}{_FEEDBACK_REWARD_PANEL_HTML}</body>",
+            f"{_ASSISTANT_FEEDBACK_DROPDOWN_HTML}</body>",
             1,
         )
 
