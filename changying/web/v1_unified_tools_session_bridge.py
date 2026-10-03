@@ -146,6 +146,22 @@ def handle_feedback_reward_request(payload, records) -> dict:
             "requiresConfirmation": True,
             "destructive": False,
         }
+    if action == "feedback_reward_status":
+        # Feedback #309: expose a read-only status view so the teacher-facing
+        # surface can show how many adopted feedbacks have earned reward
+        # points without triggering any redemption. Redemption stays behind
+        # the protected production boundary and requires human confirmation.
+        summary = compute_feedback_reward_points(records)
+        return {
+            "ok": True,
+            "marker": V1_FEEDBACK_REWARD_MARKER,
+            "earnedPoints": summary.get("earnedPoints", 0),
+            "adoptedIds": summary.get("adoptedIds", []),
+            "exchangeRateDefined": False,
+            "accountTimeGranted": 0,
+            "requiresConfirmation": False,
+            "destructive": False,
+        }
     return {"ok": False, "error": "unsupported_action"}
 
 
