@@ -74,6 +74,9 @@ def normalize_knowledge_module(grade: int, subject: str, knowledge: str) -> str:
     """把历史题库中的知识模块名对齐到当前人教版教材使用的模块名。
 
     仅对五年级数学做映射，其他年级/科目原样返回，避免影响既有题库。
+    反馈 #304：人教版（2024 修订）五年级数学已调整单元编排，旧版
+    “简易方程”“位置”等单元名必须映射到最新教材模块名，保证“知识模块练习”
+    下拉框、组卷与展示都使用最新版本，而不是旧版单元名。
     """
     key = (knowledge or "").strip()
     if not key:
@@ -81,6 +84,26 @@ def normalize_knowledge_module(grade: int, subject: str, knowledge: str) -> str:
     if int(grade or 0) == 5 and (subject or "").strip() == "数学":
         return _GRADE5_MATH_MODULE_ALIASES.get(key, key)
     return key
+
+
+def grade5_math_module_is_current(knowledge: str) -> bool:
+    """反馈 #304：判断五年级数学模块名是否已是当前人教版（2024 修订）名称。
+
+    旧版单元名（如“简易方程”“位置”）返回 False，最新教材模块名返回 True。
+    供“知识模块练习”展示与回归测试使用，避免继续暴露旧版单元名。
+    """
+    key = (knowledge or "").strip()
+    if not key:
+        return False
+    return _GRADE5_MATH_MODULE_ALIASES.get(key, key) == key and key in {
+        "用字母表示数",
+        "用数对确定位置",
+        "小数乘法",
+        "小数除法",
+        "多边形的面积",
+        "数学广角—植树问题",
+        "总复习",
+    }
 
 
 def ensure_student_practice_catalog(
