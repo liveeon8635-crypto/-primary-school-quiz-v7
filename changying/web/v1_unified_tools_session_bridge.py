@@ -146,6 +146,25 @@ def handle_feedback_reward_request(payload, records) -> dict:
             "requiresConfirmation": True,
             "destructive": False,
         }
+    if action == "redeem_feedback_reward":
+        # Feedback #309: teachers want earned points redeemable for account
+        # time. The point-to-time exchange rate is not fixed yet (real data
+        # is insufficient), so redemption only reports eligibility and never
+        # mutates account time. Actual account-time grant stays behind the
+        # protected production boundary and requires explicit human approval.
+        preview = build_feedback_reward_redemption_preview(records)
+        redeemable = int(preview.get("redeemablePoints") or 0)
+        return {
+            "ok": True,
+            "marker": V1_FEEDBACK_REWARD_MARKER,
+            "redeemed": False,
+            "redeemablePoints": redeemable,
+            "eligible": redeemable > 0,
+            "exchangeRateDefined": False,
+            "accountTimeGranted": 0,
+            "requiresConfirmation": True,
+            "destructive": False,
+        }
     return {"ok": False, "error": "unsupported_action"}
 
 
