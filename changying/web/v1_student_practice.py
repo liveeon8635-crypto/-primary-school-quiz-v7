@@ -70,10 +70,20 @@ _GRADE5_MATH_MODULE_ALIASES = {
 }
 
 
+def grade5_math_module_aliases() -> dict[str, str]:
+    """返回五年级数学（人教版 2024 修订）知识模块对齐表。
+
+    反馈 #304：旧版“简易方程”“位置”等单元在最新人教版中已调整表述，
+    这里集中暴露映射表，便于“知识模块练习”展示与回归测试共用同一份口径。
+    """
+    return dict(_GRADE5_MATH_MODULE_ALIASES)
+
+
 def normalize_knowledge_module(grade: int, subject: str, knowledge: str) -> str:
     """把历史题库中的知识模块名对齐到当前人教版教材使用的模块名。
 
     仅对五年级数学做映射，其他年级/科目原样返回，避免影响既有题库。
+    反馈 #304：确保“简易方程”映射为“用字母表示数”、“位置”映射为“用数对确定位置”。
     """
     key = (knowledge or "").strip()
     if not key:
