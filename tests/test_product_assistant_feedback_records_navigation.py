@@ -11,7 +11,7 @@ def test_feedback_records_card_returned_for_records_query():
     cards = _guidance_cards("我在哪里可以看到我提交过的反馈记录和回执？", "/v1/workspace")
     assert any(
         card["key"] == "feedback_records"
-        and card["path"].startswith("/v1/workspace?tab=feedback-records")
+        and card["path"] == "/v1/feedback"
         and "反馈记录" in card["title"]
         for card in cards
     ), cards
