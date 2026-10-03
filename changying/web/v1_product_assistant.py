@@ -120,6 +120,46 @@ FEEDBACK_RECORDS_FULL_FEATURES = (
     "follow_up",
     "follow_up_attachment",
 )
+# 反馈 #309：机构老师钟老师希望“每提交一条反馈被取用后对应增加一个反馈奖励分，
+# 可用于兑换帐号时长”。奖励分只在反馈被服务端核验为“已取用”后计入，
+# 兑换时长按总体数据消费情况另行确定，当前仅登记奖励分与兑换契约。
+FEEDBACK_REWARD_POINTS_PER_ADOPTED = 1
+FEEDBACK_REWARD_ADOPTED_STATUSES = ("已取用", "已采纳", "adopted", "accepted")
+FEEDBACK_REWARD_REDEEM_TARGET = "account_duration"
+
+
+def feedback_reward_points(records: list[dict] | None = None) -> dict:
+    """反馈 #309：统计被取用反馈对应的反馈奖励分。
+
+    每条被服务端核验为“已取用/已采纳”的反馈计 FEEDBACK_REWARD_POINTS_PER_ADOPTED 分，
+    未取用反馈不计分。返回奖励分总额、可兑换目标与逐条明细，供前端展示与回归测试使用。
+    兑换帐号时长的具体比例待总体数据消费情况确定，当前不写死兑换比例。
+    """
+    adopted = 0
+    items = []
+    for row in list(records or []):
+        if not isinstance(row, dict):
+            continue
+        status = str(row.get("status") or "").strip()
+        is_adopted = status in FEEDBACK_REWARD_ADOPTED_STATUSES
+        points = FEEDBACK_REWARD_POINTS_PER_ADOPTED if is_adopted else 0
+        if is_adopted:
+            adopted += 1
+        items.append({
+            "feedbackId": row.get("feedbackId") or row.get("id"),
+            "status": status,
+            "adopted": is_adopted,
+            "rewardPoints": points,
+        })
+    return {
+        "marker": "changying_v1_feedback_reward_points_v1",
+        "pointsPerAdopted": FEEDBACK_REWARD_POINTS_PER_ADOPTED,
+        "adoptedCount": adopted,
+        "totalRewardPoints": adopted * FEEDBACK_REWARD_POINTS_PER_ADOPTED,
+        "redeemTarget": FEEDBACK_REWARD_REDEEM_TARGET,
+        "redeemRate": None,
+        "items": items,
+    }
 
 
 def feedback_records_dropdown_payload(records: list[dict] | None = None) -> dict:
