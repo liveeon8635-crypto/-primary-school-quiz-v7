@@ -765,7 +765,10 @@ def _feedback_acceptance_path(detail: dict) -> str:
     # can submit assistant/navigation feedback while physically viewing a
     # student page; acceptance must validate the feature being discussed, not
     # merely the page that happened to be open when the report was filed.
-    if any(term in text for term in ("反馈记录", "追加反馈", "反馈回执", "反馈中心")):
+    if any(term in text for term in (
+        "反馈记录", "追加反馈", "反馈回执", "反馈中心",
+        "反馈奖励", "奖励分", "兑换账号时长", "兑换帐号时长", "账号时长", "帐号时长",
+    )):
         return "/v1/workspace?tab=feedback-records"
     if any(term in text for term in (
         "产品助手", "助手", "关联卡片", "导航卡片", "功能卡片",
