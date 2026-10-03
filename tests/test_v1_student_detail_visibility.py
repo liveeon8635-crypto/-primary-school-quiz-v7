@@ -1,5 +1,6 @@
 from changying.web.v1 import v1_html
 from changying.web.v1_student_detail_visibility import (
+    ASSISTANT_FEEDBACK_DROPDOWN_MARKER,
     V1_STUDENT_DETAIL_VISIBILITY_MARKER,
     patch_v1_student_detail_visibility,
 )
@@ -63,3 +64,12 @@ def test_native_v1_completion_shows_assignment_context_and_learning_points():
     assert "答错 '+esc(wrong)+' 题" in html
     assert "本次获得 +'+esc(learning)+' 学习积分" in html
     assert "String(a.title||'').includes('AI')?'AI 针对性练习'" in html
+
+
+def test_student_detail_feedback_records_use_single_assistant_dropdown():
+    html = rendered_html()
+
+    assert ASSISTANT_FEEDBACK_DROPDOWN_MARKER in html
+    assert "assistant-feedback-dropdown" in html
+    assert "feedback-status-chain" not in html
+    assert "feedback-reward-panel" not in html
