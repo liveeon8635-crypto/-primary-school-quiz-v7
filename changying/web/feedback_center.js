@@ -25,6 +25,13 @@
     return text(record&&record.rewardStatus)==='granted'?'已获得 +'+points+' 分':'待发放 '+points+' 分';
   };
   const receiptText=record=>text(record&&record.receipt)||((record&&record.acknowledged)?'已查收（满意）':'已收到，等待处理回执');
+  const catalogGapText=record=>{
+    const gap=record&&record.catalogGap;
+    if(!gap)return '';
+    const students=Array.isArray(gap.students)?gap.students:[];
+    if(!students.length)return '';
+    return '教材/知识模块练习缺失：'+students.map(name=>text(name)).filter(Boolean).join('、');
+  };
   const reviewHref=record=>{
     const raw=text(record&&record.acceptanceUrl)||text(record&&record.page)||'/v1';
     let url;try{url=new URL(raw,location.origin)}catch{return '/v1'}
