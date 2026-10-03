@@ -28,3 +28,9 @@ def test_classic_unified_top_keeps_both_current_and_legacy_fallbacks():
         "localStorage.getItem('v6Token')",
     ):
         assert marker in text
+
+
+def test_explicit_v1_logout_clears_onboarding_session_marker():
+    from pathlib import Path
+    source = Path("changying/web/v1.py").read_text(encoding="utf-8")
+    assert "sessionStorage.removeItem('cyV1RoleTutorialShownThisLoginV7')" in source
