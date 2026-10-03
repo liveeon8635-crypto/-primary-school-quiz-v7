@@ -160,17 +160,30 @@ def ensure_student_practice_catalog(
                 catalog = []
             if catalog:
                 break
+    # 反馈 #304：人教版（2024 修订）五年级数学把旧版“简易方程”“位置”等单元
+    # 调整为新版模块名。历史题库中同一新版模块可能同时存在旧名与新名两条记录，
+    # 若直接逐条返回，“知识模块练习”下拉框会出现重复或旧版单元名。这里按对齐后的
+    # 模块名聚合题量，保证下拉框只展示最新人教版模块名且题量完整。
+    merged: dict[str, dict[str, Any]] = {}
     for item in catalog or []:
         knowledge = str(item.get("knowledge") or "").strip()
         if not knowledge:
             continue
-        modules.append(
-            {
-                "knowledge": normalize_knowledge_module(grade_value, subject_value, knowledge),
-                "unit": str(item.get("unit") or "").strip(),
-                "count": int(item.get("count") or 0),
+        normalized = normalize_knowledge_module(grade_value, subject_value, knowledge)
+        unit = str(item.get("unit") or "").strip()
+        count = int(item.get("count") or 0)
+        existing = merged.get(normalized)
+        if existing is None:
+            merged[normalized] = {
+                "knowledge": normalized,
+                "unit": unit,
+                "count": count,
             }
-        )
+        else:
+            existing["count"] = int(existing.get("count") or 0) + count
+            if not existing.get("unit") and unit:
+                existing["unit"] = unit
+    modules = list(merged.values())
     return textbooks, modules
 
 
