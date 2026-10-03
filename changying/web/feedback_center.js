@@ -188,5 +188,17 @@
 
   // Feedback records are intentionally exposed only through the product assistant
   // dropdown. Do not create a second standalone top-navigation entry.
-  window.ChangyingFeedbackCenter=Object.freeze({open,close,load,statusLabel,statusClass,rewardText,receiptText});
+  //
+  // Onboarding guide suppression: the workspace guide must only appear once per
+  // user. Clicking a card repeatedly must not re-trigger the guide. We persist a
+  // seen flag and expose a helper so the workspace entrypoint can gate the guide.
+  const GUIDE_SEEN_KEY='v717OnboardingGuideSeen';
+  const guideSeen=()=>{
+    try{return localStorage.getItem(GUIDE_SEEN_KEY)==='1'}catch{return false}
+  };
+  const markGuideSeen=()=>{
+    try{localStorage.setItem(GUIDE_SEEN_KEY,'1')}catch{}
+  };
+  const shouldShowGuide=()=>!guideSeen();
+  window.ChangyingFeedbackCenter=Object.freeze({open,close,load,statusLabel,statusClass,rewardText,receiptText,shouldShowGuide,markGuideSeen});
 })();
