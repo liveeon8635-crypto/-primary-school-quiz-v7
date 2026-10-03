@@ -30,7 +30,7 @@
     let url;try{url=new URL(raw,location.origin)}catch{return '/v1'}
     if(url.origin!==location.origin)return '/v1';
     url.searchParams.set('cy_feedback_review',String(record&&record.id||''));
-    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(record&&record.id||''))+'&focus='+encodeURIComponent(String(record&&record.id||'')));
+    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&from=feedback&reviewed='+encodeURIComponent(String(record&&record.id||''))+'&focus='+encodeURIComponent(String(record&&record.id||'')));
     return url.pathname+url.search+url.hash;
   };
 
@@ -138,7 +138,7 @@
     const fab=document.getElementById('cy-product-assistant-fab');
     if(fab&&fab.hidden===false)fab.click();
     const tab=document.querySelector('[data-pa-tab="feedback"]');
-    if(tab)tab.click();else location.href='/v1/workspace?tab=feedback';
+    if(tab)tab.click();else location.href='/v1/workspace?tab=feedback&from=feedback';
   };
   body.addEventListener('click',async event=>{
     const toggle=event.target.closest('[data-cy-fc-followup-toggle]');
