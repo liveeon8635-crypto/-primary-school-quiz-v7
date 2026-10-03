@@ -138,6 +138,12 @@ def unified_feedback_records_contract() -> dict:
         "dropdownActions": list(FEEDBACK_SUBMIT_DROPDOWN_ACTIONS),
         "fullFeatures": list(FEEDBACK_RECORDS_FULL_FEATURES),
         "followUpAttachmentSupported": True,
+        # 反馈 #320 追加反馈 #1：进入助手点击“我要反馈”时，下拉应直接展示
+        # 反馈记录列表（取用/回执/奖励分），并允许对单条记录追加反馈且支持上传图片。
+        "recordsListedInDropdown": True,
+        "recordsShowStatus": ("取用", "回执", "奖励分"),
+        "followUpImageUpload": True,
+        "followUpEndpoint": FEEDBACK_PATH + "/{feedback_id}/follow-up",
     }
 FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-feedback/import"
 FREEMAN_FEEDBACK_STATUS_URL = "https://freeman-agent.onrender.com/api/project-feedback/status"
