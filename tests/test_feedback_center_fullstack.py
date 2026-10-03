@@ -201,7 +201,7 @@ def test_handled_feedback_links_to_original_context_before_user_confirmation():
     assert '"acceptanceUrl": _feedback_acceptance_path(detail)' in backend
     assert "cy_feedback_review" in backend
     assert "cy_feedback_return" in backend
-    assert "返回反馈记录" in backend
+    assert "验收完成 · 返回" in backend
     assert "已处理 · 点击去验收" in backend
     assert "const reviewHref=record=>" in center
     assert "已处理 · 点击去验收" in center
@@ -215,7 +215,7 @@ def test_feedback_confirmation_is_gated_until_user_returns_from_review():
     backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
     center = Path("changying/web/feedback_center.js").read_text(encoding="utf-8")
     assert "reviewed='+encodeURIComponent" in backend
-    assert "验收完成，返回反馈记录" in backend
+    assert "验收完成 · 返回" in backend
     assert "已处理 · 点击去验收" in backend
     assert "reviewed&&canConfirm" in backend
     assert "reviewed&&canFollow" in backend
@@ -292,3 +292,14 @@ def test_feedback_review_return_focuses_exact_record():
     assert "scrollIntoView({behavior:'smooth',block:'center'})" in backend
     assert "&focus='+encodeURIComponent" in center
     assert "get('focus')" in center
+
+
+def test_review_bar_routes_failed_acceptance_into_exact_followup_form():
+    from pathlib import Path
+    source = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    assert "未通过 · 追加反馈" in source
+    assert "searchParams.set('followup',String(reviewId))" in source
+    assert "params.get('followup')" in source
+    assert "data-pa-followup-form" in source
+    assert "form.hidden=false" in source
+    assert "input?.focus()" in source
