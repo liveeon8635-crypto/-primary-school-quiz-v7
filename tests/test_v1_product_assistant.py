@@ -640,7 +640,7 @@ def test_feedback_314_precise_navigation_cards_are_returned_and_clickable(monkey
             "key": "feedback_records",
             "title": "我的反馈记录",
             "description": "查看我提交过的每条反馈、处理回执与反馈奖励分状态。",
-            "path": "/v1/workspace?tab=feedback-records",
+            "path": "/v1/feedback",
         }]
         html = rendered_v1()
         assert "Array.isArray(data.cards)&&data.cards.length?data.cards" in html
