@@ -1621,7 +1621,7 @@ _ASSISTANT_SNIPPET = r'''
   #cy-product-assistant-fab[hidden],#cy-product-assistant-panel[hidden]{display:none!important}
   #cy-product-assistant-panel{position:fixed;right:14px;bottom:calc(142px + env(safe-area-inset-bottom));z-index:126;width:min(390px,calc(100vw - 28px));max-height:min(620px,70dvh);background:#fff;border:1px solid #dbe4f1;border-radius:20px;box-shadow:0 22px 70px rgba(17,34,64,.28);overflow:hidden;display:flex;flex-direction:column}
   .cy-pa-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid #e2e8f1}.cy-pa-head b{display:block}.cy-pa-head small{display:block;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);line-height:1.35}.cy-pa-head-actions{display:flex;gap:6px}.cy-pa-head-actions .btn{min-height:36px;padding:7px 10px}
-  .cy-pa-tabs{display:grid;grid-template-columns:1fr auto;padding:9px;gap:7px;background:#f7f9fc}.cy-pa-tab,.cy-pa-feedback-menu>button{border:1px solid #dbe4f1;background:#fff;border-radius:11px;padding:9px;font-weight:750}.cy-pa-tab.active,.cy-pa-feedback-menu>button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78}.cy-pa-feedback-menu{position:relative}.cy-pa-feedback-dropdown{position:absolute;right:0;top:calc(100% + 5px);z-index:4;min-width:150px;background:#fff;border:1px solid #dbe4f1;border-radius:11px;box-shadow:0 12px 30px rgba(17,34,64,.18);padding:5px;display:grid;gap:4px}.cy-pa-feedback-dropdown[hidden]{display:none}.cy-pa-feedback-dropdown button{border:0;background:#fff;text-align:left;border-radius:8px;padding:9px 10px;font-weight:700}.cy-pa-feedback-dropdown button:hover{background:#f1f5fb}
+  .cy-pa-tabs{display:grid;grid-template-columns:1fr auto;padding:9px;gap:7px;background:#f7f9fc}.cy-pa-tab,.cy-pa-feedback-menu>button{border:1px solid #dbe4f1;background:#fff;border-radius:11px;padding:9px;font-weight:750}.cy-pa-tab.active,.cy-pa-feedback-menu>button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78}.cy-pa-feedback-menu{position:relative}.cy-pa-feedback-dropdown{position:absolute;right:0;top:calc(100% + 5px);z-index:4;min-width:150px;background:#fff;border:1px solid #dbe4f1;border-radius:11px;box-shadow:0 12px 30px rgba(17,34,64,.18);padding:5px;display:grid;gap:4px}.cy-pa-feedback-dropdown[hidden]{display:none}.cy-pa-feedback-dropdown button{border:0;background:#fff;text-align:left;border-radius:8px;padding:9px 10px;font-weight:700}.cy-pa-feedback-dropdown button:hover{background:#f1f5fb}.cy-pa-feedback-dropdown{width:min(350px,calc(100vw - 48px));max-height:min(460px,60dvh);overflow:auto}.cy-pa-feedback-dropdown-records{display:grid;gap:6px;border-top:1px solid #e6ebf2;margin-top:2px;padding-top:6px}.cy-pa-feedback-dropdown-record{border:1px solid #dbe4f1;border-radius:9px;padding:8px;background:#f8fbff;display:grid;gap:4px}.cy-pa-feedback-dropdown-record b{font-size:11px}.cy-pa-feedback-dropdown-record small{font-size:10px;color:#667085;line-height:1.4;overflow-wrap:anywhere}.cy-pa-feedback-dropdown-actions{display:flex;gap:5px;flex-wrap:wrap}.cy-pa-feedback-dropdown-actions button{border:1px solid #dbe4f1;background:#fff;padding:6px 8px;font-size:10px}.cy-pa-feedback-dropdown-actions button.primary{background:#173a78;color:#fff;border-color:#173a78}
   .cy-pa-body{padding:10px 11px;overflow:auto}.cy-pa-quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.cy-pa-quick button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 8px;font-size:11px}
   .cy-pa-chat{display:grid;gap:9px;margin-bottom:10px}.cy-pa-msg{max-width:92%;padding:10px 11px;border-radius:13px;line-height:1.55;font-size:13px;white-space:pre-wrap}.cy-pa-msg.user{justify-self:end;background:#173a78;color:#fff}.cy-pa-msg.assistant{justify-self:start;background:#f1f5fb;color:#1c2940}.cy-pa-sent-image{display:block;max-width:180px;max-height:180px;margin-top:7px;border-radius:9px;object-fit:contain;background:#fff}
   .cy-pa-learning-visual{justify-self:start;width:min(92%,330px);border:1px solid #dbe5f3;background:#fff;border-radius:14px;padding:10px;display:grid;gap:8px}.cy-pa-learning-visual b{font-size:12px;color:#173a78}.cy-pa-learning-visual small{font-size:10px;color:var(--muted);line-height:1.45}.cy-pa-fraction-grid{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px;height:42px}.cy-pa-fraction-cell{border:1px solid #9fb6da;border-radius:5px;background:#f5f8fd}.cy-pa-fraction-cell.is-given{background:#dbe8ff}.cy-pa-bar-model{display:grid;gap:5px}.cy-pa-bar-track{display:grid;grid-template-columns:1.15fr .85fr;height:42px;border:1px solid #9fb6da;border-radius:8px;overflow:hidden}.cy-pa-bar-known,.cy-pa-bar-unknown{display:grid;place-items:center;font-size:10px}.cy-pa-bar-known{background:#dbe8ff}.cy-pa-bar-unknown{background:#f7f9fc;border-left:1px dashed #9fb6da}.cy-pa-shape-box{height:86px;display:grid;place-items:center}.cy-pa-shape{border:2px solid #6c88b4;display:grid;place-items:center;color:#52647f;font-size:11px}.cy-pa-shape.rectangle{width:150px;height:68px}.cy-pa-shape.square{width:74px;height:74px}.cy-pa-shape.circle{width:74px;height:74px;border-radius:50%}.cy-pa-shape.triangle{width:0;height:0;border-left:48px solid transparent;border-right:48px solid transparent;border-bottom:78px solid #dbe8ff;border-top:0;position:relative}.cy-pa-numberline{position:relative;height:54px;margin:2px 8px}.cy-pa-numberline-line{position:absolute;left:0;right:0;top:24px;border-top:2px solid #6c88b4}.cy-pa-numberline-tick{position:absolute;top:17px;transform:translateX(-50%);font-size:9px;color:#52647f}.cy-pa-numberline-tick:before{content:'';display:block;width:1px;height:15px;background:#6c88b4;margin:0 auto 2px}
@@ -1632,7 +1632,7 @@ _ASSISTANT_SNIPPET = r'''
 <button id="cy-product-assistant-fab" hidden aria-label="打开产品助手" title="产品助手">✦<span class="cy-pa-fab-label">产品助手</span></button>
 <section id="cy-product-assistant-panel" hidden aria-label="长缨产品助手">
   <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-collapse" aria-label="收起">−</button></div></header>
-  <div class="cy-pa-tabs" data-feedback-ui-revision="2"><button class="cy-pa-tab active" id="cy-pa-ask-tab" data-pa-tab="ask">问产品</button><div class="cy-pa-feedback-menu"><button id="cy-pa-feedback-menu-button" type="button" aria-haspopup="menu" aria-expanded="false">提反馈 ▾</button><div class="cy-pa-feedback-dropdown" id="cy-pa-feedback-dropdown" role="menu" hidden><button type="button" data-pa-tab="feedback" role="menuitem">提交新反馈</button><button type="button" data-pa-tab="records" role="menuitem">反馈记录</button></div></div></div>
+  <div class="cy-pa-tabs" data-feedback-ui-revision="3"><button class="cy-pa-tab active" id="cy-pa-ask-tab" data-pa-tab="ask">问产品</button><div class="cy-pa-feedback-menu"><button id="cy-pa-feedback-menu-button" type="button" aria-haspopup="menu" aria-expanded="false">提反馈 ▾</button><div class="cy-pa-feedback-dropdown" id="cy-pa-feedback-dropdown" role="menu" hidden><button type="button" data-pa-tab="feedback" role="menuitem">提交新反馈</button><button type="button" data-pa-tab="records" role="menuitem">反馈记录</button><div class="cy-pa-feedback-dropdown-records" id="cy-pa-feedback-dropdown-records"><div class="cy-pa-note">打开“提反馈”后会在这里直接显示你的反馈记录。</div></div></div></div></div>
   <div class="cy-pa-body" id="cy-pa-ask">
     <div class="cy-pa-quick"><button id="cy-pa-quick-1" data-pa-question="我现在该做什么？">下一步做什么</button><button id="cy-pa-quick-2" data-pa-question="这个页面是干什么的？">页面用途</button><button id="cy-pa-quick-3" data-pa-question="这一步为什么排在这里？">为什么这样走</button></div>
     <div class="cy-pa-guide" id="cy-pa-guide">
@@ -1981,6 +1981,40 @@ _ASSISTANT_SNIPPET = r'''
       }
     }catch(err){box.innerHTML='<div class="cy-pa-note">反馈记录读取失败：'+escapeHtml(err.message||'请稍后重试')+'</div>'}
   }
+  async function loadFeedbackDropdownRecords(){
+    const box=document.getElementById('cy-pa-feedback-dropdown-records');if(!box)return;
+    box.innerHTML='<div class="cy-pa-note">正在读取反馈记录…</div>';
+    try{
+      const token=readToken();if(!token)throw new Error('登录状态已失效，请重新登录');
+      const r=await fetch('/v1/product-feedback/mine',{headers:{Authorization:'Bearer '+token}});
+      const data=await r.json();if(!r.ok)throw new Error(data.detail||'读取失败');
+      const summary=data.rewardSummary||{},items=Array.isArray(data.records)?data.records:[];
+      const summaryHtml='<div class="cy-pa-note"><b>反馈记录</b> · 已采纳 '+Number(summary.adoptedFeedbackCount||0)+' 条 · 已获得 '+Number(summary.earnedPoints||0)+' 分</div>';
+      const recordsHtml=items.length?items.map(x=>{
+        const id=Number(x.id),follow=x.canFollowUp===true&&x.terminalAccepted!==true;
+        return '<div class="cy-pa-feedback-dropdown-record" data-pa-dropdown-record="'+id+'">'+
+          '<b>'+escapeHtml(x.category||'产品反馈')+' · '+escapeHtml(x.statusLabel||'已收到')+'</b>'+
+          '<small>'+escapeHtml(x.message||'')+'</small>'+
+          '<small><b>取用状态：</b>'+escapeHtml(x.statusLabel||'已收到')+' · <b>奖励分：</b>'+Number(x.rewardPoints||0)+'</small>'+
+          '<small><b>回执：</b>'+escapeHtml(x.receipt||'已收到，等待处理回执')+'</small>'+
+          '<div class="cy-pa-feedback-dropdown-actions"><button type="button" data-pa-dropdown-open="'+id+'">查看记录</button>'+
+          (follow?'<button class="primary" type="button" data-pa-dropdown-followup="'+id+'">追加反馈（可传照片）</button>':'')+
+          '</div></div>';
+      }).join(''):'<div class="cy-pa-note">还没有提交过反馈。</div>';
+      box.innerHTML=summaryHtml+recordsHtml;
+    }catch(err){box.innerHTML='<div class="cy-pa-note">反馈记录读取失败：'+escapeHtml(err.message||'请稍后重试')+'</div>'}
+  }
+  document.getElementById('cy-pa-feedback-dropdown-records')?.addEventListener('click',event=>{
+    const follow=event.target.closest('[data-pa-dropdown-followup]');
+    const open=event.target.closest('[data-pa-dropdown-open]');
+    const id=String(follow?.dataset.paDropdownFollowup||open?.dataset.paDropdownOpen||'');
+    if(!id)return;
+    const u=new URL('/v1/workspace',location.origin);
+    u.searchParams.set('tab','feedback-records');
+    u.searchParams.set('focus',id);
+    if(follow)u.searchParams.set('followup',id);
+    location.href=u.pathname+u.search;
+  });
   document.getElementById('cy-pa-history')?.addEventListener('click',async event=>{
     const toggle=event.target.closest('[data-pa-followup-toggle]');
     if(toggle){const form=document.querySelector('[data-pa-followup-form="'+toggle.dataset.paFollowupToggle+'"]');if(form)form.hidden=!form.hidden;return}
@@ -2023,7 +2057,7 @@ _ASSISTANT_SNIPPET = r'''
   });
   const feedbackMenuButton=document.getElementById('cy-pa-feedback-menu-button'),feedbackDropdown=document.getElementById('cy-pa-feedback-dropdown');
   const closeFeedbackMenu=()=>{if(feedbackDropdown)feedbackDropdown.hidden=true;if(feedbackMenuButton)feedbackMenuButton.setAttribute('aria-expanded','false')};
-  if(feedbackMenuButton)feedbackMenuButton.onclick=()=>{const opening=feedbackDropdown?.hidden!==false;if(feedbackDropdown)feedbackDropdown.hidden=!opening;feedbackMenuButton.setAttribute('aria-expanded',opening?'true':'false')};
+  if(feedbackMenuButton)feedbackMenuButton.onclick=async()=>{const opening=feedbackDropdown?.hidden!==false;if(feedbackDropdown)feedbackDropdown.hidden=!opening;feedbackMenuButton.setAttribute('aria-expanded',opening?'true':'false');if(opening)await loadFeedbackDropdownRecords()};
   document.querySelectorAll('[data-pa-tab]').forEach(x=>x.onclick=()=>{setTab(x.dataset.paTab);closeFeedbackMenu()});
   document.addEventListener('click',event=>{if(!event.target.closest('.cy-pa-feedback-menu'))closeFeedbackMenu()});
   const initialAssistantTab=new URLSearchParams(location.search).get('tab');
@@ -2105,7 +2139,7 @@ _ASSISTANT_SNIPPET = r'''
 
 
 def patch_v1_product_assistant(html: str) -> str:
-    feedback_ui_revision = 'data-feedback-ui-revision="2"'
+    feedback_ui_revision = 'data-feedback-ui-revision="3"'
     if V1_PRODUCT_ASSISTANT_MARKER in html and feedback_ui_revision in html:
         return html
     if V1_PRODUCT_ASSISTANT_MARKER in html:
