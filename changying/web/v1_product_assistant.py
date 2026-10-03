@@ -1004,12 +1004,21 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
 <main class="cy-feedback-page">
   <div class="cy-feedback-page-head">
     <div><h1>我的反馈记录</h1><p>查看取用状态、处理回执、反馈奖励分，并完成验收或追加反馈。</p></div>
-    <a class="cy-feedback-page-back" href="/v1/workspace">返回工作台</a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+      <a id="cy-feedback-back-records" class="cy-feedback-page-back" href="/v1/workspace?tab=feedback-records">返回助手反馈记录</a>
+      <a class="cy-feedback-page-back" href="/v1/workspace">返回工作台</a>
+    </div>
   </div>
 </main>
 <script>""" + feedback_center + """</script>
 <script>
 if(window.ChangyingFeedbackCenter){window.ChangyingFeedbackCenter.open()}
+const cyFeedbackParams=new URLSearchParams(location.search);
+const cyFeedbackId=cyFeedbackParams.get('cy_feedback_review')||cyFeedbackParams.get('reviewed')||cyFeedbackParams.get('focus');
+const cyFeedbackBack=document.getElementById('cy-feedback-back-records');
+if(cyFeedbackBack&&cyFeedbackId){
+  cyFeedbackBack.href='/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(cyFeedbackId)+'&focus='+encodeURIComponent(cyFeedbackId);
+}
 </script>
 </body>
 </html>"""
@@ -2045,7 +2054,7 @@ _ASSISTANT_SNIPPET = r'''
     try{url=new URL(raw,location.origin)}catch{return '/v1'}
     if(url.origin!==location.origin)return '/v1';
     url.searchParams.set('cy_feedback_review',String(record?.id||''));
-    url.searchParams.set('cy_feedback_return','/v1/feedback?reviewed='+encodeURIComponent(String(record?.id||''))+'&focus='+encodeURIComponent(String(record?.id||'')));
+    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(record?.id||''))+'&focus='+encodeURIComponent(String(record?.id||'')));
     return url.pathname+url.search+url.hash;
   };
   const repairFeedbackReviewTarget=async()=>{
@@ -2064,7 +2073,7 @@ _ASSISTANT_SNIPPET = r'''
       const sameTarget=current.pathname===target.pathname&&current.search===target.search&&current.hash===target.hash;
       if(sameTarget)return false;
       target.searchParams.set('cy_feedback_review',String(reviewId));
-      target.searchParams.set('cy_feedback_return',params.get('cy_feedback_return')||('/v1/feedback?reviewed='+encodeURIComponent(String(reviewId))+'&focus='+encodeURIComponent(String(reviewId))));
+      target.searchParams.set('cy_feedback_return',params.get('cy_feedback_return')||('/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(reviewId))+'&focus='+encodeURIComponent(String(reviewId))));
       location.replace(target.pathname+target.search+target.hash);
       return true;
     }catch(_){return false}

@@ -339,3 +339,16 @@ def test_stale_feedback_review_link_self_heals_to_current_acceptance_target():
     assert "record.acceptanceUrl||record.page||'/v1/feedback'" in source
     assert "location.replace(target.pathname+target.search+target.hash)" in source
     assert "repairFeedbackReviewTarget().then" in source
+
+
+def test_feedback_review_returns_to_assistant_history_with_exact_record_focus():
+    from pathlib import Path
+    backend = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    center = Path("changying/web/feedback_center.js").read_text(encoding="utf-8")
+    expected = "/v1/workspace?tab=feedback-records&reviewed="
+    assert expected in backend
+    assert expected in center
+    assert "cy-feedback-back-records" in backend
+    assert "返回助手反馈记录" in backend
+    assert "cyFeedbackId=cyFeedbackParams.get('cy_feedback_review')||cyFeedbackParams.get('reviewed')||cyFeedbackParams.get('focus')" in backend
+    assert "cyFeedbackBack.href='/v1/workspace?tab=feedback-records&reviewed='" in backend
