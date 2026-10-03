@@ -83,6 +83,12 @@ def normalize_knowledge_module(grade: int, subject: str, knowledge: str) -> str:
     return key
 
 
+def practice_catalog_fallback_grades(grade: int) -> tuple[int, ...]:
+    """Return deterministic fallback grades without duplicate seeding attempts."""
+    ordered = [int(grade or 0), 5, 4, 3, 6, 2, 1]
+    return tuple(value for index, value in enumerate(ordered) if value > 0 and value not in ordered[:index])
+
+
 def ensure_student_practice_catalog(
     grade: int,
     subject: str,
@@ -111,7 +117,7 @@ def ensure_student_practice_catalog(
     # 这里在按学生年级/科目仍为空时，回退到该科目已核定的标准教材集合，
     # 保证教师始终能看到可用的教材与知识模块，而不是空白状态。
     if not textbooks and subject_value:
-        for fallback_grade in (grade_value, 5, 4, 3, 6, 2, 1):
+        for fallback_grade in practice_catalog_fallback_grades(grade_value):
             try:
                 ensure_built_in_questions(fallback_grade, subject_value)
             except Exception:
@@ -132,7 +138,7 @@ def ensure_student_practice_catalog(
     # 标准教材集合，保证“淦云凡”“翁舒言”这类学生也能看到可用教材，
     # 而不是在晚托布置作业时出现“暂无可用教材”的空白状态。
     if not textbooks and subject_value:
-        for fallback_grade in (grade_value, 5, 4, 3, 6, 2, 1):
+        for fallback_grade in practice_catalog_fallback_grades(grade_value):
             try:
                 ensure_built_in_questions(fallback_grade, subject_value)
             except Exception:
@@ -157,7 +163,7 @@ def ensure_student_practice_catalog(
     # 反馈 #310：教材已确定但“知识模块练习”明细为空时，按学生年级补题；
     # 若仍为空，再按该教材实际所属年级补题，保证教师始终能看到可用的知识模块。
     if not catalog and resolved_textbook and subject_value:
-        for module_grade in (grade_value, 5, 4, 3, 6, 2, 1):
+        for module_grade in practice_catalog_fallback_grades(grade_value):
             try:
                 ensure_built_in_questions(module_grade, subject_value)
             except Exception:
@@ -179,7 +185,7 @@ def ensure_student_practice_catalog(
         # 反馈 #310：教材已确定但知识模块明细为空时，先按学生年级补题；
         # 若仍为空，再按该教材实际所属年级补题，避免“淦云凡”“翁舒言”
         # 这类学生因年级/教材不一致而始终看不到知识模块练习明细。
-        for module_grade in (grade_value, 5, 4, 3, 6, 2, 1):
+        for module_grade in practice_catalog_fallback_grades(grade_value):
             try:
                 ensure_built_in_questions(module_grade, subject_value)
             except Exception:
