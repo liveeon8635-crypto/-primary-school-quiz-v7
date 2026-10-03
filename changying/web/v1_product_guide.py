@@ -142,7 +142,7 @@ _GUIDE_SNIPPET = r'''
   function sync(){
     const ready=identityReady(),persona=currentPersona();
     const params=new URLSearchParams(location.search);
-    const feedbackReview=Boolean(params.get('cy_feedback_review')||params.get('reviewed'));
+    const feedbackReview=Boolean(params.get('cy_feedback_review')||params.get('reviewed')||params.get('from')==='feedback'||params.get('tab')==='feedback-records');
     if(tutorialButton)tutorialButton.hidden=!ready;
     if(!ready){clearSessionShown();return}
     if(location.pathname==='/v1/guide'){renderPersistentGuide();return}
