@@ -2092,6 +2092,13 @@ _ASSISTANT_SNIPPET = r'''
     bar.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:2147483000;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px 12px;border:1px solid #bfd2f4;border-radius:14px;background:#fff;box-shadow:0 10px 30px rgba(16,24,40,.18)';
     bar.innerHTML='<span style="font-size:12px;font-weight:800;color:#173a78;flex:1 1 100%">请在当前页面验收反馈 #'+escapeHtml(reviewId)+'</span><a href="'+escapeHtml(failTo)+'" style="text-decoration:none;background:#fff;color:#a33;border:1px solid #e2b8b8;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800">未通过 · 追加反馈</a><a href="'+escapeHtml(returnTo)+'" style="text-decoration:none;background:#173a78;color:#fff;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800">验收完成 · 返回</a>';
     document.body.appendChild(bar);
+    const syncReviewClearance=()=>{
+      const height=Math.ceil(bar.getBoundingClientRect().height||0);
+      document.documentElement.style.setProperty('--cy-feedback-review-clearance',height?String(height+18)+'px':'0px');
+    };
+    requestAnimationFrame(syncReviewClearance);
+    setTimeout(syncReviewClearance,120);
+    window.addEventListener('resize',syncReviewClearance,{passive:true});
   };
   repairFeedbackReviewTarget().then(repaired=>{if(!repaired)mountFeedbackReviewReturn()});
   async function loadFeedbackHistory(){
