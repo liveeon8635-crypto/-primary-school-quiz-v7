@@ -27,6 +27,110 @@ V1_TEST_DATA_CLEANUP_MARKER = "changying_v1_test_data_cleanup_v1"
 # and reports earned points; redemption stays behind the protected boundary.
 V1_FEEDBACK_REWARD_MARKER = "changying_v1_feedback_reward_v1"
 
+# Feedback #308: when a teacher's submitted feedback is processed, they want a
+# notification they can click into to verify the outcome or give further
+# feedback. This exposes a guarded, reversible runtime entry point that only
+# reports processed feedback and a clickable verification/follow-up target;
+# it never mutates feedback state.
+V1_FEEDBACK_NOTIFICATION_MARKER = "changying_v1_feedback_notification_v1"
+
+_PROCESSED_FEEDBACK_STATUSES = {
+    "processed",
+    "resolved",
+    "adopted",
+    "accepted",
+    "used",
+    "taken",
+    "done",
+    "completed",
+    "closed",
+}
+
+
+def is_processed_feedback(record: dict) -> bool:
+    """Return True only for feedback that has actually been processed.
+
+    Feedback #308: a teacher should be notified only once their submitted
+    feedback has been handled, so they can click in to verify the outcome or
+    give further feedback. Pending/unprocessed feedback does not notify.
+    """
+    if not isinstance(record, dict):
+        return False
+    status = str(record.get("status") or record.get("state") or "").lower()
+    if status in _PROCESSED_FEEDBACK_STATUSES:
+        return True
+    return record.get("processed") is True or record.get("isProcessed") is True
+
+
+def build_feedback_notifications(records) -> dict:
+    """Build clickable notifications for processed feedback.
+
+    Feedback #308: each processed feedback produces one notification the
+    teacher can click into to verify the outcome or give further feedback.
+    This is read-only and never mutates feedback state.
+    """
+    if not records:
+        return {
+            "marker": V1_FEEDBACK_NOTIFICATION_MARKER,
+            "count": 0,
+            "notifications": [],
+        }
+    notifications = []
+    for r in records:
+        if not is_processed_feedback(r):
+            continue
+        fid = r.get("id") if isinstance(r, dict) else None
+        notifications.append(
+            {
+                "feedbackId": fid,
+                "title": "您的反馈已处理",
+                "status": str(r.get("status") or r.get("state") or "processed"),
+                "verifyUrl": f"/v1/feedback?id={fid}" if fid is not None else "/v1/feedback",
+                "canVerify": True,
+                "canFollowUp": True,
+            }
+        )
+    return {
+        "marker": V1_FEEDBACK_NOTIFICATION_MARKER,
+        "count": len(notifications),
+        "notifications": notifications,
+    }
+
+
+def handle_feedback_notification_request(payload, records) -> dict:
+    """Runtime entry point for the feedback-processed notification request.
+
+    Feedback #308: when a teacher's submitted feedback is processed, they want
+    a notification they can click into to verify the outcome or give further
+    feedback. This is the actual request handler wired into the unified Classic
+    tool surface. It is guarded and reversible: it only reports processed
+    feedback and a clickable verification/follow-up target, and never mutates
+    feedback state.
+    """
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "invalid_payload"}
+    action = payload.get("action")
+    if action == "list_feedback_notifications":
+        summary = build_feedback_notifications(records)
+        return {
+            "ok": True,
+            "marker": V1_FEEDBACK_NOTIFICATION_MARKER,
+            "notifications": summary.get("notifications", []),
+            "count": summary.get("count", 0),
+            "requiresConfirmation": False,
+            "destructive": False,
+        }
+    if action == "feedback_notification_status":
+        summary = build_feedback_notifications(records)
+        return {
+            "ok": True,
+            "marker": V1_FEEDBACK_NOTIFICATION_MARKER,
+            "count": summary.get("count", 0),
+            "requiresConfirmation": False,
+            "destructive": False,
+        }
+    return {"ok": False, "error": "unsupported_action"}
+
 
 def is_adopted_feedback(record: dict) -> bool:
     """Return True only for feedback explicitly marked as adopted/used.
