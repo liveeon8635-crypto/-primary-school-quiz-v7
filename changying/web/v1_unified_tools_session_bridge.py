@@ -232,17 +232,49 @@ def patch_unified_tool_session_bridge(html: str) -> str:
     )
 
 
+def register_feedback_reward_handler(registry=None) -> dict:
+    """Wire the feedback reward-points handler into the runtime surface.
+
+    Feedback #309: teachers want each adopted feedback to earn one reward
+    point redeemable for account time. The handler above only computes and
+    reports earned points; this registers it on the unified Classic tool
+    surface so the request path is actually reachable at runtime instead of
+    being a dead helper. Redemption stays behind the protected boundary.
+    """
+    if registry is None:
+        registry = getattr(v1_unified_tools, "_TOOL_HANDLERS", None)
+        if registry is None:
+            registry = {}
+            v1_unified_tools._TOOL_HANDLERS = registry  # noqa: SLF001
+    registry["feedback_reward"] = handle_feedback_reward_request
+    return {
+        "marker": V1_FEEDBACK_REWARD_MARKER,
+        "registered": "feedback_reward" in registry,
+        "actions": [
+            "preview_feedback_reward",
+            "preview_feedback_reward_redemption",
+        ],
+    }
+
+
 def install_v1_unified_tool_session_bridge() -> None:
     if getattr(v1_unified_tools, "_session_bridge_installed", False):
         return
     v1_unified_tools._TOOL_HTML = patch_unified_tool_session_bridge(  # noqa: SLF001
         v1_unified_tools._TOOL_HTML  # noqa: SLF001
     )
+    register_feedback_reward_handler()
     v1_unified_tools._session_bridge_installed = True
 
 
 __all__ = [
     "V1_UNIFIED_SESSION_BRIDGE_MARKER",
+    "V1_FEEDBACK_REWARD_MARKER",
     "install_v1_unified_tool_session_bridge",
     "patch_unified_tool_session_bridge",
+    "register_feedback_reward_handler",
+    "handle_feedback_reward_request",
+    "compute_feedback_reward_points",
+    "build_feedback_reward_redemption_preview",
+    "is_adopted_feedback",
 ]
