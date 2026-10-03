@@ -13,6 +13,34 @@ from changying.web import v1_unified_tools
 
 V1_UNIFIED_SESSION_BRIDGE_MARKER = "changying_v1_unified_session_bridge_v1"
 
+# Feedback #306: before formal use, teachers need a safe way to clear
+# pre-launch test/demo data so it does not pollute real teaching records.
+# This marker exposes a guarded, reversible cleanup entry point on the
+# unified Classic tool surface. It never deletes real student history:
+# only records explicitly flagged as test/demo are eligible.
+V1_TEST_DATA_CLEANUP_MARKER = "changying_v1_test_data_cleanup_v1"
+
+
+def is_test_data_record(record: dict) -> bool:
+    """Return True only for records explicitly flagged as test/demo data.
+
+    Real student records are never eligible for cleanup. A record qualifies
+    only when it carries an explicit test/demo flag set by the system.
+    """
+    if not isinstance(record, dict):
+        return False
+    if record.get("isTestData") is True or record.get("is_test_data") is True:
+        return True
+    source = str(record.get("source") or record.get("origin") or "").lower()
+    return source in {"test", "demo", "seed", "sample"}
+
+
+def select_test_data_records(records) -> list:
+    """Filter an iterable of records down to eligible test/demo records."""
+    if not records:
+        return []
+    return [r for r in records if is_test_data_record(r)]
+
 
 def patch_unified_tool_session_bridge(html: str) -> str:
     if V1_UNIFIED_SESSION_BRIDGE_MARKER in html:
