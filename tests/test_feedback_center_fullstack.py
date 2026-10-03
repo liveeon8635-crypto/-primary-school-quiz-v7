@@ -352,3 +352,13 @@ def test_feedback_review_returns_to_assistant_history_with_exact_record_focus():
     assert "返回助手反馈记录" in backend
     assert "cyFeedbackId=cyFeedbackParams.get('cy_feedback_review')||cyFeedbackParams.get('reviewed')||cyFeedbackParams.get('focus')" in backend
     assert "cyFeedbackBack.href='/v1/workspace?tab=feedback-records&reviewed='" in backend
+
+
+def test_feedback_page_workspace_return_does_not_reenter_tutorial_flow():
+    response = TestClient(app).get("/v1/feedback")
+    assert response.status_code == 200
+    html = response.text
+    assert 'id="cy-feedback-back-workspace"' in html
+    assert 'href="/v1/workspace?from=feedback"' in html
+    assert "cyFeedbackWorkspace.href='/v1/workspace?from=feedback'" in html
+    assert "reviewed='+encodeURIComponent(cyFeedbackId)" in html
