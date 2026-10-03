@@ -22,7 +22,7 @@ from types import ModuleType
 import requests
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, LargeBinary, String, Table, insert, select
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, LargeBinary, String, Table, insert, select, update
 
 from changying.web import v1 as v1_module
 from changying.web import v1_classic_gzip_embed as classic_embed_module
@@ -974,6 +974,37 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
     reward_table.create(bind=bind, checkfirst=True)
 
 
+    FEEDBACK_REWARD_GRANTED_REMOTE_STATUSES = {
+        "selected", "processing", "needs_attention", "awaiting_acceptance", "resolved"
+    }
+
+    def _sync_feedback_reward_grants(db, rows, freeman_status: dict) -> bool:
+        """Persist one reward point when Freeman has actually taken the feedback.
+
+        New/unselected feedback remains pending. Once Freeman moves a feedback out
+        of new into a taken/processing state, the pending row is promoted once to
+        granted. audit_id uniqueness plus pending-only update makes this idempotent.
+        """
+        changed = False
+        for row in rows:
+            remote = freeman_status.get(str(int(row.id)), {})
+            remote_status = str(remote.get("status") or "")
+            if remote_status not in FEEDBACK_REWARD_GRANTED_REMOTE_STATUSES:
+                continue
+            result = db.execute(
+                update(reward_table)
+                .where(
+                    reward_table.c.audit_id == int(row.id),
+                    reward_table.c.status == "pending",
+                )
+                .values(status="granted")
+            )
+            if int(result.rowcount or 0) > 0:
+                changed = True
+        if changed:
+            db.commit()
+        return changed
+
     def _feedback_reward_summary(db, user) -> dict:
         reward_query = select(reward_table.c.points, reward_table.c.status).where(reward_table.c.school_id == user.school_id)
         if getattr(user, "role", "") != "admin":
@@ -1046,6 +1077,11 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
                 for ref in refreshed_refs:
                     _post_feedback_import(ref["statusToken"], int(ref["sourceId"]))
                 freeman_status.update(_freeman_feedback_status(refreshed_refs))
+        if _sync_feedback_reward_grants(db, rows, freeman_status):
+            reward_rows = db.execute(reward_query).all()
+            reward_by_audit = {
+                int(r[0]): (int(r[1] or 0), str(r[2])) for r in reward_rows
+            }
         records = []
         for row in rows:
             detail = {}
