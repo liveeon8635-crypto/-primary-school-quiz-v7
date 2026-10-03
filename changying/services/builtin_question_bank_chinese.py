@@ -418,4 +418,33 @@ def baseline_chinese_specs() -> list[dict[str, Any]]:
     ]
 
 
+def has_usable_chinese_material(specs: list[dict[str, Any]] | None) -> bool:
+    """Return True when a Chinese practice set can be shown to a student.
+
+    Students without a matched textbook (for example 淦云凡 / 翁舒言 in the
+    late-care class) must still receive a non-empty knowledge-module practice
+    detail instead of an empty state.
+    """
+    if not specs:
+        return False
+    for row in specs:
+        if not isinstance(row, dict):
+            continue
+        if row.get("text") and row.get("options"):
+            return True
+    return False
+
+
+def resolve_chinese_specs(specs: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Return usable Chinese specs, falling back to the baseline pack.
+
+    When a student has no matched textbook the caller may pass an empty or
+    unusable list; in that case the baseline pack is returned so the
+    knowledge-module practice detail is never empty.
+    """
+    if has_usable_chinese_material(specs):
+        return list(specs or [])
+    return baseline_chinese_specs()
+
+
 __all__ = ["CHINESE_G5_TEXTBOOK", "grade5_chinese_specs", "baseline_chinese_specs"]
