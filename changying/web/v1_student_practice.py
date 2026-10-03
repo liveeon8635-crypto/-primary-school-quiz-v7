@@ -106,6 +106,10 @@ def ensure_student_practice_catalog(
             fallback = list(built_in_textbooks(fallback_grade, subject_value) or [])
             if fallback:
                 textbooks = fallback
+                # 反馈 #310：回退到标准教材后，必须同时用该教材重新取知识模块明细，
+                # 否则教师仍会看到“暂无可用教材/知识模块练习明细”的空白状态。
+                if not textbook_value:
+                    textbook_value = fallback[0]
                 break
 
     if textbook_value and textbook_value not in textbooks:
