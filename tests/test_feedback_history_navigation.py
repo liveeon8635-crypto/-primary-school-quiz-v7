@@ -24,7 +24,9 @@ def test_assistant_fab_and_collapse_bindings_survive_feedback_records_ui():
 
 def test_feedback_records_route_reopens_after_identity_becomes_ready():
     html = patch_v1_product_assistant("<html><body></body></html>")
-    assert "let initialAssistantRoutePending=initialAssistantTab==='feedback-records'||initialAssistantTab==='ask'" in html
+    assert "let initialAssistantRoutePending=initialAssistantTab==='feedback-records'||initialAssistantTab==='feedback'||initialAssistantTab==='ask'" in html
     assert "const openInitialAssistantRoute=()=>{" in html
     assert "if(!initialAssistantRoutePending||!identityReady())return false" in html
     assert "openInitialAssistantRoute();fab.hidden=!panel.hidden" in html
+
+    assert "else if(initialAssistantTab==='feedback')setTab('feedback')" in html
