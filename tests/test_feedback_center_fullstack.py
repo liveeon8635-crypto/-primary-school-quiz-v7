@@ -18,7 +18,7 @@ def test_feedback_center_is_mounted_only_through_assistant_dropdown_with_actions
     assert 'id="changying-feedback-center-script"' in html
     assert "window.__cyFeedbackCenterInstalled=true" in html
     assert "feedbackCenterButton" not in html
-    assert 'data-feedback-ui-revision="2"' in html
+    assert 'data-feedback-ui-revision="3"' in html
     assert 'id="cy-pa-feedback-menu-button"' in html
     assert ">提反馈 ▾</button>" in html
     assert 'data-pa-tab="feedback"' in html
@@ -147,7 +147,7 @@ def test_feedback_ui_revision_is_present_in_unified_classic_final_html():
 
     classic = '<html><body><header><button>切换身份</button></header><main>classic</main></body></html>'
     html = patch_v1_product_assistant(classic)
-    assert 'data-feedback-ui-revision="2"' in html
+    assert 'data-feedback-ui-revision="3"' in html
     assert 'id="cy-pa-feedback-menu-button"' in html
     assert '>提反馈 ▾</button>' in html
     assert 'data-pa-tab="feedback"' in html
