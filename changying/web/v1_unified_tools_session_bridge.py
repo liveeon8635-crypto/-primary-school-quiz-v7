@@ -71,28 +71,62 @@ def compute_feedback_reward_points(records) -> dict:
     }
 
 
+def build_feedback_reward_redemption_preview(records) -> dict:
+    """Build a reversible redemption preview for earned feedback points.
+
+    Feedback #309: each adopted feedback earns one reward point that can be
+    redeemed for account time. The point-to-time exchange rate is not fixed
+    yet (real data is insufficient), so this only reports how many points are
+    currently redeemable and never mutates account time. Actual redemption
+    stays behind the protected production boundary and requires explicit
+    human confirmation.
+    """
+    summary = compute_feedback_reward_points(records)
+    earned = int(summary.get("earnedPoints") or 0)
+    return {
+        "marker": V1_FEEDBACK_REWARD_MARKER,
+        "earnedPoints": earned,
+        "redeemablePoints": earned,
+        "adoptedIds": summary.get("adoptedIds", []),
+        "exchangeRateDefined": False,
+        "accountTimeGranted": 0,
+        "reversible": True,
+    }
+
+
 def handle_feedback_reward_request(payload, records) -> dict:
     """Runtime entry point for the feedback reward-points request.
 
     Feedback #309: teachers want adopted feedback to earn reward points
     redeemable for account time. This is the actual request handler wired
     into the unified Classic tool surface. It is guarded and reversible:
-    it only reports earned points and never mutates account time. The
-    point-to-time exchange rate stays undefined until real data is
-    sufficient, and redemption stays behind the protected boundary.
+    it only reports earned points and a redemption preview, and never
+    mutates account time. The point-to-time exchange rate stays undefined
+    until real data is sufficient, and redemption stays behind the
+    protected boundary.
     """
     if not isinstance(payload, dict):
         return {"ok": False, "error": "invalid_payload"}
-    if payload.get("action") != "preview_feedback_reward":
-        return {"ok": False, "error": "unsupported_action"}
-    summary = compute_feedback_reward_points(records)
-    return {
-        "ok": True,
-        "marker": V1_FEEDBACK_REWARD_MARKER,
-        "summary": summary,
-        "requiresConfirmation": True,
-        "destructive": False,
-    }
+    action = payload.get("action")
+    if action == "preview_feedback_reward":
+        summary = compute_feedback_reward_points(records)
+        return {
+            "ok": True,
+            "marker": V1_FEEDBACK_REWARD_MARKER,
+            "summary": summary,
+            "requiresConfirmation": True,
+            "destructive": False,
+        }
+    if action == "preview_feedback_reward_redemption":
+        preview = build_feedback_reward_redemption_preview(records)
+        return {
+            "ok": True,
+            "marker": V1_FEEDBACK_REWARD_MARKER,
+            "redemption": preview,
+            "requiresConfirmation": True,
+            "destructive": False,
+        }
+    return {"ok": False, "error": "unsupported_action"}
 
 
 def is_test_data_record(record: dict) -> bool:
