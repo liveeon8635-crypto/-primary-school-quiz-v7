@@ -21,6 +21,7 @@ from types import ModuleType
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, LargeBinary, String, Table, insert, select, update
 
@@ -100,6 +101,7 @@ def curriculum_version_answer(question: str = "") -> str:
 FEEDBACK_PATH = "/v1/product-feedback"
 FEEDBACK_PROOF_PREFIX = "/v1/product-feedback/proof"
 FEEDBACK_MINE_PATH = "/v1/product-feedback/mine"
+FEEDBACK_PAGE_PATH = "/v1/feedback"
 # 反馈 #321/#322：顶部“反馈记录”与助手内“反馈记录”重复，应合并为助手内唯一入口，
 # 并与“提反馈”共用一个按钮；点击“提反馈”时自动下拉显示反馈记录。
 # 该标记用于前端与回归测试确认统一入口已生效。
@@ -734,7 +736,7 @@ _GUIDANCE_CARDS = (
         "key": "feedback_records",
         "title": "我的反馈记录",
         "description": "查看我提交过的每条反馈、处理回执与反馈奖励分状态。",
-        "path": "/v1/workspace?tab=feedback-records",
+        "path": FEEDBACK_PAGE_PATH,
         "keywords": (
             "反馈记录", "我的反馈", "提过什么反馈", "回执", "反馈奖励", "反馈状态", "查反馈",
             "历史记录", "处理状况", "追加反馈", "奖励明细",
@@ -765,8 +767,11 @@ def _feedback_acceptance_path(detail: dict) -> str:
     # can submit assistant/navigation feedback while physically viewing a
     # student page; acceptance must validate the feature being discussed, not
     # merely the page that happened to be open when the report was filed.
-    if any(term in text for term in ("反馈记录", "追加反馈", "反馈回执", "反馈中心")):
-        return "/v1/workspace?tab=feedback-records"
+    if any(term in text for term in (
+        "反馈记录", "追加反馈", "反馈回执", "反馈中心",
+        "反馈奖励", "奖励分", "兑换账号时长", "兑换帐号时长", "账号时长", "帐号时长",
+    )):
+        return FEEDBACK_PAGE_PATH
     if any(term in text for term in (
         "产品助手", "助手", "关联卡片", "导航卡片", "功能卡片",
         "产品引导", "问产品", "智能助手",
@@ -788,7 +793,7 @@ def _feedback_acceptance_path(detail: dict) -> str:
         candidates.sort(reverse=True)
         return str(candidates[0][3])
 
-    return "/v1/workspace?tab=feedback-records"
+    return FEEDBACK_PAGE_PATH
 
 
 # 反馈 #314：功能咨询应返回可点击的精准导航卡片；不是把所有功能卡片堆给用户。
@@ -972,6 +977,59 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
     attachment_table.create(bind=bind, checkfirst=True)
     followup_attachment_table.create(bind=bind, checkfirst=True)
     reward_table.create(bind=bind, checkfirst=True)
+
+    @router.get(FEEDBACK_PAGE_PATH, response_class=HTMLResponse, include_in_schema=False)
+    def product_feedback_page():
+        """独立反馈记录页：可直达查看回执、奖励分、追加反馈与验收。"""
+        feedback_center = Path(__file__).with_name("feedback_center.js").read_text(encoding="utf-8")
+        html = """<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>我的反馈记录 · 长缨辅学</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f7fb;color:#172033;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.cy-feedback-page{max-width:960px;margin:0 auto;padding:18px 14px 40px}
+.cy-feedback-page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.cy-feedback-page-head h1{margin:0;font-size:24px}.cy-feedback-page-head p{margin:4px 0 0;color:#667085;font-size:13px}
+.cy-feedback-page-back{display:inline-flex;text-decoration:none;border:1px solid #d5deeb;background:#fff;color:#173a78;border-radius:10px;padding:9px 12px;font-weight:800;font-size:13px}
+#cy-feedback-center-backdrop{position:static!important;display:block!important;background:transparent!important;padding:0!important}
+#cy-feedback-center-modal{width:100%!important;max-height:none!important;border-radius:16px!important}
+#cy-fc-close{display:none!important}
+@media(max-width:640px){.cy-feedback-page{padding:10px 8px 28px}.cy-feedback-page-head h1{font-size:20px}}
+</style>
+</head>
+<body data-feedback-page="standalone">
+<main class="cy-feedback-page">
+  <div class="cy-feedback-page-head">
+    <div><h1>我的反馈记录</h1><p>查看取用状态、处理回执、反馈奖励分，并完成验收或追加反馈。</p></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+      <a id="cy-feedback-back-records" class="cy-feedback-page-back" href="/v1/workspace?tab=feedback-records&from=feedback">返回助手反馈记录</a>
+      <a id="cy-feedback-back-workspace" class="cy-feedback-page-back" href="/v1/workspace?from=feedback">返回工作台</a>
+    </div>
+  </div>
+</main>
+<script>""" + feedback_center + """</script>
+<script>
+if(window.ChangyingFeedbackCenter){window.ChangyingFeedbackCenter.open()}
+const cyFeedbackParams=new URLSearchParams(location.search);
+const cyFeedbackId=cyFeedbackParams.get('cy_feedback_review')||cyFeedbackParams.get('reviewed')||cyFeedbackParams.get('focus');
+const cyFeedbackBack=document.getElementById('cy-feedback-back-records');
+const cyFeedbackWorkspace=document.getElementById('cy-feedback-back-workspace');
+if(cyFeedbackBack&&cyFeedbackId){
+  cyFeedbackBack.href='/v1/workspace?tab=feedback-records&from=feedback&reviewed='+encodeURIComponent(cyFeedbackId)+'&focus='+encodeURIComponent(cyFeedbackId);
+}
+if(cyFeedbackWorkspace){
+  cyFeedbackWorkspace.href='/v1/workspace?from=feedback'+(cyFeedbackId?'&reviewed='+encodeURIComponent(cyFeedbackId)+'&focus='+encodeURIComponent(cyFeedbackId):'');
+}
+</script>
+</body>
+</html>"""
+        return HTMLResponse(
+            html,
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        )
 
 
     FEEDBACK_REWARD_GRANTED_REMOTE_STATUSES = {
@@ -1697,7 +1755,7 @@ _ASSISTANT_SNIPPET = r'''
   #cy-product-assistant-fab[hidden],#cy-product-assistant-panel[hidden]{display:none!important}
   #cy-product-assistant-panel{position:fixed;right:14px;bottom:calc(142px + env(safe-area-inset-bottom));z-index:126;width:min(390px,calc(100vw - 28px));max-height:min(620px,70dvh);background:#fff;border:1px solid #dbe4f1;border-radius:20px;box-shadow:0 22px 70px rgba(17,34,64,.28);overflow:hidden;display:flex;flex-direction:column}
   .cy-pa-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid #e2e8f1}.cy-pa-head b{display:block}.cy-pa-head small{display:block;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);line-height:1.35}.cy-pa-head-actions{display:flex;gap:6px}.cy-pa-head-actions .btn{min-height:36px;padding:7px 10px}
-  .cy-pa-tabs{display:grid;grid-template-columns:1fr auto;padding:9px;gap:7px;background:#f7f9fc}.cy-pa-tab,.cy-pa-feedback-menu>button{border:1px solid #dbe4f1;background:#fff;border-radius:11px;padding:9px;font-weight:750}.cy-pa-tab.active,.cy-pa-feedback-menu>button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78}.cy-pa-feedback-menu{position:relative}.cy-pa-feedback-dropdown{position:absolute;right:0;top:calc(100% + 5px);z-index:4;min-width:150px;background:#fff;border:1px solid #dbe4f1;border-radius:11px;box-shadow:0 12px 30px rgba(17,34,64,.18);padding:5px;display:grid;gap:4px}.cy-pa-feedback-dropdown[hidden]{display:none}.cy-pa-feedback-dropdown button{border:0;background:#fff;text-align:left;border-radius:8px;padding:9px 10px;font-weight:700}.cy-pa-feedback-dropdown button:hover{background:#f1f5fb}.cy-pa-feedback-dropdown{width:min(350px,calc(100vw - 48px));max-height:min(460px,60dvh);overflow:auto}.cy-pa-feedback-dropdown-records{display:grid;gap:6px;border-top:1px solid #e6ebf2;margin-top:2px;padding-top:6px}.cy-pa-feedback-dropdown-record{border:1px solid #dbe4f1;border-radius:9px;padding:8px;background:#f8fbff;display:grid;gap:4px}.cy-pa-feedback-dropdown-record b{font-size:11px}.cy-pa-feedback-dropdown-record small{font-size:10px;color:#667085;line-height:1.4;overflow-wrap:anywhere}.cy-pa-feedback-dropdown-actions{display:flex;gap:5px;flex-wrap:wrap}.cy-pa-feedback-dropdown-actions button{border:1px solid #dbe4f1;background:#fff;padding:6px 8px;font-size:10px}.cy-pa-feedback-dropdown-actions button.primary{background:#173a78;color:#fff;border-color:#173a78}
+  .cy-pa-tabs{display:grid;grid-template-columns:1fr auto;padding:9px;gap:7px;background:#f7f9fc}.cy-pa-tab,.cy-pa-feedback-menu>button{border:1px solid #dbe4f1;background:#fff;border-radius:11px;padding:9px;font-weight:750}.cy-pa-tab.active,.cy-pa-feedback-menu>button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78}.cy-pa-feedback-menu{position:relative}.cy-pa-feedback-dropdown{position:absolute;right:0;top:calc(100% + 5px);z-index:4;min-width:150px;background:#fff;border:1px solid #dbe4f1;border-radius:11px;box-shadow:0 12px 30px rgba(17,34,64,.18);padding:5px;display:grid;gap:4px}.cy-pa-feedback-dropdown[hidden]{display:none}.cy-pa-feedback-dropdown button{border:0;background:#fff;text-align:left;border-radius:8px;padding:9px 10px;font-weight:700}.cy-pa-feedback-dropdown button:hover{background:#f1f5fb}.cy-pa-feedback-dropdown{width:min(350px,calc(100vw - 48px));max-height:min(460px,60dvh);overflow:auto}.cy-pa-feedback-dropdown-records{display:grid;gap:6px;border-top:1px solid #e6ebf2;margin-top:2px;padding-top:6px}.cy-pa-feedback-dropdown-record{border:1px solid #dbe4f1;border-radius:9px;padding:8px;background:#f8fbff;display:grid;gap:4px}.cy-pa-feedback-dropdown-record b{font-size:11px}.cy-pa-feedback-dropdown-record small{font-size:10px;color:#667085;line-height:1.4;overflow-wrap:anywhere}.cy-pa-feedback-dropdown-actions{display:flex;gap:5px;flex-wrap:wrap}.cy-pa-feedback-dropdown-actions button,.cy-pa-feedback-dropdown-actions a{border:1px solid #dbe4f1;background:#fff;padding:6px 8px;font-size:10px;border-radius:8px;text-decoration:none;color:#173a78;font-weight:750}.cy-pa-feedback-dropdown-actions button.primary,.cy-pa-feedback-dropdown-actions a.primary{background:#173a78;color:#fff;border-color:#173a78}
   .cy-pa-body{padding:10px 11px;overflow:auto}.cy-pa-quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.cy-pa-quick button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 8px;font-size:11px}
   .cy-pa-chat{display:grid;gap:9px;margin-bottom:10px}.cy-pa-msg{max-width:92%;padding:10px 11px;border-radius:13px;line-height:1.55;font-size:13px;white-space:pre-wrap}.cy-pa-msg.user{justify-self:end;background:#173a78;color:#fff}.cy-pa-msg.assistant{justify-self:start;background:#f1f5fb;color:#1c2940}.cy-pa-sent-image{display:block;max-width:180px;max-height:180px;margin-top:7px;border-radius:9px;object-fit:contain;background:#fff}
   .cy-pa-learning-visual{justify-self:start;width:min(92%,330px);border:1px solid #dbe5f3;background:#fff;border-radius:14px;padding:10px;display:grid;gap:8px}.cy-pa-learning-visual b{font-size:12px;color:#173a78}.cy-pa-learning-visual small{font-size:10px;color:var(--muted);line-height:1.45}.cy-pa-fraction-grid{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px;height:42px}.cy-pa-fraction-cell{border:1px solid #9fb6da;border-radius:5px;background:#f5f8fd}.cy-pa-fraction-cell.is-given{background:#dbe8ff}.cy-pa-bar-model{display:grid;gap:5px}.cy-pa-bar-track{display:grid;grid-template-columns:1.15fr .85fr;height:42px;border:1px solid #9fb6da;border-radius:8px;overflow:hidden}.cy-pa-bar-known,.cy-pa-bar-unknown{display:grid;place-items:center;font-size:10px}.cy-pa-bar-known{background:#dbe8ff}.cy-pa-bar-unknown{background:#f7f9fc;border-left:1px dashed #9fb6da}.cy-pa-shape-box{height:86px;display:grid;place-items:center}.cy-pa-shape{border:2px solid #6c88b4;display:grid;place-items:center;color:#52647f;font-size:11px}.cy-pa-shape.rectangle{width:150px;height:68px}.cy-pa-shape.square{width:74px;height:74px}.cy-pa-shape.circle{width:74px;height:74px;border-radius:50%}.cy-pa-shape.triangle{width:0;height:0;border-left:48px solid transparent;border-right:48px solid transparent;border-bottom:78px solid #dbe8ff;border-top:0;position:relative}.cy-pa-numberline{position:relative;height:54px;margin:2px 8px}.cy-pa-numberline-line{position:absolute;left:0;right:0;top:24px;border-top:2px solid #6c88b4}.cy-pa-numberline-tick{position:absolute;top:17px;transform:translateX(-50%);font-size:9px;color:#52647f}.cy-pa-numberline-tick:before{content:'';display:block;width:1px;height:15px;background:#6c88b4;margin:0 auto 2px}
@@ -2000,8 +2058,29 @@ _ASSISTANT_SNIPPET = r'''
     try{url=new URL(raw,location.origin)}catch{return '/v1'}
     if(url.origin!==location.origin)return '/v1';
     url.searchParams.set('cy_feedback_review',String(record?.id||''));
-    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&reviewed='+encodeURIComponent(String(record?.id||''))+'&focus='+encodeURIComponent(String(record?.id||'')));
+    url.searchParams.set('cy_feedback_return','/v1/workspace?tab=feedback-records&from=feedback&reviewed='+encodeURIComponent(String(record?.id||''))+'&focus='+encodeURIComponent(String(record?.id||'')));
     return url.pathname+url.search+url.hash;
+  };
+  const repairFeedbackReviewTarget=async()=>{
+    const params=new URLSearchParams(location.search),reviewId=params.get('cy_feedback_review');
+    if(!reviewId)return false;
+    const token=readToken();if(!token)return false;
+    try{
+      const r=await fetch('/v1/product-feedback/mine',{headers:{Authorization:'Bearer '+token}});
+      const data=await r.json();if(!r.ok)return false;
+      const record=(Array.isArray(data.records)?data.records:[]).find(x=>String(x.id)===String(reviewId));
+      if(!record)return false;
+      const target=new URL(String(record.acceptanceUrl||record.page||'/v1/feedback'),location.origin);
+      if(target.origin!==location.origin)return false;
+      const current=new URL(location.href);
+      current.searchParams.delete('cy_feedback_review');current.searchParams.delete('cy_feedback_return');
+      const sameTarget=current.pathname===target.pathname&&current.search===target.search&&current.hash===target.hash;
+      if(sameTarget)return false;
+      target.searchParams.set('cy_feedback_review',String(reviewId));
+      target.searchParams.set('cy_feedback_return',params.get('cy_feedback_return')||('/v1/workspace?tab=feedback-records&from=feedback&reviewed='+encodeURIComponent(String(reviewId))+'&focus='+encodeURIComponent(String(reviewId))));
+      location.replace(target.pathname+target.search+target.hash);
+      return true;
+    }catch(_){return false}
   };
   const mountFeedbackReviewReturn=()=>{
     const params=new URLSearchParams(location.search);
@@ -2013,8 +2092,15 @@ _ASSISTANT_SNIPPET = r'''
     bar.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:2147483000;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px 12px;border:1px solid #bfd2f4;border-radius:14px;background:#fff;box-shadow:0 10px 30px rgba(16,24,40,.18)';
     bar.innerHTML='<span style="font-size:12px;font-weight:800;color:#173a78;flex:1 1 100%">请在当前页面验收反馈 #'+escapeHtml(reviewId)+'</span><a href="'+escapeHtml(failTo)+'" style="text-decoration:none;background:#fff;color:#a33;border:1px solid #e2b8b8;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800">未通过 · 追加反馈</a><a href="'+escapeHtml(returnTo)+'" style="text-decoration:none;background:#173a78;color:#fff;border-radius:10px;padding:8px 11px;font-size:12px;font-weight:800">验收完成 · 返回</a>';
     document.body.appendChild(bar);
+    const syncReviewClearance=()=>{
+      const height=Math.ceil(bar.getBoundingClientRect().height||0);
+      document.documentElement.style.setProperty('--cy-feedback-review-clearance',height?String(height+18)+'px':'0px');
+    };
+    requestAnimationFrame(syncReviewClearance);
+    setTimeout(syncReviewClearance,120);
+    window.addEventListener('resize',syncReviewClearance,{passive:true});
   };
-  mountFeedbackReviewReturn();
+  repairFeedbackReviewTarget().then(repaired=>{if(!repaired)mountFeedbackReviewReturn()});
   async function loadFeedbackHistory(){
     const box=document.getElementById('cy-pa-history');if(!box)return;
     box.innerHTML='<div class="cy-pa-note">正在读取你的反馈记录…</div>';
@@ -2067,14 +2153,15 @@ _ASSISTANT_SNIPPET = r'''
       const summary=data.rewardSummary||{},items=Array.isArray(data.records)?data.records:[];
       const summaryHtml='<div class="cy-pa-note"><b>反馈记录</b> · 已采纳 '+Number(summary.adoptedFeedbackCount||0)+' 条 · 已获得 '+Number(summary.earnedPoints||0)+' 分</div>';
       const recordsHtml=items.length?items.map(x=>{
-        const id=Number(x.id),follow=x.canFollowUp===true&&x.terminalAccepted!==true;
+        const id=Number(x.id),follow=x.canFollowUp===true&&x.terminalAccepted!==true,canConfirm=x.canConfirm===true;
+        const processedCta=canConfirm?'<a class="primary" data-pa-dropdown-review="'+id+'" href="'+escapeHtml(feedbackReviewHref(x))+'">已处理 · 点击去验收</a>':'';
         return '<div class="cy-pa-feedback-dropdown-record" data-pa-dropdown-record="'+id+'">'+
           '<b>'+escapeHtml(x.category||'产品反馈')+' · '+escapeHtml(x.statusLabel||'已收到')+'</b>'+
           '<small>'+escapeHtml(x.message||'')+'</small>'+
           '<small><b>取用状态：</b>'+escapeHtml(x.statusLabel||'已收到')+' · <b>奖励分：</b>'+Number(x.rewardPoints||0)+'</small>'+
           '<small><b>回执：</b>'+escapeHtml(x.receipt||'已收到，等待处理回执')+'</small>'+
-          '<div class="cy-pa-feedback-dropdown-actions"><button type="button" data-pa-dropdown-open="'+id+'">查看记录</button>'+
-          (follow?'<button class="primary" type="button" data-pa-dropdown-followup="'+id+'">追加反馈（可传照片）</button>':'')+
+          '<div class="cy-pa-feedback-dropdown-actions">'+processedCta+'<button type="button" data-pa-dropdown-open="'+id+'">查看记录</button>'+
+          (follow?'<button type="button" data-pa-dropdown-followup="'+id+'">追加反馈（可传照片）</button>':'')+
           '</div></div>';
       }).join(''):'<div class="cy-pa-note">还没有提交过反馈。</div>';
       box.innerHTML=summaryHtml+recordsHtml;
@@ -2137,8 +2224,16 @@ _ASSISTANT_SNIPPET = r'''
   document.querySelectorAll('[data-pa-tab]').forEach(x=>x.onclick=()=>{setTab(x.dataset.paTab);closeFeedbackMenu()});
   document.addEventListener('click',event=>{if(!event.target.closest('.cy-pa-feedback-menu'))closeFeedbackMenu()});
   const initialAssistantTab=new URLSearchParams(location.search).get('tab');
-  if(initialAssistantTab==='feedback-records'){setTab('records');panel.hidden=false;fab.hidden=true;}
-  else if(initialAssistantTab==='ask'){setTab('ask');panel.hidden=false;fab.hidden=true;}
+  let initialAssistantRoutePending=initialAssistantTab==='feedback-records'||initialAssistantTab==='feedback'||initialAssistantTab==='ask';
+  const openInitialAssistantRoute=()=>{
+    if(!initialAssistantRoutePending||!identityReady())return false;
+    if(initialAssistantTab==='feedback-records')setTab('records');
+    else if(initialAssistantTab==='feedback')setTab('feedback');
+    else if(initialAssistantTab==='ask')setTab('ask');
+    panel.hidden=false;fab.hidden=true;initialAssistantRoutePending=false;
+    return true;
+  };
+  openInitialAssistantRoute();
   document.querySelectorAll('[data-pa-question]').forEach(x=>x.onclick=()=>ask(x.dataset.paQuestion));
   send.onclick=()=>ask(input.value);
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();ask(input.value)}});
@@ -2201,7 +2296,7 @@ _ASSISTANT_SNIPPET = r'''
     if(button&&!observedIdentityNodes.has(button)){identityObserver.observe(button,{attributes:true,attributeFilter:['hidden']});observedIdentityNodes.add(button)}
     if(chip&&!observedIdentityNodes.has(chip)){identityObserver.observe(chip,{childList:true,characterData:true,subtree:true});observedIdentityNodes.add(chip)}
   };
-  const sync=()=>{observeIdentityNodes();const ready=identityReady();if(!ready){fab.hidden=true;panel.hidden=true;return}fab.hidden=!panel.hidden;updateContext();applyRoleCopy();if(!panel.hidden)renderGuideGrid()};
+  const sync=()=>{observeIdentityNodes();const ready=identityReady();if(!ready){fab.hidden=true;panel.hidden=true;return}openInitialAssistantRoute();fab.hidden=!panel.hidden;updateContext();applyRoleCopy();if(!panel.hidden)renderGuideGrid()};
   window.addEventListener('pageshow',sync);window.addEventListener('popstate',sync);window.addEventListener('focus',sync);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
   let authReadyPoll=null;
@@ -2266,6 +2361,7 @@ def install_v1_product_assistant_patch() -> None:
 __all__ = [
     "FEEDBACK_PATH",
     "FEEDBACK_PROOF_PREFIX",
+    "FEEDBACK_PAGE_PATH",
     "QUERY_PATH",
     "V1_PRODUCT_ASSISTANT_MARKER",
     "install_v1_product_assistant_patch",
