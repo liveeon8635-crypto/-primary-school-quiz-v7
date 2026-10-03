@@ -130,14 +130,25 @@ def ensure_student_practice_catalog(
 
     modules: list[dict[str, Any]] = []
     resolved_textbook = textbook_value or (textbooks[0] if textbooks else "")
-    try:
-        catalog = potential_question_catalog(
-            grade=grade_value,
-            subject=subject_value,
-            textbook=resolved_textbook,
-        )
-    except Exception:
-        catalog = []
+    # 反馈 #310：教材可能来自回退年级（与学生当前年级不一致）。
+    # 先用学生年级取一次模块明细；若为空，再按该教材实际所属年级取，
+    # 避免“淦云凡”“翁舒言”这类学生因年级/教材不一致而看不到知识模块练习明细。
+    catalog: list[dict[str, Any]] = []
+    catalog_grades = [grade_value]
+    for candidate_grade in (5, 4, 3, 6, 2, 1):
+        if candidate_grade not in catalog_grades:
+            catalog_grades.append(candidate_grade)
+    for catalog_grade in catalog_grades:
+        try:
+            catalog = potential_question_catalog(
+                grade=catalog_grade,
+                subject=subject_value,
+                textbook=resolved_textbook,
+            )
+        except Exception:
+            catalog = []
+        if catalog:
+            break
     # 反馈 #310：部分学生（如“淦云凡”“翁舒言”）虽然能取到教材，但“知识模块练习”
     # 明细仍为空，导致晚托布置作业时无法选择知识模块。这里在教材已确定但模块为空时，
     # 主动补入该教材的标准题并重新取一次模块明细，保证教师始终能看到可用的知识模块。
