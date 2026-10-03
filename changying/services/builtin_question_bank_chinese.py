@@ -399,6 +399,8 @@ def baseline_chinese_specs() -> list[dict[str, Any]]:
 
     Used as a fallback when a student has no matched textbook so that the
     knowledge-module practice detail is never empty for Chinese homework.
+    This covers students such as those without an assigned textbook who would
+    otherwise see no available material or knowledge-module practice detail.
     """
     rows = grade5_chinese_specs()
     if rows:
