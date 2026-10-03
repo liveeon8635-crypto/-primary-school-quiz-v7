@@ -242,12 +242,12 @@ def test_workspace_feedback_acceptance_targets_specific_product_surface():
         "page": "/v1/workspace",
         "message": "顶部反馈记录和助手里的反馈记录应该合并",
         "followUps": [],
-    }) == "/v1/workspace?tab=feedback-records"
+    }) == "/v1/feedback"
     assert _feedback_acceptance_path({
         "page": "/v1/workspace",
         "message": "一个无法匹配具体功能的普通界面建议",
         "followUps": [],
-    }) == "/v1/workspace?tab=feedback-records"
+    }) == "/v1/feedback"
     assert _feedback_acceptance_path({
         "page": "/v1/classroom",
         "message": "这里有一个显示问题",
@@ -318,4 +318,24 @@ def test_feedback_309_reward_acceptance_ignores_unrelated_student_source_page():
         "page": "/v1/student?id=10",
         "message": "每提交一条反馈，被取用后对应增加1个反馈奖励分，可用于兑换账号时长，具体兑换比例后续确定",
         "followUps": [],
-    }) == "/v1/workspace?tab=feedback-records"
+    }) == "/v1/feedback"
+
+
+def test_dedicated_feedback_page_is_directly_reachable():
+    response = TestClient(app).get("/v1/feedback")
+    assert response.status_code == 200
+    assert 'data-feedback-page="standalone"' in response.text
+    assert "我的反馈记录" in response.text
+    assert "处理回执" in response.text
+    assert "反馈奖励分" in response.text
+    assert "ChangyingFeedbackCenter.open()" in response.text
+    assert response.headers["cache-control"].startswith("no-store")
+
+
+def test_stale_feedback_review_link_self_heals_to_current_acceptance_target():
+    from pathlib import Path
+    source = Path("changying/web/v1_product_assistant.py").read_text(encoding="utf-8")
+    assert "const repairFeedbackReviewTarget=async()=>{" in source
+    assert "record.acceptanceUrl||record.page||'/v1/feedback'" in source
+    assert "location.replace(target.pathname+target.search+target.hash)" in source
+    assert "repairFeedbackReviewTarget().then" in source
