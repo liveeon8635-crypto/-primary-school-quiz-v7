@@ -61,6 +61,30 @@ def build_test_data_cleanup_plan(records) -> dict:
     }
 
 
+def handle_test_data_cleanup_request(payload, records) -> dict:
+    """Runtime entry point for the pre-launch test-data cleanup request.
+
+    Feedback #306: teachers need to clear test/demo data before formal use.
+    This is the actual request handler wired into the unified Classic tool
+    surface. It is guarded and reversible: it only ever returns a plan for
+    records explicitly flagged as test/demo, and never deletes real student
+    history. Destructive execution stays behind the protected production
+    boundary and requires explicit human confirmation.
+    """
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "invalid_payload"}
+    if payload.get("action") != "preview_test_data_cleanup":
+        return {"ok": False, "error": "unsupported_action"}
+    plan = build_test_data_cleanup_plan(records)
+    return {
+        "ok": True,
+        "marker": V1_TEST_DATA_CLEANUP_MARKER,
+        "plan": plan,
+        "requiresConfirmation": True,
+        "destructive": False,
+    }
+
+
 def patch_unified_tool_session_bridge(html: str) -> str:
     if V1_UNIFIED_SESSION_BRIDGE_MARKER in html:
         return html
