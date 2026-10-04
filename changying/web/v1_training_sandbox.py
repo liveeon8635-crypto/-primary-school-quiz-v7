@@ -383,6 +383,29 @@ class TrainingSandboxStore:
             self._items[session_id] = fresh
             return fresh
 
+    def count_for_owner(self, owner_user_id: int) -> int:
+        """Count live ephemeral training sessions owned by one authenticated user."""
+        with self._lock:
+            self._prune()
+            return sum(1 for item in self._items.values() if item.owner_user_id == owner_user_id)
+
+    def clear_for_owner(self, owner_user_id: int) -> int:
+        """Clear only this user's ephemeral training sessions.
+
+        Training sandbox state is deliberately isolated from the production
+        database. This method cannot delete classes, students, assignments,
+        submissions, points, wrong questions, or learning evidence.
+        """
+        with self._lock:
+            self._prune()
+            session_ids = [
+                sid for sid, item in self._items.items()
+                if item.owner_user_id == owner_user_id
+            ]
+            for sid in session_ids:
+                self._items.pop(sid, None)
+            return len(session_ids)
+
 
 STORE = TrainingSandboxStore()
 
@@ -865,6 +888,29 @@ def install_v1_training_sandbox_routes(implementation: ModuleType) -> None:
         role = _role(user)
         item = STORE.create(int(user.id), role, body.linked_mode)
         return _payload(item)
+
+    @router.get(TRAINING_PREFIX + "/cleanup-preview", include_in_schema=False)
+    def preview_training_cleanup(user=Depends(implementation.current_user)):
+        count = STORE.count_for_owner(int(user.id))
+        return {
+            "ok": True,
+            "marker": "changying_v1_training_cleanup_v1",
+            "scope": "ephemeral_training_sessions_only",
+            "eligibleSessionCount": count,
+            "productionDataAffected": False,
+            "requiresConfirmation": count > 0,
+        }
+
+    @router.post(TRAINING_PREFIX + "/cleanup-all", include_in_schema=False)
+    def cleanup_training_sessions(user=Depends(implementation.current_user)):
+        cleared = STORE.clear_for_owner(int(user.id))
+        return {
+            "ok": True,
+            "marker": "changying_v1_training_cleanup_v1",
+            "scope": "ephemeral_training_sessions_only",
+            "clearedSessionCount": cleared,
+            "productionDataAffected": False,
+        }
 
     @router.get(TRAINING_PREFIX + "/{session_id}", include_in_schema=False)
     def read_training(session_id: str, user=Depends(implementation.current_user)):
