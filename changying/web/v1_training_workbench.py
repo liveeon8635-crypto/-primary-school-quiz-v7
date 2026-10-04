@@ -52,7 +52,7 @@ html,body{overflow-x:hidden}.top{padding:9px 12px}.top-row{gap:9px}.brand{width:
   <div class="progress-wrap"><div class="progress"><i id="progressBar"></i></div><span id="progressText">准备中</span></div>
 </header>
 <main class="layout">
-  <aside class="rail" id="rail"><div class="rail-head"><h3>训练地图</h3><button class="btn" id="closeRail">关闭</button></div><div id="steps"></div><div style="margin-top:12px"><label class="small muted">快速场景</label><select id="scenario" style="width:100%;margin-top:5px;padding:9px;border:1px solid #d4deec;border-radius:10px"><option value="empty">从零开始</option><option value="assigned">从已布置作业开始</option><option value="submitted">从已有学生提交开始</option><option value="classroom">从课堂复盘开始</option></select><button class="btn soft" id="loadScenario" style="width:100%;margin-top:7px">载入场景</button></div></aside>
+  <aside class="rail" id="rail"><div class="rail-head"><h3>训练地图</h3><button class="btn" id="closeRail">关闭</button></div><div id="steps"></div><div style="margin-top:12px"><label class="small muted">快速场景</label><select id="scenario" style="width:100%;margin-top:5px;padding:9px;border:1px solid #d4deec;border-radius:10px"><option value="empty">从零开始</option><option value="assigned">从已布置作业开始</option><option value="submitted">从已有学生提交开始</option><option value="classroom">从课堂复盘开始</option></select><button class="btn soft" id="loadScenario" style="width:100%;margin-top:7px">载入场景</button><button class="btn danger" id="cleanupDemoData" style="width:100%;margin-top:7px">正式使用前 · 清空演示数据</button><div class="small muted" style="margin-top:6px">只清除当前账号的临时实操沙盒，不会删除真实班级、学生、作业、积分或学习证据。</div></div></aside>
   <section class="stage" id="stage"><div class="card"><h2>正在准备练习环境</h2><p class="muted">正在载入与你当前身份一致的临时虚拟数据…</p></div></section>
 </main>
 <nav class="bottom">
@@ -351,19 +351,44 @@ function showRelation(){
  const s=current(),r=relation(s);openDrawer('角色关系 · '+s.title,'<div class="list"><div class="item"><b>谁操作</b><small>'+esc(r.who||roleName(session.currentRole))+'</small></div><div class="item"><b>产生什么</b><small>'+esc(r.creates||'训练进度')+'</small></div><div class="item"><b>谁能看到</b><small>'+esc(r.visible_to||'按权限显示')+'</small></div><div class="item"><b>其他角色看到什么</b><small>'+esc(r.other_role_sees||'按角色页面呈现')+'</small></div><div class="item"><b>沟通时最应该说明</b><small>'+esc(r.communication_tip||'确认当前状态、入口和下一步责任人')+'</small></div><div class="item"><b>下一步</b><small>'+esc(r.next||'继续主线')+'</small></div></div>')
 }
 async function resetAll(){if(!confirm('清空本次实操沙盒并从头重新练习？'))return;session=await request('/v1/training-sandbox/'+session.sessionID+'/reset',{method:'POST',body:'{}'});index=0;answers={};sessionStorage.setItem(INDEX_KEY,'0');render();drawer.classList.add('hidden')}
+async function openTrainingCleanup(){
+  try{
+    const preview=await request('/v1/training-sandbox/cleanup-preview');
+    const count=Number(preview.eligibleSessionCount||0);
+    openDrawer('正式使用前 · 清空演示数据',
+      '<div class="notice">安全范围：只清除当前账号的临时实操沙盒。真实班级、学生、作业、提交、积分、错题和学习证据不会被修改。</div>'+
+      '<div class="item" style="margin-top:12px"><b>可清理的临时实操会话：'+count+' 个</b><small>清理后将返回真实工作台。以后需要教学演示时可重新进入新手实操。</small></div>'+
+      (count?'<button class="btn danger" id="confirmTrainingCleanup" style="margin-top:12px">确认清空演示数据</button>':'<a class="btn primary" href="/v1/workspace" style="margin-top:12px">返回真实工作台</a>')
+    );
+    const btn=document.getElementById('confirmTrainingCleanup');
+    if(btn)btn.onclick=async()=>{
+      btn.disabled=true;btn.textContent='正在清理…';
+      try{
+        const result=await request('/v1/training-sandbox/cleanup-all',{method:'POST',body:'{}'});
+        sessionStorage.removeItem(SESSION_KEY);sessionStorage.setItem(INDEX_KEY,'0');
+        session=null;answers={};index=0;
+        location.href='/v1/workspace?training_cleanup=1&cleared='+encodeURIComponent(String(result.clearedSessionCount||0));
+      }catch(e){
+        btn.disabled=false;btn.textContent='确认清空演示数据';
+        showActionError(e);
+      }
+    };
+  }catch(e){showActionError(e)}
+}
 async function askAssistant(){
  openDrawer('产品助手','<div class="assistant-log" id="assistantLog"><div class="assistant-msg ai">可以问：这个页面有什么用？其他角色会看到什么？我下一步应该做什么？</div></div><div class="field"><label>问题</label><textarea id="assistantQuestion" placeholder="例如：学生提交以后，教师和家长分别能看到什么？"></textarea></div><button class="btn primary" id="assistantSend" style="margin-top:9px">发送</button>');
  document.getElementById('assistantSend').onclick=async()=>{const q=document.getElementById('assistantQuestion').value.trim();if(!q)return;const log=document.getElementById('assistantLog');log.insertAdjacentHTML('beforeend','<div class="assistant-msg">'+esc(q)+'</div>');try{const d=await request('/v1/product-assistant/query',{method:'POST',body:JSON.stringify({question:q,page:current().page,identity:roleName(session.currentRole),tutorial_step:current().title})});log.insertAdjacentHTML('beforeend','<div class="assistant-msg ai">'+esc(d.reply)+'</div>')}catch(e){log.insertAdjacentHTML('beforeend','<div class="assistant-msg ai">'+esc(e.message)+'</div>')}}
 }
 function openMobileMore(){
   const step=current();if(!step)return;
-  openDrawer('本步操作','<div class="list"><button class="item" id="mobileMap"><b>训练路线</b><small>查看全部步骤和快速场景</small></button><button class="item" id="mobileRelation"><b>角色关系</b><small>这一步由谁做、产生什么、其他角色看到什么</small></button><button class="item" id="mobileRepeat"><b>重做本步</b><small>保留上游数据，从当前步骤重新操作</small></button><button class="item" id="mobileSkip"><b>跳过本步</b><small>以后可从训练路线回来复习</small></button><button class="item" id="mobileAsk"><b>问产品助手</b><small>结合当前身份和页面回答怎么用</small></button><button class="item" id="mobileFeedback"><b>反馈这个页面</b><small>把当前步骤和问题一起提交</small></button></div>');
+  openDrawer('本步操作','<div class="list"><button class="item" id="mobileMap"><b>训练路线</b><small>查看全部步骤和快速场景</small></button><button class="item" id="mobileRelation"><b>角色关系</b><small>这一步由谁做、产生什么、其他角色看到什么</small></button><button class="item" id="mobileRepeat"><b>重做本步</b><small>保留上游数据，从当前步骤重新操作</small></button><button class="item" id="mobileSkip"><b>跳过本步</b><small>以后可从训练路线回来复习</small></button><button class="item" id="mobileAsk"><b>问产品助手</b><small>结合当前身份和页面回答怎么用</small></button><button class="item" id="mobileFeedback"><b>反馈这个页面</b><small>把当前步骤和问题一起提交</small></button><button class="item" id="mobileCleanup"><b>正式使用前 · 清空演示数据</b><small>只清除临时实操沙盒，真实教学数据不会受影响</small></button></div>');
   document.getElementById('mobileMap').onclick=()=>{drawer.classList.add('hidden');rail.classList.add('open')};
   document.getElementById('mobileRelation').onclick=()=>{drawer.classList.add('hidden');showRelation()};
   document.getElementById('mobileRepeat').onclick=async()=>{drawer.classList.add('hidden');answers={};await act('rewind_step',{step:current().id})};
   document.getElementById('mobileSkip').onclick=async()=>{drawer.classList.add('hidden');await markStep('skipped');if(index<session.flow.length-1)setIndex(index+1)};
   document.getElementById('mobileAsk').onclick=()=>{drawer.classList.add('hidden');askAssistant()};
   document.getElementById('mobileFeedback').onclick=()=>{drawer.classList.add('hidden');sendTrainingFeedback()};
+  document.getElementById('mobileCleanup').onclick=()=>{drawer.classList.add('hidden');openTrainingCleanup()};
 }
 async function sendTrainingFeedback(){
   openDrawer('训练反馈','<div class="notice">反馈会附带当前身份、当前功能页和训练步骤，进入长缨 / Freeman 产品反馈链；不会附带沙盒答题内容。</div><div class="field" style="margin-top:12px"><label>类型</label><select id="feedbackCategory"><option>操作不清楚</option><option>页面难用</option><option>流程太繁琐</option><option>角色关系不清楚</option><option>功能建议</option><option>其他反馈</option></select></div><div class="field" style="margin-top:9px"><label>反馈内容</label><textarea id="feedbackMessage" placeholder="告诉我们具体卡在哪一步、期待怎样改。"></textarea></div><button class="btn primary" id="feedbackSend" style="margin-top:9px">提交反馈</button><div id="feedbackResult" class="small muted" style="margin-top:8px"></div>');
@@ -380,6 +405,7 @@ document.getElementById('toggleMap').onclick=()=>rail.classList.toggle('open');
 document.getElementById('closeRail').onclick=()=>rail.classList.remove('open');
 document.getElementById('askBtn').onclick=askAssistant;
 document.getElementById('feedbackBtn').onclick=sendTrainingFeedback;
+document.getElementById('cleanupDemoData').onclick=openTrainingCleanup;
 document.getElementById('moreBtn').onclick=openMobileMore;
 window.addEventListener('unhandledrejection',event=>{event.preventDefault();showActionError(event.reason)});
 document.getElementById('loadScenario').onclick=async()=>{const preset=document.getElementById('scenario').value;await act('load_scenario',{preset});const target={empty:0,assigned:7,submitted:8,classroom:10}[preset]??0;setIndex(Math.min(target,session.flow.length-1))};
