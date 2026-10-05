@@ -2358,6 +2358,30 @@ def install_v1_product_assistant_patch() -> None:
         classic_embed_module._product_assistant_unified_installed = True
 
 
+# Feedback #325: paper assignment readiness contract.
+PAPER_ASSIGN_DIFFICULTY_OPTIONS = ["简单", "中等", "偏难"]
+PAPER_ASSIGN_SUBMIT_READY_MARKER = "paper-assign-submit-ready-v1"
+
+
+def paper_assign_difficulty_options() -> list[str]:
+    return list(PAPER_ASSIGN_DIFFICULTY_OPTIONS)
+
+
+def paper_assign_submit_readiness(*, selected_questions, difficulty: str, target_class: str) -> dict:
+    missing = []
+    if not selected_questions:
+        missing.append("questions")
+    if difficulty not in PAPER_ASSIGN_DIFFICULTY_OPTIONS:
+        missing.append("difficulty")
+    if not str(target_class or "").strip():
+        missing.append("target_class")
+    return {
+        "ready": not missing,
+        "missing": missing,
+        "marker": PAPER_ASSIGN_SUBMIT_READY_MARKER if not missing else None,
+    }
+
+
 __all__ = [
     "FEEDBACK_PATH",
     "FEEDBACK_PROOF_PREFIX",
@@ -2367,4 +2391,8 @@ __all__ = [
     "install_v1_product_assistant_patch",
     "install_v1_product_assistant_routes",
     "patch_v1_product_assistant",
+    "PAPER_ASSIGN_DIFFICULTY_OPTIONS",
+    "PAPER_ASSIGN_SUBMIT_READY_MARKER",
+    "paper_assign_difficulty_options",
+    "paper_assign_submit_readiness",
 ]
