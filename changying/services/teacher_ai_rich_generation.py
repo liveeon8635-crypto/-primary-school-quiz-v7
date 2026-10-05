@@ -279,6 +279,23 @@ def _rich_generate_call(implementation: ModuleType):
 
         count = max(1, min(int(b.count or 5), 20))
         difficulty = str(b.difficulty or "中等")[:20]
+        # Feedback #332: make the selected math difficulty materially affect generation,
+        # rather than forwarding a label that the model may ignore.
+        math_difficulty_rule = ""
+        if "数学" in str(b.subject or ""):
+            difficulty_alias = {"简单": "基础", "中等": "提高", "偏难": "挑战", "基础": "基础", "提高": "提高", "挑战": "挑战"}
+            level = difficulty_alias.get(difficulty, "提高")
+            requirements = {
+                "基础": (2, 2, "至少包含两项有效数量关系，避免一眼直接代入"),
+                "提高": (3, 3, "至少包含三项有效数量关系，并要求两次以上推理或运算转换"),
+                "挑战": (4, 4, "至少包含四项有效数量关系，要求多步推理、条件筛选或逆向思考"),
+            }
+            operands, steps, detail = requirements[level]
+            math_difficulty_rule = (
+                f"【数学难度硬约束】当前等级：{level}。每题至少体现 {operands} 个有效数量/条件，"
+                f"解题过程至少 {steps} 个有意义步骤；{detail}。"
+                "不得仅通过放大数字、增加小数位或更换人名来伪装难度。"
+            )
         refs = implementation._resource_context(db, u.school_id, b.resource_ids)
         rule = format_rule(requested, b.subject, count)
         s_rule = subject_rule(b.subject)

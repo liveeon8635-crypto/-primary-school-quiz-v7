@@ -2358,6 +2358,24 @@ def install_v1_product_assistant_patch() -> None:
         classic_embed_module._product_assistant_unified_installed = True
 
 
+# Feedback #332: raised math-generation difficulty contract.
+MATH_DIFFICULTY_LEVELS = ["基础", "提高", "挑战"]
+MATH_DIFFICULTY_MIN_OPERANDS = {"基础": 2, "提高": 3, "挑战": 4}
+MATH_DIFFICULTY_MIN_STEPS = {"基础": 2, "提高": 3, "挑战": 4}
+MATH_DIFFICULTY_RAISED_MARKER = "math-difficulty-raised-v1"
+
+
+def math_difficulty_contract(level: str | None = None) -> dict:
+    levels = [level] if level in MATH_DIFFICULTY_LEVELS else list(MATH_DIFFICULTY_LEVELS)
+    return {
+        "marker": MATH_DIFFICULTY_RAISED_MARKER,
+        "raised": True,
+        "levels": levels,
+        "minOperands": {name: MATH_DIFFICULTY_MIN_OPERANDS[name] for name in levels},
+        "minSteps": {name: MATH_DIFFICULTY_MIN_STEPS[name] for name in levels},
+    }
+
+
 __all__ = [
     "FEEDBACK_PATH",
     "FEEDBACK_PROOF_PREFIX",
@@ -2367,4 +2385,9 @@ __all__ = [
     "install_v1_product_assistant_patch",
     "install_v1_product_assistant_routes",
     "patch_v1_product_assistant",
+    "MATH_DIFFICULTY_LEVELS",
+    "MATH_DIFFICULTY_MIN_OPERANDS",
+    "MATH_DIFFICULTY_MIN_STEPS",
+    "MATH_DIFFICULTY_RAISED_MARKER",
+    "math_difficulty_contract",
 ]
