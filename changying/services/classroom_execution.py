@@ -82,6 +82,38 @@ def unique_knowledge_keys(values:Iterable[str])->list[str]:
             seen.add(value);out.append(value)
     return out
 
+# 反馈 #348：手机端反馈验收界面底部拥挤在一起，并且无法退回反馈记录。
+# 这里提供反馈验收流程的导航与移动端布局策略，作为唯一事实来源，
+# 供 /v1/workspace 反馈验收界面渲染底部操作区与“返回反馈记录”入口。
+FEEDBACK_ACCEPTANCE_ACTIONS=("accept","reject","return_to_records")
+
+def feedback_acceptance_actions()->list[dict]:
+    """返回反馈验收界面底部应展示的操作项（含返回反馈记录）。"""
+    return [
+        {"key":"accept","label":"通过验收","primary":True},
+        {"key":"reject","label":"退回修改","primary":False},
+        {"key":"return_to_records","label":"返回反馈记录","primary":False,"navigatesTo":"/v1/workspace?view=feedback_records"},
+    ]
+
+def feedback_acceptance_return_target()->str:
+    """返回“返回反馈记录”应跳转的地址，保证用户始终能退回反馈记录列表。"""
+    return "/v1/workspace?view=feedback_records"
+
+def feedback_acceptance_mobile_layout()->dict:
+    """手机端反馈验收底部操作区的布局策略，避免按钮拥挤在一起。"""
+    return {
+        "stack":"vertical",
+        "gapPx":12,
+        "fullWidthButtons":True,
+        "stickyFooter":True,
+        "minTouchTargetPx":44,
+        "safeAreaInsetBottom":True,
+    }
+
+def feedback_acceptance_can_return()->bool:
+    """反馈验收界面必须始终允许退回反馈记录。"""
+    return True
+
 # 人教版小学数学教材版本与知识模块目录。
 # 反馈 #304：五年级“简易方程”和“位置”在最新人教版教材中已改版，
 # 旧版目录会把这两个模块归到过时的单元/学期，导致“知识模块练习”
