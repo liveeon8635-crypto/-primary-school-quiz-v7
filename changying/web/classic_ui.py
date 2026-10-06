@@ -20,10 +20,52 @@ _LOCAL_DATE_PLUS_7 = "(d=>{d.setDate(d.getDate()+7);const p=n=>String(n).padStar
 _LOCAL_DATE_PLUS_3 = "(d=>{d.setDate(d.getDate()+3);const p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())})(new Date())"
 
 
+def patch_classic_paper_assignment_flow(html: str) -> str:
+    """Add truthful difficulty guidance and recover from an empty unit question set."""
+
+    if 'id="homeworkDifficulty"' in html:
+        return html
+
+    replacements = (
+        (
+            '<div><label>单元</label><input id="au" placeholder="留空=综合"></div>',
+            '<div><label>单元</label><input id="au" placeholder="留空=综合"></div>'
+            '<div><label>难度要求</label><select id="homeworkDifficulty">'
+            '<option value="简单">简单</option><option value="中等" selected>中等</option>'
+            '<option value="偏难">偏难</option></select>'
+            '<small>难度会写入作业要求；题库暂不按难度自动筛题。</small></div>',
+        ),
+        (
+            'unit=$("#au").value,mode=$("#am").value,instructions=$("#ai").value.trim();',
+            'unit=$("#au").value,mode=$("#am").value,'
+            'difficulty=$("#homeworkDifficulty").value,'
+            'instructions=[$("#ai").value.trim(),"题目难度要求："+difficulty]'
+            '.filter(Boolean).join("；");',
+        ),
+        (
+            'const qs=(await api("/questions?"+params.toString())).filter(q=>(q.options||[]).length>=2&&q.questionType!=="non_choice");',
+            'const eligible=rows=>(rows||[]).filter(q=>(q.options||[]).length>=2&&q.questionType!=="non_choice");'
+            'let qs=eligible(await api("/questions?"+params.toString()));'
+            'if(!qs.length&&unit){const broaderParams=new URLSearchParams(params);'
+            'broaderParams.delete("unit");const broader=eligible(await api("/questions?"+broaderParams.toString()));'
+            'if(broader.length&&confirm("本单元暂无可组卷题目，是否改用同教材其他单元的题目继续？"))qs=broader;}',
+        ),
+        (
+            '没有符合条件的题目',
+            '所选年级、学科和教材范围没有可用选择题；请调整教材/单元或先录入题目',
+        ),
+    )
+    for before, after in replacements:
+        if html.count(before) != 1:
+            return html
+        html = html.replace(before, after, 1)
+    return html
+
+
 def patch_classic_local_due_dates(html: str) -> str:
     """Keep assignment default dates in the browser/school local calendar day."""
 
-    return (
+    html = (
         html.replace(
             "new Date(Date.now()+7*86400000).toISOString().slice(0,10)",
             _LOCAL_DATE_PLUS_7,
@@ -33,6 +75,7 @@ def patch_classic_local_due_dates(html: str) -> str:
             _LOCAL_DATE_PLUS_3,
         )
     )
+    return patch_classic_paper_assignment_flow(html)
 
 CLASSIC_UI_SNIPPET = f"""
 <style id="{CLASSIC_UI_MARKER}-style">
