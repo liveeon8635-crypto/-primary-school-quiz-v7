@@ -96,9 +96,12 @@
         ).join(''):'<div class="cy-fc-followup">暂无追加反馈</div>')+'</div>';
       const own=record.canFollowUp!==false;
       const canConfirm=record.canConfirm===true,accepted=record.terminalAccepted===true;
+      // Feedback #348: the confirm button used to require returning through the
+      // review bar (?reviewed=id), which teachers kept missing. Once Freeman says
+      // the feedback awaits confirmation, offer it directly.
       const reviewed=new URLSearchParams(location.search).get('reviewed')===String(id);
       const ack=record.acknowledged?'<span class="cy-fc-tag granted">用户已确认</span>':
-        (reviewed&&canConfirm&&own?'<button class="green" data-cy-fc-ack="'+id+'">确认通过</button>':'');
+        (canConfirm&&own?'<button class="green" data-cy-fc-ack="'+id+'">确认已达预期</button>':'');
       const review=canConfirm?'<a class="cy-fc-review" href="'+escapeHtml(reviewHref(record))+'">'+(reviewed?'重新去验收':'已处理 · 点击去验收')+'</a>':'';
       const ownerMeta=record.submittedBy?'<span class="cy-fc-tag">提交人：'+escapeHtml(record.submittedBy)+'</span>':'';
       return '<article class="cy-fc-record" data-cy-fc-record="'+id+'">'+
@@ -106,7 +109,7 @@
         '<div><b>'+escapeHtml(record.category||'产品反馈')+'</b><div style="margin-top:5px;line-height:1.55">'+escapeHtml(record.message||'')+'</div><small style="color:#667085">'+escapeHtml(record.createdAt||'')+'</small></div>'+
         '<div class="cy-fc-receipt"><b>处理回执</b><div style="margin-top:4px">'+escapeHtml(receiptText(record))+'</div>'+(review?'<div class="cy-fc-actions" style="margin-top:8px">'+review+'</div>':'')+'</div>'+
         followupHtml+
-        '<div class="cy-fc-actions">'+ack+(reviewed&&!accepted&&own?'<button data-cy-fc-followup-toggle="'+id+'">追加反馈</button>':'')+'</div>'+
+        '<div class="cy-fc-actions">'+ack+((reviewed||canConfirm)&&!accepted&&own?'<button data-cy-fc-followup-toggle="'+id+'">追加反馈</button>':'')+'</div>'+
         '<div class="cy-fc-compose" data-cy-fc-followup-form="'+id+'" hidden><textarea maxlength="1200" data-cy-fc-followup-input="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><label class="cy-fc-photo">📷 添加照片 <input type="file" accept="image/jpeg,image/png,image/webp" data-cy-fc-followup-photo="'+id+'"></label><div class="cy-fc-actions"><button class="primary" data-cy-fc-followup-submit="'+id+'">提交追加反馈</button><button data-cy-fc-followup-cancel="'+id+'">取消</button></div></div>'+
         '</article>';
     }).join('');

@@ -2153,8 +2153,8 @@ _ASSISTANT_SNIPPET = r'''
         const terminal=accepted?'<small>该反馈已验收。如有新的问题或需求，请提交一条新反馈。</small>':'';
         const actions=accepted?'':('<div class="cy-pa-history-actions">'+
           (canConfirm?'<a class="btn cy-pa-review-link" href="'+escapeHtml(reviewHref)+'">'+(reviewed?'重新去验收':'已处理 · 点击去验收')+'</a>':'')+
-          (reviewed&&canFollow?'<button type="button" data-pa-followup-toggle="'+id+'">追加反馈</button>':'')+
-          (reviewed&&canConfirm?'<button class="btn primary" type="button" data-pa-confirm-feedback="'+id+'">确认已达预期</button>':'')+
+          ((reviewed||canConfirm)&&canFollow?'<button type="button" data-pa-followup-toggle="'+id+'">追加反馈</button>':'')+
+          (canConfirm?'<button class="btn primary" type="button" data-pa-confirm-feedback="'+id+'">确认已达预期</button>':'')+
           (confirmed?'<span class="cy-pa-note">你已确认达到预期，等待最终验收。</span>':'')+
           '</div>');
         const followForm=canFollow?'<div data-pa-followup-form="'+id+'" hidden><textarea maxlength="1200" data-pa-followup-text="'+id+'" placeholder="补充新的现象、截图说明或后续建议"></textarea><label class="cy-pa-attachment">📷 添加照片 <input type="file" accept="image/jpeg,image/png,image/webp" data-pa-followup-photo="'+id+'"></label><button class="btn primary" type="button" data-pa-followup-submit="'+id+'">提交追加反馈</button></div>':'';
