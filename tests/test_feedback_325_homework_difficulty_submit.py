@@ -1,52 +1,47 @@
-"""反馈 #325 回归测试：组卷作业布置作业的难度选择与提交就绪。
+"""Regression coverage for feedback #325 against the real Classic assignment UI."""
 
-覆盖钟老师反馈的两个问题：
-1) 所有选项已选择但提交不了 —— 提交就绪判定必须明确缺失项；
-2) 缺少难度选择（简单/中等/偏难）—— 必须提供三个难度选项。
-"""
+from fastapi.testclient import TestClient
 
-from changying.web.v1_product_assistant import (
-    HOMEWORK_DIFFICULTY_OPTIONS,
-    HOMEWORK_DIFFICULTY_DEFAULT,
-    HOMEWORK_SUBMIT_READY_MARKER,
-    homework_assignment_contract,
-    homework_submit_ready,
-)
+from app import app as production_app
+from changying.web.classic_ui import patch_classic_paper_assignment_flow
 
 
-def test_difficulty_options_present():
-    assert HOMEWORK_DIFFICULTY_OPTIONS == ("简单", "中等", "偏难")
-    assert HOMEWORK_DIFFICULTY_DEFAULT in HOMEWORK_DIFFICULTY_OPTIONS
+def test_difficulty_requirement_is_visible_and_saved_in_assignment_instructions():
+    html = (
+        '<div><label>单元</label><input id="au" placeholder="留空=综合"></div>'
+        'unit=$("#au").value,mode=$("#am").value,instructions=$("#ai").value.trim();'
+    )
+    patched = patch_classic_paper_assignment_flow(html)
+
+    assert 'id="homeworkDifficulty"' in patched
+    assert '<option value="简单">简单</option>' in patched
+    assert '<option value="中等" selected>中等</option>' in patched
+    assert '<option value="偏难">偏难</option>' in patched
+    assert '"题目难度要求："+difficulty' in patched
+    assert "题库暂不按难度自动筛题" in patched
+    assert patch_classic_paper_assignment_flow(patched) == patched
 
 
-def test_assignment_contract_exposes_difficulty_and_submit_requirements():
-    contract = homework_assignment_contract()
-    assert contract["marker"] == HOMEWORK_SUBMIT_READY_MARKER
-    assert contract["difficultyOptions"] == ["简单", "中等", "偏难"]
-    assert contract["difficultyRequired"] is True
-    assert "difficulty" in contract["submitRequires"]
-    assert contract["submitEnabledWhenAllRequired"] is True
+def test_empty_unit_question_set_offers_same_textbook_fallback_and_actionable_error():
+    html = (
+        'const qs=(await api("/questions?"+params.toString())).filter('
+        'q=>(q.options||[]).length>=2&&q.questionType!=="non_choice");'
+        'if(!ids.length)throw new Error("没有符合条件的题目");'
+    )
+    patched = patch_classic_paper_assignment_flow(html)
+
+    assert 'broaderParams.delete("unit")' in patched
+    assert '是否改用同教材其他单元的题目继续？' in patched
+    assert '请调整教材/单元或先录入题目' in patched
 
 
-def test_submit_ready_when_all_required_present():
-    result = homework_submit_ready({"questions": [1, 2], "recipients": [10], "difficulty": "中等"})
-    assert result["ready"] is True
-    assert result["missing"] == []
+def test_production_classic_papers_page_contains_recoverable_assignment_flow():
+    response = TestClient(production_app).get(
+        "/classic?legacy=1&unified=1&page=papers",
+        headers={"Accept-Encoding": "identity"},
+    )
 
-
-def test_submit_not_ready_reports_missing_difficulty():
-    result = homework_submit_ready({"questions": [1], "recipients": [10]})
-    assert result["ready"] is False
-    assert "difficulty" in result["missing"]
-
-
-def test_submit_not_ready_reports_missing_questions_and_recipients():
-    result = homework_submit_ready({"difficulty": "偏难"})
-    assert result["ready"] is False
-    assert set(result["missing"]) == {"questions", "recipients"}
-
-
-def test_invalid_difficulty_rejected():
-    result = homework_submit_ready({"questions": [1], "recipients": [10], "difficulty": "超难"})
-    assert result["ready"] is False
-    assert "difficulty" in result["missing"]
+    assert response.status_code == 200
+    assert 'id="homeworkDifficulty"' in response.text
+    assert 'broaderParams.delete("unit")' in response.text
+    assert "请调整教材/单元或先录入题目" in response.text
