@@ -128,6 +128,35 @@ FEEDBACK_RECORDS_FULL_FEATURES = (
 FEEDBACK_REWARD_POINTS_PER_ADOPTED = 1
 FEEDBACK_REWARD_ADOPTED_STATUSES = ("已取用", "已采纳", "adopted", "accepted")
 FEEDBACK_REWARD_REDEEM_TARGET = "account_duration"
+# 反馈 #348：手机端反馈验收界面底部按钮拥挤在一起，且无法退回反馈记录。
+# 该契约声明移动端底部操作区改为可换行/可滚动的堆叠布局，并提供明确的
+# “返回反馈记录”动作，使老师提交反馈后能退回反馈记录列表。
+MOBILE_FEEDBACK_LAYOUT_MARKER = "changying_v1_mobile_feedback_layout_v1"
+MOBILE_FEEDBACK_BOTTOM_STACKED = True
+MOBILE_FEEDBACK_BOTTOM_WRAP = True
+MOBILE_FEEDBACK_BACK_TO_RECORDS = True
+MOBILE_FEEDBACK_BACK_ACTION = "back_to_feedback_records"
+MOBILE_FEEDBACK_BACK_LABEL = "返回反馈记录"
+MOBILE_FEEDBACK_RECORDS_ANCHOR = "feedback-records"
+
+
+def mobile_feedback_layout_contract() -> dict:
+    """反馈 #348：手机端反馈验收界面底部布局与返回反馈记录契约。
+
+    返回移动端底部操作区所需的布局与返回动作声明，供前端渲染与回归测试使用：
+    底部按钮改为可换行堆叠布局，避免拥挤；并提供“返回反馈记录”动作，
+    使老师提交反馈后能退回反馈记录列表。
+    """
+    return {
+        "marker": MOBILE_FEEDBACK_LAYOUT_MARKER,
+        "bottomStacked": MOBILE_FEEDBACK_BOTTOM_STACKED,
+        "bottomWrap": MOBILE_FEEDBACK_BOTTOM_WRAP,
+        "backToRecords": MOBILE_FEEDBACK_BACK_TO_RECORDS,
+        "backAction": MOBILE_FEEDBACK_BACK_ACTION,
+        "backLabel": MOBILE_FEEDBACK_BACK_LABEL,
+        "recordsAnchor": MOBILE_FEEDBACK_RECORDS_ANCHOR,
+        "recordsEndpoint": FEEDBACK_MINE_PATH,
+    }
 
 
 def feedback_reward_points(records: list[dict] | None = None) -> dict:
