@@ -6,12 +6,18 @@ from app import app as production_app
 from changying.web.classic_ui import patch_classic_paper_assignment_flow
 
 
-def test_difficulty_requirement_is_visible_and_saved_in_assignment_instructions():
-    html = (
+def assignment_fragment():
+    return (
         '<div><label>单元</label><input id="au" placeholder="留空=综合"></div>'
         'unit=$("#au").value,mode=$("#am").value,instructions=$("#ai").value.trim();'
+        'const qs=(await api("/questions?"+params.toString())).filter('
+        'q=>(q.options||[]).length>=2&&q.questionType!=="non_choice");'
+        'if(!ids.length)throw new Error("没有符合条件的题目");'
     )
-    patched = patch_classic_paper_assignment_flow(html)
+
+
+def test_difficulty_requirement_is_visible_and_saved_in_assignment_instructions():
+    patched = patch_classic_paper_assignment_flow(assignment_fragment())
 
     assert 'id="homeworkDifficulty"' in patched
     assert '<option value="简单">简单</option>' in patched
@@ -23,12 +29,7 @@ def test_difficulty_requirement_is_visible_and_saved_in_assignment_instructions(
 
 
 def test_empty_unit_question_set_offers_same_textbook_fallback_and_actionable_error():
-    html = (
-        'const qs=(await api("/questions?"+params.toString())).filter('
-        'q=>(q.options||[]).length>=2&&q.questionType!=="non_choice");'
-        'if(!ids.length)throw new Error("没有符合条件的题目");'
-    )
-    patched = patch_classic_paper_assignment_flow(html)
+    patched = patch_classic_paper_assignment_flow(assignment_fragment())
 
     assert 'broaderParams.delete("unit")' in patched
     assert '是否改用同教材其他单元的题目继续？' in patched
