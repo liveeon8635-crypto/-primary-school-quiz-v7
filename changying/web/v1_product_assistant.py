@@ -1767,7 +1767,6 @@ _ASSISTANT_SNIPPET = r'''
 <button id="cy-product-assistant-fab" hidden aria-label="打开产品助手" title="产品助手">✦<span class="cy-pa-fab-label">产品助手</span></button>
 <section id="cy-product-assistant-panel" hidden aria-label="长缨产品助手">
   <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-collapse" aria-label="收起">−</button></div></header>
-  <div id="cy-pa-processed-notice" role="status" aria-live="polite" data-feedback-notification-revision="2" hidden></div>
   <div class="cy-pa-tabs" data-feedback-ui-revision="3"><button class="cy-pa-tab active" id="cy-pa-ask-tab" data-pa-tab="ask">问产品</button><div class="cy-pa-feedback-menu"><button id="cy-pa-feedback-menu-button" type="button" aria-haspopup="menu" aria-expanded="false">提反馈 ▾</button><div class="cy-pa-feedback-dropdown" id="cy-pa-feedback-dropdown" role="menu" hidden><button type="button" data-pa-tab="feedback" role="menuitem">提交新反馈</button><button type="button" data-pa-tab="records" role="menuitem">反馈记录</button><div class="cy-pa-feedback-dropdown-records" id="cy-pa-feedback-dropdown-records"><div class="cy-pa-note">打开“提反馈”后会在这里直接显示你的反馈记录。</div></div></div></div></div>
   <div class="cy-pa-body" id="cy-pa-ask">
     <div class="cy-pa-quick"><button id="cy-pa-quick-1" data-pa-question="我现在该做什么？">下一步做什么</button><button id="cy-pa-quick-2" data-pa-question="这个页面是干什么的？">页面用途</button><button id="cy-pa-quick-3" data-pa-question="这一步为什么排在这里？">为什么这样走</button></div>
@@ -1785,6 +1784,7 @@ _ASSISTANT_SNIPPET = r'''
   </div>
   <div class="cy-pa-body" id="cy-pa-records" hidden><div class="cy-pa-history" id="cy-pa-history"><div class="cy-pa-note">正在读取你的反馈记录…</div></div></div>
 </section>
+  <div id="cy-pa-processed-notice" role="status" aria-live="polite" data-feedback-notification-revision="3" hidden></div>
 <script id="changying_v1_product_assistant_v1-script">
 (()=>{
   if(window.__cyV1ProductAssistantInstalled)return;
@@ -2362,7 +2362,7 @@ _ASSISTANT_SNIPPET = r'''
 
 def patch_v1_product_assistant(html: str) -> str:
     feedback_ui_revision = 'data-feedback-ui-revision="3"'
-    if V1_PRODUCT_ASSISTANT_MARKER in html and feedback_ui_revision in html and 'data-feedback-notification-revision="2"' in html:
+    if V1_PRODUCT_ASSISTANT_MARKER in html and feedback_ui_revision in html and 'data-feedback-notification-revision="3"' in html:
         return html
     if V1_PRODUCT_ASSISTANT_MARKER in html:
         # An older assistant injection must not suppress a newer feedback UI.
