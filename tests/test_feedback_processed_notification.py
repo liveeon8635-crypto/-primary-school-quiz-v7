@@ -70,3 +70,9 @@ def test_login_notification_is_outside_hidden_assistant_panel():
     notice_start = _ASSISTANT_SNIPPET.index('<div id="cy-pa-processed-notice"')
     assert notice_start > panel_end
     assert _ASSISTANT_SNIPPET.index('id="cy-product-assistant-fab"') < notice_start
+
+
+def test_login_notification_has_no_overlapping_diamond_tail():
+    from changying.web.v1_product_assistant import _ASSISTANT_SNIPPET
+
+    assert ".cy-pa-processed-record:after" not in _ASSISTANT_SNIPPET
