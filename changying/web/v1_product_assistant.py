@@ -1754,6 +1754,7 @@ _ASSISTANT_SNIPPET = r'''
   #cy-product-assistant-fab{position:fixed;right:14px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:125;border:0;border-radius:999px;background:#173a78;color:#fff;width:48px;height:48px;padding:0;font-weight:900;box-shadow:0 10px 28px rgba(23,58,120,.24);display:grid;place-items:center;font-size:20px}#cy-product-assistant-fab .cy-pa-fab-label{display:none}
   #cy-product-assistant-fab[hidden],#cy-product-assistant-panel[hidden]{display:none!important}
   #cy-product-assistant-panel{position:fixed;right:14px;bottom:calc(142px + env(safe-area-inset-bottom));z-index:126;width:min(390px,calc(100vw - 28px));max-height:min(620px,70dvh);background:#fff;border:1px solid #dbe4f1;border-radius:20px;box-shadow:0 22px 70px rgba(17,34,64,.28);overflow:hidden;display:flex;flex-direction:column}
+  #cy-pa-processed-notice[hidden]{display:none!important}#cy-pa-processed-notice{flex:none;display:grid;gap:7px;padding:12px;background:#eef5ff;border-bottom:1px solid #bfd2f4;max-height:24dvh;overflow:auto}#cy-pa-processed-notice strong{font-size:13px;color:#173a78}.cy-pa-processed-record{text-decoration:none;text-align:left;white-space:normal;overflow-wrap:anywhere;font-size:12px}
   .cy-pa-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid #e2e8f1}.cy-pa-head b{display:block}.cy-pa-head small{display:block;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);line-height:1.35}.cy-pa-head-actions{display:flex;gap:6px}.cy-pa-head-actions .btn{min-height:36px;padding:7px 10px}
   .cy-pa-tabs{display:grid;grid-template-columns:1fr auto;padding:9px;gap:7px;background:#f7f9fc}.cy-pa-tab,.cy-pa-feedback-menu>button{border:1px solid #dbe4f1;background:#fff;border-radius:11px;padding:9px;font-weight:750}.cy-pa-tab.active,.cy-pa-feedback-menu>button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78}.cy-pa-feedback-menu{position:relative}.cy-pa-feedback-dropdown{position:absolute;right:0;top:calc(100% + 5px);z-index:4;min-width:150px;background:#fff;border:1px solid #dbe4f1;border-radius:11px;box-shadow:0 12px 30px rgba(17,34,64,.18);padding:5px;display:grid;gap:4px}.cy-pa-feedback-dropdown[hidden]{display:none}.cy-pa-feedback-dropdown button{border:0;background:#fff;text-align:left;border-radius:8px;padding:9px 10px;font-weight:700}.cy-pa-feedback-dropdown button:hover{background:#f1f5fb}.cy-pa-feedback-dropdown{width:min(350px,calc(100vw - 48px));max-height:min(460px,60dvh);overflow:auto}.cy-pa-feedback-dropdown-records{display:grid;gap:6px;border-top:1px solid #e6ebf2;margin-top:2px;padding-top:6px}.cy-pa-feedback-dropdown-record{border:1px solid #dbe4f1;border-radius:9px;padding:8px;background:#f8fbff;display:grid;gap:4px}.cy-pa-feedback-dropdown-record b{font-size:11px}.cy-pa-feedback-dropdown-record small{font-size:10px;color:#667085;line-height:1.4;overflow-wrap:anywhere}.cy-pa-feedback-dropdown-actions{display:flex;gap:5px;flex-wrap:wrap}.cy-pa-feedback-dropdown-actions button,.cy-pa-feedback-dropdown-actions a{border:1px solid #dbe4f1;background:#fff;padding:6px 8px;font-size:10px;border-radius:8px;text-decoration:none;color:#173a78;font-weight:750}.cy-pa-feedback-dropdown-actions button.primary,.cy-pa-feedback-dropdown-actions a.primary{background:#173a78;color:#fff;border-color:#173a78}
   .cy-pa-body{padding:10px 11px;overflow:auto}.cy-pa-quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.cy-pa-quick button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 8px;font-size:11px}
@@ -1766,6 +1767,7 @@ _ASSISTANT_SNIPPET = r'''
 <button id="cy-product-assistant-fab" hidden aria-label="打开产品助手" title="产品助手">✦<span class="cy-pa-fab-label">产品助手</span></button>
 <section id="cy-product-assistant-panel" hidden aria-label="长缨产品助手">
   <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-collapse" aria-label="收起">−</button></div></header>
+  <div id="cy-pa-processed-notice" role="status" aria-live="polite" data-feedback-notification-revision="1" hidden></div>
   <div class="cy-pa-tabs" data-feedback-ui-revision="3"><button class="cy-pa-tab active" id="cy-pa-ask-tab" data-pa-tab="ask">问产品</button><div class="cy-pa-feedback-menu"><button id="cy-pa-feedback-menu-button" type="button" aria-haspopup="menu" aria-expanded="false">提反馈 ▾</button><div class="cy-pa-feedback-dropdown" id="cy-pa-feedback-dropdown" role="menu" hidden><button type="button" data-pa-tab="feedback" role="menuitem">提交新反馈</button><button type="button" data-pa-tab="records" role="menuitem">反馈记录</button><div class="cy-pa-feedback-dropdown-records" id="cy-pa-feedback-dropdown-records"><div class="cy-pa-note">打开“提反馈”后会在这里直接显示你的反馈记录。</div></div></div></div></div>
   <div class="cy-pa-body" id="cy-pa-ask">
     <div class="cy-pa-quick"><button id="cy-pa-quick-1" data-pa-question="我现在该做什么？">下一步做什么</button><button id="cy-pa-quick-2" data-pa-question="这个页面是干什么的？">页面用途</button><button id="cy-pa-quick-3" data-pa-question="这一步为什么排在这里？">为什么这样走</button></div>
@@ -2289,6 +2291,61 @@ _ASSISTANT_SNIPPET = r'''
     }catch(err){attachmentStatus.textContent=err.message||'附件发送失败';btn.textContent='提交失败，重试';btn.disabled=false}
   };
 
+
+  // Login notification reads server-owned acceptance eligibility, never rewards or PR claims.
+  const processedNotice=document.getElementById('cy-pa-processed-notice');
+  let noticeToken='',noticeCheckedAt=0,noticeRequest=0;
+  const shownProcessedFeedback=new Set();
+  function pendingProcessedFeedback(records){
+    return (Array.isArray(records)?records:[]).filter(x=>
+      Number.isSafeInteger(Number(x?.id))&&Number(x.id)>0&&x.canConfirm===true&&
+      x.terminalAccepted!==true&&x.acknowledged!==true&&x.userDecision?.status!=='confirmed'
+    );
+  }
+  function resetProcessedNotice(){
+    noticeToken='';noticeCheckedAt=0;noticeRequest++;shownProcessedFeedback.clear();
+    if(processedNotice){processedNotice.hidden=true;processedNotice.replaceChildren()}
+  }
+  async function checkProcessedFeedbackNotice(){
+    if(!processedNotice||!identityReady())return;
+    const token=readToken();
+    if(token!==noticeToken){
+      noticeToken=token;noticeCheckedAt=0;noticeRequest++;shownProcessedFeedback.clear();
+      processedNotice.hidden=true;processedNotice.replaceChildren();
+    }
+    if(noticeCheckedAt&&Date.now()-noticeCheckedAt<60000)return;
+    noticeCheckedAt=Date.now();
+    const request=++noticeRequest;
+    try{
+      const response=await fetch('/v1/product-feedback/mine',{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+      if(!response.ok)return;
+      const data=await response.json();
+      if(request!==noticeRequest||readToken()!==token||!identityReady())return;
+      const pending=pendingProcessedFeedback(data.records);
+      if(!pending.length){processedNotice.hidden=true;processedNotice.replaceChildren();return}
+      const unseen=pending.filter(x=>!shownProcessedFeedback.has(Number(x.id)));
+      if(!unseen.length)return;
+      unseen.forEach(x=>shownProcessedFeedback.add(Number(x.id)));
+      processedNotice.replaceChildren();
+      const heading=document.createElement('strong');
+      heading.textContent='你的反馈已处理，待你验收';
+      processedNotice.appendChild(heading);
+      unseen.forEach(record=>{
+        const link=document.createElement('a');
+        link.className='btn cy-pa-processed-record';
+        link.textContent='查看反馈记录 · '+String(record.message||'反馈 #'+record.id).slice(0,80);
+        const target=new URL('/v1/workspace',location.origin);
+        target.searchParams.set('tab','feedback-records');
+        target.searchParams.set('focus',String(Number(record.id)));
+        link.href=target.pathname+target.search;
+        processedNotice.appendChild(link);
+      });
+      processedNotice.hidden=false;
+      const tab=new URLSearchParams(location.search).get('tab');
+      if(panel.hidden&&tab!=='feedback-records'){setTab('ask');openPanel()}
+    }catch{ /* A failed check must not interrupt login or claim feedback completion. */ }
+  }
+
   const observedIdentityNodes=new WeakSet();
   const identityObserver=new MutationObserver(()=>queueMicrotask(sync));
   const observeIdentityNodes=()=>{
@@ -2296,7 +2353,7 @@ _ASSISTANT_SNIPPET = r'''
     if(button&&!observedIdentityNodes.has(button)){identityObserver.observe(button,{attributes:true,attributeFilter:['hidden']});observedIdentityNodes.add(button)}
     if(chip&&!observedIdentityNodes.has(chip)){identityObserver.observe(chip,{childList:true,characterData:true,subtree:true});observedIdentityNodes.add(chip)}
   };
-  const sync=()=>{observeIdentityNodes();const ready=identityReady();if(!ready){fab.hidden=true;panel.hidden=true;return}openInitialAssistantRoute();fab.hidden=!panel.hidden;updateContext();applyRoleCopy();if(!panel.hidden)renderGuideGrid()};
+  const sync=()=>{observeIdentityNodes();const ready=identityReady();if(!ready)resetProcessedNotice();if(!ready){fab.hidden=true;panel.hidden=true;return}checkProcessedFeedbackNotice();openInitialAssistantRoute();fab.hidden=!panel.hidden;updateContext();applyRoleCopy();if(!panel.hidden)renderGuideGrid()};
   window.addEventListener('pageshow',sync);window.addEventListener('popstate',sync);window.addEventListener('focus',sync);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
   let authReadyPoll=null;
@@ -2311,7 +2368,7 @@ _ASSISTANT_SNIPPET = r'''
 
 def patch_v1_product_assistant(html: str) -> str:
     feedback_ui_revision = 'data-feedback-ui-revision="3"'
-    if V1_PRODUCT_ASSISTANT_MARKER in html and feedback_ui_revision in html:
+    if V1_PRODUCT_ASSISTANT_MARKER in html and feedback_ui_revision in html and 'data-feedback-notification-revision="1"' in html:
         return html
     if V1_PRODUCT_ASSISTANT_MARKER in html:
         # An older assistant injection must not suppress a newer feedback UI.
