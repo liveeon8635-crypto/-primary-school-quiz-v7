@@ -2353,7 +2353,7 @@ _ASSISTANT_SNIPPET = r'''
     if(button&&!observedIdentityNodes.has(button)){identityObserver.observe(button,{attributes:true,attributeFilter:['hidden']});observedIdentityNodes.add(button)}
     if(chip&&!observedIdentityNodes.has(chip)){identityObserver.observe(chip,{childList:true,characterData:true,subtree:true});observedIdentityNodes.add(chip)}
   };
-  const sync=()=>{observeIdentityNodes();const ready=identityReady();if(!ready){resetProcessedNotice();fab.hidden=true;panel.hidden=true;return}checkProcessedFeedbackNotice();openInitialAssistantRoute();fab.hidden=!panel.hidden;updateContext();applyRoleCopy();if(!panel.hidden)renderGuideGrid()};
+  const sync=()=>{observeIdentityNodes();const ready=identityReady();if(!ready)resetProcessedNotice();if(!ready){fab.hidden=true;panel.hidden=true;return}checkProcessedFeedbackNotice();openInitialAssistantRoute();fab.hidden=!panel.hidden;updateContext();applyRoleCopy();if(!panel.hidden)renderGuideGrid()};
   window.addEventListener('pageshow',sync);window.addEventListener('popstate',sync);window.addEventListener('focus',sync);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
   let authReadyPoll=null;
