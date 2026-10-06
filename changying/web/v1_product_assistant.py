@@ -1754,7 +1754,7 @@ _ASSISTANT_SNIPPET = r'''
   #cy-product-assistant-fab{position:fixed;right:14px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:125;border:0;border-radius:999px;background:#173a78;color:#fff;width:48px;height:48px;padding:0;font-weight:900;box-shadow:0 10px 28px rgba(23,58,120,.24);display:grid;place-items:center;font-size:20px}#cy-product-assistant-fab .cy-pa-fab-label{display:none}
   #cy-product-assistant-fab[hidden],#cy-product-assistant-panel[hidden]{display:none!important}
   #cy-product-assistant-panel{position:fixed;right:14px;bottom:calc(142px + env(safe-area-inset-bottom));z-index:126;width:min(390px,calc(100vw - 28px));max-height:min(620px,70dvh);background:#fff;border:1px solid #dbe4f1;border-radius:20px;box-shadow:0 22px 70px rgba(17,34,64,.28);overflow:hidden;display:flex;flex-direction:column}
-  #cy-pa-processed-notice[hidden]{display:none!important}#cy-pa-processed-notice{flex:none;display:grid;gap:7px;padding:12px;background:#eef5ff;border-bottom:1px solid #bfd2f4;max-height:24dvh;overflow:auto}#cy-pa-processed-notice strong{font-size:13px;color:#173a78}.cy-pa-processed-record{text-decoration:none;text-align:left;white-space:normal;overflow-wrap:anywhere;font-size:12px}
+  #cy-pa-processed-notice[hidden]{display:none!important}#cy-pa-processed-notice{position:fixed;right:70px;bottom:calc(88px + env(safe-area-inset-bottom));z-index:127;display:block;max-width:min(285px,calc(100vw - 94px));padding:9px 12px;border:1px solid #c8d8f2;border-radius:14px;background:#fff;color:#173a78;box-shadow:0 8px 24px rgba(17,34,64,.2);font-size:12px;font-weight:800;line-height:1.35}#cy-product-assistant-fab[hidden]~#cy-pa-processed-notice:not([hidden]){display:none!important}.cy-pa-processed-record{position:relative;display:flex;align-items:center;gap:7px;text-decoration:none;white-space:nowrap;color:inherit}.cy-pa-processed-record:before{content:'';flex:none;width:8px;height:8px;border-radius:50%;background:#3682ed;box-shadow:0 0 0 0 rgba(54,130,237,.5);animation:cy-pa-notice-pulse 1.6s ease-out infinite}.cy-pa-processed-record:after{content:'';position:absolute;right:-5px;top:50%;width:9px;height:9px;transform:translateY(-50%) rotate(45deg);border-top:1px solid #c8d8f2;border-right:1px solid #c8d8f2;background:#fff}@keyframes cy-pa-notice-pulse{70%{box-shadow:0 0 0 7px rgba(54,130,237,0)}100%{box-shadow:0 0 0 0 rgba(54,130,237,0)}}@media(prefers-reduced-motion:reduce){.cy-pa-processed-record:before{animation:none}}
   .cy-pa-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid #e2e8f1}.cy-pa-head b{display:block}.cy-pa-head small{display:block;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);line-height:1.35}.cy-pa-head-actions{display:flex;gap:6px}.cy-pa-head-actions .btn{min-height:36px;padding:7px 10px}
   .cy-pa-tabs{display:grid;grid-template-columns:1fr auto;padding:9px;gap:7px;background:#f7f9fc}.cy-pa-tab,.cy-pa-feedback-menu>button{border:1px solid #dbe4f1;background:#fff;border-radius:11px;padding:9px;font-weight:750}.cy-pa-tab.active,.cy-pa-feedback-menu>button.active{background:#eaf1ff;border-color:#bfd2f4;color:#173a78}.cy-pa-feedback-menu{position:relative}.cy-pa-feedback-dropdown{position:absolute;right:0;top:calc(100% + 5px);z-index:4;min-width:150px;background:#fff;border:1px solid #dbe4f1;border-radius:11px;box-shadow:0 12px 30px rgba(17,34,64,.18);padding:5px;display:grid;gap:4px}.cy-pa-feedback-dropdown[hidden]{display:none}.cy-pa-feedback-dropdown button{border:0;background:#fff;text-align:left;border-radius:8px;padding:9px 10px;font-weight:700}.cy-pa-feedback-dropdown button:hover{background:#f1f5fb}.cy-pa-feedback-dropdown{width:min(350px,calc(100vw - 48px));max-height:min(460px,60dvh);overflow:auto}.cy-pa-feedback-dropdown-records{display:grid;gap:6px;border-top:1px solid #e6ebf2;margin-top:2px;padding-top:6px}.cy-pa-feedback-dropdown-record{border:1px solid #dbe4f1;border-radius:9px;padding:8px;background:#f8fbff;display:grid;gap:4px}.cy-pa-feedback-dropdown-record b{font-size:11px}.cy-pa-feedback-dropdown-record small{font-size:10px;color:#667085;line-height:1.4;overflow-wrap:anywhere}.cy-pa-feedback-dropdown-actions{display:flex;gap:5px;flex-wrap:wrap}.cy-pa-feedback-dropdown-actions button,.cy-pa-feedback-dropdown-actions a{border:1px solid #dbe4f1;background:#fff;padding:6px 8px;font-size:10px;border-radius:8px;text-decoration:none;color:#173a78;font-weight:750}.cy-pa-feedback-dropdown-actions button.primary,.cy-pa-feedback-dropdown-actions a.primary{background:#173a78;color:#fff;border-color:#173a78}
   .cy-pa-body{padding:10px 11px;overflow:auto}.cy-pa-quick{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.cy-pa-quick button{border:1px solid #dbe4f1;background:#fff;border-radius:999px;padding:6px 8px;font-size:11px}
@@ -1767,7 +1767,7 @@ _ASSISTANT_SNIPPET = r'''
 <button id="cy-product-assistant-fab" hidden aria-label="打开产品助手" title="产品助手">✦<span class="cy-pa-fab-label">产品助手</span></button>
 <section id="cy-product-assistant-panel" hidden aria-label="长缨产品助手">
   <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-collapse" aria-label="收起">−</button></div></header>
-  <div id="cy-pa-processed-notice" role="status" aria-live="polite" data-feedback-notification-revision="1" hidden></div>
+  <div id="cy-pa-processed-notice" role="status" aria-live="polite" data-feedback-notification-revision="2" hidden></div>
   <div class="cy-pa-tabs" data-feedback-ui-revision="3"><button class="cy-pa-tab active" id="cy-pa-ask-tab" data-pa-tab="ask">问产品</button><div class="cy-pa-feedback-menu"><button id="cy-pa-feedback-menu-button" type="button" aria-haspopup="menu" aria-expanded="false">提反馈 ▾</button><div class="cy-pa-feedback-dropdown" id="cy-pa-feedback-dropdown" role="menu" hidden><button type="button" data-pa-tab="feedback" role="menuitem">提交新反馈</button><button type="button" data-pa-tab="records" role="menuitem">反馈记录</button><div class="cy-pa-feedback-dropdown-records" id="cy-pa-feedback-dropdown-records"><div class="cy-pa-note">打开“提反馈”后会在这里直接显示你的反馈记录。</div></div></div></div></div>
   <div class="cy-pa-body" id="cy-pa-ask">
     <div class="cy-pa-quick"><button id="cy-pa-quick-1" data-pa-question="我现在该做什么？">下一步做什么</button><button id="cy-pa-quick-2" data-pa-question="这个页面是干什么的？">页面用途</button><button id="cy-pa-quick-3" data-pa-question="这一步为什么排在这里？">为什么这样走</button></div>
@@ -2327,22 +2327,16 @@ _ASSISTANT_SNIPPET = r'''
       if(!unseen.length)return;
       unseen.forEach(x=>shownProcessedFeedback.add(Number(x.id)));
       processedNotice.replaceChildren();
-      const heading=document.createElement('strong');
-      heading.textContent='你的反馈已处理，待你验收';
-      processedNotice.appendChild(heading);
-      unseen.forEach(record=>{
-        const link=document.createElement('a');
-        link.className='btn cy-pa-processed-record';
-        link.textContent='查看反馈记录 · '+String(record.message||'反馈 #'+record.id).slice(0,80);
-        const target=new URL('/v1/workspace',location.origin);
-        target.searchParams.set('tab','feedback-records');
-        target.searchParams.set('focus',String(Number(record.id)));
-        link.href=target.pathname+target.search;
-        processedNotice.appendChild(link);
-      });
+      const link=document.createElement('a');
+      link.className='cy-pa-processed-record';
+      link.setAttribute('aria-label','有反馈已处理，点击查看并验收');
+      link.textContent=unseen.length>1?'有 '+unseen.length+' 条反馈待验收 · 点击查看':'反馈待验收 · 点击查看';
+      const target=new URL('/v1/workspace',location.origin);
+      target.searchParams.set('tab','feedback-records');
+      target.searchParams.set('focus',String(Number(unseen[0].id)));
+      link.href=target.pathname+target.search;
+      processedNotice.appendChild(link);
       processedNotice.hidden=false;
-      const tab=new URLSearchParams(location.search).get('tab');
-      if(panel.hidden&&tab!=='feedback-records'){setTab('ask');openPanel()}
     }catch{ /* A failed check must not interrupt login or claim feedback completion. */ }
   }
 
@@ -2368,7 +2362,7 @@ _ASSISTANT_SNIPPET = r'''
 
 def patch_v1_product_assistant(html: str) -> str:
     feedback_ui_revision = 'data-feedback-ui-revision="3"'
-    if V1_PRODUCT_ASSISTANT_MARKER in html and feedback_ui_revision in html and 'data-feedback-notification-revision="1"' in html:
+    if V1_PRODUCT_ASSISTANT_MARKER in html and feedback_ui_revision in html and 'data-feedback-notification-revision="2"' in html:
         return html
     if V1_PRODUCT_ASSISTANT_MARKER in html:
         # An older assistant injection must not suppress a newer feedback UI.
