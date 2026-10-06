@@ -50,7 +50,7 @@ def test_login_processed_notification_filters_and_opens_exact_record():
 def test_login_notification_is_mounted_and_checked_after_identity_ready():
     html = TestClient(app).get("/v1/workspace").text
     assert 'id="cy-pa-processed-notice"' in html
-    assert 'data-feedback-notification-revision="2"' in html
+    assert 'data-feedback-notification-revision="3"' in html
     assert "checkProcessedFeedbackNotice();openInitialAssistantRoute()" in html
 
 
@@ -61,3 +61,12 @@ def test_login_notification_is_a_compact_fab_bubble_without_motion_dependency():
     assert "cy-pa-notice-pulse" in _ASSISTANT_SNIPPET
     assert "prefers-reduced-motion:reduce" in _ASSISTANT_SNIPPET
     assert "if(panel.hidden&&tab!=='feedback-records'){setTab('ask');openPanel()}" not in _ASSISTANT_SNIPPET
+
+
+def test_login_notification_is_outside_hidden_assistant_panel():
+    from changying.web.v1_product_assistant import _ASSISTANT_SNIPPET
+
+    panel_end = _ASSISTANT_SNIPPET.index("</section>", _ASSISTANT_SNIPPET.index('<section id="cy-product-assistant-panel"'))
+    notice_start = _ASSISTANT_SNIPPET.index('<div id="cy-pa-processed-notice"')
+    assert notice_start > panel_end
+    assert _ASSISTANT_SNIPPET.index('id="cy-product-assistant-fab"') < notice_start
