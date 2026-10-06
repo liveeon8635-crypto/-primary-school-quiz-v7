@@ -62,6 +62,50 @@ def patch_classic_paper_assignment_flow(html: str) -> str:
     return html
 
 
+def patch_classic_paper_submit_flow(html: str) -> str:
+    """Make the Classic assignment submit action explicit, validated, and single-flight."""
+
+    marker = "changying_feedback_335_submit_v1"
+    if marker in html:
+        return html
+    start = html.find("function assignmentForm(classes){")
+    end = html.find("async function fetchHomeworkMediaBlob", start)
+    if start < 0 or end < 0:
+        return html
+    fragment = html[start:end]
+    replacements = (
+        (
+            "function assignmentForm(classes){",
+            "function assignmentForm(classes){/*" + marker + "*/",
+        ),
+        (
+            '$("#saveAssignment").onclick=async()=>{try{',
+            'let submitInFlight=false;$("#saveAssignment").onclick=async()=>{'
+            'if(submitInFlight)return;const submitButton=$("#saveAssignment"),'
+            'submitLabel=submitButton.textContent;submitInFlight=true;'
+            'submitButton.disabled=true;submitButton.textContent="正在提交作业…";try{',
+        ),
+        (
+            'const o=$("#ac").selectedOptions[0],grade=+o.dataset.grade,class_id=+o.value,studentCount=+o.dataset.count,subject=$("#as").value,textbook=$("#ab").value,unit=$("#au").value,mode=$("#am").value,',
+            'const o=$("#ac").selectedOptions[0];if(!o)throw new Error("请选择要布置作业的班级");'
+            'const assignmentTitle=$("#at").value.trim();if(!assignmentTitle)throw new Error("请填写作业名称");'
+            'const grade=+o.dataset.grade,class_id=+o.value,studentCount=+o.dataset.count,'
+            'subject=$("#as").value,textbook=$("#ab").value,unit=$("#au").value,mode=$("#am").value,',
+        ),
+        (
+            '}catch(e){toast(e.message)}};',
+            '}catch(e){toast("作业未布置："+(e.message||"请重试"))}'
+            'finally{submitInFlight=false;if(document.body.contains(submitButton)){'
+            'submitButton.disabled=false;submitButton.textContent=submitLabel}}};',
+        ),
+    )
+    for before, after in replacements:
+        if fragment.count(before) != 1:
+            return html
+        fragment = fragment.replace(before, after, 1)
+    fragment = fragment.replace('title:$("#at").value', "title:assignmentTitle")
+    return html[:start] + fragment + html[end:]
+
 def patch_classic_local_due_dates(html: str) -> str:
     """Keep assignment default dates in the browser/school local calendar day."""
 
@@ -293,6 +337,7 @@ def is_classic_html_path(path: str) -> bool:
 
 def inject_classic_ui(html: str) -> str:
     """Inject the classic UI enhancement into an HTML document once."""
+    html = patch_classic_paper_submit_flow(html)
     html = patch_classic_local_due_dates(html)
     if CLASSIC_UI_MARKER in html:
         return html
