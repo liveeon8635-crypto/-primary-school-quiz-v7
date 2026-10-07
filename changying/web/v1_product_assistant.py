@@ -7,6 +7,44 @@ recorded through the existing audit log so no new schema is required.
 
 from __future__ import annotations
 
+# 反馈 #370：钟老师在 /classic?legacy=1&unified=1&page=papers 组卷作业导入试卷后，
+# 不清楚试卷保存到哪里，问助手也没有导航提示。这里登记“导入试卷后保存位置”的
+# 导航契约，供产品助手在相关提问时给出明确入口，避免只做展示文案。
+PAPER_IMPORT_NAVIGATION_MARKER = "changying_v1_paper_import_navigation_v1"
+PAPER_IMPORT_SAVED_LOCATION = "试卷库"
+PAPER_IMPORT_NAVIGATION_STEPS = (
+    "导入成功后试卷会保存到「试卷库」，可在左侧导航「试卷库」中查看。",
+    "在「试卷库」里可按学科/年级筛选刚导入的试卷，并直接用于组卷作业。",
+    "若在组卷作业页看不到刚导入的试卷，请刷新页面或切换到「试卷库」标签。",
+)
+PAPER_IMPORT_NAVIGATION_KEYWORDS = (
+    "导入试卷",
+    "导入的试卷",
+    "保存到哪",
+    "保存到哪里",
+    "试卷库",
+    "组卷作业",
+    "导航",
+    "找不到试卷",
+)
+
+
+def paper_import_navigation_hint(question: str = "") -> str:
+    """反馈 #370：回答“导入试卷后保存到哪里”的导航提示。
+
+    当用户询问导入试卷的保存位置或找不到导入的试卷时，返回明确的导航步骤，
+    指向「试卷库」入口。该函数是产品助手回答该问题的唯一数据来源，
+    供助手查询链路与回归测试共同使用。
+    """
+    text = str(question or "")
+    if not any(keyword in text for keyword in PAPER_IMPORT_NAVIGATION_KEYWORDS):
+        return ""
+    steps = "".join(f"{index}. {step}" for index, step in enumerate(PAPER_IMPORT_NAVIGATION_STEPS, start=1))
+    return (
+        f"导入的试卷会保存到「{PAPER_IMPORT_SAVED_LOCATION}」。"
+        f"查看方式：{steps}"
+    )
+
 import base64
 import binascii
 import hashlib
