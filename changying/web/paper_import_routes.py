@@ -127,6 +127,8 @@ def install_paper_import_routes(implementation: Any) -> None:
     def save_paper(b: PaperImportSaveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)) -> dict[str, Any]:
         implementation.need(u, "admin", "teacher")
         _check_scope(b)
+        if not str(b.unit or "").strip():
+            raise HTTPException(400, "请填写单元：导入的题目按单元归入教材题库，否则之后很难找到")
         if b.create_paper and u.role != "teacher":
             raise HTTPException(403, "只有教师可以保存试卷或布置作业；管理员可保存到题库")
         if not b.create_paper and b.class_id is not None:
@@ -150,20 +152,35 @@ def install_paper_import_routes(implementation: Any) -> None:
                 raise HTTPException(400, f"第 {index} 题：{problem or '格式无效'}，请补全后再保存")
             validated.append(item)
         Question = implementation.Question
-        ids, types = [], {}
+        ids, types, reused = [], {}, 0
+        # An identical question already in this school's bank (same text, type, options and
+        # answer) is reused instead of saved a second time.
+        known: dict[tuple[str, str, str, str, int], int] = {}
+        texts = {item["text"] for item in validated}
+        for row in db.scalars(select(Question).where(Question.school_id == u.school_id, Question.grade == b.grade,
+                                                     Question.subject == b.subject[:30], Question.text.in_(texts))).all():
+            known.setdefault((row.text, row.question_type, row.options_json, row.answer_json, int(row.correct_index)), int(row.id))
         for item in validated:
+            fields = storage_fields(item)
+            key = (item["text"], fields["question_type"], fields["options_json"], fields["answer_json"], int(fields["correct_index"]))
+            if key in known and not item.get("figure"):
+                ids.append(known[key])
+                types[known[key]] = item["question_type"]
+                reused += 1
+                continue
             row = Question(school_id=u.school_id, grade=b.grade, subject=b.subject[:30], textbook=(b.textbook or "")[:80],
                            semester=(b.semester or "上册")[:20], unit=(b.unit or "导入试卷")[:100], knowledge=item["knowledge"][:120],
-                           text=item["text"], creator_id=u.id, **storage_fields(item))
+                           text=item["text"], creator_id=u.id, **fields)
             db.add(row)
             db.flush()
             ids.append(int(row.id))
             types[int(row.id)] = item["question_type"]
+            known[(row.text, row.question_type, row.options_json, row.answer_json, int(row.correct_index))] = int(row.id)
         distribution = type_distribution(types, ids)
         if not b.create_paper:
             implementation.audit(db, u, "question.import.save", f"questions={len(ids)}:types={json.dumps(distribution, ensure_ascii=False)}")
             db.commit()
-            return {"savedCount": len(ids), "questionIDs": ids, "typeDistribution": distribution, "typeSummary": distribution_text(distribution)}
+            return {"savedCount": len(ids) - reused, "reusedCount": reused, "questionIDs": ids, "typeDistribution": distribution, "typeSummary": distribution_text(distribution)}
         paper = implementation.Paper(school_id=u.school_id, title=title, grade=b.grade, subject=b.subject[:30],
                                      textbook=(b.textbook or "")[:80], unit=(b.unit or "")[:100],
                                      question_ids_json=json.dumps(ids), teacher_id=u.id)
@@ -189,7 +206,7 @@ def install_paper_import_routes(implementation: Any) -> None:
         implementation.audit(db, u, "paper.import.save", f"paper={paper.id}:questions={len(ids)}:types={json.dumps(distribution, ensure_ascii=False)}:assignment={assignment.id if assignment else ''}")
         db.commit()
         db.refresh(paper)
-        out = {**implementation.pj(paper), "typeDistribution": distribution, "typeSummary": distribution_text(distribution)}
+        out = {**implementation.pj(paper), "reusedCount": reused, "typeDistribution": distribution, "typeSummary": distribution_text(distribution)}
         if assignment is not None:
             db.refresh(assignment)
             out["assignment"] = implementation.aj(db, assignment)

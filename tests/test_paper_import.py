@@ -185,6 +185,19 @@ with TestClient(app) as client:
         assert setting.mode == "media"
     bank_only = client.post("/teacher/papers/import/save", headers=th, json={**scope, "title": "只存试卷", "questions": [items[1]]})
     assert bank_only.status_code == 200 and "assignment" not in bank_only.json()
+    # feedback #370: a unit is required, and an identical question already in the bank is reused
+    no_unit = client.post("/teacher/papers/import/save", headers=th, json={**scope, "unit": " ", "title": "无单元", "questions": [items[1]]})
+    assert no_unit.status_code == 400 and "单元" in no_unit.json()["detail"]
+    with legacy.SessionLocal() as db:
+        before = db.scalar(legacy.select(legacy.func.count()).select_from(legacy.Question))
+    again = client.post("/teacher/papers/import/save", headers=th, json={**scope, "title": "再存一次", "questions": [items[0], items[1], essay]})
+    assert again.status_code == 200, again.text
+    assert again.json()["reusedCount"] == 3
+    with legacy.SessionLocal() as db:
+        assert db.scalar(legacy.select(legacy.func.count()).select_from(legacy.Question)) == before
+    changed = dict(items[2], answer="999")
+    changed_save = client.post("/teacher/papers/import/save", headers=th, json={**scope, "title": "改了答案", "questions": [changed], "create_paper": False})
+    assert changed_save.status_code == 200 and changed_save.json()["reusedCount"] == 0 and changed_save.json()["savedCount"] == 1
 print("PAPER_IMPORT_OK")
 """
 
@@ -356,3 +369,13 @@ def test_saving_a_paper_says_where_it_went():
     assert "savedNotice(saved,title,questions.length)" in PAPER_IMPORT_SCRIPT
     assert "已保存到「组卷与作业」" in PAPER_IMPORT_SCRIPT and "教材题库」（单元：" in PAPER_IMPORT_SCRIPT
     assert "到教材题库，单元：" in PAPER_IMPORT_SCRIPT
+
+
+def test_assistant_explains_where_an_imported_paper_goes():
+    from changying.web.v1_product_assistant import _guidance_cards, _local_answer
+
+    cards = _guidance_cards("组卷作业导入试卷后保存到哪里了")
+    assert cards[0]["key"] == "paper_import_saved"
+    answer = _local_answer("导入试卷后保存到哪里", "教师", "papers", "", role="teacher")
+    assert "组卷与作业" in answer and "教材题库" in answer and "单元" in answer
+    assert "单元（必填" in __import__("changying.web.paper_import_ui", fromlist=["x"]).PAPER_IMPORT_SCRIPT
