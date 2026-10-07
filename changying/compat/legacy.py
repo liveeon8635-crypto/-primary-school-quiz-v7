@@ -85,6 +85,8 @@ from changying.web.v1_classroom_execution import (
     install_v1_classroom_execution_patch,
     install_v1_classroom_execution_routes,
 )
+from changying.web.paper_composition_routes import install_paper_composition_routes
+from changying.web.paper_import_routes import install_paper_import_routes
 from changying.web.v1_classroom_quick_check import (
     install_v1_classroom_quick_check_patch,
     install_v1_classroom_quick_check_routes,
@@ -458,6 +460,8 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_classroom_execution_routes(implementation)
     install_v1_classroom_quick_check_patch()
     install_v1_classroom_quick_check_routes(implementation)
+    install_paper_composition_routes(implementation)
+    install_paper_import_routes(implementation)
     install_v1_classroom_presentation_review_patch()
     install_v1_classroom_presentation_review_routes(implementation)
     install_v1_classroom_handout_release_patch()

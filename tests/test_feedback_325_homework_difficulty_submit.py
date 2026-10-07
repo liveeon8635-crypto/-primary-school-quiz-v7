@@ -44,5 +44,9 @@ def test_production_classic_papers_page_contains_recoverable_assignment_flow():
 
     assert response.status_code == 200
     assert 'id="homeworkDifficulty"' in response.text
-    assert 'broaderParams.delete("unit")' in response.text
-    assert "请调整教材/单元或先录入题目" in response.text
+    # The empty-unit recovery now runs through server-side composition
+    # (POST /teacher/papers/compose, feedback 刘麦迪 mixed question types):
+    # the teacher still confirms before broadening to the whole textbook.
+    assert '"/teacher/papers/compose"' in response.text
+    assert "broaden_unit:true" in response.text
+    assert "本单元暂无可在线判分的题目，是否改用同教材其他单元的题目继续？" in response.text
