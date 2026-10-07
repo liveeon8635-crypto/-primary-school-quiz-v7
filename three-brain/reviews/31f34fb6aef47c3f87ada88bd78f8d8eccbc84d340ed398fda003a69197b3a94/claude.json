@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:31f34fb6aef47c3f87ada88bd78f8d8eccbc84d340ed398fda003a69197b3a94",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "45f800d3deb8fdf44e85ef77eedd84d6d004fefb",
+  "headSha": "81e95df768f2df26c61af9132c0566f484643488",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议合并：这只是把教师导入试卷审核页的保存按钮文字从“确认已核对，保存”改为“确认保存”，不涉及逻辑，且 smoke 与 guard 两项 CI 均通过。",
+      "evidenceRefs": [
+        "file:changying/web/paper_import_ui.py#L86-L106",
+        "run:112887326613",
+        "run:112887326668"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "新增测试检查页面里出现新文案且题库模式文案不变，覆盖了本次改动；测试断言写法略绕，但不影响正确性。",
+      "evidenceRefs": [
+        "file:tests/test_paper_import.py#L488-L496"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:6d9071481007d20b7318ccc7507f5f691b372d3bf9b4f7e95ea91645e2b0c4f8"
+}
