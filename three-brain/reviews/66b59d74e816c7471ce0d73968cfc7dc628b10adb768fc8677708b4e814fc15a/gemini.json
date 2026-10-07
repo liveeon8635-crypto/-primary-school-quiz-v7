@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-flash",
+  "evidencePacketHash": "sha256:66b59d74e816c7471ce0d73968cfc7dc628b10adb768fc8677708b4e814fc15a",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "dee15da499455f7169af038f2c9d3b090b689d93",
+  "headSha": "d0b378acd38843b4150a30e142ed0b8811783436",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：本次变更成功实现了拍照与扫描版试卷导入时的题目插图识别与前端裁切，代码校验严格且自动化测试覆盖完备。",
+      "evidenceRefs": [
+        "file:changying/services/paper_import.py#L214-L221",
+        "file:changying/web/paper_import_ui.py#L23-L41"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "后端对 AI 返回的插图区域（`figureRegion`）和教师提交的裁切图片（`figure`）实施了严格的安全校验与数据清理，防止 AI 注入非法图片数据。",
+      "evidenceRefs": [
+        "file:changying/services/paper_import.py#L330-L356",
+        "file:changying/services/paper_import.py#L370-L371"
+      ]
+    },
+    {
+      "id": "GEMINI-003",
+      "text": "所有的 CI 检查项（`smoke` 和 `guard`）均已通过，且自动化测试对边界情况与核心逻辑进行了充分验证。",
+      "evidenceRefs": [
+        "run:112758973249",
+        "run:112758973041",
+        "file:tests/test_paper_import.py#L277-L317"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:b94dade6017c80d853788ca65eecddd6eef0199c297c26174cf3d96d70c0b7da"
+}
