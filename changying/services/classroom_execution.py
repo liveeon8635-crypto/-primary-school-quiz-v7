@@ -82,6 +82,35 @@ def unique_knowledge_keys(values:Iterable[str])->list[str]:
             seen.add(value);out.append(value)
     return out
 
+# 反馈 #370：组卷作业导入试卷后，教师不清楚试卷保存到哪里，
+# 助手也没有给出导航提示。这里提供导入试卷保存位置的导航提示，
+# 供组卷作业页面与产品助手在导入成功后展示，明确告知保存位置与查看入口。
+def paper_import_save_location_hint(*,paper_id:int|str|None=None,paper_title:str|None=None)->dict:
+    """返回导入试卷保存位置的导航提示。
+
+    导入的试卷保存在“组卷作业 → 我的试卷”列表中，
+    教师可从该列表打开、编辑或再次用于布置作业。
+    """
+    title=str(paper_title or "").strip()
+    pid=str(paper_id or "").strip()
+    if title:
+        summary=f"试卷《{title}》已保存到“组卷作业 → 我的试卷”列表。"
+    else:
+        summary="导入的试卷已保存到“组卷作业 → 我的试卷”列表。"
+    steps=[
+        "打开左侧导航“组卷作业”。",
+        "进入“我的试卷”列表。",
+        "在列表中找到刚导入的试卷，可打开、编辑或布置作业。",
+    ]
+    return {
+        "saved":True,
+        "paperId":pid or None,
+        "paperTitle":title or None,
+        "location":"组卷作业 → 我的试卷",
+        "summary":summary,
+        "steps":steps,
+    }
+
 # 人教版小学数学教材版本与知识模块目录。
 # 反馈 #304：五年级“简易方程”和“位置”在最新人教版教材中已改版，
 # 旧版目录会把这两个模块归到过时的单元/学期，导致“知识模块练习”
