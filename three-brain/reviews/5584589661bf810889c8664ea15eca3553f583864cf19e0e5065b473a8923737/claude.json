@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:5584589661bf810889c8664ea15eca3553f583864cf19e0e5065b473a8923737",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "dee15da499455f7169af038f2c9d3b090b689d93",
+  "headSha": "6e4c0ba1e9e1fc9bd36b39b9d5678362f4b7fed7",
+  "decision": "accept_with_changes",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议合并：这次改动让试卷导入能从原卷照片里裁出题目插图，范围与说明一致，smoke 和 guard 两项 CI 均通过，仅有可选的小改进。",
+      "evidenceRefs": [
+        "run:112751664422",
+        "run:112751664747",
+        "file:changying/services/paper_import.py#L312-L358"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "服务器对保存的插图做了严格校验（只接受 jpeg 的 base64、大小不超过 70 万字符），不会存入网页或其他类型内容，安全性可以接受。",
+      "evidenceRefs": [
+        "file:changying/services/paper_import.py#L340-L358"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "可选改进：识别结果会把最多 4 张原图整张回传给浏览器，响应可能达数 MB，手机网络下较慢；另外 AI 返回的 figure 字段也会被 cropped_figure 直接采纳，建议只在教师确认后才采用。",
+      "evidenceRefs": [
+        "file:changying/web/paper_import_routes.py#L100-L108",
+        "file:changying/services/paper_import.py#L315-L320"
+      ]
+    }
+  ],
+  "unresolved": [
+    "插图裁剪在浏览器中完成，没有自动化测试覆盖前端裁剪逻辑，需人工在真机上试一次拍照导入。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:e30c58b5483e4a5615bf0d4ecf1b1c912004109b51053c8455d5dfdc3f8d811a"
+}
