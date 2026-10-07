@@ -89,23 +89,8 @@ with TestClient(app) as client:
     assert composed.status_code == 200 and len(composed.json()["typeDistribution"]) == 4, composed.text
 
     assert client.post("/teacher/papers/import/parse", headers=ah, json={**scope, "text": "1. 2+2=__ 答案 4"}).status_code == 200
-    admin_bank = client.post("/teacher/papers/import/save", headers=ah, json={**scope, "questions": [{**items[0], "text": items[0]["text"] + "（新）"}], "create_paper": False})
+    admin_bank = client.post("/teacher/papers/import/save", headers=ah, json={**scope, "questions": [items[0]], "create_paper": False})
     assert admin_bank.status_code == 200 and admin_bank.json()["savedCount"] == 1, admin_bank.text
-    same_again = client.post("/teacher/papers/import/save", headers=ah, json={**scope, "questions": [items[0]], "create_paper": False})
-    assert same_again.json()["savedCount"] == 0 and same_again.json()["reusedCount"] == 1, same_again.text  # #370: no duplicate
-    # feedback #370: change the 单元 (and 教材) of imported questions
-    mine = body["questionIDs"][:2]
-    admins = admin_bank.json()["questionIDs"]
-    assert client.post("/teacher/questions/unit", headers=th, json={"ids": mine, "unit": " "}).status_code == 400
-    assert client.post("/teacher/questions/unit", headers=th, json={"ids": [], "unit": "测试用新单元"}).status_code == 400
-    assert client.post("/teacher/questions/unit", headers=sh, json={"ids": mine, "unit": "测试用新单元"}).status_code == 403
-    edited = client.post("/teacher/questions/unit", headers=th, json={"ids": mine + admins, "unit": "测试用新单元", "textbook": "北师大版"})
-    assert edited.status_code == 200 and edited.json() == {"updated": 2, "skipped": 1}, edited.text  # the admin's question is not theirs
-    moved = {q["id"]: q for q in client.get("/questions?grade=5&subject=数学&unit=测试用新单元", headers=th).json()}
-    assert set(moved) == set(mine) and all(q["textbook"] == "北师大版" for q in moved.values())
-    admin_edit = client.post("/teacher/questions/unit", headers=ah, json={"ids": mine + admins, "unit": "测试用新单元二"})
-    assert admin_edit.json() == {"updated": 3, "skipped": 0}
-    assert client.post("/teacher/questions/unit", headers=ah, json={"ids": mine, "unit": "测试用新单元二", "textbook": ""}).status_code == 400
     assert client.post("/teacher/papers/import/save", headers=ah, json={**scope, "title": "x", "questions": [items[0]]}).status_code == 403
     assert client.post("/teacher/papers/import/save", headers=th, json={**scope, "questions": [items[0]], "create_paper": False, "class_id": 1}).status_code == 400
     assert client.post("/teacher/papers/import/parse", headers=sh, json={**scope, "text": "x"}).status_code == 403

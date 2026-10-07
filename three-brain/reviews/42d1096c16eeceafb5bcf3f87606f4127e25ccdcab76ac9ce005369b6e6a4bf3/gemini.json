@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:42d1096c16eeceafb5bcf3f87606f4127e25ccdcab76ac9ce005369b6e6a4bf3",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "b4ba7bdb3c54cb3b664dc00dcfdcbb642856435e",
+  "headSha": "9c7d0bf305547e8dd21a2ca1060e745c16b5a20b",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：改动仅在学生详情可见性模块添加了试卷导入格式提示组件常数与 HTML 标记，改动清晰且不影响其他逻辑。",
+      "evidenceRefs": [
+        "file:changying/web/v1_student_detail_visibility.py#L88-L95"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:0e354ac2a8cb69fdb3c53fb1b68e4e0bf61d395e8bf6d432d418e36ab38c1280"
+}
