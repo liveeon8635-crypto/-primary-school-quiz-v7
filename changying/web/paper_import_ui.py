@@ -86,7 +86,7 @@ function reviewImport(result){
  <div class="form-grid"><div><label>布置给班级（可选）</label><select id="piClass"><option value="">只保存为试卷，暂不布置</option>${classOptions}</select></div><div><label>截止日期</label><input type="date" id="piDue"></div></div>
  <small class="muted">含主观题的试卷会改为拍照提交、教师评分；其余题型在线自动判分。</small>`}
  ${piErrBox}
- <button class="btn primary full" id="piSave">${importMode==="bank"?"确认已核对，保存到题库":"确认已核对，保存"}</button>`);
+ <button class="btn primary full" id="piSave">${importMode==="bank"?"确认已核对，保存到题库":"确认保存"}</button>`);
  $("#piSave").onclick=async()=>{const btn=$("#piSave");if(btn.disabled)return;piError("");try{
   const questions=collectEdits();if(!questions.length)throw new Error("请至少勾选 1 道题");
   const missing=questions.findIndex(q=>(["single_choice","true_false"].includes(q.question_type)&&!(q.correct_index>=0))||(["fill_blank","calculation","short_answer"].includes(q.question_type)&&!q.answer)||(q.question_type==="non_choice"&&!q.reference_answer)||!q.text);
@@ -103,7 +103,7 @@ function reviewImport(result){
   btn.disabled=true;btn.textContent="正在保存…";
   const saved=await api("/teacher/papers/import/save",{method:"POST",body:JSON.stringify({...importScope,title,questions,class_id:classValue?+classValue:null,due_date:$("#piDue").value||""})});
   closeModal();go("papers");savedNotice(saved,title,questions.length);
- }catch(e){piError("未保存："+(e.message||"请重试"))}finally{if(document.body.contains(btn)){btn.disabled=false;btn.textContent=importMode==="bank"?"确认已核对，保存到题库":"确认已核对，保存"}}};
+ }catch(e){piError("未保存："+(e.message||"请重试"))}finally{if(document.body.contains(btn)){btn.disabled=false;btn.textContent=importMode==="bank"?"确认已核对，保存到题库":"确认保存"}}};
 }
 // 教材题库: change the 单元 / 教材 of the ticked questions (feedback #370: old imports sit under "导入试卷").
 window.catalogPickAll=function(){const boxes=[...document.querySelectorAll("[data-qpick]")];const on=boxes.some(b=>!b.checked);boxes.forEach(b=>{b.checked=on})};
