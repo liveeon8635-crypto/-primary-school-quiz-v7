@@ -127,6 +127,8 @@ def install_paper_import_routes(implementation: Any) -> None:
     def save_paper(b: PaperImportSaveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)) -> dict[str, Any]:
         implementation.need(u, "admin", "teacher")
         _check_scope(b)
+        if not str(b.textbook or "").strip():
+            raise HTTPException(400, "请填写教材（如：人教版）：布置作业时按教材和单元从题库取题，教材为空会取不到")
         if not str(b.unit or "").strip():
             raise HTTPException(400, "请填写单元：导入的题目按单元归入教材题库，否则之后很难找到")
         if b.create_paper and u.role != "teacher":

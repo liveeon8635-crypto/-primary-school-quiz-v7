@@ -188,6 +188,8 @@ with TestClient(app) as client:
     # feedback #370: a unit is required, and an identical question already in the bank is reused
     no_unit = client.post("/teacher/papers/import/save", headers=th, json={**scope, "unit": " ", "title": "无单元", "questions": [items[1]]})
     assert no_unit.status_code == 400 and "单元" in no_unit.json()["detail"]
+    no_book = client.post("/teacher/papers/import/save", headers=th, json={**scope, "textbook": "", "title": "无教材", "questions": [items[1]]})
+    assert no_book.status_code == 400 and "教材" in no_book.json()["detail"]
     with legacy.SessionLocal() as db:
         before = db.scalar(legacy.select(legacy.func.count()).select_from(legacy.Question))
     again = client.post("/teacher/papers/import/save", headers=th, json={**scope, "title": "再存一次", "questions": [items[0], items[1], essay]})
@@ -379,3 +381,26 @@ def test_assistant_explains_where_an_imported_paper_goes():
     answer = _local_answer("导入试卷后保存到哪里", "教师", "papers", "", role="teacher")
     assert "组卷与作业" in answer and "教材题库" in answer and "单元" in answer
     assert "单元（必填" in __import__("changying.web.paper_import_ui", fromlist=["x"]).PAPER_IMPORT_SCRIPT
+
+
+def test_catalog_can_filter_by_unit_and_shows_newest_first():
+    import app_v924 as legacy
+    from changying.web.classic_ui import inject_classic_ui
+    from changying.web.paper_import_ui import CATALOG_FIND_MARKER, patch_classic_catalog_find_imported
+
+    html = inject_classic_ui(legacy.INDEX_HTML)
+    catalog = html[html.find("async function catalog(){"):html.find("function questionForm(){")]
+    assert CATALOG_FIND_MARKER in catalog and 'id="fUnit"' in catalog and ".reverse();" in catalog
+    assert '"#fUnit","#fSearch"' in catalog and "q.unit===un" in catalog
+    assert inject_classic_ui(html) == html
+    assert patch_classic_catalog_find_imported(legacy.INDEX_HTML) == legacy.INDEX_HTML  # needs the import patch first
+
+
+def test_assistant_points_to_the_catalog_for_imported_questions():
+    from changying.web.v1_product_assistant import _guidance_cards, _local_answer
+
+    assert _guidance_cards("怎么查上传的题目")[0]["key"] == "catalog_questions"
+    assert _guidance_cards("导入的题目在哪看")[0]["path"] == "/v1/tool?page=catalog"
+    keys = [c["key"] for c in _guidance_cards("组卷作业导入试卷后保存到哪里了")]
+    assert "paper_import_saved" in keys and "catalog_questions" in keys
+    assert "教材题库" in _local_answer("怎么查上传的题目", "教师", "papers", "", role="teacher")

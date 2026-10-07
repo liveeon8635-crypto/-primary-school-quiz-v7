@@ -110,7 +110,7 @@ window.importPaperForm=function(classes,opts={}){
  const grades=[1,2,3,4,5,6].map(g=>`<option value="${g}" ${g===5?"selected":""}>${g}年级</option>`).join("");
  modal(bank?"拍照 / 导入新增题目":"导入试卷 / 真题",`<p class="muted">${bank?"拍下练习册、试卷或板书上的题目（最多 4 张），也可以粘贴文字或上传 PDF/Word/文本。AI 自动识别题目和题型（单选、判断、填空、计算、简答、主观题），由你核对后保存到题库。":"粘贴试卷文字、上传 PDF/Word/文本（扫描版 PDF 最多 4 页），或拍照上传（最多 4 张）。拍照和扫描版会把题目插图一起裁下来。AI 逐题录入后由你核对，核对前不会保存。"}</p>
  <div class="form-grid"><div><label>年级</label><select id="piGrade">${grades}</select></div><div><label>学科</label><select id="piSubject"><option>数学</option><option>语文</option><option>英语</option><option>科学</option></select></div>
- <div><label>教材</label><input id="piTextbook" placeholder="例如：人教版"></div><div><label>学期</label><select id="piSemester"><option>上册</option><option>下册</option></select></div><div><label>单元（必填，题目按单元归入教材题库）</label><input id="piUnit" placeholder="例如：第二单元"></div>${bank?"":`<div><label>试卷名称</label><input id="piName" placeholder="例如：2025 期中真题"></div>`}</div>
+ <div><label>教材（必填）</label><input id="piTextbook" value="人教版" placeholder="例如：人教版"></div><div><label>学期</label><select id="piSemester"><option>上册</option><option>下册</option></select></div><div><label>单元（必填，题目按单元归入教材题库）</label><input id="piUnit" placeholder="例如：第二单元"></div>${bank?"":`<div><label>试卷名称</label><input id="piName" placeholder="例如：2025 期中真题"></div>`}</div>
  ${bank?`<label>拍照识别（最多 4 张）</label><input type="file" id="piPhotos" accept="image/*" multiple>`:""}
  <label>${bank?"或粘贴题目文字":"粘贴试卷文字"}</label><textarea id="piText" rows="${bank?5:8}" placeholder="${bank?"粘贴题目（含答案更好）":"把试卷内容（含答案更好）粘贴到这里"}"></textarea>
  <label>或上传文件（.pdf / .docx / .txt）</label><input type="file" id="piFile" accept=".pdf,.docx,.txt,application/pdf">
@@ -118,6 +118,7 @@ window.importPaperForm=function(classes,opts={}){
  <button class="btn primary full" id="piParse">${bank?"识别题目":"识别试卷"}</button>`);
  $("#piParse").onclick=async()=>{const btn=$("#piParse");if(btn.disabled)return;try{
   importScope={grade:+$("#piGrade").value,subject:$("#piSubject").value,textbook:$("#piTextbook").value.trim(),semester:$("#piSemester").value,unit:$("#piUnit").value.trim(),title:($("#piName")?.value||"").trim()};
+  if(!importScope.textbook)throw new Error("请先填写教材（如：人教版）：布置作业时按教材和单元从题库取题");
   if(!importScope.unit)throw new Error("请先填写单元：导入的题目按单元归入教材题库");
   const body={...importScope,text:$("#piText").value};delete body.title;
   const file=$("#piFile").files?.[0];if(file){if(file.size>5*1024*1024)throw new Error("文件超过 5MB");body.file_name=file.name;body.file_base64=await readFileBase64(file)}
@@ -159,6 +160,46 @@ def patch_classic_catalog_photo_import(html: str) -> str:
         (
             '<span class="badge">${esc(q.options[q.correctIndex])}</span>',
             '<span class="badge">${esc(window.catalogAnswerBadge(q))}</span>',
+        ),
+    )
+    for before, _ in replacements:
+        if html.count(before) != 1:
+            return html
+    for before, after in replacements:
+        html = html.replace(before, after, 1)
+    return html
+
+
+CATALOG_FIND_MARKER = "changying_catalog_find_imported_v1"
+
+
+def patch_classic_catalog_find_imported(html: str) -> str:
+    """教材题库: filter by 单元 and show the newest questions first, so an import is easy to find (feedback #370)."""
+
+    if CATALOG_FIND_MARKER in html or CATALOG_PHOTO_IMPORT_MARKER not in html:
+        return html
+    replacements = (
+        (
+            '<input id="fSearch" placeholder="搜索知识点或题目">',
+            '<select id="fUnit" data-marker="' + CATALOG_FIND_MARKER + '"><option value="">全部单元</option>'
+            '${[...new Set(qs.map(q=>q.unit))].map(x=>`<option>${esc(x)}</option>`).join("")}</select>'
+            '<input id="fSearch" placeholder="搜索知识点或题目">',
+        ),
+        (
+            'k=$("#fSearch").value.trim();',
+            'k=$("#fSearch").value.trim(),un=$("#fUnit").value;',
+        ),
+        (
+            '(!s||q.subject===s)&&(!b||q.textbook===b)&&(!k||',
+            '(!s||q.subject===s)&&(!b||q.textbook===b)&&(!un||q.unit===un)&&(!k||',
+        ),
+        (
+            'q.unit.includes(k)));',
+            'q.unit.includes(k))).reverse();',
+        ),
+        (
+            '["#fGrade","#fSubject","#fBook","#fSearch"]',
+            '["#fGrade","#fSubject","#fBook","#fUnit","#fSearch"]',
         ),
     )
     for before, _ in replacements:

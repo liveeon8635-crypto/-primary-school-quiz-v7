@@ -13,7 +13,11 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
 
-from changying.web.paper_import_ui import patch_classic_catalog_photo_import, patch_classic_paper_import
+from changying.web.paper_import_ui import (
+    patch_classic_catalog_find_imported,
+    patch_classic_catalog_photo_import,
+    patch_classic_paper_import,
+)
 
 CLASSIC_UI_MARKER = "changying_classic_ui_v2"
 CLASSIC_UI_PATHS = {"/classic"}
@@ -388,6 +392,7 @@ def inject_classic_ui(html: str) -> str:
     html = patch_classic_mixed_question_types(html)
     html = patch_classic_paper_import(html)
     html = patch_classic_catalog_photo_import(html)
+    html = patch_classic_catalog_find_imported(html)
     if CLASSIC_UI_MARKER in html:
         return html
     if "</body>" in html:
