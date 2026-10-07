@@ -97,16 +97,27 @@ def install_paper_import_routes(implementation: Any) -> None:
             raise HTTPException(502, str(exc)) from exc
         if not result["items"]:
             raise HTTPException(502, "没有识别出可用的题目；请检查试卷内容是否清晰完整后重试")
+        # Figures are cut out in the browser (no imaging library on the server), so
+        # send back only the photos/scans that a figure region points into.
+        for item in result["items"]:
+            region = item.get("figureRegion")
+            if region and region["image"] >= len(images):
+                item.pop("figureRegion")
+        used = sorted({item["figureRegion"]["image"] for item in result["items"] if item.get("figureRegion")})
+        result["sourceImages"] = {str(i): images[i] for i in used}
         summary = import_summary(result["items"])
         implementation.audit(db, u, "paper.import.parse", f"{b.grade}:{b.subject}:{b.unit}:items={summary['total']}:ai_answers={summary['aiAnswers']}:needs_answer={summary['needsAnswer']}:skipped={len(result['skipped'])}")
         db.commit()
         notes = []
         if summary["aiAnswers"]:
             notes.append(f"{summary['aiAnswers']} 道题的答案由 AI 解答，请逐题核对")
+        if summary["figures"]:
+            notes.append(f"{summary['figures']} 道题已从原卷裁出插图，请核对插图是否完整")
         if summary["needsAnswer"]:
             notes.append(f"{summary['needsAnswer']} 道题缺少答案，需补全后才能保存")
         if result["skipped"]:
-            notes.append(f"{len(result['skipped'])} 道题没有录入（看不清或依赖原卷图片）")
+            notes.append(f"{len(result['skipped'])} 道题没有录入（看不清，或插图无法从原卷裁出）" if images else
+                         f"{len(result['skipped'])} 道题没有录入（看不清或需要原卷插图；带图的题请改用拍照或扫描版 PDF 导入，可连图一起录入）")
         return {**result, "summary": summary, "reviewRequired": True,
                 "notice": "；".join(notes) or "已按试卷答案录入，请核对后保存"}
 

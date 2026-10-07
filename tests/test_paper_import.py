@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import zipfile
 import subprocess
@@ -89,7 +90,7 @@ def test_clean_rows_dedupes_and_reports_skipped():
     out = clean_import_rows(data, subject="数学")
     assert [x["text"] for x in out["items"]] == ["1+1=__", "2 是偶数。", "7×8=__"]
     assert out["dropped"] == 1 and out["skipped"] == [{"number": "6", "reason": "依赖原卷图片"}]
-    assert import_summary(out["items"]) == {"total": 3, "aiAnswers": 1, "needsAnswer": 1, "teacherReview": 0}
+    assert import_summary(out["items"]) == {"total": 3, "aiAnswers": 1, "needsAnswer": 1, "teacherReview": 0, "figures": 0}
     with pytest.raises(PaperImportError):
         clean_import_rows({"oops": []}, subject="数学")
 
@@ -154,7 +155,7 @@ with TestClient(app) as client:
     parsed = r.json()
     assert calls == [("paper_import", 0, 150)]
     assert [x["question_type"] for x in parsed["items"]] == ["single_choice", "true_false", "fill_blank", "calculation", "fill_blank"]
-    assert parsed["summary"] == {"total": 5, "aiAnswers": 1, "needsAnswer": 1, "teacherReview": 0}
+    assert parsed["summary"] == {"total": 5, "aiAnswers": 1, "needsAnswer": 1, "teacherReview": 0, "figures": 0}
     assert "1 道题缺少答案" in parsed["notice"] and parsed["skipped"][0]["number"] == "6"
 
     blocked = client.post("/teacher/papers/import/save", headers=th, json={**scope, "title": "期中真题", "questions": parsed["items"], "class_id": class_id})
@@ -269,3 +270,36 @@ def test_pdf_without_text_or_scans_and_oversized_pdf():
         extract_paper_upload("厚.pdf", _pdf([("text", "x")] * (MAX_PDF_PAGES + 1)))
     with pytest.raises(PaperImportError, match="5MB"):
         extract_paper_upload("big.pdf", b"%PDF" + b"x" * (5 * 1024 * 1024))
+
+
+# ---------- feedback #357 r2: questions that need the paper's figure ----------
+
+def test_figure_regions_and_cropped_figures_are_validated():
+    from changying.services.paper_import import build_import_prompt, cropped_figure, figure_region, storage_fields
+
+    assert figure_region({"image": 1, "box": [0.6, 0.5, 0.1, 0.2]}) == {"image": 1, "box": [0.1, 0.2, 0.6, 0.5]}
+    assert figure_region({"image": 0, "box": [-1, 0, 2, 0.5]}) == {"image": 0, "box": [0.0, 0.0, 1.0, 0.5]}
+    for bad in (None, {}, {"box": [0, 0, 0.01, 0.5]}, {"image": 9, "box": [0, 0, 1, 1]}, {"box": "x"}, {"box": [0, 0, 1]}):
+        assert figure_region(bad) is None
+    jpeg = "data:image/jpeg;base64,/9j/4AAQ"
+    assert cropped_figure({"type": "uploaded_image", "data_url": jpeg}) == {"type": "uploaded_image", "data_url": jpeg, "alt": "题目插图"}
+    assert cropped_figure({"type": "uploaded_image", "data_url": "data:image/png;base64,iVBO"}) is None
+    assert cropped_figure({"type": "uploaded_image", "data_url": "data:image/jpeg;base64," + "A" * 700_000}) is None
+    assert cropped_figure({"type": "geometry"}) is None
+    item, _ = validate_question({"question_type": "fill_blank", "text": "如图，求阴影面积", "answer": "12",
+                                 "figure": {"type": "uploaded_image", "data_url": jpeg}}, subject="数学", require_answer=True)
+    assert json.loads(storage_fields(item)["figure_json"])["data_url"] == jpeg
+    plain, _ = validate_question({"question_type": "fill_blank", "text": "1+1=__", "answer": "2"}, subject="数学", require_answer=True)
+    assert storage_fields(plain)["figure_json"] == "{}"
+    with_photos = build_import_prompt(grade=5, subject="数学", textbook="", semester="上册", unit="", text="", has_images=True)
+    text_only = build_import_prompt(grade=5, subject="数学", textbook="", semester="上册", unit="", text="x", has_images=False)
+    assert '"box"' in with_photos and "照常录入" in with_photos
+    assert '"box"' not in text_only and "依赖原卷图片" in text_only
+
+
+def test_review_page_crops_and_lets_the_teacher_drop_a_figure():
+    from changying.web.paper_import_ui import PAPER_IMPORT_SCRIPT
+
+    assert "await cropFigures(result);" in PAPER_IMPORT_SCRIPT
+    assert "data-pi-figure" in PAPER_IMPORT_SCRIPT and "delete out.figure" in PAPER_IMPORT_SCRIPT
+    assert "delete out.figureRegion" in PAPER_IMPORT_SCRIPT

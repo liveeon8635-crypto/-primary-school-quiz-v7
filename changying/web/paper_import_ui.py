@@ -18,6 +18,28 @@ const TYPE_NAMES={single_choice:"单选",true_false:"判断",fill_blank:"填空"
 let importItems=[],importScope={},importClasses=[],importMode="paper";
 const readFileBase64=file=>new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||"").split(",")[1]||"");r.onerror=()=>reject(new Error("文件读取失败"));r.readAsDataURL(file)});
 const compressPhoto=file=>new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{try{const scale=Math.min(1,1800/Math.max(img.naturalWidth,img.naturalHeight));const c=document.createElement("canvas");c.width=Math.round(img.naturalWidth*scale);c.height=Math.round(img.naturalHeight*scale);c.getContext("2d").drawImage(img,0,0,c.width,c.height);let data=c.toDataURL("image/jpeg",0.8);for(let q=0.7;data.length>1900000&&q>=0.4;q-=0.1)data=c.toDataURL("image/jpeg",q);if(data.length>1900000)throw new Error("照片太大，请裁剪后重试");resolve(data)}catch(e){reject(e)}finally{URL.revokeObjectURL(url)}};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("无法读取这张照片"))};img.src=url});
+// Cut each question's figure out of its photo/scan (feedback #357 r2). The box is
+// in fractions of the image; a little margin keeps labels at the edge of the figure.
+const loadImage=src=>new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error("无法读取原卷图片"));img.src=src});
+async function cropFigures(result){
+ const cache={};
+ for(const q of result.items||[]){
+  const r=q.figureRegion,src=r&&(result.sourceImages||{})[String(r.image)];
+  if(!src)continue;
+  try{
+   const img=cache[r.image]||(cache[r.image]=await loadImage(src));
+   const W=img.naturalWidth,H=img.naturalHeight,pad=0.015;
+   const x0=Math.max(0,r.box[0]-pad)*W,y0=Math.max(0,r.box[1]-pad)*H,x1=Math.min(1,r.box[2]+pad)*W,y1=Math.min(1,r.box[3]+pad)*H;
+   const scale=Math.min(1,900/Math.max(x1-x0,y1-y0)),c=document.createElement("canvas");
+   c.width=Math.max(1,Math.round((x1-x0)*scale));c.height=Math.max(1,Math.round((y1-y0)*scale));
+   const ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,x0,y0,x1-x0,y1-y0,0,0,c.width,c.height);
+   let data=c.toDataURL("image/jpeg",0.85);for(let k=0.75;data.length>690000&&k>=0.4;k-=0.1)data=c.toDataURL("image/jpeg",k);
+   if(data.length<=690000)q.figure={type:"uploaded_image",data_url:data,alt:"题目插图"};
+  }catch(e){/* keep the question; the teacher sees it has no figure */}
+ }
+ return result;
+}
+const figureEditor=(q,i)=>q.figure?`<div style="margin:6px 0"><img src="${q.figure.data_url}" alt="题目插图" style="display:block;max-width:100%;max-height:260px;object-fit:contain;border:1px solid var(--line);border-radius:8px"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-pi-figure="${i}" checked>保留这张插图（从原卷裁出，裁得不对可取消勾选）</label></div>`:(q.figureRegion?'<small class="muted">这道题需要插图，但没能从原卷裁出；保存后可在题库中补拍照片。</small>':"");
 const sourceBadge=q=>q.needsAnswer?'<span class="badge red">缺答案，请补全</span>':q.answerSource==="paper"?'<span class="badge green">试卷答案</span>':'<span class="badge">AI 解答，请核对</span>';
 function answerEditor(q,i){
  if(q.question_type==="single_choice")return `<div class="form-grid">${q.options.map((o,j)=>`<div><label>选项 ${String.fromCharCode(65+j)}</label><input data-pi-opt="${i}:${j}" value="${esc(o)}"></div>`).join("")}<div><label>正确答案</label><select data-pi-correct="${i}"><option value="-1">请选择</option>${q.options.map((_,j)=>`<option value="${j}" ${j===q.correct_index?"selected":""}>${String.fromCharCode(65+j)}</option>`).join("")}</select></div></div>`;
@@ -29,7 +51,8 @@ function collectEdits(){
  return importItems.map((q,i)=>{
   if(!document.querySelector(`[data-pi-pick="${i}"]`)?.checked)return null;
   const v=sel=>document.querySelector(sel)?.value??"";
-  const out={...q,text:v(`[data-pi-text="${i}"]`).trim()};
+  const out={...q,text:v(`[data-pi-text="${i}"]`).trim()};delete out.figureRegion;
+  if(!document.querySelector(`[data-pi-figure="${i}"]`)?.checked)delete out.figure;
   if(q.question_type==="single_choice")out.options=q.options.map((_,j)=>v(`[data-pi-opt="${i}:${j}"]`).trim());
   if(q.question_type==="single_choice"||q.question_type==="true_false")out.correct_index=+v(`[data-pi-correct="${i}"]`);
   if(["fill_blank","calculation","short_answer"].includes(q.question_type)){out.answer=v(`[data-pi-answer="${i}"]`).trim();out.accepted_answers=v(`[data-pi-accepted="${i}"]`).split("|").map(x=>x.trim()).filter(Boolean)}
@@ -43,7 +66,7 @@ function reviewImport(result){
  const classOptions=importClasses.map(c=>`<option value="${c.id}">${esc(c.name)}（${c.studentCount||0}人）</option>`).join("");
  modal("核对导入的题目",`<p class="muted">${esc(result.notice||"")}</p>${skipped?`<p class="muted">未录入：${skipped}</p>`:""}
  <div class="list">${importItems.map((q,i)=>`<div class="item" style="display:block"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-pi-pick="${i}" checked><b>${esc(q.number?("第"+q.number+"题"):("第"+(i+1)+"题"))}</b><span class="badge">${TYPE_NAMES[q.question_type]||q.question_type}</span>${sourceBadge(q)}</label>
- <label>题干</label><textarea data-pi-text="${i}">${esc(q.text)}</textarea>${answerEditor(q,i)}<small class="muted">知识点：${esc(q.knowledge||"")}</small></div>`).join("")}</div>
+ <label>题干</label><textarea data-pi-text="${i}">${esc(q.text)}</textarea>${figureEditor(q,i)}${answerEditor(q,i)}<small class="muted">知识点：${esc(q.knowledge||"")}</small></div>`).join("")}</div>
  ${importMode==="bank"?`<small class="muted">勾选的题目会保存到教材题库，之后布置作业时按题型均衡抽题。</small>`:`<label>试卷名称</label><input id="piTitle" value="${esc(importScope.title||"")}">
  <div class="form-grid"><div><label>布置给班级（可选）</label><select id="piClass"><option value="">只保存为试卷，暂不布置</option>${classOptions}</select></div><div><label>截止日期</label><input type="date" id="piDue"></div></div>
  <small class="muted">含主观题的试卷会改为拍照提交、教师评分；其余题型在线自动判分。</small>`}
@@ -76,7 +99,7 @@ window.importPaperForm=function(classes,opts={}){
  importClasses=classes||[];importMode=opts.mode==="bank"?"bank":"paper";
  const bank=importMode==="bank";
  const grades=[1,2,3,4,5,6].map(g=>`<option value="${g}" ${g===5?"selected":""}>${g}年级</option>`).join("");
- modal(bank?"拍照 / 导入新增题目":"导入试卷 / 真题",`<p class="muted">${bank?"拍下练习册、试卷或板书上的题目（最多 4 张），也可以粘贴文字或上传 PDF/Word/文本。AI 自动识别题目和题型（单选、判断、填空、计算、简答、主观题），由你核对后保存到题库。":"粘贴试卷文字、上传 PDF/Word/文本（扫描版 PDF 最多 4 页），或拍照上传（最多 4 张）。AI 逐题录入后由你核对，核对前不会保存。"}</p>
+ modal(bank?"拍照 / 导入新增题目":"导入试卷 / 真题",`<p class="muted">${bank?"拍下练习册、试卷或板书上的题目（最多 4 张），也可以粘贴文字或上传 PDF/Word/文本。AI 自动识别题目和题型（单选、判断、填空、计算、简答、主观题），由你核对后保存到题库。":"粘贴试卷文字、上传 PDF/Word/文本（扫描版 PDF 最多 4 页），或拍照上传（最多 4 张）。拍照和扫描版会把题目插图一起裁下来。AI 逐题录入后由你核对，核对前不会保存。"}</p>
  <div class="form-grid"><div><label>年级</label><select id="piGrade">${grades}</select></div><div><label>学科</label><select id="piSubject"><option>数学</option><option>语文</option><option>英语</option><option>科学</option></select></div>
  <div><label>教材</label><input id="piTextbook" placeholder="例如：人教版"></div><div><label>学期</label><select id="piSemester"><option>上册</option><option>下册</option></select></div><div><label>单元（可选）</label><input id="piUnit" placeholder="例如：第二单元"></div>${bank?"":`<div><label>试卷名称</label><input id="piName" placeholder="例如：2025 期中真题"></div>`}</div>
  ${bank?`<label>拍照识别（最多 4 张）</label><input type="file" id="piPhotos" accept="image/*" multiple>`:""}
@@ -94,6 +117,7 @@ window.importPaperForm=function(classes,opts={}){
   btn.disabled=true;btn.textContent="AI 正在逐题录入，约需 1 分钟…";
   const result=await api("/teacher/papers/import/parse",{method:"POST",body:JSON.stringify(body)});
   if(!importScope.title)importScope.title=(importScope.unit||importScope.subject)+" 导入试卷";
+  await cropFigures(result);
   reviewImport(result);
  }catch(e){toast("识别失败："+(e.message||"请重试"))}finally{if(document.body.contains(btn)){btn.disabled=false;btn.textContent=bank?"识别题目":"识别试卷"}}};
 };
