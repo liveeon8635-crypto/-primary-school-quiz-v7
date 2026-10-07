@@ -348,3 +348,11 @@ def test_text_pdf_skips_page_decoration_and_keeps_later_figures(monkeypatch):
     figures = paper_import._embedded_figures([0, 1, 2, 3], 8)
     assert len(figures) == 4  # decoration is not counted, so figures on later pages still fit
     assert len(paper_import._embedded_figures([0, 1, 2, 3], 2)) == 2
+
+
+def test_saving_a_paper_says_where_it_went():
+    from changying.web.paper_import_ui import PAPER_IMPORT_SCRIPT
+
+    assert "savedNotice(saved,title,questions.length)" in PAPER_IMPORT_SCRIPT
+    assert "已保存到「组卷与作业」" in PAPER_IMPORT_SCRIPT and "教材题库」（单元：" in PAPER_IMPORT_SCRIPT
+    assert "到教材题库，单元：" in PAPER_IMPORT_SCRIPT
