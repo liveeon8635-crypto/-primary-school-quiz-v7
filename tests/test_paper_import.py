@@ -485,3 +485,12 @@ def test_catalog_lets_a_teacher_tick_questions_and_change_their_unit():
     assert inject_classic_ui(html) == html
     assert patch_classic_catalog_edit_unit(legacy.INDEX_HTML) == legacy.INDEX_HTML
     assert "/teacher/questions/unit" in PAPER_IMPORT_SCRIPT and "window.catalogEditUnit" in PAPER_IMPORT_SCRIPT
+
+
+def test_review_save_button_label_is_confirm_save_in_injected_page():
+    import app_v924 as legacy
+    from changying.web.classic_ui import inject_classic_ui
+
+    html = inject_classic_ui(legacy.INDEX_HTML)
+    assert '"确认保存"' in html and "确认已核对，保存\"" not in html.replace("确认已核对，保存到题库", "")
+    assert "确认已核对，保存到题库" in html  # bank-mode label is unchanged

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:31f34fb6aef47c3f87ada88bd78f8d8eccbc84d340ed398fda003a69197b3a94",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "45f800d3deb8fdf44e85ef77eedd84d6d004fefb",
+  "headSha": "81e95df768f2df26c61af9132c0566f484643488",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：修改将非题库模式下的试卷导入确认按钮文案由“确认已核对，保存”简化为“确认保存”，并补充了相应的测试，改动安全且符合预期。",
+      "evidenceRefs": [
+        "file:changying/web/paper_import_ui.py#L89-L106",
+        "file:tests/test_paper_import.py#L489-L496"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:6f25c22de2ab6bdf6811cd61dab570b741ff855c306e08b0efe2038c6d4797ea"
+}
