@@ -413,3 +413,13 @@ def test_import_errors_are_shown_inside_the_dialog_not_only_in_a_toast():
     assert PAPER_IMPORT_SCRIPT.count("${piErrBox}") == 2
     assert 'piError("未保存："' in PAPER_IMPORT_SCRIPT and 'piError("识别失败："' in PAPER_IMPORT_SCRIPT
     assert 'toast("未保存：' not in PAPER_IMPORT_SCRIPT and 'toast("识别失败：' not in PAPER_IMPORT_SCRIPT
+
+
+def test_toast_is_moved_into_an_open_dialog():
+    import app_v924 as legacy
+    from changying.web.classic_ui import TOAST_IN_DIALOG_MARKER, inject_classic_ui, patch_classic_toast_in_dialog
+
+    html = inject_classic_ui(legacy.INDEX_HTML)
+    assert TOAST_IN_DIALOG_MARKER in html and "host=dlg&&dlg.open?dlg:document.body" in html
+    assert inject_classic_ui(html) == html
+    assert patch_classic_toast_in_dialog("<script>nothing</script>") == "<script>nothing</script>"
