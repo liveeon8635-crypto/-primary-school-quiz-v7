@@ -45,7 +45,7 @@ def test_text_and_docx_extraction_without_optional_libraries():
     assert text.splitlines() == ["三、填空题", "1. 5×6=____", "2. 7×8= | 56"]
     with pytest.raises(PaperImportError, match="旧版 .doc"):
         extract_paper_text("卷.docx", b"not a zip")
-    with pytest.raises(PaperImportError, match="无法读取 PDF"):
+    with pytest.raises(PaperImportError, match="复制文字粘贴"):
         extract_paper_text("scan.pdf", b"%PDF-1.4")
     with pytest.raises(PaperImportError, match="只支持"):
         extract_paper_text("卷.xlsx", b"x")
@@ -195,77 +195,3 @@ def test_runtime_import_review_save_assign_and_grade(tmp_path):
     assert result.returncode == 0 and "PAPER_IMPORT_OK" in result.stdout, (
         f"paper import runtime failed\nstdout:\n{result.stdout[-4000:]}\nstderr:\n{result.stderr[-6000:]}"
     )
-
-
-# ---------- feedback #357: PDF upload ----------
-
-def _pdf(pages):
-    """A minimal real PDF; each page is ("text", str) or ("jpeg", bytes)."""
-    objs = {1: b"<< /Type /Catalog /Pages 2 0 R >>", 3: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"}
-    kids, n = [], 4
-    for kind, value in pages:
-        page, content = n, n + 1
-        n += 2
-        if kind == "text":
-            lines = b"".join(b"(" + line.encode("latin-1") + b") Tj T* " for line in value.splitlines())
-            stream = b"BT /F1 12 Tf 14 TL 40 780 Td " + lines + b"ET"
-            resources = b"<< /Font << /F1 3 0 R >> >>"
-        else:
-            img = n
-            n += 1
-            objs[img] = (b"<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray "
-                         b"/BitsPerComponent 8 /Filter /DCTDecode /Length " + str(len(value)).encode() + b" >>\nstream\n"
-                         + value + b"\nendstream")
-            stream = b"q 595 0 0 842 0 0 cm /Im0 Do Q"
-            resources = b"<< /XObject << /Im0 " + str(img).encode() + b" 0 R >> >>"
-        objs[content] = b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream"
-        objs[page] = (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources " + resources
-                      + b" /Contents " + str(content).encode() + b" 0 R >>")
-        kids.append(page)
-    objs[2] = b"<< /Type /Pages /Kids [" + b" ".join(str(k).encode() + b" 0 R" for k in kids) + b"] /Count " + str(len(kids)).encode() + b" >>"
-    out, offsets = bytearray(b"%PDF-1.4\n"), {}
-    for i in sorted(objs):
-        offsets[i] = len(out)
-        out += str(i).encode() + b" 0 obj\n" + objs[i] + b"\nendobj\n"
-    xref = len(out)
-    out += b"xref\n0 " + str(n).encode() + b"\n0000000000 65535 f \n"
-    for i in range(1, n):
-        out += b"%010d 00000 n \n" % offsets.get(i, 0)
-    out += b"trailer\n<< /Size " + str(n).encode() + b" /Root 1 0 R >>\nstartxref\n" + str(xref).encode() + b"\n%%EOF"
-    return bytes(out)
-
-
-JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 64 + b"\xff\xd9"
-PAPER = "1. 3 + 4 = ( )  A. 6  B. 7  C. 8\n2. 25 x 4 = ____\nAnswer key: 1. B  2. 100"
-
-
-def test_text_pdf_is_read_as_text():
-    from changying.services.paper_import import extract_paper_upload
-
-    text, images = extract_paper_upload("期中.PDF", _pdf([("text", PAPER)]))
-    assert "25 x 4" in text and "Answer key" in text and images == []
-    assert "3 + 4" in extract_paper_text("期中.pdf", _pdf([("text", PAPER)]))
-
-
-def test_scanned_pdf_pages_go_to_ai_as_images():
-    from changying.services.paper_import import extract_paper_upload
-
-    text, images = extract_paper_upload("扫描.pdf", _pdf([("jpeg", JPEG), ("jpeg", JPEG)]))
-    assert text == "" and len(images) == 2
-    assert all(i.startswith("data:image/jpeg;base64,/9j/") for i in images)
-    assert clean_images(images) == images  # the same checks as photos
-    with pytest.raises(PaperImportError, match="最多识别 2 页"):
-        extract_paper_upload("扫描.pdf", _pdf([("jpeg", JPEG)] * 3), max_images=2)
-    with pytest.raises(PaperImportError, match="拍照导入"):
-        extract_paper_text("扫描.pdf", _pdf([("jpeg", JPEG)]))  # text-only callers get guidance
-
-
-def test_pdf_without_text_or_scans_and_oversized_pdf():
-    from changying.services.paper_import import MAX_PDF_PAGES, extract_paper_upload
-
-    with pytest.raises(PaperImportError, match="读不到文字"):
-        extract_paper_upload("空白.pdf", _pdf([("text", "")]))
-    with pytest.raises(PaperImportError, match=f"超过 {MAX_PDF_PAGES} 页"):
-        extract_paper_upload("厚.pdf", _pdf([("text", "x")] * (MAX_PDF_PAGES + 1)))
-    with pytest.raises(PaperImportError, match="5MB"):
-        extract_paper_upload("big.pdf", b"%PDF" + b"x" * (5 * 1024 * 1024))

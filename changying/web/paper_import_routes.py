@@ -18,14 +18,13 @@ from sqlalchemy import select
 
 from changying.services.paper_composition import distribution_text, type_distribution
 from changying.services.paper_import import (
-    MAX_IMAGES,
     MAX_IMPORT_QUESTIONS,
     PaperImportError,
     build_import_prompt,
     clean_images,
     clean_import_rows,
     decode_upload,
-    extract_paper_upload,
+    extract_paper_text,
     import_summary,
     storage_fields,
     validate_question,
@@ -78,12 +77,9 @@ def install_paper_import_routes(implementation: Any) -> None:
         _check_scope(b)
         try:
             text = str(b.text or "")
-            images = clean_images(b.images)
             if b.file_base64:
-                file_text, scans = extract_paper_upload(b.file_name, decode_upload(b.file_base64),
-                                                        max_images=MAX_IMAGES - len(images))
-                text = (text + "\n" + file_text).strip()
-                images += scans
+                text = (text + "\n" + extract_paper_text(b.file_name, decode_upload(b.file_base64))).strip()
+            images = clean_images(b.images)
         except PaperImportError as exc:
             raise HTTPException(400, str(exc)) from exc
         if not text.strip() and not images:

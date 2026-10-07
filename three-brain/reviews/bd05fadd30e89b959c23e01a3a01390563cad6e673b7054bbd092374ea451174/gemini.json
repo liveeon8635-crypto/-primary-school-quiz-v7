@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:bd05fadd30e89b959c23e01a3a01390563cad6e673b7054bbd092374ea451174",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "d7a403d51ec98866e74a4e7f5d46b99fbc5211a4",
+  "headSha": "752873be2a22417a427cefd6cf059e5c186ce98e",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：新增试卷导入允许的文件格式（如 PDF）与校验辅助函数，改动范围明确且自动化测试已通过。",
+      "evidenceRefs": [
+        "file:changying/web/v1_product_assistant.py#L233-L265",
+        "run:112699432781"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:332e79b240319ab8089a9112d0eecd4a52b56acab30740b6bde391d9b7c425b4"
+}
