@@ -40,6 +40,15 @@ async function cropFigures(result){
  return result;
 }
 const figureEditor=(q,i)=>q.figure?`<div style="margin:6px 0"><img src="${q.figure.data_url}" alt="题目插图" style="display:block;max-width:100%;max-height:260px;object-fit:contain;border:1px solid var(--line);border-radius:8px"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-pi-figure="${i}" checked>保留这张插图（从原卷裁出，裁得不对可取消勾选）</label></div>`:(q.figureRegion?'<small class="muted">这道题需要插图，但没能从原卷裁出；保存后可在题库中补拍照片。</small>':"");
+// Where did the import go? (feedback #370: teachers could not find a saved paper.)
+function savedNotice(saved,title,count){
+ const unit=esc(importScope.unit||"导入试卷"),name=esc(saved.title||title);
+ modal("已保存",`<p><b>试卷《${name}》</b>已保存到「组卷与作业」，共 ${count} 道题。</p>
+ ${saved.assignment?"<p>已布置给所选班级，学生会在作业里看到它。</p>":"<p>还没有布置给学生，可以在「组卷与作业」里布置。</p>"}
+ <p class=\"muted\">这些题同时进了「教材题库」（单元：${unit}），之后组卷、出题也能抽到。</p>
+ <button class=\"btn primary full\" id=\"piSavedOk\">知道了</button>`);
+ const ok=$("#piSavedOk");if(ok)ok.onclick=()=>closeModal();
+}
 const sourceBadge=q=>q.needsAnswer?'<span class="badge red">缺答案，请补全</span>':q.answerSource==="paper"?'<span class="badge green">试卷答案</span>':'<span class="badge">AI 解答，请核对</span>';
 function answerEditor(q,i){
  if(q.question_type==="single_choice")return `<div class="form-grid">${q.options.map((o,j)=>`<div><label>选项 ${String.fromCharCode(65+j)}</label><input data-pi-opt="${i}:${j}" value="${esc(o)}"></div>`).join("")}<div><label>正确答案</label><select data-pi-correct="${i}"><option value="-1">请选择</option>${q.options.map((_,j)=>`<option value="${j}" ${j===q.correct_index?"selected":""}>${String.fromCharCode(65+j)}</option>`).join("")}</select></div></div>`;
@@ -79,14 +88,14 @@ function reviewImport(result){
    if(!confirm(`确认已核对这 ${questions.length} 道题的答案，并保存到教材题库？`))return;
    btn.disabled=true;btn.textContent="正在保存…";
    const saved=await api("/teacher/papers/import/save",{method:"POST",body:JSON.stringify({...importScope,title:"题库导入",questions,create_paper:false})});
-   closeModal();toast("已保存 "+(saved.savedCount||questions.length)+" 道题到题库"+(saved.typeSummary?"（"+saved.typeSummary+"）":""));go("catalog");return;
+   closeModal();toast("已保存 "+(saved.savedCount||questions.length)+" 道题到教材题库，单元：「"+(importScope.unit||"导入试卷")+"」"+(saved.typeSummary?"（"+saved.typeSummary+"）":""));go("catalog");return;
   }
   const title=$("#piTitle").value.trim();if(!title)throw new Error("请填写试卷名称");
   const classValue=$("#piClass").value;
   if(!confirm(`确认已核对这 ${questions.length} 道题的答案${classValue?"，并布置给所选班级":""}？`))return;
   btn.disabled=true;btn.textContent="正在保存…";
   const saved=await api("/teacher/papers/import/save",{method:"POST",body:JSON.stringify({...importScope,title,questions,class_id:classValue?+classValue:null,due_date:$("#piDue").value||""})});
-  closeModal();toast((saved.assignment?"试卷已导入并布置":"试卷已导入")+(saved.typeSummary?"（"+saved.typeSummary+"）":""));go("papers");
+  closeModal();go("papers");savedNotice(saved,title,questions.length);
  }catch(e){toast("未保存："+(e.message||"请重试"))}finally{if(document.body.contains(btn)){btn.disabled=false;btn.textContent=importMode==="bank"?"确认已核对，保存到题库":"确认已核对，保存"}}};
 }
 window.catalogAnswerBadge=function(q){
