@@ -87,7 +87,7 @@ PDF_SCANNED_MESSAGE = "这个 PDF 里读不到文字，也没有可识别的扫�
 
 
 def extract_pdf(data: bytes, *, max_images: int = MAX_IMAGES) -> tuple[str, list[str]]:
-    """Text of a text PDF; for a scanned PDF, the JPEG scan of each page (up to max_images).
+    """Text of a text PDF plus its embedded JPEG figures; for a scanned PDF, the JPEG scan of each page (up to max_images).
 
     Only JPEG (DCTDecode) page scans are passed on, as-is, so no imaging library is needed.
     """
@@ -116,7 +116,8 @@ def extract_pdf(data: bytes, *, max_images: int = MAX_IMAGES) -> tuple[str, list
             texts.append("")
     text = "\n".join(t.strip() for t in texts if t.strip())[:MAX_TEXT_CHARS]
     if len(re.sub(r"\s", "", text)) >= PDF_MIN_TEXT_CHARS * max(1, len(pages)) // 2:
-        return text, []
+        # A text PDF: its embedded pictures are the questions' figures (feedback #357 r3).
+        return text, _embedded_figures(pages, max_images)
     images: list[str] = []
     for page in pages:
         if len(images) >= max_images:
@@ -130,6 +131,49 @@ def extract_pdf(data: bytes, *, max_images: int = MAX_IMAGES) -> tuple[str, list
     if images and len(pages) > max_images:
         raise PaperImportError(f"扫描版 PDF 一次最多识别 {max_images} 页，请拆分后导入，或改用“拍照导入”")
     return text, images
+
+
+MIN_FIGURE_BYTES = 2000  # skip logos, bullets and rules
+
+
+def _page_jpegs(page: Any) -> list[bytes]:
+    """Every JPEG image drawn on a PDF page, raw bytes, in resource order."""
+
+    found: list[bytes] = []
+    try:
+        xobjects = page.get("/Resources", {}).get_object().get("/XObject")
+        if xobjects is None:
+            return found
+        for ref in xobjects.get_object().values():
+            obj = ref.get_object()
+            if obj.get("/Subtype") != "/Image":
+                continue
+            filters = obj.get("/Filter")
+            names = [str(f) for f in filters] if isinstance(filters, list) else [str(filters)]
+            raw = obj._data if names == ["/DCTDecode"] else b""
+            if raw[:2] == b"\xff\xd8":
+                found.append(bytes(raw))
+    except Exception:  # noqa: BLE001 - unreadable resources mean "no usable image"
+        pass
+    return found
+
+
+def _embedded_figures(pages: list[Any], max_images: int) -> list[str]:
+    """JPEG pictures embedded in a text PDF (data URLs), first max_images, no duplicates."""
+
+    figures: list[str] = []
+    seen: set[bytes] = set()
+    for page in pages:
+        for raw in _page_jpegs(page):
+            if len(figures) >= max_images:
+                return figures
+            if len(raw) < MIN_FIGURE_BYTES or raw in seen:
+                continue
+            seen.add(raw)
+            url = "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
+            if len(url) <= MAX_IMAGE_DATA_URL_CHARS:
+                figures.append(url)
+    return figures
 
 
 def _page_jpeg(page: Any) -> bytes | None:
@@ -215,6 +259,7 @@ def build_import_prompt(*, grade: int, subject: str, textbook: str, semester: st
     figure_rule = (
         "2. 看不清、缺字的题不要猜：放进 skipped，写明题号和原因。需要看插图（几何图、示意图、统计图、实物图等）才能作答的题照常录入，"
         "并给出 figure：{\"image\":插图所在照片序号（第1张为0）,\"box\":[左,上,右,下]}，坐标是相对该照片宽高的比例（0到1），框住整幅插图及图中标注，不含题干文字；"
+        "随附图片若本身就是一幅单独的插图（从 PDF 中取出），box 取 [0,0,1,1]；"
         "插图被裁切、看不清时才放进 skipped。"
         if has_images else
         "2. 看不清、缺字或依赖原卷图片才能作答的题，不要猜：放进 skipped，写明题号和原因。"
@@ -369,7 +414,8 @@ def clean_import_rows(data: Any, *, subject: str) -> dict[str, Any]:
             continue
         # From the AI only a crop box is taken; an image arrives only from the teacher's review.
         item.pop("figure", None)
-        key = re.sub(r"\s+", "", item["text"]) + "|" + "|".join(item["options"])
+        # Same wording with different figures are different questions.
+        key = re.sub(r"\s+", "", item["text"]) + "|" + "|".join(item["options"]) + "|" + json.dumps(item.get("figureRegion"), sort_keys=True)
         if key in seen:
             continue
         seen.add(key)

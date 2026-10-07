@@ -315,3 +315,21 @@ def test_ai_cannot_supply_a_figure_image_only_a_crop_box():
                                             "figure": {"image": 0, "box": [0.1, 0.1, 0.5, 0.5]}}]}, subject="数学")
     assert "figure" not in out["items"][0] and "figureRegion" not in out["items"][0]
     assert out["items"][1]["figureRegion"] == {"image": 0, "box": [0.1, 0.1, 0.5, 0.5]} and "figure" not in out["items"][1]
+
+
+def test_text_pdf_returns_its_embedded_figures():
+    from changying.services.paper_import import extract_paper_upload
+
+    big = b"\xff\xd8\xff\xe0" + b"\x01" * 3000 + b"\xff\xd9"
+    pdf = _pdf([("text", PAPER + "\n3. 12 + 30 = ____  4. 9 x 9 = ____  5. 100 - 1 = ____"), ("jpeg", big), ("jpeg", JPEG)])  # JPEG is a tiny icon: ignored
+    text, images = extract_paper_upload("带图.pdf", pdf)
+    assert "25 x 4" in text and len(images) == 1 and images[0].startswith("data:image/jpeg;base64,/9j/")
+    assert extract_paper_upload("带图.pdf", pdf, max_images=0)[1] == []
+
+
+def test_same_wording_with_different_figures_is_not_a_duplicate():
+    from changying.services.paper_import import clean_import_rows
+
+    rows = [{"question_type": "fill_blank", "text": "看图填空", "answer": str(n), "figure": {"image": 0, "box": [0.1, 0.1 + n / 10, 0.5, 0.2 + n / 10]}}
+            for n in (1, 2)]
+    assert len(clean_import_rows({"questions": rows}, subject="数学")["items"]) == 2
