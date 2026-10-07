@@ -15,7 +15,9 @@ import binascii
 import io
 import json
 import re
+import struct
 import zipfile
+import zlib
 from typing import Any
 from xml.etree import ElementTree
 
@@ -137,6 +139,49 @@ def extract_pdf(data: bytes, *, max_images: int = MAX_IMAGES, max_figures: int =
     return text, images
 
 
+def _png_bytes(width: int, height: int, channels: int, pixels: bytes) -> bytes:
+    """A PNG file from raw 8-bit gray/RGB pixels (no imaging library needed)."""
+
+    def chunk(kind: bytes, body: bytes) -> bytes:
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
+
+    stride = width * channels
+    rows = b"".join(b"\x00" + pixels[y * stride:(y + 1) * stride] for y in range(height))
+    header = struct.pack(">IIBBBBB", width, height, 8, 2 if channels == 3 else 0, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(rows, 6)) + chunk(b"IEND", b"")
+
+
+MAX_PNG_PIXELS = 3_000_000
+
+
+def _page_pngs(page: Any) -> list[bytes]:
+    """8-bit gray/RGB Flate images drawn on a PDF page, re-encoded as PNG (other encodings are skipped)."""
+
+    found: list[bytes] = []
+    try:
+        xobjects = page.get("/Resources", {}).get_object().get("/XObject")
+        if xobjects is None:
+            return found
+        for ref in xobjects.get_object().values():
+            obj = ref.get_object()
+            if obj.get("/Subtype") != "/Image" or "/SMask" in obj or "/Mask" in obj:
+                continue
+            filters = obj.get("/Filter")
+            names = [str(f) for f in filters] if isinstance(filters, list) else [str(filters)]
+            channels = {"/DeviceGray": 1, "/DeviceRGB": 3}.get(str(obj.get("/ColorSpace")))
+            width, height = int(obj.get("/Width", 0)), int(obj.get("/Height", 0))
+            if names != ["/FlateDecode"] or not channels or int(obj.get("/BitsPerComponent", 0)) != 8:
+                continue
+            if not 0 < width * height <= MAX_PNG_PIXELS:
+                continue
+            pixels = obj.get_data()
+            if len(pixels) == width * height * channels:
+                found.append(_png_bytes(width, height, channels, bytes(pixels)))
+    except Exception:  # noqa: BLE001 - unreadable resources mean "no usable image"
+        pass
+    return found
+
+
 MIN_FIGURE_BYTES = 2000  # skip logos, bullets and rules
 
 
@@ -163,13 +208,13 @@ def _page_jpegs(page: Any) -> list[bytes]:
 
 
 def _embedded_figures(pages: list[Any], max_images: int, stats: dict[str, int] | None = None) -> list[str]:
-    """JPEG pictures embedded in a text PDF (data URLs), in page order, no duplicates.
+    """JPEG and (8-bit gray/RGB) Flate pictures embedded in a text PDF (data URLs), in page order, no duplicates.
 
     A picture that is drawn on most pages is page decoration (banner, footer), not a
     question's figure, and is skipped so it does not use up the allowance.
     """
 
-    per_page = [_page_jpegs(page) for page in pages]
+    per_page = [_page_jpegs(page) + _page_pngs(page) for page in pages]
     counts: dict[bytes, int] = {}
     for rows in per_page:
         for raw in set(rows):
@@ -186,7 +231,8 @@ def _embedded_figures(pages: list[Any], max_images: int, stats: dict[str, int] |
             found += 1
             if len(figures) >= max_images:
                 continue
-            url = "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
+            mime = "png" if raw[:4] == b"\x89PNG" else "jpeg"
+            url = f"data:image/{mime};base64," + base64.b64encode(raw).decode("ascii")
             if len(url) <= MAX_IMAGE_DATA_URL_CHARS and total + len(url) <= MAX_PDF_FIGURE_CHARS:
                 figures.append(url)
                 total += len(url)

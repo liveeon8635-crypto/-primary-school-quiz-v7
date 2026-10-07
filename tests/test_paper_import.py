@@ -226,6 +226,17 @@ def _pdf(pages):
             lines = b"".join(b"(" + line.encode("latin-1") + b") Tj T* " for line in value.splitlines())
             stream = b"BT /F1 12 Tf 14 TL 40 780 Td " + lines + b"ET"
             resources = b"<< /Font << /F1 3 0 R >> >>"
+        elif kind == "flate":
+            import zlib as _zlib
+            width, height, pixels = value
+            data = _zlib.compress(pixels)
+            img = n
+            n += 1
+            objs[img] = (b"<< /Type /XObject /Subtype /Image /Width " + str(width).encode() + b" /Height " + str(height).encode()
+                         + b" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length " + str(len(data)).encode()
+                         + b" >>\nstream\n" + data + b"\nendstream")
+            stream = b"q 595 0 0 842 0 0 cm /Im0 Do Q"
+            resources = b"<< /XObject << /Im0 " + str(img).encode() + b" 0 R >> >>"
         else:
             img = n
             n += 1
@@ -436,3 +447,26 @@ def test_text_pdf_reports_when_figures_exceed_the_limit(monkeypatch):
     stats: dict[str, int] = {}
     assert len(paper_import._embedded_figures([0, 1, 2], 3, stats)) == 3
     assert stats == {"figuresFound": 5, "figuresUsed": 3}
+
+
+def test_text_pdf_png_figures_are_recovered_from_flate_images():
+    import base64
+    import random
+    import struct
+    import zlib
+
+    from changying.services.paper_import import extract_paper_upload
+
+    random.seed(7)
+    pixels = bytes(random.randrange(256) for _ in range(40 * 40 * 3))  # incompressible, so well over the size floor
+    body = PAPER + "\n3. 12 + 30 = ____  4. 9 x 9 = ____  5. 100 - 1 = ____"
+    _, images = extract_paper_upload("带图.pdf", _pdf([("text", body), ("flate", (40, 40, pixels))]))
+    assert len(images) == 1 and images[0].startswith("data:image/png;base64,")
+    png = base64.b64decode(images[0].split(",", 1)[1])
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    width, height = struct.unpack(">II", png[16:24])
+    assert (width, height) == (40, 40)
+    idat = png[png.index(b"IDAT") + 4:png.index(b"IEND") - 8]
+    raw = zlib.decompress(idat)
+    assert raw[1:1 + 120] == pixels[:120]  # first row, after its filter byte
+    assert clean_images(images) == images  # a PNG passes the same checks as a photo
