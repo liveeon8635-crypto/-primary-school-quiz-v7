@@ -89,8 +89,10 @@ with TestClient(app) as client:
     assert composed.status_code == 200 and len(composed.json()["typeDistribution"]) == 4, composed.text
 
     assert client.post("/teacher/papers/import/parse", headers=ah, json={**scope, "text": "1. 2+2=__ 答案 4"}).status_code == 200
-    admin_bank = client.post("/teacher/papers/import/save", headers=ah, json={**scope, "questions": [items[0]], "create_paper": False})
+    admin_bank = client.post("/teacher/papers/import/save", headers=ah, json={**scope, "questions": [{**items[0], "text": items[0]["text"] + "（新）"}], "create_paper": False})
     assert admin_bank.status_code == 200 and admin_bank.json()["savedCount"] == 1, admin_bank.text
+    same_again = client.post("/teacher/papers/import/save", headers=ah, json={**scope, "questions": [items[0]], "create_paper": False})
+    assert same_again.json()["savedCount"] == 0 and same_again.json()["reusedCount"] == 1, same_again.text  # #370: no duplicate
     assert client.post("/teacher/papers/import/save", headers=ah, json={**scope, "title": "x", "questions": [items[0]]}).status_code == 403
     assert client.post("/teacher/papers/import/save", headers=th, json={**scope, "questions": [items[0]], "create_paper": False, "class_id": 1}).status_code == 400
     assert client.post("/teacher/papers/import/parse", headers=sh, json={**scope, "text": "x"}).status_code == 403

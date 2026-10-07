@@ -45,7 +45,7 @@ function savedNotice(saved,title,count){
  const unit=esc(importScope.unit||"导入试卷"),name=esc(saved.title||title);
  modal("已保存",`<p><b>试卷《${name}》</b>已保存到「组卷与作业」，共 ${count} 道题。</p>
  ${saved.assignment?"<p>已布置给所选班级，学生会在作业里看到它。</p>":"<p>还没有布置给学生，可以在「组卷与作业」里布置。</p>"}
- <p class=\"muted\">这些题同时进了「教材题库」（单元：${unit}），之后组卷、出题也能抽到。</p>
+ <p class=\"muted\">这些题同时进了「教材题库」（单元：${unit}），之后组卷、出题也能抽到。${saved.reusedCount?`其中 ${saved.reusedCount} 道题库里已有完全相同的题，直接沿用，没有重复保存。`:""}</p>
  <button class=\"btn primary full\" id=\"piSavedOk\">知道了</button>`);
  const ok=$("#piSavedOk");if(ok)ok.onclick=()=>closeModal();
 }
@@ -88,7 +88,7 @@ function reviewImport(result){
    if(!confirm(`确认已核对这 ${questions.length} 道题的答案，并保存到教材题库？`))return;
    btn.disabled=true;btn.textContent="正在保存…";
    const saved=await api("/teacher/papers/import/save",{method:"POST",body:JSON.stringify({...importScope,title:"题库导入",questions,create_paper:false})});
-   closeModal();toast("已保存 "+(saved.savedCount||questions.length)+" 道题到教材题库，单元：「"+(importScope.unit||"导入试卷")+"」"+(saved.typeSummary?"（"+saved.typeSummary+"）":""));go("catalog");return;
+   closeModal();toast("已保存 "+(saved.savedCount??questions.length)+" 道题到教材题库，单元：「"+(importScope.unit||"导入试卷")+"」"+(saved.reusedCount?"；另有 "+saved.reusedCount+" 道题库里已有，未重复保存":"")+(saved.typeSummary?"（"+saved.typeSummary+"）":""));go("catalog");return;
   }
   const title=$("#piTitle").value.trim();if(!title)throw new Error("请填写试卷名称");
   const classValue=$("#piClass").value;
@@ -110,7 +110,7 @@ window.importPaperForm=function(classes,opts={}){
  const grades=[1,2,3,4,5,6].map(g=>`<option value="${g}" ${g===5?"selected":""}>${g}年级</option>`).join("");
  modal(bank?"拍照 / 导入新增题目":"导入试卷 / 真题",`<p class="muted">${bank?"拍下练习册、试卷或板书上的题目（最多 4 张），也可以粘贴文字或上传 PDF/Word/文本。AI 自动识别题目和题型（单选、判断、填空、计算、简答、主观题），由你核对后保存到题库。":"粘贴试卷文字、上传 PDF/Word/文本（扫描版 PDF 最多 4 页），或拍照上传（最多 4 张）。拍照和扫描版会把题目插图一起裁下来。AI 逐题录入后由你核对，核对前不会保存。"}</p>
  <div class="form-grid"><div><label>年级</label><select id="piGrade">${grades}</select></div><div><label>学科</label><select id="piSubject"><option>数学</option><option>语文</option><option>英语</option><option>科学</option></select></div>
- <div><label>教材</label><input id="piTextbook" placeholder="例如：人教版"></div><div><label>学期</label><select id="piSemester"><option>上册</option><option>下册</option></select></div><div><label>单元（可选）</label><input id="piUnit" placeholder="例如：第二单元"></div>${bank?"":`<div><label>试卷名称</label><input id="piName" placeholder="例如：2025 期中真题"></div>`}</div>
+ <div><label>教材</label><input id="piTextbook" placeholder="例如：人教版"></div><div><label>学期</label><select id="piSemester"><option>上册</option><option>下册</option></select></div><div><label>单元（必填，题目按单元归入教材题库）</label><input id="piUnit" placeholder="例如：第二单元"></div>${bank?"":`<div><label>试卷名称</label><input id="piName" placeholder="例如：2025 期中真题"></div>`}</div>
  ${bank?`<label>拍照识别（最多 4 张）</label><input type="file" id="piPhotos" accept="image/*" multiple>`:""}
  <label>${bank?"或粘贴题目文字":"粘贴试卷文字"}</label><textarea id="piText" rows="${bank?5:8}" placeholder="${bank?"粘贴题目（含答案更好）":"把试卷内容（含答案更好）粘贴到这里"}"></textarea>
  <label>或上传文件（.pdf / .docx / .txt）</label><input type="file" id="piFile" accept=".pdf,.docx,.txt,application/pdf">
@@ -118,6 +118,7 @@ window.importPaperForm=function(classes,opts={}){
  <button class="btn primary full" id="piParse">${bank?"识别题目":"识别试卷"}</button>`);
  $("#piParse").onclick=async()=>{const btn=$("#piParse");if(btn.disabled)return;try{
   importScope={grade:+$("#piGrade").value,subject:$("#piSubject").value,textbook:$("#piTextbook").value.trim(),semester:$("#piSemester").value,unit:$("#piUnit").value.trim(),title:($("#piName")?.value||"").trim()};
+  if(!importScope.unit)throw new Error("请先填写单元：导入的题目按单元归入教材题库");
   const body={...importScope,text:$("#piText").value};delete body.title;
   const file=$("#piFile").files?.[0];if(file){if(file.size>5*1024*1024)throw new Error("文件超过 5MB");body.file_name=file.name;body.file_base64=await readFileBase64(file)}
   const photos=[...($("#piPhotos").files||[])];if(photos.length>4)throw new Error("最多上传 4 张照片");
