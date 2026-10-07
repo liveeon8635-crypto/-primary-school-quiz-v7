@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:1afa62f82508f680bb1efae053574b1c3a63facaaf2b4e4dabf8ac5f9f8df4a3",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "dee15da499455f7169af038f2c9d3b090b689d93",
+  "headSha": "9fc33b41a959a250a13703d6285e4b20ae1cd62d",
+  "decision": "accept_with_changes",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议修改后合并：修改新增了试卷导入格式扩展脚本变量，但未在 HTML 页面中注入，导致前端格式扩展未能生效。若需生效请在 patch_v1_student_detail_visibility 中注入 _PAPER_IMPORT_FORMAT_SCRIPT，否则应移除无用代码。",
+      "evidenceRefs": [
+        "file:changying/web/v1_student_detail_visibility.py#L86-L103"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:f995bb0c93750f6e9687d9000231473c268498406ed949b68a06e15d8fdd6b2c"
+}

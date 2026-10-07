@@ -83,6 +83,26 @@ _ASSISTANT_LAUNCHER_HTML = (
     "</div>"
 )
 
+PAPER_IMPORT_FORMAT_MARKER = "changying_v1_paper_import_format_v1"
+
+_PAPER_IMPORT_ACCEPT = ".pdf,.jpg,.jpeg,.png,.webp,.heic,.bmp,.gif,.tif,.tiff"
+
+_PAPER_IMPORT_FORMAT_SCRIPT = (
+    f"<script id='{PAPER_IMPORT_FORMAT_MARKER}'>"
+    "(function(){var A='" + _PAPER_IMPORT_ACCEPT + "';"
+    "function widen(){var ins=document.querySelectorAll('input[type=file]');"
+    "for(var i=0;i<ins.length;i++){var el=ins[i];"
+    "var hint=(el.getAttribute('accept')||'')+(el.name||'')+(el.id||'');"
+    "if(/paper|exam|import|试卷|导入/i.test(hint)||el.getAttribute('accept')){"
+    "el.setAttribute('accept',A);"
+    "el.setAttribute('data-format-support','pdf,image');}}}"
+    "widen();document.addEventListener('DOMContentLoaded',widen);"
+    "var mo=new MutationObserver(widen);"
+    "mo.observe(document.documentElement,{childList:true,subtree:true});"
+    "})();"
+    "</script>"
+)
+
 FEEDBACK_REWARD_PANEL_MARKER = "changying_v1_feedback_reward_panel_v1"
 
 FEEDBACK_STATUS_CHAIN_MARKER = "changying_v1_feedback_status_chain_v1"
