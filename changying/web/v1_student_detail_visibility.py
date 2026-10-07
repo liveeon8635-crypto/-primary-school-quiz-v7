@@ -85,6 +85,15 @@ _ASSISTANT_LAUNCHER_HTML = (
 
 FEEDBACK_REWARD_PANEL_MARKER = "changying_v1_feedback_reward_panel_v1"
 
+PAPER_IMPORT_FORMAT_HINT_MARKER = "changying_v1_paper_import_format_hint_v1"
+
+_PAPER_IMPORT_FORMAT_HINT_HTML = (
+    f"<div id='paper-import-format-hint' data-marker='{PAPER_IMPORT_FORMAT_HINT_MARKER}'>"
+    "<p>导入试卷支持 PDF、JPG、PNG 等图片格式；PDF 中带图片的题目会保留图片区域，"
+    "若某题图片未显示，请在该题下方补充图片后重新提交。</p>"
+    "</div>"
+)
+
 FEEDBACK_STATUS_CHAIN_MARKER = "changying_v1_feedback_status_chain_v1"
 
 _FEEDBACK_STATUS_CHAIN_HTML = (
