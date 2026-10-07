@@ -24,6 +24,7 @@ TYPE_LABELS = {
     "fill_blank": "填空",
     "calculation": "计算",
     "short_answer": "简答",
+    "non_choice": "主观题",
 }
 MIX_MODES = frozenset({"mixed", "choice"})
 
@@ -103,7 +104,8 @@ def type_distribution(type_by_id: dict[int, str], ids: Iterable[int]) -> dict[st
         qtype = type_by_id.get(int(qid))
         if qtype:
             out[qtype] = out.get(qtype, 0) + 1
-    return {t: out[t] for t in AUTO_GRADED_TYPES if t in out}
+    ordered = [t for t in AUTO_GRADED_TYPES if t in out] + sorted(t for t in out if t not in AUTO_GRADED_TYPES)
+    return {t: out[t] for t in ordered}
 
 
 def distribution_text(distribution: dict[str, int]) -> str:
