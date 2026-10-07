@@ -226,6 +226,17 @@ def _pdf(pages):
             lines = b"".join(b"(" + line.encode("latin-1") + b") Tj T* " for line in value.splitlines())
             stream = b"BT /F1 12 Tf 14 TL 40 780 Td " + lines + b"ET"
             resources = b"<< /Font << /F1 3 0 R >> >>"
+        elif kind == "flate":
+            import zlib as _zlib
+            width, height, pixels = value
+            data = _zlib.compress(pixels)
+            img = n
+            n += 1
+            objs[img] = (b"<< /Type /XObject /Subtype /Image /Width " + str(width).encode() + b" /Height " + str(height).encode()
+                         + b" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length " + str(len(data)).encode()
+                         + b" >>\nstream\n" + data + b"\nendstream")
+            stream = b"q 595 0 0 842 0 0 cm /Im0 Do Q"
+            resources = b"<< /XObject << /Im0 " + str(img).encode() + b" 0 R >> >>"
         else:
             img = n
             n += 1
@@ -410,7 +421,7 @@ def test_import_errors_are_shown_inside_the_dialog_not_only_in_a_toast():
     from changying.web.paper_import_ui import PAPER_IMPORT_SCRIPT
 
     # The toast is hidden behind an open dialog (feedback #370: "no prompt at all").
-    assert PAPER_IMPORT_SCRIPT.count("${piErrBox}") == 2
+    assert PAPER_IMPORT_SCRIPT.count("${piErrBox}") == 3
     assert 'piError("未保存："' in PAPER_IMPORT_SCRIPT and 'piError("识别失败："' in PAPER_IMPORT_SCRIPT
     assert 'toast("未保存：' not in PAPER_IMPORT_SCRIPT and 'toast("识别失败：' not in PAPER_IMPORT_SCRIPT
 
@@ -423,3 +434,54 @@ def test_toast_is_moved_into_an_open_dialog():
     assert TOAST_IN_DIALOG_MARKER in html and "host=dlg&&dlg.open?dlg:document.body" in html
     assert inject_classic_ui(html) == html
     assert patch_classic_toast_in_dialog("<script>nothing</script>") == "<script>nothing</script>"
+
+
+def test_text_pdf_reports_when_figures_exceed_the_limit(monkeypatch):
+    from changying.services import paper_import
+
+    def jpeg(n):
+        return b"\xff\xd8\xff\xe0" + bytes([n]) * 3000 + b"\xff\xd9"
+
+    layout = {0: [jpeg(1), jpeg(2)], 1: [jpeg(3), jpeg(4)], 2: [jpeg(5)]}
+    monkeypatch.setattr(paper_import, "_page_jpegs", lambda page: layout[page])
+    stats: dict[str, int] = {}
+    assert len(paper_import._embedded_figures([0, 1, 2], 3, stats)) == 3
+    assert stats == {"figuresFound": 5, "figuresUsed": 3}
+
+
+def test_text_pdf_png_figures_are_recovered_from_flate_images():
+    import base64
+    import random
+    import struct
+    import zlib
+
+    from changying.services.paper_import import extract_paper_upload
+
+    random.seed(7)
+    pixels = bytes(random.randrange(256) for _ in range(40 * 40 * 3))  # incompressible, so well over the size floor
+    body = PAPER + "\n3. 12 + 30 = ____  4. 9 x 9 = ____  5. 100 - 1 = ____"
+    _, images = extract_paper_upload("带图.pdf", _pdf([("text", body), ("flate", (40, 40, pixels))]))
+    assert len(images) == 1 and images[0].startswith("data:image/png;base64,")
+    png = base64.b64decode(images[0].split(",", 1)[1])
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    width, height = struct.unpack(">II", png[16:24])
+    assert (width, height) == (40, 40)
+    idat = png[png.index(b"IDAT") + 4:png.index(b"IEND") - 8]
+    raw = zlib.decompress(idat)
+    assert raw[1:1 + 120] == pixels[:120]  # first row, after its filter byte
+    assert clean_images(images) == images  # a PNG passes the same checks as a photo
+
+
+def test_catalog_lets_a_teacher_tick_questions_and_change_their_unit():
+    import app_v924 as legacy
+    from changying.web.classic_ui import inject_classic_ui
+    from changying.web.paper_import_ui import (CATALOG_EDIT_UNIT_MARKER, PAPER_IMPORT_SCRIPT,
+                                               patch_classic_catalog_edit_unit)
+
+    html = inject_classic_ui(legacy.INDEX_HTML)
+    catalog = html[html.find("async function catalog(){"):html.find("function questionForm(){")]
+    assert CATALOG_EDIT_UNIT_MARKER in catalog and 'data-qpick="${q.id}"' in catalog and 'id="pickAllQ"' in catalog
+    assert "window.catalogEditUnit(()=>go(\"catalog\"))" in catalog
+    assert inject_classic_ui(html) == html
+    assert patch_classic_catalog_edit_unit(legacy.INDEX_HTML) == legacy.INDEX_HTML
+    assert "/teacher/questions/unit" in PAPER_IMPORT_SCRIPT and "window.catalogEditUnit" in PAPER_IMPORT_SCRIPT

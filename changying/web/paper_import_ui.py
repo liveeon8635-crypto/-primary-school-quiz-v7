@@ -105,6 +105,23 @@ function reviewImport(result){
   closeModal();go("papers");savedNotice(saved,title,questions.length);
  }catch(e){piError("未保存："+(e.message||"请重试"))}finally{if(document.body.contains(btn)){btn.disabled=false;btn.textContent=importMode==="bank"?"确认已核对，保存到题库":"确认已核对，保存"}}};
 }
+// 教材题库: change the 单元 / 教材 of the ticked questions (feedback #370: old imports sit under "导入试卷").
+window.catalogPickAll=function(){const boxes=[...document.querySelectorAll("[data-qpick]")];const on=boxes.some(b=>!b.checked);boxes.forEach(b=>{b.checked=on})};
+window.catalogEditUnit=function(reload){
+ const ids=[...document.querySelectorAll("[data-qpick]:checked")].map(b=>+b.dataset.qpick);
+ if(!ids.length){toast("请先勾选要修改的题目");return}
+ modal("修改题目的单元",`<p>已选 <b>${ids.length}</b> 道题。只能修改你自己导入或创建的题目。</p>
+ <label>单元（必填）</label><input id="euUnit" placeholder="例如：第三单元 小数除法">
+ <label>教材（可选，不填则不改）</label><input id="euBook" placeholder="例如：人教版">
+ ${piErrBox}<button class="btn primary full" id="euSave">保存修改</button>`);
+ $("#euSave").onclick=async()=>{const btn=$("#euSave");if(btn.disabled)return;piError("");try{
+  const unit=$("#euUnit").value.trim();if(!unit)throw new Error("请填写单元");
+  const book=$("#euBook").value.trim();
+  btn.disabled=true;btn.textContent="正在保存…";
+  const r=await api("/teacher/questions/unit",{method:"POST",body:JSON.stringify({ids,unit,textbook:book||null})});
+  closeModal();toast("已修改 "+r.updated+" 道题"+(r.skipped?"；"+r.skipped+" 道不是你创建的，未修改":""));if(reload)reload();
+ }catch(e){piError("未修改："+(e.message||"请重试"))}finally{if(document.body.contains(btn)){btn.disabled=false;btn.textContent="保存修改"}}};
+};
 window.catalogAnswerBadge=function(q){
  const t=q.questionType||"single_choice",name=TYPE_NAMES[t]||t;
  if(t==="single_choice"||t==="true_false")return name+" · "+((q.options||[])[q.correctIndex]??"");
@@ -208,6 +225,40 @@ def patch_classic_catalog_find_imported(html: str) -> str:
         (
             '["#fGrade","#fSubject","#fBook","#fSearch"]',
             '["#fGrade","#fSubject","#fBook","#fUnit","#fSearch"]',
+        ),
+    )
+    for before, _ in replacements:
+        if html.count(before) != 1:
+            return html
+    for before, after in replacements:
+        html = html.replace(before, after, 1)
+    return html
+
+
+CATALOG_EDIT_UNIT_MARKER = "changying_catalog_edit_unit_v1"
+
+
+def patch_classic_catalog_edit_unit(html: str) -> str:
+    """教材题库: tick questions and change their 单元 / 教材 (feedback #370)."""
+
+    if CATALOG_EDIT_UNIT_MARKER in html or CATALOG_PHOTO_IMPORT_MARKER not in html:
+        return html
+    replacements = (
+        (
+            '拍照/导入新增题目</button>',
+            '拍照/导入新增题目</button><button class="btn secondary" id="pickAllQ">全选/取消</button>'
+            '<button class="btn secondary" id="editUnitQ" data-marker="' + CATALOG_EDIT_UNIT_MARKER + '">修改选中题目的单元</button>',
+        ),
+        (
+            '<div class="item"><div class="item-main"><b>${esc(q.text)}</b>',
+            '<div class="item"><input type="checkbox" data-qpick="${q.id}" aria-label="选择题目" style="margin:0 10px 0 0;flex:none">'
+            '<div class="item-main"><b>${esc(q.text)}</b>',
+        ),
+        (
+            'if($("#importQ"))$("#importQ").onclick=()=>window.importPaperForm([],{mode:"bank"});',
+            'if($("#importQ"))$("#importQ").onclick=()=>window.importPaperForm([],{mode:"bank"});'
+            'if($("#pickAllQ"))$("#pickAllQ").onclick=()=>window.catalogPickAll();'
+            'if($("#editUnitQ"))$("#editUnitQ").onclick=()=>window.catalogEditUnit(()=>go("catalog"));',
         ),
     )
     for before, _ in replacements:
