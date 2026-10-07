@@ -1,6 +1,6 @@
 """Import a past paper (往年试卷/真题) as typed questions.
 
-The teacher pastes the paper text, uploads a .txt/.docx/.pdf, or photographs
+The teacher pastes the paper text, uploads a .txt/.docx, or photographs
 up to four pages. AI transcribes it question by question into the existing
 typed model (single_choice, true_false, fill_blank, calculation,
 short_answer, non_choice); the paper's own answer key wins over AI answers,
@@ -15,7 +15,9 @@ import binascii
 import io
 import json
 import re
+import zipfile
 from typing import Any
+from xml.etree import ElementTree
 
 MAX_TEXT_CHARS = 30000
 MAX_FILE_BYTES = 5 * 1024 * 1024
@@ -43,7 +45,7 @@ def _clean(value: Any, limit: int) -> str:
 
 
 def extract_paper_text(file_name: str, data: bytes) -> str:
-    """Plain text of an uploaded .txt / .docx / .pdf paper."""
+    """Plain text of an uploaded .txt / .docx paper."""
 
     name = str(file_name or "").lower()
     if len(data) > MAX_FILE_BYTES:
@@ -56,31 +58,47 @@ def extract_paper_text(file_name: str, data: bytes) -> str:
                 continue
         raise PaperImportError("无法识别文本文件编码，请另存为 UTF-8 后重试")
     if name.endswith(".docx"):
-        try:
-            from docx import Document
+        return _docx_text(data)[:MAX_TEXT_CHARS]
+    if name.endswith(".pdf"):
+        # Production has no PDF library (requirements.txt); keep it dependency-free.
+        raise PaperImportError("暂不支持直接上传 PDF：请在 PDF 中全选复制文字粘贴到上方，或改用“拍照导入”")
+    raise PaperImportError("只支持 .txt、.docx 文件，或直接粘贴文字、拍照导入")
 
-            doc = Document(io.BytesIO(data))
-        except Exception as exc:  # corrupt or not a real docx
-            raise PaperImportError("无法读取 Word 文件，请确认是 .docx 格式") from exc
-        parts = [p.text for p in doc.paragraphs if p.text.strip()]
-        for table in doc.tables:
-            for row in table.rows:
-                cells = [c.text.strip() for c in row.cells if c.text.strip()]
+
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def _docx_paragraph(node: Any) -> str:
+    return "".join(t.text or "" for t in node.iter(_W + "t"))
+
+
+def _docx_text(data: bytes) -> str:
+    """Paragraph and table text of a .docx using only the standard library."""
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            info = archive.getinfo("word/document.xml")
+            if info.file_size > 20 * 1024 * 1024:
+                raise PaperImportError("Word 文件内容过大，请拆分后导入")
+            root = ElementTree.fromstring(archive.read(info))
+    except PaperImportError:
+        raise
+    except (zipfile.BadZipFile, KeyError, ElementTree.ParseError) as exc:
+        raise PaperImportError("无法读取 Word 文件，请确认是 .docx 格式（旧版 .doc 请另存为 .docx）") from exc
+    body = root.find(_W + "body")
+    parts: list[str] = []
+    for child in list(body) if body is not None else []:
+        if child.tag == _W + "p":
+            text = _docx_paragraph(child)
+            if text.strip():
+                parts.append(text)
+        elif child.tag == _W + "tbl":
+            for row in child.iter(_W + "tr"):
+                cells = [" ".join(_docx_paragraph(p) for p in cell.iter(_W + "p")).strip() for cell in row.iter(_W + "tc")]
+                cells = [c for c in cells if c]
                 if cells:
                     parts.append(" | ".join(cells))
-        return "\n".join(parts)[:MAX_TEXT_CHARS]
-    if name.endswith(".pdf"):
-        try:
-            from pypdf import PdfReader
-
-            reader = PdfReader(io.BytesIO(data))
-            text = "\n".join((page.extract_text() or "") for page in reader.pages[:20])
-        except Exception as exc:
-            raise PaperImportError("无法读取 PDF 文件") from exc
-        if not text.strip():
-            raise PaperImportError("这个 PDF 是扫描件，读不出文字；请改用“拍照导入”上传试卷照片")
-        return text[:MAX_TEXT_CHARS]
-    raise PaperImportError("只支持 .txt、.docx、.pdf 文件，或直接粘贴文字、拍照导入")
+    return "\n".join(parts)
 
 
 def decode_upload(file_base64: str) -> bytes:

@@ -1,7 +1,7 @@
 """Classic 组卷与作业 page: 导入试卷 (past paper / 真题 import).
 
 Adds an 导入试卷 button next to ＋布置作业. Flow: choose source (paste text,
-.txt/.docx/.pdf, or up to four photos) -> AI transcription -> teacher reviews
+.txt/.docx, or up to four photos) -> AI transcription -> teacher reviews
 and edits every question (answer source is shown; missing answers must be
 filled) -> save as a paper, optionally assigned to a class. Backend:
 changying/web/paper_import_routes.py.
@@ -63,11 +63,11 @@ function reviewImport(result){
 window.importPaperForm=function(classes){
  importClasses=classes||[];
  const grades=[1,2,3,4,5,6].map(g=>`<option value="${g}" ${g===5?"selected":""}>${g}年级</option>`).join("");
- modal("导入试卷 / 真题",`<p class="muted">粘贴试卷文字、上传 Word/PDF/文本，或拍照上传（最多 4 张）。AI 逐题录入后由你核对，核对前不会保存。</p>
+ modal("导入试卷 / 真题",`<p class="muted">粘贴试卷文字（PDF 可全选复制后粘贴）、上传 Word/文本，或拍照上传（最多 4 张）。AI 逐题录入后由你核对，核对前不会保存。</p>
  <div class="form-grid"><div><label>年级</label><select id="piGrade">${grades}</select></div><div><label>学科</label><select id="piSubject"><option>数学</option><option>语文</option><option>英语</option><option>科学</option></select></div>
  <div><label>教材</label><input id="piTextbook" placeholder="例如：人教版"></div><div><label>学期</label><select id="piSemester"><option>上册</option><option>下册</option></select></div><div><label>单元（可选）</label><input id="piUnit" placeholder="例如：第二单元"></div><div><label>试卷名称</label><input id="piName" placeholder="例如：2025 期中真题"></div></div>
  <label>粘贴试卷文字</label><textarea id="piText" rows="8" placeholder="把试卷内容（含答案更好）粘贴到这里"></textarea>
- <label>或上传文件（.docx / .pdf / .txt）</label><input type="file" id="piFile" accept=".docx,.pdf,.txt">
+ <label>或上传文件（.docx / .txt）</label><input type="file" id="piFile" accept=".docx,.txt">
  <label>或拍照导入（最多 4 张）</label><input type="file" id="piPhotos" accept="image/*" multiple>
  <button class="btn primary full" id="piParse">识别试卷</button>`);
  $("#piParse").onclick=async()=>{const btn=$("#piParse");if(btn.disabled)return;try{

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import os
+import zipfile
 import subprocess
 import sys
 from pathlib import Path
@@ -23,30 +24,29 @@ from changying.services.paper_import import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_text_docx_and_scanned_pdf_extraction():
+def _docx(paragraphs, table_row):
+    """A minimal real .docx built with the standard library (production has no python-docx)."""
+
+    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    para = lambda text: f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
+    cells = "".join(f"<w:tc>{para(c)}</w:tc>" for c in table_row)
+    xml = f"<w:document {w}><w:body>{''.join(para(p) for p in paragraphs)}<w:tbl><w:tr>{cells}</w:tr></w:tbl></w:body></w:document>"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types/>")
+        archive.writestr("word/document.xml", xml)
+    return buf.getvalue()
+
+
+def test_text_and_docx_extraction_without_optional_libraries():
     assert extract_paper_text("期中.txt", "一、选择题\n1. 3+4=( )".encode("utf-8")).startswith("一、选择题")
     assert "判断" in extract_paper_text("old.txt", "二、判断题".encode("gb18030"))
-
-    from docx import Document
-
-    doc = Document()
-    doc.add_paragraph("三、填空题")
-    table = doc.add_table(rows=1, cols=2)
-    table.rows[0].cells[0].text = "1. 5×6="
-    table.rows[0].cells[1].text = "30"
-    buf = io.BytesIO()
-    doc.save(buf)
-    text = extract_paper_text("卷.docx", buf.getvalue())
-    assert "三、填空题" in text and "5×6= | 30" in text
-
-    from pypdf import PdfWriter
-
-    pdf = PdfWriter()
-    pdf.add_blank_page(width=200, height=200)
-    out = io.BytesIO()
-    pdf.write(out)
-    with pytest.raises(PaperImportError, match="扫描件"):
-        extract_paper_text("scan.pdf", out.getvalue())
+    text = extract_paper_text("卷.docx", _docx(["三、填空题", "1. 5×6=____"], ["2. 7×8=", "56"]))
+    assert text.splitlines() == ["三、填空题", "1. 5×6=____", "2. 7×8= | 56"]
+    with pytest.raises(PaperImportError, match="旧版 .doc"):
+        extract_paper_text("卷.docx", b"not a zip")
+    with pytest.raises(PaperImportError, match="复制文字粘贴"):
+        extract_paper_text("scan.pdf", b"%PDF-1.4")
     with pytest.raises(PaperImportError, match="只支持"):
         extract_paper_text("卷.xlsx", b"x")
     with pytest.raises(PaperImportError, match="5MB"):
