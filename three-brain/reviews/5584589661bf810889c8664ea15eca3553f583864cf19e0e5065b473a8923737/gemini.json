@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:5584589661bf810889c8664ea15eca3553f583864cf19e0e5065b473a8923737",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "dee15da499455f7169af038f2c9d3b090b689d93",
+  "headSha": "6e4c0ba1e9e1fc9bd36b39b9d5678362f4b7fed7",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：本次变更在拍照和扫描版试卷导入功能中新增了题目插图自动识别与前端裁剪保存机制，代码逻辑健全且对图片大小和格式做了严格校验，自动化测试已覆盖主要场景。",
+      "evidenceRefs": [
+        "file:changying/services/paper_import.py",
+        "file:changying/web/paper_import_routes.py",
+        "file:changying/web/paper_import_ui.py",
+        "file:tests/test_paper_import.py"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:aa12908c1b2d59b71a4c2e5dfaffcf01a91d491c33b6cd3b09bc0dac8c6bb27f"
+}
