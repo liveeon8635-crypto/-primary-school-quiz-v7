@@ -106,6 +106,50 @@ def patch_classic_paper_submit_flow(html: str) -> str:
     fragment = fragment.replace('title:$("#at").value', "title:assignmentTitle")
     return html[:start] + fragment + html[end:]
 
+def patch_classic_mixed_question_types(html: str) -> str:
+    """Compose assignment papers server-side with balanced question types.
+
+    Feedback 刘麦迪 (2026-10-05) "题目全都是一个题型": the form kept only
+    questions with options, dropping fill/calculation/short-answer questions.
+    POST /teacher/papers/compose picks every online-gradable type.
+    """
+
+    marker = "changying_mixed_question_types_v1"
+    if marker in html:
+        return html
+    replacements = (
+        (
+            '<div id="questionCountWrap"><label>在线题量</label><select id="an"><option>5</option><option>10</option><option>15</option><option>20</option></select></div>',
+            '<div id="questionCountWrap"><label>在线题量</label><select id="an"><option>5</option><option selected>10</option><option>15</option><option>20</option></select>'
+            '<label>题型搭配</label><select id="homeworkTypeMix"><option value="mixed" selected>多题型均衡（单选/判断/填空/计算/简答）</option>'
+            '<option value="choice">仅选择题（单选/判断）</option></select>'
+            '<small>多题型会从题库中按题型轮流抽题；题库缺少的题型可先用 AI 出题或导入试卷补充。</small></div>',
+        ),
+        (
+            'const eligible=rows=>(rows||[]).filter(q=>(q.options||[]).length>=2&&q.questionType!=="non_choice");let qs=eligible(await api("/questions?"+params.toString()));if(!qs.length&&unit){const broaderParams=new URLSearchParams(params);broaderParams.delete("unit");const broader=eligible(await api("/questions?"+broaderParams.toString()));if(broader.length&&confirm("本单元暂无可组卷题目，是否改用同教材其他单元的题目继续？"))qs=broader;}const ids=photoQuestionId?[photoQuestionId]:[];ids.push(...qs.filter(q=>q.id!==photoQuestionId).sort(()=>Math.random()-.5).slice(0,Math.max(0,+$("#an").value-ids.length)).map(q=>q.id));if(!ids.length)throw new Error("所选年级、学科和教材范围没有可用选择题；请调整教材/单元或先录入题目");\n    const p=await api("/teacher/papers",{method:"POST",body:JSON.stringify({title:assignmentTitle,grade,subject,textbook,unit,question_ids:ids})});paper_id=p.id;',
+            '/*' + marker + '*/const composeBody={title:assignmentTitle,grade,subject,textbook,unit,count:+$("#an").value,mix:$("#homeworkTypeMix").value,required_question_ids:photoQuestionId?[photoQuestionId]:[]};'
+            'let p;try{p=await api("/teacher/papers/compose",{method:"POST",body:JSON.stringify(composeBody)})}'
+            'catch(err){if(!unit||!/本单元暂无/.test(err.message||"")||!confirm("本单元暂无可在线判分的题目，是否改用同教材其他单元的题目继续？"))throw err;'
+            'p=await api("/teacher/papers/compose",{method:"POST",body:JSON.stringify({...composeBody,broaden_unit:true})})}'
+            'paper_id=p.id;composedTypeSummary=p.typeSummary||"";'
+            'if(+p.questionIDs.length<+$("#an").value)composedTypeSummary+=(composedTypeSummary?"；":"")+"题库只有 "+p.questionIDs.length+" 道可用题";',
+        ),
+        (
+            'let paper_id=null,photoQuestionId=null;',
+            'let paper_id=null,photoQuestionId=null,composedTypeSummary="";',
+        ),
+        (
+            'closeModal();toast("作业已布置");go("papers")',
+            'closeModal();toast(composedTypeSummary?"作业已布置（"+composedTypeSummary+"）":"作业已布置");go("papers")',
+        ),
+    )
+    for before, after in replacements:
+        if html.count(before) != 1:
+            return html
+        html = html.replace(before, after, 1)
+    return html
+
+
 def patch_classic_local_due_dates(html: str) -> str:
     """Keep assignment default dates in the browser/school local calendar day."""
 
@@ -339,6 +383,7 @@ def inject_classic_ui(html: str) -> str:
     """Inject the classic UI enhancement into an HTML document once."""
     html = patch_classic_paper_submit_flow(html)
     html = patch_classic_local_due_dates(html)
+    html = patch_classic_mixed_question_types(html)
     if CLASSIC_UI_MARKER in html:
         return html
     if "</body>" in html:
