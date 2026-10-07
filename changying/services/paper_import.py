@@ -367,6 +367,8 @@ def clean_import_rows(data: Any, *, subject: str) -> dict[str, Any]:
         if item is None:
             dropped += 1
             continue
+        # From the AI only a crop box is taken; an image arrives only from the teacher's review.
+        item.pop("figure", None)
         key = re.sub(r"\s+", "", item["text"]) + "|" + "|".join(item["options"])
         if key in seen:
             continue

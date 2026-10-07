@@ -79,6 +79,7 @@ def install_paper_import_routes(implementation: Any) -> None:
         try:
             text = str(b.text or "")
             images = clean_images(b.images)
+            photo_count = len(images)
             if b.file_base64:
                 file_text, scans = extract_paper_upload(b.file_name, decode_upload(b.file_base64),
                                                         max_images=MAX_IMAGES - len(images))
@@ -97,14 +98,15 @@ def install_paper_import_routes(implementation: Any) -> None:
             raise HTTPException(502, str(exc)) from exc
         if not result["items"]:
             raise HTTPException(502, "没有识别出可用的题目；请检查试卷内容是否清晰完整后重试")
-        # Figures are cut out in the browser (no imaging library on the server), so
-        # send back only the photos/scans that a figure region points into.
+        # Figures are cut out in the browser (no imaging library on the server). The
+        # browser still has the photos it sent, so only PDF scans that a figure region
+        # points into are sent back (keeps the response small on a phone).
         for item in result["items"]:
             region = item.get("figureRegion")
             if region and region["image"] >= len(images):
                 item.pop("figureRegion")
         used = sorted({item["figureRegion"]["image"] for item in result["items"] if item.get("figureRegion")})
-        result["sourceImages"] = {str(i): images[i] for i in used}
+        result["sourceImages"] = {str(i): images[i] for i in used if i >= photo_count}
         summary = import_summary(result["items"])
         implementation.audit(db, u, "paper.import.parse", f"{b.grade}:{b.subject}:{b.unit}:items={summary['total']}:ai_answers={summary['aiAnswers']}:needs_answer={summary['needsAnswer']}:skipped={len(result['skipped'])}")
         db.commit()

@@ -24,7 +24,7 @@ const loadImage=src=>new Promise((resolve,reject)=>{const img=new Image();img.on
 async function cropFigures(result){
  const cache={};
  for(const q of result.items||[]){
-  const r=q.figureRegion,src=r&&(result.sourceImages||{})[String(r.image)];
+  const r=q.figureRegion,src=r&&((result.sourceImages||{})[String(r.image)]||(result.localImages||[])[r.image]);
   if(!src)continue;
   try{
    const img=cache[r.image]||(cache[r.image]=await loadImage(src));
@@ -117,6 +117,7 @@ window.importPaperForm=function(classes,opts={}){
   btn.disabled=true;btn.textContent="AI 正在逐题录入，约需 1 分钟…";
   const result=await api("/teacher/papers/import/parse",{method:"POST",body:JSON.stringify(body)});
   if(!importScope.title)importScope.title=(importScope.unit||importScope.subject)+" 导入试卷";
+  result.localImages=body.images;  // photos are numbered first, then PDF scans
   await cropFigures(result);
   reviewImport(result);
  }catch(e){toast("识别失败："+(e.message||"请重试"))}finally{if(document.body.contains(btn)){btn.disabled=false;btn.textContent=bank?"识别题目":"识别试卷"}}};

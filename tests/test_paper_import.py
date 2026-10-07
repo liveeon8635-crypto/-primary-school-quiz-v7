@@ -303,3 +303,15 @@ def test_review_page_crops_and_lets_the_teacher_drop_a_figure():
     assert "await cropFigures(result);" in PAPER_IMPORT_SCRIPT
     assert "data-pi-figure" in PAPER_IMPORT_SCRIPT and "delete out.figure" in PAPER_IMPORT_SCRIPT
     assert "delete out.figureRegion" in PAPER_IMPORT_SCRIPT
+
+
+def test_ai_cannot_supply_a_figure_image_only_a_crop_box():
+    from changying.services.paper_import import clean_import_rows
+
+    jpeg = "data:image/jpeg;base64,/9j/4AAQ"
+    out = clean_import_rows({"questions": [{"question_type": "fill_blank", "text": "如图，求周长", "answer": "20",
+                                            "figure": {"type": "uploaded_image", "data_url": jpeg}},
+                                           {"question_type": "fill_blank", "text": "如图，求面积", "answer": "24",
+                                            "figure": {"image": 0, "box": [0.1, 0.1, 0.5, 0.5]}}]}, subject="数学")
+    assert "figure" not in out["items"][0] and "figureRegion" not in out["items"][0]
+    assert out["items"][1]["figureRegion"] == {"image": 0, "box": [0.1, 0.1, 0.5, 0.5]} and "figure" not in out["items"][1]
