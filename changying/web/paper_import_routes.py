@@ -47,6 +47,15 @@ class PaperImportParseBody(PaperImportScope):
     images: list[str] = []
 
 
+class QuestionUnitBody(BaseModel):
+    ids: list[int]
+    unit: str
+    textbook: Optional[str] = None
+
+
+MAX_UNIT_EDIT = 200
+
+
 class PaperImportSaveBody(PaperImportScope):
     title: str = ""
     questions: list[dict[str, Any]]
@@ -217,6 +226,34 @@ def install_paper_import_routes(implementation: Any) -> None:
             db.refresh(assignment)
             out["assignment"] = implementation.aj(db, assignment)
         return out
+
+    @router.post("/teacher/questions/unit")
+    def edit_question_unit(b: QuestionUnitBody, u: Any = Depends(current_user), db: Any = Depends(get_db)) -> dict[str, Any]:
+        """教材题库: set the 单元 (and optionally 教材) of questions, e.g. ones imported without a real unit (feedback #370)."""
+
+        implementation.need(u, "admin", "teacher")
+        unit = str(b.unit or "").strip()
+        if not unit:
+            raise HTTPException(400, "请填写单元")
+        if len(unit) > 100:
+            raise HTTPException(400, "单元不能超过 100 个字")
+        textbook = None if b.textbook is None else str(b.textbook).strip()
+        if textbook is not None and (not textbook or len(textbook) > 80):
+            raise HTTPException(400, "教材不能为空，且不能超过 80 个字")
+        ids = sorted(set(b.ids))
+        if not ids or len(ids) > MAX_UNIT_EDIT:
+            raise HTTPException(400, f"每次修改 1-{MAX_UNIT_EDIT} 道题")
+        Question = implementation.Question
+        rows = db.scalars(select(Question).where(Question.school_id == u.school_id, Question.id.in_(ids))).all()
+        # A teacher edits only questions they created; the school's admin can edit any of the school's questions.
+        editable = [row for row in rows if u.role == "admin" or row.creator_id == u.id]
+        for row in editable:
+            row.unit = unit
+            if textbook is not None:
+                row.textbook = textbook
+        implementation.audit(db, u, "question.unit.edit", f"questions={len(editable)}:unit={unit}:textbook={textbook or ''}")
+        db.commit()
+        return {"updated": len(editable), "skipped": len(ids) - len(editable)}
 
     app.include_router(router)
     app.state.paper_import_routes_installed = True

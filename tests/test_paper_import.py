@@ -421,7 +421,7 @@ def test_import_errors_are_shown_inside_the_dialog_not_only_in_a_toast():
     from changying.web.paper_import_ui import PAPER_IMPORT_SCRIPT
 
     # The toast is hidden behind an open dialog (feedback #370: "no prompt at all").
-    assert PAPER_IMPORT_SCRIPT.count("${piErrBox}") == 2
+    assert PAPER_IMPORT_SCRIPT.count("${piErrBox}") == 3
     assert 'piError("未保存："' in PAPER_IMPORT_SCRIPT and 'piError("识别失败："' in PAPER_IMPORT_SCRIPT
     assert 'toast("未保存：' not in PAPER_IMPORT_SCRIPT and 'toast("识别失败：' not in PAPER_IMPORT_SCRIPT
 
@@ -470,3 +470,18 @@ def test_text_pdf_png_figures_are_recovered_from_flate_images():
     raw = zlib.decompress(idat)
     assert raw[1:1 + 120] == pixels[:120]  # first row, after its filter byte
     assert clean_images(images) == images  # a PNG passes the same checks as a photo
+
+
+def test_catalog_lets_a_teacher_tick_questions_and_change_their_unit():
+    import app_v924 as legacy
+    from changying.web.classic_ui import inject_classic_ui
+    from changying.web.paper_import_ui import (CATALOG_EDIT_UNIT_MARKER, PAPER_IMPORT_SCRIPT,
+                                               patch_classic_catalog_edit_unit)
+
+    html = inject_classic_ui(legacy.INDEX_HTML)
+    catalog = html[html.find("async function catalog(){"):html.find("function questionForm(){")]
+    assert CATALOG_EDIT_UNIT_MARKER in catalog and 'data-qpick="${q.id}"' in catalog and 'id="pickAllQ"' in catalog
+    assert "window.catalogEditUnit(()=>go(\"catalog\"))" in catalog
+    assert inject_classic_ui(html) == html
+    assert patch_classic_catalog_edit_unit(legacy.INDEX_HTML) == legacy.INDEX_HTML
+    assert "/teacher/questions/unit" in PAPER_IMPORT_SCRIPT and "window.catalogEditUnit" in PAPER_IMPORT_SCRIPT
