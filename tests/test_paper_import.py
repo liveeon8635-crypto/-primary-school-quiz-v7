@@ -279,7 +279,7 @@ def test_figure_regions_and_cropped_figures_are_validated():
 
     assert figure_region({"image": 1, "box": [0.6, 0.5, 0.1, 0.2]}) == {"image": 1, "box": [0.1, 0.2, 0.6, 0.5]}
     assert figure_region({"image": 0, "box": [-1, 0, 2, 0.5]}) == {"image": 0, "box": [0.0, 0.0, 1.0, 0.5]}
-    for bad in (None, {}, {"box": [0, 0, 0.01, 0.5]}, {"image": 9, "box": [0, 0, 1, 1]}, {"box": "x"}, {"box": [0, 0, 1]}):
+    for bad in (None, {}, {"box": [0, 0, 0.01, 0.5]}, {"image": 12, "box": [0, 0, 1, 1]}, {"box": "x"}, {"box": [0, 0, 1]}):
         assert figure_region(bad) is None
     jpeg = "data:image/jpeg;base64,/9j/4AAQ"
     assert cropped_figure({"type": "uploaded_image", "data_url": jpeg}) == {"type": "uploaded_image", "data_url": jpeg, "alt": "题目插图"}
@@ -324,7 +324,7 @@ def test_text_pdf_returns_its_embedded_figures():
     pdf = _pdf([("text", PAPER + "\n3. 12 + 30 = ____  4. 9 x 9 = ____  5. 100 - 1 = ____"), ("jpeg", big), ("jpeg", JPEG)])  # JPEG is a tiny icon: ignored
     text, images = extract_paper_upload("带图.pdf", pdf)
     assert "25 x 4" in text and len(images) == 1 and images[0].startswith("data:image/jpeg;base64,/9j/")
-    assert extract_paper_upload("带图.pdf", pdf, max_images=0)[1] == []
+    assert extract_paper_upload("带图.pdf", pdf, max_figures=0)[1] == []
 
 
 def test_same_wording_with_different_figures_is_not_a_duplicate():
@@ -333,3 +333,18 @@ def test_same_wording_with_different_figures_is_not_a_duplicate():
     rows = [{"question_type": "fill_blank", "text": "看图填空", "answer": str(n), "figure": {"image": 0, "box": [0.1, 0.1 + n / 10, 0.5, 0.2 + n / 10]}}
             for n in (1, 2)]
     assert len(clean_import_rows({"questions": rows}, subject="数学")["items"]) == 2
+
+
+def test_text_pdf_skips_page_decoration_and_keeps_later_figures(monkeypatch):
+    from changying.services import paper_import
+
+    def jpeg(n):
+        return b"\xff\xd8\xff\xe0" + bytes([n]) * 3000 + b"\xff\xd9"
+
+    banner, footer = jpeg(1), jpeg(2)
+    # 4 pages, each with a banner and a footer; the real figures are on pages 1, 2 and 4
+    layout = {0: [banner, jpeg(3), footer, jpeg(4)], 1: [jpeg(5), banner, footer], 2: [banner, footer], 3: [banner, jpeg(6), footer]}
+    monkeypatch.setattr(paper_import, "_page_jpegs", lambda page: layout[page])
+    figures = paper_import._embedded_figures([0, 1, 2, 3], 8)
+    assert len(figures) == 4  # decoration is not counted, so figures on later pages still fit
+    assert len(paper_import._embedded_figures([0, 1, 2, 3], 2)) == 2

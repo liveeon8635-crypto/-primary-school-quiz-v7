@@ -22,6 +22,8 @@ from xml.etree import ElementTree
 MAX_TEXT_CHARS = 30000
 MAX_FILE_BYTES = 5 * 1024 * 1024
 MAX_IMAGES = 4
+MAX_PDF_FIGURES = 8  # distinct pictures of a text PDF sent along with its text
+MAX_PDF_FIGURE_CHARS = 5_000_000  # total size of those pictures, as data URLs
 MAX_IMAGE_DATA_URL_CHARS = 2_000_000
 MAX_IMPORT_QUESTIONS = 60
 IMPORT_TYPES = ("single_choice", "true_false", "fill_blank", "calculation", "short_answer", "non_choice")
@@ -67,13 +69,13 @@ def extract_paper_text(file_name: str, data: bytes) -> str:
     raise PaperImportError("只支持 .pdf、.docx、.txt 文件，或直接粘贴文字、拍照导入")
 
 
-def extract_paper_upload(file_name: str, data: bytes, *, max_images: int = MAX_IMAGES) -> tuple[str, list[str]]:
+def extract_paper_upload(file_name: str, data: bytes, *, max_images: int = MAX_IMAGES, max_figures: int = MAX_PDF_FIGURES) -> tuple[str, list[str]]:
     """Text and, for a scanned PDF, page images (data URLs) of an uploaded paper (feedback #357)."""
 
     if str(file_name or "").lower().endswith(".pdf"):
         if len(data) > MAX_FILE_BYTES:
             raise PaperImportError("文件超过 5MB，请拆分后导入")
-        text, images = extract_pdf(data, max_images=max_images)
+        text, images = extract_pdf(data, max_images=max_images, max_figures=max_figures)
         if not text.strip() and not images:
             raise PaperImportError(PDF_SCANNED_MESSAGE)
         return text, images
@@ -86,7 +88,7 @@ PDF_MIN_TEXT_CHARS = 40
 PDF_SCANNED_MESSAGE = "这个 PDF 里读不到文字，也没有可识别的扫描图片；请改用“拍照导入”，或把内容复制粘贴到上方"
 
 
-def extract_pdf(data: bytes, *, max_images: int = MAX_IMAGES) -> tuple[str, list[str]]:
+def extract_pdf(data: bytes, *, max_images: int = MAX_IMAGES, max_figures: int = MAX_PDF_FIGURES) -> tuple[str, list[str]]:
     """Text of a text PDF plus its embedded JPEG figures; for a scanned PDF, the JPEG scan of each page (up to max_images).
 
     Only JPEG (DCTDecode) page scans are passed on, as-is, so no imaging library is needed.
@@ -117,7 +119,7 @@ def extract_pdf(data: bytes, *, max_images: int = MAX_IMAGES) -> tuple[str, list
     text = "\n".join(t.strip() for t in texts if t.strip())[:MAX_TEXT_CHARS]
     if len(re.sub(r"\s", "", text)) >= PDF_MIN_TEXT_CHARS * max(1, len(pages)) // 2:
         # A text PDF: its embedded pictures are the questions' figures (feedback #357 r3).
-        return text, _embedded_figures(pages, max_images)
+        return text, _embedded_figures(pages, max_figures)
     images: list[str] = []
     for page in pages:
         if len(images) >= max_images:
@@ -159,20 +161,32 @@ def _page_jpegs(page: Any) -> list[bytes]:
 
 
 def _embedded_figures(pages: list[Any], max_images: int) -> list[str]:
-    """JPEG pictures embedded in a text PDF (data URLs), first max_images, no duplicates."""
+    """JPEG pictures embedded in a text PDF (data URLs), in page order, no duplicates.
 
+    A picture that is drawn on most pages is page decoration (banner, footer), not a
+    question's figure, and is skipped so it does not use up the allowance.
+    """
+
+    per_page = [_page_jpegs(page) for page in pages]
+    counts: dict[bytes, int] = {}
+    for rows in per_page:
+        for raw in set(rows):
+            counts[raw] = counts.get(raw, 0) + 1
+    repeated = max(2, len(pages) // 2 + 1)
     figures: list[str] = []
     seen: set[bytes] = set()
-    for page in pages:
-        for raw in _page_jpegs(page):
+    total = 0
+    for rows in per_page:
+        for raw in rows:
             if len(figures) >= max_images:
                 return figures
-            if len(raw) < MIN_FIGURE_BYTES or raw in seen:
+            if len(raw) < MIN_FIGURE_BYTES or raw in seen or (len(pages) >= 3 and counts[raw] >= repeated):
                 continue
             seen.add(raw)
             url = "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
-            if len(url) <= MAX_IMAGE_DATA_URL_CHARS:
+            if len(url) <= MAX_IMAGE_DATA_URL_CHARS and total + len(url) <= MAX_PDF_FIGURE_CHARS:
                 figures.append(url)
+                total += len(url)
     return figures
 
 
@@ -382,7 +396,7 @@ def figure_region(value: Any) -> dict[str, Any] | None:
         x0, y0, x1, y1 = (float(v) for v in value.get("box"))
     except (TypeError, ValueError):
         return None
-    if not 0 <= image < MAX_IMAGES:
+    if not 0 <= image < MAX_IMAGES + MAX_PDF_FIGURES:
         return None
     x0, x1 = sorted((max(0.0, min(1.0, x0)), max(0.0, min(1.0, x1))))
     y0, y1 = sorted((max(0.0, min(1.0, y0)), max(0.0, min(1.0, y1))))
