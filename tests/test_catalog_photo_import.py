@@ -3,6 +3,7 @@ teacher reviews, questions go straight into the question bank."""
 
 from __future__ import annotations
 
+import base64
 import os
 import subprocess
 import sys
@@ -81,13 +82,27 @@ with TestClient(app) as client:
     assert client.post("/teacher/papers/import/save", headers=ah, json={**scope, "title": "x", "questions": [items[0]]}).status_code == 403
     assert client.post("/teacher/papers/import/save", headers=th, json={**scope, "questions": [items[0]], "create_paper": False, "class_id": 1}).status_code == 400
     assert client.post("/teacher/papers/import/parse", headers=sh, json={**scope, "text": "x"}).status_code == 403
+
+    # Feedback #357: a scanned PDF reaches the AI as page images, alongside any photos.
+    import os
+    calls.clear()
+    pdf = client.post("/teacher/papers/import/parse", headers=th,
+                      json={**scope, "file_name": "期中扫描.pdf", "file_base64": os.environ["SCANNED_PDF_B64"], "images": [PHOTO]})
+    assert pdf.status_code == 200, pdf.text
+    assert calls == [("paper_import", 3)]
+    too_many = client.post("/teacher/papers/import/parse", headers=th,
+                           json={**scope, "file_name": "期中扫描.pdf", "file_base64": os.environ["SCANNED_PDF_B64"], "images": [PHOTO] * 3})
+    assert too_many.status_code == 400 and "最多识别 1 页" in too_many.json()["detail"], too_many.text
 print("CATALOG_PHOTO_IMPORT_OK")
 """
 
 
 def test_runtime_photo_questions_saved_to_bank_without_a_paper(tmp_path):
     env = os.environ.copy()
-    env.update({"DATABASE_URL": f"sqlite:///{tmp_path / 'catalog.sqlite3'}", "ENABLE_DEMO_SEED": "1", "PYTHONPATH": str(ROOT)})
+    from tests.test_paper_import import JPEG, _pdf
+
+    env.update({"DATABASE_URL": f"sqlite:///{tmp_path / 'catalog.sqlite3'}", "ENABLE_DEMO_SEED": "1", "PYTHONPATH": str(ROOT),
+                "SCANNED_PDF_B64": base64.b64encode(_pdf([("jpeg", JPEG), ("jpeg", JPEG)])).decode()})
     result = subprocess.run([sys.executable, "-c", RUNTIME], cwd=ROOT, env=env, capture_output=True, text=True, timeout=240, check=False)
     assert result.returncode == 0 and "CATALOG_PHOTO_IMPORT_OK" in result.stdout, (
         f"catalog photo import runtime failed\nstdout:\n{result.stdout[-4000:]}\nstderr:\n{result.stderr[-6000:]}"

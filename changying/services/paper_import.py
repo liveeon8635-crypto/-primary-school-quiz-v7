@@ -1,7 +1,7 @@
 """Import a past paper (往年试卷/真题) as typed questions.
 
-The teacher pastes the paper text, uploads a .txt/.docx, or photographs
-up to four pages. AI transcribes it question by question into the existing
+The teacher pastes the paper text, uploads a .txt/.docx/.pdf (a scanned PDF
+goes to AI as page images), or photographs up to four pages. AI transcribes it question by question into the existing
 typed model (single_choice, true_false, fill_blank, calculation,
 short_answer, non_choice); the paper's own answer key wins over AI answers,
 and every AI-inferred answer is flagged for the teacher to check. Nothing is
@@ -60,9 +60,100 @@ def extract_paper_text(file_name: str, data: bytes) -> str:
     if name.endswith(".docx"):
         return _docx_text(data)[:MAX_TEXT_CHARS]
     if name.endswith(".pdf"):
-        # Production has no PDF library (requirements.txt); keep it dependency-free.
-        raise PaperImportError("暂不支持直接上传 PDF：请在 PDF 中全选复制文字粘贴到上方，或改用“拍照导入”")
-    raise PaperImportError("只支持 .txt、.docx 文件，或直接粘贴文字、拍照导入")
+        text, _ = extract_pdf(data)
+        if not text.strip():
+            raise PaperImportError(PDF_SCANNED_MESSAGE)
+        return text
+    raise PaperImportError("只支持 .pdf、.docx、.txt 文件，或直接粘贴文字、拍照导入")
+
+
+def extract_paper_upload(file_name: str, data: bytes, *, max_images: int = MAX_IMAGES) -> tuple[str, list[str]]:
+    """Text and, for a scanned PDF, page images (data URLs) of an uploaded paper (feedback #357)."""
+
+    if str(file_name or "").lower().endswith(".pdf"):
+        if len(data) > MAX_FILE_BYTES:
+            raise PaperImportError("文件超过 5MB，请拆分后导入")
+        text, images = extract_pdf(data, max_images=max_images)
+        if not text.strip() and not images:
+            raise PaperImportError(PDF_SCANNED_MESSAGE)
+        return text, images
+    return extract_paper_text(file_name, data), []
+
+
+MAX_PDF_PAGES = 20
+# A page with less text than this is treated as a scan (headers or page numbers only).
+PDF_MIN_TEXT_CHARS = 40
+PDF_SCANNED_MESSAGE = "这个 PDF 里读不到文字，也没有可识别的扫描图片；请改用“拍照导入”，或把内容复制粘贴到上方"
+
+
+def extract_pdf(data: bytes, *, max_images: int = MAX_IMAGES) -> tuple[str, list[str]]:
+    """Text of a text PDF; for a scanned PDF, the JPEG scan of each page (up to max_images).
+
+    Only JPEG (DCTDecode) page scans are passed on, as-is, so no imaging library is needed.
+    """
+
+    try:
+        from pypdf import PdfReader
+        from pypdf.errors import PdfReadError
+    except ImportError as exc:  # deployment without pypdf: keep the old guidance
+        raise PaperImportError("暂不支持直接上传 PDF：请在 PDF 中全选复制文字粘贴到上方，或改用“拍照导入”") from exc
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        if reader.is_encrypted and not reader.decrypt(""):
+            raise PaperImportError("PDF 已加密，请先取消密码保护后再导入")
+        pages = list(reader.pages)
+    except PaperImportError:
+        raise
+    except (PdfReadError, ValueError, KeyError, TypeError, OSError) as exc:
+        raise PaperImportError("无法读取 PDF 文件，请确认文件完整后重试") from exc
+    if len(pages) > MAX_PDF_PAGES:
+        raise PaperImportError(f"PDF 超过 {MAX_PDF_PAGES} 页，请拆分后导入")
+    texts: list[str] = []
+    for page in pages:
+        try:
+            texts.append(page.extract_text() or "")
+        except Exception:  # noqa: BLE001 - a broken page must not sink the whole paper
+            texts.append("")
+    text = "\n".join(t.strip() for t in texts if t.strip())[:MAX_TEXT_CHARS]
+    if len(re.sub(r"\s", "", text)) >= PDF_MIN_TEXT_CHARS * max(1, len(pages)) // 2:
+        return text, []
+    images: list[str] = []
+    for page in pages:
+        if len(images) >= max_images:
+            break
+        scan = _page_jpeg(page)
+        if scan:
+            url = "data:image/jpeg;base64," + base64.b64encode(scan).decode("ascii")
+            if len(url) > MAX_IMAGE_DATA_URL_CHARS:
+                raise PaperImportError("PDF 中的扫描图片过大，请改用“拍照导入”")
+            images.append(url)
+    if images and len(pages) > max_images:
+        raise PaperImportError(f"扫描版 PDF 一次最多识别 {max_images} 页，请拆分后导入，或改用“拍照导入”")
+    return text, images
+
+
+def _page_jpeg(page: Any) -> bytes | None:
+    """The largest JPEG image drawn on a PDF page, raw bytes."""
+
+    try:
+        xobjects = page.get("/Resources", {}).get_object().get("/XObject")
+        if xobjects is None:
+            return None
+        best: bytes | None = None
+        for ref in xobjects.get_object().values():
+            obj = ref.get_object()
+            if obj.get("/Subtype") != "/Image":
+                continue
+            filters = obj.get("/Filter")
+            names = [str(f) for f in filters] if isinstance(filters, list) else [str(filters)]
+            if names != ["/DCTDecode"]:
+                continue
+            raw = obj._data  # DCTDecode stream bytes are already a complete JPEG file
+            if raw[:2] == b"\xff\xd8" and (best is None or len(raw) > len(best)):
+                best = bytes(raw)
+        return best
+    except Exception:  # noqa: BLE001 - unreadable resources mean "no usable scan"
+        return None
 
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"

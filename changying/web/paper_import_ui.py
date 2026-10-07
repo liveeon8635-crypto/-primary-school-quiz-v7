@@ -1,7 +1,7 @@
 """Classic 组卷与作业 page: 导入试卷 (past paper / 真题 import).
 
 Adds an 导入试卷 button next to ＋布置作业. Flow: choose source (paste text,
-.txt/.docx, or up to four photos) -> AI transcription -> teacher reviews
+.pdf/.docx/.txt, or up to four photos) -> AI transcription -> teacher reviews
 and edits every question (answer source is shown; missing answers must be
 filled) -> save as a paper, optionally assigned to a class. Backend:
 changying/web/paper_import_routes.py.
@@ -76,12 +76,12 @@ window.importPaperForm=function(classes,opts={}){
  importClasses=classes||[];importMode=opts.mode==="bank"?"bank":"paper";
  const bank=importMode==="bank";
  const grades=[1,2,3,4,5,6].map(g=>`<option value="${g}" ${g===5?"selected":""}>${g}年级</option>`).join("");
- modal(bank?"拍照 / 导入新增题目":"导入试卷 / 真题",`<p class="muted">${bank?"拍下练习册、试卷或板书上的题目（最多 4 张），也可以粘贴文字或上传 Word/文本。AI 自动识别题目和题型（单选、判断、填空、计算、简答、主观题），由你核对后保存到题库。":"粘贴试卷文字（PDF 可全选复制后粘贴）、上传 Word/文本，或拍照上传（最多 4 张）。AI 逐题录入后由你核对，核对前不会保存。"}</p>
+ modal(bank?"拍照 / 导入新增题目":"导入试卷 / 真题",`<p class="muted">${bank?"拍下练习册、试卷或板书上的题目（最多 4 张），也可以粘贴文字或上传 PDF/Word/文本。AI 自动识别题目和题型（单选、判断、填空、计算、简答、主观题），由你核对后保存到题库。":"粘贴试卷文字、上传 PDF/Word/文本（扫描版 PDF 最多 4 页），或拍照上传（最多 4 张）。AI 逐题录入后由你核对，核对前不会保存。"}</p>
  <div class="form-grid"><div><label>年级</label><select id="piGrade">${grades}</select></div><div><label>学科</label><select id="piSubject"><option>数学</option><option>语文</option><option>英语</option><option>科学</option></select></div>
  <div><label>教材</label><input id="piTextbook" placeholder="例如：人教版"></div><div><label>学期</label><select id="piSemester"><option>上册</option><option>下册</option></select></div><div><label>单元（可选）</label><input id="piUnit" placeholder="例如：第二单元"></div>${bank?"":`<div><label>试卷名称</label><input id="piName" placeholder="例如：2025 期中真题"></div>`}</div>
  ${bank?`<label>拍照识别（最多 4 张）</label><input type="file" id="piPhotos" accept="image/*" multiple>`:""}
  <label>${bank?"或粘贴题目文字":"粘贴试卷文字"}</label><textarea id="piText" rows="${bank?5:8}" placeholder="${bank?"粘贴题目（含答案更好）":"把试卷内容（含答案更好）粘贴到这里"}"></textarea>
- <label>或上传文件（.docx / .txt）</label><input type="file" id="piFile" accept=".docx,.txt">
+ <label>或上传文件（.pdf / .docx / .txt）</label><input type="file" id="piFile" accept=".pdf,.docx,.txt,application/pdf">
  ${bank?"":`<label>或拍照导入（最多 4 张）</label><input type="file" id="piPhotos" accept="image/*" multiple>`}
  <button class="btn primary full" id="piParse">${bank?"识别题目":"识别试卷"}</button>`);
  $("#piParse").onclick=async()=>{const btn=$("#piParse");if(btn.disabled)return;try{
