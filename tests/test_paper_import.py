@@ -423,3 +423,16 @@ def test_toast_is_moved_into_an_open_dialog():
     assert TOAST_IN_DIALOG_MARKER in html and "host=dlg&&dlg.open?dlg:document.body" in html
     assert inject_classic_ui(html) == html
     assert patch_classic_toast_in_dialog("<script>nothing</script>") == "<script>nothing</script>"
+
+
+def test_text_pdf_reports_when_figures_exceed_the_limit(monkeypatch):
+    from changying.services import paper_import
+
+    def jpeg(n):
+        return b"\xff\xd8\xff\xe0" + bytes([n]) * 3000 + b"\xff\xd9"
+
+    layout = {0: [jpeg(1), jpeg(2)], 1: [jpeg(3), jpeg(4)], 2: [jpeg(5)]}
+    monkeypatch.setattr(paper_import, "_page_jpegs", lambda page: layout[page])
+    stats: dict[str, int] = {}
+    assert len(paper_import._embedded_figures([0, 1, 2], 3, stats)) == 3
+    assert stats == {"figuresFound": 5, "figuresUsed": 3}

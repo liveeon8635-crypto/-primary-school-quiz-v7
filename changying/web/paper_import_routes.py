@@ -80,9 +80,10 @@ def install_paper_import_routes(implementation: Any) -> None:
             text = str(b.text or "")
             images = clean_images(b.images)
             photo_count = len(images)
+            pdf_stats: dict[str, int] = {}
             if b.file_base64:
                 file_text, scans = extract_paper_upload(b.file_name, decode_upload(b.file_base64),
-                                                        max_images=MAX_IMAGES - len(images))
+                                                        max_images=MAX_IMAGES - len(images), stats=pdf_stats)
                 text = (text + "\n" + file_text).strip()
                 images += scans
         except PaperImportError as exc:
@@ -115,6 +116,9 @@ def install_paper_import_routes(implementation: Any) -> None:
             notes.append(f"{summary['aiAnswers']} 道题的答案由 AI 解答，请逐题核对")
         if summary["figures"]:
             notes.append(f"{summary['figures']} 道题已从原卷裁出插图，请核对插图是否完整")
+        if pdf_stats.get("figuresFound", 0) > pdf_stats.get("figuresUsed", 0):
+            notes.append(f"PDF 里有 {pdf_stats['figuresFound']} 张插图，只识别了前 {pdf_stats['figuresUsed']} 张；"
+                         "后面页的带图题可能没录入，请把 PDF 拆成几份分别导入")
         if summary["needsAnswer"]:
             notes.append(f"{summary['needsAnswer']} 道题缺少答案，需补全后才能保存")
         if result["skipped"]:
