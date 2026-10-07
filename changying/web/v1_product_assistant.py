@@ -230,6 +230,39 @@ FREEMAN_FEEDBACK_IMPORT_URL = "https://freeman-agent.onrender.com/api/project-fe
 FREEMAN_FEEDBACK_STATUS_URL = "https://freeman-agent.onrender.com/api/project-feedback/status"
 FEEDBACK_PROOF_TTL_MINUTES = 15
 FEEDBACK_ATTACHMENT_MAX_BYTES = 1_000_000
+# 反馈 #357：钟老师在 /classic?legacy=1&unified=1&page=papers 导入试卷时
+# 无法上传 PDF 文件，希望允许 PDF 格式。这里登记试卷导入允许的文件类型，
+# 供导入路由与前端 accept 属性统一引用，避免只允许图片导致 PDF 被拒。
+PAPER_IMPORT_ALLOWED_EXTENSIONS = (".pdf", ".doc", ".docx", ".txt", ".jpg", ".jpeg", ".png")
+PAPER_IMPORT_ALLOWED_MIME_TYPES = (
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+    "image/jpeg",
+    "image/png",
+)
+PAPER_IMPORT_PDF_ENABLED = True
+
+
+def paper_import_accept_attribute() -> str:
+    """反馈 #357：返回试卷导入文件选择框的 accept 属性值，包含 PDF。"""
+    return ",".join(PAPER_IMPORT_ALLOWED_EXTENSIONS)
+
+
+def paper_import_allows_pdf(filename: str = "", content_type: str = "") -> bool:
+    """反馈 #357：判断试卷导入是否接受 PDF 文件。
+
+    同时按扩展名与 MIME 类型判断，任一命中即视为允许，避免浏览器
+    未提供 content_type 时误拒 PDF。
+    """
+    name = str(filename or "").strip().lower()
+    ctype = str(content_type or "").strip().lower()
+    if name.endswith(".pdf"):
+        return True
+    if ctype == "application/pdf":
+        return True
+    return False
 FEEDBACK_GITHUB_REPO = "liveeon8635-crypto/-primary-school-quiz-v7"
 FEEDBACK_GITHUB_TOKEN_ENV = "CHANGYING_FEEDBACK_GITHUB_TOKEN"
 _logger = logging.getLogger(__name__)
