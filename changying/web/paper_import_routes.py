@@ -47,11 +47,13 @@ class PaperImportParseBody(PaperImportScope):
 
 
 class PaperImportSaveBody(PaperImportScope):
-    title: str
+    title: str = ""
     questions: list[dict[str, Any]]
     class_id: Optional[int] = None
     due_date: str = ""
     instructions: str = ""
+    # False: 教材题库 "拍照/导入新增题目" (feedback #337) saves questions only.
+    create_paper: bool = True
 
 
 def _check_scope(b: PaperImportScope) -> None:
@@ -71,7 +73,7 @@ def install_paper_import_routes(implementation: Any) -> None:
 
     @router.post("/teacher/papers/import/parse")
     def parse_paper(b: PaperImportParseBody, u: Any = Depends(current_user), db: Any = Depends(get_db)) -> dict[str, Any]:
-        implementation.need(u, "teacher")
+        implementation.need(u, "admin", "teacher")
         _check_scope(b)
         try:
             text = str(b.text or "")
@@ -106,10 +108,14 @@ def install_paper_import_routes(implementation: Any) -> None:
 
     @router.post("/teacher/papers/import/save")
     def save_paper(b: PaperImportSaveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)) -> dict[str, Any]:
-        implementation.need(u, "teacher")
+        implementation.need(u, "admin", "teacher")
         _check_scope(b)
+        if b.create_paper and u.role != "teacher":
+            raise HTTPException(403, "只有教师可以保存试卷或布置作业；管理员可保存到题库")
+        if not b.create_paper and b.class_id is not None:
+            raise HTTPException(400, "只保存到题库时不能同时布置作业")
         title = (b.title or "").strip()[:160]
-        if not title:
+        if b.create_paper and not title:
             raise HTTPException(400, "请填写试卷名称")
         if not b.questions or len(b.questions) > MAX_IMPORT_QUESTIONS:
             raise HTTPException(400, f"每份试卷保存 1-{MAX_IMPORT_QUESTIONS} 道题")
@@ -136,12 +142,16 @@ def install_paper_import_routes(implementation: Any) -> None:
             db.flush()
             ids.append(int(row.id))
             types[int(row.id)] = item["question_type"]
+        distribution = type_distribution(types, ids)
+        if not b.create_paper:
+            implementation.audit(db, u, "question.import.save", f"questions={len(ids)}:types={json.dumps(distribution, ensure_ascii=False)}")
+            db.commit()
+            return {"savedCount": len(ids), "questionIDs": ids, "typeDistribution": distribution, "typeSummary": distribution_text(distribution)}
         paper = implementation.Paper(school_id=u.school_id, title=title, grade=b.grade, subject=b.subject[:30],
                                      textbook=(b.textbook or "")[:80], unit=(b.unit or "")[:100],
                                      question_ids_json=json.dumps(ids), teacher_id=u.id)
         db.add(paper)
         db.flush()
-        distribution = type_distribution(types, ids)
         assignment = None
         if cls is not None:
             has_open = "non_choice" in distribution
