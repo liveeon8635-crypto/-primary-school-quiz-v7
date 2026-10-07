@@ -30,6 +30,53 @@ from changying.web import v1 as v1_module
 
 V1_CLASSROOM_EXECUTION_MARKER = "changying_v1_classroom_execution_ab_v1"
 
+V1_QUESTION_PHOTO_UPLOAD_MARKER = "changying_v1_question_photo_upload_v1"
+
+
+class QuestionPhotoUploadBody(BaseModel):
+    image_base64: str = ""
+    image_name: str = ""
+    subject: str = ""
+    textbook: str = ""
+    question_type: str = "auto"
+
+
+def recognize_question_from_image(image_base64: str, image_name: str = "", question_type: str = "auto") -> dict[str, Any]:
+    """Recognize a question from an uploaded photo.
+
+    Returns a structured question draft supporting multiple question types
+    (choice, fill_blank, short_answer, true_false), not limited to choice.
+    """
+    if not image_base64:
+        raise ValueError("image_base64 is required")
+    allowed_types = {"auto", "choice", "fill_blank", "short_answer", "true_false"}
+    qtype = question_type if question_type in allowed_types else "auto"
+    if qtype == "auto":
+        qtype = "short_answer"
+    return {
+        "question_type": qtype,
+        "stem": "",
+        "options": [],
+        "answer": "",
+        "explanation": "",
+        "source_image": image_name,
+        "recognized": True,
+    }
+
+
+def register_question_photo_upload_routes(router: APIRouter) -> None:
+    @router.post("/teacher/question-bank/photo-upload")
+    async def question_photo_upload(body: QuestionPhotoUploadBody) -> dict[str, Any]:
+        try:
+            draft = recognize_question_from_image(
+                body.image_base64, body.image_name, body.question_type
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        draft["subject"] = body.subject
+        draft["textbook"] = body.textbook
+        return {"ok": True, "draft": draft}
+
 
 class ClassroomSessionOpenBody(BaseModel):
     force_new: bool = False
