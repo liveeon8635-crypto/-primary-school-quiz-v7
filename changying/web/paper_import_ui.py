@@ -40,6 +40,12 @@ async function cropFigures(result){
  return result;
 }
 const figureEditor=(q,i)=>q.figure?`<div style="margin:6px 0"><img src="${q.figure.data_url}" alt="题目插图" style="display:block;max-width:100%;max-height:260px;object-fit:contain;border:1px solid var(--line);border-radius:8px"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-pi-figure="${i}" checked>保留这张插图（从原卷裁出，裁得不对可取消勾选）</label></div>`:(q.figureRegion?'<small class="muted">这道题需要插图，但没能从原卷裁出；保存后可在题库中补拍照片。</small>':"");
+// The toast sits under an open dialog, so errors are also shown inside it (feedback #370: "no prompt").
+function piError(msg){
+ const box=$("#piErr");if(box){box.textContent=msg||"";box.style.display=msg?"block":"none";if(msg&&box.scrollIntoView)box.scrollIntoView({block:"nearest"})}
+ if(msg)toast(msg);
+}
+const piErrBox='<div id="piErr" role="alert" style="display:none;margin:8px 0;padding:8px 10px;border-radius:8px;background:#fdecee;color:#d6485e;font-weight:600"></div>';
 // Where did the import go? (feedback #370: teachers could not find a saved paper.)
 function savedNotice(saved,title,count){
  const unit=esc(importScope.unit||"导入试卷"),name=esc(saved.title||title);
@@ -79,8 +85,9 @@ function reviewImport(result){
  ${importMode==="bank"?`<small class="muted">勾选的题目会保存到教材题库，之后布置作业时按题型均衡抽题。</small>`:`<label>试卷名称</label><input id="piTitle" value="${esc(importScope.title||"")}">
  <div class="form-grid"><div><label>布置给班级（可选）</label><select id="piClass"><option value="">只保存为试卷，暂不布置</option>${classOptions}</select></div><div><label>截止日期</label><input type="date" id="piDue"></div></div>
  <small class="muted">含主观题的试卷会改为拍照提交、教师评分；其余题型在线自动判分。</small>`}
+ ${piErrBox}
  <button class="btn primary full" id="piSave">${importMode==="bank"?"确认已核对，保存到题库":"确认已核对，保存"}</button>`);
- $("#piSave").onclick=async()=>{const btn=$("#piSave");if(btn.disabled)return;try{
+ $("#piSave").onclick=async()=>{const btn=$("#piSave");if(btn.disabled)return;piError("");try{
   const questions=collectEdits();if(!questions.length)throw new Error("请至少勾选 1 道题");
   const missing=questions.findIndex(q=>(["single_choice","true_false"].includes(q.question_type)&&!(q.correct_index>=0))||(["fill_blank","calculation","short_answer"].includes(q.question_type)&&!q.answer)||(q.question_type==="non_choice"&&!q.reference_answer)||!q.text);
   if(missing>=0)throw new Error("还有题目缺少题干或答案，请补全（勾选的第 "+(missing+1)+" 题）");
@@ -96,7 +103,7 @@ function reviewImport(result){
   btn.disabled=true;btn.textContent="正在保存…";
   const saved=await api("/teacher/papers/import/save",{method:"POST",body:JSON.stringify({...importScope,title,questions,class_id:classValue?+classValue:null,due_date:$("#piDue").value||""})});
   closeModal();go("papers");savedNotice(saved,title,questions.length);
- }catch(e){toast("未保存："+(e.message||"请重试"))}finally{if(document.body.contains(btn)){btn.disabled=false;btn.textContent=importMode==="bank"?"确认已核对，保存到题库":"确认已核对，保存"}}};
+ }catch(e){piError("未保存："+(e.message||"请重试"))}finally{if(document.body.contains(btn)){btn.disabled=false;btn.textContent=importMode==="bank"?"确认已核对，保存到题库":"确认已核对，保存"}}};
 }
 window.catalogAnswerBadge=function(q){
  const t=q.questionType||"single_choice",name=TYPE_NAMES[t]||t;
@@ -115,8 +122,9 @@ window.importPaperForm=function(classes,opts={}){
  <label>${bank?"或粘贴题目文字":"粘贴试卷文字"}</label><textarea id="piText" rows="${bank?5:8}" placeholder="${bank?"粘贴题目（含答案更好）":"把试卷内容（含答案更好）粘贴到这里"}"></textarea>
  <label>或上传文件（.pdf / .docx / .txt）</label><input type="file" id="piFile" accept=".pdf,.docx,.txt,application/pdf">
  ${bank?"":`<label>或拍照导入（最多 4 张）</label><input type="file" id="piPhotos" accept="image/*" multiple>`}
+ ${piErrBox}
  <button class="btn primary full" id="piParse">${bank?"识别题目":"识别试卷"}</button>`);
- $("#piParse").onclick=async()=>{const btn=$("#piParse");if(btn.disabled)return;try{
+ $("#piParse").onclick=async()=>{const btn=$("#piParse");if(btn.disabled)return;piError("");try{
   importScope={grade:+$("#piGrade").value,subject:$("#piSubject").value,textbook:$("#piTextbook").value.trim(),semester:$("#piSemester").value,unit:$("#piUnit").value.trim(),title:($("#piName")?.value||"").trim()};
   if(!importScope.textbook)throw new Error("请先填写教材（如：人教版）：布置作业时按教材和单元从题库取题");
   if(!importScope.unit)throw new Error("请先填写单元：导入的题目按单元归入教材题库");
@@ -131,7 +139,7 @@ window.importPaperForm=function(classes,opts={}){
   result.localImages=body.images;  // photos are numbered first, then PDF scans
   await cropFigures(result);
   reviewImport(result);
- }catch(e){toast("识别失败："+(e.message||"请重试"))}finally{if(document.body.contains(btn)){btn.disabled=false;btn.textContent=bank?"识别题目":"识别试卷"}}};
+ }catch(e){piError("识别失败："+(e.message||"请重试"))}finally{if(document.body.contains(btn)){btn.disabled=false;btn.textContent=bank?"识别题目":"识别试卷"}}};
 };
 })();
 </script>

@@ -404,3 +404,12 @@ def test_assistant_points_to_the_catalog_for_imported_questions():
     keys = [c["key"] for c in _guidance_cards("组卷作业导入试卷后保存到哪里了")]
     assert "paper_import_saved" in keys and "catalog_questions" in keys
     assert "教材题库" in _local_answer("怎么查上传的题目", "教师", "papers", "", role="teacher")
+
+
+def test_import_errors_are_shown_inside_the_dialog_not_only_in_a_toast():
+    from changying.web.paper_import_ui import PAPER_IMPORT_SCRIPT
+
+    # The toast is hidden behind an open dialog (feedback #370: "no prompt at all").
+    assert PAPER_IMPORT_SCRIPT.count("${piErrBox}") == 2
+    assert 'piError("未保存："' in PAPER_IMPORT_SCRIPT and 'piError("识别失败："' in PAPER_IMPORT_SCRIPT
+    assert 'toast("未保存：' not in PAPER_IMPORT_SCRIPT and 'toast("识别失败：' not in PAPER_IMPORT_SCRIPT
