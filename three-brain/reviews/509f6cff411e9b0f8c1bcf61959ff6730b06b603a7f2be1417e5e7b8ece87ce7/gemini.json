@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:509f6cff411e9b0f8c1bcf61959ff6730b06b603a7f2be1417e5e7b8ece87ce7",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "02cfcba8165ea1a198da4ea75781977d6a76df9d",
+  "headSha": "7a8144d7db67f570cedfef018ffc0fef0cc30171",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：该变更为教师培训工作台与沙盒补充了试卷导入及题目归类说明，并补充了对应的单元测试，代码改动清晰且 CI 检查全部通过。",
+      "evidenceRefs": [
+        "pr:#625",
+        "run:113347504580",
+        "run:113347498291",
+        "status:automation-boundary-guard",
+        "file:changying/web/v1_training_sandbox.py#L100",
+        "file:changying/web/v1_training_workbench.py#L193",
+        "file:changying/web/v1_training_workbench.py#L211",
+        "file:tests/test_v1_training_workbench.py#L215-L251"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:6cc3e33b604e7d8d91260ac87a3d13488210b8998c0647c19b3e70935cd09c2e"
+}
