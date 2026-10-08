@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:2811546b173501a2b82e221de8dd8fb1931506e57d38e435045bccf3e4cb6747",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "02cfcba8165ea1a198da4ea75781977d6a76df9d",
+  "headSha": "e9ac8cbdcbf8271f380412f0ac96a7cfe9b0956c",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：本次变更补充了教师培训沙盒中关于试卷导入及题目归类位置的文案说明，并添加了相应的单元测试，改进清晰且无副作用。",
+      "evidenceRefs": [
+        "file:changying/web/v1_training_sandbox.py#L100",
+        "file:changying/web/v1_training_workbench.py#L193",
+        "file:changying/web/v1_training_workbench.py#L211",
+        "file:tests/test_v1_training_workbench.py#L215-L242",
+        "run:113331133252"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:f5f213e3b6e4a24d6a7b59c15820173eb755d6468478b3867970d3aa36d29e13"
+}
