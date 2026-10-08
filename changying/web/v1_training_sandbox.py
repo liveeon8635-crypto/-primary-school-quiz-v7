@@ -97,7 +97,7 @@ ROLE_FLOW: dict[str, list[dict[str, str]]] = {
 STEP_RELATIONSHIPS: dict[str, dict[str, str]] = {
     "teacher_dashboard": {"who": "教师", "creates": "无新增业务写入", "visible_to": "教师", "other_role_sees": "学生、家长只看到与自己有关的结果，不看到教师工作台", "communication_tip": "先从工作台确认今天要处理的班级、作业和课堂，再进入具体功能", "next": "班级学生"},
     "teacher_resources": {"who": "教师", "creates": "教材/教案资料引用关系", "visible_to": "教师；标记学生可见的资料按权限给学生", "other_role_sees": "学生只看到被允许的资料，不看到教师私有备课文件", "communication_tip": "上传资料前确认版权和学生可见范围", "next": "教材题库或 AI 助手"},
-    "teacher_catalog": {"who": "教师", "creates": "题目筛选/选题上下文", "visible_to": "教师", "other_role_sees": "学生只看到最终被布置的题目", "communication_tip": "题库浏览不等于布置，发布前仍需教师审核；新导入的题目按导入时填写的单元归类；题库里已有完全相同的题会沿用原来的位置。找不到时先核对单元和学科", "next": "组卷作业"},
+    "teacher_catalog": {"who": "教师", "creates": "题目筛选/选题上下文", "visible_to": "教师", "other_role_sees": "学生只看到最终被布置的题目", "communication_tip": "题库浏览不等于布置，发布前仍需教师审核；新导入的题目按导入时填写的单元归类；题库里已有完全相同的题（带插图的题除外）会沿用原来的位置。找不到时先核对单元和学科", "next": "组卷作业"},
     "teacher_audit": {"who": "教师查看", "creates": "无新增业务事实", "visible_to": "教师本人授权范围", "other_role_sees": "其他角色不直接看到教师操作记录", "communication_tip": "出现争议时用操作记录确认时间、对象和动作", "next": "核对教学事实"},
     "teacher_leaderboard": {"who": "系统汇总/教师查看", "creates": "班级展示排序", "visible_to": "按班级权限", "other_role_sees": "学生只看到允许公开的班级排行信息", "communication_tip": "排行榜用于激励，不应替代学习诊断或给学生贴标签", "next": "积分与学习反馈"},
     "student_home": {"who": "学生", "creates": "无新增业务写入", "visible_to": "学生本人", "other_role_sees": "教师通过自己的工作台看任务状态，不看到学生首页本身", "communication_tip": "首页是任务入口，不等于已经完成作业或课堂", "next": "同步课堂/我的作业"},

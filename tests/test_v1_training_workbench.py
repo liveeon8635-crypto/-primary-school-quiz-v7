@@ -225,8 +225,8 @@ def test_teacher_tutorial_explains_paper_import_and_where_imported_questions_go(
         "保存后试卷在「组卷与作业」，题目进入「教材题库」",
         "导入或拍照上传的题目也在这里",
         "单元就是导入时填写的单元",
-        "题库里已有完全相同的题会直接沿用、不重复保存，仍在它原来的单元下",
-        "勾选题目后可批量修改单元或教材（只能改自己导入或创建的题目）",
+        "题库里已有完全相同的题（带插图的题除外）会直接沿用、不重复保存，仍在它原来的单元下",
+        "勾选题目后可批量修改单元或教材（老师只能改自己导入或创建的题目，管理员可改本校所有题目）",
     ):
         assert text in html
 
@@ -244,6 +244,10 @@ def test_teacher_tutorial_explains_paper_import_and_where_imported_questions_go(
     # duplicate questions are reused (not re-filed under the new unit), as the tutorial now says
     routes = open(paper_import_routes.__file__, encoding="utf-8").read()
     assert "reusedCount" in routes and "is reused instead of saved a second time" in routes
+    # questions with a figure are always saved as new rows, so the tutorial excludes them from 沿用
+    assert 'if key in known and not item.get("figure")' in routes
+    # unit edit permission: teachers only their own questions, admin any question of the school
+    assert 'editable = [row for row in rows if u.role == "admin" or row.creator_id == u.id]' in routes
 
     from changying.web.v1_training_sandbox import STEP_RELATIONSHIPS
 
