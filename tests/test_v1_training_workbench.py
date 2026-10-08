@@ -225,7 +225,7 @@ def test_teacher_tutorial_explains_paper_import_and_where_imported_questions_go(
         "保存后试卷在「组卷与作业」，题目进入「教材题库」",
         "导入或拍照上传的题目也在这里",
         "单元就是导入时填写的单元",
-        "勾选题目后可批量修改单元或教材",
+        "勾选题目后可批量修改单元或教材（只能改自己导入或创建的题目）",
     ):
         assert text in html
 
@@ -235,6 +235,11 @@ def test_teacher_tutorial_explains_paper_import_and_where_imported_questions_go(
     source = open(paper_import_ui.__file__, encoding="utf-8").read()
     assert 'id="importPaper">导入试卷</button>' in source
     assert "已保存到「组卷与作业」" in source
+    # 教材题库 batch edit that the tutorial mentions: ticked questions + 修改单元 button + endpoint
+    assert 'data-qpick="${q.id}"' in source
+    assert 'id="editUnitQ"' in source
+    assert 'window.catalogEditUnit=function' in source
+    assert '"/teacher/questions/unit"' in source
 
     from changying.web.v1_training_sandbox import STEP_RELATIONSHIPS
 
