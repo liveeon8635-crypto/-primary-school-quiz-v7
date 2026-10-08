@@ -211,3 +211,32 @@ def test_training_actions_show_busy_and_error_feedback():
 def test_step_navigation_returns_mobile_view_to_top():
     html = training_workbench_html()
     assert "requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'smooth'}))" in html
+
+
+def test_teacher_tutorial_explains_paper_import_and_where_imported_questions_go():
+    app = FastAPI()
+    install_v1_training_workbench_route(app)
+    response = TestClient(app).get(TRAINING_WORKBENCH_PATH)
+    assert response.status_code == 200
+    html = response.text
+
+    for text in (
+        "「导入试卷」把已有试卷或真题导入",
+        "保存后试卷在「组卷与作业」，题目进入「教材题库」",
+        "导入或拍照上传的题目也在这里",
+        "单元就是导入时填写的单元",
+        "勾选题目后可批量修改单元或教材",
+    ):
+        assert text in html
+
+    # the entry names the tutorial points at must exist in the real classic page
+    from changying.web import paper_import_ui
+
+    source = open(paper_import_ui.__file__, encoding="utf-8").read()
+    assert 'id="importPaper">导入试卷</button>' in source
+    assert "已保存到「组卷与作业」" in source
+
+    from changying.web.v1_training_sandbox import STEP_RELATIONSHIPS
+
+    assert "导入的题目按导入时填写的单元归类" in STEP_RELATIONSHIPS["teacher_catalog"]["communication_tip"]
+
