@@ -61,3 +61,53 @@ def test_c2_read_side_allows_service_reads_and_test_writes():
     )
 
     assert errors == []
+
+
+def _wiring(old: dict, new: dict, changed: list[str]):
+    from scripts.harness_guard import find_unwired_symbols
+
+    return find_unwired_symbols(
+        changed,
+        lambda p: new.get(p, ""),
+        lambda p: old.get(p, ""),
+        list(new),
+    )
+
+
+def test_wiring_flags_new_helper_nothing_calls():
+    old = {"changying/a.py": "def existing():\n    return 1\n"}
+    new = {
+        "changying/a.py": "def existing():\n    return 1\n\n\ndef paper_import_allows_pdf(name):\n    return name.endswith('.pdf')\n",
+        "tests/test_a.py": "from changying.a import paper_import_allows_pdf\n",
+    }
+    problems = _wiring(old, new, ["changying/a.py"])
+    assert any("paper_import_allows_pdf" in item for item in problems)
+
+
+def test_wiring_flags_unused_constant_and_route_registrar():
+    old = {"changying/a.py": "X = 1\n"}
+    new = {
+        "changying/a.py": "X = 1\nPAPER_IMPORT_PDF_ENABLED = True\n\n\ndef register_upload_routes(app):\n    return app\n",
+    }
+    problems = _wiring(old, new, ["changying/a.py"])
+    assert any("PAPER_IMPORT_PDF_ENABLED" in item for item in problems)
+    assert any("register_upload_routes" in item for item in problems)
+
+
+def test_wiring_accepts_symbols_used_by_runtime_code_or_routes():
+    old = {"changying/a.py": "X = 1\n", "changying/b.py": "def old():\n    return 1\n"}
+    new = {
+        "changying/a.py": "X = 1\n\n\ndef helper():\n    return 2\n\n\n@router.get('/x')\ndef handler():\n    return 3\n",
+        "changying/b.py": "from changying.a import helper\n\n\ndef old():\n    return helper()\n",
+    }
+    assert _wiring(old, new, ["changying/a.py", "changying/b.py"]) == []
+
+
+def test_wiring_ignores_tests_scripts_and_existing_symbols():
+    old = {"changying/a.py": "def keep():\n    return 1\n"}
+    new = {
+        "changying/a.py": "def keep():\n    return 1\n",
+        "tests/test_x.py": "def helper_only_for_tests():\n    return 1\n",
+        "scripts/tool.py": "def tool():\n    return 1\n",
+    }
+    assert _wiring(old, new, ["changying/a.py", "tests/test_x.py", "scripts/tool.py"]) == []

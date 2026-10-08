@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import os
 import re
 import subprocess
@@ -73,6 +74,72 @@ def added_production_lines(base: str, head: str) -> list[tuple[str, str]]:
     return results
 
 
+WIRING_EXEMPT_MARKER = "wiring-exempt:"
+WIRING_ROUTE_DECORATORS = re.compile(
+    r"^(?:app|router|[A-Za-z_]\w*_router)\.(?:get|post|put|patch|delete|head|options|route|websocket|on_event|middleware)$"
+)
+
+
+def _is_runtime_python(path: str) -> bool:
+    normalized = str(PurePosixPath(path))
+    if not normalized.endswith(".py"):
+        return False
+    if normalized.startswith(("tests/", "scripts/", "docs/", "migrations/")):
+        return False
+    name = PurePosixPath(normalized).name
+    return not (name.startswith("test_") or name.endswith("_test.py") or name == "conftest.py")
+
+
+def _top_level_symbols(source: str) -> dict[str, bool]:
+    """Top-level function/class/CONSTANT names -> True when route/handler-decorated (live by construction)."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return {}
+    symbols: dict[str, bool] = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            routed = any(WIRING_ROUTE_DECORATORS.match(ast.unparse(getattr(d, "func", d))) for d in node.decorator_list)
+            symbols[node.name] = routed
+        elif isinstance(node, ast.Assign) and isinstance(node.value, (ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set, ast.JoinedStr)):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and re.fullmatch(r"[A-Z_][A-Z0-9_]*", target.id):
+                    symbols[target.id] = False
+    return {name: routed for name, routed in symbols.items() if not (name.startswith("__") and name.endswith("__"))}
+
+
+def _name_count(source: str, name: str) -> int:
+    return len(re.findall(rf"(?<![\w$]){re.escape(name)}(?![\w$])", source))
+
+
+def find_unwired_symbols(
+    changed: list[str],
+    read_head: "callable",
+    read_base: "callable",
+    runtime_files: list[str],
+) -> list[str]:
+    """New top-level symbols in changed runtime files that no runtime code references.
+
+    A symbol is wired when it is route-decorated, or its name appears in runtime code
+    other than its own definition (another file, or elsewhere in the same file).
+    Tests do not count: a helper that only tests import is still a shell.
+    """
+    sources = {path: read_head(path) or "" for path in runtime_files if _is_runtime_python(path)}
+    problems: list[str] = []
+    for path in changed:
+        if not _is_runtime_python(path):
+            continue
+        new_source = sources.get(path) or read_head(path) or ""
+        old_symbols = _top_level_symbols(read_base(path) or "")
+        for name, routed in _top_level_symbols(new_source).items():
+            if name in old_symbols or routed:
+                continue
+            total = sum(_name_count(text, name) for text in sources.values())
+            if total <= 1:  # the definition itself is the only occurrence
+                problems.append(f"new symbol is not referenced by any runtime code: {path}:{name}")
+    return problems
+
+
 def evaluate(
     files: list[str],
     added_lines: list[tuple[str, str]],
@@ -130,6 +197,23 @@ def main() -> int:
         title=title,
         body=body,
     )
+    if WIRING_EXEMPT_MARKER not in body.lower():
+        runtime_files = [
+            path
+            for path in run_git("ls-tree", "-r", "--name-only", head).splitlines()
+            if _is_runtime_python(path)
+        ]
+
+        def read_at(ref: str):
+            def read(path: str) -> str:
+                try:
+                    return run_git("show", f"{ref}:{path}")
+                except subprocess.CalledProcessError:
+                    return ""
+
+            return read
+
+        errors.extend(find_unwired_symbols(files, read_at(head), read_at(base), runtime_files))
     if errors:
         print("\nHarness guard blocked this PR:", file=sys.stderr)
         for error in errors:
