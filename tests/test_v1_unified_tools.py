@@ -130,3 +130,21 @@ def test_v1_brand_uses_embedded_calligraphy_font_and_keeps_identity_chip():
     # The rail fills the viewport height and splits it between the two segments.
     assert "height:calc(100dvh - 92px)" in html
     assert "grid-template-rows:repeat(var(--n),1fr)" in html
+
+
+def test_teaching_term_is_a_year_plus_dropdown_and_heading_notes_are_removed():
+    from fastapi.testclient import TestClient
+    from app import app
+
+    html = TestClient(app).get('/v1/workspace').text
+    assert 'id="termSelect"' in html
+    assert "termOptions=['上学期','暑假','下学期','寒假']" in html
+    assert 'data-cycle="winter"' not in html and 'class="mode-switch"' not in html
+    assert '首页只展示当前教学周期，结束后统一进入往期教学。' not in html
+    assert '晚托、周末课与寒暑假班按周期切换显示' not in html
+    assert '每位学生始终指向同一份长期档案' not in html
+    # Holiday terms read real teaching-cycle facts instead of reusing term data.
+    assert "api('/v1/teaching-cycles')" in html
+    assert '.cy-term{display:inline-flex;align-items:baseline;gap:.3em;font-size:clamp(25px,4vw,38px)' in html
+    # The duplicated 当前学生 KPI card is gone; the count sits on the list heading.
+    assert '<section class="section grid cols-3"><div class="card kpi"><span>当前班级</span>' in html
