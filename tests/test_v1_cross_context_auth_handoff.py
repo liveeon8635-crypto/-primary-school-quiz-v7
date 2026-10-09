@@ -18,7 +18,6 @@ from changying.web.v1_auth_handoff import (
     install_v1_auth_handoff_routes,
 )
 from changying.web.v1_classic_unified_top import inject_v1_classic_unified
-from changying.web.v1_legacy_capabilities import _LEGACY_CAPABILITIES_SNIPPET
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,11 +49,6 @@ def test_v1_stages_server_handoff_before_context_sensitive_navigation() -> None:
     # The temporary bridge must not use script-readable persistent storage.
     assert "cyV1SessionHandoff" not in script
     assert "expiresAt:Date.now()" not in script
-
-
-def test_capability_center_reads_nonremember_session_storage() -> None:
-    assert "sessionStorage.getItem('v717Token')" in _LEGACY_CAPABILITIES_SNIPPET
-    assert "sessionStorage.getItem('v6Token')" in _LEGACY_CAPABILITIES_SNIPPET
 
 
 def test_unified_classic_consumes_server_handoff_when_storage_context_is_empty() -> None:
