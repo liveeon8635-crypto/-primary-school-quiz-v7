@@ -479,3 +479,12 @@ with TestClient(app) as client:
         capture_output=True,
     )
     assert completed.returncode == 0, completed.stdout + "\n" + completed.stderr
+
+
+def test_quick_check_reveal_wording_is_injected_by_the_quick_check_patch():
+    # Checked from the patch source instead of a rendered page, so it does not depend on patch install order.
+    from changying.web import v1_classroom_quick_check
+
+    source = open(v1_classroom_quick_check.__file__, encoding="utf-8").read()
+    assert "关闭随堂检测后，按教师勾选项向学生展示。" in source
+

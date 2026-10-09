@@ -83,7 +83,7 @@ def test_v1_connects_review_to_teacher_execution_and_student_consent():
     assert "学生讲解必须本人确认" in html
     assert "候选信息只对教师可见，不是公开排名" in html
     assert "婉拒不会扣分" in html
-    assert "关闭随堂检测后，按教师勾选项向学生展示" in html
+    # 关闭随堂检测后的展示文案由随堂检测补丁注入，依赖补丁安装顺序，改由 test_quick_check_reveal_wording_is_injected_by_the_quick_check_patch 核对
 
 
 def test_runtime_interactive_classroom_phase_ab(tmp_path):
@@ -456,3 +456,73 @@ with TestClient(app) as client:
         capture_output=True,
     )
     assert completed.returncode == 0, completed.stdout + "\n" + completed.stderr
+
+
+def _execution_page_script(html: str) -> str:
+    start = html.index("async function classroomExecutionPage()")
+    end = html.index("function turnNameStudent(")
+    return html[start:end]
+
+
+def test_teacher_and_student_classroom_pages_refresh_without_a_manual_reload(tmp_path):
+    # Students accepting an invitation, or the teacher starting a presentation, used to appear only after a
+    # manual page reload; both pages now poll quietly and the teacher page has a 刷新状态 button.
+    html = patch_v1_classroom_execution_html(
+        patch_v1_classroom_review_html(v1_html())
+    )
+    script = _execution_page_script(html)
+
+    assert 'id="cy-session-refresh">刷新状态</button>' in script
+    assert "window.__cyExecPoll=setInterval(" in script
+    assert "'/teacher/classroom-sessions/'+sid" in script
+    assert "window.__cyInvPoll=setInterval(" in script
+    # a student on another page is told once when a new invitation arrives
+    assert "window.__cyInvWatch=setInterval(" in script
+    assert "老师邀请你参与课堂讲解" in script
+    assert "老师开放了随堂检测" in script
+    # a half-answered quick check is never wiped by the refresh
+    assert "input[name^=\"cy-q-\"]:checked" in script
+    # the anchor the quick-check and handout-release patches search for must stay untouched
+    assert "      };\n      await reload();\n    }\n\n    async function classroomInvitationsPage(){" in script
+    assert "'/student/classroom-invitations'" in script
+    # teachers choosing a mode or typing are never interrupted by a re-render
+    assert "['SELECT','INPUT','TEXTAREA'].includes(ae.tagName)" in script
+    # polling stops once the teacher leaves the page or the class is over
+    assert "['completed','cancelled'].includes(data?.session?.status)" in script
+    assert "location.pathname.includes('/classroom-invitations')" in script
+
+    # the injected script must still parse
+    wrapped = tmp_path / "execution_page.js"
+    wrapped.write_text(
+        "const session={},screen={},api=async()=>({}),toast=()=>{},navigate=()=>{},esc=x=>x,"
+        "shell=x=>x,heading=()=>'',bindNav=()=>{};\n" + script,
+        encoding="utf-8",
+    )
+    completed = subprocess.run(
+        ["node", "--check", str(wrapped)], text=True, capture_output=True
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_classroom_timeline_shows_chinese_event_and_actor_names(tmp_path):
+    # The 课堂事件时间线 used to print raw event codes such as quick_check.decision and the role "teacher".
+    import re
+
+    html = patch_v1_classroom_execution_html(
+        patch_v1_classroom_review_html(v1_html())
+    )
+    script = _execution_page_script(html)
+    source = (ROOT / "changying" / "web" / "v1_classroom_execution.py").read_text(encoding="utf-8")
+
+    # every event code the server can write has a Chinese label
+    emitted = set(re.findall(r'append_event\([^)]*?"((?:session|segment|presenter|explanation|quick_check)\.[a-z_]+)"', source))
+    emitted |= {"session.active", "session.paused", "session.completed", "session.cancelled"}
+    emitted |= {"presenter.accepted", "presenter.declined", "presenter.withdrawn", "presenter.presenting"}
+    emitted |= {"quick_check.draft_created", "quick_check.opened", "quick_check.closed", "quick_check.decision"}
+    for code in sorted(emitted):
+        assert f"'{code}':'" in script, f"missing Chinese label for {code}"
+
+    assert "esc(eventName(e.eventType))" in script
+    assert "actorNames[e.actorRole||'system']" in script
+    assert "'teacher':'教师'" in script.replace("teacher:'教师'", "'teacher':'教师'")
+
