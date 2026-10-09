@@ -1779,8 +1779,6 @@ _ASSISTANT_SNIPPET = r'''
   #cy-product-assistant-fab{position:fixed;right:14px;bottom:max(calc(84px + env(safe-area-inset-bottom)),var(--cy-feedback-review-lift,0px));z-index:125;border:0;border-radius:999px;background:#a8101c;color:#fff;width:48px;height:48px;padding:0;font-weight:900;box-shadow:0 10px 28px rgba(23,58,120,.24);display:grid;place-items:center;font-size:20px}#cy-product-assistant-fab .cy-pa-fab-label{display:none}
   #cy-product-assistant-fab{width:58px;height:58px;overflow:hidden;background:radial-gradient(circle at 30% 25%,#ff8a4c,#a8101c);border:2px solid #f4c542;box-shadow:0 10px 28px rgba(168,16,28,.38)}#cy-product-assistant-fab .cy-pa-fab-img{width:100%;height:100%;object-fit:cover;display:block}
   #cy-product-assistant-fab[hidden],#cy-product-assistant-panel[hidden]{display:none!important}
-  html.cy-pa-off #cy-product-assistant-fab,html.cy-pa-off #cy-product-assistant-panel,html.cy-pa-off #cy-pa-processed-notice{display:none!important}
-  #cy-pa-restore{position:fixed;right:0;bottom:max(calc(96px + env(safe-area-inset-bottom)),var(--cy-feedback-review-lift,0px));z-index:125;width:22px;padding:10px 0;border:0;border-radius:12px 0 0 12px;background:linear-gradient(180deg,#d9352a,#a8101c);color:#fff;font-size:12px;font-weight:800;letter-spacing:.15em;writing-mode:vertical-rl;opacity:.78;cursor:pointer;box-shadow:-3px 4px 12px rgba(168,16,28,.3)}#cy-pa-restore:hover{opacity:1}#cy-pa-restore[hidden]{display:none!important}
   #cy-product-assistant-panel{position:fixed;right:14px;bottom:max(calc(142px + env(safe-area-inset-bottom)),calc(var(--cy-feedback-review-lift,0px) + 58px));z-index:126;width:min(390px,calc(100vw - 28px));max-height:min(620px,70dvh);background:#fff;border:1px solid #dbe4f1;border-radius:20px;box-shadow:0 22px 70px rgba(17,34,64,.28);overflow:hidden;display:flex;flex-direction:column}
   #cy-pa-processed-notice[hidden]{display:none!important}#cy-pa-processed-notice{position:fixed;right:70px;bottom:max(calc(88px + env(safe-area-inset-bottom)),calc(var(--cy-feedback-review-lift,0px) + 4px));z-index:127;display:block;max-width:min(285px,calc(100vw - 94px));padding:9px 12px;border:1px solid #c8d8f2;border-radius:14px;background:#fff;color:#a8101c;box-shadow:0 8px 24px rgba(17,34,64,.2);font-size:12px;font-weight:800;line-height:1.35}#cy-product-assistant-fab[hidden]~#cy-pa-processed-notice:not([hidden]){display:none!important}.cy-pa-processed-record{display:flex;align-items:center;gap:7px;text-decoration:none;white-space:nowrap;color:inherit}.cy-pa-processed-record:before{content:'';flex:none;width:8px;height:8px;border-radius:50%;background:#3682ed;box-shadow:0 0 0 0 rgba(54,130,237,.5);animation:cy-pa-notice-pulse 1.6s ease-out infinite}@keyframes cy-pa-notice-pulse{70%{box-shadow:0 0 0 7px rgba(54,130,237,0)}100%{box-shadow:0 0 0 0 rgba(54,130,237,0)}}@media(prefers-reduced-motion:reduce){.cy-pa-processed-record:before{animation:none}}
   .cy-pa-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid #e2e8f1}.cy-pa-head b{display:block}.cy-pa-head small{display:block;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);line-height:1.35}.cy-pa-head-actions{display:flex;gap:6px}.cy-pa-head-actions .btn{min-height:36px;padding:7px 10px}
@@ -1793,9 +1791,8 @@ _ASSISTANT_SNIPPET = r'''
   @media(max-width:640px){#cy-product-assistant-fab{right:12px;bottom:max(calc(78px + env(safe-area-inset-bottom)),var(--cy-feedback-review-lift,0px));width:52px;height:52px;font-size:18px}#cy-product-assistant-panel{left:10px;right:10px;bottom:max(calc(128px + env(safe-area-inset-bottom)),calc(var(--cy-feedback-review-lift,0px) + 54px));width:auto;max-height:62dvh}}
 </style>
 <button id="cy-product-assistant-fab" hidden aria-label="打开产品助手" title="产品助手"><img class="cy-pa-fab-img" src="data:image/png;base64,__NEZHA_AVATAR__" alt=""><span class="cy-pa-fab-label">产品助手</span></button>
-<button id="cy-pa-restore" type="button" hidden aria-label="显示长缨助手" title="显示长缨助手">助手</button>
 <section id="cy-product-assistant-panel" hidden aria-label="长缨产品助手">
-  <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-hide" aria-label="隐藏助手" title="隐藏助手图标；随时可点屏幕右侧的小标签恢复">隐藏</button><button class="btn" id="cy-pa-collapse" aria-label="收起">−</button></div></header>
+  <header class="cy-pa-head"><div><b>长缨产品助手</b><small id="cy-pa-context">读取当前身份与页面…</small></div><div class="cy-pa-head-actions"><button class="btn" id="cy-pa-collapse" aria-label="收起">−</button></div></header>
   <div class="cy-pa-tabs" data-feedback-ui-revision="3"><button class="cy-pa-tab active" id="cy-pa-ask-tab" data-pa-tab="ask">问产品</button><div class="cy-pa-feedback-menu"><button id="cy-pa-feedback-menu-button" type="button" aria-haspopup="menu" aria-expanded="false">提反馈 ▾</button><div class="cy-pa-feedback-dropdown" id="cy-pa-feedback-dropdown" role="menu" hidden><button type="button" data-pa-tab="feedback" role="menuitem">提交新反馈</button><button type="button" data-pa-tab="records" role="menuitem">反馈记录</button><div class="cy-pa-feedback-dropdown-records" id="cy-pa-feedback-dropdown-records"><div class="cy-pa-note">打开“提反馈”后会在这里直接显示你的反馈记录。</div></div></div></div></div>
   <div class="cy-pa-body" id="cy-pa-ask">
     <div class="cy-pa-quick"><button id="cy-pa-quick-1" data-pa-question="我现在该做什么？">下一步做什么</button><button id="cy-pa-quick-2" data-pa-question="这个页面是干什么的？">页面用途</button><button id="cy-pa-quick-3" data-pa-question="这一步为什么排在这里？">为什么这样走</button></div>
@@ -2277,11 +2274,6 @@ _ASSISTANT_SNIPPET = r'''
   const openPanel=()=>{if(!identityReady())return;panel.hidden=false;fab.hidden=true;fab.setAttribute('aria-label','收起产品助手');updateContext();applyRoleCopy();renderGuideGrid()};
   fab.onclick=()=>panel.hidden?openPanel():closePanel();
   document.getElementById('cy-pa-collapse').onclick=closePanel;
-  const PA_OFF_KEY='cyPaHidden',restoreBtn=document.getElementById('cy-pa-restore'),hideBtn=document.getElementById('cy-pa-hide');
-  const syncRestore=()=>{if(restoreBtn)restoreBtn.hidden=!(document.documentElement.classList.contains('cy-pa-off')&&identityReady())};
-  const setPaOff=on=>{document.documentElement.classList.toggle('cy-pa-off',on);try{if(on)localStorage.setItem(PA_OFF_KEY,'1');else localStorage.removeItem(PA_OFF_KEY)}catch(_e){}if(on)panel.hidden=true;syncRestore();if(!on&&identityReady())fab.hidden=!panel.hidden};
-  try{if(localStorage.getItem(PA_OFF_KEY)==='1')document.documentElement.classList.add('cy-pa-off')}catch(_e){}
-  if(hideBtn)hideBtn.onclick=()=>setPaOff(true);if(restoreBtn)restoreBtn.onclick=()=>setPaOff(false);
   document.querySelectorAll('[data-pa-category]').forEach(btn=>btn.onclick=()=>{
     document.querySelectorAll('[data-pa-category]').forEach(x=>x.classList.toggle('active',x===btn));
     document.getElementById('cy-pa-category').value=btn.dataset.paCategory;
@@ -2298,7 +2290,7 @@ _ASSISTANT_SNIPPET = r'''
     if(initialAssistantTab==='feedback-records')setTab('records');
     else if(initialAssistantTab==='feedback')setTab('feedback');
     else if(initialAssistantTab==='ask')setTab('ask');
-    setPaOff(false);panel.hidden=false;fab.hidden=true;initialAssistantRoutePending=false;
+    panel.hidden=false;fab.hidden=true;initialAssistantRoutePending=false;
     return true;
   };
   openInitialAssistantRoute();
@@ -2413,7 +2405,7 @@ _ASSISTANT_SNIPPET = r'''
     if(button&&!observedIdentityNodes.has(button)){identityObserver.observe(button,{attributes:true,attributeFilter:['hidden']});observedIdentityNodes.add(button)}
     if(chip&&!observedIdentityNodes.has(chip)){identityObserver.observe(chip,{childList:true,characterData:true,subtree:true});observedIdentityNodes.add(chip)}
   };
-  const sync=()=>{observeIdentityNodes();const ready=identityReady();syncRestore();if(!ready)resetProcessedNotice();if(!ready){fab.hidden=true;panel.hidden=true;return}checkProcessedFeedbackNotice();openInitialAssistantRoute();fab.hidden=!panel.hidden;updateContext();applyRoleCopy();if(!panel.hidden)renderGuideGrid()};
+  const sync=()=>{observeIdentityNodes();const ready=identityReady();if(!ready)resetProcessedNotice();if(!ready){fab.hidden=true;panel.hidden=true;return}checkProcessedFeedbackNotice();openInitialAssistantRoute();fab.hidden=!panel.hidden;updateContext();applyRoleCopy();if(!panel.hidden)renderGuideGrid()};
   window.addEventListener('pageshow',sync);window.addEventListener('popstate',sync);window.addEventListener('focus',sync);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
   let authReadyPoll=null;
