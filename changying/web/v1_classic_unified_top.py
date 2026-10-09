@@ -10,6 +10,24 @@ from __future__ import annotations
 
 V1_CLASSIC_UNIFIED_MARKER = "changying_v1_classic_unified_top_v1"
 
+V1_CLASSIC_LOGIN_GUARD_MARKER = "changying_v1_classic_login_guard_v1"
+
+# Arriving from V1 the Classic document first renders its own login screen and
+# only then hydrates the session handed over by V1, so every "全部功能" switch
+# flashed the old login page. Keep it hidden until hydration has settled; the
+# timer is a failsafe so a genuinely signed-out visitor still gets the login form.
+V1_CLASSIC_LOGIN_GUARD = r'''
+<style id="changying_v1_classic_login_guard_v1-style">html.cy-v1-login-pending #loginScreen{visibility:hidden!important}</style>
+<script id="changying_v1_classic_login_guard_v1-script">
+(function(){var p=new URLSearchParams(location.search);
+ if(p.get('unified')!=='1'||p.get('from')!=='v1')return;
+ var h=document.documentElement;h.classList.add('cy-v1-login-pending');
+ window.__cyV1ReleaseLogin=function(){h.classList.remove('cy-v1-login-pending')};
+ setTimeout(window.__cyV1ReleaseLogin,5000);
+})();
+</script>
+'''
+
 V1_CLASSIC_UNIFIED_SNIPPET = r'''
 <style id="changying_v1_classic_unified_top_v1-style">
 html.cy-v1-unified{--cy-v1-navy:#173c78;--cy-v1-ink:#172033;--cy-v1-muted:#667085;--cy-v1-line:#e4e9f2;--cy-v1-soft:#f5f7fb;--cy-v1-shadow:0 8px 30px rgba(23,60,120,.04)}
@@ -70,7 +88,8 @@ html.cy-v1-unified input:not([type="checkbox"]):not([type="radio"]),html.cy-v1-u
   try{if(!s){var r=await fetch('/session',{headers:{Authorization:'Bearer '+t},cache:'no-store'});if(!r.ok)return false;s=await r.json()}var u={id:s.userID??s.id??null,name:s.name||'',role:s.role||'teacher',grade:s.grade??null,subscription:s.subscription||null};if(typeof state==='undefined')return false;state.token=t;state.user=u;state.remember=localStorage.getItem('v717Remember')==='1';try{if(typeof saveAuth==='function')saveAuth()}catch(_e){}try{if(typeof markNetwork==='function')markNetwork(true)}catch(_e){}if(typeof validateSavedSession==='function'){var ok=await Promise.resolve(validateSavedSession());if(!ok)return false}else if(typeof enter==='function'){enter()}clearV1FromMarker();sync();return true}catch(_e){return false}
  }
  function autoResume(){if(window.__cyV1UnifiedAutoResume)return;try{var btn=document.getElementById('continueSessionBtn');if(!btn||btn.classList.contains('hidden'))return;window.__cyV1UnifiedAutoResume=true;if(typeof markNetwork==='function')markNetwork(true);btn.click()}catch(_e){}}
- async function start(){mount();sync();var hydrated=await hydrateFromV1();if(!hydrated)autoResume();sync();if(hydrated&&stateReady()&&params.get('page')==='__hub__')showToolHub();var tries=0,t=setInterval(function(){sync();if(!stateReady())autoResume();if(stateReady()||++tries>80)clearInterval(t)},100);setTimeout(function(){if(!stateReady())autoResume()},250)}
+ function releaseLogin(){if(typeof window.__cyV1ReleaseLogin==='function')window.__cyV1ReleaseLogin()}
+ async function start(){mount();sync();var hydrated=await hydrateFromV1();if(!hydrated)autoResume();sync();if(hydrated||!window.__cyV1UnifiedAutoResume)releaseLogin();if(hydrated&&stateReady()&&params.get('page')==='__hub__')showToolHub();var tries=0,t=setInterval(function(){sync();if(!stateReady())autoResume();if(stateReady()){releaseLogin();clearInterval(t)}else if(++tries>80){releaseLogin();clearInterval(t)}},100);setTimeout(function(){if(!stateReady())autoResume()},250)}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
 </script>
@@ -95,8 +114,11 @@ def inject_v1_classic_unified(html: str) -> str:
     if V1_CLASSIC_UNIFIED_MARKER in html:
         return html
     html = _polish_student_record_detail(html)
+    if V1_CLASSIC_LOGIN_GUARD_MARKER not in html:
+        guard = V1_CLASSIC_LOGIN_GUARD + f"<!-- {V1_CLASSIC_LOGIN_GUARD_MARKER} -->"
+        html = html.replace("<head>", "<head>" + guard, 1) if "<head>" in html else guard + html
     marker = V1_CLASSIC_UNIFIED_SNIPPET + f"\n<!-- {V1_CLASSIC_UNIFIED_MARKER} -->"
     return html.replace("</body>", marker + "</body>", 1) if "</body>" in html else html + marker
 
 
-__all__ = ["V1_CLASSIC_UNIFIED_MARKER", "inject_v1_classic_unified"]
+__all__ = ["V1_CLASSIC_LOGIN_GUARD_MARKER", "V1_CLASSIC_UNIFIED_MARKER", "inject_v1_classic_unified"]
