@@ -114,8 +114,9 @@ def test_v1_header_is_horizontal_ribbon_banner_with_expanded_brand():
 
     html = TestClient(app).get('/v1/workspace').text
     assert '.top .brand>span:last-child{display:flex;align-items:baseline' in html
-    assert 'class="cy-ribbon"' in html and 'id="cyDragonPath"' in html
-    assert 'dur="30s"' in html and 'repeatCount="indefinite"' in html
+    assert 'class="cy-ribbon"' in html and 'id="cyDragonPath"' not in html
+    # The story is the cinematic overlay; the header only keeps the shimmering silk.
+    assert 'id="cy-cine"' in html and 'setInterval(play,30000)' in html
     # Fixed header, taller than before.
     assert 'position:fixed;left:0;right:0;top:0;z-index:50' in html and '.top{height:88px' in html
     assert '<a class="brand" href="/v1"><span>长缨辅学<small>学生连续发展档案 · V1</small></span></a>' in html
@@ -148,7 +149,10 @@ def test_teaching_term_is_a_year_plus_dropdown_and_heading_notes_are_removed():
     assert '每位学生始终指向同一份长期档案' not in html
     # Holiday terms read real teaching-cycle facts instead of reusing term data.
     assert "api('/v1/teaching-cycles')" in html
-    assert '.cy-term{display:inline-flex;align-items:baseline;gap:.3em;font-size:clamp(25px,4vw,38px)' in html
+    # Year label keeps the heading size; the term picker is a themed custom dropdown.
+    assert '.cy-term-year{font-size:clamp(25px,4vw,38px)' in html
+    assert 'id="termBtn"' in html and 'class="cy-dd-menu"' in html and 'data-term="${t}"' in html
+    assert '<select id="termSelect"' not in html
     # The duplicated 当前学生 KPI card is gone; the count sits on the list heading.
     assert '<section class="section grid cols-3"><div class="card kpi"><span>当前班级</span>' in html
 
@@ -168,10 +172,28 @@ def test_classic_unified_chrome_and_tool_hub_share_the_ribbon_theme():
 
     client = TestClient(app)
     classic = client.get('/classic?legacy=1&unified=1&page=papers').text
-    assert 'cy-ribbon' in classic and 'cyDragonPath' in classic
+    assert 'cy-ribbon' in classic and 'id="cy-cine"' in classic
     assert '--primary:#a8101c' in classic and 'font-family:CyBrand' in classic
     assert 'class="cy-v1-mark"' not in classic
     assert "['tools','⌘','全部功能','/v1/workspace?view=all']" in classic
 
     hub = client.get('/v1/tool').text
-    assert 'cy-ribbon' in hub and '--navy:#a8101c' in hub
+    assert 'cy-ribbon' in hub and '--navy:#a8101c' in hub and 'id="cy-cine"' in hub
+
+
+def test_cinematic_asset_is_served_and_overlay_never_blocks_clicks():
+    from fastapi.testclient import TestClient
+    from app import app
+    from changying.web.v1_cinematic import CINEMATIC_ASSET_PATH
+
+    client = TestClient(app)
+    asset = client.get(CINEMATIC_ASSET_PATH)
+    assert asset.status_code == 200
+    assert asset.headers['content-type'] == 'image/webp'
+    assert asset.content[:4] == b'RIFF' and 'max-age' in asset.headers['cache-control']
+
+    html = client.get('/v1/workspace').text
+    assert f'src="{CINEMATIC_ASSET_PATH}"' in html
+    rule = html.split('#cy-cine{', 1)[1].split('}', 1)[0]
+    assert 'position:fixed' in rule and 'pointer-events:none' in rule
+    assert '@media(prefers-reduced-motion:reduce){#cy-cine{display:none!important}}' in html
