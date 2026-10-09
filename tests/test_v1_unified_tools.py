@@ -86,6 +86,10 @@ def test_teacher_workspace_has_capsule_nav_all_view_and_deduplicated_cards():
     assert '<aside class="side">' not in html
     assert 'class="bottom"' not in html
     assert "cy-ws-all" in html
+    # Former sidebar entries now live inside the two capsule segments.
+    assert "['students','◉','学生'" not in html
+    for href, label in (("/v1/student", "学生"), ("/v1/history", "往期教学"), ("/v1/transition", "升学衔接")):
+        assert f'["{href}", "{label}"' in html
     for _, label, _ in TOOL_HUB_MENUS["teacher"]:
         assert label in html
     assert "['晚托','周末课','今日/本周教学','课堂复盘','作业与错题','学习进度']" in html
@@ -102,3 +106,22 @@ def test_internal_feedback_status_panels_are_not_injected_into_pages():
         assert 'feedback-status-chain' not in html
         assert 'feedback-reward-panel' not in html
         assert 'exact-head CI 通过' not in html
+
+
+def test_v1_header_is_horizontal_ribbon_banner_with_expanded_brand():
+    from fastapi.testclient import TestClient
+    from app import app
+
+    html = TestClient(app).get('/v1/workspace').text
+    assert '.top .brand>span:last-child{display:flex;align-items:baseline' in html
+    assert 'data:image/svg+xml' in html
+    assert '<span>长缨辅学<small>学生连续发展档案 · V1</small></span>' in html
+
+
+def test_workspace_identity_notice_is_hidden_for_real_accounts_but_kept_for_demo():
+    from fastapi.testclient import TestClient
+    from app import app
+
+    html = TestClient(app).get('/v1/workspace').text
+    assert ".cy-notice-hidden{display:none!important}" in html
+    assert "class=\"notice${session.demo?' warn':' cy-notice-hidden'}\"" in html
