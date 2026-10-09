@@ -2464,6 +2464,15 @@ def install_v1_product_assistant_patch() -> None:
         classic_embed_module.enhance_unified_classic_html = patched_unified_classic_html
         classic_embed_module._product_assistant_unified_installed = True
 
+    if not getattr(classic_embed_module, "_product_assistant_tool_hub_installed", False):
+        original_hub = classic_embed_module.enhance_tool_hub_html
+
+        def patched_tool_hub_html(html: str) -> str:
+            return patch_v1_product_assistant(original_hub(html))
+
+        classic_embed_module.enhance_tool_hub_html = patched_tool_hub_html
+        classic_embed_module._product_assistant_tool_hub_installed = True
+
 
 # Feedback #332: raised math-generation difficulty contract.
 MATH_DIFFICULTY_LEVELS = ["基础", "提高", "挑战"]
