@@ -27,5 +27,11 @@ def test_classic_pages_get_the_same_fixed_navigation():
     assert "html.cy-v1-unified body{padding-left:calc(84px + clamp(8px,1.6vw,20px) + 8px)!important}" in desktop
     # not shown over the login form while the session is still being restored
     assert "html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}" in desktop
-    # mobile keeps the existing fixed bottom bar
-    assert "#cy-v1-unified-bottom{position:fixed;display:grid;grid-template-columns:repeat(auto-fit" in snippet
+    # mobile: the same capsule look as the V1 pages (track + white active pill, text only) instead of the old white card
+    mobile = snippet[snippet.index("@media(max-width:720px)"):]
+    assert "#cy-v1-unified-bottom{box-sizing:border-box;position:fixed;display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));grid-auto-flow:column;" in mobile
+    assert "background:linear-gradient(180deg,#f6e4dc,#fbefe9)" in mobile
+    assert "#cy-v1-unified-bottom a span{display:none}" in mobile
+    assert "#cy-v1-unified-bottom a.active{background:linear-gradient(180deg,#fff,#fff4ee);color:#a8101c;" in mobile
+    # on any Classic tool page a teacher is inside 全部功能, so that segment shows as active (it used to show nothing)
+    assert "(role==='teacher'&&x[0]==='tools'&&!!page&&page!=='__hub__')" in snippet
