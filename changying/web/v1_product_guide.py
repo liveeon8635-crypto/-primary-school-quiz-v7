@@ -15,41 +15,41 @@ GUIDE_PATH = "/v1/guide"
 
 _GUIDE_SNIPPET = r'''
 <style id="changying_v1_product_guide_css_v7">
-  #cy-onboarding-overlay{position:fixed;inset:0;z-index:140;background:rgba(12,25,47,.58);display:grid;place-items:center;padding:12px}
-  .cy-onboarding-shell{width:min(980px,100%);max-height:94dvh;overflow:auto;background:#f5f8fd;border-radius:24px;box-shadow:0 26px 90px rgba(12,25,47,.32);border:1px solid rgba(255,255,255,.4)}
-  .cy-onboarding-head{position:sticky;top:0;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-bottom:1px solid #dfe7f2}
+  #cy-onboarding-overlay{position:fixed;inset:0;z-index:140;background:rgba(60,8,14,.58);display:grid;place-items:center;padding:12px}
+  .cy-onboarding-shell{width:min(980px,100%);max-height:94dvh;overflow:auto;background:#fff4ee;border-radius:24px;box-shadow:0 26px 90px rgba(60,8,14,.32);border:1px solid rgba(255,255,255,.4)}
+  .cy-onboarding-head{position:sticky;top:0;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-bottom:1px solid #eadfd8}
   .cy-onboarding-head strong{font-size:16px}.cy-onboarding-head small{display:block;color:var(--muted);margin-top:2px}
   .cy-onboarding-body{padding:18px}
   .cy-role-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
-  .cy-role-card{display:flex;flex-direction:column;gap:8px;min-height:170px;text-align:left;border:1px solid #dce5f1;background:#fff;border-radius:18px;padding:16px;cursor:pointer}
-  .cy-role-card:hover{border-color:#9db7e7}.cy-role-card .cy-role-icon{font-size:28px}.cy-role-card b{font-size:17px}.cy-role-card p{margin:0;color:var(--muted);line-height:1.55;font-size:13px}
-  .cy-role-progress{height:7px;background:#e8edf5;border-radius:99px;overflow:hidden;margin-top:auto}.cy-role-progress>i{display:block;height:100%;background:var(--navy)}
+  .cy-role-card{display:flex;flex-direction:column;gap:8px;min-height:170px;text-align:left;border:1px solid #eadfd8;background:#fff;border-radius:18px;padding:16px;cursor:pointer}
+  .cy-role-card:hover{border-color:#efc0b6}.cy-role-card .cy-role-icon{font-size:28px}.cy-role-card b{font-size:17px}.cy-role-card p{margin:0;color:var(--muted);line-height:1.55;font-size:13px}
+  .cy-role-progress{height:7px;background:#f3e4de;border-radius:99px;overflow:hidden;margin-top:auto}.cy-role-progress>i{display:block;height:100%;background:var(--navy)}
   .cy-role-meta{font-size:12px;color:var(--muted)}
   .cy-tutorial-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px}
-  .cy-tutorial-rail{background:#fff;border:1px solid #dfe7f2;border-radius:18px;padding:12px;align-self:start}
-  .cy-step-list{display:grid;gap:7px;margin-top:10px}.cy-step-item{display:grid;grid-template-columns:30px 1fr auto;align-items:center;gap:8px;padding:9px;border-radius:12px;border:1px solid transparent;background:#f8faff;text-align:left;width:100%}
-  .cy-step-item.active{background:#eaf1ff;border-color:#bfd2f4}.cy-step-item.done{background:#f0f8f1}.cy-step-item.skipped{background:#fff8ec}
-  .cy-step-no{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:#fff;border:1px solid #dce5f1;font-weight:800;font-size:12px}
+  .cy-tutorial-rail{background:#fff;border:1px solid #eadfd8;border-radius:18px;padding:12px;align-self:start}
+  .cy-step-list{display:grid;gap:7px;margin-top:10px}.cy-step-item{display:grid;grid-template-columns:30px 1fr auto;align-items:center;gap:8px;padding:9px;border-radius:12px;border:1px solid transparent;background:#fff8f4;text-align:left;width:100%}
+  .cy-step-item.active{background:#fdebe7;border-color:#efc0b6}.cy-step-item.done{background:#f0f8f1}.cy-step-item.skipped{background:#fff8ec}
+  .cy-step-no{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:#fff;border:1px solid #eadfd8;font-weight:800;font-size:12px}
   .cy-step-state{font-size:11px;color:var(--muted)}
   .cy-tutorial-stage{min-width:0}
-  .cy-lesson-card{background:#fff;border:1px solid #dfe7f2;border-radius:20px;padding:18px}
+  .cy-lesson-card{background:#fff;border:1px solid #eadfd8;border-radius:20px;padding:18px}
   .cy-lesson-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.cy-lesson-top h2{margin:4px 0 6px;font-size:24px}.cy-lesson-top p{margin:0;color:var(--muted);line-height:1.6}
-  .cy-badge{display:inline-flex;align-items:center;gap:6px;background:#eaf1ff;color:var(--navy);border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800}
-  .cy-progress-row{display:flex;align-items:center;gap:10px;margin:15px 0}.cy-progress-row span{font-size:12px;color:var(--muted)}.cy-progress-track{flex:1;height:8px;background:#e9eef6;border-radius:99px;overflow:hidden}.cy-progress-track i{display:block;height:100%;background:var(--navy)}
-  .cy-mission{margin-top:12px;padding:14px;border-radius:15px;background:#0f2347;color:#fff}.cy-mission strong{display:block;font-size:12px;opacity:.74;margin-bottom:5px}.cy-mission p{margin:0;line-height:1.6}
-  .cy-demo-app{margin-top:14px;border:1px solid #cfdbea;border-radius:18px;overflow:hidden;background:#f6f8fb}
-  .cy-demo-appbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 13px;background:#fff;border-bottom:1px solid #dfe7f2}.cy-demo-appbar b{font-size:14px}.cy-demo-appbar span{font-size:11px;color:var(--muted)}
+  .cy-badge{display:inline-flex;align-items:center;gap:6px;background:#fdebe7;color:var(--navy);border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800}
+  .cy-progress-row{display:flex;align-items:center;gap:10px;margin:15px 0}.cy-progress-row span{font-size:12px;color:var(--muted)}.cy-progress-track{flex:1;height:8px;background:#f3e4de;border-radius:99px;overflow:hidden}.cy-progress-track i{display:block;height:100%;background:var(--navy)}
+  .cy-mission{margin-top:12px;padding:14px;border-radius:15px;background:#4a0a10;color:#fff}.cy-mission strong{display:block;font-size:12px;opacity:.74;margin-bottom:5px}.cy-mission p{margin:0;line-height:1.6}
+  .cy-demo-app{margin-top:14px;border:1px solid #e3cfc8;border-radius:18px;overflow:hidden;background:#fbf6f2}
+  .cy-demo-appbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 13px;background:#fff;border-bottom:1px solid #eadfd8}.cy-demo-appbar b{font-size:14px}.cy-demo-appbar span{font-size:11px;color:var(--muted)}
   .cy-demo-canvas{padding:14px}.cy-demo-screen-title{font-size:18px;font-weight:850;margin-bottom:4px}.cy-demo-screen-sub{color:var(--muted);font-size:12px;margin-bottom:12px}
-  .cy-demo-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.cy-demo-card{background:#fff;border:1px solid #dce5f1;border-radius:14px;padding:12px;min-height:78px}.cy-demo-card b{display:block;margin-bottom:5px}.cy-demo-card small{color:var(--muted);line-height:1.45}
+  .cy-demo-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.cy-demo-card{background:#fff;border:1px solid #eadfd8;border-radius:14px;padding:12px;min-height:78px}.cy-demo-card b{display:block;margin-bottom:5px}.cy-demo-card small{color:var(--muted);line-height:1.45}
   .cy-demo-action{margin-top:12px}.cy-demo-action .btn{width:100%;justify-content:center}
   .cy-demo-feedback{display:none;margin-top:10px;padding:11px 12px;border-radius:12px;background:#eaf7ed;border:1px solid #cce7d2;color:#245f33;line-height:1.55}.cy-demo-feedback.show{display:block}
-  .cy-lesson-notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:14px}.cy-note{background:#f8faff;border:1px solid #dfe7f2;border-radius:14px;padding:12px}.cy-note strong{display:block;font-size:12px;color:var(--navy);margin-bottom:5px}.cy-note p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}
+  .cy-lesson-notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:14px}.cy-note{background:#fff8f4;border:1px solid #eadfd8;border-radius:14px;padding:12px}.cy-note strong{display:block;font-size:12px;color:var(--navy);margin-bottom:5px}.cy-note p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}
   .cy-lesson-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}.cy-lesson-actions .btn.primary{margin-left:auto}
   .cy-skip-note{font-size:11px;color:var(--muted);margin-top:9px}
-  .cy-practice-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px;padding:12px;border:1px dashed #b9c9df;border-radius:14px;background:#fff}.cy-practice-form label{display:grid;gap:5px;font-size:11px;color:var(--muted)}.cy-practice-form input,.cy-practice-form select{width:100%;border:1px solid #cfdbea;border-radius:10px;padding:9px 10px;background:#fff;color:var(--ink)}.cy-practice-tip{margin-top:12px;padding:10px 12px;border-radius:12px;background:#fff8e8;border:1px solid #f3d69a;color:#744b06;font-size:12px;line-height:1.55}
+  .cy-practice-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px;padding:12px;border:1px dashed #e3cfc8;border-radius:14px;background:#fff}.cy-practice-form label{display:grid;gap:5px;font-size:11px;color:var(--muted)}.cy-practice-form input,.cy-practice-form select{width:100%;border:1px solid #e3cfc8;border-radius:10px;padding:9px 10px;background:#fff;color:var(--ink)}.cy-practice-tip{margin-top:12px;padding:10px 12px;border-radius:12px;background:#fff8e8;border:1px solid #f3d69a;color:#744b06;font-size:12px;line-height:1.55}
   #cy-v1-product-guide-page{padding:26px clamp(14px,4vw,44px) 110px;max-width:1080px;margin:0 auto}
-  .cy-guide-hero{background:linear-gradient(145deg,#edf3ff,#fff);border:1px solid #d3e0f4;border-radius:22px;padding:22px}.cy-guide-hero h1{margin:8px 0}.cy-guide-hero p{color:var(--muted);line-height:1.7;max-width:760px}
-  .cy-guide-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}.cy-guide-summary>div{background:#fff;border:1px solid #dfe7f2;border-radius:15px;padding:13px}.cy-guide-summary b{display:block;margin-bottom:4px}.cy-guide-summary small{color:var(--muted);line-height:1.45}
+  .cy-guide-hero{background:linear-gradient(145deg,#fdebe7,#fff);border:1px solid #eadfd8;border-radius:22px;padding:22px}.cy-guide-hero h1{margin:8px 0}.cy-guide-hero p{color:var(--muted);line-height:1.7;max-width:760px}
+  .cy-guide-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}.cy-guide-summary>div{background:#fff;border:1px solid #eadfd8;border-radius:15px;padding:13px}.cy-guide-summary b{display:block;margin-bottom:4px}.cy-guide-summary small{color:var(--muted);line-height:1.45}
   @media(max-width:760px){
     #tutorialButton{padding:8px 9px;font-size:12px}.top-actions{gap:5px}.top-actions .identity-chip{max-width:96px}
     #cy-onboarding-overlay{padding:0}.cy-onboarding-shell{width:100%;height:100dvh;max-height:none;border-radius:0}
