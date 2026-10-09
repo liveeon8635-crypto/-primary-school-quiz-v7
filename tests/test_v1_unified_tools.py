@@ -76,16 +76,29 @@ def test_workspace_no_longer_duplicates_all_functions_center():
     assert '/v1/tool' in html
 
 
-def test_teacher_workspace_has_sliding_switch_and_deduplicated_cards():
+def test_teacher_workspace_has_capsule_nav_all_view_and_deduplicated_cards():
     from fastapi.testclient import TestClient
     from app import app
     from changying.web.v1_tool_hub import TOOL_HUB_MENUS
 
     html = TestClient(app).get('/v1/workspace').text
-    assert "cy-ws-tabs" in html
-    assert "当前教学</button><button type=\"button\" role=\"tab\" data-view=\"all\">全部功能" in html
+    assert 'id="cy-seg"' in html
+    assert '<aside class="side">' not in html
+    assert 'class="bottom"' not in html
+    assert "cy-ws-all" in html
     for _, label, _ in TOOL_HUB_MENUS["teacher"]:
         assert label in html
     assert "['晚托','周末课','今日/本周教学','课堂复盘','作业与错题','学习进度']" in html
     assert "'当前学生','今日/本周教学'" not in html
     assert "'待办事项']" not in html
+
+
+def test_internal_feedback_status_panels_are_not_injected_into_pages():
+    from fastapi.testclient import TestClient
+    from app import app
+
+    for path in ('/v1', '/v1/workspace', '/v1/student'):
+        html = TestClient(app).get(path).text
+        assert 'feedback-status-chain' not in html
+        assert 'feedback-reward-panel' not in html
+        assert 'exact-head CI 通过' not in html

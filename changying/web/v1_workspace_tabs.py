@@ -1,8 +1,9 @@
-"""Teacher workspace: compact vertical list with a sliding 当前教学 / 全部功能 switch.
+"""Teacher workspace: compact vertical list plus the 全部功能 view.
 
-The teaching tasks are shown as a single-column list and the full feature list
-lives behind a segmented switch on the same page (``?view=all``), so the
-sidebar no longer needs a separate "全部功能" entry and the screen stays short.
+The sidebar is gone; ``shell()`` in ``v1.py`` renders one sliding capsule with
+every quick-nav entry. This patch turns the teaching tasks into a single-column
+list and adds the 全部功能 view (``/v1/workspace?view=all``) that the capsule's
+last segment switches to without re-rendering the page.
 """
 from __future__ import annotations
 
@@ -15,12 +16,7 @@ V1_WORKSPACE_TABS_MARKER = "changying_v1_workspace_tabs_v1"
 
 _SNIPPET = r'''
 <style id="changying_v1_workspace_tabs_v1-style">
-#cy-ws-tabs{position:relative;display:inline-grid;grid-template-columns:1fr 1fr;padding:4px;margin:0 0 16px;border-radius:14px;background:linear-gradient(180deg,#e7edf6,#eef3f9);box-shadow:inset 0 1px 2px rgba(23,60,120,.14);min-width:260px}
-#cy-ws-tabs .cy-ws-thumb{position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:10px;background:linear-gradient(180deg,#fff,#f4f8ff);box-shadow:0 1px 3px rgba(23,60,120,.18),0 6px 14px rgba(23,60,120,.10),inset 0 1px 0 #fff;transition:transform .22s cubic-bezier(.4,0,.2,1)}
-#cy-ws-tabs[data-view="all"] .cy-ws-thumb{transform:translateX(100%)}
-#cy-ws-tabs button{position:relative;z-index:1;border:0;background:transparent;padding:9px 18px;font:inherit;font-weight:800;color:#667085;border-radius:10px;cursor:pointer}
-#cy-ws-tabs button[aria-selected="true"]{color:#173c78}
-main.cy-ws-view-all>*:not(#cy-ws-tabs):not(#cy-ws-all){display:none!important}
+main.cy-ws-view-all>*:not(#cy-seg):not(#cy-ws-all){display:none!important}
 main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
 .cy-ws-rows{display:flex!important;flex-direction:column;gap:8px}
 .cy-ws-rows>.card[data-feature]{display:grid;grid-template-columns:30px minmax(0,1fr) auto;grid-template-areas:"i t r" "i p r";column-gap:12px;align-items:center;padding:12px 16px;min-height:0;border-radius:14px}
@@ -34,8 +30,6 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
 #cy-ws-all .cy-ws-row small{grid-column:1;color:#667085;font-size:12px;line-height:1.45}
 #cy-ws-all .cy-ws-row i{grid-column:2;grid-row:1 / span 2;font-style:normal;color:#9aa6ba;font-size:20px}
 #cy-ws-all .cy-ws-row:active{background:#eaf1ff}
-@media(max-width:640px){#cy-ws-tabs{display:grid;width:100%}}
-@media(prefers-reduced-motion:reduce){#cy-ws-tabs .cy-ws-thumb{transition:none}}
 </style>
 <script id="changying_v1_workspace_tabs_v1-script">
 (()=>{
@@ -45,8 +39,12 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
   const viewFromUrl=()=>new URLSearchParams(location.search).get('view')==='all'?'all':'now';
   function setView(main,view,writeUrl){
     main.classList.toggle('cy-ws-view-all',view==='all');
-    const tabs=document.getElementById('cy-ws-tabs');
-    if(tabs){tabs.dataset.view=view;tabs.querySelectorAll('button').forEach(b=>b.setAttribute('aria-selected',b.dataset.view===view?'true':'false'))}
+    const seg=document.getElementById('cy-seg');
+    if(seg){
+      const links=[...seg.querySelectorAll('a[data-seg]')];
+      const target=view==='all'?'tools':'workspace';
+      links.forEach((a,i)=>{const on=a.dataset.seg===target;a.classList.toggle('active',on);if(on)seg.style.setProperty('--i',i)});
+    }
     if(writeUrl){const u=new URL(location.href);if(view==='all')u.searchParams.set('view','all');else u.searchParams.delete('view');history.replaceState(null,'',u.pathname+u.search)}
   }
   function mount(){
@@ -54,16 +52,20 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
     const main=document.querySelector('#screen main');if(!main)return;
     const first=main.querySelector('[data-feature]');if(!first)return;
     first.parentElement.classList.add('cy-ws-rows');
-    if(!document.getElementById('cy-ws-tabs')){
-      const tabs=document.createElement('div');tabs.id='cy-ws-tabs';tabs.setAttribute('role','tablist');
-      tabs.innerHTML='<span class="cy-ws-thumb"></span><button type="button" role="tab" data-view="now">当前教学</button><button type="button" role="tab" data-view="all">全部功能</button>';
-      tabs.querySelectorAll('button').forEach(b=>b.onclick=()=>setView(main,b.dataset.view,true));
+    if(!document.getElementById('cy-ws-all')){
       const all=document.createElement('section');all.id='cy-ws-all';all.className='section';
       all.innerHTML='<div class="cy-ws-list">'+ITEMS.map(x=>'<a class="cy-ws-row" href="/v1/tool?page='+encodeURIComponent(x[0])+'"><b>'+esc(x[1])+'</b><i>›</i><small>'+esc(x[2])+'</small></a>').join('')+'</div>';
-      main.insertBefore(all,main.firstChild);main.insertBefore(tabs,main.firstChild);
+      const seg=document.getElementById('cy-seg');
+      main.insertBefore(all,seg?seg.nextSibling:main.firstChild);
     }
     setView(main,viewFromUrl(),false);
   }
+  document.addEventListener('click',e=>{
+    const a=e.target.closest('#cy-seg a[data-seg]');if(!a||location.pathname!=='/v1/workspace')return;
+    const s=a.dataset.seg;if(s!=='workspace'&&s!=='tools')return;
+    const main=document.querySelector('#screen main');if(!main||!document.getElementById('cy-ws-all'))return;
+    e.preventDefault();e.stopImmediatePropagation();setView(main,s==='tools'?'all':'now',true);
+  },true);
   let timer=null;const run=()=>{clearTimeout(timer);timer=setTimeout(mount,60)};
   new MutationObserver(run).observe(document.getElementById('screen')||document.body,{childList:true,subtree:true});
   window.addEventListener('popstate',run);run();

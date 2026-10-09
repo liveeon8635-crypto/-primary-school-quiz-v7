@@ -29,7 +29,7 @@ def test_feedback_center_is_mounted_only_through_assistant_dropdown_with_actions
     assert "处理回执" in html
     assert "奖励分：" in html
     assert "追加反馈" in html
-    assert "验收通过" in html
+    assert "data-cy-fc-ack" in html
     assert "驳回" in html
     assert "/follow-up" in html
     assert "/acknowledge" in html
