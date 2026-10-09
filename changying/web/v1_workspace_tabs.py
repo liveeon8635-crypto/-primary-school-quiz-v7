@@ -31,15 +31,15 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
 .cy-ws-rows>.card[data-feature]{display:grid;grid-template-columns:30px minmax(0,1fr) auto;grid-template-areas:"i t r" "i p r";column-gap:12px;align-items:center;padding:12px 16px;min-height:0;border-radius:14px}
 .cy-ws-rows>.card[data-feature]>span:first-child{grid-area:i;font-size:20px!important}
 .cy-ws-rows>.card[data-feature]>h3{grid-area:t;margin:0!important;font-size:15px}
-.cy-ws-rows>.card[data-feature]>p{grid-area:p;margin:2px 0 0!important;font-size:12px;color:#667085}
+.cy-ws-rows>.card[data-feature]>p{grid-area:p;margin:2px 0 0!important;font-size:12px;color:#7a625c}
 .cy-ws-rows>.card[data-feature]>*:not(span):not(h3):not(p){grid-area:r;margin:0!important;font-size:12px;white-space:nowrap}
-#cy-ws-all .cy-ws-h{margin:14px 2px 8px;font-size:13px;color:#667085;font-weight:800}
+#cy-ws-all .cy-ws-h{margin:14px 2px 8px;font-size:13px;color:#7a625c;font-weight:800}
 #cy-ws-all .cy-ws-list{display:flex;flex-direction:column;gap:8px}
-#cy-ws-all .cy-ws-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:12px;padding:12px 16px;border:1px solid #e4e9f2;border-radius:14px;background:#fff;color:inherit;text-decoration:none}
+#cy-ws-all .cy-ws-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:12px;padding:12px 16px;border:1px solid #eadfd8;border-radius:14px;background:#fff;color:inherit;text-decoration:none}
 #cy-ws-all .cy-ws-row b{font-size:15px}
-#cy-ws-all .cy-ws-row small{grid-column:1;color:#667085;font-size:12px;line-height:1.45}
-#cy-ws-all .cy-ws-row i{grid-column:2;grid-row:1 / span 2;font-style:normal;color:#9aa6ba;font-size:20px}
-#cy-ws-all .cy-ws-row:active{background:#eaf1ff}
+#cy-ws-all .cy-ws-row small{grid-column:1;color:#7a625c;font-size:12px;line-height:1.45}
+#cy-ws-all .cy-ws-row i{grid-column:2;grid-row:1 / span 2;font-style:normal;color:#c9a39b;font-size:20px}
+#cy-ws-all .cy-ws-row:active{background:#fdebe7}
 </style>
 <script id="changying_v1_workspace_tabs_v1-script">
 (()=>{
