@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:bcd01df83e99652f51aa2029e329ff42dd652014ceeca71a0bbf064c5d1e7d44",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "c522fa759947b5f2ed73644cb47b7ba4674f70ce",
+  "headSha": "d6ce8d86fe10f41c28119d12f10816b343359988",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：重构了“全部功能”入口并移除了重复的旧版功能中心模块，代码结构清晰且单元测试已完全覆盖。",
+      "evidenceRefs": [
+        "file:changying/web/v1_tool_hub.py#L1-L86",
+        "run:113902286120"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "新增原生 V1 版本的全部功能 Hub 页面（`/v1/tool`），可在未指定具体 page 参数时按角色展示对应功能菜单并进行登录状态同步。",
+      "evidenceRefs": [
+        "file:changying/web/v1_tool_hub.py#L14-L86",
+        "file:tests/test_v1_classic_gzip_embed.py#L61-L77"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:a253a32d0c6d94c9363f34dd424ef5c2d83a70c811f7665e318c184e9b314b2e"
+}

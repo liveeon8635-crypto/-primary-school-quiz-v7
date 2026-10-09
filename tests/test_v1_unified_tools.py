@@ -29,9 +29,8 @@ def test_unified_patch_replaces_direct_classic_navigation():
     assert "['tools','☰','更多','/v1/tool?page=__hub__']" in html
     assert "/v1/workspace?focus=capabilities" not in html
     assert "全部功能" in html
-    assert "a[data-cy-capability]" in html
-    assert "'/v1/tool?page='+encodeURIComponent(page)" in html
-    assert "在统一界面打开 →" in html
+    assert "cy-capabilities" not in html
+    assert "完整功能中心" not in html
 
 
 def test_old_iframe_shell_is_kept_only_as_a_compatibility_helper():
@@ -66,3 +65,13 @@ def test_runtime_installs_same_tab_unified_tool_route_and_final_patch():
         assert 'cy-v1-unified-picker' in unified.text
         """
     )
+
+
+def test_workspace_no_longer_duplicates_all_functions_center():
+    from fastapi.testclient import TestClient
+    from app import app
+
+    html = TestClient(app).get('/v1/workspace').text
+    assert 'cy-capabilities' not in html
+    assert '完整功能中心' not in html
+    assert '/v1/tool' in html
