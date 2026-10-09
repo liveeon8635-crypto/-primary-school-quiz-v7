@@ -109,14 +109,14 @@ def test_unified_classic_gets_v1_chrome_even_when_upstream_is_gzipped():
     assert "params.get('unified')!=='1'" in response.text
     assert 'cy-v1-unified-picker' in response.text
     assert '/v1/workspace' in response.text
-    assert '/v1/history' in response.text
+    assert '/v1/workspace?view=all' in response.text
     assert '班级学生' in response.text
     assert 'function autoResume()' in response.text
     assert "document.getElementById('continueSessionBtn')" in response.text
     assert "if(typeof markNetwork==='function')markNetwork(true)" in response.text
     assert 'btn.click()' in response.text
-    assert '--cy-v1-navy:#173c78' in response.text
-    assert '--cy-v1-line:#e4e9f2' in response.text
+    assert '--cy-v1-navy:#a8101c' in response.text
+    assert '--cy-v1-line:#eadfd8' in response.text
     assert 'background:#f3f6fb!important' in response.text
     assert 'border-radius:18px!important' in response.text
     assert 'background:var(--cy-v1-navy)!important' in response.text

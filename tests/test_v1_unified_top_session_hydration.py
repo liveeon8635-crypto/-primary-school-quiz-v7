@@ -23,8 +23,10 @@ def test_unified_top_only_posts_to_bounded_auth_handoff_and_adds_no_business_wri
 
 def test_unified_top_keeps_chinese_navigation():
     html = inject_v1_classic_unified("<html><body></body></html>")
-    for label in ("当前教学", "学生", "往期教学", "升学衔接", "全部功能", "操作记录"):
+    for label in ("当前教学", "全部功能", "操作记录"):
         assert label in html
+    # 学生 / 往期教学 / 升学衔接 now live inside the V1 全部功能 view, not the chrome.
+    assert "['students','◉','学生'" not in html
 
 
 def test_unified_top_fallback_respects_remember_storage_contract():

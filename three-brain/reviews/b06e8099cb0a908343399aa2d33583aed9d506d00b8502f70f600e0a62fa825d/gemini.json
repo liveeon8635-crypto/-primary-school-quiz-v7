@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:b06e8099cb0a908343399aa2d33583aed9d506d00b8502f70f600e0a62fa825d",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "c97eac9600368bea59a29fb5d27aeb4f8e0fe306",
+  "headSha": "c566db92b99ca6a7a90c97b70fdfa7a313014c21",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：本次变更完成了长缨辅学 V1 界面横幅与品牌样式的统一重构，更新了相应的单元测试，且自动化构建与检查均已成功通过。",
+      "evidenceRefs": [
+        "pr:#650",
+        "file:changying/web/v1_ribbon_banner.py#L1-L182",
+        "run:113965701131",
+        "run:113965701810"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:77180bad752368f821baa0ec62b6cd72e687304bbed5900ce281b2756bb80aad"
+}
