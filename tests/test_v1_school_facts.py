@@ -17,7 +17,9 @@ def test_school_mode_does_not_claim_a_data_domain_that_is_not_persisted():
     assert V1_SCHOOL_FACTS_MARKER in html
     assert "学校数据域内的教学入口" not in html
     assert "复用当前账号已有教学数据，不虚构独立学校数据域" in html
-    assert "学校独立数据域尚未标准化落表" in html
+    # The workspace no longer carries any heading description, so the old
+    # "按学校 → 学年 → …" claim must be gone rather than rewritten.
+    assert "按学校 → 学年 → 学期 → 年级 → 班级 → 学科组织教学。" not in html
 
 
 def test_today_timetable_opens_a_fact_only_overview_until_schedule_exists():

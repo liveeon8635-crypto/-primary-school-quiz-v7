@@ -17,8 +17,6 @@ from changying.web import v1 as v1_module
 
 V1_SCHOOL_FACTS_MARKER = "changying_v1_school_facts_v1"
 
-_SCHOOL_DESC_OLD = "按学校 → 学年 → 学期 → 年级 → 班级 → 学科组织教学。"
-_SCHOOL_DESC_NEW = "学校模式按当前账号可见班级与学生组织；学年、学期和学校独立数据域尚未标准化落表。"
 _SCHOOL_CARD_OLD = "学校数据域内的教学入口"
 _SCHOOL_CARD_NEW = "复用当前账号已有教学数据，不虚构独立学校数据域"
 _SHOW_FEATURE_MARKER = "  async function showFeature(name){\n"
@@ -42,10 +40,6 @@ def patch_v1_school_facts(html: str) -> str:
 
     if V1_SCHOOL_FACTS_MARKER in html:
         return html
-
-    if _SCHOOL_DESC_OLD not in html:
-        raise RuntimeError("V1 school facts patch: school description marker not found")
-    html = html.replace(_SCHOOL_DESC_OLD, _SCHOOL_DESC_NEW, 1)
 
     if _SCHOOL_CARD_OLD not in html:
         raise RuntimeError("V1 school facts patch: school card marker not found")

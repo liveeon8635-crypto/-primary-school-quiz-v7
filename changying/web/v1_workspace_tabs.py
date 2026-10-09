@@ -26,6 +26,8 @@ WORKSPACE_RECORD_LINKS: list[tuple[str, str, str]] = [
 _SNIPPET = r'''
 <style id="changying_v1_workspace_tabs_v1-style">
 main.cy-ws-view-all>*:not(#cy-ws-all){display:none!important}
+main.cy-ws-page .page-head .subtitle,main.cy-ws-page .section-head p{display:none!important}
+main.cy-ws-page:has(#cy-cycle-empty) #cy-op-workbench{display:none!important}
 main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
 .cy-ws-rows{display:flex!important;flex-direction:column;gap:8px}
 .cy-ws-rows>.card[data-feature]{display:grid;grid-template-columns:30px minmax(0,1fr) auto;grid-template-areas:"i t r" "i p r";column-gap:12px;align-items:center;padding:12px 16px;min-height:0;border-radius:14px}
@@ -61,8 +63,10 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
   function mount(){
     if(location.pathname!=='/v1/workspace')return;
     const main=document.querySelector('#screen main');if(!main)return;
-    const first=main.querySelector('[data-feature]');if(!first)return;
-    first.parentElement.classList.add('cy-ws-rows');
+    const first=main.querySelector('[data-feature]');
+    if(!first&&!main.querySelector('#termSelect'))return;
+    main.classList.add('cy-ws-page');
+    if(first)first.parentElement.classList.add('cy-ws-rows');
     if(!document.getElementById('cy-ws-all')){
       const all=document.createElement('section');all.id='cy-ws-all';all.className='section';
       const recRows=RECORDS.map(x=>'<a class="cy-ws-row" data-nav href="'+esc(x[0])+'"><b>'+esc(x[1])+'</b><i>›</i><small>'+esc(x[2])+'</small></a>').join('');
