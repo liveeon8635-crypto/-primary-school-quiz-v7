@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:1dedeca04b65a9ad1619cfe1c58a1255feaa9ff8282b74a3c190568ec75c55fe",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "30e617cdb7b2e0ebb6a3df34f959e37b36c90e62",
+  "headSha": "194492ab099d95ebe432942ddbc11154242b06fc",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议合并：改动很小，只在从 V1 跳转到经典版时暂时隐藏旧登录页，避免闪现，且有 5 秒兜底，CI（smoke、guard）均通过。",
+      "evidenceRefs": [
+        "file:changying/web/v1_classic_unified_top.py#L13-L30",
+        "run:113888859322",
+        "run:113888859620"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "隐藏只在网址带 unified=1 且 from=v1 时生效；会话恢复成功、失败或超过 5 秒都会解除隐藏，所以真正未登录的用户仍能看到登录表单，最坏情况是多等几秒。",
+      "evidenceRefs": [
+        "file:changying/web/v1_classic_unified_top.py#L88-L93"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "新增测试只检查页面里是否包含相关代码片段，没有真正在浏览器里验证“不闪现”的效果，属于较弱的覆盖，但不阻碍合并。",
+      "evidenceRefs": [
+        "file:tests/test_v1_cross_context_auth_handoff.py#L296-L312"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:b64b6bc17a10575fc04df190817f34457d1638205949272317522eae9bee915b"
+}
