@@ -74,7 +74,7 @@ def test_v1_tool_without_page_is_native_v1_hub_not_classic_redirect():
 
     # Every card must open a page the redirect actually allows.
     for items in TOOL_HUB_MENUS.values():
-        assert {page for page, _ in items} <= _ALLOWED_TOOL_PAGES
+        assert {page for page, *_ in items} <= _ALLOWED_TOOL_PAGES
 
 
 def test_unknown_tool_page_is_safely_normalized():

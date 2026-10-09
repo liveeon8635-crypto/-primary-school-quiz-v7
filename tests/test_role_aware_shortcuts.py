@@ -70,9 +70,11 @@ def test_teacher_shortcuts_keep_existing_teaching_navigation():
         ("学生", "/v1/student"),
         ("往期教学", "/v1/history"),
         ("升学衔接", "/v1/transition"),
-        ("全部功能", "/v1/tool"),
     ):
         assert f"'{label}','{path}'" in html
+    # 全部功能 now lives inside 当前教学 as a switch, not as a sidebar entry.
+    assert "'全部功能','/v1/tool'" not in html
+    assert "changying_v1_workspace_tabs_v1" in html
 
 
 def test_all_recognized_roles_have_explicit_quick_navigation_on_both_surfaces():
