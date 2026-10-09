@@ -202,3 +202,15 @@ def test_classic_checkboxes_keep_their_natural_size():
     for url in ('/classic?legacy=1&unified=1&page=catalog',):
         html = TestClient(app).get(url).text
         assert 'input[type="checkbox"],input[type="radio"]{width:auto!important;min-width:0;padding:0!important;flex:none}' in html
+
+
+def test_assistant_can_be_hidden_and_restored():
+    from fastapi.testclient import TestClient
+    from app import app
+
+    html = TestClient(app).get('/v1/workspace').text
+    assert 'id="cy-pa-hide"' in html and 'id="cy-pa-restore"' in html
+    assert 'html.cy-pa-off #cy-product-assistant-fab' in html
+    assert "localStorage.setItem(PA_OFF_KEY,'1')" in html and "localStorage.removeItem(PA_OFF_KEY)" in html
+    # Feedback-review deep links must still be able to open the assistant while it is hidden.
+    assert 'setPaOff(false);panel.hidden=false;fab.hidden=true;initialAssistantRoutePending=false;' in html
