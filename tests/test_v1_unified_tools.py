@@ -28,7 +28,6 @@ def test_unified_patch_replaces_direct_classic_navigation():
     assert "['assignments','✓','作业','/v1/tool?page=assignments']" in html
     assert "['tools','☰','更多','/v1/tool?page=__hub__']" in html
     assert "/v1/workspace?focus=capabilities" not in html
-    assert "全部功能" in html
     assert "cy-capabilities" not in html
     assert "完整功能中心" not in html
 

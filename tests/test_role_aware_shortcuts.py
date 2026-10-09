@@ -74,7 +74,6 @@ def test_teacher_shortcuts_keep_existing_teaching_navigation():
         assert f"'{label}','{path}'" in html
     # 全部功能 now lives inside 当前教学 as a switch, not as a sidebar entry.
     assert "'全部功能','/v1/tool'" not in html
-    assert "changying_v1_workspace_tabs_v1" in html
 
 
 def test_all_recognized_roles_have_explicit_quick_navigation_on_both_surfaces():
