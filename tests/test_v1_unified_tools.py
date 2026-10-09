@@ -114,7 +114,10 @@ def test_v1_header_is_horizontal_ribbon_banner_with_expanded_brand():
 
     html = TestClient(app).get('/v1/workspace').text
     assert '.top .brand>span:last-child{display:flex;align-items:baseline' in html
-    assert 'data:image/svg+xml' in html
+    assert 'class="cy-ribbon"' in html and 'id="cyDragonPath"' in html
+    assert 'dur="30s"' in html and 'repeatCount="indefinite"' in html
+    # Fixed header, taller than before.
+    assert 'position:fixed;left:0;right:0;top:0;z-index:50' in html and '.top{height:88px' in html
     assert '<a class="brand" href="/v1"><span>长缨辅学<small>学生连续发展档案 · V1</small></span></a>' in html
     assert '<span class="mark">长</span>' not in html
 
@@ -148,3 +151,27 @@ def test_teaching_term_is_a_year_plus_dropdown_and_heading_notes_are_removed():
     assert '.cy-term{display:inline-flex;align-items:baseline;gap:.3em;font-size:clamp(25px,4vw,38px)' in html
     # The duplicated 当前学生 KPI card is gone; the count sits on the list heading.
     assert '<section class="section grid cols-3"><div class="card kpi"><span>当前班级</span>' in html
+
+
+def test_identity_notice_only_exists_for_demo_accounts():
+    from fastapi.testclient import TestClient
+    from app import app
+
+    html = TestClient(app).get('/v1/workspace').text
+    assert "const notice=session.demo?`<div class=\"notice warn\">" in html
+    assert "现有数据按账号原有权限读取" not in html
+
+
+def test_classic_unified_chrome_and_tool_hub_share_the_ribbon_theme():
+    from fastapi.testclient import TestClient
+    from app import app
+
+    client = TestClient(app)
+    classic = client.get('/classic?legacy=1&unified=1&page=papers').text
+    assert 'cy-ribbon' in classic and 'cyDragonPath' in classic
+    assert '--primary:#a8101c' in classic and 'font-family:CyBrand' in classic
+    assert 'class="cy-v1-mark"' not in classic
+    assert "['tools','⌘','全部功能','/v1/workspace?view=all']" in classic
+
+    hub = client.get('/v1/tool').text
+    assert 'cy-ribbon' in hub and '--navy:#a8101c' in hub
