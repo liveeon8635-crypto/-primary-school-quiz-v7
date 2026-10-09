@@ -188,6 +188,9 @@ def patch_classic_local_due_dates(html: str) -> str:
 
 CLASSIC_UI_SNIPPET = f"""
 <style id="{CLASSIC_UI_MARKER}-style">
+/* The base stylesheet gives every <input> width:100%; checkboxes and radios must keep their natural size
+   (the catalog row picker used to stretch across the whole row and squeeze the question text into one column). */
+input[type="checkbox"],input[type="radio"]{{width:auto!important;min-width:0;padding:0!important;flex:none}}
   :root{{
     --cy-brand:#3047ff;
     --cy-brand-soft:#eef2ff;

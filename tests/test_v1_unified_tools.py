@@ -191,3 +191,14 @@ def test_assistant_button_is_the_nezha_avatar():
     assert 'class="cy-pa-fab-img" src="data:image/png;base64,' in button
     assert '✦' not in button
     assert '/v1/assets/cinematic-nezha.webp' not in html
+
+
+def test_classic_checkboxes_keep_their_natural_size():
+    from fastapi.testclient import TestClient
+    from app import app
+
+    # The legacy stylesheet sets input{width:100%}; without this override the 教材题库
+    # row picker stretched across the whole row and squeezed each question into one character column.
+    for url in ('/classic?legacy=1&unified=1&page=catalog',):
+        html = TestClient(app).get(url).text
+        assert 'input[type="checkbox"],input[type="radio"]{width:auto!important;min-width:0;padding:0!important;flex:none}' in html
