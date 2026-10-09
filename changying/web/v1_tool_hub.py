@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 
+from changying.web.v1_cinematic import patch_v1_cinematic
 from changying.web.v1_ribbon_banner import BRAND_FONT_B64, RIBBON_SVG
 
 V1_TOOL_HUB_MARKER = "changying_v1_tool_hub_v1"
@@ -71,8 +72,7 @@ _HUB_TEMPLATE = r'''<!doctype html>
 :root{--navy:#a8101c;--ink:#172033;--muted:#7a625c;--line:#eadfd8;--soft:#f8f3ee}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--soft);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;-webkit-text-size-adjust:100%}a{text-decoration:none;color:inherit}
 .top{position:fixed;left:0;right:0;top:0;height:88px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 clamp(14px,4vw,40px);overflow:hidden;background:radial-gradient(110% 240% at 6% -50%,rgba(255,222,160,.6),transparent 56%),linear-gradient(100deg,#a8101c 0%,#d9352a 36%,#ee7a38 64%,#c92a2c 100%);box-shadow:0 8px 22px rgba(168,16,28,.28);z-index:5}
-.cy-ribbon{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.top>:not(.cy-ribbon){position:relative;z-index:1}@media(prefers-reduced-motion:reduce){.cy-scene{display:none}}
-.brand{color:#fff;font-family:CyBrand,'STXingkai','Xingkai SC','Kaiti SC',KaiTi,serif;font-size:46px;letter-spacing:.14em;text-shadow:0 2px 8px rgba(100,0,10,.4)}
+.cy-ribbon{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.top>:not(.cy-ribbon){position:relative;z-index:1}.brand{color:#fff;font-family:CyBrand,'STXingkai','Xingkai SC','Kaiti SC',KaiTi,serif;font-size:46px;letter-spacing:.14em;text-shadow:0 2px 8px rgba(100,0,10,.4)}
 .chip{font-size:12px;color:#fff;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.45);border-radius:999px;padding:8px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:720px){.top{height:68px}.brand{font-size:32px}}
 main{max-width:1080px;margin:0 auto;padding:112px clamp(16px,4vw,40px) 60px}h1{margin:0 0 6px;font-size:22px}.lead{margin:0 0 18px;color:var(--muted);font-size:13px;line-height:1.6}
@@ -120,11 +120,12 @@ main{max-width:1080px;margin:0 auto;padding:112px clamp(16px,4vw,40px) 60px}h1{m
 
 
 def tool_hub_html() -> str:
-    return (
+    html = (
         _HUB_TEMPLATE.replace("__MENUS__", json.dumps(TOOL_HUB_MENUS, ensure_ascii=False))
         .replace("__BRAND_FONT_B64__", BRAND_FONT_B64)
         .replace("__RIBBON__", RIBBON_SVG)
     )
+    return patch_v1_cinematic(html)
 
 
 def is_tool_hub_request(page: str | None) -> bool:

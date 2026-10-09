@@ -147,6 +147,7 @@ from changying.web.v1_unified_tools import (
     install_v1_unified_tool_route,
     install_v1_unified_tools_patch,
 )
+from changying.web.v1_cinematic import install_v1_cinematic_patch, install_v1_cinematic_routes
 from changying.web.v1_workspace_tabs import install_v1_workspace_tabs_patch
 from changying.web.v1_unified_tools_session_bridge import install_v1_unified_tool_session_bridge
 from changying.web.reinforcement_quality import install_reinforcement_figure_fallback
@@ -482,6 +483,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_product_assistant_patch()
     install_v1_product_assistant_routes(implementation)
     install_v1_workspace_tabs_patch()
+    install_v1_cinematic_patch()
     install_v1_learning_evidence_profile(implementation)
     install_v1_classroom_longitudinal_profile(implementation)
     install_v2_learning_evidence_recorder_patch()
@@ -506,6 +508,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_auth_handoff_routes(implementation)
     install_v1_routes(implementation.app)
     install_v1_unified_tool_route(implementation.app)
+    install_v1_cinematic_routes(implementation.app)
 
 
 __all__ = ["NO_CACHE_HEADERS", "apply_legacy_compatibility", "install_product_visibility_routes", "install_teacher_dashboard_current_student_count"]

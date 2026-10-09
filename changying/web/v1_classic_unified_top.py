@@ -8,6 +8,7 @@ then adds the V1 navigation chrome around it.
 """
 from __future__ import annotations
 
+from changying.web.v1_cinematic import cinematic_snippet
 from changying.web.v1_ribbon_banner import BRAND_FONT_B64, RIBBON_SVG_JSON
 
 V1_CLASSIC_UNIFIED_MARKER = "changying_v1_classic_unified_top_v1"
@@ -47,7 +48,7 @@ html.cy-v1-unified button,html.cy-v1-unified .btn,html.cy-v1-unified [role="butt
 html.cy-v1-unified button.primary,html.cy-v1-unified .btn.primary,html.cy-v1-unified .btn-primary{background:var(--cy-v1-navy)!important;color:#fff!important;border-color:var(--cy-v1-navy)!important}
 html.cy-v1-unified input:not([type="checkbox"]):not([type="radio"]),html.cy-v1-unified select,html.cy-v1-unified textarea{border:1px solid #cfd7e5!important;border-radius:12px!important;background:#fff!important;color:var(--cy-v1-ink)!important;font-family:inherit!important}
 #cy-v1-unified-top{position:fixed;left:0;right:0;top:0;height:88px;z-index:2147483600;display:flex;align-items:center;gap:12px;padding:0 clamp(16px,4vw,42px);overflow:hidden;background:radial-gradient(110% 240% at 6% -50%,rgba(255,222,160,.6),transparent 56%),linear-gradient(100deg,#a8101c 0%,#d9352a 36%,#ee7a38 64%,#c92a2c 100%);color:#fff;box-shadow:0 8px 22px rgba(168,16,28,.28);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
-#cy-v1-unified-top .cy-ribbon{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}#cy-v1-unified-top>:not(.cy-ribbon){position:relative;z-index:1}@media(prefers-reduced-motion:reduce){#cy-v1-unified-top .cy-scene{display:none}}
+#cy-v1-unified-top .cy-ribbon{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}#cy-v1-unified-top>:not(.cy-ribbon){position:relative;z-index:1}
 #cy-v1-unified-top .cy-v1-brand{display:flex;align-items:center;text-decoration:none;color:#fff;white-space:nowrap}#cy-v1-unified-top .cy-v1-brand-text{font-family:CyBrand,'STXingkai','Xingkai SC','Kaiti SC',KaiTi,serif;font-size:46px;font-weight:400;letter-spacing:.14em;text-shadow:0 2px 8px rgba(100,0,10,.4)}#cy-v1-unified-top .cy-v1-spacer{flex:1}#cy-v1-unified-identity{font-size:12px;color:#fff;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.45);border-radius:999px;padding:7px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#cy-v1-unified-picker{min-width:180px;max-width:280px;border:1px solid rgba(255,255,255,.5)!important;border-radius:12px!important;background:rgba(255,255,255,.18)!important;color:#fff!important;padding:9px 34px 9px 11px!important;font:inherit!important}#cy-v1-unified-picker option{color:#172033}#cy-v1-unified-bottom{display:none}
 #cy-v1-switch-account{border:1px solid rgba(255,255,255,.5)!important;background:rgba(255,255,255,.18)!important;color:#fff!important;padding:8px 10px!important;white-space:nowrap}
 #cy-v1-tool-hub{position:fixed;inset:0;z-index:2147483640;background:rgba(17,24,39,.38);display:grid;place-items:end center;padding:16px}
@@ -122,7 +123,7 @@ def inject_v1_classic_unified(html: str) -> str:
         guard = V1_CLASSIC_LOGIN_GUARD + f"<!-- {V1_CLASSIC_LOGIN_GUARD_MARKER} -->"
         html = html.replace("<head>", "<head>" + guard, 1) if "<head>" in html else guard + html
     snippet = V1_CLASSIC_UNIFIED_SNIPPET.replace("__BRAND_FONT_B64__", BRAND_FONT_B64).replace("__RIBBON_JSON__", RIBBON_SVG_JSON)
-    marker = snippet + f"\n<!-- {V1_CLASSIC_UNIFIED_MARKER} -->"
+    marker = snippet + f"\n<!-- {V1_CLASSIC_UNIFIED_MARKER} -->" + cinematic_snippet()
     return html.replace("</body>", marker + "</body>", 1) if "</body>" in html else html + marker
 
 
