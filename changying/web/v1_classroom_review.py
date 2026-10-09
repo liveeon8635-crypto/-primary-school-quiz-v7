@@ -124,11 +124,11 @@ def patch_v1_classroom_review_html(html: str) -> str:
         return html
 
     html = html.replace(
-        "['晚托','周末课','当前学生','今日/本周教学','作业与错题','学习进度','待办事项']",
-        "['晚托','周末课','当前学生','今日/本周教学','课堂复盘','作业与错题','学习进度','待办事项']",
+        "['晚托','周末课','今日/本周教学','作业与错题','学习进度']",
+        "['晚托','周末课','今日/本周教学','课堂复盘','作业与错题','学习进度']",
     ).replace(
-        "['今日课表','我的班级','教学进度','学生','备课','作业','批改/订正','测验','教学评价','待办']",
-        "['今日课表','我的班级','教学进度','学生','备课','作业','批改/订正','测验','课堂复盘','教学评价','待办']",
+        "['今日课表','我的班级','教学进度','备课','作业','批改/订正','测验','教学评价']",
+        "['今日课表','我的班级','教学进度','备课','作业','批改/订正','测验','课堂复盘','教学评价']",
     )
     old_handler = "document.querySelectorAll('[data-feature]').forEach(b=>b.onclick=()=>toast(b.dataset.feature+'：V1 入口已预留'));"
     new_handler = "document.querySelectorAll('[data-feature]').forEach(b=>b.onclick=()=>{if(b.dataset.feature==='课堂复盘')navigate('/v1/classroom-review');else toast(b.dataset.feature+'：V1 入口已预留')});"

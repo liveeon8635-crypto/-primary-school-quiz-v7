@@ -11,11 +11,50 @@ import json
 
 V1_TOOL_HUB_MARKER = "changying_v1_tool_hub_v1"
 
-TOOL_HUB_MENUS: dict[str, list[tuple[str, str]]] = {
-    "teacher": [("classes", "班级学生"), ("classPoints", "课堂积分"), ("ai", "AI 助手"), ("teaching", "定制教学"), ("resources", "教材教案"), ("catalog", "教材题库"), ("papers", "组卷作业"), ("analytics", "学情分析"), ("audit", "操作记录"), ("leaderboard", "排行榜"), ("account", "我的")],
-    "student": [("syncLearning", "同步课堂"), ("rewards", "积分奖励"), ("assignments", "我的作业"), ("wrongbook", "我的错题"), ("practice", "自主练习"), ("progress", "我的学情"), ("leaderboard", "班级排行"), ("account", "我的")],
-    "parent": [("childLearning", "孩子课程"), ("childRewards", "课堂表现"), ("childProgress", "孩子学情"), ("childAssignments", "孩子作业"), ("account", "我的")],
-    "admin": [("admin", "平台总览"), ("subscription", "套餐授权"), ("users", "账号管理"), ("pointsAdmin", "积分奖励"), ("ai", "AI 设置"), ("teaching", "定制教学"), ("resources", "教材教案"), ("imports", "批量导入"), ("catalog", "教材题库"), ("adminAudit", "全校审计"), ("system", "系统设置")],
+TOOL_HUB_MENUS: dict[str, list[tuple[str, str, str]]] = {
+    "teacher": [
+        ("classes", "班级学生", "建班、学生账号、家长关联、调班与毕业归档"),
+        ("classPoints", "课堂积分", "课堂表现、积分规则、小组、成长看板与奖励"),
+        ("ai", "AI 助手", "AI 出题、教案、批改辅助与个性化巩固"),
+        ("teaching", "定制教学", "教学方案、课时内容与分层教学"),
+        ("resources", "教材教案", "教材、教案、课件与练习资料库"),
+        ("catalog", "教材题库", "题库维护、知识点与题目管理"),
+        ("papers", "组卷作业", "组卷、布置作业、检查提交与成绩导出"),
+        ("analytics", "学情分析", "班级完成率、成绩、薄弱知识点与学生提醒"),
+        ("audit", "操作记录", "查看本人教学操作审计记录"),
+        ("leaderboard", "排行榜", "课堂积分与班级表现排行"),
+        ("account", "我的", "账号、安全、通知与个人数据功能"),
+    ],
+    "student": [
+        ("syncLearning", "同步课堂", "查看课堂学习与互动内容"),
+        ("rewards", "积分奖励", "查看积分变化与奖励记录"),
+        ("assignments", "我的作业", "查看并完成待办作业"),
+        ("wrongbook", "我的错题", "回看错题并继续巩固"),
+        ("practice", "自主练习", "练习、针对性训练与错题巩固"),
+        ("progress", "我的学情", "查看学习进度与掌握情况"),
+        ("leaderboard", "班级排行", "课堂积分与班级表现排行"),
+        ("account", "我的", "账号、安全与个人数据"),
+    ],
+    "parent": [
+        ("childLearning", "孩子课程", "查看孩子当前课程与学习安排"),
+        ("childRewards", "课堂表现", "查看课堂表现与积分记录"),
+        ("childProgress", "孩子学情", "查看成绩、知识点与学习进展"),
+        ("childAssignments", "孩子作业", "查看作业进度、完成与逾期状态"),
+        ("account", "我的", "查看家长账号与关联信息"),
+    ],
+    "admin": [
+        ("admin", "平台总览", "学校教学与账号数据概览"),
+        ("subscription", "套餐授权", "查看当前学校功能授权与容量"),
+        ("users", "账号管理", "教师、学生、家长账号与学生恢复"),
+        ("pointsAdmin", "积分奖励", "全校积分规则、奖励与自动奖励"),
+        ("ai", "AI 设置", "学校级 AI 配置、安全边界与教学助手"),
+        ("teaching", "定制教学", "教学方案、课时与分层教学"),
+        ("resources", "教材教案", "学校资料库与官方教材导航"),
+        ("imports", "批量导入", "批量导入账号、题目与教学数据"),
+        ("catalog", "教材题库", "教材、知识点与题库管理"),
+        ("adminAudit", "全校审计", "查看全校关键教学与账号操作记录"),
+        ("system", "系统设置", "学校级系统维护与安全设置"),
+    ],
 }
 
 _HUB_TEMPLATE = r'''<!doctype html>
@@ -33,7 +72,7 @@ _HUB_TEMPLATE = r'''<!doctype html>
 .chip{font-size:12px;color:var(--navy);background:#edf3ff;border:1px solid #dbe7ff;border-radius:999px;padding:8px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 main{max-width:1080px;margin:0 auto;padding:24px clamp(16px,4vw,40px) 60px}h1{margin:0 0 6px;font-size:22px}.lead{margin:0 0 18px;color:var(--muted);font-size:13px;line-height:1.6}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
-.tool{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:16px;background:#fff;padding:16px 14px;font:inherit;font-weight:800;color:var(--ink);cursor:pointer;box-shadow:0 8px 30px rgba(23,60,120,.04)}.tool:active{background:#eaf1ff}
+.tool small{display:block;margin-top:4px;color:var(--muted);font-weight:500;font-size:12px;line-height:1.4}.tool{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:16px;background:#fff;padding:16px 14px;font:inherit;font-weight:800;color:var(--ink);cursor:pointer;box-shadow:0 8px 30px rgba(23,60,120,.04)}.tool:active{background:#eaf1ff}
 .notice{display:none;margin:0 0 14px;padding:10px 12px;border-radius:12px;background:#fff8e8;border:1px solid #f5d79a;color:#7a4a00;font-size:13px}.notice.show{display:block}
 </style>
 </head>
@@ -60,10 +99,11 @@ main{max-width:1080px;margin:0 auto;padding:24px clamp(16px,4vw,40px) 60px}h1{ma
   async function start(){
     const t=token();let role='teacher';
     if(!t){identity.textContent='未登录';say('请先登录长缨辅学后再查看全部功能。');grid.innerHTML='<a class="tool" href="/v1">前往登录</a>';return}
-    if(t==='demo'){identity.textContent='演示教师'}
+    if(t==='demo'){identity.textContent='演示教师';location.replace('/v1/workspace?view=all');return}
     else{try{const r=await fetch('/session',{headers:{Authorization:'Bearer '+t},cache:'no-store'});if(!r.ok)throw 0;const s=await r.json();role=String(s.role||'teacher');identity.textContent=(s.name||'当前账号')+' · '+({teacher:'教师',student:'学生',parent:'家长',admin:'管理员'}[role]||role)}catch{identity.textContent='登录已失效';say('登录状态已失效，请重新登录。');grid.innerHTML='<a class="tool" href="/v1">前往登录</a>';return}}
+    if(role==='teacher'){location.replace('/v1/workspace?view=all');return}
     const items=MENUS[role]||MENUS.teacher;
-    grid.innerHTML=items.map(x=>'<button type="button" class="tool" data-page="'+x[0]+'">'+x[1]+'</button>').join('');
+    grid.innerHTML=items.map(x=>'<button type="button" class="tool" data-page="'+x[0]+'">'+x[1]+'<small>'+x[2]+'</small></button>').join('');
     grid.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>openTool(b.dataset.page));
   }
   start();

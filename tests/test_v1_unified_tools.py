@@ -24,11 +24,10 @@ def test_unified_patch_replaces_direct_classic_navigation():
     html = patch_v1_unified_tools(v1_html())
     assert V1_UNIFIED_TOOLS_MARKER in html
     assert "function roleQuickNav()" in html
-    assert "['tools','⌘','全部功能','/v1/tool']" in html
+    assert "['tools','⌘','全部功能','/v1/tool']" not in html
     assert "['assignments','✓','作业','/v1/tool?page=assignments']" in html
     assert "['tools','☰','更多','/v1/tool?page=__hub__']" in html
     assert "/v1/workspace?focus=capabilities" not in html
-    assert "全部功能" in html
     assert "cy-capabilities" not in html
     assert "完整功能中心" not in html
 
@@ -53,7 +52,7 @@ def test_runtime_installs_same_tab_unified_tool_route_and_final_patch():
         assert v1.status_code == 200
         assert V1_UNIFIED_TOOLS_MARKER in v1.text
         assert 'function roleQuickNav()' in v1.text
-        assert "['tools','⌘','全部功能','/v1/tool']" in v1.text
+        assert "['tools','⌘','全部功能','/v1/tool']" not in v1.text
         assert "['assignments','✓','作业','/v1/tool?page=assignments']" in v1.text
         tool = client.get('/v1/tool?page=classes', follow_redirects=False)
         assert tool.status_code == 307
@@ -75,3 +74,31 @@ def test_workspace_no_longer_duplicates_all_functions_center():
     assert 'cy-capabilities' not in html
     assert '完整功能中心' not in html
     assert '/v1/tool' in html
+
+
+def test_teacher_workspace_has_capsule_nav_all_view_and_deduplicated_cards():
+    from fastapi.testclient import TestClient
+    from app import app
+    from changying.web.v1_tool_hub import TOOL_HUB_MENUS
+
+    html = TestClient(app).get('/v1/workspace').text
+    assert 'id="cy-seg"' in html
+    assert '<aside class="side">' not in html
+    assert 'class="bottom"' not in html
+    assert "cy-ws-all" in html
+    for _, label, _ in TOOL_HUB_MENUS["teacher"]:
+        assert label in html
+    assert "['晚托','周末课','今日/本周教学','课堂复盘','作业与错题','学习进度']" in html
+    assert "'当前学生','今日/本周教学'" not in html
+    assert "'待办事项']" not in html
+
+
+def test_internal_feedback_status_panels_are_not_injected_into_pages():
+    from fastapi.testclient import TestClient
+    from app import app
+
+    for path in ('/v1', '/v1/workspace', '/v1/student'):
+        html = TestClient(app).get(path).text
+        assert 'feedback-status-chain' not in html
+        assert 'feedback-reward-panel' not in html
+        assert 'exact-head CI 通过' not in html

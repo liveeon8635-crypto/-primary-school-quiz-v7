@@ -147,6 +147,7 @@ from changying.web.v1_unified_tools import (
     install_v1_unified_tool_route,
     install_v1_unified_tools_patch,
 )
+from changying.web.v1_workspace_tabs import install_v1_workspace_tabs_patch
 from changying.web.v1_unified_tools_session_bridge import install_v1_unified_tool_session_bridge
 from changying.web.reinforcement_quality import install_reinforcement_figure_fallback
 from changying.web.rubric_review_ui import install_rubric_review_ui
@@ -480,6 +481,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_training_workbench_route(implementation.app)
     install_v1_product_assistant_patch()
     install_v1_product_assistant_routes(implementation)
+    install_v1_workspace_tabs_patch()
     install_v1_learning_evidence_profile(implementation)
     install_v1_classroom_longitudinal_profile(implementation)
     install_v2_learning_evidence_recorder_patch()
