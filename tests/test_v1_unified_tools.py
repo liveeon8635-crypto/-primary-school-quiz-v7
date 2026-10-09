@@ -115,13 +115,18 @@ def test_v1_header_is_horizontal_ribbon_banner_with_expanded_brand():
     html = TestClient(app).get('/v1/workspace').text
     assert '.top .brand>span:last-child{display:flex;align-items:baseline' in html
     assert 'data:image/svg+xml' in html
-    assert '<span>长缨辅学<small>学生连续发展档案 · V1</small></span>' in html
+    assert '<a class="brand" href="/v1"><span>长缨辅学<small>学生连续发展档案 · V1</small></span></a>' in html
+    assert '<span class="mark">长</span>' not in html
 
 
-def test_workspace_identity_notice_is_hidden_for_real_accounts_but_kept_for_demo():
+def test_v1_brand_uses_embedded_calligraphy_font_and_keeps_identity_chip():
     from fastapi.testclient import TestClient
     from app import app
 
     html = TestClient(app).get('/v1/workspace').text
-    assert ".cy-notice-hidden{display:none!important}" in html
-    assert "class=\"notice${session.demo?' warn':' cy-notice-hidden'}\"" in html
+    assert "font-family:CyBrand" in html and "data:font/woff2;base64," in html
+    assert ".top .identity-chip{display:none}" not in html
+    assert "cy-notice-hidden" not in html
+    # The rail fills the viewport height and splits it between the two segments.
+    assert "height:calc(100dvh - 92px)" in html
+    assert "grid-template-rows:repeat(var(--n),1fr)" in html
