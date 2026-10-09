@@ -5,7 +5,7 @@ def test_v1_mobile_kpis_stay_compact_and_keep_bottom_clearance():
     html = v1_html()
     assert "@media(max-width:720px)" in html
     assert ".cols-4{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}" in html
-    assert "padding:16px 14px calc(40px + env(safe-area-inset-bottom))" in html
+    assert "padding:16px 14px calc(92px + env(safe-area-inset-bottom))" in html
     assert ".kpi{padding:14px}" in html
 
 
