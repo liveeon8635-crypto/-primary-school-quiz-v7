@@ -115,10 +115,11 @@ def test_v1_header_is_horizontal_ribbon_banner_with_expanded_brand():
     html = TestClient(app).get('/v1/workspace').text
     assert '.top .brand>span:last-child{display:flex;align-items:baseline' in html
     assert 'class="cy-ribbon"' in html and 'id="cyDragonPath"' not in html
-    # The story is the cinematic overlay; the header only keeps the shimmering silk.
-    assert 'id="cy-cine"' in html and 'setInterval(play,30000)' in html
-    # Fixed header, taller than before.
-    assert 'position:fixed;left:0;right:0;top:0;z-index:50' in html and '.top{height:88px' in html
+    # No title-sequence overlay any more: just the silk with a small shadow Nezha riding it.
+    assert 'id="cy-cine"' not in html and 'cinematic' not in html.lower()
+    assert '<animateMotion dur="18s"' in html and '<image href="data:image/webp;base64,' in html
+    # Fixed header, 15% taller than before (88px -> 101px).
+    assert 'position:fixed;left:0;right:0;top:0;z-index:50' in html and '.top{height:101px' in html
     assert '<a class="brand" href="/v1"><span>长缨辅学<small>学生连续发展档案 · V1</small></span></a>' in html
     assert '<span class="mark">长</span>' not in html
 
@@ -132,7 +133,7 @@ def test_v1_brand_uses_embedded_calligraphy_font_and_keeps_identity_chip():
     assert ".top .identity-chip{display:none}" not in html
     assert "cy-notice-hidden" not in html
     # The rail fills the viewport height and splits it between the two segments.
-    assert "height:calc(100dvh - 92px)" in html
+    assert "height:calc(100dvh - 125px)" in html
     assert "grid-template-rows:repeat(var(--n),1fr)" in html
 
 
@@ -172,28 +173,21 @@ def test_classic_unified_chrome_and_tool_hub_share_the_ribbon_theme():
 
     client = TestClient(app)
     classic = client.get('/classic?legacy=1&unified=1&page=papers').text
-    assert 'cy-ribbon' in classic and 'id="cy-cine"' in classic
+    assert 'cy-ribbon' in classic and 'id="cy-cine"' not in classic and '<animateMotion' in classic
     assert '--primary:#a8101c' in classic and 'font-family:CyBrand' in classic
     assert 'class="cy-v1-mark"' not in classic
     assert "['tools','⌘','全部功能','/v1/workspace?view=all']" in classic
 
     hub = client.get('/v1/tool').text
-    assert 'cy-ribbon' in hub and '--navy:#a8101c' in hub and 'id="cy-cine"' in hub
+    assert 'cy-ribbon' in hub and '--navy:#a8101c' in hub and 'id="cy-cine"' not in hub
 
 
-def test_cinematic_asset_is_served_and_overlay_never_blocks_clicks():
+def test_assistant_button_is_the_nezha_avatar():
     from fastapi.testclient import TestClient
     from app import app
-    from changying.web.v1_cinematic import CINEMATIC_ASSET_PATH
 
-    client = TestClient(app)
-    asset = client.get(CINEMATIC_ASSET_PATH)
-    assert asset.status_code == 200
-    assert asset.headers['content-type'] == 'image/webp'
-    assert asset.content[:4] == b'RIFF' and 'max-age' in asset.headers['cache-control']
-
-    html = client.get('/v1/workspace').text
-    assert f'src="{CINEMATIC_ASSET_PATH}"' in html
-    rule = html.split('#cy-cine{', 1)[1].split('}', 1)[0]
-    assert 'position:fixed' in rule and 'pointer-events:none' in rule
-    assert '@media(prefers-reduced-motion:reduce){#cy-cine{display:none!important}}' in html
+    html = TestClient(app).get('/v1/workspace').text
+    button = html.split('id="cy-product-assistant-fab"', 1)[1].split('</button>', 1)[0]
+    assert 'class="cy-pa-fab-img" src="data:image/png;base64,' in button
+    assert '✦' not in button
+    assert '/v1/assets/cinematic-nezha.webp' not in html
