@@ -16,10 +16,11 @@ from collections.abc import Awaitable, Callable
 from urllib.parse import quote
 
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from changying.web import classic_ui
 from changying.web.v1_classic_embed_bootstrap import inject_v1_classic_embed
+from changying.web.v1_tool_hub import V1_TOOL_HUB_MARKER, is_tool_hub_request, tool_hub_html
 from changying.web.v1_classic_unified_top import (
     V1_CLASSIC_UNIFIED_MARKER,
     inject_v1_classic_unified,
@@ -93,6 +94,11 @@ def enhance_unified_classic_html(html: str) -> str:
     return inject_v1_classic_unified(classic_ui.inject_classic_ui(html))
 
 
+def enhance_tool_hub_html(html: str) -> str:
+    """Hook for shared V1 widgets (e.g. the product assistant) on the native hub."""
+    return html
+
+
 def install_v1_classic_gzip_embed(app: FastAPI) -> None:
     """Install Classic integration for iframe compatibility and top-level V1 use."""
     if getattr(app.state, "v1_classic_gzip_embed_installed", False):
@@ -109,6 +115,16 @@ def install_v1_classic_gzip_embed(app: FastAPI) -> None:
         # same top-level browsing context, where the existing auth lifecycle is
         # already proven.
         if request.method == "GET" and request.url.path == "/v1/tool":
+            # The hub itself is a native V1 page; only a concrete function
+            # opens Classic. Refreshing the hub therefore stays in V1.
+            if is_tool_hub_request(request.query_params.get("page")):
+                return HTMLResponse(
+                    enhance_tool_hub_html(tool_hub_html()),
+                    headers={
+                        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                        "X-Changying-V1-Tool": V1_TOOL_HUB_MARKER,
+                    },
+                )
             page = _safe_tool_page(request.query_params.get("page"))
             return RedirectResponse(
                 _unified_tool_url(page),

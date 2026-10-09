@@ -108,7 +108,6 @@ from changying.web.v1_full_visibility import install_v1_full_visibility_patch
 from changying.web.v1_guardian_visibility import install_v1_guardian_visibility_patch
 from changying.web.v1_history_focus import install_v1_history_focus_patch
 from changying.web.v1_identity_clarity import install_v1_identity_clarity_patch
-from changying.web.v1_legacy_capabilities import install_v1_legacy_capabilities_patch
 from changying.web.v1_learning_evidence_profile import install_v1_learning_evidence_profile
 from changying.web.v2_learning_evidence_recording import install_v2_learning_evidence_routes
 from changying.web.v2_learning_evidence_recording_view import install_v2_learning_evidence_recorder_patch
@@ -472,7 +471,6 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_fast_path_patch()
     install_v1_identity_clarity_patch()
     install_v1_acceptance_polish_patch()
-    install_v1_legacy_capabilities_patch()
     install_v1_unified_tools_patch()
     install_v1_unified_tool_session_bridge()
     install_v1_audit_localization()
