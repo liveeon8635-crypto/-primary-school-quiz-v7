@@ -293,3 +293,20 @@ with TestClient(app) as client:
         f"stdout:\n{result.stdout}\n"
         f"stderr:\n{result.stderr}"
     )
+
+
+def test_unified_classic_hides_login_screen_until_v1_session_is_hydrated() -> None:
+    client = TestClient(app)
+    redirect = client.get("/v1/tool?page=papers", follow_redirects=False)
+    assert redirect.status_code == 307
+
+    page = client.get(redirect.headers["location"])
+    assert page.status_code == 200
+    html = page.text
+
+    guard_at = html.index("changying_v1_classic_login_guard_v1-style")
+    assert guard_at < html.index('id="loginScreen"')
+    assert "html.cy-v1-login-pending #loginScreen{visibility:hidden!important}" in html
+    assert "p.get('from')!=='v1'" in html
+    assert "__cyV1ReleaseLogin" in html
+    assert "releaseLogin()" in html
