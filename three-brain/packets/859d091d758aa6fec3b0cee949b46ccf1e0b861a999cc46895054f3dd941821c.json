@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseBranch": "main",
+  "prNumber": 675,
+  "baseSha": "38ca08b75b39e4d5ffda0e55fb552974e8dbc248",
+  "headSha": "3987215a9d9691dc7c822f48be09f5fb76a1b92b",
+  "ciRuns": [
+    {
+      "name": "smoke",
+      "runId": 114162919954,
+      "conclusion": "pending",
+      "headSha": "3987215a9d9691dc7c822f48be09f5fb76a1b92b"
+    },
+    {
+      "name": "guard",
+      "runId": 114162919844,
+      "conclusion": "success",
+      "headSha": "3987215a9d9691dc7c822f48be09f5fb76a1b92b"
+    }
+  ],
+  "statuses": [
+    {
+      "context": "automation-boundary-guard",
+      "state": "pending"
+    }
+  ],
+  "productionCommit": null,
+  "evidenceRefs": [
+    "pr:#675"
+  ],
+  "policyVersion": "three-brain-orchestrator-v1",
+  "taskContractHash": "sha256:12d4dcafec0037715264edb03fa4e46d2cde96f6765ac6206b4f46a41099bcb9",
+  "contentHash": "sha256:859d091d758aa6fec3b0cee949b46ccf1e0b861a999cc46895054f3dd941821c"
+}
