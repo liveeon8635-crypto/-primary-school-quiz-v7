@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:ab60fcde64f3e42811fcd66b66f9a958ba365e53d1468691ad4655c7cd26bf82",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "38ca08b75b39e4d5ffda0e55fb552974e8dbc248",
+  "headSha": "03be568c164e96a130cc9abf8116729ef3a2cd62",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：新增的 V1 HTML ETag 响应中间件可对未修改的 Shell 页面正确返回 304 响应，且不会影响非 HTML 或严格禁止缓存的页面。",
+      "evidenceRefs": [
+        "file:changying/compat/legacy.py#L80-L80",
+        "file:changying/compat/legacy.py#L510-L511",
+        "file:changying/web/v1_html_etag.py#L1-L73",
+        "file:tests/test_v1_html_etag.py#L1-L78",
+        "run:114158417675",
+        "run:114158417225"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:d6252ce82a8b0ecfcec290c5c879b40c4aa599430ed8c1a6367e3610c71bd596"
+}
