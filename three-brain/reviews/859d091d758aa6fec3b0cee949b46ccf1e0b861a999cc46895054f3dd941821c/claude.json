@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:859d091d758aa6fec3b0cee949b46ccf1e0b861a999cc46895054f3dd941821c",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "38ca08b75b39e4d5ffda0e55fb552974e8dbc248",
+  "headSha": "3987215a9d9691dc7c822f48be09f5fb76a1b92b",
+  "decision": "unresolved",
+  "risk": "medium",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议先不合并：这次改动代码本身看起来合理，但关键的 smoke 检查在证据包里还是“进行中”，没有成功结果，不能确认真实应用没被影响。",
+      "evidenceRefs": [
+        "run:114162919954",
+        "file:changying/web/v1_html_etag.py#L36-L88"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "改动内容：给 /classic 和 /v1 下的 HTML 页面加上 ETag，浏览器再次访问时若页面没变就返回 304，不再重复下载约 120-150KB；/v1/feedback 仍保持严格不缓存。guard 检查已成功。",
+      "evidenceRefs": [
+        "file:changying/web/v1_html_etag.py#L1-L30",
+        "run:114162919844"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "风险点：原来的 no-store（完全不缓存）被改成 private, no-cache，浏览器会在本地保留这些页面副本。作者声称这些页面对所有用户内容相同；如果 /v1/ 下有任何页面由服务器按登录用户渲染内容，就可能在共用电脑上被看到。合并前请确认这一点。",
+      "evidenceRefs": [
+        "file:changying/web/v1_html_etag.py#L1-L9",
+        "file:changying/web/v1_html_etag.py#L67-L72"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "次要问题：中间件会把整页读入内存后再返回，且挂在最外层（compat 里最后安装）；对大页面或流式页面有轻微性能影响，但当前页面约 150KB，影响不大。测试覆盖了 304、内容变化、gzip 差异和真实应用，覆盖较充分。",
+      "evidenceRefs": [
+        "file:changying/compat/legacy.py#L507-L511",
+        "file:tests/test_v1_html_etag.py#L99-L122"
+      ]
+    }
+  ],
+  "unresolved": [
+    "smoke 检查仍未完成（pending），需等其成功后再决定是否合并。",
+    "需要确认 /v1/ 和 /classic 的 HTML 页面确实不含按用户渲染的内容。",
+    "automation-boundary-guard 为 pending，仅表示可能需要人工合并，不作为拒绝理由。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:29c1bae5520b4c6afee62b41ca690a6e6a9f58532c9fa6bdfc14815ebf792dfc"
+}
