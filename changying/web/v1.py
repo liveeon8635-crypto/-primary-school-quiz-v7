@@ -135,7 +135,7 @@ def v1_html() -> str:
       finally{{buildCheckBusy=false}}
       return false;
     }};
-    const navigate=async(path)=>{{if(await ensureFreshBuild(path))return;history.pushState({{}},'',path);render()}};
+    const navigate=async(path)=>{{history.pushState({{}},'',path);const stale=ensureFreshBuild(path);render();await stale}};
     const identityReturnPath=()=>{{const path=location.pathname,full=path+location.search;return ['/v1/workspace','/v1/student','/v1/history','/v1/transition'].includes(path)?full:''}};
     let pendingIdentityReturnPath='';
     const roleLabel={{admin:'管理员',teacher:'教师',parent:'家长',student:'学生'}};
