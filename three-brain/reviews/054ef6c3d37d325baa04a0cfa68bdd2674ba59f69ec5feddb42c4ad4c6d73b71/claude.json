@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:054ef6c3d37d325baa04a0cfa68bdd2674ba59f69ec5feddb42c4ad4c6d73b71",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "08ca10429bfddc39b980ab28113086f498f2426b",
+  "headSha": "b6cab12c7cfda9acc11112378e8a804425b40241",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议合并：改动只是把“从 V1 跳转到经典版”的登录交接请求提前到页面头部发出以减少闪屏，范围小，smoke 与 guard 两项 CI 均为 success。",
+      "evidenceRefs": [
+        "file:changying/web/v1_classic_unified_top.py#L26-L32",
+        "run:114175832156",
+        "run:114175832022"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "提前发出的请求只在网址带 unified=1 且 from=v1 时才会触发，并且只会被使用一次，不会重复消耗一次性交接凭证；仍然只访问同一个受限的交接接口，没有新增写入。",
+      "evidenceRefs": [
+        "file:changying/web/v1_classic_unified_top.py#L26-L32",
+        "file:changying/web/v1_classic_unified_top.py#L86-L86"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "当交接结果带有服务器返回的 valid 标记时，会跳过一次重复的会话校验，并把“必须修改密码”状态带入；服务器端确实会返回这些字段，其他路径仍会走原有校验。这是行为上最需要留意的一点，但风险较低。",
+      "evidenceRefs": [
+        "file:changying/web/v1_classic_unified_top.py#L102-L102"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "新增测试覆盖了提前请求、一次性复用、跳过校验的条件，以及脚本语法检查；原有的“只允许受限 POST”测试被相应放宽为 2 次，合理。",
+      "evidenceRefs": [
+        "file:tests/test_v1_unified_top_session_hydration.py#L14-L22",
+        "file:tests/test_v1_unified_top_session_hydration.py#L99-L135",
+        "status:automation-boundary-guard"
+      ]
+    }
+  ],
+  "unresolved": [
+    "我没有运行代码，也没有核对服务器端 valid 字段的生成逻辑是否在所有情形下都可靠，只是阅读了差异。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:47113967e4296996d3d054c386503930262f1f942e53042baac047dc8d841e62"
+}
