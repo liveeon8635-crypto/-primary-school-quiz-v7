@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-flash",
+  "evidencePacketHash": "sha256:09e218cf1f17585e2e7ff6ac15e5f2692fe5475f9e20b23606b5c7760a9d16ad",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "08ca10429bfddc39b980ab28113086f498f2426b",
+  "headSha": "b6cab12c7cfda9acc11112378e8a804425b40241",
+  "decision": "unresolved",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议暂不合并：虽然代码改动优化了 Classic 顶栏的 handoff 预加载与会话恢复逻辑，但 CI 中的 smoke 检查仍处于 pending 状态，需等待 CI 全部通过后再评估。",
+      "evidenceRefs": [
+        "run:114175832156",
+        "file:changying/web/v1_classic_unified_top.py#L29-L31",
+        "file:tests/test_v1_unified_top_session_hydration.py#L99-L135"
+      ]
+    }
+  ],
+  "unresolved": [
+    "smoke 自动化检查尚未完成（pending），需要等待其执行成功。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:fa7753d8a7549f7ced3d3f950668a50cbe2f7cfb1e7015f188c9d122b6f40024"
+}
