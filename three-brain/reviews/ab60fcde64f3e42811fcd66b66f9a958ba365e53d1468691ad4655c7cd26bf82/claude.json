@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:ab60fcde64f3e42811fcd66b66f9a958ba365e53d1468691ad4655c7cd26bf82",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "38ca08b75b39e4d5ffda0e55fb552974e8dbc248",
+  "headSha": "03be568c164e96a130cc9abf8116729ef3a2cd62",
+  "decision": "accept_with_changes",
+  "risk": "medium",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议小改后再合并：这次改动让 V1/经典版页面外壳用 ETag 校验、未变化时返回 304，以节省流量；两项 CI（smoke、guard）均已通过，逻辑本身基本正确，但有几处需要确认。",
+      "evidenceRefs": [
+        "file:changying/web/v1_html_etag.py#L1-L73",
+        "run:114158417675",
+        "run:114158417225"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "原来这些页面是严格的“禁止缓存”，现在改为“可缓存但每次必须校验”，浏览器会在本地保存页面副本。若某个 /v1/ 页面内嵌了与账号相关的内容（比如交接令牌、姓名），共用电脑上可能被后退按钮或缓存看到。建议确认所有 /v1/ 下的 HTML 页面都是与用户无关的外壳，或把 Cache-Control 改为 private。",
+      "evidenceRefs": [
+        "file:changying/web/v1_html_etag.py#L24-L29",
+        "file:changying/web/v1_html_etag.py#L60-L62"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "中间件会把整个响应读进内存再重新生成响应，丢失流式输出和后台任务，并且重建响应头时同名的多值头只保留一个；对约 150KB 的页面问题不大，但若有 /v1/ 下的大页面或流式 HTML 会受影响。",
+      "evidenceRefs": [
+        "file:changying/web/v1_html_etag.py#L48-L62"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "测试只用了一个简化的演示应用，没有在真实应用（含 gzip 与其他兼容中间件的实际顺序）里验证；代码注释声称它排在最外层，但没有测试证明，建议补一个真实应用的集成测试。",
+      "evidenceRefs": [
+        "file:tests/test_v1_html_etag.py#L1-L78",
+        "file:changying/compat/legacy.py#L507-L511"
+      ]
+    }
+  ],
+  "unresolved": [
+    "未能确认 /v1/ 下是否存在包含用户专属内容的 HTML 页面，需要负责人确认。",
+    "未运行代码，仅依据 packet 中的 CI 结果和代码阅读。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:c88fdbfc9c2bf8b43dd1b68fb6b8da5744565a669eecb4b3ae57c14c8fa102f1"
+}
