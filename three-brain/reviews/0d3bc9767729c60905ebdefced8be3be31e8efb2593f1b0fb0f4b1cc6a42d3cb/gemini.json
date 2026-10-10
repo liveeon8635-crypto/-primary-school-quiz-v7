@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:0d3bc9767729c60905ebdefced8be3be31e8efb2593f1b0fb0f4b1cc6a42d3cb",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "13016aa3647afcfbbfd18688f5dbdc719abc6386",
+  "headSha": "19021f44dc68638df12e175f07873f50a204f2c9",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：页面导航改用即时渲染，在后台异步校验版本更新，显著提升了用户点击跳转时的响应速度。",
+      "evidenceRefs": [
+        "file:changying/web/v1.py#L138"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "测试用例已同步更新并验证了导航渲染顺序与逻辑的正确性，CI 自动化测试均已通过。",
+      "evidenceRefs": [
+        "file:tests/test_v1_fast_navigation.py#L20-L25",
+        "run:114168904810"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:473b562816bf0010d02d410853ea4388d8941ba51c6e7ac428087eb38fc1ca34"
+}

@@ -16,3 +16,10 @@ def test_v1_shows_immediate_opening_feedback_before_handoff():
     assert body.index("showOpening()") < body.index("stageClassicHandoff()")
     assert "正在打开…" in html
     assert "e.persisted" in html
+
+
+def test_v1_navigation_does_not_wait_for_build_check_before_rendering():
+    html = v1_html()
+    nav = html.split("const navigate=async(path)=>")[1].split("};")[0]
+    assert nav.index("render()") < nav.index("await stale")
+    assert "if(await ensureFreshBuild" not in nav
