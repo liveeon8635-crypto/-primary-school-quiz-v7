@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:4898440bb4408cb4c06ec4d00f561aae35b6760c0230063bd6e0543f1ab98479",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "f8bd7f7963aa5bcf27b329f834c8adbbeb289782",
+  "headSha": "233c7ece7b7affa1a439dbb1fdb2c8801cb9e8bc",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：改动优化了旧版工具页面的跳转路径并新增加载提示，提升了前端交互体验且已有自动化测试覆盖。",
+      "evidenceRefs": [
+        "file:changying/web/v1.py#L36-L90",
+        "file:tests/test_v1_fast_navigation.py#L1-L18",
+        "run:114145779616"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:40dc1e02401cacf6617937815e319c1085c3a3fcb449f9123760c92e0e88be0d"
+}
