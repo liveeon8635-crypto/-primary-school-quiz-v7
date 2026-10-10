@@ -26,6 +26,8 @@ V1_CLASSIC_LOGIN_GUARD = r'''
  var h=document.documentElement;h.classList.add('cy-v1-login-pending');
  window.__cyV1ReleaseLogin=function(){h.classList.remove('cy-v1-login-pending')};
  setTimeout(window.__cyV1ReleaseLogin,5000);
+ // Start the one-time handoff consume while the rest of the document is still downloading.
+ try{window.__cyV1HandoffPromise=fetch('/v1/auth-handoff/consume',{method:'POST',cache:'no-store',credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).catch(function(){return null})}catch(_e){}
 })();
 </script>
 '''
@@ -81,7 +83,7 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
  function currentName(){try{return String(state.user&&state.user.name||'当前账号')}catch(_e){return '当前账号'}}
  function currentPage(){try{return String(state.page||params.get('page')||'')}catch(_e){return String(params.get('page')||'')}}
  function v1Token(){try{var remember=localStorage.getItem('v717Remember')==='1';return (remember?localStorage.getItem('v717Token'):sessionStorage.getItem('v717Token'))||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||''}catch(_e){return ''}}
- async function consumeV1Handoff(){try{var r=await fetch('/v1/auth-handoff/consume',{method:'POST',cache:'no-store',credentials:'same-origin'});if(!r.ok)return null;return await r.json()}catch(_e){return null}}
+ async function consumeV1Handoff(){var early=window.__cyV1HandoffPromise;if(early){window.__cyV1HandoffPromise=null;return await early}try{var r=await fetch('/v1/auth-handoff/consume',{method:'POST',cache:'no-store',credentials:'same-origin'});if(!r.ok)return null;return await r.json()}catch(_e){return null}}
  function switchAccount(){try{if(typeof clearAuth==='function')clearAuth()}catch(_e){}try{localStorage.removeItem('cyV1Identity')}catch(_e){}location.replace('/v1')}
  function hideToolHub(){var hub=document.getElementById('cy-v1-tool-hub');if(hub)hub.hidden=true}
  function openToolPage(page){if(!page)return;try{if(typeof roleAllowsPage==='function'&&!roleAllowsPage(page))return}catch(_e){}hideToolHub();try{if(typeof go==='function'){go(page);var u=new URL(location.href);u.searchParams.delete('from');u.searchParams.set('legacy','1');u.searchParams.set('unified','1');u.searchParams.set('page',page);history.replaceState(null,'',u.pathname+u.search);sync();return}}catch(_e){}location.href='/classic?legacy=1&unified=1&page='+encodeURIComponent(page)}
@@ -97,7 +99,7 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
    try{try{if(typeof markNetwork==='function')markNetwork(true)}catch(_e){}if(typeof validateSavedSession==='function'){var savedOk=await Promise.resolve(validateSavedSession());if(!savedOk)return false}else if(typeof enter==='function'){enter()}clearV1FromMarker();sync();return true}catch(_e){return false}
   }else{t=v1Token()}
   if(!t||t==='demo')return false;
-  try{if(!s){var r=await fetch('/session',{headers:{Authorization:'Bearer '+t},cache:'no-store'});if(!r.ok)return false;s=await r.json()}var u={id:s.userID??s.id??null,name:s.name||'',role:s.role||'teacher',grade:s.grade??null,subscription:s.subscription||null};if(typeof state==='undefined')return false;state.token=t;state.user=u;state.remember=localStorage.getItem('v717Remember')==='1';try{if(typeof saveAuth==='function')saveAuth()}catch(_e){}try{if(typeof markNetwork==='function')markNetwork(true)}catch(_e){}if(typeof validateSavedSession==='function'){var ok=await Promise.resolve(validateSavedSession());if(!ok)return false}else if(typeof enter==='function'){enter()}clearV1FromMarker();sync();return true}catch(_e){return false}
+  try{if(!s){var r=await fetch('/session',{headers:{Authorization:'Bearer '+t},cache:'no-store'});if(!r.ok)return false;s=await r.json()}var u={id:s.userID??s.id??null,name:s.name||'',role:s.role||'teacher',grade:s.grade??null,subscription:s.subscription||null};if(typeof state==='undefined')return false;if(bridge&&bridge.token)u.mustChangePassword=!!s.mustChangePassword;state.token=t;state.user=u;state.remember=localStorage.getItem('v717Remember')==='1';try{if(typeof saveAuth==='function')saveAuth()}catch(_e){}try{if(typeof markNetwork==='function')markNetwork(true)}catch(_e){}if(bridge&&bridge.token&&bridge.valid&&typeof enter==='function'){enter()}else if(typeof validateSavedSession==='function'){var ok=await Promise.resolve(validateSavedSession());if(!ok)return false}else if(typeof enter==='function'){enter()}clearV1FromMarker();sync();return true}catch(_e){return false}
  }
  function autoResume(){if(window.__cyV1UnifiedAutoResume)return;try{var btn=document.getElementById('continueSessionBtn');if(!btn||btn.classList.contains('hidden'))return;window.__cyV1UnifiedAutoResume=true;if(typeof markNetwork==='function')markNetwork(true);btn.click()}catch(_e){}}
  function releaseLogin(){if(typeof window.__cyV1ReleaseLogin==='function')window.__cyV1ReleaseLogin()}
