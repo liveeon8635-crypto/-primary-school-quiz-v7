@@ -39,7 +39,7 @@ def test_shell_gets_etag_and_revalidates_with_304():
     assert first.status_code == 200
     etag = first.headers["etag"]
     assert "no-store" not in first.headers["cache-control"]
-    assert "no-cache" in first.headers["cache-control"]
+    assert "no-cache" in first.headers["cache-control"] and "private" in first.headers["cache-control"]
     assert first.text == state["body"]
 
     second = client.get("/v1/workspace", headers={"If-None-Match": etag})
@@ -76,3 +76,47 @@ def test_non_shell_paths_and_json_are_untouched():
     assert "etag" not in other.headers and "no-store" in other.headers["cache-control"]
     data = client.get("/v1/data")
     assert "etag" not in data.headers and "no-store" in data.headers["cache-control"]
+
+
+def test_multi_valued_headers_and_background_survive():
+    from starlette.background import BackgroundTask
+
+    app = FastAPI()
+    ran = []
+
+    @app.get("/v1/multi")
+    def multi():
+        r = HTMLResponse("<html>" + "x" * 50 + "</html>", headers=NO_STORE, background=BackgroundTask(lambda: ran.append(1)))
+        r.raw_headers.append((b"x-multi", b"a"))
+        r.raw_headers.append((b"x-multi", b"b"))
+        return r
+
+    install_v1_html_etag(app)
+    res = TestClient(app).get("/v1/multi")
+    assert res.headers.get_list("x-multi") == ["a", "b"]
+    assert ran == [1]
+    assert res.headers["content-length"] == str(len(res.content))
+
+
+def test_real_app_serves_etag_through_gzip_and_compat_middleware():
+    import subprocess, sys, textwrap
+
+    code = textwrap.dedent(
+        """
+        from fastapi.testclient import TestClient
+        from app import app
+
+        c = TestClient(app)
+        for url in ('/v1/workspace', '/classic?legacy=1&unified=1&from=v1&page=classes'):
+            first = c.get(url, headers={'Accept-Encoding': 'gzip'})
+            assert first.status_code == 200, url
+            assert first.headers.get('content-encoding') == 'gzip', url
+            etag = first.headers['etag']
+            assert 'no-store' not in first.headers['cache-control']
+            second = c.get(url, headers={'Accept-Encoding': 'gzip', 'If-None-Match': etag})
+            assert second.status_code == 304 and second.content == b'', url
+        assert 'no-store' in c.get('/v1/feedback').headers['cache-control']
+        """
+    )
+    result = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True, timeout=90)
+    assert result.returncode == 0, result.stdout + result.stderr
