@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:859d091d758aa6fec3b0cee949b46ccf1e0b861a999cc46895054f3dd941821c",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "38ca08b75b39e4d5ffda0e55fb552974e8dbc248",
+  "headSha": "3987215a9d9691dc7c822f48be09f5fb76a1b92b",
+  "decision": "unresolved",
+  "risk": "medium",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议暂不合并：更改引入了 HTML 壳页面的 ETag/304 缓存重验证中间件，代码逻辑正确且有单元测试，但 CI 中的 smoke 测试仍处于 pending 状态，建议等待 CI 运行完成后再确认。",
+      "evidenceRefs": [
+        "run:114162919954",
+        "file:changying/web/v1_html_etag.py#L1-L88",
+        "file:changying/compat/legacy.py#L80",
+        "file:changying/compat/legacy.py#L510-L511",
+        "file:tests/test_v1_html_etag.py#L1-L122"
+      ]
+    }
+  ],
+  "unresolved": [
+    "CI 检查中的 smoke 测试（runId 114162919954）处于 pending 状态，需等待 CI 测试完成后再确认合并。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:c819480aed985e73fe66c0ad5e1784f44371336c4ef3c7d3aa6318f5ff0a34c3"
+}
