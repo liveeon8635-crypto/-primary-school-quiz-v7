@@ -33,6 +33,9 @@ def current_v1_build_id() -> str:
 
 
 def v1_html() -> str:
+    from changying.web.v1_classic_gzip_embed import _ALLOWED_TOOL_PAGES
+
+    tool_pages = json.dumps(sorted(_ALLOWED_TOOL_PAGES - {"__hub__"}))
     build_id = json.dumps(current_v1_build_id())
     return f'''<!doctype html>
 <html lang="zh-CN">
@@ -80,7 +83,11 @@ def v1_html() -> str:
     const persistAuth=(result,remember)=>{{const store=remember?localStorage:sessionStorage,other=remember?sessionStorage:localStorage;store.setItem(TOKEN_KEY,result?.token||token||'');store.setItem(USER_KEY,JSON.stringify(legacyUser(result)));other.removeItem(TOKEN_KEY);other.removeItem(USER_KEY);localStorage.setItem(REMEMBER_KEY,remember?'1':'0')}};
     const clearAuthStorage=()=>{{localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(USER_KEY);localStorage.removeItem(REMEMBER_KEY);sessionStorage.removeItem(TOKEN_KEY);sessionStorage.removeItem(USER_KEY);localStorage.removeItem('v6Token');localStorage.removeItem('v6User');sessionStorage.removeItem('v6Token');sessionStorage.removeItem('v6User');sessionStorage.removeItem('cyV1RoleTutorialShownThisLoginV7')}};
     const stageClassicHandoff=async()=>{{if(!token||token==='demo')return true;try{{const r=await fetch('/v1/auth-handoff',{{method:'POST',headers:{{Authorization:'Bearer '+token}},cache:'no-store',credentials:'same-origin'}});return r.ok}}catch{{return false}}}};
-    const openClassic=async path=>{{const ok=await stageClassicHandoff();if(!ok){{toast('登录状态同步失败，请重试');return false}}location.href=path;return true}};
+    const CLASSIC_PAGES=new Set({tool_pages});
+    const classicTarget=path=>{{try{{const u=new URL(path,location.origin);if(u.origin===location.origin&&u.pathname==='/v1/tool'){{const p=(u.searchParams.get('page')||'').trim();if(p&&p!=='__hub__'&&CLASSIC_PAGES.has(p))return '/classic?legacy=1&unified=1&from=v1&page='+encodeURIComponent(p)}}}}catch(_e){{}}return path}};
+    const showOpening=()=>{{let o=document.getElementById('cy-opening');if(!o){{o=document.createElement('div');o.id='cy-opening';o.setAttribute('role','status');o.style.cssText='position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483000;background:rgba(15,23,42,.88);color:#fff;padding:12px 22px;border-radius:999px;font:600 15px system-ui,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.25);pointer-events:none';o.textContent='正在打开…';document.body.appendChild(o)}}o.hidden=false;return o}};
+    window.addEventListener('pageshow',e=>{{if(e.persisted){{const o=document.getElementById('cy-opening');if(o)o.hidden=true}}}});
+    const openClassic=async path=>{{const tip=showOpening();const ok=await stageClassicHandoff();if(!ok){{tip.hidden=true;toast('登录状态同步失败，请重试');return false}}location.href=classicTarget(path);return true}};
     let session=null, identity=null, token=readToken();
     const screen=document.getElementById('screen'), chip=document.getElementById('identityChip'), identityButton=document.getElementById('identityButton');
     const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[ch]));
