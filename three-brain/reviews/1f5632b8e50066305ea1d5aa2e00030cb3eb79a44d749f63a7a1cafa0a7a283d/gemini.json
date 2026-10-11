@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:1f5632b8e50066305ea1d5aa2e00030cb3eb79a44d749f63a7a1cafa0a7a283d",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "3f2f74411bb7f9157150749122a906ab33fb9ef6",
+  "headSha": "2e25326f84862ff27ffdf4e00dc521f7124c5639",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：本次代码变更新增了教师端随堂检测大屏功能，接口仅返回匿名汇总统计数据不泄露学生个人信息，前端页面为无数据的只读 Shell，且自动化测试与安全保障验证均已通过。",
+      "evidenceRefs": [
+        "file:changying/web/v1_classroom_live_board.py#L98-L188",
+        "file:tests/test_classroom_live_board.py#L1-L206",
+        "run:114455809459",
+        "run:114455809118"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:0bb39987863742653d169d63538f67c327452702b521f60af0cb923f3414dfcf"
+}
