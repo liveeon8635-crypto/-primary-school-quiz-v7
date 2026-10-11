@@ -302,8 +302,7 @@ with TestClient(app) as client:
     assert "innerHTML" not in page.text and "eval(" not in page.text
     assert "no-cache" in page.headers["cache-control"]
     html = v1_module.v1_html()
-    assert html.count("changying_homework_assistant_entry_v1") == 1
-    assert "/homework/config" in html
+    assert "changying_homework_assistant_entry_v1" not in html and "cy-homework-entry" not in html  # no floating button
 print("OK")
 ''',
         {"HOMEWORK_ASSISTANT": "1"},
@@ -607,3 +606,16 @@ print("OK")
 ''',
         {"HOMEWORK_ASSISTANT": "1"},
     )
+
+
+def test_entry_points_live_in_existing_screens_not_a_floating_button():
+    from changying.web.v1_classic_unified_top import inject_v1_classic_unified
+    from changying.web.v1_workspace_tabs import patch_v1_workspace_tabs
+
+    shell = patch_v1_workspace_tabs("<html><body></body></html>")
+    assert 'data-homework-entry' in shell and "/homework/config" in shell and "page=papers" in shell
+    classic = inject_v1_classic_unified("<html><head></head><body><div id=page></div></body></html>")
+    assert "cy-hw-band" in classic and "/student/homework/today" in classic
+    band = classic.split("cy-hw-band", 1)[1].split("setInterval(ensure,1200)", 1)[0]
+    assert "innerHTML" not in band and "POST" not in band  # read-only: ticking items happens on /v1/homework
+    assert "cy-homework-entry" not in shell and "cy-homework-entry" not in classic

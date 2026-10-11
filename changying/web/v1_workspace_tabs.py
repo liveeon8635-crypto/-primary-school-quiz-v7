@@ -42,6 +42,7 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
 #cy-ws-all .cy-ws-row small{grid-column:1;color:#7a625c;font-size:12px;line-height:1.45}
 #cy-ws-all .cy-ws-row i{grid-column:2;grid-row:1 / span 2;font-style:normal;color:#c9a39b;font-size:20px}
 #cy-ws-all .cy-ws-row:active{background:#fdebe7}
+#cy-ws-all .cy-ws-row[hidden]{display:none}
 </style>
 <script id="changying_v1_workspace_tabs_v1-script">
 (()=>{
@@ -71,6 +72,14 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
       const all=document.createElement('section');all.id='cy-ws-all';all.className='section';
       const recRows=RECORDS.map(x=>'<a class="cy-ws-row" data-nav href="'+esc(x[0])+'"><b>'+esc(x[1])+'</b><i>›</i><small>'+esc(x[2])+'</small></a>').join('');
       all.innerHTML='<h3 class="cy-ws-h">档案与衔接</h3><div class="cy-ws-list">'+recRows+'</div><h3 class="cy-ws-h">教学功能</h3><div class="cy-ws-list">'+ITEMS.map(x=>'<a class="cy-ws-row" href="/v1/tool?page='+encodeURIComponent(x[0])+'"><b>'+esc(x[1])+'</b><i>›</i><small>'+esc(x[2])+'</small></a>').join('')+'</div>';
+      const paperRow=all.querySelector('a.cy-ws-row[href$="page=papers"]');
+      if(paperRow){
+        const hw=document.createElement('a');hw.className='cy-ws-row';hw.href='/v1/homework';hw.hidden=true;hw.setAttribute('data-homework-entry','1');
+        hw.innerHTML='<b>晚托作业助手</b><i>›</i><small>粘贴或拍照家长转发的作业通知，AI 整理成清单后布置给学生；查看学生的求助</small>';
+        paperRow.after(hw);
+        // Only shown while the feature is switched on (the config endpoint answers 404 otherwise).
+        fetch('/homework/config',{cache:'no-store'}).then(r=>{if(r.ok)hw.hidden=false}).catch(()=>{});
+      }
       main.insertBefore(all,main.firstChild);
     }
     setView(main,viewFromUrl(),false);
