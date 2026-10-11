@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:c47bb050b4ddab35f3cb9cbbfa913f42097ecc0eee3444b28799045099cd6c2a",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "3f2f74411bb7f9157150749122a906ab33fb9ef6",
+  "headSha": "b98a9db145c949b7921e397dd23c3fd0baa826f8",
+  "decision": "accept_with_changes",
+  "risk": "high",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议先不合并（或修改后再合并）：新增的“班级码+座号”免密登录会给学生签发正式登录令牌，但持有班级码的任何人都能冒用任意未被占用的座号，且退出或老师释放座号后令牌仍然有效；CI（smoke、guard）已通过，功能默认关闭。",
+      "evidenceRefs": [
+        "file:changying/web/classroom_quick_login.py#L305-L385",
+        "run:114458026322",
+        "run:114458026316"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "问题一：登录令牌签发后无法撤销。学生点“一键退出”、老师释放座号或撤销班级码，只是改了座位记录，已发出的令牌在班级码到期（最长3小时）前仍可使用，别的设备可继续以该学生身份访问。修复：令牌里带上座位记录编号，并在校验时检查该座位未被释放、班级码未撤销。",
+      "evidenceRefs": [
+        "file:changying/web/classroom_quick_login.py#L312-L385"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "问题二：班级码只有6位数字，防暴力破解的限流是每个IP 10分钟20次、全局10分钟100次，仅统计失败。在全班共用一个出口IP的学校，少数错误输入就可能触发限流；而攻击者用多个IP分摊也能逼近全局上限，使全校班级码登录被锁住10分钟。建议按班级码单独限流并加长码，或让全局限流不影响正常学生。",
+      "evidenceRefs": [
+        "file:changying/web/classroom_quick_login.py#L150-L170"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "问题三：座号登录没有任何个人凭证，同班同学知道班级码后可以抢占别人的座号并以对方身份答题；“座号选错”不计入限流。属于设计取舍，需校长/主席确认可以接受，并建议老师端能看到登录设备并及时释放。",
+      "evidenceRefs": [
+        "file:changying/web/classroom_quick_login.py#L305-L350"
+      ]
+    },
+    {
+      "id": "CLAUDE-005",
+      "text": "本改动属于登录与鉴权路径，并在 legacy.py 中接入启动流程；功能由环境变量开关控制、默认关闭，未开启时不注册任何路由，这一点是好的。开启前请由人工确认并补充针对令牌撤销的测试。",
+      "evidenceRefs": [
+        "file:changying/compat/legacy.py#L462-L465",
+        "file:tests/test_classroom_quick_login.py"
+      ]
+    }
+  ],
+  "unresolved": [
+    "我只阅读了代码，没有运行测试；数据库表是否会在生产环境自动创建（开关开启时）未能确认。",
+    "测试文件是否覆盖了“退出后令牌仍有效”的场景未做完整核对。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:4e449dcf17922f3c8e84dbdfc7d792ac5f8abba2cd6b43ce2ed893c8dcc71ba3"
+}
