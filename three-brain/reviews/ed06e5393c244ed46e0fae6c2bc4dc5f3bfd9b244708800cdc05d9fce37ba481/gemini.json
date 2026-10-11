@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:ed06e5393c244ed46e0fae6c2bc4dc5f3bfd9b244708800cdc05d9fce37ba481",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "b6a84b4d4921f1e8a951da51cad86196ffed5b38",
+  "headSha": "3095de66d69d78f9a5a3de9357a7cd9189840dc2",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：新增的晚托作业助手功能结构完整，权限校验与数据脱敏机制严密，且自动化测试与 CI 均已通过。",
+      "evidenceRefs": [
+        "pr:#727"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:4f81481e6c28af6279690612592cadb8e1e8900d35d344536a637891de684545"
+}
