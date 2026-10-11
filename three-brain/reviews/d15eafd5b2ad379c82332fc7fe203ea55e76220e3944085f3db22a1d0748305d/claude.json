@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:d15eafd5b2ad379c82332fc7fe203ea55e76220e3944085f3db22a1d0748305d",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "b6a84b4d4921f1e8a951da51cad86196ffed5b38",
+  "headSha": "e995617a85a2fe2cd601ada73a47f62bfff72c5c",
+  "decision": "unresolved",
+  "risk": "medium",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议先不合并：代码本身看起来合理，但名为 smoke 的必需检查在证据包里仍是“进行中”，还没有通过证据，等它变成 success 后再合并。",
+      "evidenceRefs": [
+        "run:114545549993",
+        "run:114545550233"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "新功能由环境变量 HOMEWORK_ASSISTANT 控制，默认关闭，关闭时所有接口返回 404；教师接口都校验了教师身份和学校归属，发布时只允许分配给自己班级的学生，学生只能操作自己的作业，权限设计没有发现明显漏洞。",
+      "evidenceRefs": [
+        "file:changying/web/homework_assistant.py#L28-L45",
+        "file:changying/web/homework_assistant.py#L230-L260"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "截图识别会把图片发给第三方 AI 服务，代码要求学校已开启 AI 且允许发送内容才会执行，图片不落盘；密钥只从环境变量读取，没有写进代码。文字通知发送前会隐藏手机号、邮箱和链接。这部分做法稳妥。",
+      "evidenceRefs": [
+        "file:changying/web/homework_assistant.py#L170-L185",
+        "file:changying/services/homework_vision.py#L1-L20",
+        "file:changying/services/homework_prompts.py#L20-L30"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "小提醒：/homework/config 和 /v1/homework 页面不需要登录（仅受开关控制），只暴露“是否启用”和“是否支持拍照”，风险较低；另外本次改动接入了 legacy.py 的启动流程，建议确认 smoke 检查覆盖了应用启动和开关关闭时的行为。",
+      "evidenceRefs": [
+        "file:changying/web/homework_assistant.py#L135-L142",
+        "file:changying/compat/legacy.py#L475-L480"
+      ]
+    }
+  ],
+  "unresolved": [
+    "smoke 检查在证据包中仍为进行中，无法确认应用启动与新增测试是否通过。",
+    "证据包记录的 PR 编号是 #727，而审查 PR 为 #739，未发现冲突，但提示记录。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:62246888e18939a4f3b00ae2562061a8be4a8c51d307dae3cb90083df6cdb1f7"
+}
