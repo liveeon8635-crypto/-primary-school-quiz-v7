@@ -504,3 +504,68 @@ print("OK")
 ''',
         {"HOMEWORK_ASSISTANT": "1"},
     )
+
+
+def test_screenshot_recognition_does_not_block_other_requests(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+import inspect
+import os
+import threading
+import time
+
+from changying.services import homework_vision
+
+os.environ.update({
+    "HOMEWORK_VISION_BASE_URL": "https://api.deepseek.com",
+    "HOMEWORK_VISION_MODEL": "m",
+    "HOMEWORK_VISION_API_KEY": "test-key-not-real",
+})
+legacy._validate_ai_base_url = lambda base, runtime=False: base
+legacy._ai_rate_check = lambda db, school_id: None
+
+
+class FakeResponse:
+    ok = True
+    status_code = 200
+
+    def json(self):
+        return {"choices": [{"message": {"content": json.dumps({"text": "数学第5页", "confidence": 0.9}, ensure_ascii=False)}}]}
+
+
+def slow_post(*a, **k):
+    time.sleep(1.5)   # a slow recognition service
+    return FakeResponse()
+
+
+homework_vision.requests.post = slow_post
+jpeg = b"\xff\xd8\xff\xe0" + b"1" * 50
+
+# The endpoint must not be a coroutine: a coroutine making a blocking call would freeze the whole server.
+for route in app.routes:
+    if getattr(route, "path", "") == "/teacher/homework/parse-image":
+        assert not inspect.iscoroutinefunction(route.endpoint)
+
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    allow_ai(school_of(sid))
+    result = {}
+
+    def upload():
+        r = client.post("/teacher/homework/parse-image", headers=th, files={"file": ("n.jpg", jpeg, "image/jpeg")})
+        result["status"] = r.status_code
+
+    worker = threading.Thread(target=upload)
+    worker.start()
+    time.sleep(0.4)                       # the upload is now waiting on the slow service
+    started = time.time()
+    assert client.get("/homework/config").status_code == 200
+    assert time.time() - started < 0.8, "another request had to wait for the recognition call"
+    worker.join()
+    assert result["status"] == 200
+print("OK")
+''',
+        {"HOMEWORK_ASSISTANT": "1"},
+    )

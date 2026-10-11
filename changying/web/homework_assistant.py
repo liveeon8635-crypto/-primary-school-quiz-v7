@@ -82,8 +82,8 @@ def _ints(raw: Any) -> list[int]:
     return [int(x) for x in _json_list(raw) if isinstance(x, int) and not isinstance(x, bool)]
 
 
-async def _read_image(file: UploadFile) -> bytes:
-    data = await file.read(MAX_IMAGE_BYTES + 1)
+def _read_image(file: UploadFile) -> bytes:
+    data = file.file.read(MAX_IMAGE_BYTES + 1)
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(413, "图片太大，请重新拍一张")
     return data
@@ -183,8 +183,10 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
         need(u, "teacher")
         return teacher_students(db, u)
 
+    # Plain ``def`` on purpose: FastAPI runs it in its worker thread pool, so the (slow) call to the
+    # recognition service never blocks the event loop and other requests keep being served.
     @router.post("/teacher/homework/parse-image")
-    async def parse_image(
+    def parse_image(
         file: UploadFile = File(...),
         u: Any = Depends(current_user),
         db: Any = Depends(get_db),
@@ -198,7 +200,7 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
             raise HTTPException(503, "AI 教学助手尚未启用，请联系学校管理员完成 AI 设置")
         if not config.allow_student_data:
             raise HTTPException(403, "学校管理员尚未允许把截图内容发送到 AI 服务商，请先粘贴文字")
-        data = await _read_image(file)
+        data = _read_image(file)
         implementation._ai_rate_check(db, u.school_id)
         result = recognize_image(implementation, db, u, data, feature="homework_parse_vision")
         return {"text": scrub_notice_text(result["text"]), "confidence": result["confidence"]}
