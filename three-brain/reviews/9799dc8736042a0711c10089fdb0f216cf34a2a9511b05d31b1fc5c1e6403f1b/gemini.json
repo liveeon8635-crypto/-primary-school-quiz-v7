@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:9799dc8736042a0711c10089fdb0f216cf34a2a9511b05d31b1fc5c1e6403f1b",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "2b2670cfb42f74cea0c31dc8310fc8cafc2163f9",
+  "headSha": "0431e8e653d23bc100d5e8b69d11c5e1a8a08e7d",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：修改优化了课堂大屏与班级码页面的跨窗口身份传递和登录跳转逻辑，提升了教师操作体验，且未涉及风险变更。",
+      "evidenceRefs": [
+        "pr:#705",
+        "file:changying/web/classroom_window_handoff.py#L1-L84",
+        "file:changying/web/v1_classroom_live_board.py#L21-L291",
+        "file:changying/web/classroom_quick_login.py#L50-L771",
+        "file:tests/test_classroom_live_board.py#L21-L38"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:6e3a6b499adc72554e57d39a4dfbf1f6cb1afd59a0c666f731ee1a54bb787f22"
+}

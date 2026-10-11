@@ -50,6 +50,7 @@ from sqlalchemy.exc import IntegrityError
 
 from changying.security.login_rate import BoundedLoginRateLimiter, LoginRateLimitExceeded
 from changying.web import v1 as v1_module
+from changying.web.classroom_window_handoff import PAGE_AUTH_JS, with_open_window_script
 
 CLASSROOM_QUICK_LOGIN_MARKER = "changying_classroom_quick_login_v1"
 CODE_TTL_MINUTES = 180
@@ -59,7 +60,7 @@ QUICK_LOGIN_FLAG = "CLASSROOM_QUICK_LOGIN"
 _REFRESH_BUTTON = '<button class="btn" id="cy-session-refresh">刷新状态</button>'
 _CODE_LINK = (
     '<a class="btn" id="cy-session-join-code" href="/v1/classroom-join-code/\'+sid+\'" '
-    'target="_blank">班级码</a>'
+    'target="_blank" data-cy-open-window="1">班级码</a>'
 )
 
 
@@ -147,7 +148,8 @@ def patch_v1_classroom_quick_login_html(html: str) -> str:
         f"<!-- {CLASSROOM_QUICK_LOGIN_MARKER} -->"
         f"<script>{EXIT_BUTTON_JS}</script>"
     )
-    return html.replace("</body>", snippet + "</body>", 1) if "</body>" in html else html + snippet
+    html = html.replace("</body>", snippet + "</body>", 1) if "</body>" in html else html + snippet
+    return with_open_window_script(html)
 
 
 def install_classroom_quick_login_patch() -> None:
@@ -558,7 +560,7 @@ def install_classroom_quick_login(implementation: Any) -> bool:
     @router.get("/v1/classroom-join-code/{sid}", include_in_schema=False)
     def join_code_page(sid: int):
         return HTMLResponse(
-            TEACHER_CODE_HTML.replace("__SID__", str(int(sid))).replace("__MARKER__", CLASSROOM_QUICK_LOGIN_MARKER),
+            TEACHER_CODE_HTML.replace("__PAGE_AUTH__", PAGE_AUTH_JS).replace("__SID__", str(int(sid))).replace("__MARKER__", CLASSROOM_QUICK_LOGIN_MARKER),
             headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
         )
 
@@ -755,23 +757,18 @@ a{color:#38bdf8}
 <script>
 (function(){
   var SID=__SID__,root=document.getElementById('root'),timer=null,showMap=false;
-  function remembered(){try{return localStorage.getItem('v717Remember')==='1'}catch(e){return false}}
-  function read(store,key){try{return store.getItem(key)||''}catch(e){return ''}}
-  function token(){
-    var rem=remembered(),v='',first=rem?[localStorage,sessionStorage]:[sessionStorage,localStorage];
-    for(var i=0;i<first.length&&!v;i++){v=read(first[i],'v717Token')}
-    if(!v)v=sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||'';
-    return v&&v!=='demo'?v:'';
-  }
+__PAGE_AUTH__
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function api(method,path){
-    var t=token();if(!t){stop('请先登录老师账号');return Promise.resolve(null)}
-    return fetch(path,{method:method,headers:{Authorization:'Bearer '+t},cache:'no-store'}).then(function(r){
-      if(r.status===401||r.status===403||r.status===404){stop(r.status===404?'找不到这堂课，或班级码功能没有开启':'登录已失效或不是老师账号');return null}
-      return r.json().then(function(d){if(!r.ok)throw new Error(d.detail||'出错了');return d});
+    return obtainToken().then(function(t){
+      if(!t){stop('请先登录老师账号');return null}
+      return fetch(path,{method:method,headers:{Authorization:'Bearer '+t},cache:'no-store'}).then(function(r){
+        if(r.status===401||r.status===403||r.status===404){stop(r.status===404?'找不到这堂课，或班级码功能没有开启':'登录已失效或不是老师账号');return null}
+        return r.json().then(function(d){if(!r.ok)throw new Error(d.detail||'出错了');return d});
+      });
     });
   }
-  function stop(text){clearInterval(timer);root.innerHTML='<div class="msg">'+esc(text)+'<br><br><a href="/v1">前往老师登录</a></div>'}
+  function stop(text){clearInterval(timer);root.innerHTML='<div class="msg">'+esc(text)+'<br><br><a href="/v1/classroom-execution?session='+SID+'">前往老师登录（登录后回到课堂页，再点“班级码”）</a></div>'}
   function mins(s){return Math.floor(s/60)+' 分钟'}
   function render(d){
     if(!d)return;
