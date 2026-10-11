@@ -377,7 +377,7 @@ function helpView(body){
     }}));
     if(it.state==='escalated'){
       card.appendChild(note);
-      card.appendChild(el('button',{class:'primary',text:'已处理',onclick:function(){
+      card.appendChild(el('button',{class:'primary',text:'标记为已处理',onclick:function(){
         api('/teacher/homework/help/'+it.id+'/resolve',{json:{note:note.value}}).then(load).catch(function(e){alert(e.message)});
       }}));
     }
