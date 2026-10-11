@@ -156,7 +156,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
         item_idx = None
         if b.noticeID is not None:
             linked = db.execute(
-                select(recipients.c.id)
+                select(recipients.c.id, notices.c.items_json)
                 .join(notices, notices.c.id == recipients.c.notice_id)
                 .where(
                     recipients.c.notice_id == b.noticeID,
@@ -167,6 +167,13 @@ def install_homework_help(implementation: Any) -> APIRouter:
             ).first()
             if linked is None:
                 raise HTTPException(404, "没有这份作业")
+            if b.itemSeq is not None:
+                try:
+                    valid = {int(item.get("seq", 0)) for item in json.loads(linked.items_json or "[]")}
+                except (TypeError, ValueError):
+                    valid = set()
+                if b.itemSeq not in valid:
+                    raise HTTPException(400, "没有这条作业")
             item_idx = b.itemSeq
         check_new_help_request(db, helps, u)
         result = db.execute(
