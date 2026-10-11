@@ -434,3 +434,31 @@ print("OK")
 ''',
         {**VISION, "TMPDIR": str(tmp)},
     )
+
+
+def test_a_help_request_can_only_point_at_a_real_item_of_the_students_own_list(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    created = client.post("/teacher/homework/notices", headers=th,
+                          json={"items": [{"content": "口算第5页"}, {"content": "练习册第3页"}]}).json()
+    nid = created["id"]
+    assert client.post(f"/teacher/homework/notices/{nid}/publish", headers=th, json={"studentIDs": [sid]}).status_code == 200
+
+    def ask(**extra):
+        return client.post("/student/homework/help", headers=sh, json={"questionText": "3+4=?", "grade": 3, **extra})
+
+    ok = ask(noticeID=nid, itemSeq=2)
+    assert ok.status_code == 200, ok.text
+    for bad in (0, 3, 99, -1):
+        r = ask(noticeID=nid, itemSeq=bad)
+        assert r.status_code == 400 and "没有这条作业" in r.json()["detail"], (bad, r.text)
+    assert ask(noticeID=nid).status_code == 200                  # no item given is fine
+    assert ask(noticeID=9999, itemSeq=1).status_code == 404       # not a list of this student
+print("OK")
+''',
+        VISION,
+    )

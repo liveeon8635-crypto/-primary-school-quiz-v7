@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:0a7445c351d9f9cbd199450c31bc4937e8681cdc680b2280648b49761a23b256",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "72ad2814d60bb9a959f2471eecde24f89b2bcc78",
+  "headSha": "2c0df71467f8d6c9fb8fdd0661815f7edf1d92f2",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：该变更成功为学生作业求助新增了 AI 分步解答与算式校验功能，且具备完善的并发控制与测试覆盖。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L185-L260",
+        "file:changying/services/homework_math_check.py#L1-L245",
+        "run:114561254956",
+        "run:114561255211"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:0d8ebd099689063c519d5f6473dbd19d3904f16c8b57439b23fde4e93dc6d1a7"
+}
