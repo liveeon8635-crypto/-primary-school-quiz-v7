@@ -675,3 +675,11 @@ def test_feedback_user_confirmation_loop_is_wired_end_to_end():
     assert "data-pa-confirm-feedback" in source
     assert "确认已达预期" in source
     assert "该反馈已验收。如有新的问题或需求，请提交一条新反馈。" in source
+
+
+def test_product_assistant_panel_can_be_dragged_by_its_title_bar():
+    html = rendered_v1()
+
+    assert "cyPaPanelPos" in html
+    assert "head.addEventListener('pointerdown'" in html
+    assert "head.addEventListener('dblclick'" in html
