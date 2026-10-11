@@ -21,15 +21,20 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 
 from changying.services.classroom_quick_check import quick_check_summary
+from changying.web.classroom_window_handoff import PAGE_AUTH_JS, with_open_window_script
 from changying.web import v1 as v1_module
 
 V1_CLASSROOM_LIVE_BOARD_MARKER = "changying_v1_classroom_live_board_v1"
 LIVE_BOARD_POLL_MS = 2500
 
+_RETURN_PATHS = "['/v1/workspace','/v1/student','/v1/history','/v1/transition'].includes(path)"
+_RETURN_PATHS_WITH_EXECUTION = (
+    "['/v1/workspace','/v1/student','/v1/history','/v1/transition','/v1/classroom-execution'].includes(path)"
+)
 _REFRESH_BUTTON = '<button class="btn" id="cy-session-refresh">刷新状态</button>'
 _BOARD_LINK = (
     '<a class="btn" id="cy-session-board" href="/v1/classroom-board/\'+sid+\'" '
-    'target="_blank">打开大屏</a>'
+    'target="_blank" data-cy-open-window="1">打开大屏</a>'
 )
 
 
@@ -40,8 +45,14 @@ def patch_v1_classroom_live_board_html(html: str) -> str:
     if _REFRESH_BUTTON not in html:
         raise RuntimeError("classroom execution refresh button anchor not found")
     html = html.replace(_REFRESH_BUTTON, _BOARD_LINK + _REFRESH_BUTTON, 1)
+    # After a fresh login V1 only returns to a few whitelisted pages; add the classroom page so the
+    # "go log in" link on the big screen brings the teacher back where they were.
+    if _RETURN_PATHS not in html:
+        raise RuntimeError("V1 identity return path anchor not found")
+    html = html.replace(_RETURN_PATHS, _RETURN_PATHS_WITH_EXECUTION, 1)
     marker = f"<!-- {V1_CLASSROOM_LIVE_BOARD_MARKER} -->"
-    return html.replace("</body>", marker + "</body>", 1) if "</body>" in html else html + marker
+    html = html.replace("</body>", marker + "</body>", 1) if "</body>" in html else html + marker
+    return with_open_window_script(html)
 
 
 def install_v1_classroom_live_board_patch() -> None:
@@ -72,7 +83,8 @@ def _options(raw: Any) -> list[str]:
 
 def board_html(sid: int) -> str:
     return (
-        BOARD_HTML.replace("__SID__", str(int(sid)))
+        BOARD_HTML.replace("__PAGE_AUTH__", PAGE_AUTH_JS)
+        .replace("__SID__", str(int(sid)))
         .replace("__POLL_MS__", str(LIVE_BOARD_POLL_MS))
         .replace("__MARKER__", V1_CLASSROOM_LIVE_BOARD_MARKER)
     )
@@ -239,20 +251,11 @@ h1{margin:1.2vh 0 2vh;font-size:1.5em;line-height:1.35;font-weight:700}
 <script>
 (function(){
   var SID=__SID__,POLL=__POLL_MS__,root=document.getElementById('root'),meta=document.getElementById('meta'),clock=document.getElementById('clock');
-  // Same remember-aware lookup as the V1 shell: the remembered store first.
-  function remembered(){try{return localStorage.getItem('v717Remember')==='1'}catch(e){return false}}
-  function read(store,key){try{return store.getItem(key)||''}catch(e){return ''}}
-  function token(){
-    var rem=remembered(),v='';
-    var first=rem?[localStorage,sessionStorage]:[sessionStorage,localStorage];
-    for(var i=0;i<first.length&&!v;i++){v=read(first[i],'v717Token')}
-    if(!v)v=sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||'';
-    return v&&v!=='demo'?v:'';
-  }
-  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  // Stored token (remember-aware, same as the V1 shell) or the one-time handoff staged by "打开大屏".
+__PAGE_AUTH__  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function stop(text){
     clearInterval(timer);
-    root.innerHTML='<div class="msg">'+esc(text)+'<br><br><a href="/v1">前往老师登录</a></div>';
+    root.innerHTML='<div class="msg">'+esc(text)+'<br><br><a href="/v1/classroom-execution?session='+SID+'">前往老师登录（登录后回到课堂页，再点“打开大屏”）</a></div>';
   }
   function letter(i){return String.fromCharCode(65+i)}
   function render(d){
@@ -275,16 +278,17 @@ h1{margin:1.2vh 0 2vh;font-size:1.5em;line-height:1.35;font-weight:700}
   var busy=false,timer=null;
   function tick(){
     if(busy)return;
-    var t=token();
-    if(!t){stop('请先登录老师账号后再打开大屏');return}
     busy=true;
-    fetch('/teacher/classroom-sessions/'+SID+'/live-board',{headers:{Authorization:'Bearer '+t},cache:'no-store'})
-      .then(function(r){
-        if(r.status===401||r.status===403){stop('登录已失效或不是老师账号，请重新登录');return null}
-        if(r.status===404){stop('找不到这堂课，或你没有权限查看');return null}
-        if(!r.ok)throw new Error('http '+r.status);
-        return r.json();
-      })
+    obtainToken().then(function(t){
+      if(!t){stop('请先登录老师账号后再打开大屏');return null}
+      return fetch('/teacher/classroom-sessions/'+SID+'/live-board',{headers:{Authorization:'Bearer '+t},cache:'no-store'})
+        .then(function(r){
+          if(r.status===401||r.status===403){stop('登录已失效或不是老师账号，请重新登录');return null}
+          if(r.status===404){stop('找不到这堂课，或你没有权限查看');return null}
+          if(!r.ok)throw new Error('http '+r.status);
+          return r.json();
+        });
+    })
       .then(function(d){if(d)render(d)})
       .catch(function(){clock.textContent='连接中断，正在重试…'})
       .then(function(){busy=false});
