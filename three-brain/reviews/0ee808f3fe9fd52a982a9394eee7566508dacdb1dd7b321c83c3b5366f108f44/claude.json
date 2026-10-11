@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:0ee808f3fe9fd52a982a9394eee7566508dacdb1dd7b321c83c3b5366f108f44",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "381133fb234a2164b5ed056dfba24fc658d5cae4",
+  "headSha": "59f5b96d157c8476db4a88793a9295e8461796bb",
+  "decision": "accept_with_changes",
+  "risk": "medium",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议合并，但最好顺手确认两点小问题：改动只新增了学生“拍题求助”入口和使用次数限制，自动检查 smoke 与 guard 均通过，没有发现会出错的明显缺陷。",
+      "evidenceRefs": [
+        "run:114550845460",
+        "run:114550845156",
+        "file:changying/web/homework_help.py#L1-L160"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "次数限制是“先查数量、后写入记录”，同一个学生几乎同时发多次请求时可能略微超出每日或每分钟上限；影响有限，如要严格可在数据库层加约束。",
+      "evidenceRefs": [
+        "file:changying/services/homework_limits.py#L96-L116"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "每日和每小时的限额依赖识图服务把调用记录写入使用日志；如果某些失败的调用没有记录，就不会被计数。建议确认识图失败时也写日志。",
+      "evidenceRefs": [
+        "file:changying/services/homework_limits.py#L78-L93",
+        "file:changying/web/homework_help.py#L88-L105"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "并发上限只在单个进程内有效，若部署多个进程，实际总并发是上限乘以进程数。同时删除了“尚未开放学生作业接口”的旧测试，这是预期内的，因为接口现已受功能开关控制。",
+      "evidenceRefs": [
+        "file:changying/services/homework_limits.py#L118-L135",
+        "file:tests/test_homework_assistant_tables.py#L125-L127"
+      ]
+    }
+  ],
+  "unresolved": [
+    "未能运行代码，只通过阅读判断；识图服务在失败时是否记录使用日志，需要负责人确认。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:6048b20c992b3f28c4420a227de937d24f49ea1cd57bc81880e2388df5a8127e"
+}
