@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:4dc2c12a14aa9492f5ec8b848d851cb129be89742074942f6edfd0d3cc24d34d",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "381133fb234a2164b5ed056dfba24fc658d5cae4",
+  "headSha": "1ec7bfeb99baf4ff65cc8e064e8584f92ee8c54c",
+  "decision": "accept_with_changes",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议合并，但最好顺手补两处小问题：本次新增学生拍题求助功能，照片只在内存中处理、有每日/每小时/并发限流，smoke 与 guard 两项 CI 均通过，未发现会导致严重故障的缺陷。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py",
+        "run:114555663019",
+        "run:114555663183"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "限流是“先检查、后记录”：识别调用结束后才写入使用日志，所以同一学生在一分钟内同时发出多个请求时，可能都通过检查，实际次数略超上限。影响有限（还有并发槽位和学校小时上限兜底），可改为调用前先占位记录。",
+      "evidenceRefs": [
+        "file:changying/services/homework_limits.py"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "提交求助时，题目序号 itemSeq 没有校验范围，学生可以填入任意整数存入数据库；不会泄露数据，但可能让之后教师端显示异常。建议核对该作业的题目数量后再保存。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "老师端截图识别接口改为直接读取图片原始数据（不再用表单上传），前端和测试已同步修改，并且在读取过程中就限制了 6MB 大小，做法合理；同时删除了“尚未开放作业路由”的旧测试和“接口不能是协程”的旧断言，这与新功能上线一致。",
+      "evidenceRefs": [
+        "file:changying/web/homework_assistant.py",
+        "file:tests/test_homework_assistant_tables.py",
+        "file:tests/test_homework_notices.py"
+      ]
+    }
+  ],
+  "unresolved": [
+    "本次评审只读代码，没有运行任何测试；新增的 tests/test_homework_help.py 是否真正覆盖了限流并发场景，只能依赖 CI 结果判断。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:da9118bf3d45d8730428a6fa75f68f68b0ee784c4b07cf68977ca02cea85b546"
+}
