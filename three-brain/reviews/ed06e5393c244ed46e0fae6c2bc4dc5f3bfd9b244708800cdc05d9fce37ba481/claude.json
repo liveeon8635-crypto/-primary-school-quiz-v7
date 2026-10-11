@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:ed06e5393c244ed46e0fae6c2bc4dc5f3bfd9b244708800cdc05d9fce37ba481",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "b6a84b4d4921f1e8a951da51cad86196ffed5b38",
+  "headSha": "3095de66d69d78f9a5a3de9357a7cd9189840dc2",
+  "decision": "accept",
+  "risk": "medium",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议合并：这是一个默认关闭的新功能（作业助手），自动检查 smoke 和 guard 都已通过，我没有发现会出错的地方。",
+      "evidenceRefs": [
+        "run:114547796207",
+        "run:114547796281",
+        "file:changying/web/homework_assistant.py#L1-L12"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "所有新接口都受环境开关 HOMEWORK_ASSISTANT 控制，开关关闭时返回 404；教师接口按学校和教师本人过滤，只能把作业分配给自己班级的学生，学生只能操作分给自己的作业。",
+      "evidenceRefs": [
+        "file:changying/web/homework_assistant.py#L28-L40",
+        "file:changying/web/homework_assistant.py#L165-L185"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "作业通知文字或截图会发给外部 AI 服务，所以风险定为中等；代码已先要求学校开启 AI 并允许外发内容，发送前会隐藏手机号、邮箱、链接和长数字，图片不落盘，密钥只从环境变量读取。上线时请确认学校的 AI 外发开关符合隐私要求。",
+      "evidenceRefs": [
+        "file:changying/web/homework_assistant.py#L83-L95",
+        "file:changying/services/homework_prompts.py#L18-L30",
+        "file:changying/services/homework_vision.py#L1-L15"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "本次改动修改了兼容层 legacy.py 来挂载新功能，只增加了两行导入和两行安装调用；页面脚本未发现直接插入 HTML 的写法。",
+      "evidenceRefs": [
+        "file:changying/compat/legacy.py#L156-L160",
+        "file:changying/web/homework_assistant_pages.py"
+      ]
+    }
+  ],
+  "unresolved": [
+    "我没有运行代码，新增的 613 行测试是否真正覆盖了权限越界情况，只能依据 CI 通过来判断。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:a2c084bda2054a76febe1a57f4359ad1127693d7d967ba1597c719cf15464256"
+}
