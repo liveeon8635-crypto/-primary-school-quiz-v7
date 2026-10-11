@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-flash",
+  "evidencePacketHash": "sha256:13a84b38efce4910a6733b13c048861daed3bbe9e290178a59ed9b90dd39b03a",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "b9b50ca88c47ea170efb5d5c19e91d36212ed962",
+  "headSha": "7d67f2e42128acf7d0b9712e5b65fc15b5d27d13",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：本次变更在课堂大屏与教师端新增了讲义面板及讲解视图展示，并对答题过程中的实时分布做了默认隐藏处理，代码改动清晰规范且测试完备。",
+      "evidenceRefs": [
+        "file:changying/web/v1_classroom_live_board.py#L289-L318",
+        "file:changying/web/v1_classroom_live_board.py#L416-L450"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:1e4e44ed25b03441a25879f6767f6188854adf60a524d9c09791b3d4c54449f7"
+}
