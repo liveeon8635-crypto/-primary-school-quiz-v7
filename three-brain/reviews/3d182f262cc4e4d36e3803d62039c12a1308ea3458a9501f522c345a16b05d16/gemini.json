@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:3d182f262cc4e4d36e3803d62039c12a1308ea3458a9501f522c345a16b05d16",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "802495d9dce4923a69682b097f55b150c280f42f",
+  "headSha": "cff26bdc8a3ec2905b953df44008f2c1a6ac5763",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：本次变更仅添加了课后作业助手相关的 3 张新数据库表结构注册及对应的数据校验与回滚脚本，不修改现有数据表也不暴露出新的 HTTP 路由，且自动化测试集已全部通过。",
+      "evidenceRefs": [
+        "file:changying/services/homework_assistant_tables.py#L26-L83",
+        "run:114497468538",
+        "run:114497469113"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "新增的数据表注册采用了幂等处理，且外键仅指向已存在的学校和用户表或新增表本身，不会对原有表结构产生破坏。",
+      "evidenceRefs": [
+        "file:changying/services/homework_assistant_tables.py#L26-L83"
+      ]
+    },
+    {
+      "id": "GEMINI-003",
+      "text": "附带的回滚脚本仅清理本次新增的 3 张表，校验脚本也是只读查询，且单元测试验证了路由尚未暴露与数据库的平滑升级。",
+      "evidenceRefs": [
+        "file:scripts/m1_rollback.sql#L5-L7",
+        "file:scripts/m1_verify_counts.sql#L4-L16",
+        "file:tests/test_homework_assistant_tables.py#L26-L138"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:311a0ef55946e0e987f1d6bd4cf9d72bc2c586f9a8f31ee8f527dde2efa81985"
+}
