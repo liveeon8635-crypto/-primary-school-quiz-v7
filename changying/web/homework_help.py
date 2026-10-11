@@ -49,14 +49,6 @@ def _iso(value: Any) -> str:
     return value.strftime("%Y-%m-%d %H:%M") if hasattr(value, "strftime") else ""
 
 
-def _json_obj(raw: Any) -> dict[str, Any]:
-    try:
-        value = json.loads(raw or "{}")
-    except Exception:
-        return {}
-    return value if isinstance(value, dict) else {}
-
-
 def install_homework_help(implementation: Any) -> APIRouter:
     app = implementation.app
     if getattr(app.state, "homework_help_installed", False):
