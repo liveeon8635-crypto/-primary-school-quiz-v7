@@ -158,6 +158,7 @@ from changying.web.v1_classroom_live_board import (
     install_v1_classroom_live_board_patch,
     install_v1_classroom_live_board_routes,
 )
+from changying.web.student_wrong_practice import install_student_wrong_practice
 from changying.web.teacher_ai_rich_generation_ui import install_teacher_ai_rich_generation_ui
 
 NO_CACHE_HEADERS = {
@@ -459,6 +460,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_student_detail_visibility_patch()
     install_v1_student_practice_patch()
     install_v1_student_practice_routes(implementation)
+    install_student_wrong_practice(implementation)
     install_v1_classroom_review_patch()
     install_v1_classroom_review_routes(implementation)
     install_v1_classroom_execution_patch()
