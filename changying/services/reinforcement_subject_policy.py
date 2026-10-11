@@ -448,6 +448,7 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
         prompt: str,
         images=None,
         timeout: int = 90,
+        **kwargs: Any,
     ):
         return original_ai_call(
             db,
@@ -456,6 +457,7 @@ def install_reinforcement_subject_policy(implementation: ModuleType) -> None:
             augment_reinforcement_prompt(feature, prompt),
             images=images,
             timeout=timeout,
+            **kwargs,
         )
 
     def subject_scoped_assessment_context(*args: Any, **kwargs: Any):
