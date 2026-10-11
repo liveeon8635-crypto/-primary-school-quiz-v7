@@ -683,3 +683,11 @@ def test_product_assistant_panel_can_be_dragged_by_its_title_bar():
     assert "cyPaPanelPos" in html
     assert "head.addEventListener('pointerdown'" in html
     assert "head.addEventListener('dblclick'" in html
+
+
+def test_dragged_assistant_panel_snaps_back_when_its_title_bar_is_covered():
+    html = rendered_v1()
+
+    assert "const grabbable=()=>" in html
+    assert "document.elementFromPoint" in html
+    assert "if(!grabbable()){reset();return}" in html
