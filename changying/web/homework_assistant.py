@@ -107,6 +107,18 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
     # Follow-up routes (help requests) register on the same router through this handle.
     app.state.homework_tables = tables
 
+    def require_school_ai_for_notice(db: Any, teacher: Any) -> None:
+        """Notices (text or screenshot) can contain student and parent names, phone numbers, chat names.
+
+        They only go to the AI provider when the school has switched AI on AND allowed content to leave
+        (the same switch the student side uses); otherwise nothing is sent and the teacher types the list by hand.
+        """
+        config = implementation.ai_config_for(db, teacher.school_id, False)
+        if not config or not config.enabled:
+            raise HTTPException(503, "AI 教学助手尚未启用，请联系学校管理员完成 AI 设置")
+        if not config.allow_student_data:
+            raise HTTPException(403, "学校管理员尚未允许把作业通知内容发送到 AI 服务商，请先手动录入作业")
+
     def teacher_students(db: Any, teacher: Any) -> list[dict[str, Any]]:
         rows = db.execute(
             select(User.id, User.name, User.grade, SchoolClass.id, SchoolClass.name)
@@ -192,14 +204,7 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
         db: Any = Depends(get_db),
     ):
         need(u, "teacher")
-        # A screenshot is sent unredacted to a third-party service and may show chat avatars, names or
-        # phone numbers: the school must have switched AI on AND allowed content to leave (same gate
-        # as the student side), otherwise nothing is sent.
-        config = implementation.ai_config_for(db, u.school_id, False)
-        if not config or not config.enabled:
-            raise HTTPException(503, "AI 教学助手尚未启用，请联系学校管理员完成 AI 设置")
-        if not config.allow_student_data:
-            raise HTTPException(403, "学校管理员尚未允许把截图内容发送到 AI 服务商，请先粘贴文字")
+        require_school_ai_for_notice(db, u)
         data = _read_image(file)
         implementation._ai_rate_check(db, u.school_id)
         result = recognize_image(implementation, db, u, data, feature="homework_parse_vision")
@@ -208,6 +213,7 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
     @router.post("/teacher/homework/parse")
     def parse(b: ParseBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
+        require_school_ai_for_notice(db, u)
         if len(b.text) > MAX_NOTICE_CHARS:
             raise HTTPException(400, f"通知太长，请控制在 {MAX_NOTICE_CHARS} 字以内")
         text = scrub_notice_text(b.text)

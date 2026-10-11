@@ -124,6 +124,7 @@ legacy._ai_call = fake_ai
 
 with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
+    allow_ai(school_of(sid))
 
     assert client.get("/homework/config").status_code == 200
 
@@ -205,6 +206,7 @@ legacy._ai_call = lambda *a, **k: "not json at all"
 
 with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
+    allow_ai(school_of(sid))
 
     # A model answer that is not usable asks the teacher to type the list by hand.
     bad = client.post("/teacher/homework/parse", headers=th, json={"text": "明天作业：略"})
@@ -251,6 +253,7 @@ legacy._ai_call = lambda *a, **k: NOTICE_JSON
 
 with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
+    allow_ai(school_of(sid))
     nid = client.post("/teacher/homework/parse", headers=th, json={"text": "明天作业：略"}).json()["id"]
     tbl = legacy.Base.metadata.tables["homework_notices"]
     with legacy.SessionLocal() as db:
@@ -492,7 +495,7 @@ with TestClient(app) as client:
     assert upload(client, th).status_code == 503
     allow_ai(school_id, allow=False, enabled=True)
     refused = upload(client, th)
-    assert refused.status_code == 403 and "粘贴文字" in refused.json()["detail"]
+    assert refused.status_code == 403 and "手动录入" in refused.json()["detail"]
     allow_ai(school_id, allow=True, enabled=False)
     assert upload(client, th).status_code == 503
     assert not sent, "no picture may leave the server without the school's permission"
@@ -565,6 +568,45 @@ with TestClient(app) as client:
     assert time.time() - started < 0.8, "another request had to wait for the recognition call"
     worker.join()
     assert result["status"] == 200
+print("OK")
+''',
+        {"HOMEWORK_ASSISTANT": "1"},
+    )
+
+
+def test_pasted_notice_text_is_only_sent_when_the_school_allowed_content_to_leave(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+sent = []
+
+
+def fake_ai(db, u, feature, prompt, images=None, timeout=90, **kw):
+    sent.append(prompt)
+    return NOTICE_JSON
+
+
+legacy._ai_call = fake_ai
+
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    school_id = school_of(sid)
+    text = {"text": "三(2)班 张小明 家长王女士：明天作业口算题卡第5页"}
+
+    assert client.post("/teacher/homework/parse", headers=th, json=text).status_code == 503      # AI not set up
+    allow_ai(school_id, allow=False, enabled=True)
+    refused = client.post("/teacher/homework/parse", headers=th, json=text)
+    assert refused.status_code == 403 and "手动录入" in refused.json()["detail"]
+    allow_ai(school_id, allow=True, enabled=False)
+    assert client.post("/teacher/homework/parse", headers=th, json=text).status_code == 503
+    assert not sent, "no notice text may reach the AI provider without the school's permission"
+
+    # Typing the list by hand never needs AI.
+    assert client.post("/teacher/homework/notices", headers=th, json={"items": [{"content": "口算第5页"}]}).status_code == 200
+
+    allow_ai(school_id, allow=True, enabled=True)
+    assert client.post("/teacher/homework/parse", headers=th, json=text).status_code == 200 and len(sent) == 1
 print("OK")
 ''',
         {"HOMEWORK_ASSISTANT": "1"},
