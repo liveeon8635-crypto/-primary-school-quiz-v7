@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:61e00275d4d5539ec840ea824789f03e91bc2f95bb3c6dc494fc8de3e577a068",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "3f2f74411bb7f9157150749122a906ab33fb9ef6",
+  "headSha": "8cc9d94c67da7e56aa26b7863a2e5969ea9adb24",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：新增了学生错题本自主同类题再练功能，权限与日上限控制完善，复用现有巩固掌握逻辑且 CI 检查全部通过。",
+      "evidenceRefs": [
+        "file:changying/web/student_wrong_practice.py#L93-L245",
+        "pr:#693"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "实现了错题自主再练接口 `/student/wrong-questions/{wid}/practice`，包含学生身份校验、每日上线限制、未完成练习复用以及同知识点题目抽选。",
+      "evidenceRefs": [
+        "file:changying/web/student_wrong_practice.py#L112-L243"
+      ]
+    },
+    {
+      "id": "GEMINI-003",
+      "text": "在前台错题本页面注入了“再练”按钮与交互逻辑，并在套件中补充了完整的自动化测试，与现有兼容层规范保持一致。",
+      "evidenceRefs": [
+        "file:changying/web/student_wrong_practice.py#L48-L69",
+        "file:changying/compat/legacy.py#L459",
+        "file:tests/test_student_wrong_practice.py#L65-L210"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:d2fa327b4cfc731fabc09bdd2c8f54197c5dd1a8be93ffb935a120086b7027dc"
+}
