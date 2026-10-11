@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:6c7437a878779bc8c247c9cd4613456773ad10d39b236286eae5a7559d5fc2a1",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "72ad2814d60bb9a959f2471eecde24f89b2bcc78",
+  "headSha": "7dc53859232abd0b5e79e9f603bdf13e21514aa1",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：新增的小学数学作业 AI 解答功能包含独立算式校验、学生个人信息脱敏、独立的调用限额控制以及二次验证与升级给教师处理机制，代码质量良好且测试充分。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L185-L240",
+        "file:changying/services/homework_math_check.py#L202-L242",
+        "file:changying/services/homework_prompts.py#L15-L35",
+        "file:app_v924.py#L3253-L3258",
+        "run:114559044539",
+        "run:114559044459"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:ea0b9b5171a9bf9349728bd389822ff9f3755ae454f366802a255d71d739fbd2"
+}
