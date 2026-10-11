@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:3e2bef2ddf3039329f51070d7949301027ed3af97de7977d500da0c519aa0787",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "cff26bdc8a3ec2905b953df44008f2c1a6ac5763",
+  "headSha": "b2d9b7ebe25561846b0533a27cafe6e20855510a",
+  "decision": "unresolved",
+  "risk": "review_required",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "暂不建议合并：这次改动的自动检查（smoke、guard）在证据包里仍是“进行中”，没有任何通过的结果，无法确认新增的作业助手功能没有问题。",
+      "evidenceRefs": [
+        "status:automation-boundary-guard",
+        "pr:#727"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "代码本身未发现明显缺陷：新功能默认由环境变量 HOMEWORK_ASSISTANT 关闭（关闭时所有接口返回404）；老师只能操作自己班级的学生和自己的清单，学生只能改自己的完成状态；发给AI的通知文字会先隐藏手机号、邮箱和链接；识别图片只在内存中处理，密钥来自环境变量。",
+      "evidenceRefs": [
+        "file:changying/web/homework_assistant.py#L1-L406",
+        "file:changying/services/homework_prompts.py#L1-L82",
+        "file:changying/services/homework_vision.py#L1-L195"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "小提醒：该改动把新页面入口注入到旧版页面并修改了兼容层启动流程，开启开关前建议在测试环境确认旧页面不受影响；识别服务地址由环境变量配置，需确认运行环境对外请求的校验仍然有效。",
+      "evidenceRefs": [
+        "file:changying/compat/legacy.py#L156-L160",
+        "file:changying/web/homework_assistant_pages.py#L1-L306"
+      ]
+    }
+  ],
+  "unresolved": [
+    "自动检查 smoke 和 guard 尚未出结果，等它们全部通过后需要重新评审。",
+    "我没有运行测试，也没有在真实页面上验证前端脚本，只读了代码。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:d7b8ad235294f28acf0f39b9c1be2f31875fc6bd16a01681df3ea33d555fa507"
+}
