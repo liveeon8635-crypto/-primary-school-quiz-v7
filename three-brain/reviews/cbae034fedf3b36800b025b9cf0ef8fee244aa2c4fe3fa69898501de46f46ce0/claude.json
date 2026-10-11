@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:cbae034fedf3b36800b025b9cf0ef8fee244aa2c4fe3fa69898501de46f46ce0",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "b6a84b4d4921f1e8a951da51cad86196ffed5b38",
+  "headSha": "25c38285e83acbe0412491bde008160943f93707",
+  "decision": "accept_with_changes",
+  "risk": "medium",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议修改后再合并：功能整体由开关 HOMEWORK_ASSISTANT 默认关闭，CI（smoke、guard）全部通过，但拍照识别的接口会在等待外部模型时卡住整个服务，上线开启前应修复。",
+      "evidenceRefs": [
+        "run:114543518476",
+        "run:114543518791",
+        "file:changying/web/homework_help.py#L66-L81"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "问题：学生拍照识别和老师截图识别的接口是 async 写法，却在里面直接调用同步的网络请求（最长等待 20～25 秒）。一个同学识别时，整个网站的其他请求都会被阻塞；全班同时拍照时网站会明显卡顿，‘并发上限 8’的保护也起不到作用。修复：把识别调用放进线程池（如 run_in_threadpool），或把这两个接口改成普通 def。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L66-L81",
+        "file:changying/web/homework_assistant.py#L185-L197",
+        "file:changying/services/homework_vision.py#L99-L130"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "小问题：识别服务的用量日志里 output_chars 恒为 0（变量 out 在成功后没有被赋值为识别结果），会让后台统计偏低；另外次数限制是先检查后记录，同一学生同时发多个请求可能略微超出每日/每分钟上限。均不影响安全，可后续改进。",
+      "evidenceRefs": [
+        "file:changying/services/homework_vision.py#L138-L150",
+        "file:changying/services/homework_limits.py#L89-L98"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "正面检查：图片仅在内存中处理、不落盘不入库；通知文本在发给模型前会隐藏手机号、邮箱和链接；老师和学生接口都按学校与归属校验权限，未发现密钥写入代码或越权访问。",
+      "evidenceRefs": [
+        "file:changying/services/homework_prompts.py#L20-L34",
+        "file:changying/web/homework_assistant.py#L229-L240"
+      ]
+    }
+  ],
+  "unresolved": [
+    "未实际运行代码，也未核实 homework_assistant_tables 表结构（不在本次改动内）；开关打开后的真实负载表现需要在测试环境验证。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:b202fd95a0e1ca81033a5f13fcc6b03127c3e00355f53d714c6fcfade7ae60e8"
+}
