@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:0a7445c351d9f9cbd199450c31bc4937e8681cdc680b2280648b49761a23b256",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "72ad2814d60bb9a959f2471eecde24f89b2bcc78",
+  "headSha": "2c0df71467f8d6c9fb8fdd0661815f7edf1d92f2",
+  "decision": "accept_with_changes",
+  "risk": "medium",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议小改后再合并：学生作业求助的“AI 解题并自动核对答案”功能整体设计合理，CI（smoke、guard）全部通过，但请求卡在“解答中”状态后没有自动恢复的办法。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L185-L262",
+        "run:114561254956",
+        "run:114561255211"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "问题：学生点击后题目会先被标记为“解答中”；若此时服务重启或进程被中断（异常处理只覆盖普通错误），这道题会一直停在“解答中”，之后每次点击都提示“AI 正在解答，请稍等”，学生无法重试。建议加一个超时回收（例如超过 2 分钟的“解答中”自动退回“已确认”）。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L185-L262"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "方程核对用 sympy，并在后台线程里限时 2 秒；超时后线程无法真正被终止，仍可能继续占用 CPU。输入已有严格字符和乘方限制，风险较小，但建议长期改为独立进程或进一步限制。另外新增了依赖 sympy==1.14.0，部署前需确认能正常安装。",
+      "evidenceRefs": [
+        "file:changying/services/homework_math_check.py#L205-L240",
+        "file:requirements.txt"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "其余检查正常：发给 AI 的内容只有年级和题目（已隐藏电话、邮箱、链接）；学生端调用不再占用老师的每小时额度，并使用学生自己的限额；两处包装 `_ai_call` 的代码都已透传新参数；新增了较多测试。核对不一致时会重试一次，仍不一致则隐藏答案并转给老师，做法稳妥。",
+      "evidenceRefs": [
+        "file:changying/services/homework_prompts.py",
+        "file:app_v924.py#L3250-L3259",
+        "file:tests/test_homework_solve.py"
+      ]
+    }
+  ],
+  "unresolved": [
+    "未运行代码与测试，仅依据 CI 结果和代码阅读；“automation-boundary-guard 失败”只表示需要人工合并，本次未据此扣分。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:4d7e6dc29ea3369b35e683f335948937990e13128e35bb1ce6881052937b6494"
+}
