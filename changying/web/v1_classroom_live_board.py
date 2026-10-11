@@ -7,16 +7,24 @@
   JSON endpoint every 2.5 seconds with the teacher's token. Without a teacher token
   it only shows a "please sign in" message and requests no data.
 
-The feature adds no tables, no write routes and no client-side write calls.
+While a quick check is open the live accuracy / option distribution are NOT sent unless the
+teacher explicitly asks for them (``?live=1``): classmates copying the projected bars is the
+usual reason to hide them. They are revealed once the check is closed. While a knowledge point is
+being explained, the big screen can show the matching paragraphs of the saved class handout, and the
+teacher's execution page gets a collapsible, teacher-only handout panel.
+
+The feature adds no tables, no write routes and no client-side write calls (the one POST on the
+page is the existing one-time auth handoff).
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 import json
+import re
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 
@@ -30,6 +38,11 @@ LIVE_BOARD_POLL_MS = 2500
 _RETURN_PATHS = "['/v1/workspace','/v1/student','/v1/history','/v1/transition'].includes(path)"
 _RETURN_PATHS_WITH_EXECUTION = (
     "['/v1/workspace','/v1/student','/v1/history','/v1/transition','/v1/classroom-execution'].includes(path)"
+)
+_EXECUTION_HEADING = "heading('课堂执行','教师控制课堂节奏；学生讲解需要本人确认，系统不会自动指定。')+top+"
+_EXECUTION_HEADING_WITH_PANEL = (
+    "heading('课堂执行','教师控制课堂节奏；学生讲解需要本人确认，系统不会自动指定。')+top+"
+    "(window.__cyHandoutPanel?window.__cyHandoutPanel():'')+"
 )
 _REFRESH_BUTTON = '<button class="btn" id="cy-session-refresh">刷新状态</button>'
 _BOARD_LINK = (
@@ -50,7 +63,13 @@ def patch_v1_classroom_live_board_html(html: str) -> str:
     if _RETURN_PATHS not in html:
         raise RuntimeError("V1 identity return path anchor not found")
     html = html.replace(_RETURN_PATHS, _RETURN_PATHS_WITH_EXECUTION, 1)
-    marker = f"<!-- {V1_CLASSROOM_LIVE_BOARD_MARKER} -->"
+    if _EXECUTION_HEADING not in html:
+        raise RuntimeError("classroom execution heading anchor not found")
+    html = html.replace(_EXECUTION_HEADING, _EXECUTION_HEADING_WITH_PANEL, 1)
+    marker = (
+        f"<!-- {V1_CLASSROOM_LIVE_BOARD_MARKER} -->"
+        f"<script>{HANDOUT_PANEL_JS}</script>"
+    )
     html = html.replace("</body>", marker + "</body>", 1) if "</body>" in html else html + marker
     return with_open_window_script(html)
 
@@ -81,6 +100,19 @@ def _options(raw: Any) -> list[str]:
     return [str(x) for x in value] if isinstance(value, list) else []
 
 
+def handout_excerpt(content: str, key: str, limit: int = 1500) -> str:
+    """Paragraphs of the handout that mention the knowledge point (empty when none do)."""
+    wanted = re.sub(r"\s+", "", str(key or ""))
+    if not wanted:
+        return ""
+    picked: list[str] = []
+    for paragraph in re.split(r"\n\s*\n", str(content or "")):
+        text = paragraph.strip()
+        if text and wanted in re.sub(r"\s+", "", text):
+            picked.append(text)
+    return "\n\n".join(picked)[:limit]
+
+
 def board_html(sid: int) -> str:
     return (
         BOARD_HTML.replace("__PAGE_AUTH__", PAGE_AUTH_JS)
@@ -100,6 +132,7 @@ def install_v1_classroom_live_board_routes(implementation: Any) -> None:
     segments = metadata.tables.get("classroom_segments")
     checks = metadata.tables.get("classroom_quick_checks")
     responses = metadata.tables.get("classroom_quick_check_responses")
+    handouts = metadata.tables.get("classroom_review_handouts")
     if None in (sessions, segments, checks, responses):
         raise RuntimeError("classroom tables must be registered before the live board")
 
@@ -113,6 +146,7 @@ def install_v1_classroom_live_board_routes(implementation: Any) -> None:
     @router.get("/teacher/classroom-sessions/{sid}/live-board")
     def live_board(
         sid: int,
+        live: bool = Query(False),
         u: Any = Depends(current_user),
         db: Any = Depends(get_db),
     ):
@@ -168,6 +202,8 @@ def install_v1_classroom_live_board_routes(implementation: Any) -> None:
                 "classSize": int(class_size),
             },
             "check": None,
+            "segment": None,
+            "handout": None,
             "serverTime": datetime.utcnow().strftime("%H:%M:%S"),
         }
         if check_raw:
@@ -190,18 +226,96 @@ def install_v1_classroom_live_board_routes(implementation: Any) -> None:
             seg = _mapping(seg_raw) if seg_raw else {}
             closed = str(check["status"]) == "closed"
             reveal_correct = bool(seg.get("reveal_correct_answer")) and closed
+            # Results stay hidden while students are still answering unless the teacher asked for them.
+            show_results = closed or bool(live)
             payload["check"] = {
                 "id": int(check["id"]),
                 "status": str(check["status"]),
                 "questionText": str(check.get("question_text") or ""),
                 "options": options,
                 "responseCount": summary["responseCount"],
-                "correctCount": summary["correctCount"],
-                "accuracy": summary["accuracy"],
-                "distribution": summary["distribution"],
+                "resultsHidden": not show_results,
+                "correctCount": summary["correctCount"] if show_results else None,
+                "accuracy": summary["accuracy"] if show_results else None,
+                "distribution": summary["distribution"] if show_results else None,
                 "correctIndex": int(check["correct_index"]) if reveal_correct else None,
             }
+
+        # A knowledge point being explained (no open check): show it, with the matching handout text.
+        if not (check_raw and str(_mapping(check_raw)["status"]) == "open"):
+            explaining = db.execute(
+                select(segments)
+                .where(
+                    segments.c.session_id == sid,
+                    segments.c.school_id == u.school_id,
+                    segments.c.status == "explaining",
+                )
+                .order_by(segments.c.order_no)
+                .limit(1)
+            ).first()
+            if explaining:
+                seg_row = _mapping(explaining)
+                payload["segment"] = {
+                    "orderNo": int(seg_row["order_no"]),
+                    "title": str(seg_row.get("title") or ""),
+                    "knowledgeKey": str(seg_row.get("knowledge_key") or ""),
+                }
+                handout = find_handout(db, u, session_row)
+                if handout:
+                    payload["handout"] = {
+                        "title": str(handout["title"] or ""),
+                        "excerpt": handout_excerpt(
+                            handout["content_text"], seg_row.get("knowledge_key") or seg_row.get("title")
+                        ),
+                    }
         return payload
+
+    def find_handout(db: Any, user: Any, session_row: dict[str, Any]) -> dict[str, Any] | None:
+        if handouts is None:
+            return None
+        cond = None
+        if session_row.get("handout_id"):
+            cond = handouts.c.id == int(session_row["handout_id"])
+        elif session_row.get("source_assignment_id"):
+            cond = handouts.c.assignment_id == int(session_row["source_assignment_id"])
+        if cond is None:
+            return None
+        raw = db.execute(
+            select(handouts).where(cond, handouts.c.school_id == user.school_id)
+        ).first()
+        return _mapping(raw) if raw else None
+
+    @router.get("/teacher/classroom-sessions/{sid}/handout")
+    def teacher_handout(
+        sid: int,
+        u: Any = Depends(current_user),
+        db: Any = Depends(get_db),
+    ):
+        implementation.need(u, "teacher")
+        raw_session = db.execute(
+            select(sessions).where(
+                sessions.c.id == sid,
+                sessions.c.school_id == u.school_id,
+                sessions.c.teacher_id == u.id,
+            )
+        ).first()
+        if not raw_session:
+            raise HTTPException(404, "课堂不存在或无权限")
+        handout = find_handout(db, u, _mapping(raw_session))
+        if not handout:
+            return {"handout": None}
+        try:
+            knowledge = [str(x) for x in json.loads(handout["selected_knowledge_json"] or "[]")]
+        except Exception:
+            knowledge = []
+        return {
+            "handout": {
+                "title": str(handout["title"] or ""),
+                "selectedKnowledge": knowledge,
+                "teacherNotes": str(handout["teacher_notes"] or ""),
+                "content": str(handout["content_text"] or ""),
+            }
+        }
 
     @router.get("/v1/classroom-board/{sid}", include_in_schema=False)
     def classroom_board_page(sid: int):
@@ -213,6 +327,44 @@ def install_v1_classroom_live_board_routes(implementation: Any) -> None:
     app.include_router(router)
     app.state.v1_classroom_live_board_routes_installed = True
 
+
+HANDOUT_PANEL_JS = r"""
+(function(){
+  var cache={};
+  function sidNow(){return Number(new URLSearchParams(location.search).get('session')||0)}
+  function remembered(){try{return localStorage.getItem('v717Remember')==='1'}catch(e){return false}}
+  function read(store,key){try{return store.getItem(key)||''}catch(e){return ''}}
+  function token(){
+    var rem=remembered(),v='',first=rem?[localStorage,sessionStorage]:[sessionStorage,localStorage];
+    for(var i=0;i<first.length&&!v;i++){v=read(first[i],'v717Token')}
+    if(!v)v=read(sessionStorage,'v6Token')||read(localStorage,'v6Token');
+    return v&&v!=='demo'?v:'';
+  }
+  function paint(body,h){
+    body.textContent='';
+    if(!h){body.textContent='这堂课还没有保存讲义。请先在“课堂复盘”里生成并保存讲义。';return}
+    var t=document.createElement('div');t.style.cssText='font-weight:700;color:var(--text,#1f2738)';t.textContent=h.title||'课堂讲义';body.appendChild(t);
+    if(h.selectedKnowledge&&h.selectedKnowledge.length){var k=document.createElement('div');k.textContent='知识点：'+h.selectedKnowledge.join('、');body.appendChild(k)}
+    if(h.teacherNotes){var n=document.createElement('div');n.style.cssText='margin-top:8px';n.textContent='教师备注：'+h.teacherNotes;body.appendChild(n)}
+    var c=document.createElement('div');c.style.cssText='margin-top:10px;line-height:1.7;color:var(--text,#1f2738)';c.textContent=h.content||'（讲义正文为空）';body.appendChild(c);
+  }
+  function fill(){
+    var body=document.getElementById('cy-handout-body');if(!body)return;
+    var sid=sidNow();
+    if(cache[sid]!==undefined){paint(body,cache[sid]);return}
+    var t=token();if(!t){body.textContent='请先登录老师账号';return}
+    fetch('/teacher/classroom-sessions/'+sid+'/handout',{headers:{Authorization:'Bearer '+t},cache:'no-store'})
+      .then(function(r){return r.ok?r.json():null})
+      .then(function(d){cache[sid]=d?d.handout:null;var b=document.getElementById('cy-handout-body');if(b)paint(b,cache[sid])})
+      .catch(function(){var b=document.getElementById('cy-handout-body');if(b)b.textContent='讲义加载失败，请刷新重试'});
+  }
+  window.__cyHandoutPanel=function(){
+    setTimeout(fill,0);
+    return '<details id="cy-handout-panel" class="section card"'+(window.__cyHandoutOpen?' open':'')+'><summary style="cursor:pointer;font-weight:700">本课讲义（仅老师可见，点开查看）</summary><div id="cy-handout-body" class="muted" style="white-space:pre-wrap;margin-top:10px">加载中…</div></details>';
+  };
+  document.addEventListener('toggle',function(e){if(e.target&&e.target.id==='cy-handout-panel')window.__cyHandoutOpen=e.target.open},true);
+})();
+"""
 
 BOARD_HTML = r"""<!doctype html>
 <html lang="zh-CN">
@@ -242,12 +394,18 @@ h1{margin:1.2vh 0 2vh;font-size:1.5em;line-height:1.35;font-weight:700}
 .opt .num{text-align:right;font-variant-numeric:tabular-nums}
 .msg{margin-top:12vh;text-align:center;font-size:1.4em;color:var(--muted)}
 .msg a{color:var(--bar)}
+.tag{display:inline-block;background:#1e293b;color:#38bdf8;border-radius:999px;padding:.1em .8em;font-size:.7em}
+.handout{white-space:pre-wrap;line-height:1.7;font-size:.9em;color:#e2e8f0;background:#111c33;border-radius:1vw;padding:2vh 2vw;margin-top:1.5vh;max-height:68vh;overflow:auto;overflow-wrap:anywhere}
+.hint2{color:#94a3b8;font-size:.7em}
+.tools{position:fixed;right:1.5vw;bottom:1.5vh;display:flex;gap:.6em;opacity:.55}
+.tools button{font:inherit;font-size:.55em;min-height:44px;padding:0 1em;border:0;border-radius:999px;background:#1e293b;color:#cbd5e1}
 @media (orientation:portrait){.stats{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <header><span id="meta">课堂大屏</span><span id="clock"></span></header>
 <main id="root"><div class="msg">正在连接…</div></main>
+<div class="tools"><button id="tg-live" type="button"></button><button id="tg-handout" type="button"></button></div>
 <script>
 (function(){
   var SID=__SID__,POLL=__POLL_MS__,root=document.getElementById('root'),meta=document.getElementById('meta'),clock=document.getElementById('clock');
@@ -258,14 +416,45 @@ __PAGE_AUTH__  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,fu
     root.innerHTML='<div class="msg">'+esc(text)+'<br><br><a href="/v1/classroom-execution?session='+SID+'">前往老师登录（登录后回到课堂页，再点“打开大屏”）</a></div>';
   }
   function letter(i){return String.fromCharCode(65+i)}
+  function flag(k,def){try{var v=sessionStorage.getItem(k);return v===null?def:v==='1'}catch(e){return def}}
+  function setFlag(k,v){try{sessionStorage.setItem(k,v?'1':'0')}catch(e){}}
+  var showLive=flag('cyBoardLive',false),showHandout=flag('cyBoardHandout',true);
+  function paintTools(){
+    document.getElementById('tg-live').textContent='实时分布：'+(showLive?'显示':'隐藏');
+    document.getElementById('tg-handout').textContent='讲义：'+(showHandout?'显示':'隐藏');
+  }
+  var lastData=null;
+  document.getElementById('tg-live').onclick=function(){showLive=!showLive;setFlag('cyBoardLive',showLive);paintTools();tick()};
+  document.getElementById('tg-handout').onclick=function(){showHandout=!showHandout;setFlag('cyBoardHandout',showHandout);paintTools();if(lastData)render(lastData)};
+  paintTools();
   function render(d){
-    var s=d.session||{},c=d.check;
+    lastData=d;
+    var s=d.session||{},c=d.check,seg=d.segment,ho=d.handout;
     meta.textContent=(s.className?s.className+' · ':'')+(s.title||'课堂大屏');
     clock.textContent=d.serverTime||'';
+    var size=s.classSize||0;
+    if(c&&c.status==='open'){
+      var open='<span class="tag">随堂检测 · 作答中</span><h1>'+esc(c.questionText)+'</h1><div class="stats">'+
+        '<div class="stat"><b>'+c.responseCount+' / '+size+'</b><span>已作答人数</span></div>'+
+        '<div class="stat"><b>'+(c.resultsHidden?'—':(c.accuracy==null?'—':c.accuracy+'%'))+'</b><span>'+(c.resultsHidden?'结果将在检测结束后揭晓':'正确率')+'</span></div></div>';
+      (c.options||[]).forEach(function(text,i){
+        var x=c.distribution?c.distribution[i]:null;
+        open+='<div class="opt"><div class="label">'+letter(i)+'</div><div><div class="text">'+esc(text)+'</div>'+
+          (x?'<div class="track"><div class="fill" style="width:'+x.percentage+'%"></div></div>':'')+'</div><div class="num">'+(x?x.count+' 人 · '+x.percentage+'%':'')+'</div></div>';
+      });
+      root.innerHTML=open;return;
+    }
+    if(seg){
+      var h='<span class="tag">正在讲解</span><h1>'+esc(seg.orderNo+'. '+seg.title)+'</h1>';
+      if(showHandout&&ho&&ho.excerpt)h+='<div class="handout">'+esc(ho.excerpt)+'</div>';
+      else if(showHandout&&ho)h+='<div class="hint2">讲义里没有找到与本知识点对应的段落，完整讲义请在老师页面查看。</div>';
+      else if(!ho)h+='<div class="hint2">这堂课还没有保存讲义。</div>';
+      root.innerHTML=h;return;
+    }
     if(!c){root.innerHTML='<div class="msg">等待老师开放随堂检测…</div>';return}
-    var size=s.classSize||0,rate=c.accuracy==null?'—':c.accuracy+'%';
-    var html='<h1>'+esc(c.questionText)+'</h1><div class="stats">'+
-      '<div class="stat"><b>'+c.responseCount+' / '+size+'</b><span>已作答人数'+(c.status==='open'?'（作答中）':'（已结束）')+'</span></div>'+
+    var rate=c.accuracy==null?'—':c.accuracy+'%';
+    var html='<span class="tag">随堂检测 · 已结束</span><h1>'+esc(c.questionText)+'</h1><div class="stats">'+
+      '<div class="stat"><b>'+c.responseCount+' / '+size+'</b><span>已作答人数</span></div>'+
       '<div class="stat"><b>'+rate+'</b><span>正确率</span></div></div>';
     (c.distribution||[]).forEach(function(x,i){
       var ok=c.correctIndex===i;
@@ -281,7 +470,7 @@ __PAGE_AUTH__  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,fu
     busy=true;
     obtainToken().then(function(t){
       if(!t){stop('请先登录老师账号后再打开大屏');return null}
-      return fetch('/teacher/classroom-sessions/'+SID+'/live-board',{headers:{Authorization:'Bearer '+t},cache:'no-store'})
+      return fetch('/teacher/classroom-sessions/'+SID+'/live-board'+(showLive?'?live=1':''),{headers:{Authorization:'Bearer '+t},cache:'no-store'})
         .then(function(r){
           if(r.status===401||r.status===403){stop('登录已失效或不是老师账号，请重新登录');return null}
           if(r.status===404){stop('找不到这堂课，或你没有权限查看');return null}
@@ -302,6 +491,8 @@ __PAGE_AUTH__  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,fu
 
 __all__ = [
     "BOARD_HTML",
+    "HANDOUT_PANEL_JS",
+    "handout_excerpt",
     "LIVE_BOARD_POLL_MS",
     "V1_CLASSROOM_LIVE_BOARD_MARKER",
     "board_html",

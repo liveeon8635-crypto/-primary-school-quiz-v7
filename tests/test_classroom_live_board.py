@@ -25,6 +25,9 @@ def test_teacher_execution_page_links_to_the_board():
     # The window opener stages the existing one-time auth handoff before opening the tab.
     assert "a[data-cy-open-window]" in html and "/v1/auth-handoff'" in html and "w.opener=null" in html
     assert "'/v1/transition','/v1/classroom-execution'].includes(path)" in html  # login returns here
+    # Teacher-only handout panel on the execution page.
+    assert "(window.__cyHandoutPanel?window.__cyHandoutPanel():'')" in html
+    assert "window.__cyHandoutPanel=function" in html and "/handout'" in html
     assert patch_v1_classroom_live_board_html(html) == html
 
 
@@ -36,7 +39,9 @@ def test_board_page_is_a_data_free_read_only_shell():
     assert page.count("method:'POST'") == 1 and "/v1/auth-handoff/consume" in page
     for verb in ("PUT", "PATCH", "DELETE"):
         assert f"method:'{verb}'" not in page
-    assert "<form" not in page and "<input" not in page and "<button" not in page
+    assert "<form" not in page and "<input" not in page
+    # Only two display toggles (client-side), no data-changing controls.
+    assert page.count("<button") == 2 and 'id="tg-live"' in page and 'id="tg-handout"' in page
     assert "/teacher/classroom-sessions/'+SID+'/live-board" in page
     assert "orientation:portrait" in page and "clamp(20px,2.6vw,44px)" in page
     # No student identity fields are rendered anywhere in the page script.
@@ -153,7 +158,13 @@ with TestClient(app) as client:
         codes = list(pool.map(answer, students))
     assert codes == [200] * 20, codes
 
-    board = client.get(board_url, headers=th)
+    # While the check is open the results are hidden by default (no copying from the projector).
+    hidden = client.get(board_url, headers=th).json()["check"]
+    assert hidden["status"] == "open" and hidden["responseCount"] == 20
+    assert hidden["resultsHidden"] is True
+    assert hidden["accuracy"] is None and hidden["distribution"] is None and hidden["correctCount"] is None
+
+    board = client.get(board_url + "?live=1", headers=th)
     assert board.status_code == 200, board.text
     data = board.json()
     check = data["check"]
@@ -176,9 +187,9 @@ with TestClient(app) as client:
     assert "测试同学" not in text and "board0" not in text and "board1" not in text
     for key in ("studentName", "studentID", "username", "responses"):
         assert key not in text
-    assert set(data) == {"session", "check", "serverTime"}
+    assert set(data) == {"session", "check", "segment", "handout", "serverTime"}
     assert set(data["session"]) == {"title", "className", "status", "classSize"}
-    assert set(check) == {"id", "status", "questionText", "options", "responseCount",
+    assert set(check) == {"id", "status", "questionText", "options", "responseCount", "resultsHidden",
                           "correctCount", "accuracy", "distribution", "correctIndex"}
     assert all(set(d) == {"selectedIndex", "count", "percentage"} for d in check["distribution"])
 
@@ -193,6 +204,12 @@ with TestClient(app) as client:
     with legacy.SessionLocal() as db:
         resp = legacy.Base.metadata.tables["classroom_quick_check_responses"]
         assert db.scalar(select(func.count()).select_from(resp).where(resp.c.check_id == cid)) == 20
+    # Closing the check reveals the numbers without the live flag.
+    assert client.post(f"/teacher/classroom-sessions/{sid}/quick-checks/{cid}/state",
+                       headers=th, json={"status": "closed"}).status_code == 200
+    closed = client.get(board_url, headers=th).json()["check"]
+    assert closed["status"] == "closed" and closed["resultsHidden"] is False
+    assert closed["accuracy"] == 60 and {d["selectedIndex"]: d["count"] for d in closed["distribution"]} == {0: 5, 1: 12, 2: 3, 3: 0}
     print("OK")
 """
     env = {
@@ -208,5 +225,93 @@ with TestClient(app) as client:
         capture_output=True,
         timeout=300,
     )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "OK" in result.stdout, result.stdout
+
+
+def test_handout_panel_and_explaining_view(tmp_path):
+    from changying.web.v1_classroom_live_board import handout_excerpt
+
+    text = "总述\n\n小数乘法：先按整数算，再点小数点。\n\n应用题：注意单位。\n\n小数 乘法 的易错点：位数数错。"
+    assert handout_excerpt(text, "小数乘法") == "小数乘法：先按整数算，再点小数点。\n\n小数 乘法 的易错点：位数数错。"
+    assert handout_excerpt(text, "不存在的知识点") == "" and handout_excerpt(text, "") == ""
+    assert len(handout_excerpt("小数乘法" + "字" * 5000, "小数乘法")) == 1500
+
+    script = r"""
+import json
+from datetime import datetime
+
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+import app_v924 as legacy
+from app import app
+
+
+def token_for(db, user):
+    sec = legacy.security_for(db, user)
+    sec.must_change_password = False
+    db.commit()
+    return {"Authorization": "Bearer " + legacy.make_token(user, sec, False)}
+
+
+with TestClient(app) as client:
+    with legacy.SessionLocal() as db:
+        teacher = db.scalar(select(legacy.User).where(legacy.User.username == "teacher1"))
+        student = db.scalar(select(legacy.User).where(legacy.User.username == "student1"))
+        th = token_for(db, teacher)
+        sh = token_for(db, student)
+        cls = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.teacher_id == teacher.id))
+        q = legacy.Question(school_id=teacher.school_id, grade=5, subject="数学", textbook="人教版",
+                            semester="上册", unit="小数乘法", knowledge="小数乘法", text="0.4×3？",
+                            options_json=json.dumps(["0.12", "1.2", "12", "120"], ensure_ascii=False),
+                            correct_index=1, explanation="1.2", question_type="single_choice",
+                            answer_json="{}", figure_json="{}", creator_id=teacher.id)
+        db.add(q); db.flush()
+        paper = legacy.Paper(school_id=teacher.school_id, title="源", grade=5, subject="数学",
+                             textbook="人教版", unit="小数乘法", question_ids_json=json.dumps([q.id]),
+                             teacher_id=teacher.id)
+        db.add(paper); db.flush()
+        a = legacy.Assignment(school_id=teacher.school_id, title="课堂", class_id=cls.id,
+                              paper_id=paper.id, due_date="2026-09-30")
+        db.add(a); db.flush()
+        handouts = legacy.Base.metadata.tables["classroom_review_handouts"]
+        db.execute(handouts.insert().values(
+            school_id=teacher.school_id, assignment_id=a.id, class_id=cls.id, teacher_id=teacher.id,
+            title="小数乘法复盘讲义", selected_knowledge_json=json.dumps(["小数乘法"], ensure_ascii=False),
+            selected_question_ids_json=json.dumps([q.id]), teacher_notes="私人备注",
+            content_text="总述\n\n小数乘法：先按整数算，再点小数点。\n\n应用题：注意单位。",
+            created_at=datetime.utcnow(), updated_at=datetime.utcnow()))
+        db.commit()
+        aid = a.id
+    created = client.post(f"/teacher/assignments/{aid}/classroom-session", headers=th, json={}).json()
+    sid = created["session"]["id"]; segid = created["segments"][0]["id"]
+
+    # Teacher-only handout endpoint.
+    url = f"/teacher/classroom-sessions/{sid}/handout"
+    assert client.get(url).status_code == 401
+    assert client.get(url, headers=sh).status_code == 403
+    got = client.get(url, headers=th).json()["handout"]
+    assert got["title"] == "小数乘法复盘讲义" and "先按整数算" in got["content"]
+    assert got["teacherNotes"] == "私人备注" and got["selectedKnowledge"] == ["小数乘法"]
+
+    # Explaining view: segment + only the matching paragraph; the private notes never reach the board.
+    client.post(f"/teacher/classroom-sessions/{sid}/state", headers=th, json={"status": "active"})
+    assert client.get(f"/teacher/classroom-sessions/{sid}/live-board", headers=th).json()["segment"] is None
+    assert client.post(f"/teacher/classroom-sessions/{sid}/segments/{segid}/start", headers=th).status_code == 200
+    board = client.get(f"/teacher/classroom-sessions/{sid}/live-board", headers=th)
+    data = board.json()
+    assert data["segment"]["knowledgeKey"] == "小数乘法"
+    assert data["handout"]["excerpt"] == "小数乘法：先按整数算，再点小数点。"
+    assert "私人备注" not in board.text and "总述" not in board.text and "应用题" not in board.text
+    print("OK")
+"""
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp_path / 'handout.sqlite3'}", "PYTHONPATH": str(ROOT)}
+    result = subprocess.run([sys.executable, "-c", script], cwd=ROOT, env=env, text=True,
+                            capture_output=True, timeout=300)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "OK" in result.stdout, result.stdout
