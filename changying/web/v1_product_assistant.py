@@ -2421,6 +2421,28 @@ _ASSISTANT_SNIPPET = r'''
   authReadyPoll=setInterval(syncUntilReady,400);
   setTimeout(()=>{if(authReadyPoll){clearInterval(authReadyPoll);authReadyPoll=null}sync()},12000);
   setTimeout(syncUntilReady,0);setTimeout(syncUntilReady,300);
+  // Drag the panel by its title bar so it never has to cover the question; double-click the bar to reset.
+  (function(){
+    const head=panel.querySelector('.cy-pa-head'),POS_KEY='cyPaPanelPos';
+    if(!head)return;
+    head.style.cursor='move';head.style.touchAction='none';head.title='拖动标题栏可以移动助手；双击还原位置';
+    const clamp=(l,t,w)=>({l:Math.max(0,Math.min(l,window.innerWidth-w)),t:Math.max(0,Math.min(t,window.innerHeight-70))});
+    const place=(l,t,w)=>{const c=clamp(l,t,w);panel.style.left=c.l+'px';panel.style.top=c.t+'px';panel.style.right='auto';panel.style.bottom='auto';panel.style.width=w+'px';return c};
+    const reset=()=>{['left','top','right','bottom','width'].forEach(k=>panel.style.removeProperty(k));try{sessionStorage.removeItem(POS_KEY)}catch(_e){}};
+    const restore=()=>{try{const v=JSON.parse(sessionStorage.getItem(POS_KEY)||'null');if(v&&v.w>0)place(v.l,v.t,v.w)}catch(_e){}};
+    restore();
+    window.addEventListener('resize',()=>{if(panel.style.left){const r=panel.getBoundingClientRect();place(r.left,r.top,r.width)}});
+    let drag=null;
+    head.addEventListener('pointerdown',e=>{
+      if(e.button>0||e.target.closest('button'))return;
+      const r=panel.getBoundingClientRect();drag={dx:e.clientX-r.left,dy:e.clientY-r.top,w:r.width};
+      try{head.setPointerCapture(e.pointerId)}catch(_e){}e.preventDefault();
+    });
+    head.addEventListener('pointermove',e=>{if(drag)place(e.clientX-drag.dx,e.clientY-drag.dy,drag.w)});
+    const stop=()=>{if(!drag)return;const r=panel.getBoundingClientRect();drag=null;try{sessionStorage.setItem(POS_KEY,JSON.stringify({l:r.left,t:r.top,w:r.width}))}catch(_e){}};
+    head.addEventListener('pointerup',stop);head.addEventListener('pointercancel',stop);
+    head.addEventListener('dblclick',e=>{if(!e.target.closest('button'))reset()});
+  })();
 })();
 </script>
 '''
