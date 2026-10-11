@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:cbae034fedf3b36800b025b9cf0ef8fee244aa2c4fe3fa69898501de46f46ce0",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "b6a84b4d4921f1e8a951da51cad86196ffed5b38",
+  "headSha": "25c38285e83acbe0412491bde008160943f93707",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：该改动为晚托作业助手补充了完整的后端接口与前端页面，包含完善的权限控制、隐私敏感词过滤、并发及频次限制与测试覆盖。",
+      "evidenceRefs": [
+        "file:changying/web/homework_assistant.py#L1-L406",
+        "file:changying/services/homework_vision.py#L1-L195",
+        "file:changying/services/homework_limits.py#L1-L145"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:bc1b779d82cf6833e40ea30b5dadaf6a007711003b972ba481f35e3d4b022711"
+}
