@@ -264,11 +264,31 @@ PAGE_HTML = """<!doctype html>
 STUDENT_HELP_JS = r"""
 var HELP_TIP='只拍这一道题，让题目占满画面；避开人脸、姓名、学号；光线要亮，别有阴影。';
 function afterConfirm(box,help){
-  box.textContent='';box.appendChild(notice('ok','题目已记录（编号 '+help.id+'）。'));
+  box.textContent='';box.appendChild(notice('ok','AI 正在想，请稍等…'));
+  return api('/student/homework/help/'+help.id+'/solve',{method:'POST'}).then(function(h){showSolution(box,h)}).catch(function(e){
+    box.textContent='';box.appendChild(notice('error',e.message));
+    if(e.status!==429)box.appendChild(el('button',{text:'再试一次',onclick:function(){afterConfirm(box,help)}}));
+  });
+}
+function showSolution(box,h){
+  box.textContent='';
+  var warn=h.warning||'AI 可能出错，请自己判断';
+  box.appendChild(notice('warn',warn));
+  if(!h.solution){box.appendChild(notice('error',h.message||'这道题没有得到解答'));return}
+  var s=h.solution,list=el('div'),shown=0,next=el('button',{text:'看下一步'});
+  var head=[s.method?'解法：'+s.method:'',s.knowledgePoint?'知识点：'+s.knowledgePoint:''].filter(Boolean).join(' · ');
+  if(head)box.appendChild(el('div',{class:'muted',text:head}));
+  box.appendChild(list);
+  function more(){
+    if(shown<s.steps.length){list.appendChild(el('div',{class:'item'},el('b',{text:'第'+s.steps[shown].n+'步'}),el('span',{text:s.steps[shown].text})));shown++}
+    if(shown>=s.steps.length){next.remove();list.appendChild(notice('ok','答案：'+s.answer))}
+  }
+  next.addEventListener('click',more);box.appendChild(next);more();
+  box.appendChild(notice('warn',warn+'。看不懂，或者觉得不对，就请老师帮忙。'));
 }
 function helpCard(){
   var text=el('textarea',{placeholder:'题目文字：可以拍照识别，也可以自己输入',maxlength:600}),msg=el('div'),out=el('div');
-  var grade=el('select',{}),file=el('input',{type:'file',accept:'image/*',capture:'environment',hidden:true});
+  var last=null,grade=el('select',{}),file=el('input',{type:'file',accept:'image/*',capture:'environment',hidden:true});
   for(var g=1;g<=6;g++)grade.appendChild(el('option',{value:String(g),text:['一','二','三','四','五','六'][g-1]+'年级'}));
   if(ME&&ME.grade>=1&&ME.grade<=6)grade.value=String(ME.grade);
   var snap=el('button',{text:'拍题',onclick:function(){file.click()}});
@@ -292,8 +312,10 @@ function helpCard(){
     msg.textContent='';out.textContent='';
     if(!text.value.trim()){msg.appendChild(notice('error','请先拍下或写下题目'));return}
     confirmBtn.disabled=true;
-    api('/student/homework/help',{json:{questionText:text.value,grade:Number(grade.value)}})
-      .then(function(h){afterConfirm(out,h)})
+    var same=last&&last.text===text.value&&last.grade===Number(grade.value);
+    // Same question again (e.g. after an error): reuse its request instead of opening a second one.
+    (same?Promise.resolve(last.help):api('/student/homework/help',{json:{questionText:text.value,grade:Number(grade.value)}}))
+      .then(function(h){last={text:text.value,grade:Number(grade.value),help:h};return afterConfirm(out,h)})
       .catch(function(e){msg.appendChild(notice('error',e.message))})
       .then(function(){confirmBtn.disabled=false});
   });

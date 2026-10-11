@@ -71,7 +71,68 @@ def clean_parse_result(raw: Any) -> dict[str, Any]:
     return {"groupLabel": _clip(raw.get("groupLabel"), 120), "items": clean_items(raw.get("items"))}
 
 
+GRADE_NAMES = ("一", "二", "三", "四", "五", "六")
+MAX_STEPS = 12
+AI_WARNING = "AI 可能出错，请自己判断"
+
+
+def scrub_question(text: str) -> str:
+    """Hide phone numbers, e-mails and links in a student's question (keeps ordinary big numbers)."""
+    value = str(text or "")
+    for pattern in (_URL, _EMAIL, _PHONE):
+        value = pattern.sub(_HIDDEN, value)
+    return value.strip()
+
+
+def build_solve_prompt(grade: int, question: str, *, recheck: bool = False) -> str:
+    """The only text sent to the model when a student asks for help: the grade and the question."""
+    grade_name = GRADE_NAMES[int(grade) - 1] + "年级"
+    prompt = (
+        f"你是一位小学{grade_name}的老师，请帮学生讲懂下面这道题（可能是数学、语文、英语或科学等科目）。\n"
+        "要求：\n"
+        "1. 只给一种解法，不要列出多种方法。\n"
+        f"2. 只使用{grade_name}学生已经学过的知识和方法，不要出现初中及以上的知识（例如数学题低年级不要设未知数列方程）。\n"
+        "3. 分步讲解，每一步一两句话，语气亲切，学生能看懂。\n"
+        "4. 只输出一个 JSON 对象，不要任何解释，格式：\n"
+        '{"method":"解法名称（几个字）","steps":[{"n":1,"text":"第一步…"}],'
+        '"answer":"最终答案（带单位）",'
+        '"expression":"能直接计算的算式，只用数字和 + - × ÷ ( )，例如 12-5；需要列方程时用 x，例如 x+3=10；只有数学计算题才填算式；语文、英语、科学等题目，或无法用算式表示的，就留空",'
+        '"knowledgePoint":"这道题考的知识点（短语）"}\n'
+    )
+    if recheck:
+        prompt += "注意：上一次给出的算式与答案不一致。请重新仔细计算，确保 expression 的计算结果与 answer 完全一致。\n"
+    return prompt + "题目：\n" + scrub_question(question)[:700]
+
+
+def clean_solution(raw: Any) -> dict[str, Any]:
+    """Normalise a model solution; empty dict when it is unusable."""
+    if not isinstance(raw, dict):
+        return {}
+    steps: list[dict[str, Any]] = []
+    for item in raw.get("steps") if isinstance(raw.get("steps"), list) else []:
+        text = _clip(item.get("text") if isinstance(item, dict) else item, 400)
+        if text:
+            steps.append({"n": len(steps) + 1, "text": text})
+        if len(steps) >= MAX_STEPS:
+            break
+    answer = _clip(raw.get("answer"), 120)
+    if not steps or not answer:
+        return {}
+    return {
+        "method": _clip(raw.get("method"), 40),
+        "steps": steps,
+        "answer": answer,
+        "expression": _clip(raw.get("expression"), 120),
+        "knowledgePoint": _clip(raw.get("knowledgePoint"), 60),
+    }
+
+
 __all__ = [
+    "AI_WARNING",
+    "GRADE_NAMES",
+    "build_solve_prompt",
+    "clean_solution",
+    "scrub_question",
     "FIELD_LIMITS",
     "MAX_ITEMS",
     "MAX_NOTICE_CHARS",
