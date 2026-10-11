@@ -88,15 +88,15 @@ def build_solve_prompt(grade: int, question: str, *, recheck: bool = False) -> s
     """The only text sent to the model when a student asks for help: the grade and the question."""
     grade_name = GRADE_NAMES[int(grade) - 1] + "年级"
     prompt = (
-        f"你是一位小学{grade_name}的数学老师，请帮学生讲懂下面这道题。\n"
+        f"你是一位小学{grade_name}的老师，请帮学生讲懂下面这道题（可能是数学、语文、英语或科学等科目）。\n"
         "要求：\n"
         "1. 只给一种解法，不要列出多种方法。\n"
-        f"2. 只使用{grade_name}学生已经学过的方法，不要出现初中及以上的知识（例如低年级不要设未知数列方程）。\n"
+        f"2. 只使用{grade_name}学生已经学过的知识和方法，不要出现初中及以上的知识（例如数学题低年级不要设未知数列方程）。\n"
         "3. 分步讲解，每一步一两句话，语气亲切，学生能看懂。\n"
         "4. 只输出一个 JSON 对象，不要任何解释，格式：\n"
         '{"method":"解法名称（几个字）","steps":[{"n":1,"text":"第一步…"}],'
         '"answer":"最终答案（带单位）",'
-        '"expression":"能直接计算的算式，只用数字和 + - × ÷ ( )，例如 12-5；需要列方程时用 x，例如 x+3=10；无法用算式表示就留空",'
+        '"expression":"能直接计算的算式，只用数字和 + - × ÷ ( )，例如 12-5；需要列方程时用 x，例如 x+3=10；只有数学计算题才填算式；语文、英语、科学等题目，或无法用算式表示的，就留空",'
         '"knowledgePoint":"这道题考的知识点（短语）"}\n'
     )
     if recheck:
