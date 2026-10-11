@@ -815,10 +815,17 @@ def _feedback_acceptance_path(detail: dict) -> str:
 FEATURE_NAVIGATION_CARD_MARKER = "changying_v1_precise_feature_navigation_card_v1"
 
 
-def _guidance_cards(question: str, page: str = "", limit: int = 3) -> list[dict]:
+# Students and parents cannot open the teaching/class-management pages, so they only ever get these cards.
+_COMMON_CARD_KEYS = ("product_assistant", "feedback", "feedback_records")
+
+
+def _guidance_cards(question: str, page: str = "", limit: int = 3, role: str = "") -> list[dict]:
     text = f"{question or ''} {page or ''}".lower()
+    restricted = role in ("student", "parent")
     scored: list[tuple[int, int, dict]] = []
     for index, card in enumerate(_GUIDANCE_CARDS):
+        if restricted and card["key"] not in _COMMON_CARD_KEYS:
+            continue
         score = sum(1 for kw in card["keywords"] if kw.lower() in text)
         if score:
             scored.append((score, index, card))
@@ -835,6 +842,8 @@ def _guidance_cards(question: str, page: str = "", limit: int = 3) -> list[dict]
             if score == best_score
             and max((len(kw) for kw in card["keywords"] if kw.lower() in text), default=0) == max_keyword_len
         ][:limit]
+    elif restricted:
+        chosen = []  # a question about their own work is not a navigation request: show no teacher pages
     else:
         chosen = [card for card in _GUIDANCE_CARDS if card["key"] in ("current_teaching", "student_profile", "feedback")]
     return [
@@ -1378,9 +1387,9 @@ if(cyFeedbackWorkspace){
         db=Depends(implementation.get_db),
     ):
         question = body.question.strip()
-        navigation_cards = _guidance_cards(question, body.page)
-        image = _decode_assistant_image(body)
         role = str(getattr(user, "role", "") or "")
+        navigation_cards = _guidance_cards(question, body.page, role=role)
+        image = _decode_assistant_image(body)
         learning_context = _role_learning_context(
             implementation,
             db,
