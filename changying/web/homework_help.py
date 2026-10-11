@@ -121,15 +121,17 @@ def install_homework_help(implementation: Any) -> APIRouter:
             "warning": AI_WARNING,
         }
 
+    # Plain ``def`` on purpose: it runs in FastAPI's worker thread pool, so waiting for the
+    # recognition service (up to 20 s) never blocks the event loop for everyone else.
     @router.post("/student/homework/recognize")
-    async def recognize(
+    def recognize(
         file: UploadFile = File(...),
         u: Any = Depends(current_user),
         db: Any = Depends(get_db),
     ):
         need(u, "student")
         require_student_ai(implementation, db, u)
-        data = await file.read(MAX_IMAGE_BYTES + 1)
+        data = file.file.read(MAX_IMAGE_BYTES + 1)
         if len(data) > MAX_IMAGE_BYTES:
             raise HTTPException(413, "图片太大，请重新拍一张")
         check_student_call(implementation, db, u)

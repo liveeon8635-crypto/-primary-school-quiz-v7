@@ -336,3 +336,51 @@ def test_school_day_starts_at_local_midnight():
     assert start == datetime(2026, 10, 11, 16, 0)
     start = school_day_start_utc(datetime(2026, 10, 11, 10, 0, tzinfo=timezone.utc))
     assert start == datetime(2026, 10, 10, 16, 0)
+
+
+def test_recognition_does_not_block_other_requests_and_logs_the_output_size(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+import inspect
+import threading
+import time
+from sqlalchemy import select
+
+slow = {"on": True}
+original_post = homework_vision.requests.post
+
+
+def slow_post(*a, **k):
+    if slow["on"]:
+        time.sleep(1.5)
+    return original_post(*a, **k)
+
+
+homework_vision.requests.post = slow_post
+
+for route in app.routes:
+    if getattr(route, "path", "") == "/student/homework/recognize":
+        assert not inspect.iscoroutinefunction(route.endpoint), "a coroutine making a blocking call freezes the server"
+
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    result = {}
+    worker = threading.Thread(target=lambda: result.update(status=snap(client, sh).status_code))
+    worker.start()
+    time.sleep(0.4)
+    started = time.time()
+    assert client.get("/homework/config").status_code == 200
+    assert time.time() - started < 0.8, "another request had to wait for the recognition call"
+    worker.join()
+    assert result["status"] == 200
+
+    # The usage log records how much text came back (it must not stay at 0).
+    with legacy.SessionLocal() as db:
+        log = db.scalars(select(legacy.AIUsageLog).where(legacy.AIUsageLog.feature == "homework_help_vision")).all()[-1]
+        assert log.output_chars > 0 and log.input_tokens == 100 and log.output_tokens == 30
+print("OK")
+''',
+        VISION,
+    )
