@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:227664d228cde7aa556c25d55a2e4b6ef0344dfcf9e1784aea789e7b34fce314",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "72ad2814d60bb9a959f2471eecde24f89b2bcc78",
+  "headSha": "42d0452cf4f4721f5191410b23139ede4be7f45a",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：新增的作业 AI 解题与数学核对功能实现完整，且测试覆盖全面、CI 检查均已通过。",
+      "evidenceRefs": [
+        "pr:#729",
+        "file:changying/web/homework_help.py#L190-L275"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "学生端的作业 AI 解题请求独立计算频次限制，不会消耗教师端每小时的 AI 保护额度。",
+      "evidenceRefs": [
+        "file:app_v924.py#L3253-L3259"
+      ]
+    },
+    {
+      "id": "GEMINI-003",
+      "text": "对 AI 生成的解题步骤及算式进行了数学结果校验，避免直接向学生展示计算错误的解答。",
+      "evidenceRefs": [
+        "file:changying/services/homework_math_check.py#L282-L315",
+        "file:changying/web/homework_help.py#L225-L259"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:77dd3fe9ffa7fe5fe8394c85f11d75270d08b18b61a01211cad657d1f8b4809e"
+}

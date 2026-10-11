@@ -7,13 +7,15 @@ The photo only ever exists in memory while it is recognised; nothing in this mod
 from __future__ import annotations
 
 import json
+import threading
+import time
 from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 
 from changying.services.homework_limits import (
     ai_slot,
@@ -21,11 +23,19 @@ from changying.services.homework_limits import (
     check_student_call,
     require_student_ai,
 )
+from changying.services.homework_math_check import MISMATCH, OK, check_solution
+from changying.services.homework_prompts import AI_WARNING, build_solve_prompt, clean_solution
 from changying.services.homework_vision import read_image_body, recognize_image
 from changying.web.homework_assistant import require_enabled
 
 MAX_QUESTION_CHARS = 600
 VISION_FEATURE = "homework_help_vision"
+SOLVE_FEATURE = "homework_help_solve"
+SOLVE_TIMEOUT_SECONDS = 30
+SOLVE_CLAIM_TTL_SECONDS = 120
+_CLAIM_LOCK = threading.Lock()
+_CLAIMS: dict[int, float] = {}
+NO_CONFIDENCE = "这道题我没有把握，已请老师帮忙。"
 
 
 class HelpBody(BaseModel):
@@ -43,6 +53,14 @@ def _mapping(row: Any) -> dict[str, Any]:
 
 def _iso(value: Any) -> str:
     return value.strftime("%Y-%m-%d %H:%M") if hasattr(value, "strftime") else ""
+
+
+def _json_obj(raw: Any) -> dict[str, Any]:
+    try:
+        value = json.loads(raw or "{}")
+    except Exception:
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 def install_homework_help(implementation: Any) -> APIRouter:
@@ -69,6 +87,19 @@ def install_homework_help(implementation: Any) -> APIRouter:
         return _mapping(row)
 
     def student_help_json(row: dict[str, Any]) -> dict[str, Any]:
+        data = _json_obj(row["ai_json"])
+        solution = None
+        message = ""
+        if row["state"] in ("answered", "resolved") and data.get("steps") and not data.get("hidden"):
+            solution = {
+                "method": data.get("method", ""),
+                "steps": data["steps"],
+                "answer": data.get("answer", ""),
+                "knowledgePoint": data.get("knowledgePoint", ""),
+                "warning": AI_WARNING,
+            }
+        elif row["state"] == "escalated":
+            message = NO_CONFIDENCE if row["escalate_reason"] == "verify_mismatch" else "已请老师帮忙。"
         return {
             "id": row["id"],
             "grade": row["grade"],
@@ -77,7 +108,9 @@ def install_homework_help(implementation: Any) -> APIRouter:
             "verifyStatus": row["verify_status"],
             "studentNote": row["student_note"],
             "createdAt": _iso(row["created_at"]),
-            "solution": None,
+            "solution": solution,
+            "message": message,
+            "warning": AI_WARNING,
         }
 
     # The body is the raw picture (see ``read_image_body``): it is only ever held in memory. Waiting for
@@ -114,7 +147,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
         item_idx = None
         if b.noticeID is not None:
             linked = db.execute(
-                select(recipients.c.id)
+                select(recipients.c.id, notices.c.items_json)
                 .join(notices, notices.c.id == recipients.c.notice_id)
                 .where(
                     recipients.c.notice_id == b.noticeID,
@@ -125,6 +158,13 @@ def install_homework_help(implementation: Any) -> APIRouter:
             ).first()
             if linked is None:
                 raise HTTPException(404, "没有这份作业")
+            if b.itemSeq is not None:
+                try:
+                    valid = {int(item.get("seq", 0)) for item in json.loads(linked.items_json or "[]")}
+                except (TypeError, ValueError):
+                    valid = set()
+                if b.itemSeq not in valid:
+                    raise HTTPException(400, "没有这条作业")
             item_idx = b.itemSeq
         check_new_help_request(db, helps, u)
         result = db.execute(
@@ -146,6 +186,93 @@ def install_homework_help(implementation: Any) -> APIRouter:
         )
         db.commit()
         return student_help_json(own_help(db, u, int(result.inserted_primary_key[0])))
+
+    @router.post("/student/homework/help/{help_id}/solve")
+    def solve(help_id: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "student")
+        require_student_ai(implementation, db, u)
+        row = own_help(db, u, help_id)
+        if row["state"] not in ("confirmed", "solving"):
+            return student_help_json(row)  # already answered / escalated: never pay for a second answer
+        # Claim the request atomically: a double tap or two devices can never trigger two paid answers.
+        with _CLAIM_LOCK:
+            started = _CLAIMS.get(help_id)
+            if row["state"] == "solving" and (started is None or time.monotonic() - started > SOLVE_CLAIM_TTL_SECONDS):
+                # A "solving" row nobody in this process is working on (restart, crash, hung call): hand it back.
+                db.execute(update(helps).where(helps.c.id == help_id, helps.c.state == "solving").values(state="confirmed"))
+                db.commit()
+            claimed = db.execute(
+                update(helps).where(helps.c.id == help_id, helps.c.state == "confirmed").values(state="solving")
+            )
+            db.commit()
+            if claimed.rowcount != 1:
+                raise HTTPException(409, "AI 正在解答这道题，请稍等几秒")
+            _CLAIMS[help_id] = time.monotonic()
+
+        def student_rate_check(_db: Any, _school_id: int) -> None:
+            check_student_call(implementation, _db, u)
+
+        def attempt(recheck: bool) -> dict[str, Any]:
+            prompt = build_solve_prompt(row["grade"], row["question_text"], recheck=recheck)
+            with ai_slot():
+                raw = implementation._ai_call(
+                    db, u, SOLVE_FEATURE, prompt, timeout=SOLVE_TIMEOUT_SECONDS, rate_check=student_rate_check
+                )
+            try:
+                return clean_solution(implementation._ai_json(raw))
+            except HTTPException:
+                return {}
+
+        def compute() -> dict[str, Any]:
+            first = attempt(False)
+            if not first:
+                raise HTTPException(502, "AI 这次没有给出可用的解答，请再试一次，或者点“求助老师”")
+            attempts = [{"solution": first, "verify": check_solution(first["expression"], first["answer"])}]
+            if attempts[0]["verify"]["status"] == MISMATCH:
+                # One re-check; a failure of the re-check (limit, timeout, junk) counts as "still not sure".
+                try:
+                    second = attempt(True)
+                except HTTPException:
+                    second = {}
+                if second:
+                    attempts.append({"solution": second, "verify": check_solution(second["expression"], second["answer"])})
+            final = attempts[-1]
+            now = datetime.utcnow()
+            # A first answer that failed the check is only ever replaced by an answer that passes it.
+            if final["verify"]["status"] == MISMATCH or (len(attempts) > 1 and final["verify"]["status"] != OK):
+                values = {
+                    "state": "escalated",
+                    "verify_status": "mismatch",
+                    "escalate_reason": "verify_mismatch",
+                    "escalated_at": now,
+                    "ai_json": json.dumps({"hidden": True, "attempts": attempts}, ensure_ascii=False),
+                }
+            else:
+                data = dict(final["solution"], verify=final["verify"], hidden=False)
+                if len(attempts) > 1:
+                    data["recheck"] = True
+                values = {
+                    "state": "answered",
+                    "verify_status": final["verify"]["status"],
+                    "ai_json": json.dumps(data, ensure_ascii=False),
+                }
+            return values
+
+        try:
+            try:
+                values = compute()
+            finally:
+                _CLAIMS.pop(help_id, None)
+        except BaseException:
+            # Nothing usable came back (model error, limit, junk): hand the request back so it can be retried.
+            db.rollback()
+            db.execute(update(helps).where(helps.c.id == help_id, helps.c.state == "solving").values(state="confirmed"))
+            db.commit()
+            raise
+        # Only finish a request that is still ours: if the student asked the teacher meanwhile, that wins.
+        db.execute(update(helps).where(helps.c.id == help_id, helps.c.state == "solving").values(**values))
+        db.commit()
+        return student_help_json(own_help(db, u, help_id))
 
     @router.get("/student/homework/help/{help_id}")
     def get_help(help_id: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
