@@ -2087,7 +2087,7 @@ _ASSISTANT_SNIPPET = r'''
       addMessage('user',text+(file?'\n[图片] '+file.name:''),attachment?'data:'+attachment.attachment_type+';base64,'+attachment.attachment_data:'');
       input.value='';queryImage.value='';queryImageStatus.textContent='未选择图片';
       const reply=data.reply||'暂时没有可用回答。';
-      addMessage('assistant',reply);maybeAddLearningVisual(text,askContext);const guideInput=Array.isArray(data.cards)&&data.cards.length?data.cards:text+' '+reply;renderGuideGrid(guideInput);addInlineGuideCards(guideInput);
+      addMessage('assistant',reply);maybeAddLearningVisual(text,askContext);const guideInput=Array.isArray(data.cards)&&data.cards.length?data.cards:text+' '+reply;if(askContext.active_assessment&&typeof guideInput==='string'){/* asking about the question on screen: answer only, no feature cards */}else{renderGuideGrid(guideInput);addInlineGuideCards(guideInput)}
     }catch(err){queryImageStatus.textContent=err.message||'图片发送失败';addMessage('assistant','产品助手暂时无法回答：'+err.message)}
     finally{send.disabled=false;send.textContent='发送'}
   }
