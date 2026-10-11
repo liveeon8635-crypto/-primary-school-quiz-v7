@@ -818,14 +818,38 @@ FEATURE_NAVIGATION_CARD_MARKER = "changying_v1_precise_feature_navigation_card_v
 # Students and parents cannot open the teaching/class-management pages, so they only ever get these cards.
 _COMMON_CARD_KEYS = ("product_assistant", "feedback", "feedback_records")
 
+# Administrators have their own menu (no 当前教学 / 学生档案), so they get their own cards plus the common ones.
+_ADMIN_CARDS = (
+    {"key": "admin_ai", "title": "AI 设置", "description": "学校级 AI 配置：启用、模型、是否允许发送学生内容与安全边界。",
+     "path": "/v1/tool?page=ai", "keywords": ("ai设置", "ai 设置", "ai配置", "ai 配置", "ai助手", "模型", "密钥", "api", "大模型", "智能")},
+    {"key": "admin_users", "title": "账号管理", "description": "教师、学生、家长账号的创建、重置密码与学生恢复。",
+     "path": "/v1/tool?page=users", "keywords": ("账号", "帐号", "用户", "密码", "教师账号", "学生账号", "家长账号", "恢复")},
+    {"key": "admin_points", "title": "积分奖励", "description": "全校积分规则、奖励与自动奖励。",
+     "path": "/v1/tool?page=pointsAdmin", "keywords": ("积分", "奖励", "规则")},
+    {"key": "admin_audit", "title": "全校审计", "description": "查看全校关键教学与账号操作记录。",
+     "path": "/v1/tool?page=adminAudit", "keywords": ("审计", "操作记录", "日志")},
+    {"key": "admin_system", "title": "系统设置", "description": "学校级系统维护与安全设置。",
+     "path": "/v1/tool?page=system", "keywords": ("系统设置", "系统", "备份", "安全设置", "维护")},
+    {"key": "admin_subscription", "title": "套餐授权", "description": "查看当前学校的功能授权与容量。",
+     "path": "/v1/tool?page=subscription", "keywords": ("套餐", "授权", "容量", "订阅", "到期")},
+    {"key": "admin_imports", "title": "批量导入", "description": "批量导入账号、题目与教学数据。",
+     "path": "/v1/tool?page=imports", "keywords": ("批量导入", "导入账号", "导入学生", "导入教师", "批量", "导入")},
+    {"key": "admin_overview", "title": "平台总览", "description": "学校教学与账号数据概览。",
+     "path": "/v1/tool?page=admin", "keywords": ("总览", "概览", "平台")},
+)
+
 
 def _guidance_cards(question: str, page: str = "", limit: int = 3, role: str = "") -> list[dict]:
     text = f"{question or ''} {page or ''}".lower()
-    restricted = role in ("student", "parent")
+    restricted = role in ("student", "parent", "admin", "school_admin")
+    if role in ("admin", "school_admin"):
+        pool = list(_ADMIN_CARDS) + [c for c in _GUIDANCE_CARDS if c["key"] in _COMMON_CARD_KEYS + ("catalog_questions",)]
+    elif restricted:
+        pool = [c for c in _GUIDANCE_CARDS if c["key"] in _COMMON_CARD_KEYS]
+    else:
+        pool = list(_GUIDANCE_CARDS)
     scored: list[tuple[int, int, dict]] = []
-    for index, card in enumerate(_GUIDANCE_CARDS):
-        if restricted and card["key"] not in _COMMON_CARD_KEYS:
-            continue
+    for index, card in enumerate(pool):
         score = sum(1 for kw in card["keywords"] if kw.lower() in text)
         if score:
             scored.append((score, index, card))
@@ -843,7 +867,7 @@ def _guidance_cards(question: str, page: str = "", limit: int = 3, role: str = "
             and max((len(kw) for kw in card["keywords"] if kw.lower() in text), default=0) == max_keyword_len
         ][:limit]
     elif restricted:
-        chosen = []  # a question about their own work is not a navigation request: show no teacher pages
+        chosen = []  # no navigation request: never fall back to pages this role cannot open
     else:
         chosen = [card for card in _GUIDANCE_CARDS if card["key"] in ("current_teaching", "student_profile", "feedback")]
     return [
