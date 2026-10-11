@@ -155,6 +155,11 @@ from changying.web.rubric_review_ui import install_rubric_review_ui
 from changying.web.science_teacher_ai import install_science_teacher_ai_workflow
 from changying.web.student_quiz_navigation import install_student_quiz_navigation
 from changying.web.classroom_quick_login import install_classroom_quick_login
+from changying.web.v1_classroom_live_board import (
+    install_v1_classroom_live_board_patch,
+    install_v1_classroom_live_board_routes,
+)
+from changying.web.student_wrong_practice import install_student_wrong_practice
 from changying.web.teacher_ai_rich_generation_ui import install_teacher_ai_rich_generation_ui
 
 NO_CACHE_HEADERS = {
@@ -456,12 +461,15 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_student_detail_visibility_patch()
     install_v1_student_practice_patch()
     install_v1_student_practice_routes(implementation)
+    install_student_wrong_practice(implementation)
     install_v1_classroom_review_patch()
     install_v1_classroom_review_routes(implementation)
     install_v1_classroom_execution_patch()
     install_v1_classroom_execution_routes(implementation)
     install_v1_classroom_quick_check_patch()
     install_v1_classroom_quick_check_routes(implementation)
+    install_v1_classroom_live_board_patch()
+    install_v1_classroom_live_board_routes(implementation)
     install_classroom_quick_login(implementation)
     install_paper_composition_routes(implementation)
     install_paper_import_routes(implementation)
