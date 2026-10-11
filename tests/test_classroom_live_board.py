@@ -21,7 +21,10 @@ def test_teacher_execution_page_links_to_the_board():
 
     html = v1_module.v1_html()
     assert V1_CLASSROOM_LIVE_BOARD_MARKER in html
-    assert 'id="cy-session-board" href="/v1/classroom-board/\'+sid+\'" target="_blank">打开大屏</a>' in html
+    assert 'id="cy-session-board" href="/v1/classroom-board/\'+sid+\'" target="_blank" data-cy-open-window="1">打开大屏</a>' in html
+    # The window opener stages the existing one-time auth handoff before opening the tab.
+    assert "a[data-cy-open-window]" in html and "/v1/auth-handoff'" in html and "w.opener=null" in html
+    assert "'/v1/transition','/v1/classroom-execution'].includes(path)" in html  # login returns here
     assert patch_v1_classroom_live_board_html(html) == html
 
 
@@ -29,7 +32,10 @@ def test_board_page_is_a_data_free_read_only_shell():
     page = board_html(7)
     assert "var SID=7" in page and "POLL=2500" in page and LIVE_BOARD_POLL_MS == 2500
     # Only GET polling of the aggregate endpoint; nothing writes.
-    assert "method:'POST'" not in page and "method:\"POST\"" not in page
+    # The only POST is the existing one-time auth handoff consume (no data is written).
+    assert page.count("method:'POST'") == 1 and "/v1/auth-handoff/consume" in page
+    for verb in ("PUT", "PATCH", "DELETE"):
+        assert f"method:'{verb}'" not in page
     assert "<form" not in page and "<input" not in page and "<button" not in page
     assert "/teacher/classroom-sessions/'+SID+'/live-board" in page
     assert "orientation:portrait" in page and "clamp(20px,2.6vw,44px)" in page
