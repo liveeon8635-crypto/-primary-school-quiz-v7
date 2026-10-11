@@ -163,7 +163,7 @@ function importView(body){
   file.addEventListener('change',function(){
     var f=file.files&&file.files[0];if(!f)return;
     msg.textContent='';msg.appendChild(notice('ok','正在识别截图…'));shot.disabled=true;
-    shrink(f,1800).then(function(blob){var fd=new FormData();fd.append('file',blob,'notice.jpg');return api('/teacher/homework/parse-image',{method:'POST',body:fd})})
+    shrink(f,1800).then(function(blob){return api('/teacher/homework/parse-image',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}})})
       .then(function(d){text.value=d.text;msg.textContent='';msg.appendChild(notice('ok','已识别，请检查文字，需要的话直接修改，再点“AI 解析”。'))})
       .catch(function(e){msg.textContent='';msg.appendChild(notice('error',e.message))}).then(function(){shot.disabled=false;file.value=''});
   });
@@ -230,7 +230,7 @@ function noticesView(body){
     });
   }).catch(function(e){list.appendChild(notice('error',e.message))});
 }
-__TEACHER_FUNCS__
+__EXTRA_FUNCS__
 
 /* ---------------------------------------------------------------- start */
 function start(){
@@ -261,11 +261,50 @@ PAGE_HTML = """<!doctype html>
 """
 
 # Follow-up pull requests extend the page by filling these slots.
+STUDENT_HELP_JS = r"""
+var HELP_TIP='只拍这一道题，让题目占满画面；避开人脸、姓名、学号；光线要亮，别有阴影。';
+function afterConfirm(box,help){
+  box.textContent='';box.appendChild(notice('ok','题目已记录（编号 '+help.id+'）。'));
+}
+function helpCard(){
+  var text=el('textarea',{placeholder:'题目文字：可以拍照识别，也可以自己输入',maxlength:600}),msg=el('div'),out=el('div');
+  var grade=el('select',{}),file=el('input',{type:'file',accept:'image/*',capture:'environment',hidden:true});
+  for(var g=1;g<=6;g++)grade.appendChild(el('option',{value:String(g),text:['一','二','三','四','五','六'][g-1]+'年级'}));
+  if(ME&&ME.grade>=1&&ME.grade<=6)grade.value=String(ME.grade);
+  var snap=el('button',{text:'拍题',onclick:function(){file.click()}});
+  if(!CONFIG.visionEnabled)snap.style.display='none';
+  var confirmBtn=el('button',{class:'primary',text:'确认题目，请 AI 讲解'});
+  root.appendChild(el('div',{class:'card'},el('h2',{text:'这道题我不会'}),el('div',{class:'muted',text:HELP_TIP}),
+    el('div',{class:'row'},snap,file,grade),text,msg,el('div',{class:'row'},confirmBtn),out));
+  file.addEventListener('change',function(){
+    var f=file.files&&file.files[0];if(!f)return;
+    msg.textContent='';msg.appendChild(notice('ok','正在识别…'));snap.disabled=true;
+    shrink(f,1600).then(function(blob){return api('/student/homework/recognize',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}})})
+      .then(function(d){
+        text.value=d.text;msg.textContent='';
+        msg.appendChild(notice('ok','请检查识别出的文字，不对就直接修改，然后点“确认题目”。'));
+        if(d.hasFigure)msg.appendChild(notice('warn','题目里有图形，AI 看不到图。请用文字补充说明，或者直接请老师帮忙。'));
+      })
+      .catch(function(e){msg.textContent='';msg.appendChild(notice('error',e.message))})
+      .then(function(){snap.disabled=false;file.value=''});
+  });
+  confirmBtn.addEventListener('click',function(){
+    msg.textContent='';out.textContent='';
+    if(!text.value.trim()){msg.appendChild(notice('error','请先拍下或写下题目'));return}
+    confirmBtn.disabled=true;
+    api('/student/homework/help',{json:{questionText:text.value,grade:Number(grade.value)}})
+      .then(function(h){afterConfirm(out,h)})
+      .catch(function(e){msg.appendChild(notice('error',e.message))})
+      .then(function(){confirmBtn.disabled=false});
+  });
+}
+"""
+
 SLOTS: dict[str, str] = {
-    "__STUDENT_EXTRA__": "",
+    "__STUDENT_EXTRA__": "helpCard();",
     "__TEACHER_VIEWS__": "",
     "__TEACHER_NAMES__": "",
-    "__TEACHER_FUNCS__": "",
+    "__EXTRA_FUNCS__": STUDENT_HELP_JS,
 }
 
 

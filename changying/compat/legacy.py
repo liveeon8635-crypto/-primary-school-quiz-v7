@@ -157,6 +157,7 @@ from changying.web.student_quiz_navigation import install_student_quiz_navigatio
 from changying.web.classroom_quick_login import install_classroom_quick_login
 from changying.services.homework_assistant_tables import register_homework_assistant_tables
 from changying.web.homework_assistant import install_homework_assistant
+from changying.web.homework_help import install_homework_help
 from changying.web.homework_assistant_pages import install_v1_homework_entry_patch
 from changying.web.v1_classroom_live_board import (
     install_v1_classroom_live_board_patch,
@@ -476,6 +477,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_classroom_quick_login(implementation)
     register_homework_assistant_tables(implementation)
     install_homework_assistant(implementation)
+    install_homework_help(implementation)
     install_v1_homework_entry_patch()
     install_paper_composition_routes(implementation)
     install_paper_import_routes(implementation)
