@@ -14,8 +14,9 @@ Flow
    numbers only (no names). Wrong codes are rate limited per client and globally.
 3. A seat can be held by one device at a time (``UNIQUE(code_id, seat_no)`` row with a device
    hash). The same device may resume; another device gets 409 until the seat is released.
-4. The token is a normal short-lived JWT (same claims as ``/login``) that expires with the
-   code. Students who still have an initial password (``must_change_password``) are refused:
+4. The token is a short-lived JWT (same claims as ``/login`` plus ``qjs``/``qjn``) that expires with
+   the code and is revoked immediately on logout, seat release, code revoke/regeneration or end of
+   class (checked per request by a middleware, so no existing auth code is modified). Students who still have an initial password (``must_change_password``) are refused:
    the existing security gate is not bypassed.
 5. "一键退出" releases the seat and wipes the device (storage + cookies).
 """
@@ -31,6 +32,7 @@ from typing import Any
 
 import jwt
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import (
@@ -126,6 +128,7 @@ def register_classroom_join_tables(implementation: Any) -> dict[str, Table]:
             Column("seat_no", Integer, nullable=False),
             Column("student_id", Integer, nullable=False, index=True),
             Column("device_hash", String(64), nullable=False, default=""),
+            Column("claim_nonce", String(32), nullable=False, default=""),
             Column("claimed_at", DateTime, nullable=False, default=_utcnow),
             Column("released_at", DateTime, nullable=True),
             UniqueConstraint("code_id", "seat_no", name="uq_classroom_seat_code_seat"),
@@ -432,6 +435,7 @@ def install_classroom_quick_login(implementation: Any) -> bool:
             )
 
         now = _utcnow()
+        nonce = secrets.token_hex(8)
         existing = db.execute(
             select(seat_rows).where(
                 seat_rows.c.code_id == row["id"], seat_rows.c.seat_no == int(body.seat)
@@ -448,6 +452,7 @@ def install_classroom_quick_login(implementation: Any) -> bool:
                             seat_no=int(body.seat),
                             student_id=student_id,
                             device_hash=device,
+                            claim_nonce=nonce,
                             claimed_at=now,
                             released_at=None,
                         )
@@ -464,11 +469,22 @@ def install_classroom_quick_login(implementation: Any) -> bool:
                     seat_rows.c.id == current["id"],
                     (seat_rows.c.released_at.is_not(None)) | (seat_rows.c.device_hash == device),
                 )
-                .values(device_hash=device, released_at=None, claimed_at=now, student_id=student_id)
+                .values(
+                    device_hash=device,
+                    claim_nonce=nonce,
+                    released_at=None,
+                    claimed_at=now,
+                    student_id=student_id,
+                )
             )
             if claimed.rowcount != 1:
                 raise HTTPException(409, busy)
 
+        seat_id = db.scalar(
+            select(seat_rows.c.id).where(
+                seat_rows.c.code_id == row["id"], seat_rows.c.seat_no == int(body.seat)
+            )
+        )
         expires_at = row["expires_at"]
         token_exp = expires_at.replace(tzinfo=timezone.utc)
         token = jwt.encode(
@@ -477,6 +493,9 @@ def install_classroom_quick_login(implementation: Any) -> bool:
                 "role": student.role,
                 "school_id": student.school_id,
                 "pwdv": implementation.password_version(sec),
+                # Revocation handles: checked on every request by the middleware below.
+                "qjs": int(seat_id),
+                "qjn": nonce,
                 "iat": datetime.now(timezone.utc),
                 "exp": token_exp,
             },
@@ -542,6 +561,48 @@ def install_classroom_quick_login(implementation: Any) -> bool:
             TEACHER_CODE_HTML.replace("__SID__", str(int(sid))).replace("__MARKER__", CLASSROOM_QUICK_LOGIN_MARKER),
             headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
         )
+
+    def seat_token_is_live(seat_id: int, nonce: str) -> bool:
+        """A quick-login token is valid only while its exact seat claim, code and class are live."""
+        with implementation.SessionLocal() as db:
+            seat = db.execute(select(seat_rows).where(seat_rows.c.id == seat_id)).first()
+            if not seat:
+                return False
+            seat = _mapping(seat)
+            if seat["released_at"] is not None or not secrets.compare_digest(
+                str(seat["claim_nonce"] or ""), str(nonce or "")
+            ):
+                return False
+            code_raw = db.execute(select(codes).where(codes.c.id == seat["code_id"])).first()
+            if not code_raw:
+                return False
+            code_row = _mapping(code_raw)
+            if code_row["revoked_at"] is not None or code_row["expires_at"] <= _utcnow():
+                return False
+            session_raw = db.execute(
+                select(sessions.c.status).where(sessions.c.id == code_row["session_id"])
+            ).first()
+            return bool(session_raw and session_raw[0] in ("active", "paused"))
+
+    @app.middleware("http")
+    async def quick_login_revocation(request: Request, call_next):
+        auth = request.headers.get("authorization", "")
+        if auth.startswith("Bearer "):
+            try:
+                claims = jwt.decode(
+                    auth[7:], implementation.JWT_SECRET, algorithms=[implementation.JWT_ALG]
+                )
+            except Exception:
+                claims = None
+            if claims and claims.get("qjs") is not None:
+                live = await run_in_threadpool(
+                    seat_token_is_live, int(claims["qjs"]), str(claims.get("qjn") or "")
+                )
+                if not live:
+                    return JSONResponse(
+                        {"detail": "座号登录已失效，请重新输入班级码"}, status_code=401
+                    )
+        return await call_next(request)
 
     app.include_router(router)
     install_classroom_quick_login_patch()

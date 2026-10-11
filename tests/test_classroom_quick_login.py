@@ -157,7 +157,12 @@ with TestClient(app) as client:
     # (c) the seat is taken: a second device is refused, the same device may resume.
     busy = client.post("/classroom-join/login", json={"code": code, "seat": 1, "device_id": Bdev})
     assert busy.status_code == 409, busy.text
-    assert client.post("/classroom-join/login", json={"code": code, "seat": 1, "device_id": A}).status_code == 200
+    resume = client.post("/classroom-join/login", json={"code": code, "seat": 1, "device_id": A})
+    assert resume.status_code == 200
+    # Resuming issues a fresh claim: the earlier token is superseded, the new one works.
+    assert client.get("/session", headers=auth).status_code == 401
+    auth = {"Authorization": "Bearer " + resume.json()["token"]}
+    assert client.get("/session", headers=auth).status_code == 200
     assert client.post("/classroom-join/lookup", json={"code": code}).json()["seats"][0]["taken"] is True
     # Another seat on device B is fine.
     assert client.post("/classroom-join/login", json={"code": code, "seat": 2, "device_id": Bdev}).status_code == 200
@@ -170,11 +175,30 @@ with TestClient(app) as client:
     # Logout releases the seat; then device B can take it.
     out = client.post("/classroom-join/logout", headers=auth)
     assert out.status_code == 200 and out.json()["released"] >= 1
-    assert client.post("/classroom-join/login", json={"code": code, "seat": 1, "device_id": Bdev}).status_code == 200
-    # Teacher can force-release a seat.
+    # (revocation) the token issued before logout is dead immediately, not 3 hours later.
+    revoked = client.get("/session", headers=auth)
+    assert revoked.status_code == 401 and "已失效" in revoked.text, revoked.text
+    second = client.post("/classroom-join/login", json={"code": code, "seat": 1, "device_id": Bdev})
+    assert second.status_code == 200
+    auth_b = {"Authorization": "Bearer " + second.json()["token"]}
+    assert client.get("/session", headers=auth_b).status_code == 200
+    # Taking the same seat again must not revive the old token (per-claim nonce).
+    assert client.get("/session", headers=auth).status_code == 401
+    # Teacher can force-release a seat -> that student's token stops working at once.
     rel = client.post(f"{base}/seats/1/release", headers=th)
     assert rel.status_code == 200 and rel.json()["seats"][0]["taken"] is False
-    assert client.post("/classroom-join/login", json={"code": code, "seat": 1, "device_id": A}).status_code == 200
+    assert client.get("/session", headers=auth_b).status_code == 401
+    third = client.post("/classroom-join/login", json={"code": code, "seat": 1, "device_id": A})
+    assert third.status_code == 200
+    auth = {"Authorization": "Bearer " + third.json()["token"]}
+    assert client.get("/session", headers=auth).status_code == 200
+    # Regenerating the code (new class code) revokes tokens issued under the old one.
+    assert client.post(base, headers=th).status_code == 200
+    assert client.get("/session", headers=auth).status_code == 401
+    code = client.get(base, headers=th).json()["code"]
+    again = client.post("/classroom-join/login", json={"code": code, "seat": 1, "device_id": A})
+    assert again.status_code == 200
+    auth = {"Authorization": "Bearer " + again.json()["token"]}
 
     # Students cannot use the teacher endpoints.
     assert client.get(base, headers=auth).status_code == 403
@@ -196,8 +220,14 @@ with TestClient(app) as client:
     segid = client.get(f"/teacher/classroom-sessions/{sid}", headers=th).json()["segments"][0]["id"]
     assert client.post(f"/teacher/classroom-sessions/{sid}/segments/{segid}/start", headers=th).status_code == 200
     assert client.post(f"/teacher/classroom-sessions/{sid}/segments/{segid}/complete", headers=th).status_code == 200
+    live_login = client.post("/classroom-join/login", json={"code": code3, "seat": 2, "device_id": A})
+    assert live_login.status_code == 200
+    live_auth = {"Authorization": "Bearer " + live_login.json()["token"]}
+    assert client.get("/session", headers=live_auth).status_code == 200
     assert client.post(f"/teacher/classroom-sessions/{sid}/state", headers=th, json={"status": "completed"}).status_code == 200
     assert client.post("/classroom-join/lookup", json={"code": code3}).status_code == 404
+    # Finishing the class also kills tokens that were already issued.
+    assert client.get("/session", headers=live_auth).status_code == 401
     print("OK")
 ''',
         flag=True,
