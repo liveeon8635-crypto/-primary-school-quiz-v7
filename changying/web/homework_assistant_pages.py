@@ -266,7 +266,7 @@ STUDENT_HELP_JS = r"""
 var HELP_TIP='只拍这一道题，让题目占满画面；避开人脸、姓名、学号；光线要亮，别有阴影。';
 function afterConfirm(box,help){
   box.textContent='';box.appendChild(notice('ok','AI 正在想，请稍等…'));
-  api('/student/homework/help/'+help.id+'/solve',{method:'POST'}).then(function(h){showSolution(box,h)}).catch(function(e){
+  return api('/student/homework/help/'+help.id+'/solve',{method:'POST'}).then(function(h){showSolution(box,h)}).catch(function(e){
     box.textContent='';box.appendChild(notice('error',e.message));
     if(e.status!==429)box.appendChild(el('button',{text:'再试一次',onclick:function(){afterConfirm(box,help)}}));
   });
@@ -301,7 +301,7 @@ function showSolution(box,h){
 }
 function helpCard(){
   var text=el('textarea',{placeholder:'题目文字：可以拍照识别，也可以自己输入',maxlength:600}),msg=el('div'),out=el('div');
-  var grade=el('select',{}),file=el('input',{type:'file',accept:'image/*',capture:'environment',hidden:true});
+  var last=null,grade=el('select',{}),file=el('input',{type:'file',accept:'image/*',capture:'environment',hidden:true});
   for(var g=1;g<=6;g++)grade.appendChild(el('option',{value:String(g),text:['一','二','三','四','五','六'][g-1]+'年级'}));
   if(ME&&ME.grade>=1&&ME.grade<=6)grade.value=String(ME.grade);
   var snap=el('button',{text:'拍题',onclick:function(){file.click()}});
@@ -325,8 +325,10 @@ function helpCard(){
     msg.textContent='';out.textContent='';
     if(!text.value.trim()){msg.appendChild(notice('error','请先拍下或写下题目'));return}
     confirmBtn.disabled=true;
-    api('/student/homework/help',{json:{questionText:text.value,grade:Number(grade.value)}})
-      .then(function(h){afterConfirm(out,h)})
+    var same=last&&last.text===text.value&&last.grade===Number(grade.value);
+    // Same question again (e.g. after an error): reuse its request instead of opening a second one.
+    (same?Promise.resolve(last.help):api('/student/homework/help',{json:{questionText:text.value,grade:Number(grade.value)}}))
+      .then(function(h){last={text:text.value,grade:Number(grade.value),help:h};return afterConfirm(out,h)})
       .catch(function(e){msg.appendChild(notice('error',e.message))})
       .then(function(){confirmBtn.disabled=false});
   });
