@@ -163,7 +163,7 @@ function importView(body){
   file.addEventListener('change',function(){
     var f=file.files&&file.files[0];if(!f)return;
     msg.textContent='';msg.appendChild(notice('ok','正在识别截图…'));shot.disabled=true;
-    shrink(f,1800).then(function(blob){var fd=new FormData();fd.append('file',blob,'notice.jpg');return api('/teacher/homework/parse-image',{method:'POST',body:fd})})
+    shrink(f,1800).then(function(blob){return api('/teacher/homework/parse-image',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}})})
       .then(function(d){text.value=d.text;msg.textContent='';msg.appendChild(notice('ok','已识别，请检查文字，需要的话直接修改，再点“AI 解析”。'))})
       .catch(function(e){msg.textContent='';msg.appendChild(notice('error',e.message))}).then(function(){shot.disabled=false;file.value=''});
   });
@@ -299,7 +299,7 @@ function helpCard(){
   file.addEventListener('change',function(){
     var f=file.files&&file.files[0];if(!f)return;
     msg.textContent='';msg.appendChild(notice('ok','正在识别…'));snap.disabled=true;
-    shrink(f,1600).then(function(blob){var fd=new FormData();fd.append('file',blob,'q.jpg');return api('/student/homework/recognize',{method:'POST',body:fd})})
+    shrink(f,1600).then(function(blob){return api('/student/homework/recognize',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}})})
       .then(function(d){
         text.value=d.text;msg.textContent='';
         msg.appendChild(notice('ok','请检查识别出的文字，不对就直接修改，然后点“确认题目”。'));
