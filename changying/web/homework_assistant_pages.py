@@ -269,6 +269,7 @@ function afterConfirm(box,help){
   return api('/student/homework/help/'+help.id+'/solve',{method:'POST'}).then(function(h){showSolution(box,h)}).catch(function(e){
     box.textContent='';box.appendChild(notice('error',e.message));
     if(e.status!==429)box.appendChild(el('button',{text:'再试一次',onclick:function(){afterConfirm(box,help)}}));
+    escalateBox(box,help);
   });
 }
 function escalateBox(box,h){
