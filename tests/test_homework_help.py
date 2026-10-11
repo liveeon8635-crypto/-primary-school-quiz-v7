@@ -109,7 +109,7 @@ def setup(client, allow=True):
 
 
 def snap(client, sh):
-    return client.post("/student/homework/recognize", headers=sh, files={"file": ("q.jpg", JPEG, "image/jpeg")})
+    return client.post("/student/homework/recognize", headers={**sh, "Content-Type": "image/jpeg"}, content=JPEG)
 '''
 
 
@@ -158,7 +158,7 @@ with TestClient(app) as client:
     th, sh, sid, school_id = setup(client)
 
     # Teachers and parents have no student help flow.
-    assert client.post("/student/homework/recognize", headers=th, files={"file": ("q.jpg", JPEG, "image/jpeg")}).status_code == 403
+    assert client.post("/student/homework/recognize", headers={**th, "Content-Type": "image/jpeg"}, content=JPEG).status_code == 403
     assert client.post("/student/homework/help", headers=th, json={"questionText": "x"}).status_code == 403
 
     r = snap(client, sh)
@@ -360,9 +360,6 @@ def slow_post(*a, **k):
 
 homework_vision.requests.post = slow_post
 
-for route in app.routes:
-    if getattr(route, "path", "") == "/student/homework/recognize":
-        assert not inspect.iscoroutinefunction(route.endpoint), "a coroutine making a blocking call freezes the server"
 
 with TestClient(app) as client:
     th, sh, sid, school_id = setup(client)
@@ -383,4 +380,57 @@ with TestClient(app) as client:
 print("OK")
 ''',
         VISION,
+    )
+
+
+def test_a_large_photo_never_touches_the_disk(tmp_path):
+    tmp = tmp_path / "scratch"
+    tmp.mkdir()
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+import os
+import tempfile
+
+# Count every time the framework's in-memory upload buffer spills over to a file on disk (that is what a
+# multipart upload larger than ~1 MB does; temporary files are deleted afterwards, so only this shows it).
+spilled = []
+_rollover = tempfile.SpooledTemporaryFile.rollover
+
+
+def spy(self):
+    spilled.append(1)
+    return _rollover(self)
+
+
+tempfile.SpooledTemporaryFile.rollover = spy
+
+big_ok = b"\xff\xd8\xff\xe0" + b"7" * (2 * 1024 * 1024)       # 2 MB: above the ~1 MB a multipart parser keeps in memory
+too_big = b"\xff\xd8\xff\xe0" + b"7" * (7 * 1024 * 1024)      # over our own limit
+scratch = os.environ["TMPDIR"]
+
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    headers = {**sh, "Content-Type": "image/jpeg"}
+    assert os.listdir(scratch) == []
+
+    ok = client.post("/student/homework/recognize", headers=headers, content=big_ok)
+    assert ok.status_code == 200, ok.text
+    big = client.post("/student/homework/recognize", headers=headers, content=too_big)
+    assert big.status_code == 413
+    # Not an image at all, and the old multipart form is no longer accepted.
+    assert client.post("/student/homework/recognize", headers=headers, content=b"hello").status_code == 415
+    old_style = client.post("/student/homework/recognize", headers=sh, files={"file": ("q.jpg", big_ok, "image/jpeg")})
+    assert old_style.status_code == 415
+
+    # Unauthenticated callers are refused before the body is read at all.
+    assert client.post("/student/homework/recognize", headers={"Content-Type": "image/jpeg"}, content=big_ok).status_code in (401, 403)
+
+    # Nothing was ever spooled or written to the temporary directory.
+    assert spilled == [], "a photo was spilled to disk"
+    assert os.listdir(scratch) == [], os.listdir(scratch)
+print("OK")
+''',
+        {**VISION, "TMPDIR": str(tmp)},
     )
