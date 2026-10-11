@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5",
+  "evidencePacketHash": "sha256:c47bb050b4ddab35f3cb9cbbfa913f42097ecc0eee3444b28799045099cd6c2a",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "3f2f74411bb7f9157150749122a906ab33fb9ef6",
+  "headSha": "b98a9db145c949b7921e397dd23c3fd0baa826f8",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：新增的共享平板班级码与座号快速登录功能带有环境变量开关保护（默认关闭），具备防暴搜频率限制、隐私保护和设备排他锁，代码质量良好且测试充分。",
+      "evidenceRefs": [
+        "file:changying/web/classroom_quick_login.py#L42-L44",
+        "file:changying/web/classroom_quick_login.py#L198-L208",
+        "pr:#701"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:0ea800950f9f8bc7c85a9a956978125f7c989155b98a57382999416d31d25124"
+}
