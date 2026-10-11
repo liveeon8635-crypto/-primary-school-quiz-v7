@@ -76,3 +76,30 @@ def test_hostile_sizes_are_bounded_and_fast():
 def test_normalize_and_evaluate_helpers():
     assert normalize(" ２×３ ＝ 6。 ") == "2*3=6"
     assert str(evaluate_arithmetic("7÷2")) == "7/2"
+
+
+def test_stacked_and_nested_powers_in_equations_are_refused_quickly():
+    started = time.time()
+    for expression in (
+        "x+9^99^9=1",
+        "x=9^99^9",
+        "((((((((9^8)^8)^8)^8)^8)^8)^8)^8)+x=1",
+        "x+9^(9^9)=1",
+        "x^-1=2",
+        "(x^8)^8=1",
+        "x^9=1",
+        "x^2+3^3^3=1",
+    ):
+        assert check_solution(expression, "3")["status"] == "skipped", expression
+    assert time.time() - started < 5
+
+
+def test_a_stuck_equation_check_gives_up_instead_of_hanging(monkeypatch):
+    from changying.services import homework_math_check as mc
+
+    monkeypatch.setattr(mc, "SYMPY_TIMEOUT_SECONDS", 0.2)
+    monkeypatch.setattr(mc, "_solve_equation", lambda text: time.sleep(3) or [])
+    started = time.time()
+    result = check_solution("x+3=10", "7")
+    assert result["status"] == "skipped" and "超时" in result["detail"]
+    assert time.time() - started < 1.5

@@ -13,6 +13,7 @@ not check it (figures, word reasoning, several answers, unusual notation) - neve
 from __future__ import annotations
 
 import re
+import threading
 import unicodedata
 from fractions import Fraction
 from typing import Any
@@ -220,7 +221,12 @@ def _solve_equation(text: str) -> list[Fraction]:
 
     if not re.fullmatch(r"[0-9.+\-*/^()=x]+", text) or text.count("=") != 1:
         raise _Skip("方程格式无法识别")
-    if re.search(r"\^\d{3,}|\^\(|x\^x", text):
+    exponents = [int(n) for n in re.findall(r"\^(\d+)", text)]
+    if (
+        text.count("^") > 2                      # nested/stacked powers can blow up (9^99^9, ((9^8)^8)^8 ...)
+        or any(n > MAX_EXPONENT for n in exponents)
+        or re.search(r"\^\d+\^|\^\(|\^-|\^x|x\^x", text)
+    ):
         raise _Skip("方程里的乘方无法核对")
     text = re.sub(r"(\d|\))x", r"\1*x", text)
     text = re.sub(r"x(\d|\()", r"x*\1", text)
@@ -248,6 +254,33 @@ def _solve_equation(text: str) -> list[Fraction]:
     return values
 
 
+SYMPY_TIMEOUT_SECONDS = 2.0
+
+
+def _solve_with_timeout(text: str) -> list[Fraction]:
+    """Run the equation check on a helper thread and give up after a couple of seconds.
+
+    The input is already tightly bounded; this is the last line of defence so a pathological
+    expression can never keep a request waiting (the helper thread is a daemon).
+    """
+    box: dict[str, Any] = {}
+
+    def run() -> None:
+        try:
+            box["value"] = _solve_equation(text)
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread
+            box["error"] = exc
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(SYMPY_TIMEOUT_SECONDS)
+    if worker.is_alive():
+        raise _Skip("方程核对超时")
+    if "error" in box:
+        raise box["error"]
+    return box["value"]
+
+
 def check_solution(expression: Any, answer: Any) -> dict[str, str]:
     """Compare the model's calculation with its stated answer."""
     expr = normalize(expression)
@@ -258,7 +291,7 @@ def check_solution(expression: Any, answer: Any) -> dict[str, str]:
     try:
         target, decimals = parse_answer(str(answer))
         if "x" in expr:
-            solutions = _solve_equation(expr)
+            solutions = _solve_with_timeout(expr)
             if any(_same(v, target, decimals) for v in solutions):
                 return _result(OK, "方程的解与答案一致")
             return _result(MISMATCH, "方程的解是 " + "、".join(_fmt(v) for v in solutions) + f"，答案写的是 {_fmt(target)}")
