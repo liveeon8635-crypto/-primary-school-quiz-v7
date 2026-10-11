@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:9799dc8736042a0711c10089fdb0f216cf34a2a9511b05d31b1fc5c1e6403f1b",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "2b2670cfb42f74cea0c31dc8310fc8cafc2163f9",
+  "headSha": "0431e8e653d23bc100d5e8b69d11c5e1a8a08e7d",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议合并：改动只让“打开大屏”和“班级码”在新窗口里复用已有的一次性登录交接，老师不用重新登录，且 smoke 与 guard 两项检查均通过。",
+      "evidenceRefs": [
+        "run:114469434378",
+        "run:114469434441",
+        "file:changying/web/classroom_window_handoff.py#L1-L84"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "没有改动认证本身：新代码只调用仓库里已有的 /v1/auth-handoff 与 /v1/auth-handoff/consume 接口，令牌只存在新窗口的 sessionStorage，新窗口打开时断开了 opener，风险较小。",
+      "evidenceRefs": [
+        "file:changying/web/classroom_window_handoff.py#L18-L80"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "大屏页面里新增了一次 POST（仅用于消费登录交接，不写业务数据），测试已同步更新；登录后返回路径白名单新增了课堂执行页，影响很小。",
+      "evidenceRefs": [
+        "file:changying/web/v1_classroom_live_board.py#L28-L55",
+        "file:tests/test_classroom_live_board.py#L21-L38"
+      ]
+    }
+  ],
+  "unresolved": [
+    "未实际运行浏览器验证 iOS Safari 上新窗口的行为，只做了代码阅读，建议合并后人工点一次确认。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:75624447c83b02c137a5686f38fc7e905ef64e531e8c3bf631b6e683c4875e3d"
+}
