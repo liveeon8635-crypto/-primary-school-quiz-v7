@@ -150,6 +150,7 @@ function teacherView(){
   }
   Object.keys(names).forEach(function(k){tabs.appendChild(el('button',{'data-k':k,text:names[k],onclick:function(){show(k)}}))});
   window.__hwShow=show;show('import');
+  if(typeof helpBadge==='function')helpBadge(tabs);
 }
 function importView(body){
   var text=el('textarea',{placeholder:'把家长转发的作业通知文字粘贴到这里'}),msg=el('div'),editor=el('div');
@@ -270,11 +271,22 @@ function afterConfirm(box,help){
     if(e.status!==429)box.appendChild(el('button',{text:'再试一次',onclick:function(){afterConfirm(box,help)}}));
   });
 }
+function escalateBox(box,h){
+  if(h.state==='escalated'){box.appendChild(notice('ok','已请老师帮忙，请先做别的题，老师会来找你。'));return}
+  var note=el('input',{type:'text',placeholder:'想对老师说的话（选填）',maxlength:300});
+  var btn=el('button',{text:'求助老师',onclick:function(){
+    btn.disabled=true;
+    api('/student/homework/help/'+h.id+'/escalate',{json:{note:note.value}}).then(function(){
+      box.appendChild(notice('ok','已通知老师，请先做别的题，老师会来找你。'));wrap.remove();
+    }).catch(function(e){btn.disabled=false;box.appendChild(notice('error',e.message))});
+  }});
+  var wrap=el('div',{class:'row'},note,btn);box.appendChild(wrap);
+}
 function showSolution(box,h){
   box.textContent='';
   var warn=h.warning||'AI 可能出错，请自己判断';
   box.appendChild(notice('warn',warn));
-  if(!h.solution){box.appendChild(notice('error',h.message||'这道题没有得到解答'));return}
+  if(!h.solution){box.appendChild(notice('error',h.message||'这道题没有得到解答'));escalateBox(box,h);return}
   var s=h.solution,list=el('div'),shown=0,next=el('button',{text:'看下一步'});
   var head=[s.method?'解法：'+s.method:'',s.knowledgePoint?'知识点：'+s.knowledgePoint:''].filter(Boolean).join(' · ');
   if(head)box.appendChild(el('div',{class:'muted',text:head}));
@@ -285,6 +297,7 @@ function showSolution(box,h){
   }
   next.addEventListener('click',more);box.appendChild(next);more();
   box.appendChild(notice('warn',warn+'。看不懂，或者觉得不对，就请老师帮忙。'));
+  escalateBox(box,h);
 }
 function helpCard(){
   var text=el('textarea',{placeholder:'题目文字：可以拍照识别，也可以自己输入',maxlength:600}),msg=el('div'),out=el('div');
@@ -322,11 +335,65 @@ function helpCard(){
 }
 """
 
+TEACHER_HELP_JS = r"""
+var helpTimer=null,helpSeen=-1;
+function helpBadge(tabs){
+  function paint(){
+    if(document.hidden)return;
+    api('/teacher/homework/help?status=open').then(function(d){
+      var tab=tabs.querySelector('[data-k="help"]');if(tab)tab.textContent='求助列表'+(d.open?'（'+d.open+'）':'');
+      if(helpSeen>=0&&d.open>helpSeen&&document.title.indexOf('●')<0)document.title='● '+document.title;
+      helpSeen=d.open;
+    }).catch(function(){});
+  }
+  paint();setInterval(paint,10000);
+}
+function helpView(body){
+  var filter='open',list=el('div'),bar=el('div',{class:'tabs'});
+  var openBtn=el('button',{text:'待处理',onclick:function(){filter='open';load()}}),doneBtn=el('button',{text:'已处理',onclick:function(){filter='resolved';load()}});
+  bar.appendChild(openBtn);bar.appendChild(doneBtn);
+  body.appendChild(el('div',{class:'card'},el('h2',{text:'学生求助'}),el('div',{class:'muted',text:'列表每 10 秒自动刷新。这里只有你班里的学生。'}),bar,list));
+  function load(){
+    openBtn.className=filter==='open'?'on':'';doneBtn.className=filter==='resolved'?'on':'';
+    api('/teacher/homework/help?status='+filter).then(function(d){
+      list.textContent='';
+      if(!d.items.length){list.appendChild(el('div',{class:'muted',text:filter==='open'?'现在没有人求助。':'还没有处理过的求助。'}));return}
+      d.items.forEach(function(it){list.appendChild(helpCard(it))});
+    }).catch(function(e){list.textContent='';list.appendChild(notice('error',e.message))});
+  }
+  function helpCard(it){
+    var detail=el('div'),note=el('textarea',{placeholder:'给学生的说明（选填）',style:'min-height:70px'});
+    var card=el('div',{class:'card'},
+      el('div',{class:'row'},el('b',{text:(it.studentName||'学生')+' · '+(it.grade?it.grade+'年级':'')}),el('span',{class:'tag',text:it.reasonLabel}),
+        el('span',{class:'muted',text:it.state==='resolved'?'已处理 '+it.resolvedAt:'已等 '+it.waitMinutes+' 分钟'})),
+      el('div',{text:it.questionText}),
+      it.studentNote?el('div',{class:'muted',text:'学生说：'+it.studentNote}):null,detail);
+    card.appendChild(el('button',{text:'看 AI 对话',onclick:function(){
+      detail.textContent='';
+      api('/teacher/homework/help/'+it.id).then(function(d){
+        d.conversation.forEach(function(m){
+          detail.appendChild(el('div',{class:'notice '+(m.role==='ai'?'warn':'ok')},el('b',{text:{student:'学生',ai:'AI',teacher:'老师'}[m.role]+'：'}),
+            el('span',{style:'white-space:pre-wrap',text:m.text})));
+        });
+      }).catch(function(e){detail.appendChild(notice('error',e.message))});
+    }}));
+    if(it.state==='escalated'){
+      card.appendChild(note);
+      card.appendChild(el('button',{class:'primary',text:'标记为已处理',onclick:function(){
+        api('/teacher/homework/help/'+it.id+'/resolve',{json:{note:note.value}}).then(load).catch(function(e){alert(e.message)});
+      }}));
+    }
+    return card;
+  }
+  load();clearInterval(helpTimer);helpTimer=setInterval(function(){if(!document.hidden&&body.isConnected)load()},10000);
+}
+"""
+
 SLOTS: dict[str, str] = {
     "__STUDENT_EXTRA__": "helpCard();",
-    "__TEACHER_VIEWS__": "",
-    "__TEACHER_NAMES__": "",
-    "__EXTRA_FUNCS__": STUDENT_HELP_JS,
+    "__TEACHER_VIEWS__": ",help:helpView",
+    "__TEACHER_NAMES__": ",help:'求助列表'",
+    "__EXTRA_FUNCS__": STUDENT_HELP_JS + TEACHER_HELP_JS,
 }
 
 

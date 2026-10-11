@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:42abf59b31d47f5f6de7f9bdb70cbdb5bae3eb36851114d751a2f591338c38dd",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "a97d147c03ebf66598a9443868a16ea8cb76c1ef",
+  "headSha": "af55983a1505e0ba98d29332f2dd38b6117ace46",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：新增了学生向老师求助及老师端查看与处理求助的功能，权限控制与班级隔离完善，自动化测试覆盖充分。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L296-L438",
+        "file:changying/web/homework_assistant_pages.py#L274-L388",
+        "file:tests/test_homework_teacher_help.py#L1-L273",
+        "run:114575155522",
+        "run:114575154951"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:f6cd1b6679ea6c01955341ecf68ba7bc4cadb12e0754ebba82d3a44dc6644700"
+}
