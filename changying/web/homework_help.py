@@ -7,6 +7,8 @@ The photo only ever exists in memory while it is recognised; nothing in this mod
 from __future__ import annotations
 
 import json
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -30,6 +32,9 @@ MAX_QUESTION_CHARS = 600
 VISION_FEATURE = "homework_help_vision"
 SOLVE_FEATURE = "homework_help_solve"
 SOLVE_TIMEOUT_SECONDS = 30
+SOLVE_CLAIM_TTL_SECONDS = 120
+_CLAIM_LOCK = threading.Lock()
+_CLAIMS: dict[int, float] = {}
 NO_CONFIDENCE = "这道题我没有把握，已请老师帮忙。"
 HELP_RETENTION_DAYS = 30
 PURGE_BATCH = 200
@@ -201,17 +206,22 @@ def install_homework_help(implementation: Any) -> APIRouter:
         need(u, "student")
         require_student_ai(implementation, db, u)
         row = own_help(db, u, help_id)
-        if row["state"] == "solving":
-            raise HTTPException(409, "AI 正在解答这道题，请稍等几秒")
-        if row["state"] != "confirmed":
+        if row["state"] not in ("confirmed", "solving"):
             return student_help_json(row)  # already answered / escalated: never pay for a second answer
         # Claim the request atomically: a double tap or two devices can never trigger two paid answers.
-        claimed = db.execute(
-            update(helps).where(helps.c.id == help_id, helps.c.state == "confirmed").values(state="solving")
-        )
-        db.commit()
-        if claimed.rowcount != 1:
-            raise HTTPException(409, "AI 正在解答这道题，请稍等几秒")
+        with _CLAIM_LOCK:
+            started = _CLAIMS.get(help_id)
+            if row["state"] == "solving" and (started is None or time.monotonic() - started > SOLVE_CLAIM_TTL_SECONDS):
+                # A "solving" row nobody in this process is working on (restart, crash, hung call): hand it back.
+                db.execute(update(helps).where(helps.c.id == help_id, helps.c.state == "solving").values(state="confirmed"))
+                db.commit()
+            claimed = db.execute(
+                update(helps).where(helps.c.id == help_id, helps.c.state == "confirmed").values(state="solving")
+            )
+            db.commit()
+            if claimed.rowcount != 1:
+                raise HTTPException(409, "AI 正在解答这道题，请稍等几秒")
+            _CLAIMS[help_id] = time.monotonic()
 
         def student_rate_check(_db: Any, _school_id: int) -> None:
             check_student_call(implementation, _db, u)
@@ -262,7 +272,10 @@ def install_homework_help(implementation: Any) -> APIRouter:
             return values
 
         try:
-            values = compute()
+            try:
+                values = compute()
+            finally:
+                _CLAIMS.pop(help_id, None)
         except BaseException:
             # Nothing usable came back (model error, limit, junk): hand the request back so it can be retried.
             db.rollback()
