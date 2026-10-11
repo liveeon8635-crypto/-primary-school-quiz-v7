@@ -103,3 +103,14 @@ def test_a_stuck_equation_check_gives_up_instead_of_hanging(monkeypatch):
     result = check_solution("x+3=10", "7")
     assert result["status"] == "skipped" and "超时" in result["detail"]
     assert time.time() - started < 1.5
+
+
+def test_negative_answers_keep_their_sign():
+    from changying.services.homework_math_check import check_solution
+
+    ok = [("3-8", "-5"), ("3-8=-5", "-5"), ("x+8=3", "x=-5"), ("0.5-1", "-0.5"), ("1/2-1", "-1/2"), ("7-9", "−2"), ("(-3)*2", "-6元")]
+    for expression, answer in ok:
+        assert check_solution(expression, answer)["status"] == "ok", (expression, answer)
+    for expression, answer in [("3-8", "5"), ("x+8=3", "5"), ("12-5", "-7")]:
+        assert check_solution(expression, answer)["status"] == "mismatch", (expression, answer)
+    assert check_solution("12-5", "7个")["status"] == "ok"

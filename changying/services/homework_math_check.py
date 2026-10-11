@@ -168,25 +168,28 @@ def evaluate_arithmetic(text: str) -> Fraction:
     return _Parser(_tokenize(normalize(text))).parse()
 
 
-_ANSWER_TOKEN = re.compile(r"\d+(?:\.\d+)?(?:/\d+)?%?")
+_ANSWER_TOKEN = re.compile(r"(?<!\d)-?\d+(?:\.\d+)?(?:/\d+)?%?")
 
 
 def parse_answer(answer: str) -> tuple[Fraction, int]:
     """The single numeric value in an answer like ``7个``, ``x=7``, ``5/6``, ``1又1/2`` -> (value, decimals)."""
     text = normalize(answer)
     text = re.sub(r"^[a-z]=", "", text)
-    mixed = re.fullmatch(r"\D*?\((\d+)\+(\d+)/(\d+)\)\D*", text)
+    mixed = re.fullmatch(r"(\D*?)\((\d+)\+(\d+)/(\d+)\)\D*", text)
     if mixed:
-        whole, num, den = (int(x) for x in mixed.groups())
+        whole, num, den = (int(x) for x in mixed.groups()[1:])
         if den == 0:
             raise _Skip("答案格式无法识别")
-        return Fraction(whole) + Fraction(num, den), 0
+        value = Fraction(whole) + Fraction(num, den)
+        return (-value if "-" in mixed.group(1) else value), 0
     found = _ANSWER_TOKEN.findall(text)
     if len(found) != 1:
         raise _Skip("答案里不是单个数字")
     token = found[0]
     percent = token.endswith("%")
     token = token.rstrip("%")
+    negative = token.startswith("-")
+    token = token.lstrip("-")
     decimals = len(token.split(".")[1]) if "." in token and "/" not in token else 0
     if "/" in token:
         num, den = token.split("/")
@@ -195,6 +198,7 @@ def parse_answer(answer: str) -> tuple[Fraction, int]:
         value = Fraction(int(num), int(den))
     else:
         value = Fraction(token)
+    value = -value if negative else value
     return (value / 100 if percent else value), decimals
 
 
