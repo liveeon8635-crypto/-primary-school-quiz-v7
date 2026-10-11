@@ -202,6 +202,7 @@ def install_science_teacher_ai_workflow(implementation: ModuleType) -> None:
         prompt: str,
         images=None,
         timeout: int = 90,
+        **kwargs: Any,
     ):
         return original_ai_call(
             db,
@@ -210,6 +211,7 @@ def install_science_teacher_ai_workflow(implementation: ModuleType) -> None:
             augment_science_teacher_prompt(feature, prompt),
             images=images,
             timeout=timeout,
+            **kwargs,
         )
 
     implementation._ai_call = science_aware_ai_call
