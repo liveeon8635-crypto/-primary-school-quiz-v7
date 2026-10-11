@@ -48,6 +48,7 @@ button.on{background:#e8f0ff;border-color:var(--brand);color:var(--brand);font-w
 button:disabled{opacity:.55;cursor:default}
 textarea,input[type=text]{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
 textarea{min-height:150px;resize:vertical}
+select{font:inherit;min-height:46px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:#fff}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0}
 .notice{border-radius:10px;padding:10px 14px;margin:10px 0}.notice.error{background:#fef3f2;color:var(--bad)}.notice.ok{background:#ecfdf3;color:var(--ok)}.notice.warn{background:var(--warnbg);color:var(--warn);font-weight:600}
 .item{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}.item:first-child{border-top:0}
@@ -200,7 +201,7 @@ function importView(body){
       var save=state.id?api('/teacher/homework/notices/'+state.id,{method:'PUT',json:{groupLabel:label.value,items:state.items}})
                        :api('/teacher/homework/notices',{json:{groupLabel:label.value,items:state.items}});
       save.then(function(saved){state.id=saved.id;return api('/teacher/homework/notices/'+saved.id+'/publish',{json:{studentIDs:ids}})})
-        .then(function(r){msg2.appendChild(notice('ok','已发布给 '+r.recipients+' 名学生。'));editor.textContent='';text.value=''})
+        .then(function(r){editor.textContent='';text.value='';msg.textContent='';msg.appendChild(notice('ok','已发布给 '+r.recipients+' 名学生。学生打开“晚托作业助手”就能看到。'))})
         .catch(function(e){msg2.appendChild(notice('error',e.message));publish.disabled=false});
     }});
     editor.appendChild(el('div',{class:'card'},el('h2',{text:'2. 检查并修改清单'}),el('div',{class:'muted',text:'AI 可能整理错，请逐条核对；确认前学生看不到。'}),label,rows,
