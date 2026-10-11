@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:990bf6c3fc45f73334b900d43fba9739990519315abebe677b33d47e5c029975",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "b6a84b4d4921f1e8a951da51cad86196ffed5b38",
+  "headSha": "9a9a75e6ab629b9a9bafe931a53f8abf39166534",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：新增的晚托作业助手模块功能完整，已进行敏感信息脱敏和权限校验，且自动化测试与 CI 校验均已通过。",
+      "evidenceRefs": [
+        "file:changying/web/homework_assistant.py",
+        "run:114543517108"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:be01cae2f405c2598dcc34cb1340da4b7344c7af1b8d169c28097d75e6bc0726"
+}
