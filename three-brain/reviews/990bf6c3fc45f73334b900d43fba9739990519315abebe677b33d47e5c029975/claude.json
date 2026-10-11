@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:990bf6c3fc45f73334b900d43fba9739990519315abebe677b33d47e5c029975",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "b6a84b4d4921f1e8a951da51cad86196ffed5b38",
+  "headSha": "9a9a75e6ab629b9a9bafe931a53f8abf39166534",
+  "decision": "accept_with_changes",
+  "risk": "medium",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议合并，但有小的改进建议：新功能默认关闭（需设置环境变量才开启），老师和学生的权限检查到位，CI（smoke、guard）全部通过；主要遗留风险是上线前需要在真实环境确认。",
+      "evidenceRefs": [
+        "file:changying/web/homework_assistant.py#L1-L406",
+        "run:114543517108",
+        "run:114543517485"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "功能开关默认关闭，关闭时所有新接口返回 404，对现有功能影响很小；只有 legacy.py 增加了两行安装代码。",
+      "evidenceRefs": [
+        "file:changying/web/homework_assistant.py#L1-L406",
+        "file:changying/compat/legacy.py"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "隐私处理合理：手机号、邮箱、链接发送给 AI 前会被隐藏；图片只在内存中处理，不落盘；草稿原文 7 天后清除。但“拍照识别”所需的密钥必须只放在环境变量里，请确认部署时没有写进代码或日志。",
+      "evidenceRefs": [
+        "file:changying/services/homework_prompts.py#L1-L82",
+        "file:changying/services/homework_vision.py#L1-L195"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "小问题：文字解析接口 /teacher/homework/parse 没有像图片接口那样单独做 AI 调用频率检查，若底层 AI 调用函数也没有限流，老师账号可能被刷高 AI 费用；建议确认或补上限流。",
+      "evidenceRefs": [
+        "file:changying/web/homework_assistant.py#L184-L215"
+      ]
+    },
+    {
+      "id": "CLAUDE-005",
+      "text": "本次未运行任何代码，仅阅读代码；新增的测试文件（433 行）我没有逐行核对，CI 显示通过。automation-boundary-guard 为成功状态。",
+      "evidenceRefs": [
+        "file:tests/test_homework_notices.py",
+        "status:automation-boundary-guard"
+      ]
+    }
+  ],
+  "unresolved": [
+    "未逐行核对测试文件是否覆盖了跨班级越权、学生互相查看等场景。",
+    "未确认 _ai_call 内部是否已包含频率限制。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:4503d63061240f9c99fbfbfd0ad1fcd737a9bbc4e9562d382cefced0e5b41c0b"
+}
