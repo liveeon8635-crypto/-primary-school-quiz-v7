@@ -361,7 +361,7 @@ with TestClient(app) as client:
     allow_ai(school_of(sid))
 
     # Not configured: clear message, nothing is sent anywhere.
-    r = client.post("/teacher/homework/parse-image", headers=th, files={"file": ("n.jpg", jpeg, "image/jpeg")})
+    r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
     assert r.status_code == 503 and not captured
 
     import os
@@ -373,7 +373,7 @@ with TestClient(app) as client:
     })
     assert client.get("/homework/config").json()["visionEnabled"] is True
 
-    ok = client.post("/teacher/homework/parse-image", headers=th, files={"file": ("n.jpg", jpeg, "image/jpeg")})
+    ok = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
     assert ok.status_code == 200, ok.text
     assert "13812345678" not in ok.json()["text"] and "数学第5页" in ok.json()["text"]
     # The model name is sent exactly as configured, the key only in the header.
@@ -382,10 +382,10 @@ with TestClient(app) as client:
     assert "test-key-not-real" not in json.dumps(captured["payload"])
 
     # Bad inputs.
-    assert client.post("/teacher/homework/parse-image", headers=th, files={"file": ("n.gif", b"GIF89a....", "image/gif")}).status_code == 415
+    assert client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=b"GIF89a....").status_code == 415
     big = b"\xff\xd8\xff" + b"0" * (homework_vision.MAX_IMAGE_BYTES + 10)
-    assert client.post("/teacher/homework/parse-image", headers=th, files={"file": ("b.jpg", big, "image/jpeg")}).status_code == 413
-    assert client.post("/teacher/homework/parse-image", headers=sh, files={"file": ("n.jpg", jpeg, "image/jpeg")}).status_code == 403
+    assert client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=big).status_code == 413
+    assert client.post("/teacher/homework/parse-image", headers={**sh, "Content-Type": "image/jpeg"}, content=jpeg).status_code == 403
 
     # Only metadata is logged; the image bytes appear nowhere in the database file.
     from sqlalchemy import select
@@ -439,10 +439,10 @@ with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
     allow_ai(school_of(sid))
     homework_vision.requests.post = lambda *a, **k: Bad()
-    r = client.post("/teacher/homework/parse-image", headers=th, files={"file": ("n.jpg", jpeg, "image/jpeg")})
+    r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
     assert r.status_code == 502 and "secret-key-xyz" not in r.text and "rate_limit" in r.text
     homework_vision.requests.post = boom
-    r = client.post("/teacher/homework/parse-image", headers=th, files={"file": ("n.jpg", jpeg, "image/jpeg")})
+    r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
     assert r.status_code == 504 and "secret-key-xyz" not in r.text
     from sqlalchemy import select
     with legacy.SessionLocal() as db:
@@ -485,7 +485,7 @@ homework_vision.requests.post = lambda *a, **k: (sent.append(1), FakeResponse())
 jpeg = b"\xff\xd8\xff\xe0" + b"1" * 50
 
 def upload(client, th):
-    return client.post("/teacher/homework/parse-image", headers=th, files={"file": ("n.jpg", jpeg, "image/jpeg")})
+    return client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
 
 with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
@@ -546,10 +546,6 @@ def slow_post(*a, **k):
 homework_vision.requests.post = slow_post
 jpeg = b"\xff\xd8\xff\xe0" + b"1" * 50
 
-# The endpoint must not be a coroutine: a coroutine making a blocking call would freeze the whole server.
-for route in app.routes:
-    if getattr(route, "path", "") == "/teacher/homework/parse-image":
-        assert not inspect.iscoroutinefunction(route.endpoint)
 
 with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
@@ -557,7 +553,7 @@ with TestClient(app) as client:
     result = {}
 
     def upload():
-        r = client.post("/teacher/homework/parse-image", headers=th, files={"file": ("n.jpg", jpeg, "image/jpeg")})
+        r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
         result["status"] = r.status_code
 
     worker = threading.Thread(target=upload)

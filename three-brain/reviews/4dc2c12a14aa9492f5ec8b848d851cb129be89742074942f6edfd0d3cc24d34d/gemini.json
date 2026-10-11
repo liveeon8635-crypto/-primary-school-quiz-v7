@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5",
+  "evidencePacketHash": "sha256:4dc2c12a14aa9492f5ec8b848d851cb129be89742074942f6edfd0d3cc24d34d",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "381133fb234a2164b5ed056dfba24fc658d5cae4",
+  "headSha": "1ec7bfeb99baf4ff65cc8e064e8584f92ee8c54c",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：改动实现了课后作业辅导的学生端求助流程，包含了严格的频率限制、并发控制与内存图片处理，且已有完整自动化测试覆盖。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L85-L150",
+        "pr:#728"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:48f399f79ce0b8d279f15fc35e6edfac15a3dc509a966f8135abe7b2cd1379dd"
+}
