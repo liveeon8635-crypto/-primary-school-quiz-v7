@@ -154,6 +154,7 @@ from changying.web.reinforcement_quality import install_reinforcement_figure_fal
 from changying.web.rubric_review_ui import install_rubric_review_ui
 from changying.web.science_teacher_ai import install_science_teacher_ai_workflow
 from changying.web.student_quiz_navigation import install_student_quiz_navigation
+from changying.web.classroom_quick_login import install_classroom_quick_login
 from changying.web.v1_classroom_live_board import (
     install_v1_classroom_live_board_patch,
     install_v1_classroom_live_board_routes,
@@ -469,6 +470,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_classroom_quick_check_routes(implementation)
     install_v1_classroom_live_board_patch()
     install_v1_classroom_live_board_routes(implementation)
+    install_classroom_quick_login(implementation)
     install_paper_composition_routes(implementation)
     install_paper_import_routes(implementation)
     install_v1_classroom_presentation_review_patch()
