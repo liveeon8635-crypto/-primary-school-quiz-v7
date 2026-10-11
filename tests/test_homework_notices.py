@@ -49,6 +49,22 @@ def login_and_change(client, username, old_password, new_password):
     return changed.json()["token"]
 
 
+def allow_ai(school_id, allow=True, enabled=True):
+    with legacy.SessionLocal() as db:
+        row = legacy.ai_config_for(db, school_id, True)
+        row.enabled = enabled
+        row.allow_student_data = allow
+        row.provider = "openai_compatible"
+        row.base_url = "https://api.deepseek.com"
+        row.model = "text-model"
+        db.commit()
+
+
+def school_of(student_id):
+    with legacy.SessionLocal() as db:
+        return db.get(legacy.User, student_id).school_id
+
+
 def teacher_student_headers(client):
     th = {"Authorization": "Bearer " + login_and_change(client, "teacher1", "123456", "Teacher1234")}
     sh = {"Authorization": "Bearer " + login_and_change(client, "student1", "123456", "Student1234")}
@@ -339,6 +355,7 @@ jpeg = b"\xff\xd8\xff\xe0" + MARKER * 20
 
 with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
+    allow_ai(school_of(sid))
 
     # Not configured: clear message, nothing is sent anywhere.
     r = client.post("/teacher/homework/parse-image", headers=th, files={"file": ("n.jpg", jpeg, "image/jpeg")})
@@ -417,6 +434,7 @@ def boom(*a, **k):
 
 with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
+    allow_ai(school_of(sid))
     homework_vision.requests.post = lambda *a, **k: Bad()
     r = client.post("/teacher/homework/parse-image", headers=th, files={"file": ("n.jpg", jpeg, "image/jpeg")})
     assert r.status_code == 502 and "secret-key-xyz" not in r.text and "rate_limit" in r.text
@@ -427,6 +445,61 @@ with TestClient(app) as client:
     with legacy.SessionLocal() as db:
         errors = [x.error for x in db.scalars(select(legacy.AIUsageLog)).all()]
         assert all("secret-key-xyz" not in e for e in errors)
+print("OK")
+''',
+        {"HOMEWORK_ASSISTANT": "1"},
+    )
+
+
+def test_screenshot_is_only_sent_when_the_school_enabled_ai_and_allowed_content_out(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+import os
+
+from changying.services import homework_vision
+
+os.environ.update({
+    "HOMEWORK_VISION_BASE_URL": "https://api.deepseek.com",
+    "HOMEWORK_VISION_MODEL": "m",
+    "HOMEWORK_VISION_API_KEY": "test-key-not-real",
+})
+legacy._validate_ai_base_url = lambda base, runtime=False: base
+legacy._ai_rate_check = lambda db, school_id: None
+sent = []
+
+
+class FakeResponse:
+    ok = True
+    status_code = 200
+
+    def json(self):
+        return {"choices": [{"message": {"content": json.dumps({"text": "数学第5页", "confidence": 0.9}, ensure_ascii=False)}}]}
+
+
+homework_vision.requests.post = lambda *a, **k: (sent.append(1), FakeResponse())[1]
+jpeg = b"\xff\xd8\xff\xe0" + b"1" * 50
+
+def upload(client, th):
+    return client.post("/teacher/homework/parse-image", headers=th, files={"file": ("n.jpg", jpeg, "image/jpeg")})
+
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    school_id = school_of(sid)
+
+    # No AI settings at all, then AI enabled but content not allowed to leave: nothing is sent.
+    assert upload(client, th).status_code == 503
+    allow_ai(school_id, allow=False, enabled=True)
+    refused = upload(client, th)
+    assert refused.status_code == 403 and "粘贴文字" in refused.json()["detail"]
+    allow_ai(school_id, allow=True, enabled=False)
+    assert upload(client, th).status_code == 503
+    assert not sent, "no picture may leave the server without the school's permission"
+
+    # Both switched on: it works.
+    allow_ai(school_id, allow=True, enabled=True)
+    assert upload(client, th).status_code == 200 and len(sent) == 1
 print("OK")
 ''',
         {"HOMEWORK_ASSISTANT": "1"},
