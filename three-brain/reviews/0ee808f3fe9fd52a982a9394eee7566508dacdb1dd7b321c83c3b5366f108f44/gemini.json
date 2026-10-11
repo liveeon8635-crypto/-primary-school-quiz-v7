@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:0ee808f3fe9fd52a982a9394eee7566508dacdb1dd7b321c83c3b5366f108f44",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "381133fb234a2164b5ed056dfba24fc658d5cae4",
+  "headSha": "59f5b96d157c8476db4a88793a9295e8461796bb",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：新增了课后作业小助手的学生端拍照识别与求助记录功能，配套了完备的频率限制、并发控制与数据隐私保护，且自动化测试与 CI 均已通过。",
+      "evidenceRefs": [
+        "pr:#728",
+        "file:changying/web/homework_help.py#L82-L150"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "拍照识别接口采用同步多线程模式并设置了并发上限与图片大小校验，避免阻塞服务器主事件循环或耗尽系统资源。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L82-L99",
+        "file:changying/services/homework_limits.py#L112-L123"
+      ]
+    },
+    {
+      "id": "GEMINI-003",
+      "text": "实现了严格的学校与学生维度调用频次限制（每分钟/每天/每小时），有效防止 AI 模型接口被滥用。",
+      "evidenceRefs": [
+        "file:changying/services/homework_limits.py#L79-L108"
+      ]
+    },
+    {
+      "id": "GEMINI-004",
+      "text": "数据隐私防护到位，题目图片仅在内存中进行识别处理，不存入数据库或日志，且求助记录受严格的学校与学生权限隔离保护。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L60-L68",
+        "file:tests/test_homework_help.py#L125-L130"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:124d37db03cf0032f588448f9cd0793b78fe08479f198cb31094388767e08ea2"
+}
