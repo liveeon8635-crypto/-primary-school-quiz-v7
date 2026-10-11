@@ -323,3 +323,91 @@ def test_page_always_carries_the_fixed_warning_text():
     html = homework_page_html()
     assert "AI 可能出错，请自己判断" in html
     assert "solve" in html and "看下一步" in html and "innerHTML" not in html
+
+
+def test_two_simultaneous_solve_requests_pay_for_one_answer(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+import threading
+import time
+
+gate = threading.Event()
+
+
+def slow_ai(db, u, feature, prompt, images=None, timeout=90, rate_check=None):
+    calls.append(feature)
+    gate.wait(5)                      # the model is "thinking"
+    return sol()
+
+
+legacy._ai_call = slow_ai
+
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    hid = make_help(client, sh)
+    results = []
+
+    def tap():
+        results.append(client.post(f"/student/homework/help/{hid}/solve", headers=sh))
+
+    first = threading.Thread(target=tap)
+    first.start()
+    time.sleep(0.5)                                              # first request is now waiting on the model
+    assert row_of(hid)["state"] == "solving"
+    second = client.post(f"/student/homework/help/{hid}/solve", headers=sh)   # the double tap
+    assert second.status_code == 409 and "稍等" in second.json()["detail"]
+    gate.set()
+    first.join()
+    assert results[0].status_code == 200 and results[0].json()["state"] == "answered"
+    assert len(calls) == 1, "the model must be called once"
+    assert client.post(f"/student/homework/help/{hid}/solve", headers=sh).json()["state"] == "answered"
+    assert len(calls) == 1
+print("OK")
+''',
+    )
+
+
+def test_a_failed_answer_hands_the_request_back_and_asking_the_teacher_wins_a_race(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+from sqlalchemy import update
+
+HELP = legacy.Base.metadata.tables["help_requests"]
+
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+
+    # The model call fails: the request goes back to "confirmed" so the student can simply retry.
+    hid = make_help(client, sh)
+    replies.append(HTTPException(503, "model down"))
+    failed = client.post(f"/student/homework/help/{hid}/solve", headers=sh)
+    assert failed.status_code == 503
+    assert row_of(hid)["state"] == "confirmed"
+    replies.append(sol())
+    assert client.post(f"/student/homework/help/{hid}/solve", headers=sh).json()["state"] == "answered"
+
+    # The student asks the teacher while the answer is still being worked out: the teacher request is kept.
+    from datetime import datetime, timedelta
+    with legacy.SessionLocal() as db:
+        db.execute(update(HELP).values(created_at=datetime.utcnow() - timedelta(minutes=5)))
+        db.execute(update(legacy.AIUsageLog).values(created_at=datetime.utcnow() - timedelta(minutes=5)))
+        db.commit()
+    hid2 = make_help(client, sh, text="3+4=?")
+
+    def ai_then_escalate(db, u, feature, prompt, images=None, timeout=90, rate_check=None):
+        with legacy.SessionLocal() as other:                          # meanwhile, on another device
+            other.execute(update(HELP).where(HELP.c.id == hid2).values(state="escalated", escalate_reason="student_request"))
+            other.commit()
+        return sol(answer="7", expression="3+4", steps=("3 加 4",))
+
+    legacy._ai_call = ai_then_escalate
+    done = client.post(f"/student/homework/help/{hid2}/solve", headers=sh)
+    assert done.status_code == 200 and done.json()["state"] == "escalated"
+    assert row_of(hid2)["state"] == "escalated" and row_of(hid2)["escalate_reason"] == "student_request"
+print("OK")
+''',
+    )
