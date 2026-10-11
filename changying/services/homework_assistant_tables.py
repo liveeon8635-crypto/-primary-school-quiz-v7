@@ -81,4 +81,6 @@ def register_homework_assistant_tables(implementation: Any) -> dict[str, Table]:
             Column("resolved_at", DateTime, nullable=True),
         )
 
-    return {"homework_notices": notices, "homework_recipients": recipients, "help_requests": helps}
+    registered = {"homework_notices": notices, "homework_recipients": recipients, "help_requests": helps}
+    assert tuple(registered) == HOMEWORK_ASSISTANT_TABLES
+    return registered
