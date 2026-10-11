@@ -7,12 +7,12 @@ The photo only ever exists in memory while it is recognised; nothing in this mod
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 
 from changying.services.homework_limits import (
     ai_slot,
@@ -30,6 +30,20 @@ VISION_FEATURE = "homework_help_vision"
 SOLVE_FEATURE = "homework_help_solve"
 SOLVE_TIMEOUT_SECONDS = 30
 NO_CONFIDENCE = "这道题我没有把握，已请老师帮忙。"
+HELP_RETENTION_DAYS = 30
+PURGE_BATCH = 200
+REASON_LABELS = {
+    "verify_mismatch": "AI 的答案没有通过核对",
+    "student_request": "学生请求老师帮忙",
+}
+
+
+class EscalateBody(BaseModel):
+    note: str = ""
+
+
+class ResolveBody(BaseModel):
+    note: str = ""
 
 
 class HelpBody(BaseModel):
@@ -233,6 +247,152 @@ def install_homework_help(implementation: Any) -> APIRouter:
     def get_help(help_id: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "student")
         return student_help_json(own_help(db, u, help_id))
+
+    # ---------------------------------------------------------------- escalate (student)
+    @router.post("/student/homework/help/{help_id}/escalate")
+    def escalate(help_id: int, b: EscalateBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "student")
+        row = own_help(db, u, help_id)
+        if row["state"] in ("escalated", "resolved"):
+            return student_help_json(row)
+        db.execute(
+            update(helps)
+            .where(helps.c.id == help_id)
+            .values(
+                state="escalated",
+                escalate_reason="student_request",
+                student_note=(b.note or "").strip()[:300],
+                escalated_at=datetime.utcnow(),
+            )
+        )
+        db.commit()
+        return student_help_json(own_help(db, u, help_id))
+
+    # ---------------------------------------------------------------- teacher side
+    User = implementation.User
+    SchoolClass = implementation.SchoolClass
+    ClassStudent = implementation.ClassStudent
+
+    def teacher_student_ids(db: Any, teacher: Any) -> set[int]:
+        rows = db.scalars(
+            select(ClassStudent.student_id)
+            .join(SchoolClass, SchoolClass.id == ClassStudent.class_id)
+            .where(SchoolClass.teacher_id == teacher.id, SchoolClass.school_id == teacher.school_id)
+        ).all()
+        return {int(x) for x in rows}
+
+    def purge_expired(db: Any, teacher: Any) -> None:
+        """Lazy 30-day retention: opening the list clears expired help requests of the school."""
+        cutoff = datetime.utcnow() - timedelta(days=HELP_RETENTION_DAYS)
+        ids = db.scalars(
+            select(helps.c.id)
+            .where(helps.c.school_id == teacher.school_id, helps.c.created_at < cutoff)
+            .order_by(helps.c.id)
+            .limit(PURGE_BATCH)
+        ).all()
+        if ids:
+            db.execute(delete(helps).where(helps.c.id.in_(ids)))
+            db.commit()
+
+    def teacher_item(db: Any, teacher: Any, help_id: int) -> dict[str, Any]:
+        row = db.execute(
+            select(helps, User.name.label("student_name"))
+            .join(User, User.id == helps.c.student_id)
+            .where(helps.c.id == help_id, helps.c.school_id == teacher.school_id)
+        ).first()
+        data = _mapping(row)
+        if not data or data["student_id"] not in teacher_student_ids(db, teacher):
+            raise HTTPException(404, "没有这条求助")
+        return data
+
+    def summary(data: dict[str, Any]) -> dict[str, Any]:
+        since = data["escalated_at"] or data["created_at"]
+        waited = max(0, int((datetime.utcnow() - since).total_seconds() // 60)) if since else 0
+        return {
+            "id": data["id"],
+            "studentID": data["student_id"],
+            "studentName": data["student_name"],
+            "grade": data["grade"],
+            "questionText": data["question_text"],
+            "state": data["state"],
+            "reason": data["escalate_reason"],
+            "reasonLabel": REASON_LABELS.get(data["escalate_reason"], "学生请求老师帮忙"),
+            "studentNote": data["student_note"],
+            "verifyStatus": data["verify_status"],
+            "createdAt": _iso(data["created_at"]),
+            "escalatedAt": _iso(data["escalated_at"]),
+            "resolvedAt": _iso(data["resolved_at"]),
+            "waitMinutes": waited,
+        }
+
+    def solution_text(solution: dict[str, Any]) -> str:
+        steps = "\n".join(f"{x.get('n')}. {x.get('text')}" for x in solution.get("steps", []))
+        head = f"解法：{solution.get('method')}\n" if solution.get("method") else ""
+        return f"{head}{steps}\n答案：{solution.get('answer', '')}"
+
+    def conversation(data: dict[str, Any]) -> list[dict[str, str]]:
+        ai = _json_obj(data["ai_json"])
+        talk = [{"role": "student", "text": data["question_text"]}]
+        if ai.get("attempts"):
+            for index, attempt in enumerate(ai["attempts"], start=1):
+                verify = attempt.get("verify") or {}
+                label = "（核对未通过：" + str(verify.get("detail", "")) + "）" if verify.get("status") == MISMATCH else ""
+                talk.append({"role": "ai", "text": f"第{index}次解答{label}\n" + solution_text(attempt.get("solution") or {})})
+        elif ai.get("steps"):
+            verify = ai.get("verify") or {}
+            note = {"ok": "（程序核对：通过）", "skipped": "（程序未能核对）"}.get(verify.get("status"), "")
+            talk.append({"role": "ai", "text": solution_text(ai) + "\n" + note})
+        if data["student_note"]:
+            talk.append({"role": "student", "text": data["student_note"]})
+        if data["teacher_note"]:
+            talk.append({"role": "teacher", "text": data["teacher_note"]})
+        return talk
+
+    @router.get("/teacher/homework/help")
+    def teacher_list(status: str = "open", u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        purge_expired(db, u)
+        mine = teacher_student_ids(db, u)
+        if not mine:
+            return {"items": [], "open": 0}
+        states = {"open": ("escalated",), "resolved": ("resolved",)}.get(status, ("escalated", "resolved"))
+        rows = db.execute(
+            select(helps, User.name.label("student_name"))
+            .join(User, User.id == helps.c.student_id)
+            .where(helps.c.school_id == u.school_id, helps.c.student_id.in_(mine), helps.c.state.in_(states))
+            .order_by(helps.c.escalated_at.asc(), helps.c.id.asc())
+            .limit(100)
+        ).all()
+        open_count = db.scalar(
+            select(func.count()).select_from(helps).where(
+                helps.c.school_id == u.school_id, helps.c.student_id.in_(mine), helps.c.state == "escalated"
+            )
+        )
+        return {"items": [summary(_mapping(r)) for r in rows], "open": int(open_count or 0)}
+
+    @router.get("/teacher/homework/help/{help_id}")
+    def teacher_detail(help_id: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        data = teacher_item(db, u, help_id)
+        out = summary(data)
+        out["conversation"] = conversation(data)
+        out["teacherNote"] = data["teacher_note"]
+        return out
+
+    @router.post("/teacher/homework/help/{help_id}/resolve")
+    def teacher_resolve(help_id: int, b: ResolveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        data = teacher_item(db, u, help_id)
+        if data["state"] != "escalated":
+            raise HTTPException(409, "这条求助现在不需要处理")
+        db.execute(
+            update(helps)
+            .where(helps.c.id == help_id)
+            .values(state="resolved", teacher_note=(b.note or "").strip()[:500], resolved_at=datetime.utcnow())
+        )
+        implementation.audit(db, u, "homework.help.resolve", f"help={help_id}")
+        db.commit()
+        return summary(teacher_item(db, u, help_id))
 
     app.include_router(router)
     app.state.homework_help_installed = True
