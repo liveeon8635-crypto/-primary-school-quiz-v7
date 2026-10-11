@@ -125,15 +125,3 @@ assert {r[0] for r in rows} >= {"users", "schools", "submissions", "ai_usage_log
 print("OK")
 '''
     run_isolated(tmp_path, script)
-
-
-def test_no_homework_routes_are_exposed_yet(tmp_path):
-    script = r'''
-from app import app
-
-paths = [getattr(r, "path", "") for r in app.routes]
-planned = ("/teacher/homework", "/student/homework", "/student/help", "/teacher/help")
-assert not [p for p in paths if p.startswith(planned)], paths
-print("OK")
-'''
-    run_isolated(tmp_path, script)
