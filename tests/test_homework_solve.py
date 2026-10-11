@@ -190,6 +190,16 @@ with TestClient(app) as client:
     replies.extend([sol(answer="8"), HTTPException(503, "boom")])
     r3 = client.post(f"/student/homework/help/{hid3}/solve", headers=sh).json()
     assert r3["state"] == "escalated" and r3["solution"] is None
+
+    # Wrong first, and the re-check cannot be verified: never show the unverified second answer.
+    with legacy.SessionLocal() as db:
+        db.execute(update(legacy.Base.metadata.tables["help_requests"]).values(created_at=datetime.utcnow() - timedelta(minutes=5)))
+        db.execute(update(legacy.AIUsageLog).values(created_at=datetime.utcnow() - timedelta(minutes=5)))
+        db.commit()
+    hid4 = make_help(client, sh, text="12-5=?")
+    replies.extend([sol(answer="8"), sol(answer="7", expression="先把 12 减去 5")])
+    r4 = client.post(f"/student/homework/help/{hid4}/solve", headers=sh).json()
+    assert r4["state"] == "escalated" and r4["solution"] is None
 print("OK")
 ''',
     )

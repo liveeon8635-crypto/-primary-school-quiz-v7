@@ -23,7 +23,7 @@ from changying.services.homework_limits import (
     check_student_call,
     require_student_ai,
 )
-from changying.services.homework_math_check import MISMATCH, check_solution
+from changying.services.homework_math_check import MISMATCH, OK, check_solution
 from changying.services.homework_prompts import AI_WARNING, build_solve_prompt, clean_solution
 from changying.services.homework_vision import read_image_body, recognize_image
 from changying.web.homework_assistant import require_enabled
@@ -238,7 +238,8 @@ def install_homework_help(implementation: Any) -> APIRouter:
                     attempts.append({"solution": second, "verify": check_solution(second["expression"], second["answer"])})
             final = attempts[-1]
             now = datetime.utcnow()
-            if final["verify"]["status"] == MISMATCH:
+            # A first answer that failed the check is only ever replaced by an answer that passes it.
+            if final["verify"]["status"] == MISMATCH or (len(attempts) > 1 and final["verify"]["status"] != OK):
                 values = {
                     "state": "escalated",
                     "verify_status": "mismatch",
