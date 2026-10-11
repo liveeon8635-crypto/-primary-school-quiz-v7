@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:227664d228cde7aa556c25d55a2e4b6ef0344dfcf9e1784aea789e7b34fce314",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "72ad2814d60bb9a959f2471eecde24f89b2bcc78",
+  "headSha": "42d0452cf4f4721f5191410b23139ede4be7f45a",
+  "decision": "accept_with_changes",
+  "risk": "medium",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议可以合并，但需知晓风险：这次改动让学生拍题后由AI分步讲解，并用程序自动核对数学答案，核对不一致就转给老师；CI（smoke、guard）全部通过，但属于新增面向学生的AI功能和新依赖，建议人工确认后再合并。",
+      "evidenceRefs": [
+        "run:114568253722",
+        "run:114568253688",
+        "file:changying/web/homework_help.py#L190-L276"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "新增 sympy 依赖，并用它解析AI返回的方程。代码已用字符白名单、乘方次数限制和2秒超时来防护，未发现直接可执行任意代码的路径；但超时只是放弃等待，后台线程仍可能继续占用CPU，极端算式下可能拖慢服务。建议后续改为独立进程或进一步限制方程长度。",
+      "evidenceRefs": [
+        "file:changying/services/homework_math_check.py#L195-L260",
+        "file:requirements.txt"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "防重复扣费的“正在解答”标记保存在单个进程内存里；若服务以多个进程运行，两台设备同时点击仍可能各调用一次AI（多花一次费用，不影响正确性）。请确认部署是单进程，否则应改成只靠数据库状态判断。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L190-L215"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "学生端作业辅助的AI调用不再计入老师的每小时额度，改用学生自己的限额；改动合理，且同时放行了额外参数的两处包装函数，没有发现破坏现有调用。",
+      "evidenceRefs": [
+        "file:app_v924.py#L3250-L3259",
+        "file:changying/web/science_teacher_ai.py",
+        "file:changying/services/reinforcement_subject_policy.py"
+      ]
+    }
+  ],
+  "unresolved": [
+    "automation-boundary-guard 为 failure，说明涉及受保护路径，需由负责人本人合并；本次未能对照 GOVERNANCE.md（该文件在此分支中不存在）逐条核对受保护范围。",
+    "未运行任何代码，测试效果仅依据CI结果判断。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:b13e86bb1a9025bb95ca37c6da72f6a218c9fbe4d8d85c306c3ef4ace4d29928"
+}
