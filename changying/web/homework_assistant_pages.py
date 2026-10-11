@@ -263,7 +263,27 @@ PAGE_HTML = """<!doctype html>
 STUDENT_HELP_JS = r"""
 var HELP_TIP='只拍这一道题，让题目占满画面；避开人脸、姓名、学号；光线要亮，别有阴影。';
 function afterConfirm(box,help){
-  box.textContent='';box.appendChild(notice('ok','题目已记录（编号 '+help.id+'）。'));
+  box.textContent='';box.appendChild(notice('ok','AI 正在想，请稍等…'));
+  api('/student/homework/help/'+help.id+'/solve',{method:'POST'}).then(function(h){showSolution(box,h)}).catch(function(e){
+    box.textContent='';box.appendChild(notice('error',e.message));
+    if(e.status!==429)box.appendChild(el('button',{text:'再试一次',onclick:function(){afterConfirm(box,help)}}));
+  });
+}
+function showSolution(box,h){
+  box.textContent='';
+  var warn=h.warning||'AI 可能出错，请自己判断';
+  box.appendChild(notice('warn',warn));
+  if(!h.solution){box.appendChild(notice('error',h.message||'这道题没有得到解答'));return}
+  var s=h.solution,list=el('div'),shown=0,next=el('button',{text:'看下一步'});
+  var head=[s.method?'解法：'+s.method:'',s.knowledgePoint?'知识点：'+s.knowledgePoint:''].filter(Boolean).join(' · ');
+  if(head)box.appendChild(el('div',{class:'muted',text:head}));
+  box.appendChild(list);
+  function more(){
+    if(shown<s.steps.length){list.appendChild(el('div',{class:'item'},el('b',{text:'第'+s.steps[shown].n+'步'}),el('span',{text:s.steps[shown].text})));shown++}
+    if(shown>=s.steps.length){next.remove();list.appendChild(notice('ok','答案：'+s.answer))}
+  }
+  next.addEventListener('click',more);box.appendChild(next);more();
+  box.appendChild(notice('warn',warn+'。看不懂，或者觉得不对，就请老师帮忙。'));
 }
 function helpCard(){
   var text=el('textarea',{placeholder:'题目文字：可以拍照识别，也可以自己输入',maxlength:600}),msg=el('div'),out=el('div');
