@@ -691,3 +691,9 @@ def test_dragged_assistant_panel_snaps_back_when_its_title_bar_is_covered():
     assert "const grabbable=()=>" in html
     assert "document.elementFromPoint" in html
     assert "if(!grabbable()){reset();return}" in html
+
+
+def test_asking_about_the_question_on_screen_shows_no_feature_cards():
+    html = rendered_v1()
+
+    assert "if(askContext.active_assessment&&typeof guideInput==='string'){" in html
