@@ -23,6 +23,7 @@ from typing import Any
 
 import requests
 from fastapi import HTTPException
+from starlette.requests import Request
 
 MAX_IMAGE_BYTES = 6 * 1024 * 1024
 VISION_TIMEOUT_SECONDS = 25
@@ -35,6 +36,26 @@ RECOGNIZE_PROMPT = (
     '"confidence":0到1之间的小数，表示你对识别结果的把握}\n'
     "忽略聊天头像、昵称、手机号、人名、学号等与题目或作业无关的信息；看不清的地方不要猜。"
 )
+
+
+async def read_image_body(request: Request, limit: int = MAX_IMAGE_BYTES) -> bytes:
+    """The picture is the raw request body (``Content-Type: image/jpeg``), never a multipart upload.
+
+    A multipart upload makes the web framework spool anything over ~1 MB into a temporary file on
+    disk, which would break the promise that the photo is never written anywhere. Reading the body
+    ourselves keeps it in memory only, and the size limit is enforced while it streams in.
+    """
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        raise HTTPException(413, "图片太大，请重新拍一张")
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            raise HTTPException(413, "图片太大，请重新拍一张")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _sniff_mime(data: bytes) -> str:
@@ -192,4 +213,4 @@ def recognize_image(
             db.rollback()
 
 
-__all__ = ["MAX_IMAGE_BYTES", "recognize_image", "vision_config", "vision_enabled"]
+__all__ = ["MAX_IMAGE_BYTES", "read_image_body", "recognize_image", "vision_config", "vision_enabled"]

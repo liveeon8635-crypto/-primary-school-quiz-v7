@@ -10,7 +10,8 @@ import json
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy import insert, select
 
@@ -20,7 +21,7 @@ from changying.services.homework_limits import (
     check_student_call,
     require_student_ai,
 )
-from changying.services.homework_vision import MAX_IMAGE_BYTES, recognize_image
+from changying.services.homework_vision import read_image_body, recognize_image
 from changying.web.homework_assistant import require_enabled
 
 MAX_QUESTION_CHARS = 600
@@ -79,24 +80,24 @@ def install_homework_help(implementation: Any) -> APIRouter:
             "solution": None,
         }
 
-    # Plain ``def`` on purpose: it runs in FastAPI's worker thread pool, so waiting for the
-    # recognition service (up to 20 s) never blocks the event loop for everyone else.
+    # The body is the raw picture (see ``read_image_body``): it is only ever held in memory. Waiting for
+    # the recognition service (up to 20 s) happens in the worker thread pool, never on the event loop.
     @router.post("/student/homework/recognize")
-    def recognize(
-        file: UploadFile = File(...),
+    async def recognize(
+        request: Request,
         u: Any = Depends(current_user),
         db: Any = Depends(get_db),
     ):
         need(u, "student")
-        require_student_ai(implementation, db, u)
-        data = file.file.read(MAX_IMAGE_BYTES + 1)
-        if len(data) > MAX_IMAGE_BYTES:
-            raise HTTPException(413, "图片太大，请重新拍一张")
-        check_student_call(implementation, db, u)
-        with ai_slot():
-            result = recognize_image(implementation, db, u, data, feature=VISION_FEATURE, timeout=20)
-        del data
-        return result
+        await run_in_threadpool(require_student_ai, implementation, db, u)
+        data = await read_image_body(request)
+
+        def work() -> dict[str, Any]:
+            check_student_call(implementation, db, u)
+            with ai_slot():
+                return recognize_image(implementation, db, u, data, feature=VISION_FEATURE, timeout=20)
+
+        return await run_in_threadpool(work)
 
     @router.post("/student/homework/help")
     def create_help(b: HelpBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
