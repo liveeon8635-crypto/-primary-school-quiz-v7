@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:6c7437a878779bc8c247c9cd4613456773ad10d39b236286eae5a7559d5fc2a1",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "72ad2814d60bb9a959f2471eecde24f89b2bcc78",
+  "headSha": "7dc53859232abd0b5e79e9f603bdf13e21514aa1",
+  "decision": "accept_with_changes",
+  "risk": "medium",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议修改后再合并：功能本身完整、smoke 和 guard 两项 CI 都通过，但方程核对处有一个可被连续乘方卡死服务的漏洞，需要先堵上。",
+      "evidenceRefs": [
+        "run:114559044539",
+        "run:114559044459",
+        "file:changying/services/homework_math_check.py#L204-L206"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "方程核对只拦了三位数以上的指数和括号指数，没拦“9^99^9”这类连续乘方；AI 的输出会受学生题目影响，若返回这样的算式，sympy 会尝试计算天文数字，可能占满 CPU 和内存让服务卡住。修复：方程里禁止出现连续的 ^，或限制指数不超过 8，并给 sympy 计算加超时。",
+      "evidenceRefs": [
+        "file:changying/services/homework_math_check.py#L204-L222"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "“解题”接口只在读取时检查状态为 confirmed，没有原子地占位；学生连点两次或并发请求会让 AI 被调用两次、重复计费和占用额度。建议用带条件的 UPDATE 先把状态改为处理中再调用 AI。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L185-L215"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "学生端的 AI 调用不再占用老师的每小时额度，改用学生自己的限额，这是有意的改动，范围合理；算式不一致时自动重算并转老师，隐藏错误答案，设计正确。automation-boundary-guard 失败只表示需人工合并。",
+      "evidenceRefs": [
+        "file:app_v924.py#L3250-L3259",
+        "status:automation-boundary-guard"
+      ]
+    }
+  ],
+  "unresolved": [
+    "未运行任何代码，仅阅读了差异；sympy 连续乘方的实际耗时需要负责人用测试确认。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:ba88fa5dac69404a42d6e16b289113cf154058fcb824b7a85d3447e5c7075d4e"
+}
