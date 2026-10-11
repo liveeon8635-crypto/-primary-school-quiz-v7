@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:416856a544721c0790dc458c3a5cfc3cef3923e6df00b05307380a7879166dad",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "802495d9dce4923a69682b097f55b150c280f42f",
+  "headSha": "24a64ebbd16236991fb0c50924da983abcda1ad8",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：本次变更仅补充了晚托作业助手与互动课堂功能的技术方案分析文档，不含任何代码修改，风险极低。",
+      "evidenceRefs": [
+        "file:docs/analysis/after-school-homework-assistant.md#L1-L236",
+        "file:docs/analysis/feature-plan-quiz-classroom.md#L1-L323"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "新增的两份技术文档均为纯文档分析，内容不涉及敏感信息与代码变更，且 CI 自动化测试通过。",
+      "evidenceRefs": [
+        "run:114495731643",
+        "run:114495731542"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:69f356ee86e26a4a6b4e4b3aee8aded63612cce8b99daa91e420e49fc171f96f"
+}
