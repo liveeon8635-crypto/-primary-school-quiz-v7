@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:1e6c37fa9aa37ac80aa36e78777f2e5118a1b36d27d6256d2011c9a532555f67",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "72ad2814d60bb9a959f2471eecde24f89b2bcc78",
+  "headSha": "42ea0ec81d848b4aa4d01df4546a90cc41879247",
+  "decision": "unresolved",
+  "risk": "medium",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议先不合并：自动测试 smoke 在证据包里仍是“进行中”，没有通过结果，目前无法确认这次改动（学生作业 AI 解题功能）是安全的；等 smoke 变绿后再复核即可。",
+      "evidenceRefs": [
+        "run:114565466019",
+        "run:114565466003"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "代码本身看起来合理：学生求助后，AI 给出的算式由程序自己重新计算核对，不一致时重试一次，仍不一致就转给老师，不会把错误答案直接显示给学生；算式只经过严格字符白名单和限时解析，不直接执行。",
+      "evidenceRefs": [
+        "file:changying/services/homework_math_check.py#L1-L40",
+        "file:changying/web/homework_help.py#L190-L275"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "小提醒：防重复点击的“占位”记录只保存在单个服务进程的内存里；若部署多个进程，两台设备同时点击仍可能各调用一次 AI，多花一次费用，但不会出错。此外新增了依赖 sympy==1.14.0，需确认部署环境能安装。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L190-L210",
+        "file:requirements.txt"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "automation-boundary-guard 为 failure 仅表示涉及受保护路径、需要人工合并，不作为拒绝理由；另外证据包记录的是 PR #729，而触发本次审查的是 #758，请主席确认两者对应同一改动。",
+      "evidenceRefs": [
+        "status:automation-boundary-guard",
+        "pr:#729"
+      ]
+    }
+  ],
+  "unresolved": [
+    "smoke 检查尚未出结果，需等待其通过后再确认。",
+    "证据包中的 PR 编号（#729）与本次审查 PR（#758）不同，需人工确认。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:0b58ea81e9bc7a5601447a787180048e946952ba9927938aa78342df0cf366e1"
+}
