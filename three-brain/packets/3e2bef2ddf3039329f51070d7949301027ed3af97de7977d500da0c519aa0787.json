@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseBranch": "claude/homework-m1-migration-sszn58",
+  "prNumber": 727,
+  "baseSha": "cff26bdc8a3ec2905b953df44008f2c1a6ac5763",
+  "headSha": "b2d9b7ebe25561846b0533a27cafe6e20855510a",
+  "ciRuns": [
+    {
+      "name": "smoke",
+      "runId": null,
+      "conclusion": "pending",
+      "headSha": "b2d9b7ebe25561846b0533a27cafe6e20855510a"
+    },
+    {
+      "name": "guard",
+      "runId": null,
+      "conclusion": "pending",
+      "headSha": "b2d9b7ebe25561846b0533a27cafe6e20855510a"
+    }
+  ],
+  "statuses": [
+    {
+      "context": "automation-boundary-guard",
+      "state": "pending"
+    }
+  ],
+  "productionCommit": null,
+  "evidenceRefs": [
+    "pr:#727"
+  ],
+  "policyVersion": "three-brain-orchestrator-v1",
+  "taskContractHash": "sha256:53928253354810d65a0064661c82c49815f8f6b26d67b16bbe6758e3e62e1a46",
+  "contentHash": "sha256:3e2bef2ddf3039329f51070d7949301027ed3af97de7977d500da0c519aa0787"
+}
