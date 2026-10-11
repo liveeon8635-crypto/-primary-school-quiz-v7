@@ -1,37 +1,11 @@
-"""Page and shell entry for the after-school homework assistant (static HTML, no server data inlined)."""
+"""Page for the after-school homework assistant (static HTML, no server data inlined).
+
+The entry points live in the existing screens: the teacher 全部功能 list (v1_workspace_tabs) and the top of the
+student 作业 page (v1_classic_unified_top)."""
 
 from __future__ import annotations
 
-from typing import Any
-
 from changying.web.classroom_window_handoff import PAGE_AUTH_JS
-
-HOMEWORK_ENTRY_MARKER = "changying_homework_assistant_entry_v1"
-
-# Appended to the V1 shell: a small floating link, shown only while the feature is on (the config
-# endpoint answers 404 when it is off) and a teacher or student is logged in.
-ENTRY_JS = r"""
-(function(){
-  if(window.__cyHomeworkEntry)return;window.__cyHomeworkEntry=true;
-  var enabled=null,link=null;
-  function read(store,key){try{return store.getItem(key)||''}catch(e){return ''}}
-  function role(){
-    var raw=read(sessionStorage,'v717User')||read(localStorage,'v717User');
-    try{return (JSON.parse(raw)||{}).role||''}catch(e){return ''}
-  }
-  function paint(){
-    var r=role(),show=enabled&&(r==='teacher'||r==='student');
-    if(show&&!link){
-      link=document.createElement('a');link.href='/v1/homework';link.id='cy-homework-entry';
-      link.textContent='晚托作业助手';
-      link.style.cssText='position:fixed;right:14px;bottom:14px;z-index:9999;padding:12px 18px;border-radius:999px;background:#1f6feb;color:#fff;font:600 16px/1.2 system-ui,sans-serif;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.25)';
-      document.body.appendChild(link);
-    }else if(!show&&link){link.remove();link=null}
-  }
-  fetch('/homework/config',{cache:'no-store'}).then(function(r){enabled=r.ok}).catch(function(){enabled=false}).then(paint);
-  setInterval(paint,1500);
-})();
-"""
 
 PAGE_CSS = r"""
 :root{--bg:#f4f6fb;--card:#fff;--ink:#1c2333;--muted:#667085;--line:#d9deea;--brand:#1f6feb;--warn:#b54708;--warnbg:#fff4e5;--ok:#067647;--bad:#b42318}
@@ -405,31 +379,4 @@ def homework_page_html() -> str:
     return PAGE_HTML.replace("__CSS__", PAGE_CSS).replace("__JS__", js)
 
 
-def patch_v1_homework_entry_html(html: str) -> str:
-    """Append the floating entry link to the V1 shell once (idempotent, no anchors needed)."""
-    if HOMEWORK_ENTRY_MARKER in html:
-        return html
-    snippet = f"<!-- {HOMEWORK_ENTRY_MARKER} --><script>{ENTRY_JS}</script>"
-    return html.replace("</body>", snippet + "</body>", 1) if "</body>" in html else html + snippet
-
-
-def install_v1_homework_entry_patch() -> None:
-    from changying.web import v1 as v1_module
-
-    if getattr(v1_module, "_homework_entry_patch_installed", False):
-        return
-    original: Any = v1_module.v1_html
-
-    def patched_v1_html() -> str:
-        return patch_v1_homework_entry_html(original())
-
-    v1_module.v1_html = patched_v1_html
-    v1_module._homework_entry_patch_installed = True
-
-
-__all__ = [
-    "HOMEWORK_ENTRY_MARKER",
-    "homework_page_html",
-    "install_v1_homework_entry_patch",
-    "patch_v1_homework_entry_html",
-]
+__all__ = ["homework_page_html"]

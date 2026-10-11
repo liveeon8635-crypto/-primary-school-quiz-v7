@@ -104,6 +104,46 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
  function autoResume(){if(window.__cyV1UnifiedAutoResume)return;try{var btn=document.getElementById('continueSessionBtn');if(!btn||btn.classList.contains('hidden'))return;window.__cyV1UnifiedAutoResume=true;if(typeof markNetwork==='function')markNetwork(true);btn.click()}catch(_e){}}
  function releaseLogin(){if(typeof window.__cyV1ReleaseLogin==='function')window.__cyV1ReleaseLogin()}
  async function start(){mount();sync();var hydrated=await hydrateFromV1();if(!hydrated)autoResume();sync();if(hydrated||!window.__cyV1UnifiedAutoResume)releaseLogin();if(hydrated&&stateReady()&&params.get('page')==='__hub__')showToolHub();var tries=0,t=setInterval(function(){sync();if(!stateReady())autoResume();if(stateReady()){releaseLogin();clearInterval(t)}else if(++tries>80){releaseLogin();clearInterval(t)}},100);setTimeout(function(){if(!stateReady())autoResume()},250)}
+ // 晚托作业助手：学生“作业”页顶部显示老师发布的家庭作业清单（只读；功能没打开时什么都不显示）。
+ // 勾选完成、拍照问题都在 /v1/homework 里做，这里不发起任何写入请求。
+ (function(){
+  var BAND='cy-hw-band',busy=false,off=false;
+  function hwGet(path){return fetch(path,{headers:{Authorization:'Bearer '+state.token},cache:'no-store'}).then(function(r){if(!r.ok)throw new Error(String(r.status));return r.json()})}
+  function node(tag,css,text){var n=document.createElement(tag);if(css)n.style.cssText=css;if(text!=null)n.textContent=text;return n}
+  function build(list){
+   var band=node('section','margin:0 0 14px;padding:14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;box-shadow:0 8px 30px rgba(168,16,28,.05)');band.id=BAND;
+   var head=node('div','display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px');
+   head.appendChild(node('b','font-size:17px','家庭作业'));
+   var go=node('a','padding:8px 12px;border-radius:999px;background:#a8101c;color:#fff;font-weight:700;font-size:13px;text-decoration:none;white-space:nowrap','勾选完成 · 问不会的题 ›');go.href='/v1/homework';head.appendChild(go);
+   band.appendChild(head);
+   if(!list.length){band.appendChild(node('div','color:#7a625c;font-size:13px','老师还没有发布家庭作业。'));return band}
+   list.forEach(function(n){
+    if(list.length>1||n.groupLabel)band.appendChild(node('div','margin:8px 0 4px;color:#7a625c;font-size:12px;font-weight:700',n.groupLabel||'家庭作业'));
+    (n.items||[]).forEach(function(it){
+     var line=[it.subject,it.content,it.page,it.requirement].filter(Boolean).join(' · ');
+     var row=node('div','display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid #f2e9e3;font-size:14px;line-height:1.5');
+     row.appendChild(node('span','flex:none;width:20px;font-size:18px;line-height:1.3;color:'+(it.done?'#067647':'#98a2b3'),it.done?'☑':'☐'));
+     row.appendChild(node('span',it.done?'color:#98a2b3;text-decoration:line-through':'',line||'（空）'));
+     band.appendChild(row);
+    });
+   });
+   return band;
+  }
+  function ensure(){
+   var onPage=false;try{onPage=stateReady()&&currentRole()==='student'&&currentPage()==='assignments'}catch(_e){}
+   var old=document.getElementById(BAND);
+   if(!onPage){if(old)old.remove();return}
+   if(old||busy||off)return;
+   var page=document.getElementById('page');if(!page)return;
+   busy=true;
+   fetch('/homework/config',{cache:'no-store'}).then(function(r){if(!r.ok){off=true;throw new Error('off')}}).then(function(){return hwGet('/student/homework/today')}).then(function(list){
+    if(document.getElementById(BAND)||!document.getElementById('page'))return;
+    var pg=document.getElementById('page'),head=pg.querySelector('.page-head'),band=build(Array.isArray(list)?list:[]);
+    if(head&&head.parentNode===pg)pg.insertBefore(band,head.nextSibling);else pg.insertBefore(band,pg.firstChild);
+   }).catch(function(){}).then(function(){busy=false});
+  }
+  setInterval(ensure,1200);
+ })();
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
 </script>
