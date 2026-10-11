@@ -3250,11 +3250,13 @@ def _ai_usage_values(provider,data):
 
 def _ai_rate_check(db,school_id):
     since=datetime.utcnow()-timedelta(hours=1)
-    n=db.scalar(select(func.count()).select_from(AIUsageLog).where(AIUsageLog.school_id==school_id,AIUsageLog.created_at>=since)) or 0
+    # Student-side homework-assistant calls (feature homework_help_*) have their own per-student/per-school limits
+    # (changying/services/homework_limits.py) and must not use up the teachers' hourly budget.
+    n=db.scalar(select(func.count()).select_from(AIUsageLog).where(AIUsageLog.school_id==school_id,AIUsageLog.created_at>=since,AIUsageLog.feature.notlike("homework_help_%"))) or 0
     if n>=AI_HOURLY_LIMIT:raise HTTPException(429,f"本校 AI 调用已达到每小时 {AI_HOURLY_LIMIT} 次保护上限，请稍后再试")
 
-def _ai_call(db,u,feature,prompt,images=None,timeout=90):
-    _ai_rate_check(db,u.school_id);row,provider,base,model,key=_ai_active_config(db,u.school_id);images=images or []
+def _ai_call(db,u,feature,prompt,images=None,timeout=90,rate_check=None):
+    (rate_check or _ai_rate_check)(db,u.school_id);row,provider,base,model,key=_ai_active_config(db,u.school_id);images=images or []
     started=time.time();status="ok";err="";out="";data={}
     try:
         headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"}
