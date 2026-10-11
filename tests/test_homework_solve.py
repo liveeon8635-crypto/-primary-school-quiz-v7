@@ -411,3 +411,27 @@ with TestClient(app) as client:
 print("OK")
 ''',
     )
+
+
+def test_a_request_stuck_in_solving_after_a_restart_can_be_retried(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+from sqlalchemy import update
+
+HELP = legacy.Base.metadata.tables["help_requests"]
+
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    hid = make_help(client, sh)
+    # Simulate a crash/restart mid-answer: the row says "solving" but no worker in this process owns it.
+    with legacy.SessionLocal() as db:
+        db.execute(update(HELP).where(HELP.c.id == hid).values(state="solving"))
+        db.commit()
+    replies.append(sol())
+    done = client.post(f"/student/homework/help/{hid}/solve", headers=sh)
+    assert done.status_code == 200 and done.json()["state"] == "answered"
+print("OK")
+''',
+    )
