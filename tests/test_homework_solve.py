@@ -445,3 +445,26 @@ with TestClient(app) as client:
 print("OK")
 ''',
     )
+
+
+def test_questions_up_to_1000_characters_are_accepted_and_sent_whole(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    too_long = "读" * 1001
+    r = client.post("/student/homework/help", headers=sh, json={"questionText": too_long, "grade": 5})
+    assert r.status_code == 400 and "1000" in r.text
+
+    text = "阅读短文：" + "春" * 980 + "ENDMARK"            # a long reading-comprehension passage, 992 characters
+    assert len(text) <= 1000
+    hid = make_help(client, sh, text=text, grade=5)
+    replies.append(sol())
+    done = client.post(f"/student/homework/help/{hid}/solve", headers=sh)
+    assert done.status_code == 200 and done.json()["state"] == "answered"
+    assert prompts and "ENDMARK" in prompts[0]           # nothing was cut off on the way to the model
+print("OK")
+''',
+    )

@@ -171,7 +171,7 @@ with TestClient(app) as client:
 
     # Bad inputs are refused before anything is stored.
     assert client.post("/student/homework/help", headers=sh, json={"questionText": "   "}).status_code == 400
-    assert client.post("/student/homework/help", headers=sh, json={"questionText": "x" * 601}).status_code == 400
+    assert client.post("/student/homework/help", headers=sh, json={"questionText": "x" * 1001}).status_code == 400
     assert client.post("/student/homework/help", headers=sh, json={"questionText": "1+1", "grade": 9}).status_code == 400
     assert client.post("/student/homework/help", headers=sh, json={"questionText": "1+1", "noticeID": 999}).status_code == 404
 

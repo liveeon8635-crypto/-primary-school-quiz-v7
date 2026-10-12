@@ -28,7 +28,7 @@ from changying.services.homework_prompts import AI_WARNING, build_solve_prompt, 
 from changying.services.homework_vision import read_image_body, recognize_image
 from changying.web.homework_assistant import require_enabled
 
-MAX_QUESTION_CHARS = 600
+MAX_QUESTION_CHARS = 1000
 VISION_FEATURE = "homework_help_vision"
 SOLVE_FEATURE = "homework_help_solve"
 SOLVE_TIMEOUT_SECONDS = 30

@@ -275,7 +275,7 @@ function showSolution(box,h){
   escalateBox(box,h);
 }
 function helpCard(){
-  var text=el('textarea',{placeholder:'题目文字：可以拍照识别，也可以自己输入',maxlength:600}),msg=el('div'),out=el('div');
+  var text=el('textarea',{placeholder:'题目文字：可以拍照识别，也可以自己输入',maxlength:1000}),msg=el('div'),out=el('div');
   var last=null,grade=el('select',{}),file=el('input',{type:'file',accept:'image/*',capture:'environment',hidden:true});
   for(var g=1;g<=6;g++)grade.appendChild(el('option',{value:String(g),text:['一','二','三','四','五','六'][g-1]+'年级'}));
   if(ME&&ME.grade>=1&&ME.grade<=6)grade.value=String(ME.grade);
