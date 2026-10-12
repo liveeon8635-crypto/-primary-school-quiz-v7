@@ -25,7 +25,7 @@ from changying.services.homework_limits import (
 )
 from changying.services.homework_math_check import MISMATCH, OK, check_solution
 from changying.services.homework_prompts import AI_WARNING, build_solve_prompt, clean_solution
-from changying.services.homework_vision import read_image_body, recognize_image
+from changying.services.homework_vision import QUESTION_PROMPT, read_image_body, recognize_image
 from changying.web.homework_assistant import require_enabled
 
 MAX_QUESTION_CHARS = 1000
@@ -142,7 +142,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
         def work() -> dict[str, Any]:
             check_student_call(implementation, db, u)
             with ai_slot():
-                return recognize_image(implementation, db, u, data, feature=VISION_FEATURE, timeout=20)
+                return recognize_image(implementation, db, u, data, feature=VISION_FEATURE, timeout=20, prompt=QUESTION_PROMPT)
 
         return await run_in_threadpool(work)
 
