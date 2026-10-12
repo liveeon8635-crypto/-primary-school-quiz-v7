@@ -37,6 +37,17 @@ RECOGNIZE_PROMPT = (
     "忽略聊天头像、昵称、手机号、人名、学号等与题目或作业无关的信息；看不清的地方不要猜。"
 )
 
+# The student photographs one question: keep that question only, not the page around it.
+QUESTION_PROMPT = (
+    "图片是学生拍下的一道作业题。请只识别学生要问的这一道题，只输出一个 JSON 对象，不要任何解释，格式："
+    '{"text":"这一道题的完整题目文字（题干、选项；阅读理解则包含文章和这道题的提问；公式用普通字符书写）",'
+    '"hasFigure":这道题是否含有几何图形或示意图（true/false）,'
+    '"confidence":0到1之间的小数，表示你对识别结果的把握}\n'
+    "如果图片里有好几道题，只取位于画面中央、最完整的那一道，其余题目不要识别。"
+    "不要识别页眉页脚、页码、书名、栏目标题、批改痕迹、学生手写的答案和草稿、手机号、人名、学号、聊天头像和昵称。"
+    "看不清的地方不要猜。"
+)
+
 
 async def read_image_body(request: Request, limit: int = MAX_IMAGE_BYTES) -> bytes:
     """The picture is the raw request body (``Content-Type: image/jpeg``), never a multipart upload.
@@ -99,6 +110,7 @@ def recognize_image(
     *,
     feature: str,
     timeout: int = VISION_TIMEOUT_SECONDS,
+    prompt: str = RECOGNIZE_PROMPT,
 ) -> dict[str, Any]:
     """Recognise text in one image. Returns ``{"text", "hasFigure", "confidence"}``."""
     config = vision_config()
@@ -126,7 +138,7 @@ def recognize_image(
                     {
                         "role": "user",
                         "content": [
-                            {"type": "input_text", "text": RECOGNIZE_PROMPT},
+                            {"type": "input_text", "text": prompt},
                             {"type": "input_image", "image_url": data_uri},
                         ],
                     }
@@ -140,7 +152,7 @@ def recognize_image(
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": RECOGNIZE_PROMPT},
+                            {"type": "text", "text": prompt},
                             {"type": "image_url", "image_url": {"url": data_uri}},
                         ],
                     }
@@ -199,7 +211,7 @@ def recognize_image(
                 provider=provider,
                 model=model,
                 status=status,
-                prompt_chars=len(RECOGNIZE_PROMPT),
+                prompt_chars=len(prompt),
                 output_chars=len(out),
                 input_tokens=in_tokens,
                 output_tokens=out_tokens,

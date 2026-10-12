@@ -168,6 +168,7 @@ with TestClient(app) as client:
     # Only the picture went to the vision model; no identity data, exact model name.
     sent = json.dumps(vision_calls[-1], ensure_ascii=False)
     assert "vision-model" in sent and "student1" not in sent and "小明" not in sent.split("data:")[0]
+    assert "只识别学生要问的这一道题" in sent and "页眉页脚" in sent  # the student prompt keeps one question only
 
     # Bad inputs are refused before anything is stored.
     assert client.post("/student/homework/help", headers=sh, json={"questionText": "   "}).status_code == 400
@@ -462,3 +463,12 @@ print("OK")
 ''',
         VISION,
     )
+
+
+def test_student_page_lets_the_student_frame_one_question_before_sending():
+    from changying.web.homework_assistant_pages import homework_page_html
+
+    html = homework_page_html()
+    assert "function cropPhoto(" in html and "cropPhoto(f).then(" in html
+    assert "只框住这一道题" in html and "不裁剪，用整张" in html
+    assert "innerHTML" not in html and "eval(" not in html

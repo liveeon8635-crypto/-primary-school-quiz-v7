@@ -237,6 +237,83 @@ PAGE_HTML = """<!doctype html>
 
 # Follow-up pull requests extend the page by filling these slots.
 STUDENT_HELP_JS = r"""
+
+/* Let the student frame just the one question before it is sent: drag the corners, or drag inside to move. */
+function cropPhoto(file){
+  return new Promise(function(resolve,reject){
+    var url=URL.createObjectURL(file),img=new Image();
+    img.onerror=function(){URL.revokeObjectURL(url);reject(new Error('无法读取这张图片，请换一张'))};
+    img.onload=function(){
+      var NW=img.naturalWidth,NH=img.naturalHeight,MIN=64,sc=1,ox=0,oy=0,dw=0,dh=0,r={x:0,y:0,w:0,h:0};
+      var overlay=el('div',{style:'position:fixed;inset:0;z-index:10000;background:#111;display:flex;flex-direction:column'});
+      var tip=el('div',{style:'color:#fff;padding:10px 14px;font-size:15px;line-height:1.4',text:'拖动白框的四个角，只框住这一道题（拖框里面可以移动）'});
+      var stage=el('div',{style:'position:relative;flex:1;min-height:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none'});
+      var pic=el('img',{src:url,draggable:'false',style:'position:absolute;pointer-events:none;max-width:none'});
+      var box=el('div',{style:'position:absolute;border:2px solid #fff;box-sizing:border-box;box-shadow:0 0 0 9999px rgba(0,0,0,.6);cursor:move;touch-action:none'});
+      ['nw','ne','sw','se'].forEach(function(k){
+        var dot=el('div',{style:'width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px #1f6feb'});
+        box.appendChild(el('div',{'data-h':k,style:'position:absolute;width:48px;height:48px;display:flex;align-items:center;justify-content:center;touch-action:none;'+
+          (k.charAt(0)==='n'?'top:-24px;':'bottom:-24px;')+(k.charAt(1)==='w'?'left:-24px;':'right:-24px;')},dot));
+      });
+      var bar=el('div',{style:'display:flex;gap:10px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:#111'});
+      function done(){overlay.remove();URL.revokeObjectURL(url)}
+      var cancel=el('button',{text:'取消',onclick:function(){done();var e=new Error('已取消');e.cancelled=true;reject(e)}});
+      function out(sx,sy,sw,sh){
+        var k=Math.min(1,1600/Math.max(sw,sh)),c=document.createElement('canvas');
+        c.width=Math.max(1,Math.round(sw*k));c.height=Math.max(1,Math.round(sh*k));
+        c.getContext('2d').drawImage(img,sx,sy,sw,sh,0,0,c.width,c.height);
+        c.toBlob(function(b){done();b?resolve(b):reject(new Error('图片处理失败'))},'image/jpeg',0.88);
+      }
+      var whole=el('button',{text:'不裁剪，用整张',onclick:function(){out(0,0,NW,NH)}});
+      var ok=el('button',{class:'primary',style:'flex:1',text:'确定，识别这一块',onclick:function(){out((r.x-ox)/sc,(r.y-oy)/sc,r.w/sc,r.h/sc)}});
+      bar.appendChild(cancel);bar.appendChild(whole);bar.appendChild(ok);
+      stage.appendChild(pic);stage.appendChild(box);
+      overlay.appendChild(tip);overlay.appendChild(stage);overlay.appendChild(bar);document.body.appendChild(overlay);
+      function paint(){
+        box.style.left=r.x+'px';box.style.top=r.y+'px';box.style.width=r.w+'px';box.style.height=r.h+'px';
+      }
+      function layout(){
+        var sw=stage.clientWidth,sh=stage.clientHeight;
+        sc=Math.min(sw/NW,sh/NH);dw=NW*sc;dh=NH*sc;ox=(sw-dw)/2;oy=(sh-dh)/2;
+        pic.style.width=dw+'px';pic.style.height=dh+'px';pic.style.left=ox+'px';pic.style.top=oy+'px';
+        r={x:ox+dw*0.06,y:oy+dh*0.14,w:dw*0.88,h:dh*0.72};paint();
+      }
+      layout();
+      var drag=null;
+      function clampRect(x1,y1,x2,y2){
+        x1=Math.max(ox,Math.min(x1,ox+dw-MIN));y1=Math.max(oy,Math.min(y1,oy+dh-MIN));
+        x2=Math.max(x1+MIN,Math.min(x2,ox+dw));y2=Math.max(y1+MIN,Math.min(y2,oy+dh));
+        r={x:x1,y:y1,w:x2-x1,h:y2-y1};
+      }
+      stage.addEventListener('pointerdown',function(e){
+        var h=e.target.closest&&e.target.closest('[data-h]'),inBox=e.target===box;
+        if(!h&&!inBox)return;
+        drag={mode:h?h.getAttribute('data-h'):'move',px:e.clientX,py:e.clientY,r:{x:r.x,y:r.y,w:r.w,h:r.h}};
+        try{stage.setPointerCapture(e.pointerId)}catch(_e){}e.preventDefault();
+      });
+      stage.addEventListener('pointermove',function(e){
+        if(!drag)return;
+        var dx=e.clientX-drag.px,dy=e.clientY-drag.py,o=drag.r,m=drag.mode;
+        if(m==='move'){
+          var nx=Math.max(ox,Math.min(o.x+dx,ox+dw-o.w)),ny=Math.max(oy,Math.min(o.y+dy,oy+dh-o.h));
+          r={x:nx,y:ny,w:o.w,h:o.h};
+        }else{
+          var x1=o.x,y1=o.y,x2=o.x+o.w,y2=o.y+o.h;
+          if(m.charAt(1)==='w')x1=o.x+dx;else x2=o.x+o.w+dx;
+          if(m.charAt(0)==='n')y1=o.y+dy;else y2=o.y+o.h+dy;
+          if(x2-x1<MIN){if(m.charAt(1)==='w')x1=x2-MIN;else x2=x1+MIN}
+          if(y2-y1<MIN){if(m.charAt(0)==='n')y1=y2-MIN;else y2=y1+MIN}
+          clampRect(x1,y1,x2,y2);
+        }
+        paint();
+      });
+      function end(){drag=null}
+      stage.addEventListener('pointerup',end);stage.addEventListener('pointercancel',end);
+      window.addEventListener('resize',layout);
+    };
+    img.src=url;
+  });
+}
 var HELP_TIP='只拍这一道题，让题目占满画面；避开人脸、姓名、学号；光线要亮，别有阴影。';
 function afterConfirm(box,help){
   box.textContent='';box.appendChild(notice('ok','AI 正在想，请稍等…'));
@@ -286,14 +363,14 @@ function helpCard(){
     el('div',{class:'row'},snap,file,grade),text,msg,el('div',{class:'row'},confirmBtn),out));
   file.addEventListener('change',function(){
     var f=file.files&&file.files[0];if(!f)return;
-    msg.textContent='';msg.appendChild(notice('ok','正在识别…'));snap.disabled=true;
-    shrink(f,1600).then(function(blob){return api('/student/homework/recognize',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}})})
+    msg.textContent='';snap.disabled=true;
+    cropPhoto(f).then(function(blob){msg.appendChild(notice('ok','正在识别…'));return api('/student/homework/recognize',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}})})
       .then(function(d){
         text.value=d.text;msg.textContent='';
         msg.appendChild(notice('ok','请检查识别出的文字，不对就直接修改，然后点“确认题目”。'));
         if(d.hasFigure)msg.appendChild(notice('warn','题目里有图形，AI 看不到图。请用文字补充说明，或者直接请老师帮忙。'));
       })
-      .catch(function(e){msg.textContent='';msg.appendChild(notice('error',e.message))})
+      .catch(function(e){msg.textContent='';if(!e.cancelled)msg.appendChild(notice('error',e.message))})
       .then(function(){snap.disabled=false;file.value=''});
   });
   confirmBtn.addEventListener('click',function(){
