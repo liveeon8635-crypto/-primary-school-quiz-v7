@@ -101,7 +101,7 @@ def build_solve_prompt(grade: int, question: str, *, recheck: bool = False) -> s
     )
     if recheck:
         prompt += "注意：上一次给出的算式与答案不一致。请重新仔细计算，确保 expression 的计算结果与 answer 完全一致。\n"
-    return prompt + "题目：\n" + scrub_question(question)[:700]
+    return prompt + "题目：\n" + scrub_question(question)[:1000]
 
 
 def clean_solution(raw: Any) -> dict[str, Any]:
