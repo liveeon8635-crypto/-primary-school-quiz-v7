@@ -66,6 +66,15 @@ SQL_CHECK_TABLES = ("users", "user_security", "schools", "classes", "class_stude
                     "school_ai_configs", "school_subscriptions", "questions", "papers", "audit_logs")
 
 
+def normalize_url(url: str) -> str:
+    """Same rewriting as app_v924.py: the app only ships the psycopg (v3) driver."""
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+psycopg://", 1)
+    if url.startswith("postgresql://") and "+psycopg" not in url:
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return url
+
+
 def delete_order(meta: MetaData) -> list[str]:
     """DELETE tables that exist, children first so foreign keys never block a delete."""
     present = {t.name for t in meta.tables.values()}
@@ -140,8 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     if not url:
         print("DATABASE_URL is not set.", file=sys.stderr)
         return 2
-    if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://"):]
+    url = normalize_url(url)
     if args.execute and not args.backup:
         print(f"Refusing to delete without {CONFIRM_FLAG}: take a backup first.", file=sys.stderr)
         return 2

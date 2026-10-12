@@ -118,3 +118,14 @@ def test_the_psql_version_deletes_exactly_the_delete_list_children_first():
     assert "ROLLBACK;" in sql and "\\if :do_commit" in sql and "\\set ON_ERROR_STOP on" in sql
     assert "UPDATE user_security SET failed_login_count = 0, locked_until = NULL;" in sql
     assert "DROP " not in sql and "TRUNCATE" not in sql
+
+
+def test_database_url_is_rewritten_for_the_psycopg_v3_driver_like_the_app_does():
+    import app_v924 as legacy
+
+    assert cleanup.normalize_url("postgres://u:p@h:5432/db") == "postgresql+psycopg://u:p@h:5432/db"
+    assert cleanup.normalize_url("postgresql://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
+    assert cleanup.normalize_url("postgresql+psycopg://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
+    assert cleanup.normalize_url("sqlite:///x.db") == "sqlite:///x.db"
+    # the app itself ships only psycopg v3, so the script must never pick the default (psycopg2) driver
+    assert legacy.engine.url.drivername in {"sqlite", "postgresql+psycopg"}
