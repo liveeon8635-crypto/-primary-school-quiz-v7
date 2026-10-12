@@ -1,0 +1,99 @@
+-- 正式使用前清理测试操作数据（由 scripts/prelaunch_data_cleanup.py --print-sql 生成，不要手工改）。
+-- 只删除操作数据；账号、班级、学校设置、AI 设置、题库、试卷、审计和反馈记录都保留。
+--
+--   演习（什么都不会改，最后自动回滚）：  psql "$DATABASE_URL" -f scripts/prelaunch_data_cleanup.sql
+--   正式删除（先备份！）：               psql "$DATABASE_URL" -v do_commit=1 -f scripts/prelaunch_data_cleanup.sql
+
+\set ON_ERROR_STOP on
+\if :{?do_commit}
+\else
+  \set do_commit 0
+\endif
+
+BEGIN;
+
+CREATE TEMP TABLE _keep_before AS
+  SELECT 'users' AS tbl, COUNT(*) AS n FROM users
+  UNION ALL SELECT 'user_security' AS tbl, COUNT(*) AS n FROM user_security
+  UNION ALL SELECT 'schools' AS tbl, COUNT(*) AS n FROM schools
+  UNION ALL SELECT 'classes' AS tbl, COUNT(*) AS n FROM classes
+  UNION ALL SELECT 'class_students' AS tbl, COUNT(*) AS n FROM class_students
+  UNION ALL SELECT 'parent_students' AS tbl, COUNT(*) AS n FROM parent_students
+  UNION ALL SELECT 'school_ai_configs' AS tbl, COUNT(*) AS n FROM school_ai_configs
+  UNION ALL SELECT 'school_subscriptions' AS tbl, COUNT(*) AS n FROM school_subscriptions
+  UNION ALL SELECT 'questions' AS tbl, COUNT(*) AS n FROM questions
+  UNION ALL SELECT 'papers' AS tbl, COUNT(*) AS n FROM papers
+  UNION ALL SELECT 'audit_logs' AS tbl, COUNT(*) AS n FROM audit_logs;
+
+CREATE TEMP TABLE _deleted (tbl text, n bigint);
+WITH d AS (DELETE FROM wrong_question_records RETURNING 1) INSERT INTO _deleted SELECT 'wrong_question_records', COUNT(*) FROM d;
+WITH d AS (DELETE FROM teaching_attempts RETURNING 1) INSERT INTO _deleted SELECT 'teaching_attempts', COUNT(*) FROM d;
+WITH d AS (DELETE FROM submissions RETURNING 1) INSERT INTO _deleted SELECT 'submissions', COUNT(*) FROM d;
+WITH d AS (DELETE FROM student_followup_logs RETURNING 1) INSERT INTO _deleted SELECT 'student_followup_logs', COUNT(*) FROM d;
+WITH d AS (DELETE FROM reinforcement_links RETURNING 1) INSERT INTO _deleted SELECT 'reinforcement_links', COUNT(*) FROM d;
+WITH d AS (DELETE FROM homework_media_submits RETURNING 1) INSERT INTO _deleted SELECT 'homework_media_submits', COUNT(*) FROM d;
+WITH d AS (DELETE FROM homework_media RETURNING 1) INSERT INTO _deleted SELECT 'homework_media', COUNT(*) FROM d;
+WITH d AS (DELETE FROM assignment_submission_settings RETURNING 1) INSERT INTO _deleted SELECT 'assignment_submission_settings', COUNT(*) FROM d;
+WITH d AS (DELETE FROM assignment_recipients RETURNING 1) INSERT INTO _deleted SELECT 'assignment_recipients', COUNT(*) FROM d;
+WITH d AS (DELETE FROM ai_grading_reviews RETURNING 1) INSERT INTO _deleted SELECT 'ai_grading_reviews', COUNT(*) FROM d;
+WITH d AS (DELETE FROM teaching_essays RETURNING 1) INSERT INTO _deleted SELECT 'teaching_essays', COUNT(*) FROM d;
+WITH d AS (DELETE FROM teaching_adaptive_sessions RETURNING 1) INSERT INTO _deleted SELECT 'teaching_adaptive_sessions', COUNT(*) FROM d;
+WITH d AS (DELETE FROM student_followups RETURNING 1) INSERT INTO _deleted SELECT 'student_followups', COUNT(*) FROM d;
+WITH d AS (DELETE FROM point_ledger RETURNING 1) INSERT INTO _deleted SELECT 'point_ledger', COUNT(*) FROM d;
+WITH d AS (DELETE FROM homework_recipients RETURNING 1) INSERT INTO _deleted SELECT 'homework_recipients', COUNT(*) FROM d;
+WITH d AS (DELETE FROM help_requests RETURNING 1) INSERT INTO _deleted SELECT 'help_requests', COUNT(*) FROM d;
+WITH d AS (DELETE FROM class_todos RETURNING 1) INSERT INTO _deleted SELECT 'class_todos', COUNT(*) FROM d;
+WITH d AS (DELETE FROM auto_reward_grants RETURNING 1) INSERT INTO _deleted SELECT 'auto_reward_grants', COUNT(*) FROM d;
+WITH d AS (DELETE FROM assignments RETURNING 1) INSERT INTO _deleted SELECT 'assignments', COUNT(*) FROM d;
+WITH d AS (DELETE FROM reward_redemptions RETURNING 1) INSERT INTO _deleted SELECT 'reward_redemptions', COUNT(*) FROM d;
+WITH d AS (DELETE FROM learning_evidence_events RETURNING 1) INSERT INTO _deleted SELECT 'learning_evidence_events', COUNT(*) FROM d;
+WITH d AS (DELETE FROM homework_notices RETURNING 1) INSERT INTO _deleted SELECT 'homework_notices', COUNT(*) FROM d;
+WITH d AS (DELETE FROM ai_usage_logs RETURNING 1) INSERT INTO _deleted SELECT 'ai_usage_logs', COUNT(*) FROM d;
+WITH d AS (DELETE FROM account_deletion_requests RETURNING 1) INSERT INTO _deleted SELECT 'account_deletion_requests', COUNT(*) FROM d;
+WITH d AS (DELETE FROM student_transition_plans RETURNING 1) INSERT INTO _deleted SELECT 'student_transition_plans', COUNT(*) FROM d;
+WITH d AS (DELETE FROM classroom_sessions RETURNING 1) INSERT INTO _deleted SELECT 'classroom_sessions', COUNT(*) FROM d;
+WITH d AS (DELETE FROM classroom_segments RETURNING 1) INSERT INTO _deleted SELECT 'classroom_segments', COUNT(*) FROM d;
+WITH d AS (DELETE FROM classroom_review_handouts RETURNING 1) INSERT INTO _deleted SELECT 'classroom_review_handouts', COUNT(*) FROM d;
+WITH d AS (DELETE FROM classroom_quick_checks RETURNING 1) INSERT INTO _deleted SELECT 'classroom_quick_checks', COUNT(*) FROM d;
+WITH d AS (DELETE FROM classroom_quick_check_responses RETURNING 1) INSERT INTO _deleted SELECT 'classroom_quick_check_responses', COUNT(*) FROM d;
+WITH d AS (DELETE FROM classroom_presenter_turns RETURNING 1) INSERT INTO _deleted SELECT 'classroom_presenter_turns', COUNT(*) FROM d;
+WITH d AS (DELETE FROM classroom_presentation_reviews RETURNING 1) INSERT INTO _deleted SELECT 'classroom_presentation_reviews', COUNT(*) FROM d;
+WITH d AS (DELETE FROM classroom_handout_releases RETURNING 1) INSERT INTO _deleted SELECT 'classroom_handout_releases', COUNT(*) FROM d;
+WITH d AS (DELETE FROM classroom_events RETURNING 1) INSERT INTO _deleted SELECT 'classroom_events', COUNT(*) FROM d;
+
+UPDATE user_security SET failed_login_count = 0, locked_until = NULL;
+
+\echo '=== 每张表删除的行数 ==='
+SELECT tbl AS "表", n AS "删除行数" FROM _deleted WHERE n > 0 ORDER BY tbl;
+SELECT COALESCE(SUM(n), 0) AS "合计" FROM _deleted;
+
+CREATE TEMP TABLE _keep_after AS
+  SELECT 'users' AS tbl, COUNT(*) AS n FROM users
+  UNION ALL SELECT 'user_security' AS tbl, COUNT(*) AS n FROM user_security
+  UNION ALL SELECT 'schools' AS tbl, COUNT(*) AS n FROM schools
+  UNION ALL SELECT 'classes' AS tbl, COUNT(*) AS n FROM classes
+  UNION ALL SELECT 'class_students' AS tbl, COUNT(*) AS n FROM class_students
+  UNION ALL SELECT 'parent_students' AS tbl, COUNT(*) AS n FROM parent_students
+  UNION ALL SELECT 'school_ai_configs' AS tbl, COUNT(*) AS n FROM school_ai_configs
+  UNION ALL SELECT 'school_subscriptions' AS tbl, COUNT(*) AS n FROM school_subscriptions
+  UNION ALL SELECT 'questions' AS tbl, COUNT(*) AS n FROM questions
+  UNION ALL SELECT 'papers' AS tbl, COUNT(*) AS n FROM papers
+  UNION ALL SELECT 'audit_logs' AS tbl, COUNT(*) AS n FROM audit_logs;
+
+\echo '=== 保留的表（前后数量必须一致，下面不能有任何行）==='
+SELECT b.tbl AS "表", b.n AS "删除前", a.n AS "删除后" FROM _keep_before b JOIN _keep_after a USING (tbl) WHERE b.n <> a.n;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM _keep_before b JOIN _keep_after a USING (tbl) WHERE b.n <> a.n) THEN
+    RAISE EXCEPTION '保留的表数量发生了变化，已中止并回滚';
+  END IF;
+END $$;
+
+\if :do_commit
+  COMMIT;
+  \echo '已提交：测试操作数据已删除。'
+\else
+  ROLLBACK;
+  \echo '演习：没有改动任何数据（已回滚）。要正式删除请加 -v do_commit=1。'
+\endif
