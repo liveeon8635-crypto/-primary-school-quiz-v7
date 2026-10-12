@@ -415,3 +415,16 @@ def test_simulated_linked_submission_can_complete_teacher_submission_step_direct
     apply_training_action(s, "simulate_student_submission", {})
     assert s.current_role == "teacher"
     assert s.progress["student_submission"] == "done"
+
+
+def test_training_covers_the_homework_assistant_for_teachers_and_students():
+    teacher = [step["id"] for step in ROLE_FLOW["teacher"]]
+    student = [step["id"] for step in ROLE_FLOW["student"]]
+    assert "teacher_homework" in teacher and teacher.index("teacher_homework") < teacher.index("hub")
+    assert "student_homework" in student
+    for step_id in ("teacher_homework", "student_homework"):
+        rel = STEP_RELATIONSHIPS[step_id]
+        assert rel["who"] and rel["creates"] and rel["visible_to"] and rel["other_role_sees"] and rel["next"]
+    # The page the step points to is the real one, and parents are not told they can see it.
+    assert {s["page"] for s in ROLE_FLOW["teacher"] + ROLE_FLOW["student"] if s["id"].endswith("_homework")} == {"/v1/homework"}
+    assert "家长暂时看不到" in STEP_RELATIONSHIPS["student_homework"]["other_role_sees"]

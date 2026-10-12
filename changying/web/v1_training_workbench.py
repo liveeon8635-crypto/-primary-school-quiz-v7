@@ -216,6 +216,7 @@ function teacherAuxDetail(id){
     teacher_catalog:'这里浏览教材题库并为组卷/AI出题提供上游资源；浏览题库不等于给学生布置任务。导入或拍照上传的题目也在这里：按学科、教材和单元查找，单元就是导入时填写的单元；题库里已有完全相同的题（带插图的题除外）会直接沿用、不重复保存，仍在它原来的单元下；勾选题目后可批量修改单元或教材（老师只能改自己导入或创建的题目，管理员可改本校所有题目）。',
     teacher_audit:'这里回看教师自己的操作记录，帮助确认谁在什么时间做了什么。',
     teacher_leaderboard:'这里查看班级激励排行；它用于激励，不替代学情诊断。',
+    teacher_homework:'在“全部功能”里点“晚托作业助手”：把家长转发的作业通知粘贴进来（或上传截图），AI 整理成清单，你逐条核对、选好学生再发布。学生在“作业”页顶部看到清单；学生拍题问 AI 后点“求助老师”，会出现在这里的“求助列表”。AI 可能整理错，发布前一定要核对。',
     account:'这里管理当前账号、设备和登录相关设置，不改变学生学习事实。'
   })[id]||'请理解这一页在教师完整工作流中的位置。';
 }
@@ -259,6 +260,8 @@ function renderStudentRole(step,d,rel){
     stage.innerHTML=pageIntro(step,'错题用于下一轮学习，不是给学生贴负面标签。')+pageCard('我的错题','来自刚才的提交结果。',listItems(d.wrong_questions,x=>'<div class="item"><b>'+esc(x.prompt)+'</b><small>'+esc(x.knowledge)+'</small></div>')+roleRelationBlock(rel),done);
   }else if(step.id==='student_home'){
     stage.innerHTML=pageIntro(step,'学习首页只负责汇总今天要做什么；看到任务不等于已经完成。')+pageCard('学习首页',s?esc(s.name)+' · '+esc(s.className):'学生首页','<div class="metric-grid"><div class="metric"><strong>'+d.assignments.length+'</strong><small>作业</small></div><div class="metric"><strong>'+d.targeted_practices.length+'</strong><small>针对练习</small></div><div class="metric"><strong>'+d.wrong_questions.length+'</strong><small>错题</small></div><div class="metric"><strong>'+d.points.reduce((n,x)=>n+Number(x.points||0),0)+'</strong><small>积分</small></div></div>'+roleRelationBlock(rel),done);
+  }else if(step.id==='student_homework'){
+    stage.innerHTML=pageIntro(step,'老师发来的家庭作业清单，和拍题求助，都在“晚托作业助手”里。')+pageCard('晚托作业助手','在底栏“作业”页顶部看到家庭作业；不会的题可以拍下来问 AI。','<div class="item"><b>今天的家庭作业</b><small>老师发布后，作业页顶部会出现清单；点进助手，做完一项就在前面打勾。</small></div><div class="item"><b>这道题我不会</b><small>只拍这一道题，拖动白框框住题目，确认识别出的文字，再让 AI 分步讲解。AI 可能出错，请自己判断。</small></div><div class="item"><b>还是不会</b><small>点“求助老师”，老师会看到你的题目和 AI 讲解，再来帮你。</small></div>'+roleRelationBlock(rel),done);
   }else if(step.id==='student_leaderboard'){
     stage.innerHTML=pageIntro(step,'班级排行用于激励，不代表学习能力排名。')+pageCard('班级排行','只理解展示规则和边界。','<div class="notice">你的练习积分会影响允许展示的班级排行，但教师仍应使用学情、错题和课堂证据判断下一步教学。</div>'+roleRelationBlock(rel),done);
   }else{
@@ -309,7 +312,7 @@ function renderAdminRole(step,d,rel){
 function adminAuxDetail(id){
   return ({
     admin_subscription:'这里管理套餐和功能授权。它决定功能是否可用，但不应该改写任何历史学习事实。',
-    admin_ai:'这里设置 AI 服务和学生数据授权边界。密钥只属于管理员；教师仍保留审核发布权。',
+    admin_ai:'这里设置 AI 服务和学生数据授权边界。密钥只属于管理员；教师仍保留审核发布权。使用晚托作业助手前，要先“启用”并勾选“允许发送学生内容”。',
     admin_teaching:'这里配置学校/机构的教学计划和课时；配置与正式发布是两个动作。',
     admin_resources:'这里管理教材、教案和课件资源，必须区分学校自有资料、官方导航和学生可见范围。',
     admin_imports:'这里批量导入账号和基础关系。导入前要核对重复账号、班级和角色，避免批量制造关系错误。',
