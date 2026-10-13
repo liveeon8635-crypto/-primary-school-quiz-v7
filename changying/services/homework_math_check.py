@@ -267,6 +267,11 @@ def _solve_with_timeout(text: str) -> list[Fraction]:
     The input is already tightly bounded; this is the last line of defence so a pathological
     expression can never keep a request waiting (the helper thread is a daemon).
     """
+    try:  # the first import of sympy takes a second or more: do it here, outside the 2-second budget
+        import sympy  # noqa: F401
+        from sympy.parsing.sympy_parser import parse_expr  # noqa: F401
+    except ImportError:
+        raise _Skip("方程核对暂不可用")
     box: dict[str, Any] = {}
 
     def run() -> None:
