@@ -1,10 +1,17 @@
 -- 正式使用前清理测试操作数据（由 scripts/prelaunch_data_cleanup.py --print-sql 生成，不要手工改）。
 -- 只删除操作数据；账号、班级、学校设置、AI 设置、题库、试卷、审计和反馈记录都保留。
 --
---   演习（什么都不会改，最后自动回滚）：  psql "$DATABASE_URL" -f scripts/prelaunch_data_cleanup.sql
---   正式删除（先备份！）：               psql "$DATABASE_URL" -v do_commit=1 -f scripts/prelaunch_data_cleanup.sql
+--   【已停用】系统正式使用后这是真实数据，必须加 -v allow_after_launch=1 才会运行。
+--   演习（什么都不会改，最后自动回滚）：  psql "$DATABASE_URL" -v allow_after_launch=1 -f scripts/prelaunch_data_cleanup.sql
+--   正式删除（先备份！）：               psql "$DATABASE_URL" -v allow_after_launch=1 -v do_commit=1 -f scripts/prelaunch_data_cleanup.sql
 
 \set ON_ERROR_STOP on
+\if :{?allow_after_launch}
+\else
+  \echo '系统已正式使用，这个清理脚本已停用：现在库里是真实数据（学习证据、积分、作业提交、AI 辅助记录）。'
+  \echo '确实要运行，请加 -v allow_after_launch=1'
+  \quit
+\endif
 \if :{?do_commit}
 \else
   \set do_commit 0

@@ -441,11 +441,60 @@ function helpView(body){
 }
 """
 
+
+STUDENT_KNOWLEDGE_JS = r"""
+function flagLine(f){
+  return f.knowledge+(f.subject?'（'+f.subject+'）':'')+' · 问过 '+f.count+' 次 · 最近 '+f.lastAt+' · '+
+    (f.state==='open'?'待巩固':'已巩固 '+f.clearedAt);
+}
+function ruleText(r){return '之后的作业或测试里，这个知识点至少 '+r.minQuestions+' 道题、正确率 '+r.passPercent+'% 以上，标记才会取消。'}
+function knowledgeCard(){
+  var flagsBox=el('div'),histBox=el('div');
+  root.appendChild(el('div',{class:'card'},el('h2',{text:'我的 AI 辅助记录'}),
+    el('div',{class:'muted',text:'你让 AI 讲解过的知识点会一直标记，帮助你和老师知道哪里还要巩固。'}),flagsBox,
+    el('h3',{text:'我问过的题（保留 90 天）'}),histBox));
+  api('/student/homework/knowledge').then(function(d){
+    if(!d.flags.length){flagsBox.appendChild(el('div',{class:'muted',text:'还没有记录。'}));return}
+    d.flags.forEach(function(f){flagsBox.appendChild(el('div',{class:'item'+(f.state==='open'?'':' done')},el('span',{class:'t',text:flagLine(f)})))});
+    flagsBox.appendChild(el('div',{class:'muted',text:ruleText(d.rule)}));
+  }).catch(function(e){flagsBox.appendChild(notice('error',e.message))});
+  api('/student/homework/history').then(function(d){
+    if(!d.items.length){histBox.appendChild(el('div',{class:'muted',text:'还没有问过的题。'}));return}
+    d.items.forEach(function(it){histBox.appendChild(el('div',{class:'item'},el('span',{class:'t',text:it.createdAt+' · '+(it.knowledge||'未归类')+' · '+it.stateLabel+'：'+it.questionText})))});
+  }).catch(function(e){histBox.appendChild(notice('error',e.message))});
+}
+"""
+
+TEACHER_KNOWLEDGE_JS = r"""
+function knowledgeView(body){
+  var sumBox=el('div'),listBox=el('div');
+  body.appendChild(el('div',{class:'card'},el('h2',{text:'学生的 AI 辅助记录'}),
+    el('div',{class:'muted',text:'这里是你班里学生让 AI 讲解过的知识点。标记会一直保留，直到之后的作业或测试里这个知识点做得好。'}),sumBox));
+  body.appendChild(el('div',{class:'card'},el('h2',{text:'最近的提问'}),listBox));
+  api('/teacher/homework/knowledge-summary').then(function(d){
+    if(!d.students.length){sumBox.appendChild(el('div',{class:'muted',text:'还没有学生用过 AI 辅助。'}));return}
+    d.students.forEach(function(s){
+      var box=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:s.studentName}),' · 问过 '+s.assists+' 次 · 待巩固 '+s.open+' 个知识点'));
+      sumBox.appendChild(box);
+      s.flags.forEach(function(f){sumBox.appendChild(el('div',{class:'muted',text:'　'+flagLine(f)}))});
+    });
+    sumBox.appendChild(el('div',{class:'muted',text:ruleText(d.rule)}));
+  }).catch(function(e){sumBox.appendChild(notice('error',e.message))});
+  api('/teacher/homework/ai-assists').then(function(d){
+    if(!d.items.length){listBox.appendChild(el('div',{class:'muted',text:'还没有记录。'}));return}
+    d.items.forEach(function(it){
+      listBox.appendChild(el('div',{class:'item'},el('span',{class:'t'},el('b',{text:it.studentName}),' · '+it.createdAt+' · '+(it.knowledge||'未归类')+(it.matched?'':'（未归类）')+' · '+it.stateLabel+(it.verify==='mismatch'?' · 答案未通过核对':''),
+        el('div',{text:it.questionText}))));
+    });
+  }).catch(function(e){listBox.appendChild(notice('error',e.message))});
+}
+"""
+
 SLOTS: dict[str, str] = {
-    "__STUDENT_EXTRA__": "helpCard();",
-    "__TEACHER_VIEWS__": ",help:helpView",
-    "__TEACHER_NAMES__": ",help:'求助列表'",
-    "__EXTRA_FUNCS__": STUDENT_HELP_JS + TEACHER_HELP_JS,
+    "__STUDENT_EXTRA__": "helpCard();knowledgeCard();",
+    "__TEACHER_VIEWS__": ",help:helpView,knowledge:knowledgeView",
+    "__TEACHER_NAMES__": ",help:'求助列表',knowledge:'AI 辅助记录'",
+    "__EXTRA_FUNCS__": STUDENT_HELP_JS + TEACHER_HELP_JS + STUDENT_KNOWLEDGE_JS + TEACHER_KNOWLEDGE_JS,
 }
 
 

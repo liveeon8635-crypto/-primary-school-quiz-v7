@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:9b12ab812a5b9057dd2afbcd8cd56af00feb8b6620e11a96d2e1782ad99cfe39",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "69ed0da4919e9cd4b45d09f463dcf7c64b866c56",
+  "headSha": "79f40ca7c73e67ec2c7920d3db75943243930cd1",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：本次变更新增了 AI 辅导知识点永久记录与学情巩固标记功能，权限控制与数据脱敏完善，且测试覆盖全面。",
+      "evidenceRefs": [
+        "file:changying/services/homework_knowledge.py#L82-L130",
+        "file:changying/web/homework_knowledge_views.py#L38-L135",
+        "file:tests/test_homework_knowledge_views.py#L14-L146"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "知识点记录与巩固规则实现规范，AI 辅导记录保存时已自动脱敏联系方式，且后期提交测试达到阈值后可正常解除巩固标记。",
+      "evidenceRefs": [
+        "file:changying/services/homework_knowledge.py#L109-L110",
+        "file:changying/services/homework_knowledge_flags.py#L40-L100"
+      ]
+    },
+    {
+      "id": "GEMINI-003",
+      "text": "路由与页面展现均遵循严格的角色权限隔离（学生只能看本人，家长只能看绑定的孩子且隐藏原题，教师只能看本班学生），且数据清理脚本已追加上线后防护标志。",
+      "evidenceRefs": [
+        "file:changying/web/homework_knowledge_views.py#L60-L115",
+        "file:scripts/prelaunch_data_cleanup.py#L94-L108",
+        "file:scripts/prelaunch_data_cleanup.sql#L9-L15"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:56355198d43dbdaefaea2b95794feaa770ac3178ef2931213ac5d899cb04668d"
+}

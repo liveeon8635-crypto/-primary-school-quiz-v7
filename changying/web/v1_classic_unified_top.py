@@ -144,6 +144,46 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
   }
   setInterval(ensure,1200);
  })();
+ // 晚托作业助手的 AI 辅助记录：学生“我的学情”、家长“孩子学情”顶部显示被 AI 辅助过的知识点（只读，没打开功能时不显示）。
+ (function(){
+  var ID='cy-hw-know',busy=false,off=false,lastKey='';
+  function get(path){return fetch(path,{headers:{Authorization:'Bearer '+state.token},cache:'no-store'}).then(function(r){if(!r.ok)throw new Error(String(r.status));return r.json()})}
+  function node(tag,css,text){var n=document.createElement(tag);if(css)n.style.cssText=css;if(text!=null)n.textContent=text;return n}
+  function build(data,mine){
+   var band=node('section','margin:0 0 14px;padding:14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;box-shadow:0 8px 30px rgba(168,16,28,.05)');band.id=ID;
+   band.appendChild(node('b','font-size:17px;display:block;margin-bottom:4px',mine?'我的 AI 辅助记录':(data.childName||'孩子')+' 的 AI 辅助记录'));
+   band.appendChild(node('div','color:#7a625c;font-size:12px;margin-bottom:8px','晚托时用 AI 讲解过的知识点会一直标记，直到之后的作业或测试里这个知识点做得好（至少 '+data.rule.minQuestions+' 道题、正确率 '+data.rule.passPercent+'% 以上）。'));
+   if(!data.flags.length){band.appendChild(node('div','color:#7a625c;font-size:13px','还没有记录。'));return band}
+   data.flags.forEach(function(f){
+    var open=f.state==='open',row=node('div','display:flex;gap:8px;align-items:baseline;padding:7px 0;border-top:1px solid #f2e9e3;font-size:14px;line-height:1.5');
+    row.appendChild(node('span','flex:none;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;background:'+(open?'#fdebe7':'#eaf7ed')+';color:'+(open?'#a8101c':'#245f33'),open?'待巩固':'已巩固'));
+    row.appendChild(node('span','',f.knowledge+(f.subject?'（'+f.subject+'）':'')+' · 问过 '+f.count+' 次 · 最近 '+f.lastAt+(open?'':' · 已于 '+f.clearedAt+' 的测试中巩固')));
+    band.appendChild(row);
+   });
+   return band;
+  }
+  function ensure(){
+   var role='',page='',child=null;
+   try{if(stateReady()){role=currentRole();page=currentPage();child=state.childID}}catch(_e){}
+   var path='',mine=false;
+   if(role==='student'&&page==='progress'){path='/student/homework/knowledge';mine=true}
+   else if(role==='parent'&&page==='childProgress'&&child){path='/parent/children/'+encodeURIComponent(child)+'/homework-knowledge'}
+   var old=document.getElementById(ID);
+   if(!path){if(old)old.remove();lastKey='';return}
+   if(old&&lastKey===path)return;
+   if(old)old.remove();
+   if(busy||off)return;
+   var holder=document.getElementById('page');if(!holder)return;
+   busy=true;
+   fetch('/homework/config',{cache:'no-store'}).then(function(r){if(!r.ok){off=true;throw new Error('off')}}).then(function(){return get(path)}).then(function(data){
+    var pg=document.getElementById('page');if(!pg||document.getElementById(ID))return;
+    var head=pg.querySelector('.page-head'),b=build(data,mine);
+    if(head&&head.parentNode===pg)pg.insertBefore(b,head.nextSibling);else pg.insertBefore(b,pg.firstChild);
+    lastKey=path;
+   }).catch(function(){}).then(function(){busy=false});
+  }
+  setInterval(ensure,1300);
+ })();
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
 </script>
