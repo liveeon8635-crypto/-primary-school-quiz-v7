@@ -238,7 +238,7 @@ print("OK")
     )
 
 
-def test_help_requests_older_than_30_days_are_cleared_when_the_teacher_opens_the_list(tmp_path):
+def test_help_requests_older_than_90_days_are_cleared_when_the_teacher_opens_the_list(tmp_path):
     run_isolated(
         tmp_path,
         COMMON
@@ -251,8 +251,8 @@ with TestClient(app) as client:
     for hid in (old, fresh):
         client.post(f"/student/homework/help/{hid}/escalate", headers=sh, json={})
     with legacy.SessionLocal() as db:
-        db.execute(update(HELP).where(HELP.c.id == old).values(created_at=datetime.utcnow() - timedelta(days=31)))
-        db.execute(update(HELP).where(HELP.c.id == fresh).values(created_at=datetime.utcnow() - timedelta(days=29)))
+        db.execute(update(HELP).where(HELP.c.id == old).values(created_at=datetime.utcnow() - timedelta(days=91)))
+        db.execute(update(HELP).where(HELP.c.id == fresh).values(created_at=datetime.utcnow() - timedelta(days=89)))
         db.commit()
     listing = client.get("/teacher/homework/help?status=all", headers=th).json()
     assert [x["id"] for x in listing["items"]] == [fresh]

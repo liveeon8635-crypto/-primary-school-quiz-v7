@@ -41,9 +41,9 @@ replies = []          # queue of replies (str or Exception) for the fake model
 calls = []
 
 
-def sol(answer="7", expression="12-5", steps=("先算 12 减 5", "得到 7")):
+def sol(answer="7", expression="12-5", steps=("先算 12 减 5", "得到 7"), kp="两位数减一位数"):
     return json.dumps({"method": "直接相减", "steps": [{"n": i + 1, "text": t} for i, t in enumerate(steps)],
-                       "answer": answer, "expression": expression, "knowledgePoint": "两位数减一位数"}, ensure_ascii=False)
+                       "answer": answer, "expression": expression, "knowledgePoint": kp}, ensure_ascii=False)
 
 
 def fake_ai(db, u, feature, prompt, images=None, timeout=90, rate_check=None):
@@ -468,3 +468,86 @@ with TestClient(app) as client:
 print("OK")
 ''',
     )
+
+
+def test_each_ai_assisted_question_leaves_a_permanent_knowledge_record(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+from sqlalchemy import select, update
+from datetime import datetime, timedelta
+
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    table = legacy.Base.metadata.tables["homework_ai_knowledge"]
+    with legacy.SessionLocal() as db:
+        known = db.execute(select(legacy.Question.knowledge).where(legacy.Question.school_id == school_id, legacy.Question.grade == 3)).scalars().first()
+    assert known, "the demo school must have grade-3 questions"
+
+    def rows():
+        with legacy.SessionLocal() as db:
+            return [dict(r._mapping) for r in db.execute(select(table).order_by(table.c.id)).all()]
+
+    def age_everything():
+        with legacy.SessionLocal() as db:
+            db.execute(update(legacy.Base.metadata.tables["help_requests"]).values(created_at=datetime.utcnow() - timedelta(minutes=5)))
+            db.execute(update(legacy.AIUsageLog).values(created_at=datetime.utcnow() - timedelta(minutes=5)))
+            db.commit()
+
+    # 1. The AI's wording is matched to the school's own knowledge name.
+    hid = make_help(client, sh)
+    replies.append(sol(kp=known + "（应用）"))
+    assert client.post(f"/student/homework/help/{hid}/solve", headers=sh).status_code == 200
+    first = rows()
+    assert len(first) == 1 and first[0]["help_id"] == hid and first[0]["student_id"] == sid and first[0]["school_id"] == school_id
+    assert first[0]["knowledge_key"] == known and first[0]["matched"] in (True, 1) and first[0]["grade"] == 3
+    assert "苹果" in first[0]["question_excerpt"] and "13812345678" not in first[0]["question_excerpt"]  # permanent: no contact details
+
+    # 2. Asking for the same answer again never adds a second row.
+    client.post(f"/student/homework/help/{hid}/solve", headers=sh)
+    assert len(rows()) == 1
+
+    # 3. A phrase that matches nothing is kept as written and marked unmatched.
+    age_everything()
+    hid2 = make_help(client, sh, text="3+4=?")
+    replies.append(sol(answer="7", expression="3+4", steps=("3 加 4",), kp="完全无关的奇怪说法"))
+    client.post(f"/student/homework/help/{hid2}/solve", headers=sh)
+    second = rows()[1]
+    assert second["matched"] in (False, 0) and second["knowledge_key"] == "完全无关的奇怪说法" and second["subject"] == ""
+
+    # 4. A question the AI got wrong twice (withheld, sent to the teacher) is still a knowledge record.
+    age_everything()
+    hid3 = make_help(client, sh, text="12-5=?")
+    replies.extend([sol(answer="8", kp=known), sol(answer="9", kp=known)])
+    r3 = client.post(f"/student/homework/help/{hid3}/solve", headers=sh).json()
+    assert r3["state"] == "escalated"
+    third = rows()[2]
+    assert third["verify_status"] == "mismatch" and third["knowledge_key"] == known
+
+    # 5. The record outlives the conversation: purging the help request keeps it.
+    with legacy.SessionLocal() as db:
+        db.execute(legacy.Base.metadata.tables["help_requests"].delete())
+        db.commit()
+    assert len(rows()) == 3
+
+    # 6. A failed AI call leaves no record.
+    age_everything()
+    hid4 = make_help(client, sh, text="1+1=?")
+    replies.append(HTTPException(503, "down"))
+    assert client.post(f"/student/homework/help/{hid4}/solve", headers=sh).status_code == 503
+    assert len(rows()) == 3
+print("OK")
+''',
+    )
+
+
+def test_knowledge_matching_prefers_the_school_name_and_refuses_weak_matches():
+    from changying.services.homework_knowledge import match_knowledge
+
+    names = [("数学", "小数乘法"), ("数学", "分数加减法"), ("数学", "三角形的面积")]
+    assert match_knowledge("小数乘法", names) == ("数学", "小数乘法")
+    assert match_knowledge("小数乘法（积的小数位数）", names) == ("数学", "小数乘法")
+    assert match_knowledge("分数的加减", names) == ("数学", "分数加减法")
+    assert match_knowledge("古诗词鉴赏", names) is None
+    assert match_knowledge("", names) is None and match_knowledge("小数乘法", []) is None
