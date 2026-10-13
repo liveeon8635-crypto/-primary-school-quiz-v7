@@ -23,6 +23,7 @@ from changying.services.homework_limits import (
     check_student_call,
     require_student_ai,
 )
+from changying.services.homework_knowledge import record_ai_help
 from changying.services.homework_math_check import MISMATCH, OK, check_solution
 from changying.services.homework_prompts import AI_WARNING, build_solve_prompt, clean_solution
 from changying.services.homework_vision import QUESTION_PROMPT, read_image_body, recognize_image
@@ -36,7 +37,7 @@ SOLVE_CLAIM_TTL_SECONDS = 120
 _CLAIM_LOCK = threading.Lock()
 _CLAIMS: dict[int, float] = {}
 NO_CONFIDENCE = "这道题我没有把握，已请老师帮忙。"
-HELP_RETENTION_DAYS = 30
+HELP_RETENTION_DAYS = 90  # the conversation; the knowledge-level record (homework_ai_knowledge) is permanent
 PURGE_BATCH = 200
 REASON_LABELS = {
     "verify_mismatch": "AI 的答案没有通过核对",
@@ -237,6 +238,8 @@ def install_homework_help(implementation: Any) -> APIRouter:
             except HTTPException:
                 return {}
 
+        recorded: dict[str, str] = {}
+
         def compute() -> dict[str, Any]:
             first = attempt(False)
             if not first:
@@ -251,6 +254,8 @@ def install_homework_help(implementation: Any) -> APIRouter:
                 if second:
                     attempts.append({"solution": second, "verify": check_solution(second["expression"], second["answer"])})
             final = attempts[-1]
+            recorded["knowledge"] = str(final["solution"].get("knowledgePoint") or attempts[0]["solution"].get("knowledgePoint") or "")
+            recorded["verify"] = str(final["verify"]["status"])
             now = datetime.utcnow()
             # A first answer that failed the check is only ever replaced by an answer that passes it.
             if final["verify"]["status"] == MISMATCH or (len(attempts) > 1 and final["verify"]["status"] != OK):
@@ -286,6 +291,13 @@ def install_homework_help(implementation: Any) -> APIRouter:
         # Only finish a request that is still ours: if the student asked the teacher meanwhile, that wins.
         db.execute(update(helps).where(helps.c.id == help_id, helps.c.state == "solving").values(**values))
         db.commit()
+        # The AI really helped with this knowledge point: keep that fact permanently (the conversation expires).
+        record_ai_help(
+            implementation, db,
+            school_id=int(u.school_id), student_id=int(u.id), help_id=int(help_id), grade=row["grade"],
+            knowledge_point=recorded.get("knowledge", ""), question_text=row["question_text"],
+            verify_status=recorded.get("verify", "skipped"),
+        )
         return student_help_json(own_help(db, u, help_id))
 
     @router.get("/student/homework/help/{help_id}")
@@ -327,7 +339,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
         return {int(x) for x in rows}
 
     def purge_expired(db: Any, teacher: Any) -> None:
-        """Lazy 30-day retention: opening the list clears expired help requests of the school."""
+        """Lazy 90-day retention of the conversations: opening the list clears expired help requests of the school."""
         cutoff = datetime.utcnow() - timedelta(days=HELP_RETENTION_DAYS)
         ids = db.scalars(
             select(helps.c.id)

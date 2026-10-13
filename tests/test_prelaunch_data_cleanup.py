@@ -65,8 +65,8 @@ def test_dry_run_changes_nothing_and_execute_needs_the_backup_flag(tmp_path, mon
     url, engine = make_db(tmp_path)
     monkeypatch.setenv("DATABASE_URL", url)
     before = counts(engine)
-    assert cleanup.main([]) == 0 and counts(engine) == before                       # dry run
-    assert cleanup.main(["--execute"]) == 2 and counts(engine) == before            # refuses without the backup flag
+    assert cleanup.main(["--allow-after-launch"]) == 0 and counts(engine) == before                       # dry run
+    assert cleanup.main(["--allow-after-launch", "--execute"]) == 2 and counts(engine) == before            # refuses without the backup flag
     out = capsys.readouterr().out
     assert "Dry run: nothing was changed." in out and "homework_notices" in out
 
@@ -74,7 +74,7 @@ def test_dry_run_changes_nothing_and_execute_needs_the_backup_flag(tmp_path, mon
 def test_execute_removes_activity_data_but_keeps_accounts_audit_and_resets_lockouts(tmp_path, monkeypatch):
     url, engine = make_db(tmp_path)
     monkeypatch.setenv("DATABASE_URL", url)
-    assert cleanup.main(["--execute", "--i-have-a-backup"]) == 0
+    assert cleanup.main(["--allow-after-launch", "--execute", "--i-have-a-backup"]) == 0
     after = counts(engine)
     assert after["homework_notices"] == 0 and after["ai_usage_logs"] == 0
     assert after["users"] == 2 and after["audit_logs"] == 1                          # accounts and feedback/audit records stay
@@ -89,7 +89,7 @@ def test_an_unclassified_table_aborts_the_run(tmp_path, monkeypatch, capsys):
         conn.execute(text("CREATE TABLE brand_new_feature (id INTEGER PRIMARY KEY)"))
     monkeypatch.setenv("DATABASE_URL", url)
     before = counts(engine)
-    assert cleanup.main(["--execute", "--i-have-a-backup"]) == 3
+    assert cleanup.main(["--allow-after-launch", "--execute", "--i-have-a-backup"]) == 3
     assert counts(engine) == before
     assert "brand_new_feature" in capsys.readouterr().err
 
@@ -129,3 +129,16 @@ def test_database_url_is_rewritten_for_the_psycopg_v3_driver_like_the_app_does()
     assert cleanup.normalize_url("sqlite:///x.db") == "sqlite:///x.db"
     # the app itself ships only psycopg v3, so the script must never pick the default (psycopg2) driver
     assert legacy.engine.url.drivername in {"sqlite", "postgresql+psycopg"}
+
+
+def test_the_cleanup_is_disabled_once_the_system_is_live(tmp_path, monkeypatch, capsys):
+    url, engine = make_db(tmp_path)
+    monkeypatch.setenv("DATABASE_URL", url)
+    before = counts(engine)
+    assert cleanup.main([]) == 5
+    assert cleanup.main(["--execute", "--i-have-a-backup"]) == 5            # the backup flag alone is not enough
+    assert counts(engine) == before
+    assert "disabled" in capsys.readouterr().err
+    sql = (ROOT / "scripts" / "prelaunch_data_cleanup.sql").read_text(encoding="utf-8")
+    assert "\\if :{?allow_after_launch}" in sql and "\\quit" in sql
+    assert "homework_ai_knowledge" in cleanup.KEEP_TABLES                   # the permanent AI-help record is never a delete target

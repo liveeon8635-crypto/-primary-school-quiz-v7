@@ -3,8 +3,9 @@
 
 Safe by default: without ``--execute`` it only prints what it WOULD delete and then rolls back.
 
-    DATABASE_URL=... python scripts/prelaunch_data_cleanup.py              # dry run (changes nothing)
-    DATABASE_URL=... python scripts/prelaunch_data_cleanup.py --execute --i-have-a-backup
+    DISABLED since the system went live (the data is real). Every run needs --allow-after-launch:
+    DATABASE_URL=... python scripts/prelaunch_data_cleanup.py --allow-after-launch              # dry run
+    DATABASE_URL=... python scripts/prelaunch_data_cleanup.py --allow-after-launch --execute --i-have-a-backup
 
 Rules the script enforces itself:
   * every table in the database must be classified below as KEEP or DELETE; an unknown table aborts the run
@@ -53,6 +54,7 @@ KEEP_TABLES = (
     "commercial_customers", "commercial_followups", "commercial_operation_logs", "commercial_orders",
     "commercial_payments", "commercial_quota_overrides", "commercial_renewals",
     "point_rules", "class_point_rules", "reward_items", "auto_reward_rules",
+    "homework_ai_knowledge",
     "questions", "papers", "import_jobs",
     "teaching_programs", "teaching_lessons", "teaching_questions", "teaching_resources",
     "audit_logs", "product_feedback_attachments", "product_feedback_followup_attachments", "product_feedback_rewards",
@@ -60,6 +62,11 @@ KEEP_TABLES = (
 )
 
 CONFIRM_FLAG = "--i-have-a-backup"
+LAUNCH_FLAG = "--allow-after-launch"
+LAUNCH_NOTICE = (
+    "This cleanup was for the days BEFORE the system went live and is now disabled: the data in the database is real "
+    "(learning evidence, points, submissions, AI-help records). To run it anyway, add " + LAUNCH_FLAG + "."
+)
 
 # Counted before and after, so the SQL version can prove it did not touch accounts or configuration.
 SQL_CHECK_TABLES = ("users", "user_security", "schools", "classes", "class_students", "parent_students",
@@ -87,10 +94,17 @@ def render_sql(order: list[str]) -> str:
         "-- 正式使用前清理测试操作数据（由 scripts/prelaunch_data_cleanup.py --print-sql 生成，不要手工改）。",
         "-- 只删除操作数据；账号、班级、学校设置、AI 设置、题库、试卷、审计和反馈记录都保留。",
         "--",
-        "--   演习（什么都不会改，最后自动回滚）：  psql \"$DATABASE_URL\" -f scripts/prelaunch_data_cleanup.sql",
-        "--   正式删除（先备份！）：               psql \"$DATABASE_URL\" -v do_commit=1 -f scripts/prelaunch_data_cleanup.sql",
+        "--   【已停用】系统正式使用后这是真实数据，必须加 -v allow_after_launch=1 才会运行。",
+        "--   演习（什么都不会改，最后自动回滚）：  psql \"$DATABASE_URL\" -v allow_after_launch=1 -f scripts/prelaunch_data_cleanup.sql",
+        "--   正式删除（先备份！）：               psql \"$DATABASE_URL\" -v allow_after_launch=1 -v do_commit=1 -f scripts/prelaunch_data_cleanup.sql",
         "",
         "\\set ON_ERROR_STOP on",
+        "\\if :{?allow_after_launch}",
+        "\\else",
+        "  \\echo '系统已正式使用，这个清理脚本已停用：现在库里是真实数据（学习证据、积分、作业提交、AI 辅助记录）。'",
+        "  \\echo '确实要运行，请加 -v allow_after_launch=1'",
+        "  \\quit",
+        "\\endif",
         "\\if :{?do_commit}",
         "\\else",
         "  \\set do_commit 0",
@@ -143,8 +157,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--execute", action="store_true", help="really delete (default: dry run, rolled back)")
     parser.add_argument(CONFIRM_FLAG, dest="backup", action="store_true", help="required with --execute")
     parser.add_argument("--print-sql", action="store_true", help="print the psql version of this cleanup and exit")
+    parser.add_argument(LAUNCH_FLAG, dest="allow_after_launch", action="store_true", help="the system is live; only use if you really mean it")
     args = parser.parse_args(argv)
 
+    if not args.print_sql and not args.allow_after_launch:
+        print(LAUNCH_NOTICE, file=sys.stderr)
+        return 5
     url = os.environ.get("DATABASE_URL", "").strip()
     if not url:
         print("DATABASE_URL is not set.", file=sys.stderr)
