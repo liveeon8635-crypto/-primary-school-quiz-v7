@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "brainId": "claude",
+  "provider": "anthropic-claude-code-routine",
+  "model": "claude-sonnet-5-5",
+  "evidencePacketHash": "sha256:9b12ab812a5b9057dd2afbcd8cd56af00feb8b6620e11a96d2e1782ad99cfe39",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "69ed0da4919e9cd4b45d09f463dcf7c64b866c56",
+  "headSha": "79f40ca7c73e67ec2c7920d3db75943243930cd1",
+  "decision": "accept_with_changes",
+  "risk": "medium",
+  "claims": [
+    {
+      "id": "CLAUDE-001",
+      "text": "建议小改后再合并：新功能（永久记录学生用 AI 辅助过的知识点并显示在学生、家长、老师页面）逻辑基本自洽，CI 的 smoke 和 guard 均通过，但有几处边界问题和一项涉及真实数据的改动需要负责人确认。",
+      "evidenceRefs": [
+        "status:automation-boundary-guard",
+        "run:115444893681",
+        "run:115444892756",
+        "file:changying/services/homework_knowledge.py#L1-L143"
+      ]
+    },
+    {
+      "id": "CLAUDE-002",
+      "text": "小问题：学生提问后如果同时已转给老师，系统仍会写入永久记录（记录动作没有判断该请求是否真的由 AI 完成）。后果是个别「转老师」的题也被计为 AI 辅助。建议只在状态更新确实生效时才写记录。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L291-L300"
+      ]
+    },
+    {
+      "id": "CLAUDE-003",
+      "text": "设计提醒：AI 给出的知识点名称若匹配不到学校题库的知识点（相似度低于 0.6），记录会标为「未归类」，永远不会产生可被清除的标记，老师只能在列表里看到。这是有意设计，但会让一部分 AI 辅助不进入「待巩固」统计，建议上线后观察未归类比例。",
+      "evidenceRefs": [
+        "file:changying/services/homework_knowledge.py#L58-L82",
+        "file:changying/services/homework_knowledge_flags.py#L52-L110"
+      ]
+    },
+    {
+      "id": "CLAUDE-004",
+      "text": "数据与隐私：求助对话保留期从 30 天改为 90 天，并新增一张永久保存的表（含题目摘要，已用 scrub_question 去除联系方式）。这改变了学生数据的保留承诺，建议负责人确认已告知学校/家长，并确认永久保存题目摘要是否必要。权限方面：家长接口校验了亲子关系且不返回题目文字，老师接口限定本人班级，未发现越权。",
+      "evidenceRefs": [
+        "file:changying/web/homework_help.py#L40",
+        "file:changying/web/homework_knowledge_views.py#L68-L100",
+        "file:changying/services/homework_knowledge.py#L120-L128"
+      ]
+    },
+    {
+      "id": "CLAUDE-005",
+      "text": "附带改动：上线前数据清理脚本（Python 和 SQL）现在必须加 --allow-after-launch / allow_after_launch=1 才能运行，并把新表列为「保留」。这是防误删真实数据的安全加强，方向正确；注意这与「AI 辅助记录」功能无直接关系，属于顺带修改，已有测试覆盖。",
+      "evidenceRefs": [
+        "file:scripts/prelaunch_data_cleanup.py#L62-L72",
+        "file:scripts/prelaunch_data_cleanup.sql#L1-L14",
+        "file:tests/test_prelaunch_data_cleanup.py#L132-L144"
+      ]
+    },
+    {
+      "id": "CLAUDE-006",
+      "text": "性能提醒：老师的汇总接口对班里每个学生各自计算一次标记，每次最多扫描 200 份提交，班级较大时页面可能变慢；目前没有压测证据。",
+      "evidenceRefs": [
+        "file:changying/web/homework_knowledge_views.py#L108-L118",
+        "file:changying/services/homework_knowledge_flags.py#L10-L10"
+      ]
+    }
+  ],
+  "unresolved": [
+    "未能运行代码，只做了阅读审查；「清除标记」所依赖的 normalized_answer_stats 返回的知识点名称是否与题库 knowledge 字段完全一致，本次未核实。",
+    "PR 描述未包含在证据包中，无法核对改动范围是否与 PR 声明一致（清理脚本改动看起来是附带的）。"
+  ],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "transport": "claude-code-routine",
+  "recordHash": "sha256:ba3c02527741d230b9ca23cd92bb0c56815b2b8d56eaaf3f56b2a42ec356f55a"
+}
