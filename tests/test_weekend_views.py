@@ -170,10 +170,289 @@ with TestClient(app) as client:
     me = [i for i in p["items"] if i["studentId"] == sid][0]
     assert me["answered"] == 2 and me["correct"] == 1 and me["completionRate"] == 50 and me["hintMax"] == 3 and me["hintAvg"] == 2.0
 
+    # the big screen shows the question stems (no options, no answers) during 随堂练习
+    client.post(base + "/goto", headers=th, json={"stage": 4})
+    shown = client.get(base + "/board", headers=th).json()["content"]
+    assert shown[-2:] == ["1. 1/2+1/4=?", "2. 1/3+1/3=?"] and not any("3/4" in x for x in shown)
+
     # outside the practice stage students can neither ask for hints nor answer
     client.post(base + "/goto", headers=th, json={"stage": 5})
     assert client.post("/student/weekend/answer", headers=sh, json={"sessionId": s, "questionId": a, "selected": 0}).status_code == 409
     assert client.get("/teacher/weekend/sessions/%d/progress" % s, headers=sh).status_code == 403
+    print("OK")
+''',
+    )
+
+
+def test_peer_help_followup_and_settlement(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+FOLLOW = json.dumps({"stem": "2/4 约分后是？", "options": ["1/2", "1/3", "2/3"], "correctIndex": 0, "explanation": "同除 2"}, ensure_ascii=False)
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=97, title="约分")
+        db.add(l); db.flush()
+        q = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=l.id, stage="lesson", subject="数学", level="C", knowledge="约分",
+                                    stem="4/8 约分？", options_json=json.dumps(["1/2", "1/4"]), correct_index=0)
+        db.add(q); db.commit(); lid, qid = l.id, q.id
+        teacher_id = db.scalar(select(legacy.User.id).where(legacy.User.username == "teacher1"))
+        cls = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id)); cls.teacher_id = teacher_id
+        link = db.scalar(select(legacy.ClassStudent).where(legacy.ClassStudent.student_id == sid))
+        if link is None: db.add(legacy.ClassStudent(class_id=cls.id, student_id=sid))
+        else: link.class_id = cls.id
+        # a second pupil in the same class: the "strong" one
+        strong = legacy.User(school_id=school_id, username="strong1", password_hash=legacy.hash_password("x"), name="小强", role="student", grade=3)
+        db.add(strong); db.flush(); db.add(legacy.ClassStudent(class_id=cls.id, student_id=strong.id)); db.commit(); strong_id = strong.id
+
+    s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    base = f"/teacher/weekend/sessions/{s}"
+    client.post(base + "/start", headers=th); client.post(base + "/goto", headers=th, json={"stage": 4})
+    with legacy.SessionLocal() as db:
+        t = legacy.Base.metadata.tables["weekend_answers"]
+        from sqlalchemy import insert
+        from datetime import datetime
+        db.execute(insert(t).values(school_id=school_id, session_id=s, student_id=strong_id, question_id=qid, selected=0, correct=True, max_hint=0, created_at=datetime.utcnow()))
+        db.execute(insert(t).values(school_id=school_id, session_id=s, student_id=sid, question_id=qid, selected=1, correct=False, max_hint=2, created_at=datetime.utcnow()))
+        db.commit()
+
+    sug = client.get(base + "/peer-suggest", headers=th).json()
+    assert sug["mode"] == "peer" and sug["tutors"][0]["studentId"] == strong_id and sug["tutees"][0]["studentId"] == sid
+    assert sug["tutees"][0]["wrong"][0]["questionId"] == qid
+    assert client.get(base + "/peer-suggest", headers=sh).status_code == 403          # students never see who is "strong"
+
+    # pairing rules
+    bad = client.post(base + "/peer-help", headers=th, json={"tutorId": sid, "tuteeId": strong_id, "questionId": qid})
+    assert bad.status_code == 400                                                        # the tutor must have it right
+    replies.append(FOLLOW)
+    ok = client.post(base + "/peer-help", headers=th, json={"tutorId": strong_id, "tuteeId": sid, "questionId": qid}).json()
+    assert ok["followup"] is True
+    assert client.post(base + "/peer-help", headers=th, json={"tutorId": strong_id, "tuteeId": sid, "questionId": qid}).status_code == 409
+
+    # the tutee sees a follow-up question (no answer in it) and answers it
+    f = client.get("/student/weekend/followup", headers=sh).json()
+    assert f["active"] and f["stem"] == "2/4 约分后是？" and "correctIndex" not in f
+    r = client.post("/student/weekend/followup", headers=sh, json={"peerHelpId": f["peerHelpId"], "selected": 0}).json()
+    assert r["correct"] is True
+    assert client.post("/student/weekend/followup", headers=sh, json={"peerHelpId": f["peerHelpId"], "selected": 0}).status_code == 409
+    assert client.get("/student/weekend/followup", headers=sh).json() == {"active": False}
+
+    # preview writes nothing; settle writes once, to the points ledger, with reasons
+    pv = client.get(base + "/settle-preview", headers=th).json()
+    assert pv["settled"] is False
+    by = {i["studentId"]: i for i in pv["items"]}
+    assert by[strong_id]["parts"]["tutor"] == 2 and by[strong_id]["parts"]["completion"] == 2       # 100% completion, tutee learned
+    assert by[sid]["parts"]["progress"] == 0 and "首次课" in by[sid]["why"]["progress"]["reason"]    # first lesson: no baseline
+    assert pv["teamPoints"] == 0                                                                    # first lesson: no previous rate
+    with legacy.SessionLocal() as db:
+        assert db.scalar(select(legacy.PointLedger.id).where(legacy.PointLedger.category.like("weekend_%"))) is None
+    done = client.post(base + "/settle", headers=th).json()
+    assert done["settled"] is True
+    assert client.post(base + "/settle", headers=th).status_code == 409
+    with legacy.SessionLocal() as db:
+        rows = db.scalars(select(legacy.PointLedger).where(legacy.PointLedger.category.like("weekend_%"))).all()
+        assert sorted((r.student_id, r.category, r.points) for r in rows) == sorted([(strong_id, "weekend_tutor", 2), (strong_id, "weekend_completion", 2)])
+        assert all(r.source == "classroom" and r.related_id == s for r in rows)
+
+    # AI failure on pairing: no follow-up, the teacher records the result by hand
+    s2 = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    b2 = f"/teacher/weekend/sessions/{s2}"
+    client.post(b2 + "/start", headers=th)
+    with legacy.SessionLocal() as db:
+        t = legacy.Base.metadata.tables["weekend_answers"]
+        db.execute(insert(t).values(school_id=school_id, session_id=s2, student_id=strong_id, question_id=qid, selected=0, correct=True, max_hint=0, created_at=datetime.utcnow()))
+        db.execute(insert(t).values(school_id=school_id, session_id=s2, student_id=sid, question_id=qid, selected=1, correct=False, max_hint=3, created_at=datetime.utcnow()))
+        db.commit()
+    replies.append("not json")
+    p2 = client.post(b2 + "/peer-help", headers=th, json={"tutorId": strong_id, "tuteeId": sid, "questionId": qid}).json()
+    assert p2["followup"] is False
+    assert client.post(f"/teacher/weekend/peer-help/{p2['id']}/result", headers=th, json={"correct": True}).json()["followupCorrect"] is True
+    pv2 = client.get(b2 + "/settle-preview", headers=th).json()
+    assert pv2["prevPostRate"] is not None and pv2["items"]
+    print("OK")
+''',
+    )
+
+
+def test_unanswered_questions_count_as_not_done(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+from datetime import datetime
+from sqlalchemy import insert
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=96, title="三题")
+        db.add(l); db.flush()
+        ids = []
+        for i in range(3):
+            q = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=l.id, stage="lesson", subject="数学", level="C", knowledge="k",
+                                        stem=f"q{i}", options_json=json.dumps(["a", "b"]), correct_index=0)
+            db.add(q); db.flush(); ids.append(q.id)
+        teacher_id = db.scalar(select(legacy.User.id).where(legacy.User.username == "teacher1"))
+        cls = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id)); cls.teacher_id = teacher_id
+        link = db.scalar(select(legacy.ClassStudent).where(legacy.ClassStudent.student_id == sid))
+        if link is None: db.add(legacy.ClassStudent(class_id=cls.id, student_id=sid))
+        else: link.class_id = cls.id
+        db.commit(); lid = l.id
+    s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    base = f"/teacher/weekend/sessions/{s}"
+    client.post(base + "/start", headers=th)
+    with legacy.SessionLocal() as db:
+        t = legacy.Base.metadata.tables["weekend_answers"]
+        db.execute(insert(t).values(school_id=school_id, session_id=s, student_id=sid, question_id=ids[0], selected=0, correct=True, max_hint=0, created_at=datetime.utcnow()))
+        db.commit()
+    pv = client.get(base + "/settle-preview", headers=th).json()
+    assert pv["preRate"] == 33.3 and pv["items"][0]["parts"]["completion"] == 0           # 1 of 3 done: no completion bonus
+    assert client.get(base + "/peer-suggest", headers=th).json()["mode"] != "challenge"     # not "everyone is all-correct"
+    print("OK")
+''',
+    )
+
+
+def test_archive_briefs_parent_and_term_summary(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+from datetime import datetime
+from sqlalchemy import insert
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=95, title="通分")
+        db.add(l); db.flush()
+        qs = []
+        for i in range(2):
+            q = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=l.id, stage="lesson", subject="数学", level="C", knowledge="通分",
+                                        stem=f"q{i}", options_json=json.dumps(["a", "b"]), correct_index=0)
+            db.add(q); db.flush(); qs.append(q.id)
+        teacher_id = db.scalar(select(legacy.User.id).where(legacy.User.username == "teacher1"))
+        cls = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id)); cls.teacher_id = teacher_id
+        link = db.scalar(select(legacy.ClassStudent).where(legacy.ClassStudent.student_id == sid))
+        if link is None: db.add(legacy.ClassStudent(class_id=cls.id, student_id=sid))
+        else: link.class_id = cls.id
+        parent = legacy.User(school_id=school_id, username="parent95", password_hash=legacy.hash_password("Parent1234"), name="家长", role="parent")
+        other = legacy.User(school_id=school_id, username="parent96", password_hash=legacy.hash_password("Parent1234"), name="别的家长", role="parent")
+        db.add_all([parent, other]); db.flush()
+        db.add(legacy.ParentStudent(parent_id=parent.id, student_id=sid)); db.commit(); lid = l.id
+    s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    base = f"/teacher/weekend/sessions/{s}"
+    client.post(base + "/start", headers=th); client.post(base + "/next", headers=th)
+    with legacy.SessionLocal() as db:
+        t = legacy.Base.metadata.tables["weekend_answers"]
+        db.execute(insert(t).values(school_id=school_id, session_id=s, student_id=sid, question_id=qs[0], selected=0, correct=True, max_hint=1, created_at=datetime.utcnow()))
+        db.execute(insert(t).values(school_id=school_id, session_id=s, student_id=sid, question_id=qs[1], selected=1, correct=False, max_hint=0, created_at=datetime.utcnow()))
+        db.commit()
+    client.post(base + "/finish", headers=th)
+
+    a = client.get(base + "/archive", headers=th).json()
+    assert a["status"] == "finished" and a["attendance"] == {"present": 1, "total": 1} and [x["stage"] for x in a["timeline"]] == [1, 2]
+    me = a["students"][0]
+    assert me["correct"] == 1 and me["total"] == 2 and me["wrongKnowledge"] == ["通分"] and me["hintAvg"] == 1.0
+    assert client.get(base + "/archive", headers=sh).status_code == 403
+
+    d = client.get(base + "/briefs", headers=th).json()["items"][0]
+    assert "1/2" in d["text"] and "通分" in d["text"] and d["published"] is False
+    assert "排名" not in d["text"] and "第" not in d["text"].split("：")[-1]          # never a ranking
+
+    # a parent sees nothing until the teacher publishes; only the linked parent ever sees it
+    def parent_headers(user):
+        return {"Authorization": "Bearer " + login_and_change(client, user, "Parent1234", "Parent5678")}
+    ph, oh = parent_headers("parent95"), parent_headers("parent96")
+    r0 = client.get(f"/parent/children/{sid}/weekend-briefs", headers=ph); assert r0.status_code == 200, (r0.status_code, r0.text)
+    assert r0.json()["items"] == []
+    edited = "老师改过的一段话"
+    assert client.post(base + "/briefs/publish", headers=th, json={"texts": {str(sid): edited}}).json() == {"published": 1}
+    got = client.get(f"/parent/children/{sid}/weekend-briefs", headers=ph).json()
+    assert got["items"][0]["text"] == edited and got["childName"]
+    assert client.get(f"/parent/children/{sid}/weekend-briefs", headers=oh).status_code == 404
+    assert client.get(f"/parent/children/{sid}/weekend-briefs", headers=sh).status_code == 403
+
+    ts = client.get("/teacher/weekend/term-summary?subject=数学", headers=th).json()
+    assert ts["lessons"] == 1 and ts["students"][0]["attended"] == 1 and ts["students"][0]["trend"][0]["completionRate"] == 50
+    print("OK")
+''',
+    )
+
+
+def test_schedule_shift_ai_lesson_draft_and_question_approval(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+DRAFT = json.dumps({
+    "title": "分数的约分", "coreTarget": "会约分", "teacherPlan": "先复习公因数，再约分", "ppt": ["封面", "公因数", "约分"], "examples": ["例1：12/18 约分得 2/3"],
+    "closureTraining": "练习册 P30",
+    "questions": [
+        {"stem": "6/9 约分后是？", "options": ["2/3", "3/4", "1/2"], "correctIndex": 0, "explanation": "同除 3", "knowledge": "约分"},
+        {"stem": "坏题没有答案", "options": ["a"], "correctIndex": 5},
+        {"stem": "8/12 约分后是？", "options": ["2/3", "1/2", "3/4"], "correctIndex": 0, "explanation": "同除 4", "knowledge": "约分"},
+    ]}, ensure_ascii=False)
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    assert client.get("/v1/weekend-plan").status_code == 200
+    assert client.get("/teacher/weekend/schedule", headers=sh).status_code == 403
+    assert client.get("/teacher/weekend/schedule?subject=英语", headers=th).status_code == 400
+
+    s = client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()
+    assert len(s["items"]) == 18
+
+    # save the school's progress, then the school postpones everything from lesson 3 by two weeks
+    rows = [{"lessonNo": 1, "schoolWeek": 1, "schoolUnit": "分数的意义", "plannedDate": "2026-09-05"},
+            {"lessonNo": 3, "schoolWeek": 3, "schoolUnit": "约分", "plannedDate": "2026-09-19"},
+            {"lessonNo": 4, "schoolWeek": 4, "schoolUnit": "通分", "plannedDate": "not a date"}]
+    saved = client.put("/teacher/weekend/schedule", headers=th, json={"subject": "数学", "rows": rows}).json()["items"]
+    assert saved[3]["plannedDate"] == "" and saved[2]["schoolUnit"] == "约分"                        # an invalid date is dropped, not stored
+    assert client.put("/teacher/weekend/schedule", headers=th, json={"subject": "数学", "rows": [{"lessonNo": 19}]}).status_code == 400
+    assert client.post("/teacher/weekend/schedule/shift", headers=th, json={"subject": "数学", "fromLessonNo": 3, "weeks": 2}).json() == {"moved": 2}
+    after = client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()["items"]
+    assert (after[0]["schoolWeek"], after[0]["plannedDate"]) == (1, "2026-09-05")                       # before the shift: untouched
+    assert (after[2]["schoolWeek"], after[2]["plannedDate"]) == (5, "2026-10-03")
+
+    # AI reads a pasted progress table; nothing is saved by this call
+    replies.append(json.dumps({"rows": [{"schoolWeek": 1, "schoolUnit": "单元一"}, {"schoolWeek": "x", "schoolUnit": "单元二"}]}, ensure_ascii=False))
+    parsed = client.post("/teacher/weekend/schedule/parse", headers=th, json={"subject": "数学", "text": "第1周 单元一"}).json()
+    assert parsed["rows"][1] == {"lessonNo": 2, "schoolWeek": None, "schoolUnit": "单元二"}
+    assert client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()["items"][1]["schoolUnit"] == ""
+    replies.append("garbage")
+    assert client.post("/teacher/weekend/schedule/parse", headers=th, json={"subject": "数学", "text": "x"}).status_code == 502
+
+    # AI lesson draft: lesson unpublished, only valid questions kept, all inactive until approved
+    replies.append(DRAFT)
+    dr = client.post("/teacher/weekend/lessons/draft", headers=th, json={"subject": "数学", "lessonNo": 17}); assert dr.status_code == 200, dr.text
+    d = dr.json()
+    lid = d["lessonId"]
+    assert d["status"]["hasPlan"] and d["status"]["approvedQuestions"] == 0 and d["status"]["draftQuestions"] == 2
+    assert "第 17 次课" in prompts[-1]
+    with legacy.SessionLocal() as db:
+        l = db.get(legacy.TeachingLesson, lid)
+        assert l.published is False and l.title == "分数的约分" and l.lesson_no == 17
+    assert client.post("/teacher/weekend/lessons/draft", headers=th, json={"subject": "数学", "lessonNo": 17}).status_code == 409      # no silent overwrite
+    qs = client.get(f"/teacher/weekend/lessons/{lid}/questions", headers=th).json()["items"]
+    assert [q["active"] for q in qs] == [False, False]
+
+    # students never get a draft question; approving makes it usable; an approved question cannot be removed here
+    ids = [q["id"] for q in qs]
+    st = client.post(f"/teacher/weekend/lessons/{lid}/questions", headers=th, json={"approve": [ids[0]], "remove": [ids[1]]}).json()
+    assert st["approvedQuestions"] == 1 and st["draftQuestions"] == 0
+    st = client.post(f"/teacher/weekend/lessons/{lid}/questions", headers=th, json={"remove": [ids[0]]}).json()
+    assert st["approvedQuestions"] == 1
+
+    # editing the plan text
+    ed = client.put(f"/teacher/weekend/lessons/{lid}", headers=th, json={"title": "约分", "coreTarget": "x", "teacherPlan": "y", "examples": ["e1"], "ppt": ["p1", "p2"]})
+    assert ed.status_code == 200 and client.get(f"/teacher/weekend/lessons/{lid}", headers=th).json()["ppt"] == ["p1", "p2"]
+
+    # what to prepare next: lesson 1 and 2 have no plan yet, so lesson 1 is next
+    nxt = {x["subject"]: x for x in client.get("/teacher/weekend/next", headers=th).json()["items"]}
+    assert nxt["数学"]["lessonNo"] == 1 and nxt["语文"]["subject"] == "语文"      # nothing taught yet: start from lesson 1
     print("OK")
 ''',
     )
