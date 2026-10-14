@@ -381,3 +381,78 @@ with TestClient(app) as client:
     print("OK")
 ''',
     )
+
+
+def test_schedule_shift_ai_lesson_draft_and_question_approval(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+DRAFT = json.dumps({
+    "title": "分数的约分", "coreTarget": "会约分", "teacherPlan": "先复习公因数，再约分", "ppt": ["封面", "公因数", "约分"], "examples": ["例1：12/18 约分得 2/3"],
+    "closureTraining": "练习册 P30",
+    "questions": [
+        {"stem": "6/9 约分后是？", "options": ["2/3", "3/4", "1/2"], "correctIndex": 0, "explanation": "同除 3", "knowledge": "约分"},
+        {"stem": "坏题没有答案", "options": ["a"], "correctIndex": 5},
+        {"stem": "8/12 约分后是？", "options": ["2/3", "1/2", "3/4"], "correctIndex": 0, "explanation": "同除 4", "knowledge": "约分"},
+    ]}, ensure_ascii=False)
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    assert client.get("/v1/weekend-plan").status_code == 200
+    assert client.get("/teacher/weekend/schedule", headers=sh).status_code == 403
+    assert client.get("/teacher/weekend/schedule?subject=英语", headers=th).status_code == 400
+
+    s = client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()
+    assert len(s["items"]) == 18
+
+    # save the school's progress, then the school postpones everything from lesson 3 by two weeks
+    rows = [{"lessonNo": 1, "schoolWeek": 1, "schoolUnit": "分数的意义", "plannedDate": "2026-09-05"},
+            {"lessonNo": 3, "schoolWeek": 3, "schoolUnit": "约分", "plannedDate": "2026-09-19"},
+            {"lessonNo": 4, "schoolWeek": 4, "schoolUnit": "通分", "plannedDate": "not a date"}]
+    saved = client.put("/teacher/weekend/schedule", headers=th, json={"subject": "数学", "rows": rows}).json()["items"]
+    assert saved[3]["plannedDate"] == "" and saved[2]["schoolUnit"] == "约分"                        # an invalid date is dropped, not stored
+    assert client.put("/teacher/weekend/schedule", headers=th, json={"subject": "数学", "rows": [{"lessonNo": 19}]}).status_code == 400
+    assert client.post("/teacher/weekend/schedule/shift", headers=th, json={"subject": "数学", "fromLessonNo": 3, "weeks": 2}).json() == {"moved": 2}
+    after = client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()["items"]
+    assert (after[0]["schoolWeek"], after[0]["plannedDate"]) == (1, "2026-09-05")                       # before the shift: untouched
+    assert (after[2]["schoolWeek"], after[2]["plannedDate"]) == (5, "2026-10-03")
+
+    # AI reads a pasted progress table; nothing is saved by this call
+    replies.append(json.dumps({"rows": [{"schoolWeek": 1, "schoolUnit": "单元一"}, {"schoolWeek": "x", "schoolUnit": "单元二"}]}, ensure_ascii=False))
+    parsed = client.post("/teacher/weekend/schedule/parse", headers=th, json={"subject": "数学", "text": "第1周 单元一"}).json()
+    assert parsed["rows"][1] == {"lessonNo": 2, "schoolWeek": None, "schoolUnit": "单元二"}
+    assert client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()["items"][1]["schoolUnit"] == ""
+    replies.append("garbage")
+    assert client.post("/teacher/weekend/schedule/parse", headers=th, json={"subject": "数学", "text": "x"}).status_code == 502
+
+    # AI lesson draft: lesson unpublished, only valid questions kept, all inactive until approved
+    replies.append(DRAFT)
+    dr = client.post("/teacher/weekend/lessons/draft", headers=th, json={"subject": "数学", "lessonNo": 17}); assert dr.status_code == 200, dr.text
+    d = dr.json()
+    lid = d["lessonId"]
+    assert d["status"]["hasPlan"] and d["status"]["approvedQuestions"] == 0 and d["status"]["draftQuestions"] == 2
+    assert "第 17 次课" in prompts[-1]
+    with legacy.SessionLocal() as db:
+        l = db.get(legacy.TeachingLesson, lid)
+        assert l.published is False and l.title == "分数的约分" and l.lesson_no == 17
+    assert client.post("/teacher/weekend/lessons/draft", headers=th, json={"subject": "数学", "lessonNo": 17}).status_code == 409      # no silent overwrite
+    qs = client.get(f"/teacher/weekend/lessons/{lid}/questions", headers=th).json()["items"]
+    assert [q["active"] for q in qs] == [False, False]
+
+    # students never get a draft question; approving makes it usable; an approved question cannot be removed here
+    ids = [q["id"] for q in qs]
+    st = client.post(f"/teacher/weekend/lessons/{lid}/questions", headers=th, json={"approve": [ids[0]], "remove": [ids[1]]}).json()
+    assert st["approvedQuestions"] == 1 and st["draftQuestions"] == 0
+    st = client.post(f"/teacher/weekend/lessons/{lid}/questions", headers=th, json={"remove": [ids[0]]}).json()
+    assert st["approvedQuestions"] == 1
+
+    # editing the plan text
+    ed = client.put(f"/teacher/weekend/lessons/{lid}", headers=th, json={"title": "约分", "coreTarget": "x", "teacherPlan": "y", "examples": ["e1"], "ppt": ["p1", "p2"]})
+    assert ed.status_code == 200 and client.get(f"/teacher/weekend/lessons/{lid}", headers=th).json()["ppt"] == ["p1", "p2"]
+
+    # what to prepare next: lesson 1 and 2 have no plan yet, so lesson 1 is next
+    nxt = {x["subject"]: x for x in client.get("/teacher/weekend/next", headers=th).json()["items"]}
+    assert nxt["数学"]["lessonNo"] == 1 and nxt["语文"]["subject"] == "语文"      # nothing taught yet: start from lesson 1
+    print("OK")
+''',
+    )

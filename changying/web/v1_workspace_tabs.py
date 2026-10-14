@@ -85,6 +85,9 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
         const wk=document.createElement('a');wk.className='cy-ws-row';wk.href='/v1/weekend';
         wk.innerHTML='<b>周末课控制台</b><i>›</i><small>选一节课，按 7 个环节计时推进，大屏同步显示当前环节</small>';
         kp.after(wk);
+        const wp=document.createElement('a');wp.className='cy-ws-row';wp.href='/v1/weekend-plan';
+        wp.innerHTML='<b>周末课备课</b><i>›</i><small>学期 18 次课的进度表、AI 备课草稿、习题审核，学校调课一键顺延</small>';
+        wk.before(wp);
       }
       main.insertBefore(all,main.firstChild);
     }
