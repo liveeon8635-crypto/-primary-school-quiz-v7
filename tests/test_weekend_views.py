@@ -182,3 +182,135 @@ with TestClient(app) as client:
     print("OK")
 ''',
     )
+
+
+def test_peer_help_followup_and_settlement(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+FOLLOW = json.dumps({"stem": "2/4 约分后是？", "options": ["1/2", "1/3", "2/3"], "correctIndex": 0, "explanation": "同除 2"}, ensure_ascii=False)
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=97, title="约分")
+        db.add(l); db.flush()
+        q = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=l.id, stage="lesson", subject="数学", level="C", knowledge="约分",
+                                    stem="4/8 约分？", options_json=json.dumps(["1/2", "1/4"]), correct_index=0)
+        db.add(q); db.commit(); lid, qid = l.id, q.id
+        teacher_id = db.scalar(select(legacy.User.id).where(legacy.User.username == "teacher1"))
+        cls = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id)); cls.teacher_id = teacher_id
+        link = db.scalar(select(legacy.ClassStudent).where(legacy.ClassStudent.student_id == sid))
+        if link is None: db.add(legacy.ClassStudent(class_id=cls.id, student_id=sid))
+        else: link.class_id = cls.id
+        # a second pupil in the same class: the "strong" one
+        strong = legacy.User(school_id=school_id, username="strong1", password_hash=legacy.hash_password("x"), name="小强", role="student", grade=3)
+        db.add(strong); db.flush(); db.add(legacy.ClassStudent(class_id=cls.id, student_id=strong.id)); db.commit(); strong_id = strong.id
+
+    s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    base = f"/teacher/weekend/sessions/{s}"
+    client.post(base + "/start", headers=th); client.post(base + "/goto", headers=th, json={"stage": 4})
+    with legacy.SessionLocal() as db:
+        t = legacy.Base.metadata.tables["weekend_answers"]
+        from sqlalchemy import insert
+        from datetime import datetime
+        db.execute(insert(t).values(school_id=school_id, session_id=s, student_id=strong_id, question_id=qid, selected=0, correct=True, max_hint=0, created_at=datetime.utcnow()))
+        db.execute(insert(t).values(school_id=school_id, session_id=s, student_id=sid, question_id=qid, selected=1, correct=False, max_hint=2, created_at=datetime.utcnow()))
+        db.commit()
+
+    sug = client.get(base + "/peer-suggest", headers=th).json()
+    assert sug["mode"] == "peer" and sug["tutors"][0]["studentId"] == strong_id and sug["tutees"][0]["studentId"] == sid
+    assert sug["tutees"][0]["wrong"][0]["questionId"] == qid
+    assert client.get(base + "/peer-suggest", headers=sh).status_code == 403          # students never see who is "strong"
+
+    # pairing rules
+    bad = client.post(base + "/peer-help", headers=th, json={"tutorId": sid, "tuteeId": strong_id, "questionId": qid})
+    assert bad.status_code == 400                                                        # the tutor must have it right
+    replies.append(FOLLOW)
+    ok = client.post(base + "/peer-help", headers=th, json={"tutorId": strong_id, "tuteeId": sid, "questionId": qid}).json()
+    assert ok["followup"] is True
+    assert client.post(base + "/peer-help", headers=th, json={"tutorId": strong_id, "tuteeId": sid, "questionId": qid}).status_code == 409
+
+    # the tutee sees a follow-up question (no answer in it) and answers it
+    f = client.get("/student/weekend/followup", headers=sh).json()
+    assert f["active"] and f["stem"] == "2/4 约分后是？" and "correctIndex" not in f
+    r = client.post("/student/weekend/followup", headers=sh, json={"peerHelpId": f["peerHelpId"], "selected": 0}).json()
+    assert r["correct"] is True
+    assert client.post("/student/weekend/followup", headers=sh, json={"peerHelpId": f["peerHelpId"], "selected": 0}).status_code == 409
+    assert client.get("/student/weekend/followup", headers=sh).json() == {"active": False}
+
+    # preview writes nothing; settle writes once, to the points ledger, with reasons
+    pv = client.get(base + "/settle-preview", headers=th).json()
+    assert pv["settled"] is False
+    by = {i["studentId"]: i for i in pv["items"]}
+    assert by[strong_id]["parts"]["tutor"] == 2 and by[strong_id]["parts"]["completion"] == 2       # 100% completion, tutee learned
+    assert by[sid]["parts"]["progress"] == 0 and "首次课" in by[sid]["why"]["progress"]["reason"]    # first lesson: no baseline
+    assert pv["teamPoints"] == 0                                                                    # first lesson: no previous rate
+    with legacy.SessionLocal() as db:
+        assert db.scalar(select(legacy.PointLedger.id).where(legacy.PointLedger.category.like("weekend_%"))) is None
+    done = client.post(base + "/settle", headers=th).json()
+    assert done["settled"] is True
+    assert client.post(base + "/settle", headers=th).status_code == 409
+    with legacy.SessionLocal() as db:
+        rows = db.scalars(select(legacy.PointLedger).where(legacy.PointLedger.category.like("weekend_%"))).all()
+        assert sorted((r.student_id, r.category, r.points) for r in rows) == sorted([(strong_id, "weekend_tutor", 2), (strong_id, "weekend_completion", 2)])
+        assert all(r.source == "classroom" and r.related_id == s for r in rows)
+
+    # AI failure on pairing: no follow-up, the teacher records the result by hand
+    s2 = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    b2 = f"/teacher/weekend/sessions/{s2}"
+    client.post(b2 + "/start", headers=th)
+    with legacy.SessionLocal() as db:
+        t = legacy.Base.metadata.tables["weekend_answers"]
+        db.execute(insert(t).values(school_id=school_id, session_id=s2, student_id=strong_id, question_id=qid, selected=0, correct=True, max_hint=0, created_at=datetime.utcnow()))
+        db.execute(insert(t).values(school_id=school_id, session_id=s2, student_id=sid, question_id=qid, selected=1, correct=False, max_hint=3, created_at=datetime.utcnow()))
+        db.commit()
+    replies.append("not json")
+    p2 = client.post(b2 + "/peer-help", headers=th, json={"tutorId": strong_id, "tuteeId": sid, "questionId": qid}).json()
+    assert p2["followup"] is False
+    assert client.post(f"/teacher/weekend/peer-help/{p2['id']}/result", headers=th, json={"correct": True}).json()["followupCorrect"] is True
+    pv2 = client.get(b2 + "/settle-preview", headers=th).json()
+    assert pv2["prevPostRate"] is not None and pv2["items"]
+    print("OK")
+''',
+    )
+
+
+def test_unanswered_questions_count_as_not_done(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+from datetime import datetime
+from sqlalchemy import insert
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=96, title="三题")
+        db.add(l); db.flush()
+        ids = []
+        for i in range(3):
+            q = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=l.id, stage="lesson", subject="数学", level="C", knowledge="k",
+                                        stem=f"q{i}", options_json=json.dumps(["a", "b"]), correct_index=0)
+            db.add(q); db.flush(); ids.append(q.id)
+        teacher_id = db.scalar(select(legacy.User.id).where(legacy.User.username == "teacher1"))
+        cls = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id)); cls.teacher_id = teacher_id
+        link = db.scalar(select(legacy.ClassStudent).where(legacy.ClassStudent.student_id == sid))
+        if link is None: db.add(legacy.ClassStudent(class_id=cls.id, student_id=sid))
+        else: link.class_id = cls.id
+        db.commit(); lid = l.id
+    s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    base = f"/teacher/weekend/sessions/{s}"
+    client.post(base + "/start", headers=th)
+    with legacy.SessionLocal() as db:
+        t = legacy.Base.metadata.tables["weekend_answers"]
+        db.execute(insert(t).values(school_id=school_id, session_id=s, student_id=sid, question_id=ids[0], selected=0, correct=True, max_hint=0, created_at=datetime.utcnow()))
+        db.commit()
+    pv = client.get(base + "/settle-preview", headers=th).json()
+    assert pv["preRate"] == 33.3 and pv["items"][0]["parts"]["completion"] == 0           # 1 of 3 done: no completion bonus
+    assert client.get(base + "/peer-suggest", headers=th).json()["mode"] != "challenge"     # not "everyone is all-correct"
+    print("OK")
+''',
+    )

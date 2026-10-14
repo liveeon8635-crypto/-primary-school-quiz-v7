@@ -38,9 +38,9 @@ function control(){
   root.textContent='';
   if(!SID){picker();return}
   var head=el('div',{class:'card'}),stagesBox=el('div',{class:'card'}),content=el('div',{class:'card'}),msgBox=el('div'),
-      progBox=el('div',{class:'card'}),hintBox=el('div',{class:'card'});
-  root.appendChild(head);root.appendChild(stagesBox);root.appendChild(content);root.appendChild(progBox);root.appendChild(hintBox);root.appendChild(msgBox);
-  hintsCard(hintBox);
+      progBox=el('div',{class:'card'}),hintBox=el('div',{class:'card'}),peerBox=el('div',{class:'card'}),scoreBox=el('div',{class:'card'});
+  root.appendChild(head);root.appendChild(stagesBox);root.appendChild(content);root.appendChild(progBox);root.appendChild(peerBox);root.appendChild(scoreBox);root.appendChild(hintBox);root.appendChild(msgBox);
+  hintsCard(hintBox);peerCard(peerBox);scoreCard(scoreBox);
   function post(path,body){return api('/teacher/weekend/sessions/'+SID+'/'+path,{json:body||{}}).then(paint).catch(function(e){msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
   function paint(d){
     head.textContent='';stagesBox.textContent='';content.textContent='';remain=d.remainingSeconds;progress(progBox,d);
@@ -89,6 +89,58 @@ function progress(box,d){
         el('span',{class:'muted',text:'完成率 '+i.completionRate+'%'})));
     });
   }).catch(function(){});
+}
+var PEER_NAMES={};
+function peerCard(box){
+  box.appendChild(el('h2',{text:'强带弱（复盘环节用）'}));
+  box.appendChild(el('div',{class:'muted',text:'只有你能看到谁完成得好、谁需要帮助。点选后，被讲的同学会收到一道换数字的巩固题；做对了，小老师加分。'}));
+  var out=el('div'),msg=el('div'),go=el('button',{text:'查看建议',onclick:function(){load()}});
+  box.appendChild(go);box.appendChild(out);box.appendChild(msg);
+  var tutor=null,tutee=null,qid=null;
+  function load(){
+    out.textContent='';msg.textContent='';tutor=tutee=qid=null;
+    api('/teacher/weekend/sessions/'+SID+'/peer-suggest').then(function(d){
+      out.appendChild(el('div',{class:'notice ok',text:d.message}));
+      if(d.mode!=='peer')return;
+      var pick=el('div'),btn=el('button',{class:'primary',text:'安排讲解',disabled:true});
+      function upd(){btn.disabled=!(tutor&&tutee&&qid)}
+      out.appendChild(el('b',{text:'谁来讲'}));
+      d.tutors.forEach(function(t){out.appendChild(el('div',{class:'row'},el('button',{text:t.name+'（完成率 '+t.completionRate+'%，本节已讲 '+t.explainedThisLesson+' 次）',onclick:function(){tutor=t.studentId;upd()}})))});
+      out.appendChild(el('b',{text:'讲给谁、讲哪一题'}));
+      d.tutees.forEach(function(t){t.wrong.forEach(function(w){out.appendChild(el('div',{class:'row'},el('button',{text:t.name+'：'+w.stem.slice(0,40),onclick:function(){tutee=t.studentId;qid=w.questionId;upd()}})))})});
+      btn.addEventListener('click',function(){
+        btn.disabled=true;
+        api('/teacher/weekend/sessions/'+SID+'/peer-help',{json:{tutorId:tutor,tuteeId:tutee,questionId:qid}}).then(function(r){
+          msg.textContent='';msg.appendChild(el('div',{class:'notice ok',text:r.message}));
+          if(!r.followup){msg.appendChild(el('div',{class:'row'},el('button',{text:'巩固题做对了',onclick:function(){api('/teacher/weekend/peer-help/'+r.id+'/result',{json:{correct:true}}).then(function(){msg.appendChild(el('div',{class:'notice ok',text:'已记录：做对'}))})}}),
+            el('button',{text:'没做对',onclick:function(){api('/teacher/weekend/peer-help/'+r.id+'/result',{json:{correct:false}}).then(function(){msg.appendChild(el('div',{class:'notice ok',text:'已记录：没做对'}))})}})))}
+        }).catch(function(e){msg.textContent='';msg.appendChild(el('div',{class:'notice error',text:e.message}));btn.disabled=false});
+      });
+      out.appendChild(el('div',{class:'row'},btn));
+    }).catch(function(e){out.appendChild(el('div',{class:'notice error',text:e.message}))});
+  }
+}
+var PART={progress:'进步',completion:'完成率',tutor:'小老师',team:'团队'};
+function scoreCard(box){
+  box.appendChild(el('h2',{text:'结算积分'}));
+  box.appendChild(el('div',{class:'muted',text:'课后点一次。先预览每人为什么得分，确认后写入积分（只能结算一次）。进步只和自己最近 3 次课比，退步不扣分。'}));
+  var out=el('div'),msg=el('div');
+  var pre=el('button',{text:'预览得分',onclick:function(){preview()}});
+  box.appendChild(pre);box.appendChild(out);box.appendChild(msg);
+  function paint(d){
+    out.textContent='';
+    out.appendChild(el('div',{class:'muted',text:'班级完成率 '+d.preRate+'% → 巩固后 '+d.postRate+'%'+(d.prevPostRate==null?'（首次课，没有上一次可比）':'（上一次 '+d.prevPostRate+'%）')+' · 团队分 '+d.teamPoints}));
+    d.items.forEach(function(i){
+      var parts=Object.keys(PART).map(function(k){return i.parts[k]?PART[k]+' +'+i.parts[k]:null}).filter(Boolean).join('，')||'本节没有加分';
+      out.appendChild(el('div',{class:'row'},el('b',{text:i.name+'  共 '+i.total+' 分'}),el('span',{class:'muted',text:parts+(i.why.progress.reason&&i.why.progress.reason!=='ok'?' · '+i.why.progress.reason:'')})));
+    });
+    if(d.settled){out.appendChild(el('div',{class:'notice ok',text:'已结算，积分已写入。'}));return}
+    out.appendChild(el('button',{class:'primary',text:'确认结算并写入积分',onclick:function(){
+      msg.textContent='';
+      api('/teacher/weekend/sessions/'+SID+'/settle',{method:'POST',json:{}}).then(function(r){paint(r);msg.appendChild(el('div',{class:'notice ok',text:'已写入积分'}))}).catch(function(e){msg.appendChild(el('div',{class:'notice error',text:e.message}))});
+    }}));
+  }
+  function preview(){out.textContent='';api('/teacher/weekend/sessions/'+SID+'/settle-preview').then(paint).catch(function(e){out.appendChild(el('div',{class:'notice error',text:e.message}))})}
 }
 function hintsCard(box){
   box.appendChild(el('h2',{text:'本节习题的 3 级提示'}));
@@ -210,8 +262,25 @@ function practice(){
       card.appendChild(hintsOut);card.appendChild(out);box.appendChild(card);
     });
   }
-  load();
-  wait=setInterval(function(){if(!document.hidden)load()},20000);
+  var fbox=el('div');root.insertBefore(fbox,box);
+  function followup(){
+    api('/student/weekend/followup').then(function(f){
+      fbox.textContent='';if(!f.active)return;
+      var card=el('div',{class:'card'}),chosen=-1,out=el('div'),opts=el('div');
+      card.appendChild(el('h2',{text:'巩固小题：刚讲过的方法，再试一道'}));card.appendChild(el('b',{text:f.stem}));
+      f.options.forEach(function(o,i){opts.appendChild(el('button',{style:'display:block;width:100%;text-align:left;margin:6px 0',text:LETTERS[i]+'. '+o,onclick:function(){chosen=i;Array.prototype.forEach.call(opts.children,function(x,j){x.className=j===i?'on':''})}}))});
+      card.appendChild(opts);
+      var sub=el('button',{class:'primary',text:'提交',onclick:function(){
+        if(chosen<0){alert('先选一个答案');return}sub.disabled=true;
+        api('/student/weekend/followup',{json:{peerHelpId:f.peerHelpId,selected:chosen}}).then(function(r){
+          out.appendChild(el('div',{class:'notice '+(r.correct?'ok':'error'),text:r.correct?'答对了':'答错了，正确答案是 '+LETTERS[r.correctIndex]}));if(r.explanation)out.appendChild(el('div',{class:'muted',text:r.explanation}));
+        }).catch(function(e){alert(e.message);sub.disabled=false});
+      }});
+      card.appendChild(el('div',{class:'row'},sub));card.appendChild(out);fbox.appendChild(card);
+    }).catch(function(){});
+  }
+  load();followup();
+  wait=setInterval(function(){if(!document.hidden){load();if(!fbox.firstChild)followup()}},20000);
 }
 boot_student(practice);
 """
