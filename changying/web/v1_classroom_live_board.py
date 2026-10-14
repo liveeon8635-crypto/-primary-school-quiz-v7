@@ -22,9 +22,12 @@ from __future__ import annotations
 from datetime import datetime
 import json
 import re
+import threading
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 
@@ -48,6 +51,12 @@ _REFRESH_BUTTON = '<button class="btn" id="cy-session-refresh">刷新状态</but
 _BOARD_LINK = (
     '<a class="btn" id="cy-session-board" href="/v1/classroom-board/\'+sid+\'" '
     'target="_blank" data-cy-open-window="1">打开大屏</a>'
+    '<button class="btn" id="cy-board-freeze" data-cy-board="freeze" data-sid="\'+sid+\'" '
+    'title="大屏停在当前画面，老师操作不会影响投影">冻结大屏</button>'
+    '<button class="btn" id="cy-board-cover" data-cy-board="cover" data-sid="\'+sid+\'" '
+    'title="大屏只显示“课堂进行中，请稍候”">遮盖大屏</button>'
+    '<button class="btn" id="cy-board-unlock" data-cy-board="unlock" data-sid="\'+sid+\'" style="display:none">解锁大屏</button>'
+    '<span id="cy-board-lock-state" style="margin:0 8px;font-size:12px;color:#7a625c"></span>'
 )
 
 
@@ -69,6 +78,7 @@ def patch_v1_classroom_live_board_html(html: str) -> str:
     marker = (
         f"<!-- {V1_CLASSROOM_LIVE_BOARD_MARKER} -->"
         f"<script>{HANDOUT_PANEL_JS}</script>"
+        f"<script>{BOARD_LOCK_JS}</script>"
     )
     html = html.replace("</body>", marker + "</body>", 1) if "</body>" in html else html + marker
     return with_open_window_script(html)
@@ -122,6 +132,34 @@ def board_html(sid: int) -> str:
     )
 
 
+# "Lock the big screen": while the teacher works on their own computer the projected board must not change.
+# freeze = keep showing what is on screen now; cover = show a neutral "class in progress" page.
+# Held in memory (one web process; it is only meant to last for one lesson) and expires by itself.
+BOARD_LOCK_MODES = ("freeze", "cover")
+BOARD_LOCK_TTL_SECONDS = 6 * 60 * 60
+_BOARD_LOCKS: dict[tuple[int, int], dict[str, Any]] = {}
+_BOARD_LOCK_GUARD = threading.Lock()
+
+
+class BoardLockBody(BaseModel):
+    mode: str = "freeze"
+
+
+def _active_lock(school_id: int, sid: int) -> dict[str, Any] | None:
+    with _BOARD_LOCK_GUARD:
+        now = time.time()
+        for key in [k for k, v in _BOARD_LOCKS.items() if v["expires"] <= now]:
+            _BOARD_LOCKS.pop(key, None)
+        lock = _BOARD_LOCKS.get((school_id, sid))
+        return dict(lock) if lock else None
+
+
+def _lock_json(lock: dict[str, Any] | None) -> dict[str, Any]:
+    if not lock:
+        return {"locked": False, "mode": ""}
+    return {"locked": True, "mode": lock["mode"], "since": lock["since"]}
+
+
 def install_v1_classroom_live_board_routes(implementation: Any) -> None:
     app = implementation.app
     if getattr(app.state, "v1_classroom_live_board_routes_installed", False):
@@ -161,6 +199,16 @@ def install_v1_classroom_live_board_routes(implementation: Any) -> None:
         if not raw_session:
             raise HTTPException(404, "课堂不存在或无权限")
         session_row = _mapping(raw_session)
+        lock = _active_lock(int(u.school_id), sid)
+        if lock and lock["mode"] == "cover":
+            return {
+                "session": {"title": str(session_row.get("title") or ""), "className": ""},
+                "check": None,
+                "lock": _lock_json(lock),
+                "serverTime": datetime.utcnow().strftime("%H:%M:%S"),
+            }
+        if lock and lock["mode"] == "freeze" and lock.get("snapshot"):
+            return {**lock["snapshot"], "lock": _lock_json(lock)}
         class_row = db.scalar(
             select(SchoolClass).where(
                 SchoolClass.id == session_row["class_id"],
@@ -270,6 +318,52 @@ def install_v1_classroom_live_board_routes(implementation: Any) -> None:
                     }
         return payload
 
+    def own_session(db: Any, u: Any, sid: int) -> None:
+        implementation.need(u, "teacher")
+        found = db.execute(
+            select(sessions.c.id).where(
+                sessions.c.id == sid, sessions.c.school_id == u.school_id, sessions.c.teacher_id == u.id
+            )
+        ).first()
+        if not found:
+            raise HTTPException(404, "课堂不存在或无权限")
+
+    @router.get("/teacher/classroom-sessions/{sid}/board-lock")
+    def board_lock_state(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        own_session(db, u, sid)
+        return _lock_json(_active_lock(int(u.school_id), sid))
+
+    @router.post("/teacher/classroom-sessions/{sid}/board-lock")
+    def board_lock_set(sid: int, b: BoardLockBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        own_session(db, u, sid)
+        if b.mode not in BOARD_LOCK_MODES:
+            raise HTTPException(400, "锁定方式只能是 freeze（冻结）或 cover（遮盖）")
+        key = (int(u.school_id), sid)
+        with _BOARD_LOCK_GUARD:
+            _BOARD_LOCKS.pop(key, None)  # a fresh snapshot of what is on screen right now
+        snapshot = live_board(sid, False, u, db) if b.mode == "freeze" else None
+        lock = {
+            "mode": b.mode,
+            "since": datetime.utcnow().strftime("%H:%M:%S"),
+            "expires": time.time() + BOARD_LOCK_TTL_SECONDS,
+            "snapshot": snapshot,
+        }
+        with _BOARD_LOCK_GUARD:
+            _BOARD_LOCKS[key] = lock
+        implementation.audit(db, u, "classroom.board.lock", f"session={sid}:{b.mode}")
+        db.commit()
+        return _lock_json(lock)
+
+    @router.delete("/teacher/classroom-sessions/{sid}/board-lock")
+    def board_lock_clear(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        own_session(db, u, sid)
+        with _BOARD_LOCK_GUARD:
+            had = _BOARD_LOCKS.pop((int(u.school_id), sid), None)
+        if had:
+            implementation.audit(db, u, "classroom.board.unlock", f"session={sid}")
+            db.commit()
+        return _lock_json(None)
+
     def find_handout(db: Any, user: Any, session_row: dict[str, Any]) -> dict[str, Any] | None:
         if handouts is None:
             return None
@@ -327,6 +421,49 @@ def install_v1_classroom_live_board_routes(implementation: Any) -> None:
     app.include_router(router)
     app.state.v1_classroom_live_board_routes_installed = True
 
+
+BOARD_LOCK_JS = r"""
+(function(){
+  function read(store,key){try{return store.getItem(key)||''}catch(e){return ''}}
+  function token(){
+    var rem=false;try{rem=localStorage.getItem('v717Remember')==='1'}catch(e){}
+    var first=rem?[localStorage,sessionStorage]:[sessionStorage,localStorage],v='';
+    for(var i=0;i<first.length&&!v;i++){v=read(first[i],'v717Token')}
+    if(!v)v=read(sessionStorage,'v6Token')||read(localStorage,'v6Token');
+    return v&&v!=='demo'?v:'';
+  }
+  function $(id){return document.getElementById(id)}
+  function call(method,sid,mode){
+    var t=token();if(!t)return Promise.reject(new Error('请先登录老师账号'));
+    var opt={method:method,headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},cache:'no-store'};
+    if(mode)opt.body=JSON.stringify({mode:mode});
+    return fetch('/teacher/classroom-sessions/'+sid+'/board-lock',opt).then(function(r){if(!r.ok)throw new Error('http '+r.status);return r.json()});
+  }
+  function paint(st){
+    var f=$('cy-board-freeze'),c=$('cy-board-cover'),u=$('cy-board-unlock'),s=$('cy-board-lock-state');
+    if(!f||!c||!u||!s)return;
+    f.style.display=c.style.display=st.locked?'none':'';
+    u.style.display=st.locked?'':'none';
+    s.textContent=st.locked?(st.mode==='cover'?'大屏已遮盖':'大屏已冻结')+'（'+st.since+' 起，6 小时后自动解除）':'';
+  }
+  function tellBoards(sid){try{new BroadcastChannel('cyBoard'+sid).postMessage('lock')}catch(e){}}
+  document.addEventListener('click',function(e){
+    var b=e.target.closest&&e.target.closest('[data-cy-board]');if(!b)return;
+    var sid=b.getAttribute('data-sid'),act=b.getAttribute('data-cy-board');b.disabled=true;
+    call(act==='unlock'?'DELETE':'POST',sid,act==='unlock'?null:act)
+      .then(function(st){paint(st);tellBoards(sid)})
+      .catch(function(err){var s=$('cy-board-lock-state');if(s)s.textContent='操作失败：'+err.message})
+      .then(function(){b.disabled=false});
+  });
+  // The page redraws itself; whenever a fresh set of buttons appears, ask the server what state the screen is in.
+  var lastEl=null;
+  setInterval(function(){
+    var f=$('cy-board-freeze');if(!f){lastEl=null;return}
+    if(f===lastEl)return;lastEl=f;
+    call('GET',f.getAttribute('data-sid')).then(paint).catch(function(){});
+  },800);
+})();
+"""
 
 HANDOUT_PANEL_JS = r"""
 (function(){
@@ -464,6 +601,15 @@ __PAGE_AUTH__  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,fu
     });
     root.innerHTML=html;
   }
+  // Teacher pressed "lock big screen": freeze keeps what is shown now; cover shows a neutral page.
+  var covered=false;
+  function handle(d){
+    var lk=d.lock;
+    if(lk&&lk.mode==='cover'){covered=true;lastData=null;root.innerHTML='<div class="msg">课堂进行中，请稍候</div>';return}
+    if(lk&&lk.mode==='freeze'&&lastData&&!covered)return;
+    covered=false;render(d);
+  }
+  try{var bc=new BroadcastChannel('cyBoard'+SID);bc.onmessage=function(){tick()}}catch(e){}
   var busy=false,timer=null;
   function tick(){
     if(busy)return;
@@ -478,7 +624,7 @@ __PAGE_AUTH__  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,fu
           return r.json();
         });
     })
-      .then(function(d){if(d)render(d)})
+      .then(function(d){if(d)handle(d)})
       .catch(function(){clock.textContent='连接中断，正在重试…'})
       .then(function(){busy=false});
   }
@@ -491,6 +637,8 @@ __PAGE_AUTH__  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,fu
 
 __all__ = [
     "BOARD_HTML",
+    "BOARD_LOCK_JS",
+    "BOARD_LOCK_MODES",
     "HANDOUT_PANEL_JS",
     "handout_excerpt",
     "LIVE_BOARD_POLL_MS",
