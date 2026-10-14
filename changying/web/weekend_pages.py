@@ -226,8 +226,11 @@ PAGE_HTML = """<!doctype html>
 """
 
 
+EXTRA_CSS = "textarea.s{min-height:64px}\n.tag.ok{background:#ecfdf3;color:#067647}.tag.warn{background:#fff4e5;color:#b54708}"
+
+
 def _page(title: str, js: str, with_header: bool) -> str:
-    html = PAGE_HTML.replace("__TITLE__", title).replace("__CSS__", PAGE_CSS)
+    html = PAGE_HTML.replace("__TITLE__", title).replace("__CSS__", PAGE_CSS + EXTRA_CSS)
     if with_header:
         html = html.replace("<body>", f'<body><header><h1>{title}</h1><a href="/v1">返回首页</a></header>', 1)
     return html.replace("__JS__", (COMMON_JS + js).replace("__PAGE_AUTH__", PAGE_AUTH_JS))

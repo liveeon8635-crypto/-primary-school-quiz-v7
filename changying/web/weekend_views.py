@@ -128,6 +128,11 @@ def install_weekend_views(implementation: Any) -> APIRouter:
             "remainingSeconds": timer, "stageCount": STAGE_COUNT,
             "content": stage_content(no, lesson) if stage and row.status == "running" else [],
         }
+        if no == 4 and row.status == "running":
+            # 随堂练习: the big screen shows the question stems (never options or answers) next to the instructions.
+            TQ = implementation.TeachingQuestion
+            stems = db.scalars(select(TQ.stem).where(TQ.school_id == row.school_id, TQ.lesson_id == row.lesson_id, TQ.active.is_(True)).order_by(TQ.id).limit(12)).all()
+            out["content"] = out["content"] + [f"{i}. {t}" for i, t in enumerate(stems, start=1)]
         if board:
             if row.covered:
                 out["content"] = []

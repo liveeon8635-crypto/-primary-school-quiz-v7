@@ -170,6 +170,11 @@ with TestClient(app) as client:
     me = [i for i in p["items"] if i["studentId"] == sid][0]
     assert me["answered"] == 2 and me["correct"] == 1 and me["completionRate"] == 50 and me["hintMax"] == 3 and me["hintAvg"] == 2.0
 
+    # the big screen shows the question stems (no options, no answers) during 随堂练习
+    client.post(base + "/goto", headers=th, json={"stage": 4})
+    shown = client.get(base + "/board", headers=th).json()["content"]
+    assert shown[-2:] == ["1. 1/2+1/4=?", "2. 1/3+1/3=?"] and not any("3/4" in x for x in shown)
+
     # outside the practice stage students can neither ask for hints nor answer
     client.post(base + "/goto", headers=th, json={"stage": 5})
     assert client.post("/student/weekend/answer", headers=sh, json={"sessionId": s, "questionId": a, "selected": 0}).status_code == 409
