@@ -33,7 +33,7 @@ DELETE_TABLES = (
     # points, rewards, learning evidence
     "point_ledger", "reward_redemptions", "auto_reward_grants", "learning_evidence_events",
     # classroom sessions
-    "classroom_events", "classroom_sessions", "classroom_segments", "classroom_quick_checks",
+    "classroom_events", "weekend_sessions", "weekend_stage_log", "classroom_sessions", "classroom_segments", "classroom_quick_checks",
     "classroom_quick_check_responses", "classroom_presenter_turns", "classroom_presentation_reviews",
     "classroom_review_handouts", "classroom_handout_releases", "class_todos",
     # 定制教学 practice records
