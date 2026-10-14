@@ -38,9 +38,9 @@ function control(){
   root.textContent='';
   if(!SID){picker();return}
   var head=el('div',{class:'card'}),stagesBox=el('div',{class:'card'}),content=el('div',{class:'card'}),msgBox=el('div'),
-      progBox=el('div',{class:'card'}),hintBox=el('div',{class:'card'}),peerBox=el('div',{class:'card'}),scoreBox=el('div',{class:'card'});
-  root.appendChild(head);root.appendChild(stagesBox);root.appendChild(content);root.appendChild(progBox);root.appendChild(peerBox);root.appendChild(scoreBox);root.appendChild(hintBox);root.appendChild(msgBox);
-  hintsCard(hintBox);peerCard(peerBox);scoreCard(scoreBox);
+      progBox=el('div',{class:'card'}),hintBox=el('div',{class:'card'}),peerBox=el('div',{class:'card'}),scoreBox=el('div',{class:'card'}),archBox=el('div',{class:'card'});
+  root.appendChild(head);root.appendChild(stagesBox);root.appendChild(content);root.appendChild(progBox);root.appendChild(peerBox);root.appendChild(scoreBox);root.appendChild(archBox);root.appendChild(hintBox);root.appendChild(msgBox);
+  hintsCard(hintBox);peerCard(peerBox);scoreCard(scoreBox);archiveCard(archBox);
   function post(path,body){return api('/teacher/weekend/sessions/'+SID+'/'+path,{json:body||{}}).then(paint).catch(function(e){msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
   function paint(d){
     head.textContent='';stagesBox.textContent='';content.textContent='';remain=d.remainingSeconds;progress(progBox,d);
@@ -117,6 +117,36 @@ function peerCard(box){
         }).catch(function(e){msg.textContent='';msg.appendChild(el('div',{class:'notice error',text:e.message}));btn.disabled=false});
       });
       out.appendChild(el('div',{class:'row'},btn));
+    }).catch(function(e){out.appendChild(el('div',{class:'notice error',text:e.message}))});
+  }
+}
+function archiveCard(box){
+  box.appendChild(el('h2',{text:'课堂档案与家长简报'}));
+  box.appendChild(el('div',{class:'muted',text:'下课后查看这节课的完整记录；家长简报只讲孩子自己的完成、努力和要复习的知识点，不排名。你确认（可修改）后，家长才能看到。'}));
+  var out=el('div'),msg=el('div');
+  box.appendChild(el('div',{class:'row'},el('button',{text:'查看这节课的档案',onclick:function(){archive()}}),el('button',{text:'家长简报（预览/发布）',onclick:function(){briefs()}})));
+  box.appendChild(out);box.appendChild(msg);
+  function archive(){
+    out.textContent='';
+    api('/teacher/weekend/sessions/'+SID+'/archive').then(function(a){
+      out.appendChild(el('div',{class:'muted',text:a.title+' · 到课 '+a.attendance.present+'/'+a.attendance.total+(a.classRates?' · 班级完成率 '+a.classRates.pre+'% → '+a.classRates.post+'%':'')}));
+      a.timeline.forEach(function(t){out.appendChild(el('div',{class:'row'},el('span',{class:'tag',text:'环节 '+t.stage}),el('span',{class:'muted',text:'计划 '+t.plannedMin+' 分，实际 '+t.actualMin+' 分'})))});
+      a.students.forEach(function(s){
+        out.appendChild(el('div',{class:'row'},el('b',{text:s.name}),s.attended?el('span',{class:'muted',text:'做对 '+s.correct+'/'+s.total+' · 完成率 '+s.completionRate+'% · 平均提示 '+s.hintAvg+(s.helped?' · 讲解 '+s.helped+' 次':'')+(s.wrongKnowledge.length?' · 要补：'+s.wrongKnowledge.join('、'):'')}):el('span',{class:'tag warn',text:'缺课/未作答'})));
+      });
+      a.peerHelp.forEach(function(p){out.appendChild(el('div',{class:'muted',text:'强带弱：'+p.tutor+' 讲给 '+p.tutee+(p.followupCorrect==null?'（巩固题未做）':p.followupCorrect?'，巩固题做对':'，巩固题没做对')}))});
+    }).catch(function(e){out.appendChild(el('div',{class:'notice error',text:e.message}))});
+  }
+  function briefs(){
+    out.textContent='';msg.textContent='';
+    api('/teacher/weekend/sessions/'+SID+'/briefs').then(function(d){
+      if(!d.items.length){out.appendChild(el('div',{class:'muted',text:'还没有学生作答。'}));return}
+      var tas={};
+      d.items.forEach(function(i){var t=el('textarea',{class:'s'});t.value=i.text;tas[i.studentId]=t;out.appendChild(el('div',{},el('b',{text:i.name+(i.published?'（已发布，再发布会覆盖）':'')}),t))});
+      out.appendChild(el('button',{class:'primary',text:'发布给家长',onclick:function(){
+        var texts={};Object.keys(tas).forEach(function(k){texts[k]=tas[k].value});
+        api('/teacher/weekend/sessions/'+SID+'/briefs/publish',{json:{texts:texts}}).then(function(r){msg.textContent='';msg.appendChild(el('div',{class:'notice ok',text:'已发布 '+r.published+' 份。家长在“孩子课程”页能看到。'}))}).catch(function(e){msg.appendChild(el('div',{class:'notice error',text:e.message}))});
+      }}));
     }).catch(function(e){out.appendChild(el('div',{class:'notice error',text:e.message}))});
   }
 }
@@ -305,6 +335,27 @@ def _page(title: str, js: str, with_header: bool) -> str:
     return html.replace("__JS__", (COMMON_JS + js).replace("__PAGE_AUTH__", PAGE_AUTH_JS))
 
 
+PARENT_JS = r"""
+function parentBoot(){
+  obtainToken().then(function(t){TOKEN=t;if(!TOKEN){msg('请先登录后再打开');return}
+    return api('/session').then(function(s){if(s.role!=='parent'){msg('这个页面给家长使用');return}return api('/parent/children').then(paintChildren)})}).catch(function(e){msg(e.message||'打不开')});
+}
+function paintChildren(list){
+  root.textContent='';
+  var items=Array.isArray(list)?list:(list.items||list.children||[]);
+  if(!items.length){root.appendChild(el('div',{class:'card'},el('h2',{text:'还没有关联孩子'})));return}
+  items.forEach(function(c){
+    var id=c.id||c.studentID||c.studentId,box=el('div',{class:'card'},el('h2',{text:(c.name||'孩子')+' 的周末课简报'}));
+    root.appendChild(box);
+    api('/parent/children/'+id+'/weekend-briefs').then(function(d){
+      if(!d.items.length){box.appendChild(el('div',{class:'muted',text:'老师发布后会显示在这里。'}));return}
+      d.items.forEach(function(b){box.appendChild(el('div',{class:'item'},el('span',{class:'t'},el('b',{text:b.title+' · '+b.at}),el('div',{text:b.text}))))});
+    }).catch(function(e){box.appendChild(el('div',{class:'notice error',text:e.message}))});
+  });
+}
+parentBoot();
+"""
+
 STUDENT_BOOT = r"""
 function boot_student(run){
   obtainToken().then(function(t){TOKEN=t;if(!TOKEN){msg('请先登录后再打开');return}
@@ -317,6 +368,10 @@ def practice_page_html() -> str:
     return _page("课堂练习", STUDENT_BOOT + PRACTICE_JS, True)
 
 
+def brief_page_html() -> str:
+    return _page("周末课简报", PARENT_JS, True)
+
+
 def control_page_html() -> str:
     return _page("周末课控制台", CONTROL_JS, True)
 
@@ -325,4 +380,4 @@ def board_page_html() -> str:
     return _page("课堂大屏", BOARD_JS, False)
 
 
-__all__ = ["board_page_html", "control_page_html", "practice_page_html"]
+__all__ = ["board_page_html", "brief_page_html", "control_page_html", "practice_page_html"]

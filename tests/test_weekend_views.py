@@ -314,3 +314,70 @@ with TestClient(app) as client:
     print("OK")
 ''',
     )
+
+
+def test_archive_briefs_parent_and_term_summary(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+from datetime import datetime
+from sqlalchemy import insert
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=95, title="通分")
+        db.add(l); db.flush()
+        qs = []
+        for i in range(2):
+            q = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=l.id, stage="lesson", subject="数学", level="C", knowledge="通分",
+                                        stem=f"q{i}", options_json=json.dumps(["a", "b"]), correct_index=0)
+            db.add(q); db.flush(); qs.append(q.id)
+        teacher_id = db.scalar(select(legacy.User.id).where(legacy.User.username == "teacher1"))
+        cls = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id)); cls.teacher_id = teacher_id
+        link = db.scalar(select(legacy.ClassStudent).where(legacy.ClassStudent.student_id == sid))
+        if link is None: db.add(legacy.ClassStudent(class_id=cls.id, student_id=sid))
+        else: link.class_id = cls.id
+        parent = legacy.User(school_id=school_id, username="parent95", password_hash=legacy.hash_password("Parent1234"), name="家长", role="parent")
+        other = legacy.User(school_id=school_id, username="parent96", password_hash=legacy.hash_password("Parent1234"), name="别的家长", role="parent")
+        db.add_all([parent, other]); db.flush()
+        db.add(legacy.ParentStudent(parent_id=parent.id, student_id=sid)); db.commit(); lid = l.id
+    s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    base = f"/teacher/weekend/sessions/{s}"
+    client.post(base + "/start", headers=th); client.post(base + "/next", headers=th)
+    with legacy.SessionLocal() as db:
+        t = legacy.Base.metadata.tables["weekend_answers"]
+        db.execute(insert(t).values(school_id=school_id, session_id=s, student_id=sid, question_id=qs[0], selected=0, correct=True, max_hint=1, created_at=datetime.utcnow()))
+        db.execute(insert(t).values(school_id=school_id, session_id=s, student_id=sid, question_id=qs[1], selected=1, correct=False, max_hint=0, created_at=datetime.utcnow()))
+        db.commit()
+    client.post(base + "/finish", headers=th)
+
+    a = client.get(base + "/archive", headers=th).json()
+    assert a["status"] == "finished" and a["attendance"] == {"present": 1, "total": 1} and [x["stage"] for x in a["timeline"]] == [1, 2]
+    me = a["students"][0]
+    assert me["correct"] == 1 and me["total"] == 2 and me["wrongKnowledge"] == ["通分"] and me["hintAvg"] == 1.0
+    assert client.get(base + "/archive", headers=sh).status_code == 403
+
+    d = client.get(base + "/briefs", headers=th).json()["items"][0]
+    assert "1/2" in d["text"] and "通分" in d["text"] and d["published"] is False
+    assert "排名" not in d["text"] and "第" not in d["text"].split("：")[-1]          # never a ranking
+
+    # a parent sees nothing until the teacher publishes; only the linked parent ever sees it
+    def parent_headers(user):
+        return {"Authorization": "Bearer " + login_and_change(client, user, "Parent1234", "Parent5678")}
+    ph, oh = parent_headers("parent95"), parent_headers("parent96")
+    r0 = client.get(f"/parent/children/{sid}/weekend-briefs", headers=ph); assert r0.status_code == 200, (r0.status_code, r0.text)
+    assert r0.json()["items"] == []
+    edited = "老师改过的一段话"
+    assert client.post(base + "/briefs/publish", headers=th, json={"texts": {str(sid): edited}}).json() == {"published": 1}
+    got = client.get(f"/parent/children/{sid}/weekend-briefs", headers=ph).json()
+    assert got["items"][0]["text"] == edited and got["childName"]
+    assert client.get(f"/parent/children/{sid}/weekend-briefs", headers=oh).status_code == 404
+    assert client.get(f"/parent/children/{sid}/weekend-briefs", headers=sh).status_code == 403
+
+    ts = client.get("/teacher/weekend/term-summary?subject=数学", headers=th).json()
+    assert ts["lessons"] == 1 and ts["students"][0]["attended"] == 1 and ts["students"][0]["trend"][0]["completionRate"] == 50
+    print("OK")
+''',
+    )

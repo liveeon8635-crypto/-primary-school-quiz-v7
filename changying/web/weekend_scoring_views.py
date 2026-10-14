@@ -8,6 +8,12 @@ teacher  GET  /teacher/weekend/sessions/{id}/peer-suggest     who could explain,
 student  GET  /student/weekend/followup                       my open follow-up question (if the teacher asked a classmate to explain)
          POST /student/weekend/followup                       {peerHelpId, selected}
 
+archive  GET  /teacher/weekend/sessions/{id}/archive          one lesson: timeline, attendance, per-student results, peer help, points
+         GET  /teacher/weekend/sessions/{id}/briefs           parent brief drafts (what a parent would read; no ranking)
+         POST /teacher/weekend/sessions/{id}/briefs/publish   {texts?: {studentId: edited text}} release to the linked parents
+         GET  /teacher/weekend/term-summary?subject=          per student across lessons: trend of completion / hint use, points
+parent   GET  /parent/children/{sid}/weekend-briefs           published briefs of a linked child only
+
 Rules are in changying/services/weekend_scoring.py (see docs/weekend-course/3-口径文档.md). Every award keeps its
 inputs in ``basis_json`` so it can be recomputed and audited.
 """
@@ -21,6 +27,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Table, Text, UniqueConstraint, func, insert, select, update
+
+from fastapi.responses import HTMLResponse
 
 from changying.services.weekend_scoring import (
     Answer, History, Student, class_post_rate, completion_bonus, completion_rate, hint_dependence, progress_points,
@@ -42,6 +50,10 @@ class PairBody(BaseModel):
 
 class ResultBody(BaseModel):
     correct: bool
+
+
+class BriefBody(BaseModel):
+    texts: dict[str, str] = {}
 
 
 class FollowBody(BaseModel):
@@ -91,7 +103,19 @@ def register_scoring_tables(implementation: Any) -> dict[str, Table]:
             Column("post_rate", Float, nullable=False, default=0),
             Column("created_at", DateTime, nullable=False, default=datetime.utcnow),
         )
-    return {"peer": peer, "awards": awards, "metrics": metrics}
+    briefs = md.tables.get("weekend_briefs")
+    if briefs is None:
+        briefs = Table(
+            "weekend_briefs", md,
+            Column("id", Integer, primary_key=True),
+            Column("school_id", Integer, nullable=False, index=True),
+            Column("session_id", Integer, nullable=False, index=True),
+            Column("student_id", Integer, nullable=False, index=True),
+            Column("text", Text, nullable=False, default=""),
+            Column("created_at", DateTime, nullable=False, default=datetime.utcnow),
+            UniqueConstraint("session_id", "student_id", name="uq_weekend_brief"),
+        )
+    return {"peer": peer, "awards": awards, "metrics": metrics, "briefs": briefs}
 
 
 def install_weekend_scoring(implementation: Any) -> APIRouter:
@@ -105,7 +129,9 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
     pt = register_practice_tables(implementation)
     answers_t = pt["answers"]
     st = register_scoring_tables(implementation)
-    peer, awards, metrics = st["peer"], st["awards"], st["metrics"]
+    peer, awards, metrics, briefs = st["peer"], st["awards"], st["metrics"], st["briefs"]
+    log_t = register_weekend_tables(implementation)["log"]
+    ParentStudent = implementation.ParentStudent
     TQ, Lesson = implementation.TeachingQuestion, implementation.TeachingLesson
     User, ClassStudent, SchoolClass = implementation.User, implementation.ClassStudent, implementation.SchoolClass
     PointLedger = implementation.PointLedger
@@ -368,6 +394,149 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         db.execute(update(peer).where(peer.c.id == p.id).values(followup_correct=ok))
         db.commit()
         return {"correct": ok, "correctIndex": int(data["correctIndex"]), "explanation": data.get("explanation", "")}
+
+    @router.get("/v1/weekend-brief", include_in_schema=False)
+    def brief_page():
+        from changying.web.weekend_pages import brief_page_html
+        return HTMLResponse(brief_page_html(), headers={"Cache-Control": "no-store"})
+
+    # ------------------------------------------------------------------ archive / briefs
+    def lesson_info(db: Any, row: Any) -> Any:
+        return db.get(Lesson, row.lesson_id)
+
+    def wrong_knowledge(db: Any, sid: int, stu: int) -> list[str]:
+        rows = db.execute(select(TQ.knowledge).join(answers_t, answers_t.c.question_id == TQ.id)
+                          .where(answers_t.c.session_id == sid, answers_t.c.student_id == stu, answers_t.c.correct.is_(False))).all()
+        out: list[str] = []
+        for (k,) in rows:
+            if k and k not in out:
+                out.append(str(k))
+        return out
+
+    def student_line(db: Any, row: Any, stu: int, ans: list[Any], points: dict[str, int], helped: int) -> dict[str, Any]:
+        return {"completionRate": round(completion_rate(ans)), "correct": sum(1 for a in ans if a.correct), "total": len(ans),
+                "hintAvg": round(hint_dependence(ans), 1), "wrongKnowledge": wrong_knowledge(db, int(row.id), stu), "points": points, "helped": helped}
+
+    def award_map(db: Any, sid: int) -> dict[int, dict[str, int]]:
+        out: dict[int, dict[str, int]] = {}
+        for a in db.execute(select(awards).where(awards.c.session_id == sid)).all():
+            out.setdefault(int(a.student_id), {})[a.kind] = int(a.points)
+        return out
+
+    @router.get("/teacher/weekend/sessions/{sid}/archive")
+    def archive(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        row = my_session(db, u, sid)
+        names = roster(db, u)
+        by_stu = session_answers(db, sid)
+        pts = award_map(db, sid)
+        pairs = peer_rows(db, sid)
+        timeline = []
+        for g in db.execute(select(log_t).where(log_t.c.session_id == sid).order_by(log_t.c.id)).all():
+            secs = int(((g.ended_at or datetime.utcnow()) - g.started_at).total_seconds())
+            timeline.append({"stage": int(g.stage_no), "plannedMin": int(g.planned_min) + int(g.extend_min), "actualMin": round(secs / 60, 1)})
+        students = []
+        for stu in sorted(set(names) | set(by_stu), key=lambda x: names.get(x, ("学生",))[0]):
+            ans = by_stu.get(stu)
+            helped = sum(1 for p in pairs if int(p.tutor_id) == stu)
+            item = {"studentId": stu, "name": names.get(stu, ("学生",))[0], "attended": bool(ans)}
+            if ans:
+                item.update(student_line(db, row, stu, ans, pts.get(stu, {}), helped))
+            students.append(item)
+        lesson = lesson_info(db, row)
+        met = db.execute(select(metrics).where(metrics.c.session_id == sid)).first()
+        return {"id": row.id, "title": row.title, "status": row.status, "subject": lesson.subject if lesson else "", "unit": lesson.unit if lesson else "",
+                "startedAt": row.started_at.strftime("%Y-%m-%d %H:%M") if row.started_at else "", "timeline": timeline, "students": students,
+                "attendance": {"present": sum(1 for x in students if x["attended"]), "total": len(students)},
+                "peerHelp": [{"tutor": names.get(int(p.tutor_id), ("学生",))[0], "tutee": names.get(int(p.tutee_id), ("学生",))[0], "followupCorrect": p.followup_correct} for p in pairs],
+                "classRates": {"pre": met.pre_rate, "post": met.post_rate} if met else None, "settled": bool(pts)}
+
+    def brief_text(row: Any, lesson: Any, name: str, line: dict[str, Any]) -> str:
+        parts = [f"{name}本节{lesson.subject if lesson else ''}课《{lesson.title if lesson else row.title}》：完成 {line['correct']}/{line['total']} 题。"]
+        if line["hintAvg"] > 0:
+            parts.append(f"做题时有需要提示的地方（平均提示 {line['hintAvg']} 级），能在提示下完成，继续练习会更独立。")
+        else:
+            parts.append("基本能独立完成。")
+        if line["helped"]:
+            parts.append(f"今天还当了小老师，给同学讲了 {line['helped']} 道题，值得表扬。")
+        gained = sum(line["points"].values()) if line["points"] else 0
+        if gained:
+            parts.append(f"本节课获得积分 {gained} 分。")
+        if line["wrongKnowledge"]:
+            parts.append("回家可以复习：" + "、".join(line["wrongKnowledge"][:3]) + "。")
+        else:
+            parts.append("本节没有需要重点补的知识点。")
+        return "".join(parts)
+
+    def drafts(db: Any, u: Any, row: Any) -> list[dict[str, Any]]:
+        names = roster(db, u)
+        by_stu = session_answers(db, int(row.id))
+        pts = award_map(db, int(row.id))
+        pairs = peer_rows(db, int(row.id))
+        lesson = lesson_info(db, row)
+        saved = {int(b.student_id): b for b in db.execute(select(briefs).where(briefs.c.session_id == row.id)).all()}
+        out = []
+        for stu, ans in sorted(by_stu.items(), key=lambda kv: names.get(kv[0], ("学生",))[0]):
+            line = student_line(db, row, stu, ans, pts.get(stu, {}), sum(1 for p in pairs if int(p.tutor_id) == stu))
+            out.append({"studentId": stu, "name": names.get(stu, ("学生",))[0],
+                        "text": saved[stu].text if stu in saved else brief_text(row, lesson, names.get(stu, ("学生",))[0], line), "published": stu in saved})
+        return out
+
+    @router.get("/teacher/weekend/sessions/{sid}/briefs")
+    def brief_drafts(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        return {"items": drafts(db, u, my_session(db, u, sid))}
+
+    @router.post("/teacher/weekend/sessions/{sid}/briefs/publish")
+    def publish_briefs(sid: int, b: BriefBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        row = my_session(db, u, sid)
+        now = datetime.utcnow()
+        count = 0
+        for d in drafts(db, u, row):
+            text = " ".join((b.texts.get(str(d["studentId"])) or d["text"]).split())[:800]
+            existing = db.execute(select(briefs.c.id).where(briefs.c.session_id == sid, briefs.c.student_id == d["studentId"])).first()
+            if existing:
+                db.execute(update(briefs).where(briefs.c.id == existing.id).values(text=text, created_at=now))
+            else:
+                db.execute(insert(briefs).values(school_id=u.school_id, session_id=sid, student_id=d["studentId"], text=text, created_at=now))
+            count += 1
+        db.commit()
+        return {"published": count}
+
+    @router.get("/parent/children/{cid}/weekend-briefs")
+    def child_briefs(cid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "parent")
+        linked = db.scalar(select(ParentStudent.id).where(ParentStudent.parent_id == u.id, ParentStudent.student_id == cid).limit(1))
+        child = db.scalar(select(User).where(User.id == cid, User.school_id == u.school_id, User.role == "student"))
+        if not linked or child is None:
+            raise HTTPException(404, "没有找到这个孩子")
+        rows = db.execute(select(briefs.c.text, briefs.c.created_at, sessions.c.title).join(sessions, sessions.c.id == briefs.c.session_id)
+                          .where(briefs.c.student_id == cid, briefs.c.school_id == u.school_id).order_by(briefs.c.id.desc()).limit(30)).all()
+        return {"childName": child.name, "items": [{"title": r.title, "text": r.text, "at": r.created_at.strftime("%Y-%m-%d")} for r in rows]}
+
+    @router.get("/teacher/weekend/term-summary")
+    def term_summary(subject: str = "", u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        names = roster(db, u)
+        q = select(sessions.c.id, sessions.c.lesson_id).join(Lesson, Lesson.id == sessions.c.lesson_id).where(
+            sessions.c.school_id == u.school_id, sessions.c.teacher_id == u.id, sessions.c.status != "planned")
+        if subject:
+            q = q.where(Lesson.subject == subject)
+        sess = db.execute(q.order_by(sessions.c.id)).all()
+        trend: dict[int, list[dict[str, Any]]] = {}
+        for sid_, _ in sess:
+            for stu, ans in session_answers(db, int(sid_)).items():
+                trend.setdefault(stu, []).append({"sessionId": int(sid_), "completionRate": round(completion_rate(ans)), "hintAvg": round(hint_dependence(ans), 1)})
+        points: dict[int, int] = {}
+        for a in db.execute(select(awards.c.student_id, func.sum(awards.c.points)).where(awards.c.school_id == u.school_id,
+                                                                                           awards.c.session_id.in_([int(x[0]) for x in sess] or [0])).group_by(awards.c.student_id)).all():
+            points[int(a[0])] = int(a[1] or 0)
+        tutor = {}
+        for p in db.execute(select(peer.c.tutor_id, func.count()).where(peer.c.school_id == u.school_id, peer.c.session_id.in_([int(x[0]) for x in sess] or [0])).group_by(peer.c.tutor_id)).all():
+            tutor[int(p[0])] = int(p[1])
+        return {"lessons": len(sess), "students": [{"studentId": s, "name": names.get(s, ("学生",))[0], "attended": len(t), "trend": t, "points": points.get(s, 0), "tutoredTimes": tutor.get(s, 0)}
+                                                  for s, t in sorted(trend.items(), key=lambda kv: names.get(kv[0], ("学生",))[0])]}
 
     app.include_router(router)
     app.state.weekend_scoring_installed = True
