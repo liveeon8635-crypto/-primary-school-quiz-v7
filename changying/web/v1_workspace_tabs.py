@@ -79,6 +79,9 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
         paperRow.after(hw);
         // Only shown while the feature is switched on (the config endpoint answers 404 otherwise).
         fetch('/homework/config',{cache:'no-store'}).then(r=>{if(r.ok)hw.hidden=false}).catch(()=>{});
+        const kp=document.createElement('a');kp.className='cy-ws-row';kp.href='/v1/knowledge';
+        kp.innerHTML='<b>知识点讲解卡片</b><i>›</i><small>按题库生成知识点卡片，AI 写草稿、你审核后发布；学生可搜索，错题自动关联</small>';
+        hw.after(kp);
       }
       main.insertBefore(all,main.firstChild);
     }

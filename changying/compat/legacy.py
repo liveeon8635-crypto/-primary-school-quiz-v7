@@ -160,6 +160,7 @@ from changying.services.homework_knowledge import register_homework_knowledge_ta
 from changying.web.homework_assistant import install_homework_assistant
 from changying.web.homework_help import install_homework_help
 from changying.web.homework_knowledge_views import install_homework_knowledge_views
+from changying.web.kp_cards_views import install_kp_cards_views
 from changying.web.v1_classroom_live_board import (
     install_v1_classroom_live_board_patch,
     install_v1_classroom_live_board_routes,
@@ -481,6 +482,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_homework_assistant(implementation)
     install_homework_help(implementation)
     install_homework_knowledge_views(implementation)
+    install_kp_cards_views(implementation)
     install_paper_composition_routes(implementation)
     install_paper_import_routes(implementation)
     install_v1_classroom_presentation_review_patch()
