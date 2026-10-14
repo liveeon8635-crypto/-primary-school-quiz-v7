@@ -815,10 +815,41 @@ def _feedback_acceptance_path(detail: dict) -> str:
 FEATURE_NAVIGATION_CARD_MARKER = "changying_v1_precise_feature_navigation_card_v1"
 
 
-def _guidance_cards(question: str, page: str = "", limit: int = 3) -> list[dict]:
+# Students and parents cannot open the teaching/class-management pages, so they only ever get these cards.
+_COMMON_CARD_KEYS = ("product_assistant", "feedback", "feedback_records")
+
+# Administrators have their own menu (no 当前教学 / 学生档案), so they get their own cards plus the common ones.
+_ADMIN_CARDS = (
+    {"key": "admin_ai", "title": "AI 设置", "description": "学校级 AI 配置：启用、模型、是否允许发送学生内容与安全边界。",
+     "path": "/v1/tool?page=ai", "keywords": ("ai设置", "ai 设置", "ai配置", "ai 配置", "ai助手", "模型", "密钥", "api", "大模型", "智能")},
+    {"key": "admin_users", "title": "账号管理", "description": "教师、学生、家长账号的创建、重置密码与学生恢复。",
+     "path": "/v1/tool?page=users", "keywords": ("账号", "帐号", "用户", "密码", "教师账号", "学生账号", "家长账号", "恢复")},
+    {"key": "admin_points", "title": "积分奖励", "description": "全校积分规则、奖励与自动奖励。",
+     "path": "/v1/tool?page=pointsAdmin", "keywords": ("积分", "奖励", "规则")},
+    {"key": "admin_audit", "title": "全校审计", "description": "查看全校关键教学与账号操作记录。",
+     "path": "/v1/tool?page=adminAudit", "keywords": ("审计", "操作记录", "日志")},
+    {"key": "admin_system", "title": "系统设置", "description": "学校级系统维护与安全设置。",
+     "path": "/v1/tool?page=system", "keywords": ("系统设置", "系统", "备份", "安全设置", "维护")},
+    {"key": "admin_subscription", "title": "套餐授权", "description": "查看当前学校的功能授权与容量。",
+     "path": "/v1/tool?page=subscription", "keywords": ("套餐", "授权", "容量", "订阅", "到期")},
+    {"key": "admin_imports", "title": "批量导入", "description": "批量导入账号、题目与教学数据。",
+     "path": "/v1/tool?page=imports", "keywords": ("批量导入", "导入账号", "导入学生", "导入教师", "批量", "导入")},
+    {"key": "admin_overview", "title": "平台总览", "description": "学校教学与账号数据概览。",
+     "path": "/v1/tool?page=admin", "keywords": ("总览", "概览", "平台")},
+)
+
+
+def _guidance_cards(question: str, page: str = "", limit: int = 3, role: str = "") -> list[dict]:
     text = f"{question or ''} {page or ''}".lower()
+    restricted = role in ("student", "parent", "admin", "school_admin")
+    if role in ("admin", "school_admin"):
+        pool = list(_ADMIN_CARDS) + [c for c in _GUIDANCE_CARDS if c["key"] in _COMMON_CARD_KEYS + ("catalog_questions",)]
+    elif restricted:
+        pool = [c for c in _GUIDANCE_CARDS if c["key"] in _COMMON_CARD_KEYS]
+    else:
+        pool = list(_GUIDANCE_CARDS)
     scored: list[tuple[int, int, dict]] = []
-    for index, card in enumerate(_GUIDANCE_CARDS):
+    for index, card in enumerate(pool):
         score = sum(1 for kw in card["keywords"] if kw.lower() in text)
         if score:
             scored.append((score, index, card))
@@ -835,6 +866,8 @@ def _guidance_cards(question: str, page: str = "", limit: int = 3) -> list[dict]
             if score == best_score
             and max((len(kw) for kw in card["keywords"] if kw.lower() in text), default=0) == max_keyword_len
         ][:limit]
+    elif restricted:
+        chosen = []  # no navigation request: never fall back to pages this role cannot open
     else:
         chosen = [card for card in _GUIDANCE_CARDS if card["key"] in ("current_teaching", "student_profile", "feedback")]
     return [
@@ -1378,9 +1411,9 @@ if(cyFeedbackWorkspace){
         db=Depends(implementation.get_db),
     ):
         question = body.question.strip()
-        navigation_cards = _guidance_cards(question, body.page)
-        image = _decode_assistant_image(body)
         role = str(getattr(user, "role", "") or "")
+        navigation_cards = _guidance_cards(question, body.page, role=role)
+        image = _decode_assistant_image(body)
         learning_context = _role_learning_context(
             implementation,
             db,
@@ -2078,7 +2111,7 @@ _ASSISTANT_SNIPPET = r'''
       addMessage('user',text+(file?'\n[图片] '+file.name:''),attachment?'data:'+attachment.attachment_type+';base64,'+attachment.attachment_data:'');
       input.value='';queryImage.value='';queryImageStatus.textContent='未选择图片';
       const reply=data.reply||'暂时没有可用回答。';
-      addMessage('assistant',reply);maybeAddLearningVisual(text,askContext);const guideInput=Array.isArray(data.cards)&&data.cards.length?data.cards:text+' '+reply;renderGuideGrid(guideInput);addInlineGuideCards(guideInput);
+      addMessage('assistant',reply);maybeAddLearningVisual(text,askContext);const guideInput=Array.isArray(data.cards)&&data.cards.length?data.cards:text+' '+reply;if(askContext.active_assessment&&typeof guideInput==='string'){/* asking about the question on screen: answer only, no feature cards */}else{renderGuideGrid(guideInput);addInlineGuideCards(guideInput)}
     }catch(err){queryImageStatus.textContent=err.message||'图片发送失败';addMessage('assistant','产品助手暂时无法回答：'+err.message)}
     finally{send.disabled=false;send.textContent='发送'}
   }
@@ -2421,6 +2454,44 @@ _ASSISTANT_SNIPPET = r'''
   authReadyPoll=setInterval(syncUntilReady,400);
   setTimeout(()=>{if(authReadyPoll){clearInterval(authReadyPoll);authReadyPoll=null}sync()},12000);
   setTimeout(syncUntilReady,0);setTimeout(syncUntilReady,300);
+  // Drag the panel by its title bar so it never has to cover the question; double-click the bar to reset.
+  // The page header and bottom tab bar sit above the panel, so a title bar dragged under them could never be
+  // grabbed again: whenever the title bar is not the element actually on top, the panel snaps back to its default.
+  (function(){
+    const head=panel.querySelector('.cy-pa-head'),POS_KEY='cyPaPanelPos';
+    if(!head)return;
+    head.style.cursor='move';head.style.touchAction='none';head.title='拖动标题栏可以移动助手；双击还原位置';
+    const clamp=(l,t,w)=>({l:Math.max(0,Math.min(l,window.innerWidth-w)),t:Math.max(0,Math.min(t,window.innerHeight-140))});
+    const place=(l,t,w)=>{const c=clamp(l,t,w);panel.style.left=c.l+'px';panel.style.top=c.t+'px';panel.style.right='auto';panel.style.bottom='auto';panel.style.width=w+'px';return c};
+    const reset=()=>{['left','top','right','bottom','width'].forEach(k=>panel.style.removeProperty(k));try{sessionStorage.removeItem(POS_KEY)}catch(_e){}};
+    const grabbable=()=>{
+      const r=head.getBoundingClientRect();if(r.width<1||r.height<1)return false;
+      return [r.left+24,r.left+r.width/2].some(x=>{
+        const y=r.top+r.height/2;if(x<0||y<0||x>=window.innerWidth||y>=window.innerHeight)return false;
+        const t=document.elementFromPoint(x,y);return !!t&&(t===head||head.contains(t));
+      });
+    };
+    const ensureReachable=()=>{if(panel.hidden||!panel.style.left)return;if(!grabbable())reset()};
+    const restore=()=>{try{const v=JSON.parse(sessionStorage.getItem(POS_KEY)||'null');if(v&&v.w>0)place(v.l,v.t,v.w)}catch(_e){}};
+    restore();
+    new MutationObserver(()=>{if(!panel.hidden)requestAnimationFrame(ensureReachable)}).observe(panel,{attributes:true,attributeFilter:['hidden']});
+    window.addEventListener('resize',()=>{if(panel.style.left){const r=panel.getBoundingClientRect();place(r.left,r.top,r.width);requestAnimationFrame(ensureReachable)}});
+    let drag=null;
+    head.addEventListener('pointerdown',e=>{
+      if(e.button>0||e.target.closest('button'))return;
+      const r=panel.getBoundingClientRect();drag={dx:e.clientX-r.left,dy:e.clientY-r.top,w:r.width};
+      try{head.setPointerCapture(e.pointerId)}catch(_e){}e.preventDefault();
+    });
+    head.addEventListener('pointermove',e=>{if(drag)place(e.clientX-drag.dx,e.clientY-drag.dy,drag.w)});
+    const stop=()=>{
+      if(!drag)return;drag=null;
+      if(!grabbable()){reset();return}
+      const r=panel.getBoundingClientRect();
+      try{sessionStorage.setItem(POS_KEY,JSON.stringify({l:r.left,t:r.top,w:r.width}))}catch(_e){}
+    };
+    head.addEventListener('pointerup',stop);head.addEventListener('pointercancel',stop);
+    head.addEventListener('dblclick',e=>{if(!e.target.closest('button'))reset()});
+  })();
 })();
 </script>
 '''

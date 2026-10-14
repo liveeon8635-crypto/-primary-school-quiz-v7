@@ -675,3 +675,25 @@ def test_feedback_user_confirmation_loop_is_wired_end_to_end():
     assert "data-pa-confirm-feedback" in source
     assert "确认已达预期" in source
     assert "该反馈已验收。如有新的问题或需求，请提交一条新反馈。" in source
+
+
+def test_product_assistant_panel_can_be_dragged_by_its_title_bar():
+    html = rendered_v1()
+
+    assert "cyPaPanelPos" in html
+    assert "head.addEventListener('pointerdown'" in html
+    assert "head.addEventListener('dblclick'" in html
+
+
+def test_dragged_assistant_panel_snaps_back_when_its_title_bar_is_covered():
+    html = rendered_v1()
+
+    assert "const grabbable=()=>" in html
+    assert "document.elementFromPoint" in html
+    assert "if(!grabbable()){reset();return}" in html
+
+
+def test_asking_about_the_question_on_screen_shows_no_feature_cards():
+    html = rendered_v1()
+
+    assert "if(askContext.active_assessment&&typeof guideInput==='string'){" in html
