@@ -19,6 +19,8 @@ TEAM_BASE = 2
 TEAM_STEP_PP = 10
 TEAM_CAP = 4
 BASELINE_N = 3
+COMPLETE_HIGH = (90, 2)  # 完成率奖励:≥90% +2
+COMPLETE_MID = (80, 1)   # ≥80% +1
 
 
 @dataclass
@@ -71,6 +73,17 @@ def progress_points(s: Student) -> dict:
     }
     pts += WEAK_FIX_PTS * min(len(fixed), WEAK_FIX_MAX)
     return {"points": min(pts, PROGRESS_CAP), "reason": "ok"}
+
+
+def completion_bonus(s: Student) -> int:
+    """完成率奖励:独立于进步分,不占进步封顶;缺课/未作答不得。"""
+    if not s.attended or not s.answers:
+        return 0
+    r = completion_rate(s.answers)
+    for line, pts in (COMPLETE_HIGH, COMPLETE_MID):
+        if r >= line:
+            return pts
+    return 0
 
 
 def tutor_points(tutee: Student) -> int:
@@ -127,8 +140,9 @@ def run() -> None:
         for s in students:
             p = progress_points(s)
             tp = tutor_points(s)
+            cb = completion_bonus(s)
             print(f"  {s.name}: 完成率={completion_rate(s.answers):.0f}% 提示依赖={hint_dependence(s.answers):.1f} "
-                  f"进步分={p['points']}({p['reason']}) 小老师分(来自该生巩固)={tp}")
+                  f"进步分={p['points']}({p['reason']}) 完成奖励={cb} 小老师分(来自该生巩固)={tp}")
         print(f"  巩固后班级完成率={post:.1f}% 上次={prev} 团队分={team_points(prev, post)}")
 
 

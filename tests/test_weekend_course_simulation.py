@@ -1,5 +1,5 @@
 from scripts.weekend_course_simulation import (
-    class_post_rate, progress_points, scenarios, team_points, tutor_points,
+    class_post_rate, completion_bonus, progress_points, scenarios, team_points, tutor_points,
 )
 
 
@@ -26,3 +26,10 @@ def test_progress_cap_and_tutor_points_follow_tutee_result():
     assert progress_points(students[2])["points"] == 6
     assert tutor_points(students[2]) == 2
     assert 0 < team_points(prev, class_post_rate(students)) <= 4
+
+
+def test_completion_bonus_rewards_high_completion_independent_of_progress():
+    students, _ = scenarios()["常规课(弱生进步,强带弱成功)"]
+    assert [completion_bonus(s) for s in students] == [2, 0, 0]
+    absent = scenarios()["一人缺课"][0][1]
+    assert completion_bonus(absent) == 0
