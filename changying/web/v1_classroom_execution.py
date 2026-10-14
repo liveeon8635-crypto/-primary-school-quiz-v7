@@ -240,6 +240,17 @@ def patch_v1_classroom_execution_html(html: str) -> str:
       const modeName=m=>({teacher:'教师讲解',student:'学生讲解',co_teach:'师生共讲',discussion:'讨论',skipped:'暂不讲解'})[m]||m;
       const turnName=s=>({invited:'等待学生确认',accepted:'学生已同意',declined:'学生已婉拒',withdrawn:'邀请已撤回',presenting:'讲解中',completed:'讲解完成'})[s]||s;
       const call=async(path,body)=>{await api(path,{method:'POST',body:JSON.stringify(body||{})});await reload()};
+      // The page used to refresh only after the teacher's own clicks, so a student's acceptance never showed up.
+      // Poll quietly; re-render only when something changed and the teacher is not in the middle of choosing.
+      const execSig=d=>JSON.stringify([d?.session?.status,(d?.segments||[]).map(x=>[x.id,x.status,x.mode,x.presenterTurn?.id||null,x.presenterTurn?.status||null]),(d?.events||[]).length]);
+      if(window.__cyExecPoll){clearInterval(window.__cyExecPoll);window.__cyExecPoll=null}
+      window.__cyExecPoll=setInterval(async()=>{
+        if(document.hidden||window.__cyExecBusy)return;
+        if(!location.pathname.includes('/classroom-execution')||!document.getElementById('cy-session-back')||['completed','cancelled'].includes(data?.session?.status)){clearInterval(window.__cyExecPoll);window.__cyExecPoll=null;return}
+        const ae=document.activeElement;if(ae&&['SELECT','INPUT','TEXTAREA'].includes(ae.tagName))return;
+        window.__cyExecBusy=true;
+        try{const next=await api('/teacher/classroom-sessions/'+sid);if(execSig(next)!==execSig(data)){data=next;renderExec()}}catch(err){}finally{window.__cyExecBusy=false}
+      },5000);
       const renderExec=()=>{
         const s=data.session,segs=data.segments||[],events=data.events||[];
         const top='<section class="card"><div class="section-head"><div><h2>'+esc(s.title)+'</h2><p>'+esc(s.className+' · '+s.subject+' · '+(s.textbook||''))+'</p></div><span class="tag">'+esc(stateName(s.status))+'</span></div><div style="display:flex;gap:8px;flex-wrap:wrap">'+
@@ -247,7 +258,7 @@ def patch_v1_classroom_execution_html(html: str) -> str:
           (s.status==='active'?'<button class="btn" id="cy-session-pause">暂停课堂</button>':'')+
           (s.status==='paused'?'<button class="btn primary" id="cy-session-resume">继续课堂</button>':'')+
           (['active','paused'].includes(s.status)?'<button class="btn" id="cy-session-complete">完成本堂课</button>':'')+
-          '<button class="btn" id="cy-session-back">返回课堂复盘</button></div></section>';
+          '<button class="btn" id="cy-session-refresh">刷新状态</button><button class="btn" id="cy-session-back">返回课堂复盘</button></div></section>';
         const cards=segs.map(seg=>{
           const t=seg.presenterTurn;
           const modeOptions=['teacher','student','co_teach','discussion','skipped'].map(m=>'<option value="'+m+'" '+(seg.mode===m?'selected':'')+'>'+modeName(m)+'</option>').join('');
@@ -266,10 +277,19 @@ def patch_v1_classroom_execution_html(html: str) -> str:
         }).join('');
         const allDone=segs.length>0&&segs.every(x=>x.status==='completed');
         const finishCta=s.status==='active'&&allDone?'<section class="section card"><h2>本堂课知识点已全部完成</h2><p class="muted">确认结束后会直接进入课堂复盘；不会自动生成讲义、自动加分或写入长期知识掌握记录。</p><button class="btn primary" id="cy-session-complete-bottom">完成本堂课并进入课堂复盘</button></section>':'';
-        const timeline=events.slice(0,30).map(e=>'<div class="row"><span class="row-main"><b>'+esc(e.eventType)+'</b><small>'+esc(e.createdAt)+' · '+esc(e.actorRole||'system')+'</small></span></div>').join('')||'<div class="empty">暂无课堂事件</div>';
+        const eventNames={'session.created':'创建课堂','session.active':'开始课堂','session.paused':'暂停课堂','session.completed':'完成本堂课','session.cancelled':'取消课堂',
+          'segment.mode_selected':'选择讲解方式','segment.reveal_policy_changed':'调整展示控制','segment.completed':'完成知识点','segment.skipped':'暂不讲解该知识点',
+          'presenter.invited':'邀请学生讲解','presenter.accepted':'学生同意讲解','presenter.declined':'学生婉拒讲解','presenter.withdrawn':'撤回讲解邀请',
+          'presenter.presenting':'学生开始讲解','presenter.started':'学生开始讲解','presenter.completed':'学生讲解完成','presenter.review_saved':'保存讲解评价','presenter.points_granted':'发放讲解积分',
+          'explanation.started':'开始讲解','explanation.completed':'讲解完成',
+          'quick_check.draft_created':'生成随堂检测草稿','quick_check.opened':'开放随堂检测','quick_check.closed':'关闭随堂检测','quick_check.decision':'记录检测后的教学决定','quick_check.response_submitted':'学生提交检测答案'};
+        const eventName=t=>eventNames[t]||String(t||'课堂事件').replace(/[._]/g,' ');
+        const actorNames={teacher:'教师',student:'学生',admin:'管理员',system:'系统'};
+        const timeline=events.slice(0,30).map(e=>'<div class="row"><span class="row-main"><b>'+esc(eventName(e.eventType))+'</b><small>'+esc(e.createdAt)+' · '+esc(actorNames[e.actorRole||'system']||e.actorRole)+'</small></span></div>').join('')||'<div class="empty">暂无课堂事件</div>';
         const content=heading('课堂执行','教师控制课堂节奏；学生讲解需要本人确认，系统不会自动指定。')+top+'<section class="section"><div class="section-head"><div><h2>知识点执行卡</h2><p>本阶段只负责课堂状态与讲解者确认；随堂检验、讲解评价和互动积分将在下一阶段接入。</p></div></div><div class="grid">'+cards+'</div></section>'+finishCta+'<section class="section card"><h2>课堂事件时间线</h2><div class="list">'+timeline+'</div></section>';
         screen.innerHTML=shell(content,'workspace');bindNav();
         const by=id=>document.getElementById(id);
+        if(by('cy-session-refresh'))by('cy-session-refresh').onclick=async()=>{try{await reload();toast('已刷新')}catch(err){toast(err.message||'刷新失败')}};
         if(by('cy-session-start'))by('cy-session-start').onclick=()=>call('/teacher/classroom-sessions/'+sid+'/state',{status:'active'});
         if(by('cy-session-cancel'))by('cy-session-cancel').onclick=async()=>{const btn=by('cy-session-cancel');btn.disabled=true;try{await api('/teacher/classroom-sessions/'+sid+'/state',{method:'POST',body:JSON.stringify({status:'cancelled'})});navigate('/v1/classroom-review?assignment='+s.sourceAssignmentID)}catch(e){toast(e.message);btn.disabled=false}};
         if(by('cy-session-pause'))by('cy-session-pause').onclick=()=>call('/teacher/classroom-sessions/'+sid+'/state',{status:'paused'});
@@ -295,7 +315,45 @@ def patch_v1_classroom_execution_html(html: str) -> str:
       screen.innerHTML=shell(heading('课堂互动','学生可以自主确认是否参与知识点讲解。')+'<section class="section">'+cards+'</section>','workspace');bindNav();
       document.querySelectorAll('.cy-accept').forEach(b=>b.onclick=async()=>{try{await api('/student/classroom-invitations/'+b.dataset.id+'/respond',{method:'POST',body:JSON.stringify({response:'accepted'})});toast('已接受讲解邀请');await classroomInvitationsPage()}catch(e){toast(e.message)}});
       document.querySelectorAll('.cy-decline').forEach(b=>b.onclick=async()=>{try{await api('/student/classroom-invitations/'+b.dataset.id+'/respond',{method:'POST',body:JSON.stringify({response:'declined'})});toast('已婉拒，本次不会扣分');await classroomInvitationsPage()}catch(e){toast(e.message)}});
+      // New invitations and the teacher starting the presentation show up without a manual refresh.
+      window.__cyInvSig=JSON.stringify(rows.map(x=>[x.id,x.status]));
+      if(!window.__cyInvPoll)window.__cyInvPoll=setInterval(async()=>{
+        if(document.hidden)return;
+        if(!location.pathname.includes('/classroom-invitations')){clearInterval(window.__cyInvPoll);window.__cyInvPoll=null;return}
+        try{const next=await api('/student/classroom-invitations');if(JSON.stringify(next.map(x=>[x.id,x.status]))!==window.__cyInvSig)await classroomInvitationsPage()}catch(e){}
+      },5000);
     }
+    // A new invitation or a newly opened quick check used to appear only after the student reloaded. While the student
+    // is on any other page, check every 10 seconds and tell them once per new set; on the invitations page and the
+    // quick-check page the page itself is refreshed when something changed.
+    if(!window.__cyInvWatch)window.__cyInvWatch=setInterval(async()=>{
+      try{
+        if(document.hidden||typeof session==='undefined'||!session||session.role!=='student')return;
+        const path=location.pathname;
+        if(path.includes('/classroom-quick-checks')){
+          const rows=await api('/student/classroom-quick-checks');
+          const sig=JSON.stringify((rows||[]).map(x=>[x.id,x.status]));
+          if(window.__cyQcSig===undefined){window.__cyQcSig=sig}
+          else if(sig!==window.__cyQcSig){
+            window.__cyQcSig=sig;
+            // never wipe an answer the student has picked but not submitted
+            if(!document.querySelector('input[name^="cy-q-"]:checked')&&typeof classroomQuickChecksPage==='function')await classroomQuickChecksPage();
+            else toast('老师更新了随堂检测，请刷新页面查看');
+          }
+          return;
+        }
+        if(!path.includes('/classroom-invitations')){
+          const rows=await api('/student/classroom-invitations');
+          const pending=(rows||[]).filter(x=>x.status==='invited').map(x=>x.id).sort().join(',');
+          if(pending&&pending!==window.__cyInvSeen){window.__cyInvSeen=pending;toast('老师邀请你参与课堂讲解，点“课堂互动”查看')}
+          if(!pending)window.__cyInvSeen='';
+          const checks=await api('/student/classroom-quick-checks');
+          const open=(checks||[]).filter(x=>x.status==='open'&&!x.myResponse).map(x=>x.id).sort().join(',');
+          if(open&&open!==window.__cyQcSeen){window.__cyQcSeen=open;toast('老师开放了随堂检测，点“随堂检测”作答')}
+          if(!open)window.__cyQcSeen='';
+        }
+      }catch(e){}
+    },10000);
     function turnNameStudent(s){return ({invited:'待确认',accepted:'已接受 · 等待教师开始',presenting:'讲解中'})[s]||s}
 
 '''

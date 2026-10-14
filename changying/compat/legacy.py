@@ -77,6 +77,7 @@ from changying.web.v1_auth_handoff import install_v1_auth_handoff_routes
 from changying.web.v1_audit_localization import install_v1_audit_localization
 from changying.web.v1_classic_embed_bootstrap import install_v1_classic_embed_bootstrap
 from changying.web.v1_classic_gzip_embed import install_v1_classic_gzip_embed
+from changying.web.v1_html_etag import install_v1_html_etag
 from changying.web.v1_classroom_review import (
     install_v1_classroom_review_patch,
     install_v1_classroom_review_routes,
@@ -108,7 +109,6 @@ from changying.web.v1_full_visibility import install_v1_full_visibility_patch
 from changying.web.v1_guardian_visibility import install_v1_guardian_visibility_patch
 from changying.web.v1_history_focus import install_v1_history_focus_patch
 from changying.web.v1_identity_clarity import install_v1_identity_clarity_patch
-from changying.web.v1_legacy_capabilities import install_v1_legacy_capabilities_patch
 from changying.web.v1_learning_evidence_profile import install_v1_learning_evidence_profile
 from changying.web.v2_learning_evidence_recording import install_v2_learning_evidence_routes
 from changying.web.v2_learning_evidence_recording_view import install_v2_learning_evidence_recorder_patch
@@ -148,11 +148,18 @@ from changying.web.v1_unified_tools import (
     install_v1_unified_tool_route,
     install_v1_unified_tools_patch,
 )
+from changying.web.v1_workspace_tabs import install_v1_workspace_tabs_patch
 from changying.web.v1_unified_tools_session_bridge import install_v1_unified_tool_session_bridge
 from changying.web.reinforcement_quality import install_reinforcement_figure_fallback
 from changying.web.rubric_review_ui import install_rubric_review_ui
 from changying.web.science_teacher_ai import install_science_teacher_ai_workflow
 from changying.web.student_quiz_navigation import install_student_quiz_navigation
+from changying.web.classroom_quick_login import install_classroom_quick_login
+from changying.web.v1_classroom_live_board import (
+    install_v1_classroom_live_board_patch,
+    install_v1_classroom_live_board_routes,
+)
+from changying.web.student_wrong_practice import install_student_wrong_practice
 from changying.web.teacher_ai_rich_generation_ui import install_teacher_ai_rich_generation_ui
 
 NO_CACHE_HEADERS = {
@@ -454,12 +461,16 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_student_detail_visibility_patch()
     install_v1_student_practice_patch()
     install_v1_student_practice_routes(implementation)
+    install_student_wrong_practice(implementation)
     install_v1_classroom_review_patch()
     install_v1_classroom_review_routes(implementation)
     install_v1_classroom_execution_patch()
     install_v1_classroom_execution_routes(implementation)
     install_v1_classroom_quick_check_patch()
     install_v1_classroom_quick_check_routes(implementation)
+    install_v1_classroom_live_board_patch()
+    install_v1_classroom_live_board_routes(implementation)
+    install_classroom_quick_login(implementation)
     install_paper_composition_routes(implementation)
     install_paper_import_routes(implementation)
     install_v1_classroom_presentation_review_patch()
@@ -472,7 +483,6 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_fast_path_patch()
     install_v1_identity_clarity_patch()
     install_v1_acceptance_polish_patch()
-    install_v1_legacy_capabilities_patch()
     install_v1_unified_tools_patch()
     install_v1_unified_tool_session_bridge()
     install_v1_audit_localization()
@@ -482,6 +492,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_training_workbench_route(implementation.app)
     install_v1_product_assistant_patch()
     install_v1_product_assistant_routes(implementation)
+    install_v1_workspace_tabs_patch()
     install_v1_learning_evidence_profile(implementation)
     install_v1_classroom_longitudinal_profile(implementation)
     install_v2_learning_evidence_recorder_patch()
@@ -506,6 +517,8 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_auth_handoff_routes(implementation)
     install_v1_routes(implementation.app)
     install_v1_unified_tool_route(implementation.app)
+    # Keep last so it wraps every V1/Classic HTML response installed above.
+    install_v1_html_etag(implementation.app)
 
 
 __all__ = ["NO_CACHE_HEADERS", "apply_legacy_compatibility", "install_product_visibility_routes", "install_teacher_dashboard_current_student_count"]

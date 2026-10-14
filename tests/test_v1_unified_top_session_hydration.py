@@ -13,9 +13,11 @@ def test_unified_top_hydrates_from_existing_v1_session():
 
 def test_unified_top_only_posts_to_bounded_auth_handoff_and_adds_no_business_writes():
     html = inject_v1_classic_unified("<html><body></body></html>")
-    assert "password" not in html.lower()
-    assert html.count("method:'POST'") == 1
-    assert "fetch('/v1/auth-handoff/consume',{method:'POST'" in html
+    assert "password" not in html.lower().replace("mustchangepassword", "")
+    # One early consume in the head guard and one fallback inside consumeV1Handoff,
+    # both against the same bounded endpoint.
+    assert html.count("method:'POST'") == 2
+    assert html.count("fetch('/v1/auth-handoff/consume',{method:'POST'") == 2
     assert "method:'PUT'" not in html
     assert "method:'PATCH'" not in html
     assert "method:'DELETE'" not in html
@@ -23,8 +25,10 @@ def test_unified_top_only_posts_to_bounded_auth_handoff_and_adds_no_business_wri
 
 def test_unified_top_keeps_chinese_navigation():
     html = inject_v1_classic_unified("<html><body></body></html>")
-    for label in ("当前教学", "学生", "往期教学", "升学衔接", "全部功能", "操作记录"):
+    for label in ("当前教学", "全部功能", "操作记录"):
         assert label in html
+    # 学生 / 往期教学 / 升学衔接 now live inside the V1 全部功能 view, not the chrome.
+    assert "['students','◉','学生'" not in html
 
 
 def test_unified_top_fallback_respects_remember_storage_contract():
@@ -91,3 +95,41 @@ def test_unified_student_assignment_cards_show_assigned_due_submit_and_learning_
     assert "latest.subject" in html
     assert "latest.textbook" in html
     assert "提交 ${esc(latest.submittedAt||\"时间未记录\")}" in html
+
+
+def test_unified_classic_starts_handoff_consume_in_head_and_reuses_it_once():
+    html = inject_v1_classic_unified("<html><head></head><body></body></html>")
+    head_end = html.index("</head>")
+    early = html.index("window.__cyV1HandoffPromise=fetch(")
+    assert early < head_end
+    assert "var early=window.__cyV1HandoffPromise;if(early){window.__cyV1HandoffPromise=null;return await early}" in html
+    # The early consume only runs for V1 unified handoff URLs.
+    guard = html[: html.index("window.__cyV1HandoffPromise=fetch(")]
+    assert "p.get('unified')!=='1'||p.get('from')!=='v1'" in guard
+
+
+def test_unified_classic_skips_redundant_session_check_only_with_validated_bridge():
+    html = inject_v1_classic_unified("<html><body></body></html>")
+    assert "u.mustChangePassword=!!s.mustChangePassword" in html
+    assert "if(bridge&&bridge.token&&bridge.valid&&typeof enter==='function'){enter()}else if(typeof validateSavedSession==='function'){" in html
+    # Fallback paths still validate against /session.
+    assert "fetch('/session'" in html
+
+
+def test_unified_classic_injected_scripts_are_valid_javascript(tmp_path):
+    import re
+    import shutil
+    import subprocess
+
+    import pytest
+
+    if not shutil.which("node"):
+        pytest.skip("node is not installed")
+    html = inject_v1_classic_unified("<html><head></head><body></body></html>")
+    scripts = re.findall(r"<script[^>]*>(.*?)</script>", html, flags=re.S)
+    assert scripts
+    for i, script in enumerate(scripts):
+        f = tmp_path / f"s{i}.js"
+        f.write_text(script, encoding="utf-8")
+        done = subprocess.run(["node", "--check", str(f)], text=True, capture_output=True)
+        assert done.returncode == 0, done.stderr

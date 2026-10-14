@@ -13,7 +13,12 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
 
-from changying.web.paper_import_ui import patch_classic_catalog_photo_import, patch_classic_paper_import
+from changying.web.paper_import_ui import (
+    patch_classic_catalog_edit_unit,
+    patch_classic_catalog_find_imported,
+    patch_classic_catalog_photo_import,
+    patch_classic_paper_import,
+)
 
 CLASSIC_UI_MARKER = "changying_classic_ui_v2"
 CLASSIC_UI_PATHS = {"/classic"}
@@ -152,6 +157,20 @@ def patch_classic_mixed_question_types(html: str) -> str:
     return html
 
 
+TOAST_IN_DIALOG_MARKER = "changying_toast_in_dialog_v1"
+
+
+def patch_classic_toast_in_dialog(html: str) -> str:
+    """Show the toast inside an open dialog: it is otherwise hidden behind it (feedback #370: "no prompt")."""
+
+    before = 'function toast(msg){const t=$("#toast");'
+    if TOAST_IN_DIALOG_MARKER in html or html.count(before) != 1:
+        return html
+    after = ('function toast(msg){/*' + TOAST_IN_DIALOG_MARKER + '*/const t=$("#toast"),dlg=$("#modal"),host=dlg&&dlg.open?dlg:document.body;'
+             'if(t.parentNode!==host)host.appendChild(t);')
+    return html.replace(before, after, 1)
+
+
 def patch_classic_local_due_dates(html: str) -> str:
     """Keep assignment default dates in the browser/school local calendar day."""
 
@@ -169,6 +188,9 @@ def patch_classic_local_due_dates(html: str) -> str:
 
 CLASSIC_UI_SNIPPET = f"""
 <style id="{CLASSIC_UI_MARKER}-style">
+/* The base stylesheet gives every <input> width:100%; checkboxes and radios must keep their natural size
+   (the catalog row picker used to stretch across the whole row and squeeze the question text into one column). */
+input[type="checkbox"],input[type="radio"]{{width:auto!important;min-width:0;padding:0!important;flex:none}}
   :root{{
     --cy-brand:#3047ff;
     --cy-brand-soft:#eef2ff;
@@ -388,6 +410,9 @@ def inject_classic_ui(html: str) -> str:
     html = patch_classic_mixed_question_types(html)
     html = patch_classic_paper_import(html)
     html = patch_classic_catalog_photo_import(html)
+    html = patch_classic_catalog_find_imported(html)
+    html = patch_classic_catalog_edit_unit(html)
+    html = patch_classic_toast_in_dialog(html)
     if CLASSIC_UI_MARKER in html:
         return html
     if "</body>" in html:

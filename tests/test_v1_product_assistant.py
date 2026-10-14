@@ -113,7 +113,7 @@ def test_product_assistant_fab_is_compact_collapsible_and_feedback_is_quick():
     html = rendered_v1()
 
     assert 'width:48px;height:48px' in html
-    assert 'width:44px;height:44px' in html
+    assert 'width:52px;height:52px' in html
     assert 'id="cy-pa-collapse"' in html
     assert 'id="cy-pa-close"' not in html
     assert "#cy-product-assistant-fab[hidden],#cy-product-assistant-panel[hidden]{display:none!important}" in html

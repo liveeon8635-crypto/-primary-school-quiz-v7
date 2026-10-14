@@ -58,11 +58,24 @@ def test_v1_tool_redirects_to_same_tab_unified_classic():
 
 
 
-def test_v1_tool_without_page_opens_role_aware_hub_instead_of_classes():
-    response = TestClient(build_app(), follow_redirects=False).get('/v1/tool')
+def test_v1_tool_without_page_is_native_v1_hub_not_classic_redirect():
+    from changying.web.v1_classic_gzip_embed import _ALLOWED_TOOL_PAGES
+    from changying.web.v1_tool_hub import TOOL_HUB_MENUS, V1_TOOL_HUB_MARKER
 
-    assert response.status_code == 307
-    assert response.headers['location'].endswith('page=__hub__')
+    client = TestClient(build_app(), follow_redirects=False)
+    for url in ('/v1/tool', '/v1/tool?page=__hub__'):
+        response = client.get(url)
+        assert response.status_code == 200
+        assert response.headers['X-Changying-V1-Tool'] == V1_TOOL_HUB_MARKER
+        assert 'no-store' in response.headers['Cache-Control']
+        assert '全部功能' in response.text
+        assert "'/v1/tool?page='" in response.text
+        assert "/v1/auth-handoff" in response.text
+
+    # Every card must open a page the redirect actually allows.
+    for items in TOOL_HUB_MENUS.values():
+        assert {page for page, *_ in items} <= _ALLOWED_TOOL_PAGES
+
 
 def test_unknown_tool_page_is_safely_normalized():
     response = TestClient(build_app(), follow_redirects=False).get('/v1/tool?page=not-a-real-page')
@@ -96,14 +109,14 @@ def test_unified_classic_gets_v1_chrome_even_when_upstream_is_gzipped():
     assert "params.get('unified')!=='1'" in response.text
     assert 'cy-v1-unified-picker' in response.text
     assert '/v1/workspace' in response.text
-    assert '/v1/history' in response.text
+    assert '/v1/workspace?view=all' in response.text
     assert '班级学生' in response.text
     assert 'function autoResume()' in response.text
     assert "document.getElementById('continueSessionBtn')" in response.text
     assert "if(typeof markNetwork==='function')markNetwork(true)" in response.text
     assert 'btn.click()' in response.text
-    assert '--cy-v1-navy:#173c78' in response.text
-    assert '--cy-v1-line:#e4e9f2' in response.text
+    assert '--cy-v1-navy:#a8101c' in response.text
+    assert '--cy-v1-line:#eadfd8' in response.text
     assert 'background:#f3f6fb!important' in response.text
     assert 'border-radius:18px!important' in response.text
     assert 'background:var(--cy-v1-navy)!important' in response.text

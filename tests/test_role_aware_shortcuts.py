@@ -67,12 +67,12 @@ def test_teacher_shortcuts_keep_existing_teaching_navigation():
     html = v1_html()
     for label, path in (
         ("当前教学", "/v1/workspace"),
-        ("学生", "/v1/student"),
-        ("往期教学", "/v1/history"),
-        ("升学衔接", "/v1/transition"),
-        ("全部功能", "/v1/tool"),
+        ("全部功能", "/v1/workspace?view=all"),
     ):
         assert f"'{label}','{path}'" in html
+    # The sidebar is gone: navigation is one capsule rendered by shell().
+    assert '<aside class="side">' not in html
+    assert 'class="cy-seg"' in html
 
 
 def test_all_recognized_roles_have_explicit_quick_navigation_on_both_surfaces():

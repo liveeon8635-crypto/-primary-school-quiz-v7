@@ -1,11 +1,11 @@
 from changying.web.v1 import v1_html
 
 
-def test_v1_mobile_kpis_stay_compact_and_leave_nav_clearance():
+def test_v1_mobile_kpis_stay_compact_and_keep_bottom_clearance():
     html = v1_html()
     assert "@media(max-width:720px)" in html
     assert ".cols-4{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}" in html
-    assert "padding:20px 14px calc(132px + env(safe-area-inset-bottom))" in html
+    assert "padding:16px 14px calc(92px + env(safe-area-inset-bottom))" in html
     assert ".kpi{padding:14px}" in html
 
 
