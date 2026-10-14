@@ -91,3 +91,89 @@ with TestClient(app) as client:
     print("OK")
 ''',
     )
+
+
+def test_practice_hints_answers_and_progress(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+HINTS = json.dumps({"levels": ["想想分母表示什么", "先把两个分数通分", "通分后相加得 3/4，选 B"]}, ensure_ascii=False)
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=98, title="通分")
+        db.add(l); db.flush()
+        q1 = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=l.id, stage="lesson", subject="数学", level="C", knowledge="通分",
+                                     stem="1/2+1/4=?", options_json=json.dumps(["1/6", "3/4", "2/6"]), correct_index=1, explanation="通分再加")
+        q2 = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=l.id, stage="lesson", subject="数学", level="C", knowledge="通分",
+                                     stem="1/3+1/3=?", options_json=json.dumps(["2/3", "2/6"]), correct_index=0, explanation="同分母")
+        db.add_all([q1, q2]); db.commit(); lid, a, b = l.id, q1.id, q2.id
+        teacher_id = db.scalar(select(legacy.User.id).where(legacy.User.username == "teacher1"))
+        cls = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id))
+        cls.teacher_id = teacher_id; db.commit()
+        link = db.scalar(select(legacy.ClassStudent).where(legacy.ClassStudent.student_id == sid))
+        if link is None:
+            db.add(legacy.ClassStudent(class_id=cls.id, student_id=sid)); db.commit()
+        else:
+            link.class_id = cls.id; db.commit()
+
+    s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    base = f"/teacher/weekend/sessions/{s}"
+    assert client.get("/v1/weekend-practice").status_code == 200
+
+    # nothing running -> student sees a message, not questions
+    assert client.get("/student/weekend/current", headers=sh).json() == {"active": False, "message": "现在没有正在上的课"}
+    client.post(base + "/start", headers=th)
+    cur = client.get("/student/weekend/current", headers=sh).json()
+    assert cur["active"] and cur["practice"] is False and "questions" not in cur
+    assert client.post("/student/weekend/hint", headers=sh, json={"sessionId": s, "questionId": a}).status_code == 409
+
+    # teacher drafts hints; students cannot see drafts as approved, but 'approve' makes them official
+    qs = client.get(base + "/questions", headers=th).json()["items"]
+    assert [x["hintStatus"] for x in qs] == ["none", "none"] and qs[0]["levelNames"] == ["思考方向", "第一步", "完整讲解"]
+    replies.append(HINTS)
+    g = client.post("/teacher/weekend/hints/generate", headers=th, json={"questionId": a}).json()
+    assert g["hintStatus"] == "draft" and len(g["hints"]) == 3 and calls[-1]["feature"] == "weekend_hint"
+    assert client.put(f"/teacher/weekend/hints/{a}", headers=th, json={"levels": ["x", "y", ""], "approve": True}).status_code == 400
+    assert client.put(f"/teacher/weekend/hints/{a}", headers=th, json={"levels": g["hints"], "approve": True}).json()["hintStatus"] == "approved"
+
+    client.post(base + "/goto", headers=th, json={"stage": 4})
+    cur = client.get("/student/weekend/current", headers=sh).json()
+    assert cur["practice"] and [x["id"] for x in cur["questions"]] == [a, b] and "correctIndex" not in cur["questions"][0]
+
+    # three hint levels, in order, then no more; the third is only reachable after the first two
+    h = [client.post("/student/weekend/hint", headers=sh, json={"sessionId": s, "questionId": a}).json() for _ in range(3)]
+    assert [x["level"] for x in h] == [1, 2, 3] and h[0]["text"] == "想想分母表示什么" and h[2]["last"] is True
+    assert client.post("/student/weekend/hint", headers=sh, json={"sessionId": s, "questionId": a}).status_code == 409
+    assert client.get("/student/weekend/current", headers=sh).json()["questions"][0]["hintTexts"][1] == "先把两个分数通分"
+
+    # one recorded attempt per question; hint level is stored with the answer
+    r = client.post("/student/weekend/answer", headers=sh, json={"sessionId": s, "questionId": a, "selected": 1}).json()
+    assert r["correct"] is True and r["hintUsed"] == 3 and r["explanation"] == "通分再加"
+    assert client.post("/student/weekend/answer", headers=sh, json={"sessionId": s, "questionId": a, "selected": 0}).status_code == 409
+    assert client.post("/student/weekend/answer", headers=sh, json={"sessionId": s, "questionId": b, "selected": 7}).status_code == 400
+
+    # a question without approved hints: AI writes them on the spot ("auto"); an AI failure records nothing
+    replies.append("not json")
+    assert client.post("/student/weekend/hint", headers=sh, json={"sessionId": s, "questionId": b}).status_code == 502
+    replies.append(HINTS)
+    first = client.post("/student/weekend/hint", headers=sh, json={"sessionId": s, "questionId": b}).json()
+    assert first["level"] == 1
+    assert client.get(base + "/questions", headers=th).json()["items"][1]["hintStatus"] == "auto"
+    r = client.post("/student/weekend/answer", headers=sh, json={"sessionId": s, "questionId": b, "selected": 1}).json()
+    assert r["correct"] is False and r["hintUsed"] == 1
+
+    # progress: completion counts correct answers; hint use is visible to the teacher
+    p = client.get(base + "/progress", headers=th).json()
+    me = [i for i in p["items"] if i["studentId"] == sid][0]
+    assert me["answered"] == 2 and me["correct"] == 1 and me["completionRate"] == 50 and me["hintMax"] == 3 and me["hintAvg"] == 2.0
+
+    # outside the practice stage students can neither ask for hints nor answer
+    client.post(base + "/goto", headers=th, json={"stage": 5})
+    assert client.post("/student/weekend/answer", headers=sh, json={"sessionId": s, "questionId": a, "selected": 0}).status_code == 409
+    assert client.get("/teacher/weekend/sessions/%d/progress" % s, headers=sh).status_code == 403
+    print("OK")
+''',
+    )
