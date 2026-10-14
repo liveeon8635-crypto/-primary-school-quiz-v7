@@ -241,6 +241,7 @@ with TestClient(app) as client:
     assert client.get("/student/weekend/followup", headers=sh).json() == {"active": False}
 
     # preview writes nothing; settle writes once, to the points ledger, with reasons
+    assert client.get(base + "/settle-preview", headers=th).json()["pendingFollowups"] == 0     # the follow-up above was answered
     pv = client.get(base + "/settle-preview", headers=th).json()
     assert pv["settled"] is False
     by = {i["studentId"]: i for i in pv["items"]}
