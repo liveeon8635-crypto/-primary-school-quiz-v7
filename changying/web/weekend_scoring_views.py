@@ -235,10 +235,12 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
             it["total"] = sum(v[0] for v in it["parts"].values())
         items.sort(key=lambda x: x["name"])
         return {"items": items, "preRate": pre_rate, "postRate": post_rate, "prevPostRate": prev_post, "teamPoints": team,
+                "pendingFollowups": sum(1 for p in pairs if p.followup_json and p.followup_correct is None),
                 "settled": bool(db.scalar(select(func.count()).select_from(awards).where(awards.c.session_id == row.id)))}
 
     def public(result: dict[str, Any]) -> dict[str, Any]:
         out = dict(result)
+        out["pendingFollowups"] = result.get("pendingFollowups", 0)
         out["items"] = [{"studentId": i["studentId"], "name": i["name"], "total": i["total"],
                          "parts": {k: v[0] for k, v in i["parts"].items()}, "why": {k: v[1] for k, v in i["parts"].items()}} for i in result["items"]]
         return out
