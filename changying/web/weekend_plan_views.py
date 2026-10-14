@@ -62,6 +62,7 @@ class DraftBody(BaseModel):
     subject: str
     lessonNo: int
     force: bool = False
+    onlyQuestions: bool = False      # keep the existing plan, only add draft questions
 
 
 class LessonEditBody(BaseModel):
@@ -252,7 +253,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(400, f"课次需要在 1–{LESSONS} 之间")
         p = program(db, int(u.school_id))
         lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == b.subject, Lesson.lesson_no == b.lessonNo))
-        if lesson is not None and not b.force and ((lesson.teacher_plan or "").strip() or (lesson.core_target or "").strip()):
+        if b.onlyQuestions and lesson is None:
+            raise HTTPException(404, "这节课还没有教案，请先用 AI 备课草稿")
+        if lesson is not None and not b.onlyQuestions and not b.force and ((lesson.teacher_plan or "").strip() or (lesson.core_target or "").strip()):
             raise HTTPException(409, "这节课已经有教案了。要让 AI 重写请选择覆盖。")
         row = db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == b.subject, sched.c.lesson_no == b.lessonNo)).first()
         weak = weak_knowledge(db, u, b.subject)
@@ -261,13 +264,14 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             f"你是小学{p.grade}年级{b.subject}周末补课老师（{textbook}），一次课 2 小时、约 3 名学生、基础参差不齐。请为第 {b.lessonNo} 次课写备课草稿。\n"
             f"学校本周进度：{(row.school_unit if row and row.school_unit else '未提供')}（学校第 {row.school_week if row and row.school_week else '?'} 周）。\n"
             f"班里近期错得最多的知识点：{'、'.join(w['knowledge'] for w in weak) or '暂无'}。\n"
+            + (f"这节课已有教案：课题《{lesson.title}》，目标：{lesson.core_target}。请只出习题，其余字段可留空。\n" if b.onlyQuestions and lesson is not None else "") +
             "要求：知识点讲解由浅入深，例题 2-3 道，随堂选择题 4-6 道（3 个选项，只有一个正确，难度由易到难），内容不超纲。"
             '只输出 JSON：{"title":"课题","coreTarget":"本节目标","teacherPlan":"教学流程(200字内)","ppt":["每页标题，6-9 页"],'
             '"examples":["例题和解答，2-3 条"],"closureTraining":"课后练习安排",'
             '"questions":[{"stem":"题目","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}]}'
         )
         data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=90))
-        if not isinstance(data, dict) or not str(data.get("title") or "").strip() or not _lines(data.get("ppt")):
+        if not isinstance(data, dict) or (not b.onlyQuestions and (not str(data.get("title") or "").strip() or not _lines(data.get("ppt")))):
             raise HTTPException(502, "AI 这次没有给出可用的备课草稿，请再试一次")
         qs = []
         for q in data.get("questions") if isinstance(data.get("questions"), list) else []:
@@ -281,11 +285,13 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         if not qs:
             raise HTTPException(502, "AI 没有给出合格的习题，请再试一次")
         now = datetime.utcnow()
-        fields = dict(title=str(data["title"]).strip()[:180], core_target=str(data.get("coreTarget") or "")[:1000], teacher_plan=str(data.get("teacherPlan") or "")[:3000],
+        fields = dict(title=str(data.get("title") or "").strip()[:180], core_target=str(data.get("coreTarget") or "")[:1000], teacher_plan=str(data.get("teacherPlan") or "")[:3000],
                       ppt_json=json.dumps(_lines(data.get("ppt")), ensure_ascii=False), examples_json=json.dumps(_lines(data.get("examples")), ensure_ascii=False),
                       closure_training=str(data.get("closureTraining") or "")[:1000], unit=(row.school_unit if row and row.school_unit else "")[:120] or "待配置单元",
                       published=False, updated_at=now)
-        if lesson is None:
+        if b.onlyQuestions:
+            db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.active.is_(False)))
+        elif lesson is None:
             lesson = Lesson(school_id=u.school_id, program_id=p.id, subject=b.subject, lesson_no=b.lessonNo, duration_min=120, **fields)
             db.add(lesson)
             db.flush()

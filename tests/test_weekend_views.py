@@ -447,6 +447,14 @@ with TestClient(app) as client:
     st = client.post(f"/teacher/weekend/lessons/{lid}/questions", headers=th, json={"remove": [ids[0]]}).json()
     assert st["approvedQuestions"] == 1
 
+    # a lesson that already has a plan (e.g. the school's seeded 教学方案) can get questions only, without touching the plan
+    replies.append(json.dumps({"questions": [{"stem": "新题？", "options": ["a", "b", "c"], "correctIndex": 1, "explanation": "x", "knowledge": "约分"}]}, ensure_ascii=False))
+    before = client.get(f"/teacher/weekend/lessons/{lid}", headers=th).json()
+    oq = client.post("/teacher/weekend/lessons/draft", headers=th, json={"subject": "数学", "lessonNo": 17, "onlyQuestions": True})
+    assert oq.status_code == 200 and oq.json()["status"]["draftQuestions"] == 1 and oq.json()["status"]["approvedQuestions"] == 1
+    assert client.get(f"/teacher/weekend/lessons/{lid}", headers=th).json() == before
+    assert client.post("/teacher/weekend/lessons/draft", headers=th, json={"subject": "数学", "lessonNo": 16 + 2, "onlyQuestions": True}).status_code == 404
+
     # editing the plan text
     ed = client.put(f"/teacher/weekend/lessons/{lid}", headers=th, json={"title": "约分", "coreTarget": "x", "teacherPlan": "y", "examples": ["e1"], "ppt": ["p1", "p2"]})
     assert ed.status_code == 200 and client.get(f"/teacher/weekend/lessons/{lid}", headers=th).json()["ppt"] == ["p1", "p2"]
