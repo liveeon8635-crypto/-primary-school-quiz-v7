@@ -82,6 +82,9 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
         const kp=document.createElement('a');kp.className='cy-ws-row';kp.href='/v1/knowledge';
         kp.innerHTML='<b>知识点讲解卡片</b><i>›</i><small>按题库生成知识点卡片，AI 写草稿、你审核后发布；学生可搜索，错题自动关联</small>';
         hw.after(kp);
+        const wk=document.createElement('a');wk.className='cy-ws-row';wk.href='/v1/weekend';
+        wk.innerHTML='<b>周末课控制台</b><i>›</i><small>选一节课，按 7 个环节计时推进，大屏同步显示当前环节</small>';
+        kp.after(wk);
       }
       main.insertBefore(all,main.firstChild);
     }
