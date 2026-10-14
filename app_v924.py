@@ -1710,6 +1710,8 @@ AUDIT_ACTION_NAMES={
     "paper.create":"创建试卷",
     "parent.bind":"绑定家长",
     "parent.unbind":"解除家长绑定",
+    "classroom.board.lock":"锁定课堂大屏",
+    "classroom.board.unlock":"解锁课堂大屏",
     "points.class_rule.create":"新增班级积分规则",
     "points.class_rule.initialize":"初始化班级积分规则",
     "points.class_rule.reset":"重置班级积分规则",
