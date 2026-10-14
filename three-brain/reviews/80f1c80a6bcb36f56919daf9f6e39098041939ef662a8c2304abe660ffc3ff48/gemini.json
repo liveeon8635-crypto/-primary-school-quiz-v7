@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-flash",
+  "evidencePacketHash": "sha256:80f1c80a6bcb36f56919daf9f6e39098041939ef662a8c2304abe660ffc3ff48",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "908c6106ff9c205fa54b0f581939196515f52ee7",
+  "headSha": "200dad26de035c57d05e1c734eb00e524160ad88",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：新增了课堂大屏锁定（冻盖与遮盖）功能及相关 API，实现规范且有完整的测试覆盖。",
+      "evidenceRefs": [
+        "file:changying/web/v1_classroom_live_board.py#L331-L368",
+        "file:tests/test_classroom_board_lock.py#L1-L136"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:d2e978ad90aa8956dd0e569d40b4bcea5f00bce83e9b32550627cefd8fa9f75d"
+}
