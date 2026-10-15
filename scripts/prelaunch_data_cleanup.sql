@@ -58,6 +58,7 @@ WITH d AS (DELETE FROM homework_notices RETURNING 1) INSERT INTO _deleted SELECT
 WITH d AS (DELETE FROM ai_usage_logs RETURNING 1) INSERT INTO _deleted SELECT 'ai_usage_logs', COUNT(*) FROM d;
 WITH d AS (DELETE FROM account_deletion_requests RETURNING 1) INSERT INTO _deleted SELECT 'account_deletion_requests', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_stage_log RETURNING 1) INSERT INTO _deleted SELECT 'weekend_stage_log', COUNT(*) FROM d;
+WITH d AS (DELETE FROM weekend_slide_state RETURNING 1) INSERT INTO _deleted SELECT 'weekend_slide_state', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_sessions RETURNING 1) INSERT INTO _deleted SELECT 'weekend_sessions', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_schedule RETURNING 1) INSERT INTO _deleted SELECT 'weekend_schedule', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_peer_help RETURNING 1) INSERT INTO _deleted SELECT 'weekend_peer_help', COUNT(*) FROM d;

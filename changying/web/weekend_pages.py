@@ -68,6 +68,10 @@ function control(){
       stagesBox.appendChild(el('div',{class:'row'},b,el('span',{class:'muted',text:s.goal})));
     });
     content.appendChild(el('h2',{text:'当前环节大屏内容'}));
+    if(d.deck){
+      content.appendChild(el('div',{class:'row'},el('button',{text:'‹ 上一页',disabled:d.deck.index<=0,onclick:function(){post('slide',{delta:-1})}}),
+        el('b',{text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}),el('button',{class:'primary',text:'下一页 ›',disabled:d.deck.index>=d.deck.total-1,onclick:function(){post('slide',{delta:1})}})));
+    }
     if(!d.content.length)content.appendChild(el('div',{class:'muted',text:running?(d.covered?'大屏遮盖中':'这个环节没有内容'):'开始上课后显示'}));
     d.content.forEach(function(x){content.appendChild(el('p',{text:x}))});
   }
@@ -91,63 +95,29 @@ function progress(box,d){
     });
   }).catch(function(){});
 }
-var PEER_NAMES={};
 function peerCard(box){
-  box.appendChild(el('h2',{text:'强带弱（复盘环节用）'}));
-  box.appendChild(el('div',{class:'muted',text:'只有你能看到谁完成得好、谁需要帮助。点选后，被讲的同学会收到一道换数字的巩固题；做对了，小老师加分。'}));
-  var out=el('div'),msg=el('div'),go=el('button',{text:'查看建议',onclick:function(){load()}});
+  box.appendChild(el('h2',{text:'请同学讲解（复盘环节）'}));
+  box.appendChild(el('div',{class:'muted',text:'像课堂互动一样：选一道题，请做对的同学来讲。大屏会显示“请 XX 同学来讲”，TA 的页面会收到题目和解析；讲完，没做对的同学会收到一道类似的小题，做对了讲解的同学加分。'}));
+  var out=el('div'),msg=el('div'),go=el('button',{text:'查看可以讲的题',onclick:function(){load()}});
   box.appendChild(go);box.appendChild(out);box.appendChild(msg);
-  var tutor=null,tutee=null,qid=null;
   function load(){
-    out.textContent='';msg.textContent='';tutor=tutee=qid=null;
+    out.textContent='';msg.textContent='';
     api('/teacher/weekend/sessions/'+SID+'/peer-suggest').then(function(d){
       out.appendChild(el('div',{class:'notice ok',text:d.message}));
-      if(d.mode!=='peer')return;
-      var pick=el('div'),btn=el('button',{class:'primary',text:'安排讲解',disabled:true});
-      function upd(){btn.disabled=!(tutor&&tutee&&qid)}
-      out.appendChild(el('b',{text:'谁来讲'}));
-      d.tutors.forEach(function(t){out.appendChild(el('div',{class:'row'},el('button',{text:t.name+'（完成率 '+t.completionRate+'%，本节已讲 '+t.explainedThisLesson+' 次）',onclick:function(){tutor=t.studentId;upd()}})))});
-      out.appendChild(el('b',{text:'讲给谁、讲哪一题'}));
-      d.tutees.forEach(function(t){t.wrong.forEach(function(w){out.appendChild(el('div',{class:'row'},el('button',{text:t.name+'：'+w.stem.slice(0,40),onclick:function(){tutee=t.studentId;qid=w.questionId;upd()}})))})});
-      btn.addEventListener('click',function(){
-        btn.disabled=true;
-        api('/teacher/weekend/sessions/'+SID+'/peer-help',{json:{tutorId:tutor,tuteeId:tutee,questionId:qid}}).then(function(r){
-          msg.textContent='';msg.appendChild(el('div',{class:'notice ok',text:r.message}));
-          if(!r.followup){msg.appendChild(el('div',{class:'row'},el('button',{text:'巩固题做对了',onclick:function(){api('/teacher/weekend/peer-help/'+r.id+'/result',{json:{correct:true}}).then(function(){msg.appendChild(el('div',{class:'notice ok',text:'已记录：做对'}))})}}),
-            el('button',{text:'没做对',onclick:function(){api('/teacher/weekend/peer-help/'+r.id+'/result',{json:{correct:false}}).then(function(){msg.appendChild(el('div',{class:'notice ok',text:'已记录：没做对'}))})}})))}
-        }).catch(function(e){msg.textContent='';msg.appendChild(el('div',{class:'notice error',text:e.message}));btn.disabled=false});
+      d.questions.forEach(function(q){
+        var row=el('div',{class:'card'},el('b',{text:'第 '+q.no+' 题：'+q.stem}),
+          el('div',{class:'muted',text:'做对：'+q.right.map(function(x){return x.name}).join('、')+'　·　没做对：'+q.wrong.map(function(x){return x.name}).join('、')}));
+        var act=el('div',{class:'row'});
+        q.right.forEach(function(r){
+          var b=el('button',{text:r.asked?'已请 '+r.name+' 讲过':'请 '+r.name+' 来讲',disabled:r.asked,onclick:function(){
+            b.disabled=true;msg.textContent='';
+            api('/teacher/weekend/sessions/'+SID+'/explain',{json:{tutorId:r.studentId,questionId:q.questionId}}).then(function(res){msg.appendChild(el('div',{class:'notice ok',text:res.message}));b.textContent='已请 '+r.name+' 讲过'})
+              .catch(function(e){msg.appendChild(el('div',{class:'notice error',text:e.message}));b.disabled=false});
+          }});
+          act.appendChild(b);
+        });
+        row.appendChild(act);out.appendChild(row);
       });
-      out.appendChild(el('div',{class:'row'},btn));
-    }).catch(function(e){out.appendChild(el('div',{class:'notice error',text:e.message}))});
-  }
-}
-function archiveCard(box){
-  box.appendChild(el('h2',{text:'课堂档案与家长简报'}));
-  box.appendChild(el('div',{class:'muted',text:'下课后查看这节课的完整记录；家长简报只讲孩子自己的完成、努力和要复习的知识点，不排名。你确认（可修改）后，家长才能看到。'}));
-  var out=el('div'),msg=el('div');
-  box.appendChild(el('div',{class:'row'},el('button',{text:'查看这节课的档案',onclick:function(){archive()}}),el('button',{text:'家长简报（预览/发布）',onclick:function(){briefs()}})));
-  box.appendChild(out);box.appendChild(msg);
-  function archive(){
-    out.textContent='';
-    api('/teacher/weekend/sessions/'+SID+'/archive').then(function(a){
-      out.appendChild(el('div',{class:'muted',text:a.title+' · 到课 '+a.attendance.present+'/'+a.attendance.total+(a.classRates?' · 班级完成率 '+a.classRates.pre+'% → '+a.classRates.post+'%':'')}));
-      a.timeline.forEach(function(t){out.appendChild(el('div',{class:'row'},el('span',{class:'tag',text:'环节 '+t.stage}),el('span',{class:'muted',text:'计划 '+t.plannedMin+' 分，实际 '+t.actualMin+' 分'})))});
-      a.students.forEach(function(s){
-        out.appendChild(el('div',{class:'row'},el('b',{text:s.name}),s.attended?el('span',{class:'muted',text:'做对 '+s.correct+'/'+s.total+' · 完成率 '+s.completionRate+'% · 平均提示 '+s.hintAvg+(s.helped?' · 讲解 '+s.helped+' 次':'')+(s.wrongKnowledge.length?' · 要补：'+s.wrongKnowledge.join('、'):'')}):el('span',{class:'tag warn',text:'缺课/未作答'})));
-      });
-      a.peerHelp.forEach(function(p){out.appendChild(el('div',{class:'muted',text:'强带弱：'+p.tutor+' 讲给 '+p.tutee+(p.followupCorrect==null?'（巩固题未做）':p.followupCorrect?'，巩固题做对':'，巩固题没做对')}))});
-    }).catch(function(e){out.appendChild(el('div',{class:'notice error',text:e.message}))});
-  }
-  function briefs(){
-    out.textContent='';msg.textContent='';
-    api('/teacher/weekend/sessions/'+SID+'/briefs').then(function(d){
-      if(!d.items.length){out.appendChild(el('div',{class:'muted',text:'还没有学生作答。'}));return}
-      var tas={};
-      d.items.forEach(function(i){var t=el('textarea',{class:'s'});t.value=i.text;tas[i.studentId]=t;out.appendChild(el('div',{},el('b',{text:i.name+(i.published?'（已发布，再发布会覆盖）':'')}),t))});
-      out.appendChild(el('button',{class:'primary',text:'发布给家长',onclick:function(){
-        var texts={};Object.keys(tas).forEach(function(k){texts[k]=tas[k].value});
-        api('/teacher/weekend/sessions/'+SID+'/briefs/publish',{json:{texts:texts}}).then(function(r){msg.textContent='';msg.appendChild(el('div',{class:'notice ok',text:'已发布 '+r.published+' 份。家长在“孩子课程”页能看到。'}))}).catch(function(e){msg.appendChild(el('div',{class:'notice error',text:e.message}))});
-      }}));
     }).catch(function(e){out.appendChild(el('div',{class:'notice error',text:e.message}))});
   }
 }
@@ -254,7 +224,8 @@ function board(){
       el('div',{style:'font-size:6vh;font-weight:700',text:d.currentStage+'. '+d.stageName}),
       el('div',{id:'bclock',style:'font-size:6vh;font-weight:700',text:remain==null?'':fmt(remain)})));
     wrap.appendChild(el('div',{style:'font-size:3vh;opacity:.8;margin:1vh 0 3vh',text:d.goal}));
-    d.content.forEach(function(x){wrap.appendChild(el('p',{style:'font-size:4vh;line-height:1.5;margin:1.5vh 0',text:x}))});
+    if(d.deck)wrap.appendChild(el('div',{style:'opacity:.6;font-size:2.4vh',text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}));
+    d.content.forEach(function(x){wrap.appendChild(el('p',{style:'font-size:'+(d.deck?'5.5vh':'4vh')+';line-height:1.5;margin:1.5vh 0',text:x}))});
   }
   var last=null;
   function load(){api('/teacher/weekend/sessions/'+SID+'/board').then(function(d){last=d;remain=d.remainingSeconds;paint(d)}).catch(function(e){if(!last)msg(e.message)})}
@@ -316,6 +287,21 @@ function practice(){
       card.appendChild(hintsOut);card.appendChild(out);box.appendChild(card);
     });
   }
+  var ebox=el('div');root.insertBefore(ebox,box);
+  function explain(){
+    api('/student/weekend/explain').then(function(d){
+      ebox.textContent='';
+      d.items.forEach(function(q){
+        var card=el('div',{class:'card'});
+        card.appendChild(el('h2',{text:'老师请你给大家讲这道题'}));
+        card.appendChild(el('b',{text:q.stem}));
+        card.appendChild(el('div',{class:'muted',text:'正确答案：'+LETTERS[q.correctIndex]+'. '+(q.options[q.correctIndex]||'')}));
+        if(q.explanation)card.appendChild(el('div',{text:'解析：'+q.explanation}));
+        card.appendChild(el('div',{class:'muted',text:'用自己的话讲：先说第一步做什么，为什么这样做，最后得到什么。'}));
+        ebox.appendChild(card);
+      });
+    }).catch(function(){});
+  }
   var fbox=el('div');root.insertBefore(fbox,box);
   function followup(){
     api('/student/weekend/followup').then(function(f){
@@ -333,8 +319,8 @@ function practice(){
       card.appendChild(el('div',{class:'row'},sub));card.appendChild(out);fbox.appendChild(card);
     }).catch(function(){});
   }
-  load();followup();
-  wait=setInterval(function(){if(!document.hidden){load();if(!fbox.firstChild)followup()}},20000);
+  load();followup();explain();
+  wait=setInterval(function(){if(!document.hidden){load();explain();if(!fbox.firstChild)followup()}},20000);
 }
 boot_student(practice);
 """
@@ -399,7 +385,8 @@ function plan(){
     });
   }).catch(function(e){nextBox.appendChild(el('div',{class:'notice error',text:e.message}))});
 
-  toolBox.appendChild(el('h2',{text:'学校进度表'}));
+  toolBox.appendChild(el('div',{class:'notice ok',text:'备课方法：在下面每一次课的那一行，点“导入我的教案”上传你自己的 Word / PPT / PDF 教案，系统整理成上课用的内容；没有教案时才用“AI 帮我写”。学校进度表只是用来对照学校讲到哪里，可以不填。'}));
+  toolBox.appendChild(el('h2',{text:'学校进度表（选填）'}));
   toolBox.appendChild(el('div',{class:'muted',text:'把学校发的进度安排粘贴进来，AI 帮你整理成 18 次课；也可以手动填。学校调课时，用“整体顺延”一次改完。'}));
   var paste=el('textarea',{placeholder:'粘贴学校的教学进度表文字'}),parseBtn=el('button',{text:'AI 识别进度',onclick:function(){
     parseBtn.disabled=true;note('ok','AI 正在整理…');
@@ -425,7 +412,16 @@ function plan(){
           dt=el('input',{type:'text',value:r.plannedDate||'',placeholder:'2026-09-12',style:'width:120px',oninput:function(e){r.plannedDate=e.target.value}});
       var tag=el('span',{class:'tag '+(r.taught?'ok':r.hasPlan?'':'warn'),text:r.taught?'已上':r.hasPlan?'有教案·题 '+r.approvedQuestions+(r.draftQuestions?'+草稿'+r.draftQuestions:''):'未备课'});
       var detail=el('div',{hidden:true});
-      var draftBtn=el('button',{text:r.hasPlan?'AI 重写':'AI 备课草稿',onclick:function(){
+      var fileIn=el('input',{type:'file',accept:'.docx,.pptx,.pdf,.txt,.md',hidden:true});
+      var impBtn=el('button',{class:r.hasPlan?'':'primary',text:'导入我的教案',title:'支持 Word(.docx)、PPT(.pptx)、PDF、txt',onclick:function(){fileIn.click()}});
+      fileIn.addEventListener('change',function(){
+        var f=fileIn.files&&fileIn.files[0];if(!f)return;
+        if(r.hasPlan&&!confirm('这节课已有教案，导入会覆盖教案文字和未审核的草稿题（已通过的习题保留）。确定吗？')){fileIn.value='';return}
+        var fd=new FormData();fd.append('subject',SUBJ);fd.append('lessonNo',String(r.lessonNo));fd.append('force',r.hasPlan?'1':'0');fd.append('file',f);
+        impBtn.disabled=true;note('ok','正在读取并整理你的教案，约半分钟…');
+        api('/teacher/weekend/lessons/import',{method:'POST',body:fd}).then(function(d){note('ok',d.message);load()}).catch(function(e){note('error',e.message);impBtn.disabled=false}).then(function(){fileIn.value=''});
+      });
+      var draftBtn=el('button',{text:r.hasPlan?'AI 重写':'没教案？AI 帮我写',onclick:function(){
         if(r.hasPlan&&!confirm('这节课已有教案，AI 重写会覆盖教案文字和未审核的草稿题，确定吗？'))return;
         draftBtn.disabled=true;note('ok','AI 正在备课，大约半分钟…');
         api('/teacher/weekend/lessons/draft',{json:{subject:SUBJ,lessonNo:r.lessonNo,force:r.hasPlan}}).then(function(){note('ok','草稿已生成，请展开“审改”核对后再用。');load()})
@@ -439,7 +435,7 @@ function plan(){
       var go=el('button',{class:'primary',text:'开课',title:'需要教案和已通过的习题',disabled:!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0),onclick:function(){
         api('/teacher/weekend/sessions',{json:{lessonId:r.lessonId}}).then(function(d){location.href='/v1/weekend?s='+d.id}).catch(function(e){note('error',e.message)})}});
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
-        el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),draftBtn,qBtn,open,go),detail));
+        el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),impBtn,fileIn,draftBtn,qBtn,open,go),detail));
     });
     list.appendChild(el('button',{class:'primary',text:'保存进度表',onclick:function(){
       api('/teacher/weekend/schedule',{method:'PUT',json:{subject:SUBJ,rows:state.map(function(r){return {lessonNo:r.lessonNo,schoolWeek:r.schoolWeek,schoolUnit:r.schoolUnit||'',plannedDate:r.plannedDate||'',note:r.note||''}})}}).then(function(){note('ok','已保存');load()}).catch(function(e){note('error',e.message)})}}));

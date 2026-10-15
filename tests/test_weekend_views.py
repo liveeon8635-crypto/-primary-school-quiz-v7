@@ -220,8 +220,9 @@ with TestClient(app) as client:
         db.commit()
 
     sug = client.get(base + "/peer-suggest", headers=th).json()
-    assert sug["mode"] == "peer" and sug["tutors"][0]["studentId"] == strong_id and sug["tutees"][0]["studentId"] == sid
-    assert sug["tutees"][0]["wrong"][0]["questionId"] == qid
+    assert sug["mode"] == "peer" and len(sug["questions"]) == 1
+    sq = sug["questions"][0]
+    assert sq["questionId"] == qid and [x["studentId"] for x in sq["right"]] == [strong_id] and [x["studentId"] for x in sq["wrong"]] == [sid]
     assert client.get(base + "/peer-suggest", headers=sh).status_code == 403          # students never see who is "strong"
 
     # pairing rules
@@ -464,6 +465,178 @@ with TestClient(app) as client:
     # what to prepare next: lesson 1 and 2 have no plan yet, so lesson 1 is next
     nxt = {x["subject"]: x for x in client.get("/teacher/weekend/next", headers=th).json()["items"]}
     assert nxt["数学"]["lessonNo"] == 1 and nxt["语文"]["subject"] == "语文"      # nothing taught yet: start from lesson 1
+    print("OK")
+''',
+    )
+
+
+def test_import_own_lesson_plan_docx_pptx(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+import io, zipfile
+
+def office(kind, parts):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        for name, xml in parts.items():
+            z.writestr(name, xml)
+    return buf.getvalue()
+
+DOCX = office("docx", {"word/document.xml": "<w:document><w:body>"
+    "<w:p><w:r><w:t>第三课 分数的约分</w:t></w:r></w:p>"
+    "<w:p><w:r><w:t>目标：会把分数约成最简分数，理解公因数</w:t></w:r></w:p>"
+    "<w:p><w:r><w:t>例1：12/18 约分得 2/3（同除以 6）</w:t></w:r></w:p></w:body></w:document>"})
+PPTX = office("pptx", {"ppt/slides/slide2.xml": "<p:sld><a:t>公因数</a:t><a:t>12和18的公因数有1、2、3、6</a:t></p:sld>",
+                       "ppt/slides/slide1.xml": "<p:sld><a:t>约分 封面</a:t></p:sld>",
+                       "ppt/slides/slide10.xml": "<p:sld><a:t>小结</a:t></p:sld>"})
+AI = json.dumps({"title": "分数的约分", "coreTarget": "会约分", "teacherPlan": "先讲公因数再约分", "ppt": ["AI给的页标题"], "examples": ["例1：12/18 约分得 2/3"],
+                 "closureTraining": "练习册 P30",
+                 "questions": [{"stem": "6/9 约分后是？", "options": ["2/3", "3/4", "1/2"], "correctIndex": 0, "explanation": "同除 3", "knowledge": "约分"},
+                               {"stem": "坏题", "options": ["a"], "correctIndex": 9}]}, ensure_ascii=False)
+
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    def imp(name, data, no=17, force="0", subject="数学", text=""):
+        files = {"file": (name, data, "application/octet-stream")} if data is not None else None
+        return client.post("/teacher/weekend/lessons/import", headers=th, data={"subject": subject, "lessonNo": str(no), "force": force, "text": text}, files=files)
+
+    assert client.post("/teacher/weekend/lessons/import", headers=sh, data={"subject": "数学", "lessonNo": "17"}).status_code == 403
+    assert imp("x.exe", b"abc").status_code == 400                                   # unsupported type
+    assert imp("x.docx", b"not a zip").status_code == 400                            # damaged Office file
+    assert imp("x.txt", b"too short").status_code == 400                             # nothing to read
+    replies.append("garbage")
+    assert imp("plan.docx", DOCX).status_code == 502                                 # AI could not tidy it: nothing saved
+    assert client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()["items"][16]["lessonId"] is None
+
+    # .docx: the lesson is created from the teacher's own text; AI only structures it; the questions found are drafts
+    replies.append(AI)
+    r = imp("plan.docx", DOCX)
+    assert r.status_code == 200, r.text
+    d = r.json(); lid = d["lessonId"]
+    assert "第三课 分数的约分" in prompts[-1] and "不要编造" in prompts[-1]          # the file's own text is what the AI sees
+    assert d["status"]["hasPlan"] and d["status"]["draftQuestions"] == 1 and d["status"]["approvedQuestions"] == 0 and d["questionsFound"] == 1
+    assert client.get(f"/teacher/weekend/lessons/{lid}", headers=th).json()["title"] == "分数的约分"
+
+    # an existing real plan is not silently overwritten
+    assert imp("plan.docx", DOCX).status_code == 409
+
+    # .pptx: the teacher's own slides, in numeric order, become the big-screen pages (not the AI's guesses)
+    replies.append(AI)
+    r = imp("slides.pptx", PPTX, force="1")
+    assert r.status_code == 200 and r.json()["slides"] == 3
+    assert client.get(f"/teacher/weekend/lessons/{lid}", headers=th).json()["ppt"] == ["约分 封面", "公因数 12和18的公因数有1、2、3、6", "小结"]
+
+    # pasted text works without a file
+    replies.append(AI)
+    assert imp(None, None, no=16, text="第十六课 通分。目标：会通分。例1：1/2 和 1/3 通分得 3/6 和 2/6，需要找最小公倍数。").status_code == 200
+    print("OK")
+''',
+    )
+
+
+def test_big_screen_pages_through_the_teachers_own_slides(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=94, title="翻页", core_target="目标",
+                                  ppt_json=json.dumps(["第一页：封面", "第二页：公因数", "第三页：小结"], ensure_ascii=False),
+                                  examples_json=json.dumps(["例1", "例2"], ensure_ascii=False))
+        db.add(l); db.commit(); lid = l.id
+    s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    base = f"/teacher/weekend/sessions/{s}"
+    assert client.post(base + "/slide", headers=th, json={"delta": 1}).status_code == 409        # not started
+    client.post(base + "/start", headers=th); client.post(base + "/next", headers=th)             # stage 2: slides
+    d = client.get(base + "/board", headers=th).json()
+    assert d["deck"] == {"total": 3, "index": 0} and d["content"] == ["第一页：封面"]
+    d = client.post(base + "/slide", headers=th, json={"delta": 1}).json()
+    assert d["deck"]["index"] == 1 and d["content"] == ["第二页：公因数"]
+    assert client.get(base + "/board", headers=th).json()["content"] == ["第二页：公因数"]        # the big screen follows
+    d = client.post(base + "/slide", headers=th, json={"delta": 5}).json()
+    assert d["deck"]["index"] == 2                                                                # clamped to the last page
+    d = client.post(base + "/slide", headers=th, json={"index": 0}).json()
+    assert d["deck"]["index"] == 0
+    # stage 3 pages through the worked examples, starting from the first; going back to stage 2 starts over too
+    d = client.post(base + "/next", headers=th).json()
+    assert d["deck"] == {"total": 2, "index": 0} and d["content"] == ["例1"]
+    client.post(base + "/slide", headers=th, json={"delta": 1})
+    assert client.get(base + "/board", headers=th).json()["content"] == ["例2"]
+    client.post(base + "/next", headers=th)                                                       # stage 4: no deck
+    assert "deck" not in client.get(base + "/board", headers=th).json()
+    assert client.post(base + "/slide", headers=th, json={"delta": 1}).status_code == 409
+    print("OK")
+''',
+    )
+
+
+def test_ask_a_pupil_to_explain_big_screen_and_student_card(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+from datetime import datetime
+from sqlalchemy import insert
+FOLLOW = json.dumps({"stem": "类似小题？", "options": ["x", "y"], "correctIndex": 1, "explanation": "e"}, ensure_ascii=False)
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=93, title="讲解", core_target="目标")
+        db.add(l); db.flush()
+        q = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=l.id, stage="lesson", subject="数学", level="C", knowledge="k",
+                                    stem="4/8 约分？", options_json=json.dumps(["1/2", "1/4"]), correct_index=0, explanation="同除 4")
+        db.add(q); db.flush(); qid = q.id
+        teacher_id = db.scalar(select(legacy.User.id).where(legacy.User.username == "teacher1"))
+        cls = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id)); cls.teacher_id = teacher_id
+        link = db.scalar(select(legacy.ClassStudent).where(legacy.ClassStudent.student_id == sid))
+        if link is None: db.add(legacy.ClassStudent(class_id=cls.id, student_id=sid))
+        else: link.class_id = cls.id
+        ids = {}
+        for name, uname in (("小强", "e_strong"), ("小乙", "e_b")):
+            u2 = legacy.User(school_id=school_id, username=uname, password_hash=legacy.hash_password("x"), name=name, role="student", grade=3)
+            db.add(u2); db.flush(); db.add(legacy.ClassStudent(class_id=cls.id, student_id=u2.id)); ids[name] = u2.id
+        s_name = db.get(legacy.User, sid); s_name.name = "小明"
+        db.commit(); lid = l.id
+    s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    base = f"/teacher/weekend/sessions/{s}"
+    client.post(base + "/start", headers=th); client.post(base + "/goto", headers=th, json={"stage": 5})
+    with legacy.SessionLocal() as db:
+        t = legacy.Base.metadata.tables["weekend_answers"]
+        for stu, sel, ok in ((ids["小强"], 0, True), (sid, 1, False), (ids["小乙"], 1, False)):
+            db.execute(insert(t).values(school_id=school_id, session_id=s, student_id=stu, question_id=qid, selected=sel, correct=ok, max_hint=0, created_at=datetime.utcnow()))
+        db.commit()
+
+    # question-first: the pupils who got it right are the ones that can be asked; no "strong/weak" labels, no rates
+    sug = client.get(base + "/peer-suggest", headers=th).json()
+    q0 = sug["questions"][0]
+    assert [x["name"] for x in q0["right"]] == ["小强"] and sorted(x["name"] for x in q0["wrong"]) == ["小乙", "小明"]
+    assert "completionRate" not in json.dumps(sug)
+
+    # must be someone who got it right; a pupil who got it wrong cannot be asked
+    assert client.post(base + "/explain", headers=th, json={"tutorId": sid, "questionId": qid}).status_code == 400
+    replies.append(FOLLOW)
+    r = client.post(base + "/explain", headers=th, json={"tutorId": ids["小强"], "questionId": qid}).json()
+    assert r["tutees"] == 2 and r["followup"] is True and "小强" in r["message"] and len([c for c in calls if c["feature"] == "weekend_followup"]) == 1   # one AI call for both pupils
+    assert client.post(base + "/explain", headers=th, json={"tutorId": ids["小强"], "questionId": qid}).status_code == 409
+
+    # the big screen names the pupil asked to explain and the question, never the ones who got it wrong
+    board = client.get(base + "/board", headers=th).json()["content"]
+    assert "请 小强 同学来讲：4/8 约分？" in board and not any("小明" in x or "小乙" in x for x in board)
+
+    # the asked pupil's page shows the question, the right answer and the explanation; classmates see nothing
+    assert client.get("/student/weekend/explain", headers=sh).json() == {"items": []}             # 小明 was not asked
+    strong_h = {"Authorization": "Bearer " + login_and_change(client, "e_strong", "x", "Strong1234")}
+    card = client.get("/student/weekend/explain", headers=strong_h).json()["items"]
+    assert len(card) == 1 and card[0]["stem"] == "4/8 约分？" and card[0]["correctIndex"] == 0 and card[0]["explanation"] == "同除 4"
+    # both pupils who got it wrong get the same follow-up
+    assert client.get("/student/weekend/followup", headers=sh).json()["active"] is True
     print("OK")
 ''',
     )
