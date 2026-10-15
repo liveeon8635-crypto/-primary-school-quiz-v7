@@ -25,6 +25,7 @@ from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, desc, 
 from changying.services.weekend_stages import (
     MAX_EXTEND_MIN, STAGE_COUNT, STAGES, remaining_seconds, stage_by_no, stage_content,
 )
+from changying.services.weekend_answers import answers_published, practice_pages
 from changying.web.weekend_pages import board_page_html, control_page_html
 
 NO_CACHE = {"Cache-Control": "no-store"}
@@ -183,17 +184,16 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                         lines.append(f"请 {who} 同学来讲：{stem}")
                 out["content"] = out["content"] + lines
         if no == 4 and row.status == "running":
-            # 随堂练习: the big screen shows the question stems (never options or answers) next to the instructions.
-            TQ = implementation.TeachingQuestion
-            stems = db.scalars(select(TQ.stem).where(TQ.school_id == row.school_id, TQ.lesson_id == row.lesson_id, TQ.active.is_(True)).order_by(TQ.id).limit(12)).all()
-            from changying.web.weekend_written import register_written_tables
-            written_q = register_written_tables(implementation)["questions"]
-            written_stems = db.scalars(select(written_q.c.stem).where(written_q.c.session_id == row.id,
-                written_q.c.school_id == row.school_id, written_q.c.teacher_id == row.teacher_id).order_by(written_q.c.id)).all()
-            # Reading material remains on the pupil's question card; the board
-            # shows concise question lines and never teacher references.
-            stems = list(stems) + [stem.split("\n")[-1] for stem in written_stems]
-            out["content"] = out["content"] + [f"{i}. {t}" for i, t in enumerate(stems, start=1)]
+            published = answers_published(implementation, db, row)
+            deck = practice_pages(implementation, db, row, answers=published)
+            cursor = db.execute(select(slide_t).where(slide_t.c.session_id == row.id)).first()
+            idx = (int(cursor.idx) if published else -int(cursor.idx)-1) if cursor and cursor.stage_no == 4 else 0
+            idx = max(0, min(idx, len(deck)-1))
+            out["answersPublished"] = published
+            out["content"] = ["答案已公布，请听老师讲评。" if published else "请先独立作答并提交，等待老师统一公布答案。"]
+            if deck:
+                out["deck"] = {"total": len(deck), "index": idx}
+                out["content"].append(deck[idx])
         if board:
             if row.covered:
                 out["content"] = []
@@ -351,21 +351,43 @@ def install_weekend_views(implementation: Any) -> APIRouter:
     @router.post("/teacher/weekend/sessions/{sid}/slide")
     def slide(sid: int, b: SlideBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
+        db.execute(select(sessions.c.id).where(sessions.c.id == sid, sessions.c.school_id == u.school_id).with_for_update()).first()
         row = mine(db, u, sid)
         running(row)
         no = int(row.current_stage)
-        deck = deck_for(lesson_dict(db, int(row.school_id), int(row.lesson_id)), no) if no in (2, 3) else []
+        deck = practice_pages(implementation, db, row, answers=answers_published(implementation, db, row)) if no == 4 else deck_for(lesson_dict(db, int(row.school_id), int(row.lesson_id)), no) if no in (2, 3) else []
         if not deck:
             raise HTTPException(409, "这个环节没有可翻页的内容")
         cur = state(db, row)["deck"]["index"]
         target = b.index if b.index is not None else cur + b.delta
         target = max(0, min(int(target), len(deck) - 1))
+        if no == 4 and not answers_published(implementation, db, row):
+            target = -target - 1
         ex = db.execute(select(slide_t.c.id).where(slide_t.c.session_id == sid)).first()
         if ex:
             db.execute(update(slide_t).where(slide_t.c.id == ex.id).values(stage_no=no, idx=target))
         else:
             db.execute(insert(slide_t).values(school_id=row.school_id, session_id=sid, stage_no=no, idx=target))
         db.commit()
+        return state(db, mine(db, u, sid))
+
+    @router.post("/teacher/weekend/sessions/{sid}/publish-answers")
+    def publish_answers(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        row = mine(db, u, sid)
+        db.execute(select(sessions.c.id).where(sessions.c.id == sid).with_for_update()).first()
+        running(row)
+        if int(row.current_stage) != 4:
+            raise HTTPException(409, "请在随堂练习环节公布答案")
+        if not practice_pages(implementation, db, row, answers=True):
+            raise HTTPException(409, "本节没有可公布的题目")
+        if not answers_published(implementation, db, row):
+            cursor = db.execute(select(slide_t.c.id).where(slide_t.c.session_id == sid)).first()
+            if cursor:
+                db.execute(update(slide_t).where(slide_t.c.id == cursor.id).values(stage_no=4, idx=0))
+            else:
+                db.execute(insert(slide_t).values(school_id=row.school_id, session_id=sid, stage_no=4, idx=0))
+            db.commit()
         return state(db, mine(db, u, sid))
 
     @router.post("/teacher/weekend/sessions/{sid}/cover")

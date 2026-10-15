@@ -151,7 +151,7 @@ with TestClient(app) as client:
 
     # one recorded attempt per question; hint level is stored with the answer
     r = client.post("/student/weekend/answer", headers=sh, json={"sessionId": s, "questionId": a, "selected": 1}).json()
-    assert r["correct"] is True and r["hintUsed"] == 3 and r["explanation"] == "通分再加"
+    assert r["submitted"] is True and r["hintUsed"] == 3 and "correctIndex" not in r and "explanation" not in r and "correct" not in r
     assert client.post("/student/weekend/answer", headers=sh, json={"sessionId": s, "questionId": a, "selected": 0}).status_code == 409
     assert client.post("/student/weekend/answer", headers=sh, json={"sessionId": s, "questionId": b, "selected": 7}).status_code == 400
 
@@ -163,17 +163,38 @@ with TestClient(app) as client:
     assert first["level"] == 1
     assert client.get(base + "/questions", headers=th).json()["items"][1]["hintStatus"] == "auto"
     r = client.post("/student/weekend/answer", headers=sh, json={"sessionId": s, "questionId": b, "selected": 1}).json()
-    assert r["correct"] is False and r["hintUsed"] == 1
+    assert r["submitted"] is True and r["hintUsed"] == 1 and "correct" not in r
 
     # progress: completion counts correct answers; hint use is visible to the teacher
     p = client.get(base + "/progress", headers=th).json()
     me = [i for i in p["items"] if i["studentId"] == sid][0]
     assert me["answered"] == 2 and me["correct"] == 1 and me["completionRate"] == 50 and me["hintMax"] == 3 and me["hintAvg"] == 2.0
 
-    # the big screen shows the question stems (no options, no answers) during 随堂练习
+    # Question and answer decks are controlled independently; reading/turning question pages never publishes.
     client.post(base + "/goto", headers=th, json={"stage": 4})
-    shown = client.get(base + "/board", headers=th).json()["content"]
-    assert shown[-2:] == ["1. 1/2+1/4=?", "2. 1/3+1/3=?"] and not any("3/4" in x for x in shown)
+    shown = client.get(base + "/board", headers=th).json()
+    assert not shown['answersPublished'] and shown['deck']['total'] == 2
+    assert '1/2+1/4=?' in shown['content'][-1] and '解析：' not in str(shown)
+    turned = client.post(base+'/slide', headers=th, json={'delta':1}).json()
+    assert not turned['answersPublished'] and turned['deck']['index'] == 1
+    assert '1/3+1/3=?' in turned['content'][-1]
+    submitted = client.get('/student/weekend/current', headers=sh).json()
+    assert all('correctIndex' not in q and 'correct' not in q and 'explanation' not in q for q in submitted['questions'])
+    assert client.post(base+'/publish-answers', headers=sh).status_code == 403
+    revealed = client.post(base+'/publish-answers', headers=th).json()
+    assert revealed['answersPublished'] and revealed['deck']['index'] == 0
+    assert '正确答案：B. 3/4' in revealed['content'][-1] and '通分再加' in revealed['content'][-1]
+    board = client.get(base+'/board', headers=th).json()
+    assert board['content'] == revealed['content']
+    assert client.get('/student/weekend/current', headers=sh).json()['canSubmit'] is False
+    assert client.post('/student/weekend/answer', headers=sh, json={'sessionId':s,'questionId':a,'selected':0}).status_code == 409
+    assert client.post('/student/weekend/hint', headers=sh, json={'sessionId':s,'questionId':b}).status_code == 409
+    next_page = client.post(base+'/slide', headers=th, json={'delta':1}).json()
+    assert '正确答案：A. 2/3' in next_page['content'][-1]
+    assert client.post(base+'/publish-answers', headers=th).json()['deck']['index'] == 1  # idempotent
+    client.post(base+'/cover', headers=th, json={'covered':True})
+    assert client.get(base+'/board', headers=th).json()['content'] == []
+    client.post(base+'/cover', headers=th, json={'covered':False})
 
     # outside the practice stage students can neither ask for hints nor answer
     client.post(base + "/goto", headers=th, json={"stage": 5})

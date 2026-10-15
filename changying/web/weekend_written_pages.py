@@ -90,8 +90,8 @@ function writtenStudent(box){
             target=groups[key];
           }
           var a=q.submission,card=el('div',{class:'card'},el('div',{style:'white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;font-weight:600',text:question}));target.appendChild(card);
-          if(a){card.appendChild(el('div',{class:'notice',text:WRITTEN_RESULT[a.result]}));card.appendChild(el('p',{text:a.text}));writtenPhoto(card,a);if(a.comment)card.appendChild(el('p',{text:'老师评语：'+a.comment}))}
-          if(!d.canSubmit||a&&a.result==='correct')return;
+          if(a){card.appendChild(el('div',{class:'notice',text:a.result==='pending'&&!d.answersPublished?'已提交，请等待老师统一在大屏公布答案。':WRITTEN_RESULT[a.result]}));card.appendChild(el('p',{text:a.text}));writtenPhoto(card,a);if(a.comment)card.appendChild(el('p',{text:'老师评语：'+a.comment}))}
+          if(!d.canSubmit||a&&!d.answersPublished||a&&a.result==='correct')return;
           var text=el('textarea',{placeholder:'填写答案，也可以用键盘听写或拍照提交',maxlength:4000}),photo=null,preview=el('div'),url=null;
           var draft=drafts[q.id];text.value=draft?draft.text:(a?a.text:'');photo=draft?draft.photo:null;
           function saveDraft(){drafts[q.id]={text:text.value,photo:photo};dirty=true;editRevision++}
@@ -121,7 +121,7 @@ function writtenStudent(box){
     if(document.hidden||busy)return;
     if(!dirty){load();return}
     api('/student/weekend/current').then(function(c){
-      submissionOpen=!!(c.active&&c.practice&&c.sessionId===lastSid);
+      submissionOpen=!!(c.active&&c.practice&&c.canSubmit!==false&&c.sessionId===lastSid);
       phaseNote.textContent=submissionOpen?'':'老师已关闭当前作答；未提交草稿保留在此页，请勿关闭或刷新。';
       controls.forEach(function(x){x.button.disabled=!submissionOpen||x.blocked()});
     }).catch(function(){phaseNote.textContent='课堂状态暂时读取失败，未提交草稿仍保留。'});

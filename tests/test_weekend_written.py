@@ -78,13 +78,20 @@ with TestClient(app) as client:
     assert client.post(review, headers=th, json={'revision':1,'result':'partial','comment':'补充品质词'}).status_code == 200
     assert client.post(review, headers=th, json={'revision':1,'result':'correct'}).status_code == 409
     a = client.get(student, headers=sh).json()['questions'][0]['submission']
-    assert a['result'] == 'partial' and a['comment'] == '补充品质词' and a['revision'] == 2
+    assert a['result'] == 'pending' and a['comment'] == '' and a['revision'] == 2
     assert client.post(url, headers=sh, data={'text':'舍己救人','revision':1}).status_code == 409
     assert client.post(url, headers=sh, data={'text':'舍己救人','revision':2}).status_code == 200
     assert client.post(review, headers=th, json={'revision':3,'result':'correct','comment':'完整'}).status_code == 200
     d = client.get(base+'/written', headers=th).json()
     assert d['submitted'] == d['reviewed'] == d['correct'] == 1 and d['pending'] == 0
     assert client.post(url, headers=sh, data={'text':'overwrite','revision':4}).status_code == 409
+    before = client.get(base+'/board', headers=th)
+    assert '舍己救人' not in before.text
+    published = client.post(base+'/publish-answers', headers=th)
+    assert published.status_code == 200, published.text
+    assert '舍己救人' in client.get(base+'/board', headers=th).text
+    assert client.post(url, headers=sh, data={'text':'late','revision':4}).status_code == 409
+    assert client.get(student, headers=sh).json()['questions'][0]['submission']['comment'] == '完整'
     client.post(base+'/finish', headers=th)
     d = client.get(student, headers=sh).json()
     assert d['canSubmit'] is False and d['questions'][0]['submission']['comment'] == '完整'
@@ -138,7 +145,7 @@ async function settle(){for(let i=0;i<8;i++)await Promise.resolve()}
  practiceOpen=true;ticks[0]();await settle();assert(!send.disabled);
  send.attrs.onclick();await settle();
  assert.deepEqual(saved,['第一题答案']);areas=all(root,'textarea');
- assert.equal(areas[1].value,'第二题尚未交的草稿');
+ assert.equal(areas.length,1);assert.equal(areas[0].value,'第二题尚未交的草稿');
  console.log('OK');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''

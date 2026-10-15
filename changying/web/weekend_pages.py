@@ -90,6 +90,7 @@ function control(){
       stagesBox.appendChild(el('div',{class:'row'},b,el('span',{class:'muted',text:s.goal})));
     });
     content.appendChild(el('h2',{text:'当前环节大屏内容'}));
+    if(running&&d.currentStage===4){content.appendChild(el('div',{class:'notice',text:d.answersPublished?'答案已公布，学生已停止提交；使用下方翻页逐题讲评。':'学生先作答并提交；准备讲评时统一公布答案。'}));content.appendChild(el('button',{class:'primary',text:d.answersPublished?'答案已公布':'统一公布答案到大屏',disabled:!!d.answersPublished,onclick:function(){if(confirm('公布后将停止接收答案，并在大屏显示参考答案，确定公布吗？'))post('publish-answers')}}))}
     if(d.deck){
       content.appendChild(el('div',{class:'row'},el('button',{text:'‹ 上一页',disabled:d.deck.index<=0,onclick:function(){post('slide',{delta:-1})}}),
         el('b',{text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}),el('button',{class:'primary',text:'下一页 ›',disabled:d.deck.index>=d.deck.total-1,onclick:function(){post('slide',{delta:1})}})));
@@ -287,18 +288,16 @@ function practice(){
       var selectionKey=d.sessionId+':'+q.id,chosen=selectedAnswers[selectionKey]==null?-1:selectedAnswers[selectionKey],opts=el('div');
       q.options.forEach(function(o,i){
         var b=el('button',{style:'display:block;width:100%;text-align:left;margin:6px 0',text:LETTERS[i]+'. '+o});
-        if(q.answered){
-          if(i===q.correctIndex)b.className='primary';
-          else if(i===q.selected)b.style.borderColor='#b42318';
+        if(q.answered||d.canSubmit===false){
+          if(i===q.selected)b.className='on';
           b.disabled=true;
         }else b.addEventListener('click',function(){chosen=i;selectedAnswers[selectionKey]=i;Array.prototype.forEach.call(opts.children,function(x,j){x.className=j===i?'on':''})});
         if(!q.answered&&chosen===i)b.className='on';
         opts.appendChild(b);
       });
       card.appendChild(opts);
-      if(q.answered){
-        out.appendChild(el('div',{class:'notice '+(q.correct?'ok':'error'),text:q.correct?'答对了':'答错了，正确答案是 '+LETTERS[q.correctIndex]}));
-        if(q.explanation)out.appendChild(el('div',{class:'muted',text:q.explanation}));
+      if(q.answered||d.canSubmit===false){
+        out.appendChild(el('div',{class:'notice',text:q.answered?(d.answersPublished?'已提交，请看大屏核对答案并听老师讲评。':'已提交，请等待老师统一在大屏公布答案。'):'老师已公布答案，停止提交；请看大屏听讲评。'}));
       }else{
         var hintBtn=el('button',{text:q.hintUsed>=3?'提示已用完':'要提示（已用 '+q.hintUsed+'/3）',disabled:q.hintUsed>=3,onclick:function(){
           hintBtn.disabled=true;
