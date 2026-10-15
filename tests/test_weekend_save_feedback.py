@@ -31,6 +31,6 @@ const assert=require('assert');
 '''
     subprocess.run(['node', '-e', script], check=True, capture_output=True, text=True)
     # Runtime wiring and adjacent accessible feedback in the page's actual script.
-    assert "box.appendChild(saveButton);box.appendChild(saveStatus)" in PLAN_JS
+    assert "editPane.appendChild(saveButton);editPane.appendChild(saveStatus)" in PLAN_JS
     assert "saveLessonEdits('/teacher/weekend/lessons/'+r.lessonId" in PLAN_JS
     assert "role:'status','aria-live':'polite'" in PLAN_JS

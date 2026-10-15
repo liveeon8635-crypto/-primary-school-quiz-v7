@@ -373,7 +373,7 @@ parentBoot();
 
 PLAN_JS = r"""
 var SUBJ='数学';
-function saveLessonEdits(url,payload,button,status,fields){
+function saveLessonEdits(url,payload,button,status,fields,onSaved){
   if(button.disabled)return Promise.resolve();
   button.disabled=true;button.textContent='正在保存…';
   fields.forEach(function(n){n.disabled=true});
@@ -384,7 +384,7 @@ function saveLessonEdits(url,payload,button,status,fields){
   }).then(function(saved){
     var matches=Object.keys(payload).every(function(k){return JSON.stringify(saved[k])===JSON.stringify(payload[k])});
     if(!matches)throw new Error('服务器保存内容与当前填写内容不一致，请保留本页并核对后重试');
-    status.className='notice ok';status.textContent='教案已保存，已核对服务器内容';
+    status.className='notice ok';status.textContent='教案已保存，已核对服务器内容';if(onSaved)onSaved();
   }).catch(function(e){
     status.className='notice error';
     status.textContent=(written?'保存请求已完成，但回读核对未通过：':'保存未成功：')+e.message+'。本页填写内容已保留。';
@@ -451,11 +451,11 @@ function plan(){
         api('/teacher/weekend/lessons/draft',{json:{subject:SUBJ,lessonNo:r.lessonNo,force:r.hasPlan}}).then(function(){note('ok','草稿已生成，请展开“审改”核对后再用。');load()})
           .catch(function(e){note('error',e.message);draftBtn.disabled=false});
       }});
-      var qBtn=(r.hasPlan&&r.approvedQuestions===0)?el('button',{text:'AI 出习题（保留教案）',onclick:function(){
+      var qBtn=r.hasPlan?el('button',{text:'AI 出习题（含简答／写作）',onclick:function(){
         qBtn.disabled=true;note('ok','AI 正在出题…');
         api('/teacher/weekend/lessons/draft',{json:{subject:SUBJ,lessonNo:r.lessonNo,onlyQuestions:true}}).then(function(){note('ok','习题草稿已生成，展开“审改”逐题通过后才会给学生。');load()}).catch(function(e){note('error',e.message);qBtn.disabled=false});
       }}):null;
-      var open=el('button',{text:'审改',disabled:!r.lessonId,onclick:function(){detail.hidden=!detail.hidden;if(!detail.hidden)lessonDetail(r,detail)}});
+      var open=el('button',{text:'审改',disabled:!r.lessonId,onclick:function(){detail.hidden=!detail.hidden;if(!detail.hidden)lessonDetail(r,detail,function(st){Object.assign(r,st);go.disabled=!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0);tag.textContent='有教案 · 已通过 '+r.approvedQuestions+' 题 · 草稿 '+r.draftQuestions+' 题'})}});
       var go=el('button',{class:'primary',text:'开课',title:'需要教案和已通过的习题',disabled:!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0),onclick:function(){
         api('/teacher/weekend/sessions',{json:{lessonId:r.lessonId}}).then(function(d){location.href='/v1/weekend?s='+d.id}).catch(function(e){note('error',e.message)})}});
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
@@ -464,42 +464,83 @@ function plan(){
     list.appendChild(el('button',{class:'primary',text:'保存进度表',onclick:function(){
       api('/teacher/weekend/schedule',{method:'PUT',json:{subject:SUBJ,rows:state.map(function(r){return {lessonNo:r.lessonNo,schoolWeek:r.schoolWeek,schoolUnit:r.schoolUnit||'',plannedDate:r.plannedDate||'',note:r.note||''}})}}).then(function(){note('ok','已保存');load()}).catch(function(e){note('error',e.message)})}}));
   }
-  function lessonDetail(r,box){
+  function lessonDetail(r,box,refreshStatus){
     box.textContent='';
     api('/teacher/weekend/lessons/'+r.lessonId).then(function(L){
       var title=el('input',{type:'text',value:L.title}),tgt=el('textarea',{class:'s'}),plan=el('textarea',{class:'s'}),ppt=el('textarea',{class:'s'}),ex=el('textarea',{class:'s'}),cl=el('textarea',{class:'s'}),source=el('textarea',{class:'s',readonly:true,'aria-label':'导入原文'});
       tgt.value=L.coreTarget;plan.value=L.teacherPlan;ppt.value=L.ppt.join('\n');ex.value=L.examples.join('\n');cl.value=L.closureTraining;source.value=L.sourceText||'';
       function ls(t){return t.value.split('\n').map(function(x){return x.trim()}).filter(Boolean)}
-      box.appendChild(el('div',{class:'muted',text:'课题'}));box.appendChild(title);
-      box.appendChild(el('div',{class:'muted',text:'本节目标'}));box.appendChild(tgt);
-      if(source.value){box.appendChild(el('div',{class:'muted',text:'导入原文（含阅读文章、全部题目，完整保留）'}));box.appendChild(source)}
-      box.appendChild(el('div',{class:'muted',text:'教学流程'}));box.appendChild(plan);
-      box.appendChild(el('div',{class:'muted',text:'PPT 页（每行一页内容）'}));box.appendChild(ppt);
-      box.appendChild(el('div',{class:'muted',text:'例题（每行一条）'}));box.appendChild(ex);
-      box.appendChild(el('div',{class:'muted',text:'课后练习'}));box.appendChild(cl);
+      var nav=el('div',{class:'row',role:'tablist','aria-label':'教案内容分区'}),editPane=el('div'),questionPane=el('div'),originalPane=el('div');
+      var panes=[editPane,questionPane,originalPane],tabButtons=[];
+      ['教案编辑','习题审核','原文核对'].forEach(function(label,i){
+        var b=el('button',{role:'tab',text:label,'aria-selected':i===0?'true':'false',onclick:function(){
+          panes.forEach(function(p,j){p.hidden=i!==j;tabButtons[j].setAttribute('aria-selected',i===j?'true':'false')});
+          Array.prototype.forEach.call(panes[i].querySelectorAll('textarea'),growTextarea);
+        }});tabButtons.push(b);nav.appendChild(b);
+      });
+      box.appendChild(nav);panes.forEach(function(p,i){p.hidden=i!==0;box.appendChild(p)});
+      originalPane.appendChild(el('p',{class:'muted',text:'原文完整保留，含阅读文章、全部题目和教师评分细则；不会整份发给学生。'}));
+      originalPane.appendChild(el('pre',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.8',text:source.value||'本教案没有导入原文。'}));
+      editPane.appendChild(el('div',{class:'muted',text:'课题'}));editPane.appendChild(title);
+      editPane.appendChild(el('div',{class:'muted',text:'本节目标'}));editPane.appendChild(tgt);
+      editPane.appendChild(el('p',{class:'muted',text:'阅读文章和全部原题请切换“原文核对”；课堂题请切换“习题审核”。'}));
+      editPane.appendChild(el('div',{class:'muted',text:'教学流程'}));editPane.appendChild(plan);
+      var sectionppt=el('details',{class:'card'},el('summary',{text:'PPT 页（每行一页内容）'}),ppt);sectionppt.addEventListener('toggle',function(){if(sectionppt.open)growTextarea(ppt)});editPane.appendChild(sectionppt);
+      var sectionex=el('details',{class:'card'},el('summary',{text:'例题（每行一条）'}),ex);sectionex.addEventListener('toggle',function(){if(sectionex.open)growTextarea(ex)});editPane.appendChild(sectionex);
+      var sectioncl=el('details',{class:'card'},el('summary',{text:'课后练习'}),cl);sectioncl.addEventListener('toggle',function(){if(sectioncl.open)growTextarea(cl)});editPane.appendChild(sectioncl);
       var saveStatus=el('div',{role:'status','aria-live':'polite'});
       var saveButton=el('button',{text:'保存教案',onclick:function(){
-        saveLessonEdits('/teacher/weekend/lessons/'+r.lessonId,{title:title.value.trim(),coreTarget:tgt.value,teacherPlan:plan.value,closureTraining:cl.value,examples:ls(ex),ppt:ls(ppt)},saveButton,saveStatus,[title,tgt,plan,ppt,ex,cl]);
+        saveLessonEdits('/teacher/weekend/lessons/'+r.lessonId,{title:title.value.trim(),coreTarget:tgt.value,teacherPlan:plan.value,closureTraining:cl.value,examples:ls(ex),ppt:ls(ppt)},saveButton,saveStatus,[title,tgt,plan,ppt,ex,cl],function(){api('/teacher/weekend/schedule?subject='+encodeURIComponent(SUBJ)).then(function(d){var st=d.items.filter(function(x){return x.lessonId===r.lessonId})[0];if(st)refreshStatus(st)})});
       }});
-      box.appendChild(saveButton);box.appendChild(saveStatus);
-      var qbox=el('div');box.appendChild(el('h2',{text:'习题（AI 草稿需要你通过后才会给学生）'}));box.appendChild(qbox);
+      editPane.appendChild(saveButton);editPane.appendChild(saveStatus);
+      var qbox=el('div'),wbox=el('div');questionPane.appendChild(el('h2',{text:'习题审核'}));questionPane.appendChild(el('p',{text:'选择题自动判分；填答案、阅读简答与写作支持文字／拍照提交，由老师批改。至少通过一道题即可进入课堂。'}));questionPane.appendChild(qbox);questionPane.appendChild(wbox);
       function loadQ(){
         qbox.textContent='';
         api('/teacher/weekend/lessons/'+r.lessonId+'/questions').then(function(d){
-          if(!d.items.length){qbox.appendChild(el('div',{class:'muted',text:'还没有习题。'}));return}
+          if(!d.items.length){qbox.appendChild(el('div',{class:'muted',text:'暂无选择题，请查看下方简答／写作题。'}));return}
           d.items.forEach(function(q){
             var opts=q.options.map(function(o,i){return 'ABCD'[i]+'. '+o+(i===q.correctIndex?' ✓':'')}).join('　');
             var row=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:q.stem}),el('div',{class:'muted',text:opts}),el('div',{class:'muted',text:q.explanation||''})));
             var act=el('div',{class:'row'},el('span',{class:'tag '+(q.active?'ok':'warn'),text:q.active?'已通过':'草稿'}));
             if(!q.active){
-              act.appendChild(el('button',{text:'通过',onclick:function(){api('/teacher/weekend/lessons/'+r.lessonId+'/questions',{json:{approve:[q.id]}}).then(loadQ)}}));
-              act.appendChild(el('button',{text:'删除',onclick:function(){api('/teacher/weekend/lessons/'+r.lessonId+'/questions',{json:{remove:[q.id]}}).then(loadQ)}}));
+              act.appendChild(el('button',{text:'通过',onclick:function(){api('/teacher/weekend/lessons/'+r.lessonId+'/questions',{json:{approve:[q.id]}}).then(function(st){refreshStatus(st);loadQ()})}}));
+              act.appendChild(el('button',{text:'删除',onclick:function(){api('/teacher/weekend/lessons/'+r.lessonId+'/questions',{json:{remove:[q.id]}}).then(function(st){refreshStatus(st);loadQ()})}}));
             }
             qbox.appendChild(row);qbox.appendChild(act);
           });
         });
       }
-      loadQ();
+      function loadWritten(){
+        wbox.textContent='';
+        api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions').then(function(d){
+          wbox.appendChild(el('h2',{text:'填答案、阅读简答与写作（'+d.items.length+' 题）'}));
+          if(!d.items.length)wbox.appendChild(el('p',{class:'muted',text:'还没有此类题目。重新导入原教案可提取原有简答／写作题，或使用 AI 出习题。'}));
+          d.items.forEach(function(q){
+            var labels={short_answer:'阅读简答／过程题',final_answer:'填最终答案',composition:'写作／复述'},card=el('div',{class:'card'});
+            card.appendChild(el('div',{class:'row'},el('b',{text:labels[q.type]||'简答题'}),el('span',{class:'tag '+(q.approved?'ok':'warn'),text:q.approved?'已通过':'草稿'})));
+            var parts=q.stem.split('\n'),questionLine=parts.pop();
+            card.appendChild(el('p',{style:'white-space:pre-wrap;font-weight:600',text:questionLine}));
+            if(parts.length)card.appendChild(el('details',{},el('summary',{text:'展开阅读材料／题目全文'}),el('pre',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7',text:parts.join('\n')})));
+            var edit=el('details'),stem=el('textarea',{maxlength:20000}),ref=el('textarea',{maxlength:4000}),hs=[];
+            edit.appendChild(el('summary',{text:'修改题目、评分要点与提示'}));stem.value=q.stem;ref.value=q.reference||'';
+            edit.appendChild(el('p',{text:'题目及阅读材料（学生可见）'}));edit.appendChild(stem);
+            edit.appendChild(el('p',{text:'参考答案／评分要点（仅老师可见）'}));edit.appendChild(ref);
+            ['方向提示','第一步提示','完整思路'].forEach(function(label,i){var h=el('textarea',{placeholder:label+'（可全留空；填写则需完整三级）',maxlength:300});h.value=(q.hints||[])[i]||'';hs.push(h);edit.appendChild(h)});
+            edit.addEventListener('toggle',function(){if(edit.open)Array.prototype.forEach.call(edit.querySelectorAll('textarea'),growTextarea)});
+            var state=el('div',{role:'status','aria-live':'polite'}),save=el('button',{text:'保存修改（需重新审核）',onclick:function(){
+              save.disabled=true;var hints=hs.map(function(h){return h.value.trim()});
+              api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions/'+q.id,{method:'PUT',json:{stem:stem.value,reference:ref.value,type:q.type,hints:hints.some(Boolean)?hints:[]}}).then(function(st){refreshStatus(st);loadWritten()}).catch(function(e){state.textContent=e.message;save.disabled=false});
+            }});edit.appendChild(save);edit.appendChild(state);card.appendChild(edit);
+            var feedback=el('div',{role:'status','aria-live':'polite'});
+            if(!q.approved){['通过','删除草稿'].forEach(function(label,i){var b=el('button',{text:label,onclick:function(){
+              b.disabled=true;var body={};body[i?'remove':'approve']=[q.id];
+              api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',{json:body}).then(function(st){refreshStatus(st);loadWritten()}).catch(function(e){feedback.textContent=e.message;b.disabled=false});
+            }});card.appendChild(b)})}
+            card.appendChild(feedback);wbox.appendChild(card);
+          });
+        }).catch(function(e){wbox.appendChild(el('div',{class:'notice error',text:e.message}))});
+      }
+      loadQ();loadWritten();
     }).catch(function(e){box.appendChild(el('div',{class:'notice error',text:e.message}))});
   }
   function load(){api('/teacher/weekend/schedule?subject='+encodeURIComponent(SUBJ)).then(function(d){paintRows(d.items)}).catch(function(e){list.appendChild(el('div',{class:'notice error',text:e.message}))})}

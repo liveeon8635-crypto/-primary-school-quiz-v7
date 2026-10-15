@@ -33,7 +33,7 @@ function writtenTeacher(box){
       out.textContent='';
       out.appendChild(el('div',{class:'notice',text:'已提交 '+d.submitted+'/'+d.total+'（'+d.submissionRate+'%） · 已批改 '+d.reviewed+' · 待批改 '+d.pending+' · 正确 '+d.correct+' · 部分正确 '+d.partial}));
       d.questions.forEach(function(q){
-        var card=el('div',{class:'card'},el('b',{text:q.stem}),el('div',{class:'muted',text:'评分要点：'+q.reference}));out.appendChild(card);
+        var card=el('div',{class:'card'},el('div',{style:'white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8',text:q.stem}),el('div',{class:'muted',text:'评分要点：'+q.reference}));out.appendChild(card);
         d.items.filter(function(a){return a.questionId===q.id}).forEach(function(a){
           var row=el('div',{class:'card'},el('b',{text:a.name+' · '+WRITTEN_RESULT[a.result]}),el('p',{text:a.text})),comment=el('textarea',{placeholder:'给学生的评语',maxlength:1000});comment.value=a.comment;
           writtenPhoto(row,a);row.appendChild(comment);
@@ -62,7 +62,7 @@ function writtenStudent(box){
         dirty=Object.keys(drafts).length>0;out.textContent='';
         if(!d.questions.length){out.appendChild(el('div',{class:'muted',text:'本节课没有简答题'}));return}
         d.questions.forEach(function(q){
-          var a=q.submission,card=el('div',{class:'card'},el('b',{text:q.stem}));out.appendChild(card);
+          var a=q.submission,card=el('div',{class:'card'},el('div',{style:'white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8',text:q.stem}));out.appendChild(card);
           if(a){card.appendChild(el('div',{class:'notice',text:WRITTEN_RESULT[a.result]}));card.appendChild(el('p',{text:a.text}));writtenPhoto(card,a);if(a.comment)card.appendChild(el('p',{text:'老师评语：'+a.comment}))}
           if(!d.canSubmit||a&&a.result==='correct')return;
           var text=el('textarea',{placeholder:'填写答案，也可以用键盘听写或拍照提交',maxlength:4000}),photo=null,preview=el('div'),url=null;
