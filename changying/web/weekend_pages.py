@@ -373,6 +373,25 @@ parentBoot();
 
 PLAN_JS = r"""
 var SUBJ='数学';
+function saveLessonEdits(url,payload,button,status,fields){
+  if(button.disabled)return Promise.resolve();
+  button.disabled=true;button.textContent='正在保存…';
+  fields.forEach(function(n){n.disabled=true});
+  status.className='notice';status.textContent='正在保存，请稍候…';
+  var written=false;
+  return api(url,{method:'PUT',json:payload}).then(function(){
+    written=true;return api(url);
+  }).then(function(saved){
+    var matches=Object.keys(payload).every(function(k){return JSON.stringify(saved[k])===JSON.stringify(payload[k])});
+    if(!matches)throw new Error('服务器保存内容与当前填写内容不一致，请保留本页并核对后重试');
+    status.className='notice ok';status.textContent='教案已保存，已核对服务器内容';
+  }).catch(function(e){
+    status.className='notice error';
+    status.textContent=(written?'保存请求已完成，但回读核对未通过：':'保存未成功：')+e.message+'。本页填写内容已保留。';
+  }).then(function(){
+    button.disabled=false;button.textContent='保存教案';fields.forEach(function(n){n.disabled=false});
+  });
+}
 function plan(){
   root.textContent='';
   var tabs=el('div',{class:'tabs'}),nextBox=el('div',{class:'card'}),toolBox=el('div',{class:'card'}),list=el('div'),msg=el('div');
@@ -458,8 +477,11 @@ function plan(){
       box.appendChild(el('div',{class:'muted',text:'PPT 页（每行一页内容）'}));box.appendChild(ppt);
       box.appendChild(el('div',{class:'muted',text:'例题（每行一条）'}));box.appendChild(ex);
       box.appendChild(el('div',{class:'muted',text:'课后练习'}));box.appendChild(cl);
-      box.appendChild(el('button',{text:'保存教案',onclick:function(){
-        api('/teacher/weekend/lessons/'+r.lessonId,{method:'PUT',json:{title:title.value,coreTarget:tgt.value,teacherPlan:plan.value,closureTraining:cl.value,examples:ls(ex),ppt:ls(ppt)}}).then(function(){note('ok','教案已保存')}).catch(function(e){note('error',e.message)})}}));
+      var saveStatus=el('div',{role:'status','aria-live':'polite'});
+      var saveButton=el('button',{text:'保存教案',onclick:function(){
+        saveLessonEdits('/teacher/weekend/lessons/'+r.lessonId,{title:title.value.trim(),coreTarget:tgt.value,teacherPlan:plan.value,closureTraining:cl.value,examples:ls(ex),ppt:ls(ppt)},saveButton,saveStatus,[title,tgt,plan,ppt,ex,cl]);
+      }});
+      box.appendChild(saveButton);box.appendChild(saveStatus);
       var qbox=el('div');box.appendChild(el('h2',{text:'习题（AI 草稿需要你通过后才会给学生）'}));box.appendChild(qbox);
       function loadQ(){
         qbox.textContent='';
