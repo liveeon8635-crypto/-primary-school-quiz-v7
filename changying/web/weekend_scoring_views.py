@@ -52,6 +52,11 @@ class ResultBody(BaseModel):
     correct: bool
 
 
+class ExplainBody(BaseModel):
+    tutorId: int
+    questionId: int
+
+
 class BriefBody(BaseModel):
     texts: dict[str, str] = {}
 
@@ -246,38 +251,100 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         return out
 
     # ------------------------------------------------------------------ teacher
+    def gen_followup(db: Any, u: Any, q: Any) -> str:
+        follow = ""
+        try:
+            letters = "ABCD"
+            opts = "；".join(f"{letters[i]}. {t}" for i, t in enumerate(json.loads(q.options_json or "[]")[:4]))
+            prompt = (f"原题：{q.stem}\n选项：{opts}\n正确答案：{letters[int(q.correct_index)] if 0 <= int(q.correct_index) < 4 else ''}\n"
+                      "请出一道考查同一个方法、但数字或情境不同的选择题（3 个选项，只有一个正确，难度不高于原题）。"
+                      '只输出 JSON：{"stem":"题目","options":["A选项","B选项","C选项"],"correctIndex":0,"explanation":"一句话解析"}')
+            data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=45))
+            options = [str(x).strip() for x in (data.get("options") or [])][:4]
+            ci = int(data.get("correctIndex"))
+            if str(data.get("stem") or "").strip() and len(options) >= 2 and all(options) and 0 <= ci < len(options):
+                follow = json.dumps({"stem": str(data["stem"]).strip()[:300], "options": options, "correctIndex": ci,
+                                     "explanation": str(data.get("explanation") or "")[:200]}, ensure_ascii=False)
+        except Exception:  # noqa: BLE001 - no follow-up question: the teacher records the result by hand
+            follow = ""
+        return follow
+
     @router.get("/teacher/weekend/sessions/{sid}/peer-suggest")
     def suggest(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Question-first, like the interactive classroom: for each question some pupils got right and some did not, who could explain it."""
         need(u, "teacher")
         row = my_session(db, u, sid)
         names = roster(db, u)
         by_stu = session_answers(db, sid)
-        qs = {int(q.id): q for q in db.scalars(select(TQ).where(TQ.school_id == u.school_id, TQ.lesson_id == row.lesson_id, TQ.active.is_(True))).all()}
-        raw = db.execute(select(answers_t).where(answers_t.c.session_id == sid)).all()
+        if not by_stu:
+            return {"mode": "none", "message": "还没有学生作答", "questions": []}
+        rates = [completion_rate(a) for a in by_stu.values()]
+        if all(r >= 100 for r in rates):
+            return {"mode": "challenge", "message": "全员全对：可以出一道挑战题，团队目标改成全员独立完成", "questions": []}
+        if all(r == 0 for r in rates):
+            return {"mode": "teacher", "message": "这几题大家都没做对：建议老师集中讲，只记参与", "questions": []}
+        qs = {int(q.id): q for q in db.scalars(select(TQ).where(TQ.school_id == u.school_id, TQ.lesson_id == row.lesson_id, TQ.active.is_(True)).order_by(TQ.id)).all()}
+        asked = {(int(p.question_id), int(p.tutor_id)) for p in peer_rows(db, sid)}
+        right: dict[int, list[dict[str, Any]]] = {}
         wrong: dict[int, list[dict[str, Any]]] = {}
-        right_q: dict[int, set[int]] = {}
-        for a in raw:
-            if a.correct:
-                right_q.setdefault(int(a.student_id), set()).add(int(a.question_id))
-            elif int(a.question_id) in qs:
-                wrong.setdefault(int(a.student_id), []).append({"questionId": int(a.question_id), "stem": qs[int(a.question_id)].stem})
-        rates = {s: completion_rate(a) for s, a in by_stu.items()}
-        if not rates:
-            return {"mode": "none", "message": "还没有学生作答", "tutors": [], "tutees": []}
-        if all(r >= 100 for r in rates.values()):
-            return {"mode": "challenge", "message": "全员全对：改出一道挑战题，团队目标改成全员独立完成", "tutors": [], "tutees": []}
-        if all(r == 0 for r in rates.values()):
-            return {"mode": "teacher", "message": "全员都没做对：不触发强带弱，由老师集中讲，只记参与", "tutors": [], "tutees": []}
-        done = {}
-        for p in peer_rows(db, sid):
-            done[int(p.tutor_id)] = done.get(int(p.tutor_id), 0) + 1
-        ordered = sorted(rates.items(), key=lambda kv: (-kv[1], done.get(kv[0], 0)))
-        top = ordered[0][1]
-        tutors = [{"studentId": s, "name": names.get(s, ("学生", 0))[0], "completionRate": round(r), "explainedThisLesson": done.get(s, 0),
-                   "canExplain": sorted(right_q.get(s, set()))} for s, r in ordered if r >= max(70.0, top - 10)][:3]
-        tutees = [{"studentId": s, "name": names.get(s, ("学生", 0))[0], "completionRate": round(r), "wrong": wrong.get(s, [])}
-                  for s, r in sorted(rates.items(), key=lambda kv: kv[1]) if wrong.get(s)][:3]
-        return {"mode": "peer", "message": "建议：完成率高的同学讲给完成率低的同学，讲完做一道换数字的巩固题", "tutors": tutors, "tutees": tutees}
+        for a in db.execute(select(answers_t).where(answers_t.c.session_id == sid).order_by(answers_t.c.id)).all():
+            who = {"studentId": int(a.student_id), "name": names.get(int(a.student_id), ("学生",))[0]}
+            (right if a.correct else wrong).setdefault(int(a.question_id), []).append(who)
+        items = []
+        for no, (qid, q) in enumerate(qs.items(), start=1):
+            if right.get(qid) and wrong.get(qid):
+                items.append({"questionId": qid, "no": no, "stem": q.stem, "right": [dict(w, asked=(qid, w["studentId"]) in asked) for w in right[qid]], "wrong": wrong[qid]})
+        return {"mode": "peer", "message": "选一道题，请做对的同学来讲；讲完，没做对的同学会收到一道类似的小题。", "questions": items}
+
+    @router.post("/teacher/weekend/sessions/{sid}/explain")
+    def explain(sid: int, b: ExplainBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Ask one pupil who got the question right to explain it to the class; everyone who got it wrong gets the same follow-up later."""
+        need(u, "teacher")
+        row = my_session(db, u, sid)
+        names = roster(db, u)
+        if b.tutorId not in names:
+            raise HTTPException(400, "请选择你班级里的学生")
+        q = db.get(TQ, b.questionId)
+        if q is None or int(q.school_id) != int(u.school_id) or int(q.lesson_id or 0) != int(row.lesson_id):
+            raise HTTPException(404, "没有找到这道题")
+        mine = {int(a.student_id): a for a in db.execute(select(answers_t).where(answers_t.c.session_id == sid, answers_t.c.question_id == q.id)).all()}
+        if b.tutorId not in mine or not mine[b.tutorId].correct:
+            raise HTTPException(400, "请选在这道题上做对的同学来讲")
+        tutees = [s for s, a in mine.items() if not a.correct]
+        if not tutees:
+            raise HTTPException(400, "这道题大家都做对了，不需要再安排讲解")
+        if db.execute(select(peer.c.id).where(peer.c.session_id == sid, peer.c.question_id == q.id, peer.c.tutor_id == b.tutorId)).first():
+            raise HTTPException(409, "已经请这位同学讲过这道题了")
+        follow = gen_followup(db, u, q)
+        now = datetime.utcnow()
+        for t in tutees:
+            if not db.execute(select(peer.c.id).where(peer.c.session_id == sid, peer.c.tutee_id == t, peer.c.question_id == q.id)).first():
+                db.execute(insert(peer).values(school_id=u.school_id, session_id=sid, tutor_id=b.tutorId, tutee_id=t, question_id=q.id, followup_json=follow, created_at=now))
+        db.commit()
+        return {"followup": bool(follow), "tutees": len(tutees), "message": f"已请 {names[b.tutorId][0]} 同学来讲这道题：大屏会显示，TA 的页面会收到题目和解析。" +
+                ("讲完后，没做对的同学会收到一道类似的小题。" if follow else "AI 没能出类似的小题，讲完后请你手动记录结果。")}
+
+    @router.get("/student/weekend/explain")
+    def my_explain(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """The question(s) the teacher asked me to explain to the class (I answered them correctly)."""
+        need(u, "student")
+        rows = db.execute(select(peer).join(sessions, sessions.c.id == peer.c.session_id)
+                          .where(peer.c.school_id == u.school_id, peer.c.tutor_id == u.id, sessions.c.status == "running").order_by(peer.c.id)).all()
+        seen: set[int] = set()
+        items = []
+        for p in rows:
+            if int(p.question_id) in seen:
+                continue
+            seen.add(int(p.question_id))
+            q = db.get(TQ, int(p.question_id))
+            if q is None:
+                continue
+            try:
+                opts = json.loads(q.options_json or "[]")
+            except Exception:  # noqa: BLE001
+                opts = []
+            items.append({"questionId": q.id, "stem": q.stem, "options": opts, "correctIndex": int(q.correct_index), "explanation": q.explanation or ""})
+        return {"items": items}
 
     @router.post("/teacher/weekend/sessions/{sid}/peer-help")
     def pair(sid: int, b: PairBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -296,21 +363,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
             raise HTTPException(400, "被讲的同学需要在这道题上做错")
         if db.execute(select(peer.c.id).where(peer.c.session_id == sid, peer.c.tutee_id == b.tuteeId, peer.c.question_id == q.id)).first():
             raise HTTPException(409, "这道题已经安排过讲解了")
-        follow = ""
-        try:
-            letters = "ABCD"
-            opts = "；".join(f"{letters[i]}. {t}" for i, t in enumerate(json.loads(q.options_json or "[]")[:4]))
-            prompt = (f"原题：{q.stem}\n选项：{opts}\n正确答案：{letters[int(q.correct_index)] if 0 <= int(q.correct_index) < 4 else ''}\n"
-                      "请出一道考查同一个方法、但数字或情境不同的选择题（3 个选项，只有一个正确，难度不高于原题）。"
-                      '只输出 JSON：{"stem":"题目","options":["A选项","B选项","C选项"],"correctIndex":0,"explanation":"一句话解析"}')
-            data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=45))
-            options = [str(x).strip() for x in (data.get("options") or [])][:4]
-            ci = int(data.get("correctIndex"))
-            if str(data.get("stem") or "").strip() and len(options) >= 2 and all(options) and 0 <= ci < len(options):
-                follow = json.dumps({"stem": str(data["stem"]).strip()[:300], "options": options, "correctIndex": ci,
-                                     "explanation": str(data.get("explanation") or "")[:200]}, ensure_ascii=False)
-        except Exception:  # noqa: BLE001 - no follow-up question: the teacher records the result by hand
-            follow = ""
+        follow = gen_followup(db, u, q)
         pid = int(db.execute(insert(peer).values(school_id=u.school_id, session_id=sid, tutor_id=b.tutorId, tutee_id=b.tuteeId, question_id=q.id,
                                                   followup_json=follow, created_at=datetime.utcnow())).inserted_primary_key[0])
         db.commit()
@@ -547,3 +600,4 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_scoring", "register_scoring_tables"]
+

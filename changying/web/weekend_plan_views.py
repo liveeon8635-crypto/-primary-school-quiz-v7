@@ -21,11 +21,12 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import Column, DateTime, Integer, String, Table, UniqueConstraint, delete, func, insert, select, update
 
+from changying.services.lesson_import import MAX_FILE_BYTES, SUPPORTED, extract
 from changying.web.weekend_pages import plan_page_html
 
 AI_FEATURE = "weekend_lesson_draft"
@@ -122,6 +123,19 @@ def has_real_plan(lesson: Any) -> bool:
         return bool(_lines(json.loads(lesson.examples_json or "[]")))
     except Exception:  # noqa: BLE001
         return False
+
+
+def _valid_questions(raw: Any) -> list[dict[str, Any]]:
+    qs = []
+    for q in raw if isinstance(raw, list) else []:
+        try:
+            opts = [str(x).strip() for x in q.get("options")][:4]
+            ci = int(q.get("correctIndex"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if str(q.get("stem") or "").strip() and len(opts) >= 2 and all(opts) and 0 <= ci < len(opts):
+            qs.append({"stem": str(q["stem"]).strip()[:300], "options": opts, "ci": ci, "exp": str(q.get("explanation") or "")[:300], "kp": str(q.get("knowledge") or "")[:160]})
+    return qs
 
 
 def _valid_date(text: str) -> str:
@@ -288,15 +302,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=90))
         if not isinstance(data, dict) or (not b.onlyQuestions and (not str(data.get("title") or "").strip() or not _lines(data.get("ppt")))):
             raise HTTPException(502, "AI 这次没有给出可用的备课草稿，请再试一次")
-        qs = []
-        for q in data.get("questions") if isinstance(data.get("questions"), list) else []:
-            try:
-                opts = [str(x).strip() for x in q.get("options")][:4]
-                ci = int(q.get("correctIndex"))
-            except (TypeError, ValueError, AttributeError):
-                continue
-            if str(q.get("stem") or "").strip() and len(opts) >= 2 and all(opts) and 0 <= ci < len(opts):
-                qs.append({"stem": str(q["stem"]).strip()[:300], "options": opts, "ci": ci, "exp": str(q.get("explanation") or "")[:300], "kp": str(q.get("knowledge") or "")[:160]})
+        qs = _valid_questions(data.get("questions"))
         if not qs:
             raise HTTPException(502, "AI 没有给出合格的习题，请再试一次")
         now = datetime.utcnow()
@@ -319,6 +325,74 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                       options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False))
         db.commit()
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "weakKnowledge": weak}
+
+    @router.post("/teacher/weekend/lessons/import")
+    async def import_lesson(subject: str = Form(...), lessonNo: int = Form(...), force: str = Form("0"), text: str = Form(""), file: UploadFile | None = File(None),
+                            u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Teacher uploads their own lesson plan (.docx/.pptx/.pdf/.txt) or pastes the text; AI only tidies it into the lesson fields (no inventing)."""
+        need(u, "teacher")
+        check_subject(subject)
+        if not 1 <= lessonNo <= LESSONS:
+            raise HTTPException(400, f"课次需要在 1–{LESSONS} 之间")
+        extracted: dict[str, Any] = {"text": text.strip()[:12000], "slides": []}
+        raw = b""
+        ext = ""
+        if file is not None and file.filename:
+            ext = ("." + file.filename.rsplit(".", 1)[-1]).lower() if "." in file.filename else ""
+            if ext not in SUPPORTED:
+                raise HTTPException(400, "支持的文件：" + "、".join(SUPPORTED))
+            raw = await file.read(MAX_FILE_BYTES + 1)
+            if len(raw) > MAX_FILE_BYTES:
+                raise HTTPException(413, "文件不能超过 10MB")
+            if ext in (".docx", ".pptx", ".pdf"):
+                implementation._validate_office_upload(ext, raw)
+            try:
+                extracted = extract(ext, raw)
+            except HTTPException:
+                raise
+            except Exception:  # noqa: BLE001
+                raise HTTPException(400, "没能读出这个文件的文字，请换一个文件，或把教案文字粘贴进来")
+        if len(extracted["text"]) < 20:
+            raise HTTPException(400, "没有读到足够的文字（扫描版 PDF 和纯图片暂不支持），请换文件或直接粘贴文字")
+        p = program(db, int(u.school_id))
+        lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == subject, Lesson.lesson_no == lessonNo))
+        if lesson is not None and force != "1" and has_real_plan(lesson):
+            raise HTTPException(409, "这节课已经有教案了。导入会覆盖教案文字（已通过的习题保留）。")
+        prompt = (
+            f"下面是一位小学{p.grade}年级{subject}老师自己写的周末课教案内容。请只整理、归类里面已有的内容，不要编造新内容；文档里没有的字段留空。\n"
+            f"---教案内容开始---\n{extracted['text']}\n---教案内容结束---\n"
+            '只输出 JSON：{"title":"课题","coreTarget":"本节目标","teacherPlan":"教学流程(300字内)","ppt":["每页或每个板块的标题"],'
+            '"examples":["文档里的例题和解答，原文照录"],"closureTraining":"课后练习",'
+            '"questions":[{"stem":"文档里已有的选择题","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}]}'
+            "（questions 只放文档里本来就有的选择题；没有就给空数组）"
+        )
+        data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=90))
+        if not isinstance(data, dict) or not (str(data.get("title") or "").strip() or str(data.get("coreTarget") or "").strip() or _lines(data.get("examples"))):
+            raise HTTPException(502, "AI 没能整理出教案，请再试一次，或在“审改”里手动填写")
+        slides = extracted["slides"] or _lines(data.get("ppt"))
+        row = db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == subject, sched.c.lesson_no == lessonNo)).first()
+        now = datetime.utcnow()
+        fields = dict(title=(str(data.get("title") or "").strip() or f"{subject}第{lessonNo}课")[:180], core_target=str(data.get("coreTarget") or "")[:1000],
+                      teacher_plan=str(data.get("teacherPlan") or "")[:3000], ppt_json=json.dumps(slides, ensure_ascii=False),
+                      examples_json=json.dumps(_lines(data.get("examples")), ensure_ascii=False), closure_training=str(data.get("closureTraining") or "")[:1000],
+                      unit=(row.school_unit if row and row.school_unit else "")[:120] or "待配置单元", published=False, updated_at=now)
+        if not fields["core_target"].strip() and not _lines(data.get("examples")):
+            fields["core_target"] = fields["title"]            # a real (non-placeholder) target, so the lesson counts as prepared
+        if lesson is None:
+            lesson = Lesson(school_id=u.school_id, program_id=p.id, subject=subject, lesson_no=lessonNo, duration_min=120, **fields)
+            db.add(lesson)
+            db.flush()
+        else:
+            for k, v in fields.items():
+                setattr(lesson, k, v)
+            db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.active.is_(False)))
+        qs = _valid_questions(data.get("questions"))
+        for i, q in enumerate(qs[:12]):
+            db.add(TQ(school_id=u.school_id, program_id=p.id, lesson_id=lesson.id, stage="lesson", subject=subject, level=LEVELS[min(i, len(LEVELS) - 1)], knowledge=q["kp"],
+                      stem=q["stem"], options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False))
+        db.commit()
+        return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs),
+                "message": f"已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道文档里的选择题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
 
     @router.put("/teacher/weekend/lessons/{lid}")
     def edit_lesson(lid: int, b: LessonEditBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -402,3 +476,4 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_plan", "register_plan_tables"]
+
