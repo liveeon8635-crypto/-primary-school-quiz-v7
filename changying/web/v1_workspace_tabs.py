@@ -79,15 +79,9 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
         paperRow.after(hw);
         // Only shown while the feature is switched on (the config endpoint answers 404 otherwise).
         fetch('/homework/config',{cache:'no-store'}).then(r=>{if(r.ok)hw.hidden=false}).catch(()=>{});
-        const kp=document.createElement('a');kp.className='cy-ws-row';kp.href='/v1/knowledge';
-        kp.innerHTML='<b>知识点讲解卡片</b><i>›</i><small>按题库生成知识点卡片，AI 写草稿、你审核后发布；学生可搜索，错题自动关联</small>';
-        hw.after(kp);
         const wk=document.createElement('a');wk.className='cy-ws-row';wk.href='/v1/weekend';
-        wk.innerHTML='<b>周末课控制台</b><i>›</i><small>选一节课，按 7 个环节计时推进，大屏同步显示当前环节</small>';
-        kp.after(wk);
-        const wp=document.createElement('a');wp.className='cy-ws-row';wp.href='/v1/weekend-plan';
-        wp.innerHTML='<b>周末课备课</b><i>›</i><small>学期 18 次课的进度表、AI 备课草稿、习题审核，学校调课一键顺延</small>';
-        wk.before(wp);
+        wk.innerHTML='<b>周末课</b><i>›</i><small>备课、上课、下课结算都从这里开始：按步骤告诉你下一次课准备到哪一步</small>';
+        paperRow.after(wk);
       }
       main.insertBefore(all,main.firstChild);
     }
