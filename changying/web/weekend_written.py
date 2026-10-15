@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from changying.services.weekend_answers import answers_published
+
 import json
 from datetime import datetime
 from typing import Any
@@ -139,15 +141,16 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             submissions.c.student_id == u.id, submissions.c.school_id == u.school_id)).all()}
         used = dict(db.execute(select(hint_log.c.question_id, func.max(hint_log.c.level)).where(
             hint_log.c.session_id == sid, hint_log.c.student_id == u.id).group_by(hint_log.c.question_id)).all())
-        return {"status": row.status, "stage": row.current_stage, "canSubmit": row.status == "running" and row.current_stage == 4,
+        return {"status": row.status, "stage": row.current_stage, "canSubmit": row.status == "running" and row.current_stage == 4 and not answers_published(implementation, db, row),
+                "answersPublished": answers_published(implementation, db, row),
                 "questions": [{"id": q.id, "stem": q.stem, "hasHints": bool(json.loads(q.hints_json)), "hintUsed": used.get(q.id, 0),
                                "hintTexts": json.loads(q.hints_json)[:used.get(q.id, 0)],
-                               "submission": submission_dict(ans[q.id]) if q.id in ans else None} for q in question_rows(db, row)]}
+                               "submission": ({**submission_dict(ans[q.id]), **({} if answers_published(implementation, db, row) else {"result": "pending", "comment": ""})}) if q.id in ans else None} for q in question_rows(db, row)]}
 
     @router.post("/student/weekend/sessions/{sid}/written/{qid}/hint")
     def student_hint(sid: int, qid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
-        if row.status != "running" or row.current_stage != 4:
+        if row.status != "running" or row.current_stage != 4 or answers_published(implementation, db, row):
             raise HTTPException(409, "现在不是随堂练习时间")
         q = next((q for q in question_rows(db, row) if q.id == qid), None)
         if q is None:
@@ -175,7 +178,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
     async def submit(sid: int, qid: int, text: str = Form(""), revision: int = Form(0),
                      photo: UploadFile | None = File(None), u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
-        if row.status != "running" or row.current_stage != 4:
+        if row.status != "running" or row.current_stage != 4 or answers_published(implementation, db, row):
             raise HTTPException(409, "现在不是随堂练习时间")
         if not any(q.id == qid for q in question_rows(db, row)):
             raise HTTPException(404, "没有找到这道题")

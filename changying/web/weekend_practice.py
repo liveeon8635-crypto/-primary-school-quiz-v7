@@ -16,6 +16,8 @@ on the spot and they are stored as "auto" (visible to students, flagged for teac
 
 from __future__ import annotations
 
+from changying.services.weekend_answers import answers_published
+
 import json
 from datetime import datetime
 from typing import Any
@@ -243,6 +245,8 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
             raise HTTPException(404, "现在没有正在上的课")
         if int(row.current_stage) != PRACTICE_STAGE:
             raise HTTPException(409, "现在不是随堂练习时间")
+        if answers_published(implementation, db, row):
+            raise HTTPException(409, "老师已公布答案，停止提交")
         return row
 
     @router.get("/v1/weekend-practice", include_in_schema=False)
@@ -267,6 +271,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         used = {}
         for qid, lvl in db.execute(select(hlog.c.question_id, func.max(hlog.c.level)).where(hlog.c.session_id == row.id, hlog.c.student_id == u.id).group_by(hlog.c.question_id)).all():
             used[int(qid)] = int(lvl)
+        published = answers_published(implementation, db, row)
         qs = []
         for q in lesson_questions(db, int(u.school_id), int(row.lesson_id)):
             a = mine.get(q.id)
@@ -275,9 +280,9 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
                 hs = hint_rows(db, int(u.school_id), q.id)
                 item["hintTexts"] = [hs[i].text for i in range(1, used[q.id] + 1) if i in hs]
             if a is not None:
-                item.update({"answered": True, "selected": int(a.selected), "correct": bool(a.correct), "correctIndex": int(q.correct_index), "explanation": q.explanation or ""})
+                item.update({"answered": True, "selected": int(a.selected)})
             qs.append(item)
-        return {**base, "practice": True, "questions": qs}
+        return {**base, "practice": True, "canSubmit": not published, "answersPublished": published, "questions": qs}
 
     @router.post("/student/weekend/hint")
     def student_hint(b: StudentHintBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -319,7 +324,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         db.execute(insert(answers).values(school_id=u.school_id, session_id=b.sessionId, student_id=u.id, question_id=q.id, selected=int(b.selected),
                                           correct=correct, max_hint=int(used), created_at=datetime.utcnow()))
         db.commit()
-        return {"correct": correct, "correctIndex": int(q.correct_index), "explanation": q.explanation or "", "hintUsed": int(used)}
+        return {"submitted": True, "hintUsed": int(used), "message": "已提交，请等待老师在大屏公布答案"}
 
     from changying.web.weekend_written import install_weekend_written
     install_weekend_written(implementation)
