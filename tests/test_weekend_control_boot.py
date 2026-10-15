@@ -14,7 +14,7 @@ HARNESS=r'''
 const assert=require('node:assert/strict');
 class Element {
  constructor(tag){this.tag=tag;this.children=[];this.style={};this._text='';this.disabled=false}
- remove(){this.removed=true}appendChild(n){this.children.push(n);return n}setAttribute(k,v){this[k]=v}
+ remove(){this.removed=true}appendChild(n){this.children.push(n);return n}setAttribute(k,v){if(k==='style')this.style.cssText=v;else this[k]=v}
  addEventListener(k,fn){this['on'+k]=fn}querySelectorAll(){return []}
  set textContent(t){this._text=t;this.children=[]}get textContent(){return this._text+this.children.map(n=>n.textContent||'').join(' ')}
 }
@@ -163,6 +163,40 @@ fetch=(path,opts)=>{
 })().catch(e=>{console.error(e);process.exitCode=1});
 """
     result=subprocess.run(['node','-e',harness+network+scripts+check],text=True,capture_output=True,timeout=20)
+    assert result.returncode==0,result.stdout+result.stderr
+print('OK')
+''')
+
+
+def test_running_board_fits_text_and_refits_on_resize(tmp_path):
+    helpers.run_isolated(tmp_path,helpers.COMMON+'\nharness='+repr(HARNESS)+'\n'+r'''
+import re,subprocess
+with TestClient(app) as client:
+    scripts='\n'.join(re.findall(r'<script[^>]*>(.*?)</script>',client.get('/v1/weekend-board?s=42').text,re.S))
+    geometry=r"""
+window.innerHeight=720;let onResize=null,paintCount=0;
+window.addEventListener=(name,fn)=>{if(name==='resize')onResize=fn};
+requestAnimationFrame=fn=>fn();
+Object.defineProperties(Element.prototype,{
+ clientHeight:{get(){return 420}},clientWidth:{get(){return 1000}},
+ scrollHeight:{get(){return (parseFloat(this.style.fontSize)||48)*20}},
+ scrollWidth:{get(){return 900}}
+});
+const text='完整阅读材料和例题说明'.repeat(20);
+fetch=(path,opts)=>Promise.resolve({ok:true,json:()=>Promise.resolve(path==='/session'?{role:'teacher'}:{...state(),status:'running',deck:{total:8,index:0},content:[text]})});
+"""
+    check=r"""
+(async()=>{
+ await settle();assert(rootNode.textContent.includes(text));
+ const body=nodes(rootNode).find(n=>n.style.fontSize);assert(body);
+ assert(body.scrollHeight<=body.clientHeight);assert(body.scrollWidth<=body.clientWidth);
+ assert(parseFloat(body.style.fontSize)<32,'Reduce text size to available screen height');
+ assert.equal(typeof onResize,'function');onResize();assert(rootNode.textContent.includes(text));
+ assert.equal(document.body.style.overflow,'hidden');
+ assert.equal(intervals.length,2);
+})().catch(e=>{console.error(e);process.exitCode=1});
+"""
+    result=subprocess.run(['node','-e',harness+geometry+scripts+check],text=True,capture_output=True,timeout=20)
     assert result.returncode==0,result.stdout+result.stderr
 print('OK')
 ''')
