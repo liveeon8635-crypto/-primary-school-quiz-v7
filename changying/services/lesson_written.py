@@ -48,8 +48,7 @@ def literal_written_questions(text: str) -> list[dict[str, Any]]:
             kind = 'composition' if writing or any(w in line for w in ('扩写', '缩写', '复述')) else 'short_answer'
             passage = '\n'.join(material).strip()
             if group.startswith('挑战题'):
-                passage = '\n\n'.join(value for key, value in passages.items()
-                    if ('阿木' in line and '神泉' in key) or ('鲁班' in line and '鲁班' in key))
+                passage = '\n\n'.join(passages.values())
             stem = group + '\n' + (passage + '\n\n' if passage else '') + line
             out.append({'stem': stem, 'type': kind, 'reference': '', 'hints': []})
             in_questions = True

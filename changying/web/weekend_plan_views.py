@@ -441,7 +441,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 question = q["stem"].split("\n")[-1]
                 match = next((a for a in wqs if question in a["stem"]), None)
                 if match:
-                    q["reference"] = match["reference"] or q["reference"]
+                    q["reference"] = q["reference"] or match["reference"]
                     q["hints"] = match["hints"]
             wqs = valid_written_questions(literal)
         replace_written_drafts(db, written, u.school_id, u.id, lesson.id, wqs)
