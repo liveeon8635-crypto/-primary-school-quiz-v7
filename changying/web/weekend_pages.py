@@ -68,6 +68,10 @@ function control(){
       stagesBox.appendChild(el('div',{class:'row'},b,el('span',{class:'muted',text:s.goal})));
     });
     content.appendChild(el('h2',{text:'当前环节大屏内容'}));
+    if(d.deck){
+      content.appendChild(el('div',{class:'row'},el('button',{text:'‹ 上一页',disabled:d.deck.index<=0,onclick:function(){post('slide',{delta:-1})}}),
+        el('b',{text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}),el('button',{class:'primary',text:'下一页 ›',disabled:d.deck.index>=d.deck.total-1,onclick:function(){post('slide',{delta:1})}})));
+    }
     if(!d.content.length)content.appendChild(el('div',{class:'muted',text:running?(d.covered?'大屏遮盖中':'这个环节没有内容'):'开始上课后显示'}));
     d.content.forEach(function(x){content.appendChild(el('p',{text:x}))});
   }
@@ -254,7 +258,8 @@ function board(){
       el('div',{style:'font-size:6vh;font-weight:700',text:d.currentStage+'. '+d.stageName}),
       el('div',{id:'bclock',style:'font-size:6vh;font-weight:700',text:remain==null?'':fmt(remain)})));
     wrap.appendChild(el('div',{style:'font-size:3vh;opacity:.8;margin:1vh 0 3vh',text:d.goal}));
-    d.content.forEach(function(x){wrap.appendChild(el('p',{style:'font-size:4vh;line-height:1.5;margin:1.5vh 0',text:x}))});
+    if(d.deck)wrap.appendChild(el('div',{style:'opacity:.6;font-size:2.4vh',text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}));
+    d.content.forEach(function(x){wrap.appendChild(el('p',{style:'font-size:'+(d.deck?'5.5vh':'4vh')+';line-height:1.5;margin:1.5vh 0',text:x}))});
   }
   var last=null;
   function load(){api('/teacher/weekend/sessions/'+SID+'/board').then(function(d){last=d;remain=d.remainingSeconds;paint(d)}).catch(function(e){if(!last)msg(e.message)})}
@@ -399,7 +404,8 @@ function plan(){
     });
   }).catch(function(e){nextBox.appendChild(el('div',{class:'notice error',text:e.message}))});
 
-  toolBox.appendChild(el('h2',{text:'学校进度表'}));
+  toolBox.appendChild(el('div',{class:'notice ok',text:'备课方法：在下面每一次课的那一行，点“导入我的教案”上传你自己的 Word / PPT / PDF 教案，系统整理成上课用的内容；没有教案时才用“AI 帮我写”。学校进度表只是用来对照学校讲到哪里，可以不填。'}));
+  toolBox.appendChild(el('h2',{text:'学校进度表（选填）'}));
   toolBox.appendChild(el('div',{class:'muted',text:'把学校发的进度安排粘贴进来，AI 帮你整理成 18 次课；也可以手动填。学校调课时，用“整体顺延”一次改完。'}));
   var paste=el('textarea',{placeholder:'粘贴学校的教学进度表文字'}),parseBtn=el('button',{text:'AI 识别进度',onclick:function(){
     parseBtn.disabled=true;note('ok','AI 正在整理…');
@@ -425,7 +431,16 @@ function plan(){
           dt=el('input',{type:'text',value:r.plannedDate||'',placeholder:'2026-09-12',style:'width:120px',oninput:function(e){r.plannedDate=e.target.value}});
       var tag=el('span',{class:'tag '+(r.taught?'ok':r.hasPlan?'':'warn'),text:r.taught?'已上':r.hasPlan?'有教案·题 '+r.approvedQuestions+(r.draftQuestions?'+草稿'+r.draftQuestions:''):'未备课'});
       var detail=el('div',{hidden:true});
-      var draftBtn=el('button',{text:r.hasPlan?'AI 重写':'AI 备课草稿',onclick:function(){
+      var fileIn=el('input',{type:'file',accept:'.docx,.pptx,.pdf,.txt,.md',hidden:true});
+      var impBtn=el('button',{class:r.hasPlan?'':'primary',text:'导入我的教案',title:'支持 Word(.docx)、PPT(.pptx)、PDF、txt',onclick:function(){fileIn.click()}});
+      fileIn.addEventListener('change',function(){
+        var f=fileIn.files&&fileIn.files[0];if(!f)return;
+        if(r.hasPlan&&!confirm('这节课已有教案，导入会覆盖教案文字和未审核的草稿题（已通过的习题保留）。确定吗？')){fileIn.value='';return}
+        var fd=new FormData();fd.append('subject',SUBJ);fd.append('lessonNo',String(r.lessonNo));fd.append('force',r.hasPlan?'1':'0');fd.append('file',f);
+        impBtn.disabled=true;note('ok','正在读取并整理你的教案，约半分钟…');
+        api('/teacher/weekend/lessons/import',{method:'POST',body:fd}).then(function(d){note('ok',d.message);load()}).catch(function(e){note('error',e.message);impBtn.disabled=false}).then(function(){fileIn.value=''});
+      });
+      var draftBtn=el('button',{text:r.hasPlan?'AI 重写':'没教案？AI 帮我写',onclick:function(){
         if(r.hasPlan&&!confirm('这节课已有教案，AI 重写会覆盖教案文字和未审核的草稿题，确定吗？'))return;
         draftBtn.disabled=true;note('ok','AI 正在备课，大约半分钟…');
         api('/teacher/weekend/lessons/draft',{json:{subject:SUBJ,lessonNo:r.lessonNo,force:r.hasPlan}}).then(function(){note('ok','草稿已生成，请展开“审改”核对后再用。');load()})
@@ -439,7 +454,7 @@ function plan(){
       var go=el('button',{class:'primary',text:'开课',title:'需要教案和已通过的习题',disabled:!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0),onclick:function(){
         api('/teacher/weekend/sessions',{json:{lessonId:r.lessonId}}).then(function(d){location.href='/v1/weekend?s='+d.id}).catch(function(e){note('error',e.message)})}});
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
-        el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),draftBtn,qBtn,open,go),detail));
+        el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),impBtn,fileIn,draftBtn,qBtn,open,go),detail));
     });
     list.appendChild(el('button',{class:'primary',text:'保存进度表',onclick:function(){
       api('/teacher/weekend/schedule',{method:'PUT',json:{subject:SUBJ,rows:state.map(function(r){return {lessonNo:r.lessonNo,schoolWeek:r.schoolWeek,schoolUnit:r.schoolUnit||'',plannedDate:r.plannedDate||'',note:r.note||''}})}}).then(function(){note('ok','已保存');load()}).catch(function(e){note('error',e.message)})}}));

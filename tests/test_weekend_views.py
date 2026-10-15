@@ -467,3 +467,109 @@ with TestClient(app) as client:
     print("OK")
 ''',
     )
+
+
+def test_import_own_lesson_plan_docx_pptx(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+import io, zipfile
+
+def office(kind, parts):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        for name, xml in parts.items():
+            z.writestr(name, xml)
+    return buf.getvalue()
+
+DOCX = office("docx", {"word/document.xml": "<w:document><w:body>"
+    "<w:p><w:r><w:t>第三课 分数的约分</w:t></w:r></w:p>"
+    "<w:p><w:r><w:t>目标：会把分数约成最简分数，理解公因数</w:t></w:r></w:p>"
+    "<w:p><w:r><w:t>例1：12/18 约分得 2/3（同除以 6）</w:t></w:r></w:p></w:body></w:document>"})
+PPTX = office("pptx", {"ppt/slides/slide2.xml": "<p:sld><a:t>公因数</a:t><a:t>12和18的公因数有1、2、3、6</a:t></p:sld>",
+                       "ppt/slides/slide1.xml": "<p:sld><a:t>约分 封面</a:t></p:sld>",
+                       "ppt/slides/slide10.xml": "<p:sld><a:t>小结</a:t></p:sld>"})
+AI = json.dumps({"title": "分数的约分", "coreTarget": "会约分", "teacherPlan": "先讲公因数再约分", "ppt": ["AI给的页标题"], "examples": ["例1：12/18 约分得 2/3"],
+                 "closureTraining": "练习册 P30",
+                 "questions": [{"stem": "6/9 约分后是？", "options": ["2/3", "3/4", "1/2"], "correctIndex": 0, "explanation": "同除 3", "knowledge": "约分"},
+                               {"stem": "坏题", "options": ["a"], "correctIndex": 9}]}, ensure_ascii=False)
+
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    def imp(name, data, no=17, force="0", subject="数学", text=""):
+        files = {"file": (name, data, "application/octet-stream")} if data is not None else None
+        return client.post("/teacher/weekend/lessons/import", headers=th, data={"subject": subject, "lessonNo": str(no), "force": force, "text": text}, files=files)
+
+    assert client.post("/teacher/weekend/lessons/import", headers=sh, data={"subject": "数学", "lessonNo": "17"}).status_code == 403
+    assert imp("x.exe", b"abc").status_code == 400                                   # unsupported type
+    assert imp("x.docx", b"not a zip").status_code == 400                            # damaged Office file
+    assert imp("x.txt", b"too short").status_code == 400                             # nothing to read
+    replies.append("garbage")
+    assert imp("plan.docx", DOCX).status_code == 502                                 # AI could not tidy it: nothing saved
+    assert client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()["items"][16]["lessonId"] is None
+
+    # .docx: the lesson is created from the teacher's own text; AI only structures it; the questions found are drafts
+    replies.append(AI)
+    r = imp("plan.docx", DOCX)
+    assert r.status_code == 200, r.text
+    d = r.json(); lid = d["lessonId"]
+    assert "第三课 分数的约分" in prompts[-1] and "不要编造" in prompts[-1]          # the file's own text is what the AI sees
+    assert d["status"]["hasPlan"] and d["status"]["draftQuestions"] == 1 and d["status"]["approvedQuestions"] == 0 and d["questionsFound"] == 1
+    assert client.get(f"/teacher/weekend/lessons/{lid}", headers=th).json()["title"] == "分数的约分"
+
+    # an existing real plan is not silently overwritten
+    assert imp("plan.docx", DOCX).status_code == 409
+
+    # .pptx: the teacher's own slides, in numeric order, become the big-screen pages (not the AI's guesses)
+    replies.append(AI)
+    r = imp("slides.pptx", PPTX, force="1")
+    assert r.status_code == 200 and r.json()["slides"] == 3
+    assert client.get(f"/teacher/weekend/lessons/{lid}", headers=th).json()["ppt"] == ["约分 封面", "公因数 12和18的公因数有1、2、3、6", "小结"]
+
+    # pasted text works without a file
+    replies.append(AI)
+    assert imp(None, None, no=16, text="第十六课 通分。目标：会通分。例1：1/2 和 1/3 通分得 3/6 和 2/6，需要找最小公倍数。").status_code == 200
+    print("OK")
+''',
+    )
+
+
+def test_big_screen_pages_through_the_teachers_own_slides(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=94, title="翻页", core_target="目标",
+                                  ppt_json=json.dumps(["第一页：封面", "第二页：公因数", "第三页：小结"], ensure_ascii=False),
+                                  examples_json=json.dumps(["例1", "例2"], ensure_ascii=False))
+        db.add(l); db.commit(); lid = l.id
+    s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    base = f"/teacher/weekend/sessions/{s}"
+    assert client.post(base + "/slide", headers=th, json={"delta": 1}).status_code == 409        # not started
+    client.post(base + "/start", headers=th); client.post(base + "/next", headers=th)             # stage 2: slides
+    d = client.get(base + "/board", headers=th).json()
+    assert d["deck"] == {"total": 3, "index": 0} and d["content"] == ["第一页：封面"]
+    d = client.post(base + "/slide", headers=th, json={"delta": 1}).json()
+    assert d["deck"]["index"] == 1 and d["content"] == ["第二页：公因数"]
+    assert client.get(base + "/board", headers=th).json()["content"] == ["第二页：公因数"]        # the big screen follows
+    d = client.post(base + "/slide", headers=th, json={"delta": 5}).json()
+    assert d["deck"]["index"] == 2                                                                # clamped to the last page
+    d = client.post(base + "/slide", headers=th, json={"index": 0}).json()
+    assert d["deck"]["index"] == 0
+    # stage 3 pages through the worked examples, starting from the first; going back to stage 2 starts over too
+    d = client.post(base + "/next", headers=th).json()
+    assert d["deck"] == {"total": 2, "index": 0} and d["content"] == ["例1"]
+    client.post(base + "/slide", headers=th, json={"delta": 1})
+    assert client.get(base + "/board", headers=th).json()["content"] == ["例2"]
+    client.post(base + "/next", headers=th)                                                       # stage 4: no deck
+    assert "deck" not in client.get(base + "/board", headers=th).json()
+    assert client.post(base + "/slide", headers=th, json={"delta": 1}).status_code == 409
+    print("OK")
+''',
+    )
