@@ -8,6 +8,7 @@ from changying.web.weekend_written_pages import WRITTEN_JS
 
 COMMON_JS = r"""
 __PAGE_AUTH__
+function growTextarea(n){if(!n||!n.isConnected)return;n.style.height='auto';n.style.height=Math.max(64,n.scrollHeight+2)+'px';n.style.overflowY='hidden'}
 var el=function(tag,attrs){
   var n=document.createElement(tag);
   Object.keys(attrs||{}).forEach(function(k){
@@ -16,6 +17,7 @@ var el=function(tag,attrs){
     else if(attrs[k]===true)n.setAttribute(k,'');else if(attrs[k]!==false&&attrs[k]!=null)n.setAttribute(k,attrs[k]);
   });
   for(var i=2;i<arguments.length;i++){var c=arguments[i];if(c==null)continue;n.appendChild(typeof c==='string'?document.createTextNode(c):c)}
+  if(tag==='textarea'){n.addEventListener('input',function(){growTextarea(n)});requestAnimationFrame(function(){growTextarea(n)})}
   return n;
 };
 var root=document.getElementById('app'),TOKEN='';
@@ -446,13 +448,14 @@ function plan(){
   function lessonDetail(r,box){
     box.textContent='';
     api('/teacher/weekend/lessons/'+r.lessonId).then(function(L){
-      var title=el('input',{type:'text',value:L.title}),tgt=el('textarea',{class:'s'}),plan=el('textarea',{class:'s'}),ppt=el('textarea',{class:'s'}),ex=el('textarea',{class:'s'}),cl=el('textarea',{class:'s'});
-      tgt.value=L.coreTarget;plan.value=L.teacherPlan;ppt.value=L.ppt.join('\n');ex.value=L.examples.join('\n');cl.value=L.closureTraining;
+      var title=el('input',{type:'text',value:L.title}),tgt=el('textarea',{class:'s'}),plan=el('textarea',{class:'s'}),ppt=el('textarea',{class:'s'}),ex=el('textarea',{class:'s'}),cl=el('textarea',{class:'s'}),source=el('textarea',{class:'s',readonly:true,'aria-label':'导入原文'});
+      tgt.value=L.coreTarget;plan.value=L.teacherPlan;ppt.value=L.ppt.join('\n');ex.value=L.examples.join('\n');cl.value=L.closureTraining;source.value=L.sourceText||'';
       function ls(t){return t.value.split('\n').map(function(x){return x.trim()}).filter(Boolean)}
       box.appendChild(el('div',{class:'muted',text:'课题'}));box.appendChild(title);
       box.appendChild(el('div',{class:'muted',text:'本节目标'}));box.appendChild(tgt);
+      if(source.value){box.appendChild(el('div',{class:'muted',text:'导入原文（含阅读文章、全部题目，完整保留）'}));box.appendChild(source)}
       box.appendChild(el('div',{class:'muted',text:'教学流程'}));box.appendChild(plan);
-      box.appendChild(el('div',{class:'muted',text:'PPT 页（每行一页标题）'}));box.appendChild(ppt);
+      box.appendChild(el('div',{class:'muted',text:'PPT 页（每行一页内容）'}));box.appendChild(ppt);
       box.appendChild(el('div',{class:'muted',text:'例题（每行一条）'}));box.appendChild(ex);
       box.appendChild(el('div',{class:'muted',text:'课后练习'}));box.appendChild(cl);
       box.appendChild(el('button',{text:'保存教案',onclick:function(){
@@ -512,4 +515,5 @@ def board_page_html() -> str:
 
 
 __all__ = ["board_page_html", "brief_page_html", "control_page_html", "plan_page_html", "practice_page_html"]
+
 

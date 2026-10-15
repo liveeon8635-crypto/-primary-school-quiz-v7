@@ -23,10 +23,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, UniqueConstraint, delete, func, insert, select, update
 
-from changying.services.lesson_import import MAX_FILE_BYTES, SUPPORTED, extract
+from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUPPORTED, extract
 from changying.web.weekend_pages import plan_page_html
 
 AI_FEATURE = "weekend_lesson_draft"
@@ -69,8 +69,9 @@ class DraftBody(BaseModel):
 class LessonEditBody(BaseModel):
     title: str = ""
     coreTarget: str = ""
-    teacherPlan: str = ""
-    closureTraining: str = ""
+    teacherPlan: str = Field(default="", max_length=MAX_TEXT_CHARS)
+    sourceText: str | None = Field(default=None, max_length=MAX_TEXT_CHARS)
+    closureTraining: str = Field(default="", max_length=MAX_TEXT_CHARS)
     examples: list[str] = []
     ppt: list[str] = []
 
@@ -108,6 +109,22 @@ def _lines(items: Any, limit: int = 12, size: int = 300) -> list[str]:
         if text:
             out.append(text)
     return out[:limit]
+
+
+def _content_lines(items: Any) -> list[str]:
+    """Preserve imported/read-back teaching content; reject over-limit data instead of clipping it."""
+    out = [json.dumps(x, ensure_ascii=False) if isinstance(x, (dict, list)) else str(x or "")
+           for x in items if str(x or "").strip()] if isinstance(items, list) else []
+    if sum(len(x) for x in out) > MAX_TEXT_CHARS:
+        raise HTTPException(400, "内容超过20万字，请拆分后保存；没有截断保存")
+    return out
+
+
+def _homework_from_source(text: str, fallback: str) -> str:
+    """A literal homework section wins over the model's abbreviated version."""
+    heading = re.compile(r"(?m)^[ \t]*(?:[一二三四五六七八九十0-9]+[.．、][ \t]*)?(?:课后练习|课后作业|家庭作业|课后训练|作业)[：: \t]*(?:\n|(?=《)|(?=\S))")
+    matches = list(heading.finditer(text))
+    return text[matches[-1].start():].strip() if matches else fallback
 
 
 PLACEHOLDER_PREFIX = "请依据学校"      # the school's seeded template lessons carry this text: they are blank, not a plan
@@ -334,7 +351,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         check_subject(subject)
         if not 1 <= lessonNo <= LESSONS:
             raise HTTPException(400, f"课次需要在 1–{LESSONS} 之间")
-        extracted: dict[str, Any] = {"text": text.strip()[:12000], "slides": []}
+        extracted: dict[str, Any] = {"text": text.strip(), "slides": []}
         raw = b""
         ext = ""
         if file is not None and file.filename:
@@ -350,8 +367,14 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 extracted = extract(ext, raw)
             except HTTPException:
                 raise
+            except ValueError as exc:
+                if "20万字" in str(exc):
+                    raise HTTPException(413, str(exc))
+                raise HTTPException(400, "文件内容超出支持范围或无法解析，请拆分后重新导入")
             except Exception:  # noqa: BLE001
                 raise HTTPException(400, "没能读出这个文件的文字，请换一个文件，或把教案文字粘贴进来")
+        if len(extracted["text"]) > MAX_TEXT_CHARS:
+            raise HTTPException(413, "教案文字超过20万字，请拆分后导入；未截断保存")
         if len(extracted["text"]) < 20:
             raise HTTPException(400, "没有读到足够的文字（扫描版 PDF 和纯图片暂不支持），请换文件或直接粘贴文字")
         p = program(db, int(u.school_id))
@@ -364,17 +387,18 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             '只输出 JSON：{"title":"课题","coreTarget":"本节目标","teacherPlan":"教学流程(300字内)","ppt":["每页或每个板块的标题"],'
             '"examples":["文档里的例题和解答，原文照录"],"closureTraining":"课后练习",'
             '"questions":[{"stem":"文档里已有的选择题","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}]}'
-            "（questions 只放文档里本来就有的选择题；没有就给空数组）"
+            "（questions 只放文档里本来就有的选择题；没有就给空数组。阅读文章和非选择题不可省略；原文由系统完整保存。closureTraining 必须包含全部课后题，不能只列前几题。）"
         )
         data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=90))
         if not isinstance(data, dict) or not (str(data.get("title") or "").strip() or str(data.get("coreTarget") or "").strip() or _lines(data.get("examples"))):
             raise HTTPException(502, "AI 没能整理出教案，请再试一次，或在“审改”里手动填写")
-        slides = extracted["slides"] or _lines(data.get("ppt"))
+        slides = extracted["slides"] or _content_lines(data.get("ppt"))
         row = db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == subject, sched.c.lesson_no == lessonNo)).first()
         now = datetime.utcnow()
         fields = dict(title=(str(data.get("title") or "").strip() or f"{subject}第{lessonNo}课")[:180], core_target=str(data.get("coreTarget") or "")[:1000],
-                      teacher_plan=str(data.get("teacherPlan") or "")[:3000], ppt_json=json.dumps(slides, ensure_ascii=False),
-                      examples_json=json.dumps(_lines(data.get("examples")), ensure_ascii=False), closure_training=str(data.get("closureTraining") or "")[:1000],
+                      teacher_plan=str(data.get("teacherPlan") or ""), reading_plan=extracted["text"], ppt_json=json.dumps(slides, ensure_ascii=False),
+                      examples_json=json.dumps(_content_lines(data.get("examples")), ensure_ascii=False),
+                      closure_training=_homework_from_source(extracted["text"], str(data.get("closureTraining") or "")),
                       unit=(row.school_unit if row and row.school_unit else "")[:120] or "待配置单元", published=False, updated_at=now)
         if not fields["core_target"].strip() and not _lines(data.get("examples")):
             fields["core_target"] = fields["title"]            # a real (non-placeholder) target, so the lesson counts as prepared
@@ -392,7 +416,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                       stem=q["stem"], options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False))
         db.commit()
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs),
-                "message": f"已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道文档里的选择题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
+                "sourceChars": len(extracted["text"]), "message": f"原文 {len(extracted['text'])} 字已完整保留（含阅读材料及非选择题）。已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道文档里的选择题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
 
     @router.put("/teacher/weekend/lessons/{lid}")
     def edit_lesson(lid: int, b: LessonEditBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -400,8 +424,10 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         lesson = my_lesson(db, u, lid)
         if b.title.strip():
             lesson.title = b.title.strip()[:180]
-        lesson.core_target, lesson.teacher_plan, lesson.closure_training = b.coreTarget[:1000], b.teacherPlan[:3000], b.closureTraining[:1000]
-        lesson.examples_json, lesson.ppt_json = json.dumps(_lines(b.examples), ensure_ascii=False), json.dumps(_lines(b.ppt), ensure_ascii=False)
+        lesson.core_target, lesson.teacher_plan, lesson.closure_training = b.coreTarget[:1000], b.teacherPlan, b.closureTraining
+        if b.sourceText is not None:
+            lesson.reading_plan = b.sourceText
+        lesson.examples_json, lesson.ppt_json = json.dumps(_content_lines(b.examples), ensure_ascii=False), json.dumps(_content_lines(b.ppt), ensure_ascii=False)
         lesson.updated_at = datetime.utcnow()
         db.commit()
         return lesson_status(db, u, lesson)
@@ -412,10 +438,10 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         lesson = my_lesson(db, u, lid)
         def lst(raw: str) -> list[str]:
             try:
-                return _lines(json.loads(raw or "[]"))
-            except Exception:  # noqa: BLE001
+                return _content_lines(json.loads(raw or "[]"))
+            except (ValueError, TypeError):  # noqa: BLE001
                 return []
-        return {"id": lesson.id, "title": lesson.title, "coreTarget": lesson.core_target, "teacherPlan": lesson.teacher_plan, "closureTraining": lesson.closure_training,
+        return {"id": lesson.id, "title": lesson.title, "coreTarget": lesson.core_target, "teacherPlan": lesson.teacher_plan, "sourceText": lesson.reading_plan or "", "closureTraining": lesson.closure_training,
                 "examples": lst(lesson.examples_json), "ppt": lst(lesson.ppt_json)}
 
     @router.get("/teacher/weekend/lessons/{lid}/questions")
@@ -476,4 +502,5 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_plan", "register_plan_tables"]
+
 
