@@ -458,8 +458,18 @@ function plan(){
       var open=el('button',{text:'审改',disabled:!r.lessonId,onclick:function(){detail.hidden=!detail.hidden;if(!detail.hidden)lessonDetail(r,detail,function(st){Object.assign(r,st);go.disabled=!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0);tag.textContent='有教案 · 已通过 '+r.approvedQuestions+' 题 · 草稿 '+r.draftQuestions+' 题'})}});
       var go=el('button',{class:'primary',text:'开课',title:'需要教案和已通过的习题',disabled:!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0),onclick:function(){
         api('/teacher/weekend/sessions',{json:{lessonId:r.lessonId}}).then(function(d){location.href='/v1/weekend?s='+d.id}).catch(function(e){note('error',e.message)})}});
+      var deleteFeedback=el('div',{role:'status','aria-live':'polite'});
+      var deleteBtn=el('button',{text:'删除教案',disabled:!r.lessonId,onclick:function(){
+        var subject=SUBJ;
+        if(impBtn.disabled||draftBtn.disabled||(qBtn&&qBtn.disabled)){deleteFeedback.textContent='请等待当前导入或生成完成后再删除';return}
+        if(!confirm('确认删除【'+subject+' · 第 '+r.lessonNo+' 次课】《'+(r.title||'教案')+'》？\n将清除教案原文、教学内容、PPT、例题及本课全部习题（包括已通过的题）。课次和进度表保留。\n已有课堂或学生学习记录时将阻止删除。'))return;
+        deleteBtn.disabled=true;deleteFeedback.textContent='正在删除教案…';
+        api('/teacher/weekend/lessons/'+r.lessonId,{method:'DELETE',json:{subject:subject,lessonNo:r.lessonNo,confirmed:true}}).then(function(d){
+          if(SUBJ===subject){note('ok',d.message);load()}
+        }).catch(function(e){deleteFeedback.textContent=e.message;deleteBtn.disabled=false});
+      }});
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
-        el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),impBtn,fileIn,draftBtn,qBtn,open,go),detail));
+        el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),impBtn,fileIn,draftBtn,qBtn,open,go,deleteBtn),deleteFeedback,detail));
     });
     list.appendChild(el('button',{class:'primary',text:'保存进度表',onclick:function(){
       api('/teacher/weekend/schedule',{method:'PUT',json:{subject:SUBJ,rows:state.map(function(r){return {lessonNo:r.lessonNo,schoolWeek:r.schoolWeek,schoolUnit:r.schoolUnit||'',plannedDate:r.plannedDate||'',note:r.note||''}})}}).then(function(){note('ok','已保存');load()}).catch(function(e){note('error',e.message)})}}));
