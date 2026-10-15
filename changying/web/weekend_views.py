@@ -196,6 +196,16 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                 out["deck"] = {"total": len(deck), "index": idx}
                 out["answerRelease"].update({"currentQuestion": deck[idx]["question"], "currentPublished": deck[idx]["published"]})
                 out["content"].append(deck[idx]["text"])
+        if no in (4, 5) and row.status == "running":
+            from changying.web.weekend_written import register_written_tables
+            written_q = register_written_tables(implementation)['questions']
+            peer_t = implementation.Base.metadata.tables.get('weekend_peer_help')
+            if peer_t is not None:
+                for p in db.execute(select(peer_t).where(peer_t.c.session_id == row.id, peer_t.c.question_id < 0).order_by(peer_t.c.id)):
+                    who = db.scalar(select(implementation.User.name).where(implementation.User.id == p.tutor_id))
+                    stem = db.scalar(select(written_q.c.stem).where(written_q.c.id == -p.question_id, written_q.c.session_id == row.id))
+                    if who and stem:
+                        out['content'].append(f"请 {who} 同学来讲：{stem.split(chr(10)+chr(10))[-1]}")
         if board:
             if row.covered:
                 out["content"] = []

@@ -114,6 +114,7 @@ function progress(box,d){
   if(!d.class){box.textContent='';return}
   if(d.status!=='running'&&d.status!=='finished'){box.textContent='';return}
   api('/teacher/weekend/sessions/'+SID+'/progress').then(function(p){
+    if(p.items.length&&!p.items.some(function(i){return i.total>0})){box.textContent='';box.appendChild(el('p',{class:'muted',text:'本节没有选择题。文字／照片答案请在“学生作答与批改”中查看，也可在“请同学讲解”中选择已提交的同学。'}));return}
     box.textContent='';box.appendChild(el('h2',{text:'选择题进度（班级正确率 '+p.classCompletionRate+'%）'}));
     if(!p.items.length){box.appendChild(el('div',{class:'muted',text:'本节课没有学生，请检查所选班级的名单。'}));return}
     p.items.forEach(function(i){
@@ -126,7 +127,7 @@ function progress(box,d){
 }
 function peerCard(box){
   box.appendChild(el('h2',{text:'请同学讲解（复盘环节）'}));
-  box.appendChild(el('div',{class:'muted',text:'像课堂互动一样：选一道题，请做对的同学来讲。大屏会显示“请 XX 同学来讲”，TA 的页面会收到题目和解析；讲完，没做对的同学会收到一道类似的小题，做对了讲解的同学加分。'}));
+  box.appendChild(el('div',{class:'muted',text:'先选一道题，再选同学讲解。文字／照片题按提交及批改状态列出，老师可请已提交的同学讲思路；选择题保留做对同学讲解及后续巩固规则。'}));
   var out=el('div'),msg=el('div'),go=el('button',{text:'查看可以讲的题',onclick:function(){load()}});
   box.appendChild(go);box.appendChild(out);box.appendChild(msg);
   function load(){
@@ -135,12 +136,12 @@ function peerCard(box){
       out.appendChild(el('div',{class:'notice ok',text:d.message}));
       d.questions.forEach(function(q){
         var row=el('div',{class:'card'},el('b',{text:'第 '+q.no+' 题：'+q.stem}),
-          el('div',{class:'muted',text:'做对：'+q.right.map(function(x){return x.name}).join('、')+'　·　没做对：'+q.wrong.map(function(x){return x.name}).join('、')}));
+          el('div',{class:'muted',text:q.questionType==='written'?'文字／照片题 · '+q.submitted.map(function(x){return x.name+'（'+({pending:'待批改',correct:'正确',partial:'部分正确',revise:'需订正'}[x.result]||'已提交')+'）'}).join('、'):'做对：'+q.right.map(function(x){return x.name}).join('、')+'　·　没做对：'+q.wrong.map(function(x){return x.name}).join('、')}));
         var act=el('div',{class:'row'});
-        q.right.forEach(function(r){
+        (q.questionType==='written'?q.submitted:q.right).forEach(function(r){
           var b=el('button',{text:r.asked?'已请 '+r.name+' 讲过':'请 '+r.name+' 来讲',disabled:r.asked,onclick:function(){
             b.disabled=true;msg.textContent='';
-            api('/teacher/weekend/sessions/'+SID+'/explain',{json:{tutorId:r.studentId,questionId:q.questionId}}).then(function(res){msg.appendChild(el('div',{class:'notice ok',text:res.message}));b.textContent='已请 '+r.name+' 讲过'})
+            api('/teacher/weekend/sessions/'+SID+'/explain',{json:{tutorId:r.studentId,questionId:q.questionId,questionType:q.questionType||"choice"}}).then(function(res){msg.appendChild(el('div',{class:'notice ok',text:res.message}));b.textContent='已请 '+r.name+' 讲过'})
               .catch(function(e){msg.appendChild(el('div',{class:'notice error',text:e.message}));b.disabled=false});
           }});
           act.appendChild(b);
@@ -330,7 +331,11 @@ function practice(){
         var card=el('div',{class:'card'});
         card.appendChild(el('h2',{text:'老师请你给大家讲这道题'}));
         card.appendChild(el('b',{text:q.stem}));
-        card.appendChild(el('div',{class:'muted',text:'正确答案：'+LETTERS[q.correctIndex]+'. '+(q.options[q.correctIndex]||'')}));
+        if(q.questionType==='written'){
+          card.appendChild(el('p',{text:'你提交的答案：'+(q.answerText||'见答案照片')}));
+          writtenPhoto(card,q.submission);
+          if(q.reference)card.appendChild(el('p',{text:'老师已公布的参考答案／评分要点：'+q.reference}));
+        }else card.appendChild(el('div',{class:'muted',text:'正确答案：'+LETTERS[q.correctIndex]+'. '+(q.options[q.correctIndex]||'')}));
         if(q.explanation)card.appendChild(el('div',{text:'解析：'+q.explanation}));
         card.appendChild(el('div',{class:'muted',text:'用自己的话讲：先说第一步做什么，为什么这样做，最后得到什么。'}));
         ebox.appendChild(card);
