@@ -13,6 +13,7 @@ Every state change is recorded in weekend_stage_log (the stage timeline used lat
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any
 
@@ -39,6 +40,11 @@ class GotoBody(BaseModel):
 
 class ExtendBody(BaseModel):
     minutes: int = 5
+
+
+class SlideBody(BaseModel):
+    delta: int = 0
+    index: int | None = None
 
 
 class CoverBody(BaseModel):
@@ -76,7 +82,17 @@ def register_weekend_tables(implementation: Any) -> dict[str, Table]:
             Column("started_at", DateTime, nullable=False, default=datetime.utcnow),
             Column("ended_at", DateTime, nullable=True),
         )
-    return {"sessions": sessions, "log": log}
+    slide = md.tables.get("weekend_slide_state")
+    if slide is None:
+        slide = Table(
+            "weekend_slide_state", md,
+            Column("id", Integer, primary_key=True),
+            Column("school_id", Integer, nullable=False, index=True),
+            Column("session_id", Integer, nullable=False, unique=True),
+            Column("stage_no", Integer, nullable=False, default=0),
+            Column("idx", Integer, nullable=False, default=0),
+        )
+    return {"sessions": sessions, "log": log, "slide": slide}
 
 
 def install_weekend_views(implementation: Any) -> APIRouter:
@@ -84,7 +100,7 @@ def install_weekend_views(implementation: Any) -> APIRouter:
     if getattr(app.state, "weekend_installed", False):
         return app.state.weekend_router
     t = register_weekend_tables(implementation)
-    sessions, log = t["sessions"], t["log"]
+    sessions, log, slide_t = t["sessions"], t["log"], t["slide"]
     Lesson = implementation.TeachingLesson
     current_user, get_db, need = implementation.current_user, implementation.get_db, implementation.need
     router = APIRouter()
@@ -113,6 +129,15 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         db.execute(insert(log).values(school_id=row.school_id, session_id=row.id, stage_no=stage_no, planned_min=st["minutes"], extend_min=0, started_at=now))
         db.execute(update(sessions).where(sessions.c.id == row.id).values(current_stage=stage_no))
 
+    def deck_for(lesson: dict[str, Any], stage_no: int) -> list[str]:
+        """Pages the teacher pages through on the big screen: their own slides (stage 2) or worked examples (stage 3)."""
+        raw = lesson.get("ppt_json") if stage_no == 2 else lesson.get("examples_json")
+        try:
+            items = json.loads(raw or "[]")
+        except Exception:  # noqa: BLE001
+            return []
+        return [" ".join(str(x).split())[:400] for x in items if str(x or "").strip()] if isinstance(items, list) else []
+
     def state(db: Any, row: Any, *, board: bool = False) -> dict[str, Any]:
         now = datetime.utcnow()
         lesson = lesson_dict(db, int(row.school_id), int(row.lesson_id))
@@ -128,6 +153,31 @@ def install_weekend_views(implementation: Any) -> APIRouter:
             "remainingSeconds": timer, "stageCount": STAGE_COUNT,
             "content": stage_content(no, lesson) if stage and row.status == "running" else [],
         }
+        if no in (2, 3) and row.status == "running":
+            deck = deck_for(lesson, no)
+            if deck:
+                st_row = db.execute(select(slide_t).where(slide_t.c.session_id == row.id)).first()
+                idx = int(st_row.idx) if st_row is not None and int(st_row.stage_no) == no else 0
+                idx = max(0, min(idx, len(deck) - 1))
+                out["deck"] = {"total": len(deck), "index": idx}
+                out["content"] = [deck[idx]]
+        if no == 5 and row.status == "running":
+            # 练习复盘: name the pupil asked to explain, and the question — never the pupils who got it wrong.
+            peer_t = implementation.Base.metadata.tables.get("weekend_peer_help")
+            if peer_t is not None:
+                User, TQ = implementation.User, implementation.TeachingQuestion
+                seen: set[tuple[int, int]] = set()
+                lines = []
+                for p in db.execute(select(peer_t.c.tutor_id, peer_t.c.question_id).where(peer_t.c.session_id == row.id).order_by(peer_t.c.id)).all():
+                    key = (int(p.tutor_id), int(p.question_id))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    who = db.scalar(select(User.name).where(User.id == p.tutor_id))
+                    stem = db.scalar(select(TQ.stem).where(TQ.id == p.question_id))
+                    if who and stem:
+                        lines.append(f"请 {who} 同学来讲：{stem}")
+                out["content"] = out["content"] + lines
         if no == 4 and row.status == "running":
             # 随堂练习: the big screen shows the question stems (never options or answers) next to the instructions.
             TQ = implementation.TeachingQuestion
@@ -248,6 +298,26 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         if cur is not None:
             db.execute(update(log).where(log.c.id == cur.id).values(extend_min=min(int(cur.extend_min) + minutes, MAX_EXTEND_MIN)))
             db.commit()
+        return state(db, mine(db, u, sid))
+
+    @router.post("/teacher/weekend/sessions/{sid}/slide")
+    def slide(sid: int, b: SlideBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        row = mine(db, u, sid)
+        running(row)
+        no = int(row.current_stage)
+        deck = deck_for(lesson_dict(db, int(row.school_id), int(row.lesson_id)), no) if no in (2, 3) else []
+        if not deck:
+            raise HTTPException(409, "这个环节没有可翻页的内容")
+        cur = state(db, row)["deck"]["index"]
+        target = b.index if b.index is not None else cur + b.delta
+        target = max(0, min(int(target), len(deck) - 1))
+        ex = db.execute(select(slide_t.c.id).where(slide_t.c.session_id == sid)).first()
+        if ex:
+            db.execute(update(slide_t).where(slide_t.c.id == ex.id).values(stage_no=no, idx=target))
+        else:
+            db.execute(insert(slide_t).values(school_id=row.school_id, session_id=sid, stage_no=no, idx=target))
+        db.commit()
         return state(db, mine(db, u, sid))
 
     @router.post("/teacher/weekend/sessions/{sid}/cover")
