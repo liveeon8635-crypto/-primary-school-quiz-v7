@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from changying.web.classroom_window_handoff import PAGE_AUTH_JS
 from changying.web.homework_assistant_pages import PAGE_CSS
+from changying.web.weekend_written_pages import WRITTEN_JS
 
 COMMON_JS = r"""
 __PAGE_AUTH__
@@ -42,6 +43,7 @@ function control(){
       progBox=el('div',{class:'card'}),hintBox=el('div',{class:'card'}),peerBox=el('div',{class:'card'}),scoreBox=el('div',{class:'card'}),archBox=el('div',{class:'card'});
   root.appendChild(head);root.appendChild(stagesBox);root.appendChild(content);root.appendChild(progBox);root.appendChild(peerBox);root.appendChild(scoreBox);root.appendChild(archBox);root.appendChild(hintBox);root.appendChild(msgBox);
   hintsCard(hintBox);peerCard(peerBox);scoreCard(scoreBox);archiveCard(archBox);
+  var writtenBox=el('div',{class:'card'});root.appendChild(writtenBox);writtenTeacher(writtenBox);
   function post(path,body){return api('/teacher/weekend/sessions/'+SID+'/'+path,{json:body||{}}).then(paint).catch(function(e){msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
   function paint(d){
     head.textContent='';stagesBox.textContent='';content.textContent='';remain=d.remainingSeconds;progress(progBox,d);
@@ -85,13 +87,13 @@ function control(){
 function progress(box,d){
   if(d.status!=='running'&&d.status!=='finished'){box.textContent='';return}
   api('/teacher/weekend/sessions/'+SID+'/progress').then(function(p){
-    box.textContent='';box.appendChild(el('h2',{text:'随堂练习进度（班级完成率 '+p.classCompletionRate+'%）'}));
+    box.textContent='';box.appendChild(el('h2',{text:'选择题进度（班级正确率 '+p.classCompletionRate+'%）'}));
     if(!p.items.length){box.appendChild(el('div',{class:'muted',text:'没有学生。学生要在“我的班级”里属于你的班级。'}));return}
     p.items.forEach(function(i){
       box.appendChild(el('div',{class:'row'},el('b',{text:i.name}),
         el('span',{class:'tag',text:'做完 '+i.answered+'/'+i.total}),el('span',{class:'tag',text:'做对 '+i.correct}),
         el('span',{class:'tag '+(i.hintMax>=2?'warn':''),text:'提示最高 '+i.hintMax+' 级 · 平均 '+i.hintAvg}),
-        el('span',{class:'muted',text:'完成率 '+i.completionRate+'%'})));
+        el('span',{class:'muted',text:'正确率 '+i.completionRate+'%'})));
     });
   }).catch(function(){});
 }
@@ -319,6 +321,7 @@ function practice(){
       card.appendChild(el('div',{class:'row'},sub));card.appendChild(out);fbox.appendChild(card);
     }).catch(function(){});
   }
+  var writtenBox=el('div',{class:'card'});root.appendChild(writtenBox);writtenStudent(writtenBox);
   load();followup();explain();
   wait=setInterval(function(){if(!document.hidden){load();explain();if(!fbox.firstChild)followup()}},20000);
 }
@@ -489,7 +492,7 @@ function boot_student(run){
 
 
 def practice_page_html() -> str:
-    return _page("课堂练习", STUDENT_BOOT + PRACTICE_JS, True)
+    return _page("课堂练习", STUDENT_BOOT + WRITTEN_JS + PRACTICE_JS, True)
 
 
 def plan_page_html() -> str:
@@ -501,7 +504,7 @@ def brief_page_html() -> str:
 
 
 def control_page_html() -> str:
-    return _page("周末课", CONTROL_JS, True, ("/v1/workspace", "返回"))
+    return _page("周末课", WRITTEN_JS + CONTROL_JS, True, ("/v1/workspace", "返回"))
 
 
 def board_page_html() -> str:
@@ -509,3 +512,4 @@ def board_page_html() -> str:
 
 
 __all__ = ["board_page_html", "brief_page_html", "control_page_html", "plan_page_html", "practice_page_html"]
+

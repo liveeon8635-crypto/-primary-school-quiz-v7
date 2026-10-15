@@ -600,3 +600,4 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_scoring", "register_scoring_tables"]
+

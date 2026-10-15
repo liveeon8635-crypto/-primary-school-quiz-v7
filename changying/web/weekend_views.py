@@ -352,3 +352,4 @@ def install_weekend_views(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_views", "register_weekend_tables"]
+

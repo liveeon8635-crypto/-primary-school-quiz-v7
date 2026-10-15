@@ -319,6 +319,8 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         db.commit()
         return {"correct": correct, "correctIndex": int(q.correct_index), "explanation": q.explanation or "", "hintUsed": int(used)}
 
+    from changying.web.weekend_written import install_weekend_written
+    install_weekend_written(implementation)
     app.include_router(router)
     app.state.weekend_practice_installed = True
     app.state.weekend_practice_router = router
@@ -326,3 +328,4 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_practice", "register_practice_tables"]
+
