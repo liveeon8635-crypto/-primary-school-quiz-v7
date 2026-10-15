@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:f5189fb9f8c9049bfe119d1d97eee14a2749ed5c979223052fab31d9177ed1d2",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "1c07c0084af8f677e3e8f065666e8f6a1e812121",
+  "headSha": "56234c7cd167fa18ced14bf33053517d4dcad4ce",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：改动实现了教师教案导入解析、大屏讲义与例题翻页以及以问题为中心的同伴讲解功能，并通过了相关测试，未发现安全或功能缺陷。",
+      "evidenceRefs": [
+        "file:changying/services/lesson_import.py",
+        "file:changying/web/weekend_plan_views.py",
+        "file:changying/web/weekend_views.py",
+        "file:changying/web/weekend_scoring_views.py",
+        "file:tests/test_weekend_views.py"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:fe4e8e8a1220724f5c6ae57587fb14d16d824afff2ef4b44e14765124b60897e"
+}
