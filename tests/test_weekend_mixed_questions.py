@@ -81,11 +81,11 @@ with TestClient(app) as client:
     assert client.get(f'/student/weekend/sessions/{session}/written',headers=sh).json()['questions'][0]['submission']['result']=='pending'
     board=client.get(base+'/board',headers=th)
     assert '概括' in board.text and '教师专用评分秘密' not in board.text
-    published=client.post(base+'/publish-answers',headers=th)
+    published=client.post(base+'/publish-answers',headers=th,json={'question':1})
     assert published.status_code==200,published.text
     assert '教师专用评分秘密' in client.get(base+'/board',headers=th).text
     assert client.get(f'/student/weekend/sessions/{session}/written',headers=sh).json()['questions'][0]['submission']['result']=='correct'
-    assert client.get(f'/student/weekend/sessions/{session}/written',headers=sh).json()['canSubmit'] is False
+    assert client.get(f'/student/weekend/sessions/{session}/written',headers=sh).json()['canSubmit'] is True
     # Editing approved templates returns them to draft without changing an
     # existing session snapshot or its grading reference.
     client.put(url+'/'+str(q['id']),headers=th,json={'stem':'修改后的题目','reference':'新参考'})

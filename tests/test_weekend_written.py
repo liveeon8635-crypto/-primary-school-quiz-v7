@@ -87,7 +87,7 @@ with TestClient(app) as client:
     assert client.post(url, headers=sh, data={'text':'overwrite','revision':4}).status_code == 409
     before = client.get(base+'/board', headers=th)
     assert '舍己救人' not in before.text
-    published = client.post(base+'/publish-answers', headers=th)
+    published = client.post(base+'/publish-answers', headers=th, json={'question':1})
     assert published.status_code == 200, published.text
     assert '舍己救人' in client.get(base+'/board', headers=th).text
     assert client.post(url, headers=sh, data={'text':'late','revision':4}).status_code == 409

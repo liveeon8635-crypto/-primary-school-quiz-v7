@@ -25,7 +25,7 @@ from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, desc, 
 from changying.services.weekend_stages import (
     MAX_EXTEND_MIN, STAGE_COUNT, STAGES, remaining_seconds, stage_by_no, stage_content,
 )
-from changying.services.weekend_answers import answers_published, practice_pages
+from changying.services.weekend_answers import practice_deck, practice_cursor
 from changying.web.weekend_pages import board_page_html, control_page_html
 
 NO_CACHE = {"Cache-Control": "no-store"}
@@ -51,6 +51,10 @@ class ExtendBody(BaseModel):
 class SlideBody(BaseModel):
     delta: int = 0
     index: int | None = None
+
+
+class PublishAnswerBody(BaseModel):
+    question: int
 
 
 class CoverBody(BaseModel):
@@ -184,16 +188,14 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                         lines.append(f"请 {who} 同学来讲：{stem}")
                 out["content"] = out["content"] + lines
         if no == 4 and row.status == "running":
-            published = answers_published(implementation, db, row)
-            deck = practice_pages(implementation, db, row, answers=published)
-            cursor = db.execute(select(slide_t).where(slide_t.c.session_id == row.id)).first()
-            idx = (int(cursor.idx) if published else -int(cursor.idx)-1) if cursor and cursor.stage_no == 4 else 0
-            idx = max(0, min(idx, len(deck)-1))
-            out["answersPublished"] = published
-            out["content"] = ["答案已公布，请听老师讲评。" if published else "请先独立作答并提交，等待老师统一公布答案。"]
+            deck, count, idx, total = practice_deck(implementation, db, row)
+            out["answersPublished"] = bool(total) and count == total
+            out["answerRelease"] = {"published": count, "total": total, "nextQuestion": count+1 if count < total else None}
+            out["content"] = ["已公布题目请听老师讲评，其余题目继续作答。" if count else "请先独立作答并提交，等待老师逐题公布答案。"]
             if deck:
                 out["deck"] = {"total": len(deck), "index": idx}
-                out["content"].append(deck[idx])
+                out["answerRelease"].update({"currentQuestion": deck[idx]["question"], "currentPublished": deck[idx]["published"]})
+                out["content"].append(deck[idx]["text"])
         if board:
             if row.covered:
                 out["content"] = []
@@ -355,14 +357,14 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         row = mine(db, u, sid)
         running(row)
         no = int(row.current_stage)
-        deck = practice_pages(implementation, db, row, answers=answers_published(implementation, db, row)) if no == 4 else deck_for(lesson_dict(db, int(row.school_id), int(row.lesson_id)), no) if no in (2, 3) else []
+        deck = practice_deck(implementation, db, row)[0] if no == 4 else deck_for(lesson_dict(db, int(row.school_id), int(row.lesson_id)), no) if no in (2, 3) else []
         if not deck:
             raise HTTPException(409, "这个环节没有可翻页的内容")
         cur = state(db, row)["deck"]["index"]
         target = b.index if b.index is not None else cur + b.delta
         target = max(0, min(int(target), len(deck) - 1))
-        if no == 4 and not answers_published(implementation, db, row):
-            target = -target - 1
+        if no == 4:
+            target = practice_cursor(practice_deck(implementation, db, row)[1], target)
         ex = db.execute(select(slide_t.c.id).where(slide_t.c.session_id == sid)).first()
         if ex:
             db.execute(update(slide_t).where(slide_t.c.id == ex.id).values(stage_no=no, idx=target))
@@ -371,22 +373,50 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         db.commit()
         return state(db, mine(db, u, sid))
 
+    @router.post("/teacher/weekend/sessions/{sid}/practice-question")
+    def show_practice_question(sid: int, b: PublishAnswerBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        db.execute(select(sessions.c.id).where(sessions.c.id == sid, sessions.c.school_id == u.school_id).with_for_update()).first()
+        row = mine(db, u, sid)
+        running(row)
+        if row.current_stage != 4:
+            raise HTTPException(409, "请在随堂练习环节选择题目")
+        deck, count, _, total = practice_deck(implementation, db, row)
+        if not 1 <= b.question <= total:
+            raise HTTPException(400, "请选择有效题目")
+        page = next(i for i, item in enumerate(deck) if item['question'] == b.question)
+        value = practice_cursor(count, page)
+        cursor = db.execute(select(slide_t.c.id).where(slide_t.c.session_id == sid)).first()
+        if cursor:
+            db.execute(update(slide_t).where(slide_t.c.id == cursor.id).values(stage_no=4, idx=value))
+        else:
+            db.execute(insert(slide_t).values(school_id=row.school_id, session_id=sid, stage_no=4, idx=value))
+        db.commit()
+        return state(db, mine(db, u, sid))
+
     @router.post("/teacher/weekend/sessions/{sid}/publish-answers")
-    def publish_answers(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    def publish_answers(sid: int, b: PublishAnswerBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         row = mine(db, u, sid)
         db.execute(select(sessions.c.id).where(sessions.c.id == sid).with_for_update()).first()
         running(row)
         if int(row.current_stage) != 4:
             raise HTTPException(409, "请在随堂练习环节公布答案")
-        if not practice_pages(implementation, db, row, answers=True):
-            raise HTTPException(409, "本节没有可公布的题目")
-        if not answers_published(implementation, db, row):
+        deck, count, _, total = practice_deck(implementation, db, row)
+        if not 1 <= b.question <= total:
+            raise HTTPException(400, "请选择有效题目")
+        if b.question > count+1:
+            raise HTTPException(409, "请按题目顺序公布答案")
+        if b.question == count+1:
+            # The request carries the ordinal: retries cannot release another question.
+            count += 1
+            page = next(i for i, item in enumerate(deck) if item["question"] == b.question)
             cursor = db.execute(select(slide_t.c.id).where(slide_t.c.session_id == sid)).first()
+            value = practice_cursor(count, page)
             if cursor:
-                db.execute(update(slide_t).where(slide_t.c.id == cursor.id).values(stage_no=4, idx=0))
+                db.execute(update(slide_t).where(slide_t.c.id == cursor.id).values(stage_no=4, idx=value))
             else:
-                db.execute(insert(slide_t).values(school_id=row.school_id, session_id=sid, stage_no=4, idx=0))
+                db.execute(insert(slide_t).values(school_id=row.school_id, session_id=sid, stage_no=4, idx=value))
             db.commit()
         return state(db, mine(db, u, sid))
 

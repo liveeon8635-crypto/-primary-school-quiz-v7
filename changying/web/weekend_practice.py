@@ -16,7 +16,7 @@ on the spot and they are stored as "auto" (visible to students, flagged for teac
 
 from __future__ import annotations
 
-from changying.services.weekend_answers import answers_published
+from changying.services.weekend_answers import answers_published, practice_release
 
 import json
 from datetime import datetime
@@ -245,8 +245,6 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
             raise HTTPException(404, "现在没有正在上的课")
         if int(row.current_stage) != PRACTICE_STAGE:
             raise HTTPException(409, "现在不是随堂练习时间")
-        if answers_published(implementation, db, row):
-            raise HTTPException(409, "老师已公布答案，停止提交")
         return row
 
     @router.get("/v1/weekend-practice", include_in_schema=False)
@@ -271,18 +269,20 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         used = {}
         for qid, lvl in db.execute(select(hlog.c.question_id, func.max(hlog.c.level)).where(hlog.c.session_id == row.id, hlog.c.student_id == u.id).group_by(hlog.c.question_id)).all():
             used[int(qid)] = int(lvl)
-        published = answers_published(implementation, db, row)
+        release_items, release_count, _ = practice_release(implementation, db, row)
+        released_choices = {q["id"] for q in release_items[:release_count] if q["kind"] == "choice"}
+        published = bool(release_items) and release_count == len(release_items)
         qs = []
         for q in lesson_questions(db, int(u.school_id), int(row.lesson_id)):
             a = mine.get(q.id)
-            item = {"id": q.id, "stem": q.stem, "options": options(q), "hintUsed": used.get(q.id, 0), "levelNames": level_names(q.subject)}
+            item = {"id": q.id, "stem": q.stem, "options": options(q), "answersPublished": q.id in released_choices, "canSubmit": q.id not in released_choices, "hintUsed": used.get(q.id, 0), "levelNames": level_names(q.subject)}
             if used.get(q.id):
                 hs = hint_rows(db, int(u.school_id), q.id)
                 item["hintTexts"] = [hs[i].text for i in range(1, used[q.id] + 1) if i in hs]
             if a is not None:
                 item.update({"answered": True, "selected": int(a.selected)})
             qs.append(item)
-        return {**base, "practice": True, "canSubmit": not published, "answersPublished": published, "questions": qs}
+        return {**base, "publishedWrittenQuestionIds": [q["id"] for q in release_items[:release_count] if q["kind"] == "written"], "practice": True, "canSubmit": not published, "answersPublished": published, "questions": qs}
 
     @router.post("/student/weekend/hint")
     def student_hint(b: StudentHintBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -291,6 +291,8 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         q = db.get(TQ, b.questionId)
         if q is None or int(q.school_id) != int(u.school_id) or int(q.lesson_id or 0) != int(row.lesson_id):
             raise HTTPException(404, "没有找到这道题")
+        if answers_published(implementation, db, row, q.id):
+            raise HTTPException(409, "老师已公布本题答案，停止提交")
         if db.execute(select(answers.c.id).where(answers.c.session_id == b.sessionId, answers.c.student_id == u.id, answers.c.question_id == q.id)).first():
             raise HTTPException(409, "这道题已经作答了")
         used = db.scalar(select(func.max(hlog.c.level)).where(hlog.c.session_id == b.sessionId, hlog.c.student_id == u.id, hlog.c.question_id == q.id)) or 0
@@ -315,6 +317,8 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         q = db.get(TQ, b.questionId)
         if q is None or int(q.school_id) != int(u.school_id) or int(q.lesson_id or 0) != int(row.lesson_id):
             raise HTTPException(404, "没有找到这道题")
+        if answers_published(implementation, db, row, q.id):
+            raise HTTPException(409, "老师已公布本题答案，停止提交")
         if not 0 <= int(b.selected) < len(options(q)):
             raise HTTPException(400, "没有这个选项")
         if db.execute(select(answers.c.id).where(answers.c.session_id == b.sessionId, answers.c.student_id == u.id, answers.c.question_id == q.id)).first():
