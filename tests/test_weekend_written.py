@@ -109,16 +109,18 @@ def test_student_keeps_other_question_drafts_when_submitting(tmp_path):
 const assert = require('node:assert/strict');
 class Element {
   constructor(tag,attrs){this.tag=tag;this.attrs=attrs||{};this.children=[];this.value='';this._text='';this.disabled=!!this.attrs.disabled}
+  addEventListener(){}
   appendChild(n){this.children.push(n);return n}
   set textContent(t){this._text=t;this.children=[]}
   get textContent(){return this._text||this.attrs.text||''}
 }
 function el(tag,attrs,...children){const n=new Element(tag,attrs);children.forEach(c=>n.appendChild(c));return n}
-var window={addEventListener(){}},location={search:'',href:'https://example.test/v1/weekend-practice'},history={replaceState(){}},TOKEN='test';
+var ticks=[],document={hidden:false},setInterval=fn=>{ticks.push(fn);return ticks.length},window={addEventListener(){}},location={search:'',href:'https://example.test/v1/weekend-practice'},history={replaceState(){}},TOKEN='test';
 var confirm=()=>true,alert=(msg)=>{throw Error(msg)},saved=[];
-var questions=[{id:1,stem:'题一',hasHints:false,submission:null},{id:2,stem:'题二',hasHints:false,submission:null}];
+var practiceOpen=true;
+var questions=[{id:1,stem:'篇目一：阅读\n共同文章正文\n\n题一',hasHints:false,submission:null},{id:2,stem:'篇目一：阅读\n共同文章正文\n\n题二',hasHints:false,submission:null}];
 function api(path,opts){
-  if(path==='/student/weekend/current')return Promise.resolve({active:true,sessionId:1});
+  if(path==='/student/weekend/current')return Promise.resolve({active:true,practice:practiceOpen,sessionId:1});
   if(path.endsWith('/written'))return Promise.resolve({canSubmit:true,questions:questions});
   saved.push(opts.body.get('text'));questions[0].submission={id:10,text:opts.body.get('text'),revision:1,result:'pending',hasPhoto:false};
   return Promise.resolve({submitted:true});
@@ -129,8 +131,12 @@ async function settle(){for(let i=0;i<8;i++)await Promise.resolve()}
 (async()=>{
  const root=new Element('div');writtenStudent(root);await settle();
  let areas=all(root,'textarea');assert.equal(areas.length,2);
+ assert.equal(all(root,'div').filter(n=>n.attrs.text==='共同文章正文').length,1,'Render shared reading material once');
  areas[0].value='第一题答案';areas[0].oninput();areas[1].value='第二题尚未交的草稿';areas[1].oninput();
- const send=all(root,'button').find(n=>n.attrs.text==='提交答案');send.attrs.onclick();await settle();
+ const send=all(root,'button').find(n=>n.attrs.text==='提交答案');
+ practiceOpen=false;ticks[0]();await settle();assert(send.disabled);assert.equal(areas[1].value,'第二题尚未交的草稿');
+ practiceOpen=true;ticks[0]();await settle();assert(!send.disabled);
+ send.attrs.onclick();await settle();
  assert.deepEqual(saved,['第一题答案']);areas=all(root,'textarea');
  assert.equal(areas[1].value,'第二题尚未交的草稿');
  console.log('OK');
