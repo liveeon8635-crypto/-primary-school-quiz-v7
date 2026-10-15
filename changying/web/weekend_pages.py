@@ -270,7 +270,7 @@ function practice(){
   root.textContent='';
   var box=el('div'),lastPracticeSignature='',selectedAnswers={};root.appendChild(box);
   function load(){
-    api('/student/weekend/current').then(paint).catch(function(e){box.textContent='';box.appendChild(el('div',{class:'card'},el('div',{class:'notice error',text:e.message})))});
+    api('/student/weekend/current').then(paint).catch(function(e){lastPracticeSignature='';box.textContent='';box.appendChild(el('div',{class:'card'},el('div',{class:'notice error',text:e.message})))});
   }
   function paint(d){
     var signature=JSON.stringify(d);if(signature===lastPracticeSignature)return;lastPracticeSignature=signature;
