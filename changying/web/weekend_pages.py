@@ -37,6 +37,7 @@ var SID=+(new URLSearchParams(location.search).get('s')||0),timer=null,remain=nu
 function control(){
   root.textContent='';
   if(!SID){picker();return}
+  var back=document.querySelector('header a');if(back){back.href='/v1/weekend';back.textContent='返回周末课'}
   var head=el('div',{class:'card'}),stagesBox=el('div',{class:'card'}),content=el('div',{class:'card'}),msgBox=el('div'),
       progBox=el('div',{class:'card'}),hintBox=el('div',{class:'card'}),peerBox=el('div',{class:'card'}),scoreBox=el('div',{class:'card'}),archBox=el('div',{class:'card'});
   root.appendChild(head);root.appendChild(stagesBox);root.appendChild(content);root.appendChild(progBox);root.appendChild(peerBox);root.appendChild(scoreBox);root.appendChild(archBox);root.appendChild(hintBox);root.appendChild(msgBox);
@@ -196,20 +197,42 @@ function hintsCard(box){
     });
   }).catch(function(e){list.appendChild(el('div',{class:'notice error',text:e.message}))});
 }
+var HSUBJ='数学';
 function picker(){
-  var sel=el('select'),list=el('div'),go=el('button',{class:'primary',text:'创建这节课堂',onclick:function(){
-    if(!sel.value)return;api('/teacher/weekend/sessions',{json:{lessonId:+sel.value}}).then(function(d){location.href='/v1/weekend?s='+d.id}).catch(function(e){alert(e.message)})}});
-  root.appendChild(el('div',{class:'card'},el('h2',{text:'周末课：选择今天的课'}),
-    el('div',{class:'muted',text:'课时来自“定制教学”里的教案；每节课固定 7 个环节、共 120 分钟。'}),el('div',{class:'row'},sel,go),el('div',{class:'row'},el('a',{class:'btn',href:'/v1/weekend-plan',text:'备课与学期进度表（AI 备课草稿）'}))));
-  root.appendChild(el('div',{class:'card'},el('h2',{text:'最近的课堂'}),list));
-  api('/teacher/weekend/lessons').then(function(d){
-    if(!d.items.length){sel.appendChild(el('option',{value:'',text:'还没有课时，请先在“定制教学”里建立'}));return}
-    d.items.forEach(function(l){sel.appendChild(el('option',{value:l.id,text:l.subject+' 第'+l.lessonNo+'课 '+l.title}))});
-  });
+  root.textContent='';
+  var tabs=el('div',{class:'tabs'}),stepsBox=el('div',{class:'card'}),recent=el('div',{class:'card'}),msg=el('div');
+  ['数学','语文'].forEach(function(x){tabs.appendChild(el('button',{class:x===HSUBJ?'on':'',text:x,onclick:function(){HSUBJ=x;picker()}}))});
+  root.appendChild(tabs);root.appendChild(stepsBox);root.appendChild(msg);root.appendChild(recent);
+  function step(ok,title,hint,btn){
+    return el('div',{class:'item'},el('span',{style:'font-size:22px;width:30px;flex:none',text:ok?'✅':'⬜'}),el('span',{class:'t'},el('b',{text:title}),el('span',{class:'muted',text:hint})),btn||null);
+  }
+  api('/teacher/weekend/next').then(function(d){
+    var x=d.items.filter(function(i){return i.subject===HSUBJ})[0];
+    stepsBox.textContent='';
+    if(!x||x.done){stepsBox.appendChild(el('h2',{text:'18 次课都上完了'}));return}
+    stepsBox.appendChild(el('h2',{text:HSUBJ+' 第 '+x.lessonNo+' 次课'}));
+    stepsBox.appendChild(el('div',{class:'muted',text:(x.schoolWeek?'学校第 '+x.schoolWeek+' 周 · ':'')+(x.schoolUnit||'学校进度还没填')+(x.plannedDate?' · '+x.plannedDate:'')}));
+    var go=function(text){return el('a',{class:'btn',href:'/v1/weekend-plan',text:text})};
+    var ready=x.hasPlan&&x.approvedQuestions>0;
+    stepsBox.appendChild(step(!!x.schoolUnit,'① 填学校进度','让系统知道这一周学校讲到哪里；学校调课可以一键顺延',go('去填')));
+    stepsBox.appendChild(step(x.hasPlan,'② 准备教案','没有教案就点“AI 备课草稿”，生成后你改一改',go('去备课')));
+    stepsBox.appendChild(step(x.approvedQuestions>0,'③ 准备习题（已通过 '+x.approvedQuestions+' 道'+(x.draftQuestions?'，待审核 '+x.draftQuestions+' 道':'')+'）','AI 出的题是草稿，逐题点“通过”后学生才能做',go('去审核')));
+    var start=el('button',{class:'primary',text:'④ 开课',disabled:!ready,onclick:function(){
+      start.disabled=true;
+      api('/teacher/weekend/sessions',{json:{lessonId:x.lessonId}}).then(function(s){location.href='/v1/weekend?s='+s.id}).catch(function(e){msg.textContent='';msg.appendChild(el('div',{class:'notice error',text:e.message}));start.disabled=false});
+    }});
+    stepsBox.appendChild(step(false,'④ 开课','点开后进入上课页：开始上课、按 7 个环节推进、打开大屏。'+(ready?'':'（先完成上面三步）'),start));
+    stepsBox.appendChild(el('div',{class:'muted',text:'下课后在同一个上课页点“预览得分→确认结算”，再发布家长简报。'}));
+    if(x.weakKnowledge.length)stepsBox.appendChild(el('div',{class:'notice warn',text:'班里近期错得最多：'+x.weakKnowledge.map(function(w){return w.knowledge+'（'+w.count+' 次）'}).join('、')+'，备课时可以重点安排。'}));
+  }).catch(function(e){stepsBox.appendChild(el('div',{class:'notice error',text:e.message}))});
+  recent.appendChild(el('h2',{text:'最近的课堂'}));
+  var rlist=el('div');recent.appendChild(rlist);
   api('/teacher/weekend/sessions').then(function(d){
-    if(!d.items.length){list.appendChild(el('div',{class:'muted',text:'还没有。'}));return}
-    d.items.forEach(function(s){list.appendChild(el('div',{class:'row'},el('a',{href:'/v1/weekend?s='+s.id,text:s.title}),el('span',{class:'muted',text:s.createdAt+' · '+(s.status==='finished'?'已结束':s.status==='running'?'进行中':'未开始')})))});
+    if(!d.items.length){rlist.appendChild(el('div',{class:'muted',text:'还没有。'}));return}
+    d.items.forEach(function(s){rlist.appendChild(el('div',{class:'row'},el('a',{href:'/v1/weekend?s='+s.id,text:s.title}),el('span',{class:'muted',text:s.createdAt+' · '+(s.status==='finished'?'已结束':s.status==='running'?'进行中':'未开始')})))});
   });
+  recent.appendChild(el('hr'));
+  recent.appendChild(el('div',{class:'row'},el('a',{class:'btn',href:'/v1/weekend-plan',text:'18 次课进度表与备课'}),el('a',{class:'btn',href:'/v1/knowledge',text:'知识点讲解卡片（学生搜索、错题讲解）'})));
 }
 boot(control);
 """
@@ -329,10 +352,10 @@ PAGE_HTML = """<!doctype html>
 EXTRA_CSS = "textarea.s{min-height:64px}\n.tag.ok{background:#ecfdf3;color:#067647}.tag.warn{background:#fff4e5;color:#b54708}"
 
 
-def _page(title: str, js: str, with_header: bool) -> str:
+def _page(title: str, js: str, with_header: bool, back: tuple[str, str] = ("/v1", "返回首页")) -> str:
     html = PAGE_HTML.replace("__TITLE__", title).replace("__CSS__", PAGE_CSS + EXTRA_CSS)
     if with_header:
-        html = html.replace("<body>", f'<body><header><h1>{title}</h1><a href="/v1">返回首页</a></header>', 1)
+        html = html.replace("<body>", f'<body><header><h1>{title}</h1><a href="{back[0]}">{back[1]}</a></header>', 1)
     return html.replace("__JS__", (COMMON_JS + js).replace("__PAGE_AUTH__", PAGE_AUTH_JS))
 
 
@@ -474,7 +497,7 @@ def practice_page_html() -> str:
 
 
 def plan_page_html() -> str:
-    return _page("周末课备课", PLAN_JS, True)
+    return _page("周末课备课", PLAN_JS, True, ("/v1/weekend", "返回周末课"))
 
 
 def brief_page_html() -> str:
@@ -482,7 +505,7 @@ def brief_page_html() -> str:
 
 
 def control_page_html() -> str:
-    return _page("周末课控制台", CONTROL_JS, True)
+    return _page("周末课", CONTROL_JS, True, ("/v1/workspace", "返回"))
 
 
 def board_page_html() -> str:
