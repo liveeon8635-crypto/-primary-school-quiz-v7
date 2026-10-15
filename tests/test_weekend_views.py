@@ -180,18 +180,20 @@ with TestClient(app) as client:
     assert '1/3+1/3=?' in turned['content'][-1]
     submitted = client.get('/student/weekend/current', headers=sh).json()
     assert all('correctIndex' not in q and 'correct' not in q and 'explanation' not in q for q in submitted['questions'])
-    assert client.post(base+'/publish-answers', headers=sh).status_code == 403
-    revealed = client.post(base+'/publish-answers', headers=th).json()
-    assert revealed['answersPublished'] and revealed['deck']['index'] == 0
+    assert client.post(base+'/publish-answers', headers=sh, json={'question':1}).status_code == 403
+    revealed = client.post(base+'/publish-answers', headers=th, json={'question':1}).json()
+    assert not revealed['answersPublished'] and revealed['answerRelease']['published'] == 1 and revealed['deck']['index'] == 0
     assert '正确答案：B. 3/4' in revealed['content'][-1] and '通分再加' in revealed['content'][-1]
     board = client.get(base+'/board', headers=th).json()
     assert board['content'] == revealed['content']
-    assert client.get('/student/weekend/current', headers=sh).json()['canSubmit'] is False
+    assert client.get('/student/weekend/current', headers=sh).json()['canSubmit'] is True
     assert client.post('/student/weekend/answer', headers=sh, json={'sessionId':s,'questionId':a,'selected':0}).status_code == 409
-    assert client.post('/student/weekend/hint', headers=sh, json={'sessionId':s,'questionId':b}).status_code == 409
+    assert client.post('/student/weekend/hint', headers=sh, json={'sessionId':s,'questionId':a}).status_code == 409
     next_page = client.post(base+'/slide', headers=th, json={'delta':1}).json()
-    assert '正确答案：A. 2/3' in next_page['content'][-1]
-    assert client.post(base+'/publish-answers', headers=th).json()['deck']['index'] == 1  # idempotent
+    assert '正确答案：' not in next_page['content'][-1]
+    assert '正确答案：A. 2/3' in client.post(base+'/publish-answers', headers=th, json={'question':2}).json()['content'][-1]
+    assert client.get('/student/weekend/current', headers=sh).json()['canSubmit'] is False
+    assert client.post(base+'/publish-answers', headers=th, json={'question':1}).json()['deck']['index'] == 1  # idempotent
     client.post(base+'/cover', headers=th, json={'covered':True})
     assert client.get(base+'/board', headers=th).json()['content'] == []
     client.post(base+'/cover', headers=th, json={'covered':False})
