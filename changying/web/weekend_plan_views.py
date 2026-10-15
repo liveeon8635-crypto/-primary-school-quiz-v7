@@ -28,6 +28,8 @@ from sqlalchemy import Column, DateTime, Integer, String, Table, UniqueConstrain
 
 from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUPPORTED, extract
 from changying.web.weekend_pages import plan_page_html
+from changying.services.lesson_written import (literal_written_questions, valid_written_questions,
+    replace_written_drafts, written_templates, template_meta)
 
 AI_FEATURE = "weekend_lesson_draft"
 SUBJECTS = ("语文", "数学")
@@ -74,6 +76,13 @@ class LessonEditBody(BaseModel):
     closureTraining: str = Field(default="", max_length=MAX_TEXT_CHARS)
     examples: list[str] = []
     ppt: list[str] = []
+
+
+class WrittenDraftBody(BaseModel):
+    stem: str = Field(min_length=1, max_length=20000)
+    reference: str = Field(default="", max_length=4000)
+    type: str = "short_answer"
+    hints: list[str] = Field(default_factory=list, max_length=3)
 
 
 class ApproveBody(BaseModel):
@@ -169,6 +178,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     from changying.web.weekend_views import register_weekend_tables
 
     sessions = register_weekend_tables(implementation)["sessions"]
+    from changying.web.weekend_written import register_written_tables
+    written = register_written_tables(implementation)["questions"]
     sched = register_plan_tables(implementation)
     Lesson, TQ, Program = implementation.TeachingLesson, implementation.TeachingQuestion, implementation.TeachingProgram
     User, ClassStudent, SchoolClass = implementation.User, implementation.ClassStudent, implementation.SchoolClass
@@ -209,6 +220,10 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     def lesson_status(db: Any, u: Any, lesson: Any) -> dict[str, Any]:
         approved = db.scalar(select(func.count()).select_from(TQ).where(TQ.lesson_id == lesson.id, TQ.active.is_(True))) or 0
         draft = db.scalar(select(func.count()).select_from(TQ).where(TQ.lesson_id == lesson.id, TQ.active.is_(False))) or 0
+        templates = written_templates(db, written, u.school_id, u.id, lesson.id)
+        written_approved = sum(bool(template_meta(q).get("approved")) for q in templates)
+        approved += written_approved
+        draft += len(templates) - written_approved
         ran = db.scalar(select(func.count()).select_from(sessions).where(sessions.c.lesson_id == lesson.id, sessions.c.teacher_id == u.id, sessions.c.status != "planned")) or 0
         return {"lessonId": lesson.id, "title": lesson.title, "hasPlan": has_real_plan(lesson),
                 "approvedQuestions": int(approved), "draftQuestions": int(draft), "taught": bool(ran)}
@@ -310,17 +325,22 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             f"你是小学{p.grade}年级{b.subject}周末补课老师（{textbook}），一次课 2 小时、约 3 名学生、基础参差不齐。请为第 {b.lessonNo} 次课写备课草稿。\n"
             f"学校本周进度：{(row.school_unit if row and row.school_unit else '未提供')}（学校第 {row.school_week if row and row.school_week else '?'} 周）。\n"
             f"班里近期错得最多的知识点：{'、'.join(w['knowledge'] for w in weak) or '暂无'}。\n"
-            + (f"这节课已有教案：课题《{lesson.title}》，目标：{lesson.core_target}。请只出习题，其余字段可留空。\n" if b.onlyQuestions and lesson is not None else "") +
-            "要求：知识点讲解由浅入深，例题 2-3 道，随堂选择题 4-6 道（3 个选项，只有一个正确，难度由易到难），内容不超纲。"
+            + (f"这节课已有教案：课题《{lesson.title}》，目标：{lesson.core_target}。\n原教案与阅读材料：{lesson.reading_plan or lesson.teacher_plan}\n请只出习题，其余字段可留空。\n" if b.onlyQuestions and lesson is not None else "") +
+            "要求：知识点讲解由浅入深，例题 2-3 道，随堂习题按教学内容选择题型：选择、填最终答案、阅读简答、扩写/缩写与作文。语文阅读必须有基于所给文章的简答或写作题，不能全部改成选择题；数学应含计算或过程题。选择题放questions，非选择题放writtenQuestions，合计4-6道，内容不超纲。"
             '只输出 JSON：{"title":"课题","coreTarget":"本节目标","teacherPlan":"教学流程(200字内)","ppt":["每页标题，6-9 页"],'
             '"examples":["例题和解答，2-3 条"],"closureTraining":"课后练习安排",'
-            '"questions":[{"stem":"题目","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}]}'
+            '"questions":[{"stem":"题目","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}],"writtenQuestions":[{"type":"short_answer或final_answer或composition","material":"本题所需完整阅读材料，不含答案","stem":"题目","reference":"参考答案和评分要点，仅老师可见","hints":["方向","第一步","完整思路"]}]}'
         )
         data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=90))
         if not isinstance(data, dict) or (not b.onlyQuestions and (not str(data.get("title") or "").strip() or not _lines(data.get("ppt")))):
             raise HTTPException(502, "AI 这次没有给出可用的备课草稿，请再试一次")
         qs = _valid_questions(data.get("questions"))
-        if not qs:
+        wqs = valid_written_questions(data.get("writtenQuestions"))
+        if b.subject == "语文" and not wqs:
+            wqs = valid_written_questions(literal_written_questions(lesson.reading_plan or "")) if b.onlyQuestions and lesson is not None else []
+            if not wqs:
+                raise HTTPException(502, "AI 只返回了选择题，未满足简答／写作要求；原教案和已有习题未改变，请重试")
+        if not qs and not wqs:
             raise HTTPException(502, "AI 没有给出合格的习题，请再试一次")
         now = datetime.utcnow()
         fields = dict(title=str(data.get("title") or "").strip()[:180], core_target=str(data.get("coreTarget") or "")[:1000], teacher_plan=str(data.get("teacherPlan") or "")[:3000],
@@ -340,6 +360,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         for i, q in enumerate(qs[:6]):
             db.add(TQ(school_id=u.school_id, program_id=p.id, lesson_id=lesson.id, stage="lesson", subject=b.subject, level=LEVELS[i], knowledge=q["kp"], stem=q["stem"],
                       options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False))
+        replace_written_drafts(db, written, u.school_id, u.id, lesson.id, wqs)
         db.commit()
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "weakKnowledge": weak}
 
@@ -386,8 +407,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             f"---教案内容开始---\n{extracted['text']}\n---教案内容结束---\n"
             '只输出 JSON：{"title":"课题","coreTarget":"本节目标","teacherPlan":"教学流程(300字内)","ppt":["每页或每个板块的标题"],'
             '"examples":["文档里的例题和解答，原文照录"],"closureTraining":"课后练习",'
-            '"questions":[{"stem":"文档里已有的选择题","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}]}'
-            "（questions 只放文档里本来就有的选择题；没有就给空数组。阅读文章和非选择题不可省略；原文由系统完整保存。closureTraining 必须包含全部课后题，不能只列前几题。）"
+            '"questions":[{"stem":"文档里已有的选择题","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}],"writtenQuestions":[{"type":"short_answer或final_answer或composition","material":"对应完整阅读文章，不含教师答案","stem":"原有题目，不得改题型或漏题","reference":"原文对应参考答案及评分要点","hints":[]}]}'
+            "（questions 只放原有选择题，writtenQuestions放全部原有简答、填空、复述、写作和挑战题，不要编造新题。阅读文章和非选择题不可省略；原文由系统完整保存。closureTraining 必须包含全部课后题，不能只列前几题。）"
         )
         data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=90))
         if not isinstance(data, dict) or not (str(data.get("title") or "").strip() or str(data.get("coreTarget") or "").strip() or _lines(data.get("examples"))):
@@ -411,12 +432,25 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 setattr(lesson, k, v)
             db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.active.is_(False)))
         qs = _valid_questions(data.get("questions"))
+        wqs = valid_written_questions(data.get("writtenQuestions"))
+        literal = literal_written_questions(extracted["text"])
+        if literal:
+            # Literal paper questions take priority; retain model references only
+            # when the original question text matches, never by array position.
+            for q in literal:
+                question = q["stem"].split("\n")[-1]
+                match = next((a for a in wqs if question in a["stem"]), None)
+                if match:
+                    q["reference"] = match["reference"] or q["reference"]
+                    q["hints"] = match["hints"]
+            wqs = valid_written_questions(literal)
+        replace_written_drafts(db, written, u.school_id, u.id, lesson.id, wqs)
         for i, q in enumerate(qs[:12]):
             db.add(TQ(school_id=u.school_id, program_id=p.id, lesson_id=lesson.id, stage="lesson", subject=subject, level=LEVELS[min(i, len(LEVELS) - 1)], knowledge=q["kp"],
                       stem=q["stem"], options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False))
         db.commit()
-        return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs),
-                "sourceChars": len(extracted["text"]), "message": f"原文 {len(extracted['text'])} 字已完整保留（含阅读材料及非选择题）。已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道文档里的选择题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
+        return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs) + len(wqs), "writtenQuestionsFound": len(wqs),
+                "sourceChars": len(extracted["text"]), "message": f"原文 {len(extracted['text'])} 字已完整保留（含阅读材料及非选择题）。已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道选择题、{len(wqs)} 道简答/写作题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
 
     @router.put("/teacher/weekend/lessons/{lid}")
     def edit_lesson(lid: int, b: LessonEditBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -465,6 +499,45 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             db.execute(update(TQ).where(TQ.lesson_id == lesson.id, TQ.id.in_(b.approve)).values(active=True))
         if b.remove:
             db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.id.in_(b.remove), TQ.active.is_(False)))   # an approved question is never deleted here
+        db.commit()
+        return lesson_status(db, u, lesson)
+
+    @router.get("/teacher/weekend/lessons/{lid}/written/questions")
+    def lesson_written(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        my_lesson(db, u, lid)
+        return {"items": [{"id": q.id, "stem": q.stem, "reference": q.reference,
+                 **template_meta(q)} for q in written_templates(db, written, u.school_id, u.id, lid)]}
+
+    @router.put("/teacher/weekend/lessons/{lid}/written/questions/{qid}")
+    def edit_written(lid: int, qid: int, b: WrittenDraftBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        my_lesson(db, u, lid)
+        q = next((q for q in written_templates(db, written, u.school_id, u.id, lid) if q.id == qid), None)
+        if q is None:
+            raise HTTPException(404, "没有找到这道备课题")
+        valid = valid_written_questions([b.model_dump()])
+        if not valid or (b.hints and not valid[0]["hints"]):
+            raise HTTPException(400, "题目不能为空；提示填写时需要完整三级，每级不超过300字")
+        v = valid[0]
+        # Editing a previously approved template requires another approval;
+        # snapshots in existing classrooms remain unchanged.
+        db.execute(update(written).where(written.c.id == qid).values(stem=v["stem"], reference=v["reference"],
+            hints_json=json.dumps({"approved": False, "type": v["type"], "hints": v["hints"]}, ensure_ascii=False)))
+        db.commit()
+        return lesson_status(db, u, my_lesson(db, u, lid))
+
+    @router.post("/teacher/weekend/lessons/{lid}/written/questions")
+    def decide_written(lid: int, b: ApproveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        lesson = my_lesson(db, u, lid)
+        for q in written_templates(db, written, u.school_id, u.id, lid):
+            meta = template_meta(q)
+            if q.id in b.approve:
+                meta["approved"] = True
+                db.execute(update(written).where(written.c.id == q.id).values(hints_json=json.dumps(meta, ensure_ascii=False)))
+            elif q.id in b.remove and not meta.get("approved"):
+                db.execute(delete(written).where(written.c.id == q.id))
         db.commit()
         return lesson_status(db, u, lesson)
 
