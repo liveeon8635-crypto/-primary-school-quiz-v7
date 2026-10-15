@@ -373,6 +373,20 @@ parentBoot();
 
 PLAN_JS = r"""
 var SUBJ='数学';
+function approveQuestionInPlace(path,q,button,actions,badge,feedback,refreshStatus){
+  if(button.disabled)return Promise.resolve();
+  var buttons=actions.querySelectorAll('button');
+  Array.prototype.forEach.call(buttons,function(b){b.disabled=true});
+  feedback.textContent='';
+  return api(path,{json:{approve:[q.id]}}).then(function(st){
+    q.active=true;q.approved=true;
+    badge.textContent='已通过';badge.className='tag ok';button.textContent='已通过';
+    refreshStatus(st);
+  }).catch(function(e){
+    feedback.textContent=e.message;
+    Array.prototype.forEach.call(buttons,function(b){b.disabled=false});
+  });
+}
 function saveLessonEdits(url,payload,button,status,fields,onSaved){
   if(button.disabled)return Promise.resolve();
   button.disabled=true;button.textContent='正在保存…';
@@ -511,12 +525,13 @@ function plan(){
           d.items.forEach(function(q){
             var opts=q.options.map(function(o,i){return 'ABCD'[i]+'. '+o+(i===q.correctIndex?' ✓':'')}).join('　');
             var row=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:q.stem}),el('div',{class:'muted',text:opts}),el('div',{class:'muted',text:q.explanation||''})));
-            var act=el('div',{class:'row'},el('span',{class:'tag '+(q.active?'ok':'warn'),text:q.active?'已通过':'草稿'}));
+            var badge=el('span',{class:'tag '+(q.active?'ok':'warn'),text:q.active?'已通过':'草稿'}),act=el('div',{class:'row'},badge),feedback=el('div',{role:'status','aria-live':'polite'});
             if(!q.active){
-              act.appendChild(el('button',{text:'通过',onclick:function(){api('/teacher/weekend/lessons/'+r.lessonId+'/questions',{json:{approve:[q.id]}}).then(function(st){refreshStatus(st);loadQ()})}}));
+              var approve=el('button',{text:'通过',onclick:function(){approveQuestionInPlace('/teacher/weekend/lessons/'+r.lessonId+'/questions',q,approve,act,badge,feedback,refreshStatus)}});
+              act.appendChild(approve);
               act.appendChild(el('button',{text:'删除',onclick:function(){api('/teacher/weekend/lessons/'+r.lessonId+'/questions',{json:{remove:[q.id]}}).then(function(st){refreshStatus(st);loadQ()})}}));
             }
-            qbox.appendChild(row);qbox.appendChild(act);
+            qbox.appendChild(row);qbox.appendChild(act);qbox.appendChild(feedback);
           });
         });
       }
@@ -527,7 +542,8 @@ function plan(){
           if(!d.items.length)wbox.appendChild(el('p',{class:'muted',text:'还没有此类题目。重新导入原教案可提取原有简答／写作题，或使用 AI 出习题。'}));
           d.items.forEach(function(q){
             var labels={short_answer:'阅读简答／过程题',final_answer:'填最终答案',composition:'写作／复述'},card=el('div',{class:'card'});
-            card.appendChild(el('div',{class:'row'},el('b',{text:labels[q.type]||'简答题'}),el('span',{class:'tag '+(q.approved?'ok':'warn'),text:q.approved?'已通过':'草稿'})));
+            var badge=el('span',{class:'tag '+(q.approved?'ok':'warn'),text:q.approved?'已通过':'草稿'});
+            card.appendChild(el('div',{class:'row'},el('b',{text:labels[q.type]||'简答题'}),badge));
             var parts=q.stem.split('\n'),questionLine=parts.pop();
             card.appendChild(el('p',{style:'white-space:pre-wrap;font-weight:600',text:questionLine}));
             if(parts.length)card.appendChild(el('details',{},el('summary',{text:'展开阅读材料／题目全文'}),el('pre',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7',text:parts.join('\n')})));
@@ -541,12 +557,13 @@ function plan(){
               save.disabled=true;var hints=hs.map(function(h){return h.value.trim()});
               api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions/'+q.id,{method:'PUT',json:{stem:stem.value,reference:ref.value,type:q.type,hints:hints.some(Boolean)?hints:[]}}).then(function(st){refreshStatus(st);loadWritten()}).catch(function(e){state.textContent=e.message;save.disabled=false});
             }});edit.appendChild(save);edit.appendChild(state);card.appendChild(edit);
-            var feedback=el('div',{role:'status','aria-live':'polite'});
+            var feedback=el('div',{role:'status','aria-live':'polite'}),actions=el('div',{class:'row'});
             if(!q.approved){['通过','删除草稿'].forEach(function(label,i){var b=el('button',{text:label,onclick:function(){
-              b.disabled=true;var body={};body[i?'remove':'approve']=[q.id];
-              api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',{json:body}).then(function(st){refreshStatus(st);loadWritten()}).catch(function(e){feedback.textContent=e.message;b.disabled=false});
-            }});card.appendChild(b)})}
-            card.appendChild(feedback);wbox.appendChild(card);
+              if(!i)return approveQuestionInPlace('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',q,b,actions,badge,feedback,refreshStatus);
+              b.disabled=true;
+              api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',{json:{remove:[q.id]}}).then(function(st){refreshStatus(st);loadWritten()}).catch(function(e){feedback.textContent=e.message;b.disabled=false});
+            }});actions.appendChild(b)})}
+            card.appendChild(actions);card.appendChild(feedback);wbox.appendChild(card);
           });
         }).catch(function(e){wbox.appendChild(el('div',{class:'notice error',text:e.message}))});
       }
