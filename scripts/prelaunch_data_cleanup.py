@@ -33,7 +33,7 @@ DELETE_TABLES = (
     # points, rewards, learning evidence
     "point_ledger", "reward_redemptions", "auto_reward_grants", "learning_evidence_events",
     # classroom sessions
-    "classroom_events", "weekend_sessions", "weekend_stage_log", "weekend_hint_log", "weekend_answers", "weekend_peer_help", "weekend_awards", "weekend_metrics", "weekend_briefs", "weekend_schedule", "classroom_sessions", "classroom_segments", "classroom_quick_checks",
+    "classroom_events", "weekend_sessions", "weekend_stage_log", "weekend_hint_log", "weekend_answers", "weekend_written_submissions", "weekend_written_hint_log", "weekend_peer_help", "weekend_awards", "weekend_metrics", "weekend_briefs", "weekend_schedule", "classroom_sessions", "classroom_segments", "classroom_quick_checks",
     "classroom_quick_check_responses", "classroom_presenter_turns", "classroom_presentation_reviews",
     "classroom_review_handouts", "classroom_handout_releases", "class_todos",
     # 定制教学 practice records
@@ -55,7 +55,7 @@ KEEP_TABLES = (
     "commercial_payments", "commercial_quota_overrides", "commercial_renewals",
     "point_rules", "class_point_rules", "reward_items", "auto_reward_rules",
     "homework_ai_knowledge",
-    "kp_cards", "weekend_hints",
+    "kp_cards", "weekend_hints", "weekend_written_questions",
     "kp_card_images",
     "questions", "papers", "import_jobs",
     "teaching_programs", "teaching_lessons", "teaching_questions", "teaching_resources",
@@ -241,3 +241,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
