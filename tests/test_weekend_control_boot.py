@@ -14,7 +14,7 @@ HARNESS=r'''
 const assert=require('node:assert/strict');
 class Element {
  constructor(tag){this.tag=tag;this.children=[];this.style={};this._text='';this.disabled=false}
- appendChild(n){this.children.push(n);return n}setAttribute(k,v){this[k]=v}
+ remove(){this.removed=true}appendChild(n){this.children.push(n);return n}setAttribute(k,v){this[k]=v}
  addEventListener(k,fn){this['on'+k]=fn}querySelectorAll(){return []}
  set textContent(t){this._text=t;this.children=[]}get textContent(){return this._text+this.children.map(n=>n.textContent||'').join(' ')}
 }
@@ -25,12 +25,12 @@ global.localStorage=global.sessionStorage={getItem:k=>k==='v717Token'?'test-toke
 global.requestAnimationFrame=()=>{};global.setInterval=fn=>{intervals.push(fn);return intervals.length};global.clearInterval=()=>{};
 global.alert=t=>{throw Error(t)};
 let status='planned';
-const state=()=>({title:'民间故事课堂',status,remainingSeconds:600,currentStage:1,stageCount:7,stageName:'导入',goal:'阅读',content:[],stages:[{no:1,name:'导入',minutes:10,extendMin:0}]});
+const state=()=>({title:'民间故事课堂',class:{id:1,name:'五年级语文班',studentCount:3},status,remainingSeconds:600,currentStage:1,stageCount:7,stageName:'导入',goal:'阅读',content:[],stages:[{no:1,name:'导入',minutes:10,extendMin:0}]});
 global.fetch=(path,opts)=>{
  calls.push([path,opts.method||'GET']);let data;
  if(path==='/session')data={role:'teacher'};
  else if(path.endsWith('/questions'))data={items:[]};
- else if(path.endsWith('/written'))data={questions:[],items:[],submitted:0,total:0,reviewed:0,pending:0,correct:0,partial:0,submissionRate:0};
+ else if(path.endsWith('/written'))data={status,questions:[],items:[],submitted:0,total:0,reviewed:0,pending:0,correct:0,partial:0,submissionRate:0};
  else if(path.endsWith('/progress'))data={items:[],classCompletionRate:0};
  else if(path.endsWith('/start')){status='running';data=state()}
  else if(path==='/teacher/weekend/sessions/42')data=state();
@@ -52,9 +52,10 @@ with TestClient(app) as client:
     check=r"""
 (async()=>{
  await settle();assert(rootNode.textContent.includes('民间故事课堂'),rootNode.textContent);
- assert(rootNode.textContent.includes('简答题与照片批改'));
+ assert(rootNode.textContent.includes('学生作答与批改'));
+ const addForm=nodes(rootNode).find(n=>n.tag==='details'&&n.textContent.includes('临时补充一道题'));assert(addForm&&!addForm.hidden);
  const start=nodes(rootNode).find(n=>n.textContent==='开始上课');assert(start,'Start button must render');
- start.onclick();await settle();assert.equal(status,'running');
+ start.onclick();await settle();assert.equal(status,'running');assert(addForm.hidden,'Hide question authoring as soon as class starts');
  assert(nodes(rootNode).some(n=>n.textContent==='下一环节 ›'));
  assert(calls.some(c=>c[0].endsWith('/start')&&c[1]==='POST'));
  assert.equal(intervals.length,2,'Polling and clock must initialize');
@@ -135,6 +136,33 @@ async function scenario(blocked){
 """
     script='const HARNESS='+json.dumps(harness)+';const SCRIPTS='+json.dumps(scripts)+';\n'+check
     result=subprocess.run(['node','-e',script],text=True,capture_output=True,timeout=20)
+    assert result.returncode==0,result.stdout+result.stderr
+print('OK')
+''')
+
+
+def test_teacher_selects_one_class_before_creating_classroom(tmp_path):
+    helpers.run_isolated(tmp_path,helpers.COMMON+'\nharness='+repr(HARNESS)+'\n'+r'''
+import re,subprocess
+with TestClient(app) as client:
+    scripts='\n'.join(re.findall(r'<script[^>]*>(.*?)</script>',client.get('/v1/weekend').text,re.S))
+    network=r"""
+const originalFetch=fetch;let created=null;
+fetch=(path,opts)=>{
+ if(path==='/teacher/weekend/classes')return Promise.resolve({ok:true,json:()=>Promise.resolve({items:[{id:101,name:'甲班',studentCount:2},{id:202,name:'乙班',studentCount:3}]})});
+ if(path==='/teacher/weekend/sessions'&&opts.method==='POST'){created=JSON.parse(opts.body);return Promise.resolve({ok:true,json:()=>Promise.resolve({id:77})})}
+ return originalFetch(path,opts);
+};
+"""
+    check=r"""
+(async()=>{
+ await settle();createWeekendClassroom(99);await settle();assert.equal(created,null,'No all-teacher default roster');
+ const choice=nodes(document.body).find(n=>n.tag==='button'&&n.textContent==='乙班（3人）');assert(choice);
+ choice.onclick();await settle();assert.deepEqual(created,{lessonId:99,classId:202});
+ assert.equal(location.href,'/v1/weekend?s=77');
+})().catch(e=>{console.error(e);process.exitCode=1});
+"""
+    result=subprocess.run(['node','-e',harness+network+scripts+check],text=True,capture_output=True,timeout=20)
     assert result.returncode==0,result.stdout+result.stderr
 print('OK')
 ''')

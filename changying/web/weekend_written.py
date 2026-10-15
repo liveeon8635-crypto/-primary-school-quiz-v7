@@ -82,10 +82,9 @@ def install_weekend_written(implementation: Any) -> APIRouter:
 
     def student_session(db: Any, u: Any, sid: int) -> Any:
         need(u, "student")
-        row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id)).first()
-        linked = None if row is None else db.execute(select(CS.student_id).join(SC, SC.id == CS.class_id).where(
-            CS.student_id == u.id, SC.teacher_id == row.teacher_id, SC.school_id == u.school_id)).first()
-        if row is None or linked is None:
+        row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id).with_for_update()).first()
+        from changying.services.weekend_roster import student_in_session
+        if row is None or not student_in_session(implementation, db, row, u.id):
             raise HTTPException(404, "没有找到这节课堂")
         return row
 
@@ -117,10 +116,13 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         qs = question_rows(db, row)
         ans = db.execute(select(submissions).where(submissions.c.session_id == sid, submissions.c.school_id == u.school_id)).all()
         names = dict(db.execute(select(User.id, User.name).where(User.school_id == u.school_id)).all())
-        roster = set(db.scalars(select(CS.student_id).join(SC, SC.id == CS.class_id).where(
-            SC.teacher_id == u.id, SC.school_id == u.school_id)).all())
+        from changying.services.weekend_roster import session_roster
+        members = session_roster(implementation, db, row)
+        roster = set(members)
+        names = {i: n for i, (n, _) in members.items()}
+        ans = [a for a in ans if a.student_id in roster]
         total = len(qs) * len(roster | {a.student_id for a in ans})
-        return {"total": total, "submissionRate": round(100 * len(ans) / total) if total else 0,
+        return {"status": row.status, "total": total, "submissionRate": round(100 * len(ans) / total) if total else 0,
                 "questions": [{"id": q.id, "stem": q.stem, "reference": q.reference} for q in qs],
                 "items": [{**submission_dict(a), "name": names.get(a.student_id, "学生")} for a in ans],
                 "submitted": len(ans), "reviewed": sum(a.result != "pending" for a in ans),

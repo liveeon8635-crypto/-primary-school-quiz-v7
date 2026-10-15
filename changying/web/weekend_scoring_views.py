@@ -149,7 +149,10 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
             raise HTTPException(404, "没有找到这节课堂")
         return row
 
-    def roster(db: Any, u: Any) -> dict[int, tuple[str, int | None]]:
+    def roster(db: Any, u: Any, row: Any = None) -> dict[int, tuple[str, int | None]]:
+        if row is not None:
+            from changying.services.weekend_roster import session_roster
+            return session_roster(implementation, db, row)
         rows = db.execute(
             select(User.id, User.name, SchoolClass.id).join(ClassStudent, ClassStudent.student_id == User.id).join(SchoolClass, SchoolClass.id == ClassStudent.class_id)
             .where(SchoolClass.teacher_id == u.id, SchoolClass.school_id == u.school_id, User.school_id == u.school_id)).all()
@@ -158,13 +161,18 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
     def session_answers(db: Any, sid: int) -> dict[int, list[Any]]:
         """Per student who answered at least once: one Answer per core question of the lesson; a question not answered counts as not done."""
         out: dict[int, list[Any]] = {}
-        sess = db.execute(select(sessions.c.lesson_id, sessions.c.school_id).where(sessions.c.id == sid)).first()
+        sess = db.execute(select(sessions).where(sessions.c.id == sid)).first()
         if sess is None:
             return out
+        from changying.services.weekend_roster import session_roster, session_class
+        members = session_roster(implementation, db, sess)
+        bound = session_class(implementation, db, sess)
         questions = db.execute(select(TQ.id, TQ.knowledge).where(TQ.school_id == sess.school_id, TQ.lesson_id == sess.lesson_id, TQ.active.is_(True)).order_by(TQ.id)).all()
         knowledge = {int(i): str(k or "") for i, k in questions}
         done: dict[int, dict[int, Any]] = {}
         for a in db.execute(select(answers_t).where(answers_t.c.session_id == sid).order_by(answers_t.c.id)).all():
+            if bound is not None and int(a.student_id) not in members:
+                continue
             done.setdefault(int(a.student_id), {})[int(a.question_id)] = Answer(bool(a.correct), int(a.max_hint), knowledge.get(int(a.question_id), ""))
         for stu, mine in done.items():
             out[stu] = [mine.get(qid) or Answer(False, 0, knowledge[qid]) for qid in knowledge] or list(mine.values())
@@ -201,7 +209,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
             return set()
 
     def compute(db: Any, u: Any, row: Any) -> dict[str, Any]:
-        names = roster(db, u)
+        names = roster(db, u, row)
         by_stu = session_answers(db, int(row.id))
         pairs = peer_rows(db, int(row.id))
         ok_by_tutee = {int(p.tutee_id): p.followup_correct for p in pairs if p.followup_correct is not None}
@@ -212,8 +220,14 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         pre = [completion_rate(s.answers) for s in students.values() if s.attended and s.answers]
         pre_rate = round(sum(pre) / len(pre), 1) if pre else 0.0
         post_rate = round(class_post_rate(list(students.values())), 1)
-        prev = db.execute(select(metrics.c.post_rate).join(sessions, sessions.c.id == metrics.c.session_id)
-                          .where(sessions.c.teacher_id == row.teacher_id, sessions.c.id < row.id).order_by(sessions.c.id.desc()).limit(1)).first()
+        prev_query = select(metrics.c.post_rate).join(sessions, sessions.c.id == metrics.c.session_id).where(
+            sessions.c.teacher_id == row.teacher_id, sessions.c.school_id == row.school_id, sessions.c.id < row.id)
+        from changying.services.weekend_roster import session_class, register_roster_table
+        bound = session_class(implementation, db, row)
+        if bound is not None:
+            rt = register_roster_table(implementation)
+            prev_query = prev_query.join(rt, rt.c.session_id == sessions.c.id).where(rt.c.class_id == bound.class_id)
+        prev = db.execute(prev_query.order_by(sessions.c.id.desc()).limit(1)).first()
         prev_post = float(prev.post_rate) if prev else None
         team = team_points(prev_post, post_rate)
         items = []
@@ -274,7 +288,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         """Question-first, like the interactive classroom: for each question some pupils got right and some did not, who could explain it."""
         need(u, "teacher")
         row = my_session(db, u, sid)
-        names = roster(db, u)
+        names = roster(db, u, row)
         by_stu = session_answers(db, sid)
         if not by_stu:
             return {"mode": "none", "message": "还没有学生作答", "questions": []}
@@ -288,6 +302,8 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         right: dict[int, list[dict[str, Any]]] = {}
         wrong: dict[int, list[dict[str, Any]]] = {}
         for a in db.execute(select(answers_t).where(answers_t.c.session_id == sid).order_by(answers_t.c.id)).all():
+            if int(a.student_id) not in names:
+                continue
             who = {"studentId": int(a.student_id), "name": names.get(int(a.student_id), ("学生",))[0]}
             (right if a.correct else wrong).setdefault(int(a.question_id), []).append(who)
         items = []
@@ -301,7 +317,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         """Ask one pupil who got the question right to explain it to the class; everyone who got it wrong gets the same follow-up later."""
         need(u, "teacher")
         row = my_session(db, u, sid)
-        names = roster(db, u)
+        names = roster(db, u, row)
         if b.tutorId not in names:
             raise HTTPException(400, "请选择你班级里的学生")
         q = db.get(TQ, b.questionId)
@@ -310,7 +326,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         mine = {int(a.student_id): a for a in db.execute(select(answers_t).where(answers_t.c.session_id == sid, answers_t.c.question_id == q.id)).all()}
         if b.tutorId not in mine or not mine[b.tutorId].correct:
             raise HTTPException(400, "请选在这道题上做对的同学来讲")
-        tutees = [s for s, a in mine.items() if not a.correct]
+        tutees = [s for s, a in mine.items() if not a.correct and s in names]
         if not tutees:
             raise HTTPException(400, "这道题大家都做对了，不需要再安排讲解")
         if db.execute(select(peer.c.id).where(peer.c.session_id == sid, peer.c.question_id == q.id, peer.c.tutor_id == b.tutorId)).first():
@@ -350,7 +366,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
     def pair(sid: int, b: PairBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         row = my_session(db, u, sid)
-        names = roster(db, u)
+        names = roster(db, u, row)
         if b.tutorId == b.tuteeId or b.tutorId not in names or b.tuteeId not in names:
             raise HTTPException(400, "请选择你班级里的两位不同的学生")
         q = db.get(TQ, b.questionId)
@@ -384,8 +400,8 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
     @router.get("/teacher/weekend/sessions/{sid}/peer-help")
     def list_pairs(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
-        my_session(db, u, sid)
-        names = roster(db, u)
+        row = my_session(db, u, sid)
+        names = roster(db, u, row)
         return {"items": [{"id": p.id, "tutor": names.get(int(p.tutor_id), ("学生",))[0], "tutee": names.get(int(p.tutee_id), ("学生",))[0], "questionId": p.question_id,
                            "hasFollowup": bool(p.followup_json), "followupCorrect": p.followup_correct} for p in peer_rows(db, sid)]}
 
@@ -403,7 +419,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         result = compute(db, u, row)
         if not result["items"]:
             raise HTTPException(400, "还没有学生作答，没有可结算的内容")
-        names = roster(db, u)
+        names = roster(db, u, row)
         now = datetime.utcnow()
         for it in result["items"]:
             for kind, (pts, basis) in it["parts"].items():
@@ -482,7 +498,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
     def archive(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         row = my_session(db, u, sid)
-        names = roster(db, u)
+        names = roster(db, u, row)
         by_stu = session_answers(db, sid)
         pts = award_map(db, sid)
         pairs = peer_rows(db, sid)
@@ -524,7 +540,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         return "".join(parts)
 
     def drafts(db: Any, u: Any, row: Any) -> list[dict[str, Any]]:
-        names = roster(db, u)
+        names = roster(db, u, row)
         by_stu = session_answers(db, int(row.id))
         pts = award_map(db, int(row.id))
         pairs = peer_rows(db, int(row.id))

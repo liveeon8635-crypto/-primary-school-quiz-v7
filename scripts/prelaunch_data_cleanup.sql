@@ -66,6 +66,7 @@ WITH d AS (DELETE FROM weekend_schedule RETURNING 1) INSERT INTO _deleted SELECT
 WITH d AS (DELETE FROM weekend_peer_help RETURNING 1) INSERT INTO _deleted SELECT 'weekend_peer_help', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_metrics RETURNING 1) INSERT INTO _deleted SELECT 'weekend_metrics', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_hint_log RETURNING 1) INSERT INTO _deleted SELECT 'weekend_hint_log', COUNT(*) FROM d;
+WITH d AS (DELETE FROM weekend_class_rosters RETURNING 1) INSERT INTO _deleted SELECT 'weekend_class_rosters', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_briefs RETURNING 1) INSERT INTO _deleted SELECT 'weekend_briefs', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_awards RETURNING 1) INSERT INTO _deleted SELECT 'weekend_awards', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_answers RETURNING 1) INSERT INTO _deleted SELECT 'weekend_answers', COUNT(*) FROM d;
