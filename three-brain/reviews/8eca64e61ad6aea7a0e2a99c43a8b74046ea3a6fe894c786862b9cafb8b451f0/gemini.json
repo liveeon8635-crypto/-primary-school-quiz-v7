@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:8eca64e61ad6aea7a0e2a99c43a8b74046ea3a6fe894c786862b9cafb8b451f0",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "9b3d4e2266676605a7e0e1f72f1aae53f1bdc821",
+  "headSha": "6627b7a51f095fed1b97d9d2d10fba76c5722c8b",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：该变更完善了周末课教案导入与审核流程，增加了对简答题和写作题的提取、编辑及审核支持，未对系统安全性或治理权限造成负面影响。",
+      "evidenceRefs": [
+        "pr:#802",
+        "file:changying/services/lesson_written.py#L1-L112",
+        "run:116298343219"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:6137d0961044787a74ec7df659af01e1b81bf34cb8b1e67afe85a96d2bbc1680"
+}
