@@ -365,7 +365,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "weakKnowledge": weak}
 
     @router.post("/teacher/weekend/lessons/import")
-    async def import_lesson(subject: str = Form(...), lessonNo: int = Form(...), force: str = Form("0"), text: str = Form(""), file: UploadFile | None = File(None),
+    def import_lesson(subject: str = Form(...), lessonNo: int = Form(...), force: str = Form("0"), text: str = Form(""), file: UploadFile | None = File(None),
                             u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Teacher uploads their own lesson plan (.docx/.pptx/.pdf/.txt) or pastes the text; AI only tidies it into the lesson fields (no inventing)."""
         need(u, "teacher")
@@ -379,7 +379,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             ext = ("." + file.filename.rsplit(".", 1)[-1]).lower() if "." in file.filename else ""
             if ext not in SUPPORTED:
                 raise HTTPException(400, "支持的文件：" + "、".join(SUPPORTED))
-            raw = await file.read(MAX_FILE_BYTES + 1)
+            # This sync route runs extraction, database work and the blocking
+            # model request in FastAPI's worker pool, leaving health checks free.
+            raw = file.file.read(MAX_FILE_BYTES + 1)
             if len(raw) > MAX_FILE_BYTES:
                 raise HTTPException(413, "文件不能超过 10MB")
             if ext in (".docx", ".pptx", ".pdf"):
