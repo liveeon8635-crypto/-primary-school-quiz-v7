@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from changying.web.classroom_window_handoff import PAGE_AUTH_JS
+from changying.web.classroom_window_handoff import OPEN_WINDOW_JS, PAGE_AUTH_JS
 from changying.web.homework_assistant_pages import PAGE_CSS
 from changying.web.weekend_written_pages import WRITTEN_JS
 
@@ -63,7 +63,7 @@ function control(){
       row.appendChild(el('button',{class:d.covered?'on':'',text:d.covered?'大屏已遮盖（点击恢复）':'遮盖大屏',onclick:function(){post('cover',{covered:!d.covered})}}));
       row.appendChild(el('button',{text:'提前结束',onclick:function(){if(confirm('确定提前结束这节课？'))post('finish')}}));
     }
-    row.appendChild(el('a',{class:'btn',href:'/v1/weekend-board?s='+SID,target:'_blank',text:'打开大屏'}));
+    row.appendChild(el('a',{class:'btn',href:'/v1/weekend-board?s='+SID,target:'_blank','data-cy-open-window':'1',text:'打开大屏'}));
     head.appendChild(row);
     stagesBox.appendChild(el('h2',{text:'环节'}));
     d.stages.forEach(function(s){
@@ -597,7 +597,7 @@ def brief_page_html() -> str:
 
 
 def control_page_html() -> str:
-    return _page("周末课", WRITTEN_JS + CONTROL_JS, True, ("/v1/workspace", "返回"))
+    return _page("周末课", OPEN_WINDOW_JS + WRITTEN_JS + CONTROL_JS, True, ("/v1/workspace", "返回"))
 
 
 def board_page_html() -> str:
