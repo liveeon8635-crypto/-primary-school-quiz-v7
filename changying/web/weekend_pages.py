@@ -515,5 +515,3 @@ def board_page_html() -> str:
 
 
 __all__ = ["board_page_html", "brief_page_html", "control_page_html", "plan_page_html", "practice_page_html"]
-
-

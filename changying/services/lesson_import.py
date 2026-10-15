@@ -88,5 +88,3 @@ def extract(ext: str, data: bytes) -> dict[str, Any]:
 
 
 __all__ = ["MAX_FILE_BYTES", "MAX_TEXT_CHARS", "SUPPORTED", "extract"]
-
-
