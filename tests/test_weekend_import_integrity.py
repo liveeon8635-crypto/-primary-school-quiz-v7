@@ -17,7 +17,7 @@ def test_full_reading_material_and_all_five_homework_questions_survive_import_an
 import io, zipfile
 from html import escape
 story = '阅读原文《山里的承诺》\n' + ('这是必须保留的阅读文章，不能只剩题目。' * 700) + '\n文章结束标记。'
-homework = '作业：《山里的承诺》\n' + story + '\n' + '\n'.join(f'{i}.第{i}题：'+('联系原文回答，保留题目细节。'*20) for i in range(1,6)) + '\n第五题结束标记。'
+homework = '作业：《山里的承诺》\n' + story + '\n' + '\n'.join(f'{i}.第{i}题：'+('联系原文回答，保留题目细节。'*20) for i in range(1,6)) + '\n第五题结束标记。\n作业参考答案：教师另行批改。'
 source = '第六课 民间故事\n本节目标：概括故事内容。\n' + story + '\n课后练习\n' + homework
 example = '长例题完整结尾。' * 90
 slide = '这是一页需要完整保存的PPT文字。' * 50

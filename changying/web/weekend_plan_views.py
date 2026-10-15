@@ -122,7 +122,7 @@ def _content_lines(items: Any) -> list[str]:
 
 def _homework_from_source(text: str, fallback: str) -> str:
     """A literal homework section wins over the model's abbreviated version."""
-    heading = re.compile(r"(?m)^[ \t]*(?:[一二三四五六七八九十0-9]+[.．、][ \t]*)?(?:课后练习|课后作业|家庭作业|课后训练|作业)[：: \t]*(?:\n|(?=《)|(?=\S))")
+    heading = re.compile(r"(?m)^[ \t]*(?:[一二三四五六七八九十0-9]+[.．、][ \t]*)?(?:课后练习|课后作业|家庭作业|课后训练|作业)(?:[：:][ \t]*|[ \t]+|(?=\n|$|《))")
     matches = list(heading.finditer(text))
     return text[matches[-1].start():].strip() if matches else fallback
 
