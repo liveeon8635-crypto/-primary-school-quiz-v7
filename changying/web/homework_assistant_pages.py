@@ -236,7 +236,7 @@ PAGE_HTML = """<!doctype html>
 """
 
 # Follow-up pull requests extend the page by filling these slots.
-STUDENT_HELP_JS = r"""
+PHOTO_CROP_JS = r"""
 
 /* Let the student frame just the one question before it is sent: drag the corners, or drag inside to move. */
 function cropPhoto(file){
@@ -314,6 +314,9 @@ function cropPhoto(file){
     img.src=url;
   });
 }
+"""
+
+STUDENT_HELP_JS = PHOTO_CROP_JS + r"""
 var HELP_TIP='只拍这一道题，让题目占满画面；避开人脸、姓名、学号；光线要亮，别有阴影。';
 function afterConfirm(box,help){
   box.textContent='';box.appendChild(notice('ok','AI 正在想，请稍等…'));
@@ -506,3 +509,4 @@ def homework_page_html() -> str:
 
 
 __all__ = ["homework_page_html"]
+
