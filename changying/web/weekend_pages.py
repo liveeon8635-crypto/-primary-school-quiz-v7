@@ -42,9 +42,9 @@ function control(){
   if(!SID){picker();return}
   var back=document.querySelector('header a');if(back){back.href='/v1/weekend';back.textContent='返回周末课'}
   var head=el('div',{class:'card'}),stagesBox=el('div',{class:'card'}),content=el('div',{class:'card'}),msgBox=el('div'),
-      progBox=el('div',{class:'card'}),hintBox=el('div',{class:'card'}),peerBox=el('div',{class:'card'}),scoreBox=el('div',{class:'card'}),archBox=el('div',{class:'card'});
-  root.appendChild(head);root.appendChild(stagesBox);root.appendChild(content);root.appendChild(progBox);root.appendChild(peerBox);root.appendChild(scoreBox);root.appendChild(archBox);root.appendChild(hintBox);root.appendChild(msgBox);
-  hintsCard(hintBox);peerCard(peerBox);scoreCard(scoreBox);archiveCard(archBox);
+      progBox=el('div',{class:'card'}),hintBox=el('div',{class:'card'}),peerBox=el('div',{class:'card'}),scoreBox=el('div',{class:'card'});
+  root.appendChild(head);root.appendChild(stagesBox);root.appendChild(content);root.appendChild(progBox);root.appendChild(peerBox);root.appendChild(scoreBox);root.appendChild(hintBox);root.appendChild(msgBox);
+  hintsCard(hintBox);peerCard(peerBox);scoreCard(scoreBox);
   var writtenBox=el('div',{class:'card'});root.appendChild(writtenBox);writtenTeacher(writtenBox);
   function post(path,body){return api('/teacher/weekend/sessions/'+SID+'/'+path,{json:body||{}}).then(paint).catch(function(e){msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
   function paint(d){
