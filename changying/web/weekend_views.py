@@ -140,7 +140,7 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         """Pages the teacher pages through on the big screen: their own slides (stage 2) or worked examples (stage 3)."""
         raw = lesson.get("ppt_json") if stage_no == 2 else lesson.get("examples_json")
         from changying.services.weekend_presentation import presentation_pages
-        return presentation_pages(raw, preserve_pages=stage_no == 3 or str(lesson.get("reading_plan") or "").startswith("第1页："), source=str(lesson.get("reading_plan") or "") if stage_no == 2 else "")
+        return presentation_pages(raw, preserve_pages=stage_no == 2 and str(lesson.get("reading_plan") or "").startswith("第1页："), source=str(lesson.get("reading_plan") or "") if stage_no == 2 else "", example_mode=stage_no == 3)
 
     def state(db: Any, row: Any, *, board: bool = False) -> dict[str, Any]:
         now = datetime.utcnow()

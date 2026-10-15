@@ -15,12 +15,16 @@ def test_presentation_keeps_full_text_and_groups_fragmented_word_decks():
     assert 1<len(pages)<26
     assert '\n\n'.join(pages)=='\n\n'.join(lines)
     long='阅读材料\n'+('完整段落，不得截断。'*200)
-    assert presentation_pages([long])==[long]
+    assert ''.join(presentation_pages([long]))==long
+    assert all(len(p)<=360 for p in presentation_pages([long]))
     assert presentation_pages(lines,preserve_pages=True)==lines
     source='单元高频考点讲解\n方法1 代入角色\n梳理关键情节，理解人物心理，再使用第一人称。\n学生随堂试卷\n问题\n教师专用答案：秘密'
     actual=presentation_pages(lines,source=source)
     assert '梳理关键情节' in '\n'.join(actual) and '秘密' not in '\n'.join(actual)
     assert '问题' not in '\n'.join(actual)
+    imported=['旧标题'+str(i) for i in range(12)]+['学生随堂试卷','阅读文章','第一题','教师参考答案与采分点','秘密答案']
+    examples='\n'.join(presentation_pages(imported,example_mode=True))
+    assert '阅读文章' in examples and '第一题' in examples and '秘密答案' not in examples and '旧标题' not in examples
     assert presentation_pages([{'title':'例题','question':'问题','answer':'解法'}])==['例题\n问题\n解法']
 
 
@@ -41,7 +45,7 @@ with TestClient(app) as client:
         other=legacy.User(school_id=school_id,username='class_b_pupil',name='乙班同学',role='student',grade=5,password_hash=teacher.password_hash)
         db.add(other);db.flush();other_id=other.id
         db.add(legacy.ClassStudent(class_id=bid,student_id=other_id))
-        l=legacy.TeachingLesson(school_id=school_id,program_id=p.id,subject='语文',lesson_no=98,title='阅读',ppt_json=json.dumps(['方法'+str(i) for i in range(26)]),reading_plan='原教案')
+        l=legacy.TeachingLesson(school_id=school_id,program_id=p.id,subject='语文',lesson_no=98,title='阅读',ppt_json=json.dumps(['方法'+str(i) for i in range(26)]),examples_json=json.dumps(['例题讲解第'+str(i)+'行' for i in range(132)]),reading_plan='原教案')
         db.add(l);db.flush();lid=l.id
         q=legacy.TeachingQuestion(school_id=school_id,program_id=p.id,level='C',lesson_id=lid,subject='语文',stem='概括',options_json='["甲","乙"]',correct_index=0,active=True,knowledge='概括')
         db.add(q);db.flush();qid=q.id;db.commit()
@@ -60,6 +64,12 @@ with TestClient(app) as client:
     client.post(base+'/start',headers=th);client.post(base+'/goto',headers=th,json={'stage':2})
     board=client.get(base+'/board',headers=th).json()
     assert board['deck']['total']<26 and '方法0' in board['content'][0] and '方法1' in board['content'][0]
+    client.post(base+'/goto',headers=th,json={'stage':3})
+    example=client.get(base+'/board',headers=th).json()
+    assert example['deck']['total']<132 and '例题讲解第0行' in example['content'][0] and '例题讲解第1行' in example['content'][0]
+    changed=client.post(base+'/slide',headers=th,json={'delta':1}).json()
+    second_screen=client.get(base+'/board',headers=th).json()
+    assert second_screen['deck']==changed['deck'] and second_screen['content']==changed['content']
     client.post(base+'/goto',headers=th,json={'stage':4})
     progress=client.get(base+'/progress',headers=th).json()['items']
     assert [i['studentId'] for i in progress]==[student_id]

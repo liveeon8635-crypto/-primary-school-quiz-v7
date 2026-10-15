@@ -82,6 +82,7 @@ function control(){
     }
     row.appendChild(el('a',{class:'btn',href:'/v1/weekend-board?s='+SID,target:'_blank','data-cy-open-window':'1',text:'打开大屏'}));
     head.appendChild(row);
+    head.appendChild(el('details',{},el('summary',{text:'投影与异屏控制怎么用'}),el('p',{text:'同一台电脑：将显示模式设为“扩展”，把大屏窗口拖到投影／第二显示器并全屏，老师控制页留在电脑上。'}),el('p',{text:'手机／平板控制另一台电脑：两台设备各自登录同一老师账号，进入同一节课堂；电脑打开大屏，手机／平板操作控制页。翻页、环节和遮盖约3秒内同步，网络延迟时可能更久。'})));
     stagesBox.appendChild(el('h2',{text:'环节'}));
     d.stages.forEach(function(s){
       var b=el('button',{class:s.no===d.currentStage&&running?'on':'',text:s.no+'. '+s.name+'（'+(s.minutes+s.extendMin)+'分）'+(s.visited&&s.no!==d.currentStage?' ✓':''),
@@ -232,9 +233,13 @@ BOARD_JS = r"""
 var SID=+(new URLSearchParams(location.search).get('s')||0);
 function board(){
   if(!SID){msg('缺少课堂编号');return}
-  document.body.style.background='#0f172a';
-  var wrap=el('div',{style:'color:#fff;padding:3vh 5vw;min-height:92vh'});root.textContent='';root.style.maxWidth='none';root.appendChild(wrap);
+  document.body.style.background='#0f172a';document.body.style.overflow='hidden';
+  var wrap=el('div',{style:'color:#fff;padding:2vh 4vw;height:100vh;box-sizing:border-box;display:flex;flex-direction:column;gap:1vh;overflow:hidden'});root.textContent='';root.style.maxWidth='none';root.style.margin='0';root.style.padding='0';document.body.style.margin='0';root.appendChild(wrap);
   var remain=null;
+  function fitText(box){
+    var size=Math.min(48,Math.max(20,window.innerHeight*.045));box.style.fontSize=size+'px';
+    while(size>14&&(box.scrollHeight>box.clientHeight||box.scrollWidth>box.clientWidth)){size-=1;box.style.fontSize=size+'px'}
+  }
   function paint(d){
     wrap.textContent='';
     wrap.appendChild(el('div',{style:'opacity:.7;font-size:2.4vh',text:d.title}));
@@ -246,10 +251,13 @@ function board(){
       el('div',{id:'bclock',style:'font-size:6vh;font-weight:700',text:remain==null?'':fmt(remain)})));
     wrap.appendChild(el('div',{style:'font-size:3vh;opacity:.8;margin:1vh 0 3vh',text:d.goal}));
     if(d.deck)wrap.appendChild(el('div',{style:'opacity:.6;font-size:2.4vh',text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}));
-    d.content.forEach(function(x){wrap.appendChild(el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font-size:'+(d.deck?(x.length>600?'2.7vh':x.length>250?'3.5vh':'4.5vh'):'4vh')+';line-height:1.6;margin:1.5vh 0',text:x}))});
+    var body=el('div',{style:'flex:1;min-height:0;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45'});wrap.appendChild(body);
+    d.content.forEach(function(x){body.appendChild(el('p',{style:'margin:.5em 0',text:x}))});
+    requestAnimationFrame(function(){fitText(body)});
   }
-  var last=null;
-  function load(){api('/teacher/weekend/sessions/'+SID+'/board').then(function(d){last=d;remain=d.remainingSeconds;paint(d)}).catch(function(e){if(!last)msg(e.message)})}
+  var last=null,requestNo=0;
+  function load(){var request=++requestNo;api('/teacher/weekend/sessions/'+SID+'/board').then(function(d){if(request!==requestNo)return;last=d;remain=d.remainingSeconds;paint(d)}).catch(function(e){if(request===requestNo&&!last)msg(e.message)})}
+  window.addEventListener('resize',function(){if(last)paint(last)});
   load();setInterval(load,3000);
   setInterval(function(){if(remain!=null){remain-=1;var c=document.getElementById('bclock');if(c)c.textContent=fmt(remain)}},1000);
 }
