@@ -52,6 +52,7 @@ with TestClient(app) as client:
     assert client.get(url,headers=th).json() == after
     page=client.get('/v1/weekend-plan').text
     assert '导入原文（含阅读文章、全部题目，完整保留）' in page and 'source.value=L.sourceText' in page
+    assert '教案已保存，已核对服务器内容' in page and 'box.appendChild(saveStatus)' in page
     print('OK')
 ''')
 
