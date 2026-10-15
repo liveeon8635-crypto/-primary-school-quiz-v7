@@ -13,10 +13,9 @@ import zipfile
 from typing import Any
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
-MAX_TEXT_CHARS = 12000
+MAX_TEXT_CHARS = 200000
 MAX_PDF_PAGES = 60
 MAX_SLIDES = 60
-SLIDE_CHARS = 300
 SUPPORTED = (".docx", ".pptx", ".pdf", ".txt", ".md")
 
 _RUN = re.compile(r"<(?:w|a):t(?:\s[^>]*)?>(.*?)</(?:w|a):t>", re.S)
@@ -43,14 +42,18 @@ def _pptx(data: bytes) -> list[str]:
                 text = " ".join(_runs(z.read(name).decode("utf-8", "ignore")))
                 if text:
                     slides.append((int(m.group(1)), text))
-    return [t[:SLIDE_CHARS] for _, t in sorted(slides)][:MAX_SLIDES]
+    if len(slides) > MAX_SLIDES:
+        raise ValueError("PPT exceeds supported page count")
+    return [t for _, t in sorted(slides)]
 
 
 def _pdf(data: bytes) -> str:
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(data))
-    return "\n".join((page.extract_text() or "") for page in reader.pages[:MAX_PDF_PAGES])
+    if len(reader.pages) > MAX_PDF_PAGES:
+        raise ValueError("PDF exceeds supported page count")
+    return "\n".join((page.extract_text() or "") for page in reader.pages)
 
 
 def _plain(data: bytes) -> str:
@@ -79,8 +82,9 @@ def extract(ext: str, data: bytes) -> dict[str, Any]:
         raise ValueError("unsupported")
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    return {"text": text[:MAX_TEXT_CHARS], "slides": slides}
+    if len(text) > MAX_TEXT_CHARS:
+        raise ValueError("教案文字超过20万字，请拆分文件后导入；未截断或保存任何内容")
+    return {"text": text, "slides": slides}
 
 
-__all__ = ["MAX_FILE_BYTES", "SUPPORTED", "extract"]
-
+__all__ = ["MAX_FILE_BYTES", "MAX_TEXT_CHARS", "SUPPORTED", "extract"]
