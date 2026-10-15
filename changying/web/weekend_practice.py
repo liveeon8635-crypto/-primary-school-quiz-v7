@@ -255,9 +255,14 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         row = running_session_for(db, u)
         if row is None:
             return {"active": False, "message": "现在没有正在上的课"}
-        base = {"active": True, "sessionId": row.id, "title": row.title, "stage": int(row.current_stage)}
+        from changying.services.weekend_stages import stage_by_no
+        from changying.services.weekend_roster import session_class
+        stage = stage_by_no(int(row.current_stage))
+        bound = session_class(implementation, db, row)
+        base = {"active": True, "sessionId": row.id, "title": row.title, "stage": int(row.current_stage),
+                "stageName": stage["name"] if stage else "", "className": bound.class_name if bound else ""}
         if int(row.current_stage) != PRACTICE_STAGE:
-            return {**base, "practice": False, "message": "还没到随堂练习，请看大屏听老师讲"}
+            return {**base, "practice": False, "message": "还没到随堂练习，请看大屏听老师讲" if int(row.current_stage) < PRACTICE_STAGE else "随堂练习已关闭，可查看已提交答案与老师反馈"}
         mine = {int(a.question_id): a for a in db.execute(select(answers).where(answers.c.session_id == row.id, answers.c.student_id == u.id)).all()}
         used = {}
         for qid, lvl in db.execute(select(hlog.c.question_id, func.max(hlog.c.level)).where(hlog.c.session_id == row.id, hlog.c.student_id == u.id).group_by(hlog.c.question_id)).all():

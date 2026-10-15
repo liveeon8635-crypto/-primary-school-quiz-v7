@@ -134,12 +134,12 @@ def install_weekend_written(implementation: Any) -> APIRouter:
     def student_list(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
         if row.status == "planned":
-            return {"questions": [], "canSubmit": False}
+            return {"questions": [], "canSubmit": False, "status": row.status, "stage": row.current_stage}
         ans = {a.question_id: a for a in db.execute(select(submissions).where(submissions.c.session_id == sid,
             submissions.c.student_id == u.id, submissions.c.school_id == u.school_id)).all()}
         used = dict(db.execute(select(hint_log.c.question_id, func.max(hint_log.c.level)).where(
             hint_log.c.session_id == sid, hint_log.c.student_id == u.id).group_by(hint_log.c.question_id)).all())
-        return {"canSubmit": row.status == "running" and row.current_stage == 4,
+        return {"status": row.status, "stage": row.current_stage, "canSubmit": row.status == "running" and row.current_stage == 4,
                 "questions": [{"id": q.id, "stem": q.stem, "hasHints": bool(json.loads(q.hints_json)), "hintUsed": used.get(q.id, 0),
                                "hintTexts": json.loads(q.hints_json)[:used.get(q.id, 0)],
                                "submission": submission_dict(ans[q.id]) if q.id in ans else None} for q in question_rows(db, row)]}

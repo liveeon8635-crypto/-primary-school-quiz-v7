@@ -268,29 +268,31 @@ PRACTICE_JS = r"""
 var LETTERS='ABCDEFGH',wait=null;
 function practice(){
   root.textContent='';
-  var box=el('div');root.appendChild(box);
+  var box=el('div'),lastPracticeSignature='',selectedAnswers={};root.appendChild(box);
   function load(){
-    api('/student/weekend/current').then(paint).catch(function(e){box.textContent='';box.appendChild(el('div',{class:'card'},el('div',{class:'notice error',text:e.message})))});
+    api('/student/weekend/current').then(paint).catch(function(e){lastPracticeSignature='';box.textContent='';box.appendChild(el('div',{class:'card'},el('div',{class:'notice error',text:e.message})))});
   }
   function paint(d){
-    var open=document.querySelector('textarea:focus');
+    var signature=JSON.stringify(d);if(signature===lastPracticeSignature)return;lastPracticeSignature=signature;
     box.textContent='';
     if(!d.active||!d.practice){
       box.appendChild(el('div',{class:'card'},el('h2',{text:d.title||'课堂练习'}),el('div',{class:'muted',text:d.message||''})));
       return;
     }
-    box.appendChild(el('div',{class:'card'},el('h2',{text:d.title}),el('div',{class:'muted',text:'随堂练习：自己先想，卡住了再点“要提示”。每道题只能提交一次。'})));
+    box.appendChild(el('div',{class:'card'},el('h2',{text:d.title}),el('div',{class:'muted',text:'按老师要求完成本节练习；各题的作答方式和提交状态显示在题目旁。'})));
+    if(d.questions.length)box.appendChild(el('p',{class:'muted',text:'选择题：选好后提交，每道选择题只能提交一次。'}));
     d.questions.forEach(function(q,qi){
       var card=el('div',{class:'card'}),out=el('div'),hintsOut=el('div');
       card.appendChild(el('b',{text:(qi+1)+'. '+q.stem}));
-      var chosen=-1,opts=el('div');
+      var selectionKey=d.sessionId+':'+q.id,chosen=selectedAnswers[selectionKey]==null?-1:selectedAnswers[selectionKey],opts=el('div');
       q.options.forEach(function(o,i){
         var b=el('button',{style:'display:block;width:100%;text-align:left;margin:6px 0',text:LETTERS[i]+'. '+o});
         if(q.answered){
           if(i===q.correctIndex)b.className='primary';
           else if(i===q.selected)b.style.borderColor='#b42318';
           b.disabled=true;
-        }else b.addEventListener('click',function(){chosen=i;Array.prototype.forEach.call(opts.children,function(x,j){x.className=j===i?'on':''})});
+        }else b.addEventListener('click',function(){chosen=i;selectedAnswers[selectionKey]=i;Array.prototype.forEach.call(opts.children,function(x,j){x.className=j===i?'on':''})});
+        if(!q.answered&&chosen===i)b.className='on';
         opts.appendChild(b);
       });
       card.appendChild(opts);
@@ -350,7 +352,7 @@ function practice(){
   }
   var writtenBox=el('div',{class:'card'});root.appendChild(writtenBox);writtenStudent(writtenBox);
   load();followup();explain();
-  wait=setInterval(function(){if(!document.hidden){load();explain();if(!fbox.firstChild)followup()}},20000);
+  wait=setInterval(function(){if(!document.hidden){load();explain();if(!fbox.firstChild)followup()}},5000);
 }
 boot_student(practice);
 """

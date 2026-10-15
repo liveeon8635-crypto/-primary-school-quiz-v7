@@ -8,6 +8,7 @@ then adds the V1 navigation chrome around it.
 """
 from __future__ import annotations
 
+from changying.web.student_sync_dashboard import patch_student_sync_dashboard
 from changying.web.v1_ribbon_banner import BRAND_FONT_B64, RIBBON_SVG_JSON
 
 V1_CLASSIC_UNIFIED_MARKER = "changying_v1_classic_unified_top_v1"
@@ -184,24 +185,6 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
   }
   setInterval(ensure,1300);
  })();
- // 周末课：学生“同步课堂”页顶部放“课堂练习”入口（只是链接，不发起请求）；作答和提示都在 /v1/weekend-practice。
- (function(){
-  var ID='cy-wk-band';
-  function ensure(){
-   var page='',role='';
-   try{if(stateReady()){role=currentRole();page=currentPage()}}catch(_e){}
-   var old=document.getElementById(ID);
-   if(role!=='student'||page!=='syncLearning'){if(old)old.remove();return}
-   if(old)return;
-   var pg=document.getElementById('page');if(!pg)return;
-   var band=document.createElement('a');band.id=ID;band.href='/v1/weekend-practice';
-   band.style.cssText='display:block;margin:0 0 14px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#a8101c;font-weight:700;font-size:14px;text-decoration:none';
-   band.textContent='周末课上课时：进入课堂练习（做题、要提示）›';
-   var head=pg.querySelector('.page-head');
-   if(head&&head.parentNode===pg)pg.insertBefore(band,head.nextSibling);else pg.insertBefore(band,pg.firstChild);
-  }
-  setInterval(ensure,1300);
- })();
  // 周末课：家长“孩子课程”页顶部放简报入口（只是链接，不发起请求）。
  (function(){
   var ID='cy-wkb-band';
@@ -261,7 +244,7 @@ def _polish_student_record_detail(html: str) -> str:
 def inject_v1_classic_unified(html: str) -> str:
     if V1_CLASSIC_UNIFIED_MARKER in html:
         return html
-    html = _polish_student_record_detail(html)
+    html = patch_student_sync_dashboard(_polish_student_record_detail(html))
     if V1_CLASSIC_LOGIN_GUARD_MARKER not in html:
         guard = V1_CLASSIC_LOGIN_GUARD + f"<!-- {V1_CLASSIC_LOGIN_GUARD_MARKER} -->"
         html = html.replace("<head>", "<head>" + guard, 1) if "<head>" in html else guard + html
