@@ -99,6 +99,7 @@ with TestClient(app) as client:
     html=client.get('/v1/weekend-plan').text
     assert all(t in html for t in ('教案编辑','习题审核','原文核对','展开阅读材料／题目全文'))
     assert 'loadQ();loadWritten()' in html and 'go.disabled=' in html
+    assert 'function approveQuestionInPlace' in html and html.count('approveQuestionInPlace(') >= 3
     print('OK')
 ''')
 
