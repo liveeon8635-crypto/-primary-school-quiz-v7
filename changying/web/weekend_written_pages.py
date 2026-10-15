@@ -17,8 +17,9 @@ function writtenPhoto(box,a){
 }
 var WRITTEN_RESULT={pending:'已提交，待老师批改',correct:'正确',partial:'部分正确',revise:'需订正'};
 function writtenTeacher(box){
-  box.appendChild(el('h2',{text:'简答题与照片批改'}));
-  var out=el('div'),form=el('div'),stem=el('textarea',{placeholder:'题目（开课前添加）',maxlength:4000}),
+  box.appendChild(el('h2',{text:'学生作答与批改'}));
+  box.appendChild(el('p',{class:'muted',text:'学生在自己的设备上输入答案或拍照提交；这里查看本班提交并批改。教案中已审核的题目会自动带入，无需再次添加。'}));
+  var out=el('div'),form=el('details',{},el('summary',{text:'临时补充一道题（仅开课前）'})),stem=el('textarea',{placeholder:'题目（开课前添加）',maxlength:4000}),
       ref=el('textarea',{placeholder:'参考答案／评分要点，仅老师可见',maxlength:4000}),hs=[];
   form.appendChild(stem);form.appendChild(ref);
   ['方向提示（不含答案）','第一步提示（不含答案）','完整思路'].forEach(function(t){var h=el('input',{type:'text',placeholder:t+'，选填；填写则需三级完整',maxlength:300});hs.push(h);form.appendChild(h)});
@@ -30,10 +31,12 @@ function writtenTeacher(box){
   box.appendChild(el('button',{text:'刷新提交与批改进度',onclick:load}));box.appendChild(out);
   function load(){
     api('/teacher/weekend/sessions/'+SID+'/written').then(function(d){
+      form.hidden=d.status!=='planned';
       out.textContent='';
+      if(!d.questions.length)out.appendChild(el('p',{class:'muted',text:'本节没有文字／拍照作答题。需要时请返回备课页审核题目，再为班级创建课堂。'}));
       out.appendChild(el('div',{class:'notice',text:'已提交 '+d.submitted+'/'+d.total+'（'+d.submissionRate+'%） · 已批改 '+d.reviewed+' · 待批改 '+d.pending+' · 正确 '+d.correct+' · 部分正确 '+d.partial}));
       d.questions.forEach(function(q){
-        var card=el('div',{class:'card'},el('div',{style:'white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8',text:q.stem}),el('div',{class:'muted',text:'评分要点：'+q.reference}));out.appendChild(card);
+        var card=el('details',{class:'card'},el('summary',{text:'第 '+(d.questions.indexOf(q)+1)+' 题 · 已提交 '+d.items.filter(function(a){return a.questionId===q.id}).length+' 份 · 展开批改'}),el('div',{style:'white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8',text:q.stem}),el('div',{class:'muted',text:'评分要点：'+q.reference}));out.appendChild(card);
         d.items.filter(function(a){return a.questionId===q.id}).forEach(function(a){
           var row=el('div',{class:'card'},el('b',{text:a.name+' · '+WRITTEN_RESULT[a.result]}),el('p',{text:a.text})),comment=el('textarea',{placeholder:'给学生的评语',maxlength:1000});comment.value=a.comment;
           writtenPhoto(row,a);row.appendChild(comment);
@@ -47,6 +50,7 @@ function writtenTeacher(box){
       });
     }).catch(function(e){alert(e.message)});
   }load();
+  return function(status){form.hidden=status!=='planned';add.disabled=status!=='planned'};
 }
 function writtenStudent(box){
   var out=el('div'),dirty=false,busy=false,drafts={},lastSid=+(new URLSearchParams(location.search).get('s')||0);

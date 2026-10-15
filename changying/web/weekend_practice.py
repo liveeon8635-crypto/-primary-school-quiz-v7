@@ -208,14 +208,10 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         row = my_session(db, u, sid)
         qs = lesson_questions(db, int(u.school_id), int(row.lesson_id))
         qids = [q.id for q in qs]
-        roster = db.execute(
-            select(User.id, User.name).join(ClassStudent, ClassStudent.student_id == User.id).join(SchoolClass, SchoolClass.id == ClassStudent.class_id)
-            .where(SchoolClass.teacher_id == u.id, SchoolClass.school_id == u.school_id, User.school_id == u.school_id)
-        ).all()
-        names = {int(i): str(n) for i, n in roster}
+        from changying.services.weekend_roster import session_roster
+        names = {i: n for i, (n, _) in session_roster(implementation, db, row).items()}
         ans = db.execute(select(answers).where(answers.c.session_id == sid)).all()
-        for a in ans:
-            names.setdefault(int(a.student_id), "学生")
+        ans = [a for a in ans if int(a.student_id) in names]
         items = []
         for stu, name in sorted(names.items(), key=lambda kv: kv[1]):
             mine = [a for a in ans if int(a.student_id) == stu]
@@ -232,17 +228,18 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
 
     # ------------------------------------------------------------------ student
     def running_session_for(db: Any, u: Any) -> Any:
-        teacher_ids = [int(t) for t in db.scalars(
-            select(SchoolClass.teacher_id).join(ClassStudent, ClassStudent.class_id == SchoolClass.id)
-            .where(ClassStudent.student_id == u.id, SchoolClass.school_id == u.school_id)).all() if t]
-        if not teacher_ids:
-            return None
-        return db.execute(select(sessions).where(sessions.c.school_id == u.school_id, sessions.c.teacher_id.in_(teacher_ids),
-                                                 sessions.c.status == "running").order_by(sessions.c.id.desc()).limit(1)).first()
+        from changying.services.weekend_roster import student_in_session
+        candidates = db.execute(select(sessions).where(sessions.c.school_id == u.school_id,
+                                                 sessions.c.status == "running").order_by(sessions.c.id.desc())).all()
+        return next((row for row in candidates if student_in_session(implementation, db, row, u.id)), None)
 
     def student_session(db: Any, u: Any, sid: int) -> Any:
         row = running_session_for(db, u)
         if row is None or int(row.id) != sid:
+            raise HTTPException(404, "现在没有正在上的课")
+        db.execute(select(sessions.c.id).where(sessions.c.id == sid).with_for_update()).first()
+        from changying.services.weekend_roster import student_in_session
+        if not student_in_session(implementation, db, row, u.id):
             raise HTTPException(404, "现在没有正在上的课")
         if int(row.current_stage) != PRACTICE_STAGE:
             raise HTTPException(409, "现在不是随堂练习时间")

@@ -334,7 +334,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             f"班里近期错得最多的知识点：{'、'.join(w['knowledge'] for w in weak) or '暂无'}。\n"
             + (f"这节课已有教案：课题《{lesson.title}》，目标：{lesson.core_target}。\n原教案与阅读材料：{lesson.reading_plan or lesson.teacher_plan}\n请只出习题，其余字段可留空。\n" if b.onlyQuestions and lesson is not None else "") +
             "要求：知识点讲解由浅入深，例题 2-3 道，随堂习题按教学内容选择题型：选择、填最终答案、阅读简答、扩写/缩写与作文。语文阅读必须有基于所给文章的简答或写作题，不能全部改成选择题；数学应含计算或过程题。选择题放questions，非选择题放writtenQuestions，合计4-6道，内容不超纲。"
-            '只输出 JSON：{"title":"课题","coreTarget":"本节目标","teacherPlan":"教学流程(200字内)","ppt":["每页标题，6-9 页"],'
+            '只输出 JSON：{"title":"课题","coreTarget":"本节目标","teacherPlan":"教学流程(200字内)","ppt":["完整讲解页：标题＋方法步骤＋示例，每页用\\n换行，6-9页，不能只有标题"],'
             '"examples":["例题和解答，2-3 条"],"closureTraining":"课后练习安排",'
             '"questions":[{"stem":"题目","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}],"writtenQuestions":[{"type":"short_answer或final_answer或composition","material":"本题所需完整阅读材料，不含答案","stem":"题目","reference":"参考答案和评分要点，仅老师可见","hints":["方向","第一步","完整思路"]}]}'
         )
@@ -351,7 +351,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(502, "AI 没有给出合格的习题，请再试一次")
         now = datetime.utcnow()
         fields = dict(title=str(data.get("title") or "").strip()[:180], core_target=str(data.get("coreTarget") or "")[:1000], teacher_plan=str(data.get("teacherPlan") or "")[:3000],
-                      ppt_json=json.dumps(_lines(data.get("ppt")), ensure_ascii=False), examples_json=json.dumps(_lines(data.get("examples")), ensure_ascii=False),
+                      ppt_json=json.dumps(_content_lines(data.get("ppt")), ensure_ascii=False), examples_json=json.dumps(_lines(data.get("examples")), ensure_ascii=False),
                       closure_training=str(data.get("closureTraining") or "")[:1000], unit=(row.school_unit if row and row.school_unit else "")[:120] or "待配置单元",
                       published=False, updated_at=now)
         if b.onlyQuestions:
@@ -414,7 +414,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         prompt = (
             f"下面是一位小学{p.grade}年级{subject}老师自己写的周末课教案内容。请只整理、归类里面已有的内容，不要编造新内容；文档里没有的字段留空。\n"
             f"---教案内容开始---\n{extracted['text']}\n---教案内容结束---\n"
-            '只输出 JSON：{"title":"课题","coreTarget":"本节目标","teacherPlan":"教学流程(300字内)","ppt":["每页或每个板块的标题"],'
+            '只输出 JSON：{"title":"课题","coreTarget":"本节目标","teacherPlan":"教学流程(300字内)","ppt":["完整讲解页：标题＋原文中的方法步骤＋示例，每页用\\n换行，不得把每一行拆成一页；禁止放入教师参考答案或评分细则"],'
             '"examples":["文档里的例题和解答，原文照录"],"closureTraining":"课后练习",'
             '"questions":[{"stem":"文档里已有的选择题","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}],"writtenQuestions":[{"type":"short_answer或final_answer或composition","material":"对应完整阅读文章，不含教师答案","stem":"原有题目，不得改题型或漏题","reference":"原文对应参考答案及评分要点","hints":[]}]}'
             "（questions 只放原有选择题，writtenQuestions放全部原有简答、填空、复述、写作和挑战题，不要编造新题。阅读文章和非选择题不可省略；原文由系统完整保存。closureTraining 必须包含全部课后题，不能只列前几题。）"

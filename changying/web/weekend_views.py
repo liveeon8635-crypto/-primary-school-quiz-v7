@@ -32,6 +32,11 @@ NO_CACHE = {"Cache-Control": "no-store"}
 
 class CreateBody(BaseModel):
     lessonId: int
+    classId: int | None = None
+
+
+class ClassBody(BaseModel):
+    classId: int
 
 
 class GotoBody(BaseModel):
@@ -52,6 +57,8 @@ class CoverBody(BaseModel):
 
 
 def register_weekend_tables(implementation: Any) -> dict[str, Table]:
+    from changying.services.weekend_roster import register_roster_table
+    register_roster_table(implementation)
     md = implementation.Base.metadata
     sessions = md.tables.get("weekend_sessions")
     if sessions is None:
@@ -110,7 +117,7 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         if row is None or int(row.school_id) != int(school_id):
             raise HTTPException(404, "没有找到这节课")
         return {c: getattr(row, c) for c in ("id", "subject", "lesson_no", "unit", "title", "core_target", "duration_min",
-                                             "teacher_plan", "examples_json", "ppt_json", "closure_training")}
+                                             "teacher_plan", "examples_json", "ppt_json", "closure_training", "reading_plan")}
 
     def mine(db: Any, u: Any, sid: int) -> Any:
         row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id)).first()
@@ -132,11 +139,8 @@ def install_weekend_views(implementation: Any) -> APIRouter:
     def deck_for(lesson: dict[str, Any], stage_no: int) -> list[str]:
         """Pages the teacher pages through on the big screen: their own slides (stage 2) or worked examples (stage 3)."""
         raw = lesson.get("ppt_json") if stage_no == 2 else lesson.get("examples_json")
-        try:
-            items = json.loads(raw or "[]")
-        except Exception:  # noqa: BLE001
-            return []
-        return [" ".join(str(x).split())[:400] for x in items if str(x or "").strip()] if isinstance(items, list) else []
+        from changying.services.weekend_presentation import presentation_pages
+        return presentation_pages(raw, preserve_pages=stage_no == 3 or str(lesson.get("reading_plan") or "").startswith("第1页："), source=str(lesson.get("reading_plan") or "") if stage_no == 2 else "")
 
     def state(db: Any, row: Any, *, board: bool = False) -> dict[str, Any]:
         now = datetime.utcnow()
@@ -199,6 +203,9 @@ def install_weekend_views(implementation: Any) -> APIRouter:
             done = db.execute(select(log).where(log.c.session_id == row.id, log.c.stage_no == s["no"]).order_by(log.c.id)).all()
             stages.append({"no": s["no"], "name": s["name"], "minutes": s["minutes"], "goal": s["goal"],
                            "visited": bool(done), "extendMin": sum(int(d.extend_min) for d in done)})
+        from changying.services.weekend_roster import session_class, session_roster
+        bound = session_class(implementation, db, row)
+        out["class"] = {"id": bound.class_id, "name": bound.class_name, "studentCount": len(session_roster(implementation, db, row))} if bound else None
         out["stages"] = stages
         out["lesson"] = {"title": lesson["title"], "subject": lesson["subject"], "unit": lesson["unit"]}
         return out
@@ -220,6 +227,9 @@ def install_weekend_views(implementation: Any) -> APIRouter:
     @router.post("/teacher/weekend/sessions")
     def create(b: CreateBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
+        from changying.services.weekend_roster import class_members, bind_class
+        if b.classId is not None:
+            class_members(implementation, db, u, b.classId)
         lesson = lesson_dict(db, int(u.school_id), b.lessonId)
         sid = int(db.execute(insert(sessions).values(
             school_id=u.school_id, teacher_id=u.id, lesson_id=b.lessonId, status="planned", current_stage=0, covered=False,
@@ -227,6 +237,34 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         from changying.services.lesson_written import snapshot_written_questions
         from changying.web.weekend_written import register_written_tables
         snapshot_written_questions(db, register_written_tables(implementation)["questions"], u.school_id, u.id, b.lessonId, sid)
+        if b.classId is not None:
+            bind_class(implementation, db, mine(db, u, sid), u, b.classId)
+        db.commit()
+        return state(db, mine(db, u, sid))
+
+    @router.get("/teacher/weekend/classes")
+    def classes(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        SC, CS, User = implementation.SchoolClass, implementation.ClassStudent, implementation.User
+        rows = db.scalars(select(SC).where(SC.school_id == u.school_id, SC.teacher_id == u.id).order_by(SC.name, SC.id)).all()
+        return {"items": [{"id": c.id, "name": c.name, "studentCount": len(db.scalars(select(User.id).join(CS, CS.student_id == User.id).where(CS.class_id == c.id, User.school_id == u.school_id, User.role == "student")).all())} for c in rows]}
+
+    @router.put("/teacher/weekend/sessions/{sid}/class")
+    def choose_class(sid: int, b: ClassBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        row = mine(db, u, sid)
+        db.execute(select(sessions.c.id).where(sessions.c.id == sid).with_for_update()).first()
+        # Binding is allowed for an untouched legacy classroom, even if its
+        # clock has started. Never reinterpret existing answers or points.
+        md = implementation.Base.metadata
+        for name in ("weekend_answers", "weekend_hint_log", "weekend_written_submissions", "weekend_written_hint_log", "weekend_peer_help", "weekend_awards", "weekend_metrics", "weekend_briefs"):
+            table = md.tables.get(name)
+            if table is not None and db.execute(select(table).where(table.c.session_id == sid).limit(1)).first() is not None:
+                raise HTTPException(409, "本节课已有学生学习或积分记录，不能更换班级；请为正确班级新建课堂")
+        if row.status == "finished":
+            raise HTTPException(409, "已结束的课堂不能更换班级")
+        from changying.services.weekend_roster import bind_class
+        bind_class(implementation, db, row, u, b.classId)
         db.commit()
         return state(db, mine(db, u, sid))
 

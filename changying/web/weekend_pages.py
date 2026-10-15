@@ -27,6 +27,19 @@ function api(path,opts){
   return fetch(path,opts).then(function(r){return r.json().catch(function(){return {}}).then(function(d){
     if(!r.ok){var e=new Error((d&&d.detail&&typeof d.detail==='string'&&d.detail)||('请求失败（'+r.status+'）'));e.status=r.status;throw e}return d})});
 }
+function chooseWeekendClass(save){
+  var overlay=el('div',{class:'card',role:'dialog','aria-label':'选择上课班级',style:'position:fixed;inset:10vh 10vw;z-index:10000;overflow:auto;background:white;box-shadow:0 0 0 100vmax #0008'}),out=el('div'),feedback=el('div',{role:'status'});
+  overlay.appendChild(el('h2',{text:'选择本次上课的班级'}));overlay.appendChild(el('p',{text:'只添加所选班级的学生，课堂练习、批改和积分都使用这份名单。'}));overlay.appendChild(out);overlay.appendChild(feedback);
+  overlay.appendChild(el('button',{text:'取消',onclick:function(){overlay.remove()}}));document.body.appendChild(overlay);
+  api('/teacher/weekend/classes').then(function(d){
+    if(!d.items.length){feedback.textContent='还没有班级，请先在“我的班级”创建班级并添加学生';return}
+    d.items.forEach(function(c){var b=el('button',{text:c.name+'（'+c.studentCount+'人）',disabled:!c.studentCount,onclick:function(){
+      Array.prototype.forEach.call(out.querySelectorAll('button'),function(x){x.disabled=true});feedback.textContent='正在添加班级…';
+      Promise.resolve().then(function(){return save(c.id)}).then(function(){overlay.remove()}).catch(function(e){feedback.textContent=e.message;Array.prototype.forEach.call(out.querySelectorAll('button'),function(x){x.disabled=false})});
+    }});out.appendChild(el('div',{class:'row'},b))});
+  }).catch(function(e){feedback.textContent=e.message});
+}
+function createWeekendClassroom(lessonId){chooseWeekendClass(function(classId){return api('/teacher/weekend/sessions',{json:{lessonId:lessonId,classId:classId}}).then(function(d){location.href='/v1/weekend?s='+d.id})})}
 function fmt(sec){var neg=sec<0,s=Math.abs(sec),m=Math.floor(s/60),r=s%60;return (neg?'超时 ':'')+(m<10?'0':'')+m+':'+(r<10?'0':'')+r}
 function msg(text){root.textContent='';root.appendChild(el('div',{class:'card'},el('h2',{text:text})))}
 function boot(run){
@@ -44,18 +57,22 @@ function control(){
   var head=el('div',{class:'card'}),stagesBox=el('div',{class:'card'}),content=el('div',{class:'card'}),msgBox=el('div'),
       progBox=el('div',{class:'card'}),hintBox=el('div',{class:'card'}),peerBox=el('div',{class:'card'}),scoreBox=el('div',{class:'card'});
   root.appendChild(head);root.appendChild(stagesBox);root.appendChild(content);root.appendChild(progBox);root.appendChild(peerBox);root.appendChild(scoreBox);root.appendChild(hintBox);root.appendChild(msgBox);
-  hintsCard(hintBox);peerCard(peerBox);scoreCard(scoreBox);
-  var writtenBox=el('div',{class:'card'});root.appendChild(writtenBox);writtenTeacher(writtenBox);
+  var hintDetails=el('details',{},el('summary',{text:'提示准备（课前使用）'}));hintBox.appendChild(hintDetails);hintsCard(hintDetails);
+  var peerDetails=el('details',{},el('summary',{text:'请同学讲解（复盘时使用）'}));peerBox.appendChild(peerDetails);peerCard(peerDetails);
+  var scoreDetails=el('details',{},el('summary',{text:'课后积分结算'}));scoreBox.appendChild(scoreDetails);scoreCard(scoreDetails);
+  var writtenBox=el('div',{class:'card'});root.appendChild(writtenBox);var updateWritten=writtenTeacher(writtenBox);
   function post(path,body){return api('/teacher/weekend/sessions/'+SID+'/'+path,{json:body||{}}).then(paint).catch(function(e){msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
   function paint(d){
     head.textContent='';stagesBox.textContent='';content.textContent='';remain=d.remainingSeconds;progress(progBox,d);
-    var running=d.status==='running';
+    var running=d.status==='running';updateWritten(d.status);
     head.appendChild(el('h2',{text:d.title}));
+    head.appendChild(el('div',{class:d.class?'notice ok':'notice warn',text:d.class?'上课班级：'+d.class.name+' · '+d.class.studentCount+'人':'本节课尚未指定班级，请先选择班级'}));
+    head.appendChild(el('button',{text:d.class?'更换上课班级':'选择上课班级',onclick:function(){chooseWeekendClass(function(classId){return api('/teacher/weekend/sessions/'+SID+'/class',{method:'PUT',json:{classId:classId}}).then(paint)})}}));
     var clock=el('div',{style:'font-size:44px;font-weight:700;line-height:1.2',id:'clock',text:running&&remain!=null?fmt(remain):'--:--'});
     head.appendChild(el('div',{class:'muted',text:d.status==='planned'?'还没开始':d.status==='finished'?'已结束':'第 '+d.currentStage+'/'+d.stageCount+' 环节：'+d.stageName+' · '+d.goal}));
     head.appendChild(clock);
     var row=el('div',{class:'row'});
-    if(d.status==='planned')row.appendChild(el('button',{class:'primary',text:'开始上课',onclick:function(){post('start')}}));
+    if(d.status==='planned')row.appendChild(el('button',{class:'primary',text:'开始上课',disabled:!d.class,onclick:function(){post('start')}}));
     if(running){
       row.appendChild(el('button',{text:'‹ 上一环节',onclick:function(){post('prev')}}));
       row.appendChild(el('button',{class:'primary',text:d.currentStage>=d.stageCount?'结束这节课':'下一环节 ›',onclick:function(){post('next')}}));
@@ -87,10 +104,11 @@ function control(){
   timer=setInterval(load,15000);
 }
 function progress(box,d){
+  if(!d.class){box.textContent='';return}
   if(d.status!=='running'&&d.status!=='finished'){box.textContent='';return}
   api('/teacher/weekend/sessions/'+SID+'/progress').then(function(p){
     box.textContent='';box.appendChild(el('h2',{text:'选择题进度（班级正确率 '+p.classCompletionRate+'%）'}));
-    if(!p.items.length){box.appendChild(el('div',{class:'muted',text:'没有学生。学生要在“我的班级”里属于你的班级。'}));return}
+    if(!p.items.length){box.appendChild(el('div',{class:'muted',text:'本节课没有学生，请检查所选班级的名单。'}));return}
     p.items.forEach(function(i){
       box.appendChild(el('div',{class:'row'},el('b',{text:i.name}),
         el('span',{class:'tag',text:'做完 '+i.answered+'/'+i.total}),el('span',{class:'tag',text:'做对 '+i.correct}),
@@ -153,7 +171,7 @@ function hintsCard(box){
   box.appendChild(el('div',{class:'muted',text:'提示由 AI 写草稿，你审核后才是正式提示；没审核的题，学生求助时 AI 会临时生成（标记“待审核”）。'}));
   var list=el('div');box.appendChild(list);
   api('/teacher/weekend/sessions/'+SID+'/questions').then(function(d){
-    if(!d.items.length){list.appendChild(el('div',{class:'muted',text:'这节课还没有习题，请先在“定制教学”里添加。'}));return}
+    if(!d.items.length){list.appendChild(el('div',{class:'muted',text:'本节没有选择题提示。简答／写作题请在备课页审核题目及提示。'}));return}
     d.items.forEach(function(q){
       var tas=[0,1,2].map(function(i){var t=el('textarea',{class:'s',placeholder:'第'+(i+1)+'级：'+q.levelNames[i]});t.value=q.hints[i]||'';return t});
       var m=el('div'),tag=el('span',{class:'tag'});
@@ -192,8 +210,7 @@ function picker(){
     stepsBox.appendChild(step(x.hasPlan,'② 准备教案','没有教案就点“AI 备课草稿”，生成后你改一改',go('去备课')));
     stepsBox.appendChild(step(x.approvedQuestions>0,'③ 准备习题（已通过 '+x.approvedQuestions+' 道'+(x.draftQuestions?'，待审核 '+x.draftQuestions+' 道':'')+'）','AI 出的题是草稿，逐题点“通过”后学生才能做',go('去审核')));
     var start=el('button',{class:'primary',text:'④ 开课',disabled:!ready,onclick:function(){
-      start.disabled=true;
-      api('/teacher/weekend/sessions',{json:{lessonId:x.lessonId}}).then(function(s){location.href='/v1/weekend?s='+s.id}).catch(function(e){msg.textContent='';msg.appendChild(el('div',{class:'notice error',text:e.message}));start.disabled=false});
+      createWeekendClassroom(x.lessonId);
     }});
     stepsBox.appendChild(step(false,'④ 开课','点开后进入上课页：开始上课、按 7 个环节推进、打开大屏。'+(ready?'':'（先完成上面三步）'),start));
     stepsBox.appendChild(el('div',{class:'muted',text:'下课后在同一个上课页点“预览得分→确认结算”，再发布家长简报。'}));
@@ -229,7 +246,7 @@ function board(){
       el('div',{id:'bclock',style:'font-size:6vh;font-weight:700',text:remain==null?'':fmt(remain)})));
     wrap.appendChild(el('div',{style:'font-size:3vh;opacity:.8;margin:1vh 0 3vh',text:d.goal}));
     if(d.deck)wrap.appendChild(el('div',{style:'opacity:.6;font-size:2.4vh',text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}));
-    d.content.forEach(function(x){wrap.appendChild(el('p',{style:'font-size:'+(d.deck?'5.5vh':'4vh')+';line-height:1.5;margin:1.5vh 0',text:x}))});
+    d.content.forEach(function(x){wrap.appendChild(el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font-size:'+(d.deck?(x.length>600?'2.7vh':x.length>250?'3.5vh':'4.5vh'):'4vh')+';line-height:1.6;margin:1.5vh 0',text:x}))});
   }
   var last=null;
   function load(){api('/teacher/weekend/sessions/'+SID+'/board').then(function(d){last=d;remain=d.remainingSeconds;paint(d)}).catch(function(e){if(!last)msg(e.message)})}
@@ -471,7 +488,7 @@ function plan(){
       }}):null;
       var open=el('button',{text:'审改',disabled:!r.lessonId,onclick:function(){detail.hidden=!detail.hidden;if(!detail.hidden)lessonDetail(r,detail,function(st){Object.assign(r,st);go.disabled=!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0);tag.textContent='有教案 · 已通过 '+r.approvedQuestions+' 题 · 草稿 '+r.draftQuestions+' 题'})}});
       var go=el('button',{class:'primary',text:'开课',title:'需要教案和已通过的习题',disabled:!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0),onclick:function(){
-        api('/teacher/weekend/sessions',{json:{lessonId:r.lessonId}}).then(function(d){location.href='/v1/weekend?s='+d.id}).catch(function(e){note('error',e.message)})}});
+        createWeekendClassroom(r.lessonId)}});
       var deleteFeedback=el('div',{role:'status','aria-live':'polite'});
       var deleteBtn=el('button',{text:'删除教案',disabled:!r.lessonId,onclick:function(){
         var subject=SUBJ;
@@ -492,7 +509,7 @@ function plan(){
     box.textContent='';
     api('/teacher/weekend/lessons/'+r.lessonId).then(function(L){
       var title=el('input',{type:'text',value:L.title}),tgt=el('textarea',{class:'s'}),plan=el('textarea',{class:'s'}),ppt=el('textarea',{class:'s'}),ex=el('textarea',{class:'s'}),cl=el('textarea',{class:'s'}),source=el('textarea',{class:'s',readonly:true,'aria-label':'导入原文'});
-      tgt.value=L.coreTarget;plan.value=L.teacherPlan;ppt.value=L.ppt.join('\n');ex.value=L.examples.join('\n');cl.value=L.closureTraining;source.value=L.sourceText||'';
+      tgt.value=L.coreTarget;plan.value=L.teacherPlan;ppt.value=L.ppt.join('\n\n');ex.value=L.examples.join('\n');cl.value=L.closureTraining;source.value=L.sourceText||'';
       function ls(t){return t.value.split('\n').map(function(x){return x.trim()}).filter(Boolean)}
       var nav=el('div',{class:'row',role:'tablist','aria-label':'教案内容分区'}),editPane=el('div'),questionPane=el('div'),originalPane=el('div');
       var panes=[editPane,questionPane,originalPane],tabButtons=[];
@@ -509,12 +526,12 @@ function plan(){
       editPane.appendChild(el('div',{class:'muted',text:'本节目标'}));editPane.appendChild(tgt);
       editPane.appendChild(el('p',{class:'muted',text:'阅读文章和全部原题请切换“原文核对”；课堂题请切换“习题审核”。'}));
       editPane.appendChild(el('div',{class:'muted',text:'教学流程'}));editPane.appendChild(plan);
-      var sectionppt=el('details',{class:'card'},el('summary',{text:'PPT 页（每行一页内容）'}),ppt);sectionppt.addEventListener('toggle',function(){if(sectionppt.open)growTextarea(ppt)});editPane.appendChild(sectionppt);
+      var sectionppt=el('details',{class:'card'},el('summary',{text:'大屏讲解内容（用空行分隔页面）'}),ppt);sectionppt.addEventListener('toggle',function(){if(sectionppt.open)growTextarea(ppt)});editPane.appendChild(sectionppt);
       var sectionex=el('details',{class:'card'},el('summary',{text:'例题（每行一条）'}),ex);sectionex.addEventListener('toggle',function(){if(sectionex.open)growTextarea(ex)});editPane.appendChild(sectionex);
       var sectioncl=el('details',{class:'card'},el('summary',{text:'课后练习'}),cl);sectioncl.addEventListener('toggle',function(){if(sectioncl.open)growTextarea(cl)});editPane.appendChild(sectioncl);
       var saveStatus=el('div',{role:'status','aria-live':'polite'});
       var saveButton=el('button',{text:'保存教案',onclick:function(){
-        saveLessonEdits('/teacher/weekend/lessons/'+r.lessonId,{title:title.value.trim(),coreTarget:tgt.value,teacherPlan:plan.value,closureTraining:cl.value,examples:ls(ex),ppt:ls(ppt)},saveButton,saveStatus,[title,tgt,plan,ppt,ex,cl],function(){api('/teacher/weekend/schedule?subject='+encodeURIComponent(SUBJ)).then(function(d){var st=d.items.filter(function(x){return x.lessonId===r.lessonId})[0];if(st)refreshStatus(st)})});
+        saveLessonEdits('/teacher/weekend/lessons/'+r.lessonId,{title:title.value.trim(),coreTarget:tgt.value,teacherPlan:plan.value,closureTraining:cl.value,examples:ls(ex),ppt:ppt.value.split(/\n\s*\n/).map(function(x){return x.trim()}).filter(Boolean)},saveButton,saveStatus,[title,tgt,plan,ppt,ex,cl],function(){api('/teacher/weekend/schedule?subject='+encodeURIComponent(SUBJ)).then(function(d){var st=d.items.filter(function(x){return x.lessonId===r.lessonId})[0];if(st)refreshStatus(st)})});
       }});
       editPane.appendChild(saveButton);editPane.appendChild(saveStatus);
       var qbox=el('div'),wbox=el('div');questionPane.appendChild(el('h2',{text:'习题审核'}));questionPane.appendChild(el('p',{text:'选择题自动判分；填答案、阅读简答与写作支持文字／拍照提交，由老师批改。至少通过一道题即可进入课堂。'}));questionPane.appendChild(qbox);questionPane.appendChild(wbox);
