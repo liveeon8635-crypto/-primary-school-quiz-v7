@@ -55,6 +55,7 @@ class ResultBody(BaseModel):
 class ExplainBody(BaseModel):
     tutorId: int
     questionId: int
+    questionType: str = "choice"
 
 
 class BriefBody(BaseModel):
@@ -179,7 +180,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         return out
 
     def peer_rows(db: Any, sid: int) -> list[Any]:
-        return list(db.execute(select(peer).where(peer.c.session_id == sid).order_by(peer.c.id)).all())
+        return list(db.execute(select(peer).where(peer.c.session_id == sid, peer.c.question_id > 0).order_by(peer.c.id)).all())
 
     def student_for_scoring(db: Any, row: Any, stu: int, name: str, ans: list[Answer], tutee_ok: bool | None) -> Student:
         # history = the same student's last lessons of the same teacher and subject that came before this one
@@ -283,20 +284,41 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
             follow = ""
         return follow
 
+    def written_suggestions(db: Any, row: Any, names: dict) -> list[dict]:
+        from changying.web.weekend_written import register_written_tables
+        wt = register_written_tables(implementation)
+        submissions = db.execute(select(wt['submissions']).where(wt['submissions'].c.session_id == row.id,
+            wt['submissions'].c.school_id == row.school_id)).all()
+        asked = {(int(p.question_id), int(p.tutor_id)) for p in db.execute(select(peer).where(peer.c.session_id == row.id, peer.c.question_id < 0))}
+        items = []
+        for no, q in enumerate(db.execute(select(wt['questions']).where(wt['questions'].c.session_id == row.id,
+                wt['questions'].c.school_id == row.school_id, wt['questions'].c.teacher_id == row.teacher_id).order_by(wt['questions'].c.id)), 1):
+            mine = [{'studentId': int(a.student_id), 'name': names[int(a.student_id)][0], 'result': a.result,
+                     'asked': (-int(q.id), int(a.student_id)) in asked}
+                    for a in submissions if a.question_id == q.id and int(a.student_id) in names]
+            if mine:
+                items.append({'questionType':'written', 'questionId':q.id, 'no':no,
+                              'stem':q.stem.split('\n\n')[-1], 'submitted':mine, 'right':[], 'wrong':[]})
+        return items
+
     @router.get("/teacher/weekend/sessions/{sid}/peer-suggest")
     def suggest(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Question-first, like the interactive classroom: for each question some pupils got right and some did not, who could explain it."""
         need(u, "teacher")
         row = my_session(db, u, sid)
         names = roster(db, u, row)
+        written = written_suggestions(db, row, names)
+        written_message = "文字／照片题已收到提交，可按批改状态选择同学讲思路；待批改不等于没作答。"
         by_stu = session_answers(db, sid)
+        if written and not by_stu:
+            return {"mode":"peer", "message":written_message, "questions":written}
         if not by_stu:
             return {"mode": "none", "message": "还没有学生作答", "questions": []}
         rates = [completion_rate(a) for a in by_stu.values()]
         if all(r >= 100 for r in rates):
-            return {"mode": "challenge", "message": "全员全对：可以出一道挑战题，团队目标改成全员独立完成", "questions": []}
+            return {"mode": "peer" if written else "challenge", "message": written_message if written else "全员全对：可以出一道挑战题，团队目标改成全员独立完成", "questions": written}
         if all(r == 0 for r in rates):
-            return {"mode": "teacher", "message": "这几题大家都没做对：建议老师集中讲，只记参与", "questions": []}
+            return {"mode": "peer" if written else "teacher", "message": written_message if written else "这几题大家都没做对：建议老师集中讲，只记参与", "questions": written}
         qs = {int(q.id): q for q in db.scalars(select(TQ).where(TQ.school_id == u.school_id, TQ.lesson_id == row.lesson_id, TQ.active.is_(True)).order_by(TQ.id)).all()}
         asked = {(int(p.question_id), int(p.tutor_id)) for p in peer_rows(db, sid)}
         right: dict[int, list[dict[str, Any]]] = {}
@@ -310,7 +332,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         for no, (qid, q) in enumerate(qs.items(), start=1):
             if right.get(qid) and wrong.get(qid):
                 items.append({"questionId": qid, "no": no, "stem": q.stem, "right": [dict(w, asked=(qid, w["studentId"]) in asked) for w in right[qid]], "wrong": wrong[qid]})
-        return {"mode": "peer", "message": "选一道题，请做对的同学来讲；讲完，没做对的同学会收到一道类似的小题。", "questions": items}
+        return {"mode": "peer", "message": "选一道题，请做对的同学来讲；讲完，没做对的同学会收到一道类似的小题。", "questions": items + written}
 
     @router.post("/teacher/weekend/sessions/{sid}/explain")
     def explain(sid: int, b: ExplainBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -320,6 +342,31 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         names = roster(db, u, row)
         if b.tutorId not in names:
             raise HTTPException(400, "请选择你班级里的学生")
+        if b.questionType not in ("choice", "written"):
+            raise HTTPException(400, "请选择有效题型")
+        if b.questionType == "written":
+            from changying.web.weekend_written import register_written_tables
+            wt = register_written_tables(implementation)
+            q = db.execute(select(wt['questions']).where(wt['questions'].c.id == b.questionId,
+                wt['questions'].c.session_id == sid, wt['questions'].c.school_id == u.school_id,
+                wt['questions'].c.teacher_id == u.id)).first()
+            a = db.execute(select(wt['submissions']).where(wt['submissions'].c.session_id == sid,
+                wt['submissions'].c.question_id == b.questionId, wt['submissions'].c.student_id == b.tutorId)).first()
+            if q is None or a is None:
+                raise HTTPException(400, "请选择已提交本题答案的同学")
+            if row.status != "running":
+                raise HTTPException(409, "请在上课期间邀请同学讲解")
+            # Negative IDs namespace written invitations. These are not peer-help
+            # scoring pairs and never create follow-ups or automatic tutor points.
+            db.execute(select(sessions.c.id).where(sessions.c.id == sid).with_for_update()).first()
+            exists = db.execute(select(peer.c.id).where(peer.c.session_id == sid,
+                peer.c.question_id == -q.id, peer.c.tutor_id == b.tutorId)).first()
+            if not exists:
+                db.execute(insert(peer).values(school_id=u.school_id, session_id=sid, tutor_id=b.tutorId,
+                    tutee_id=b.tutorId, question_id=-q.id, followup_json="", created_at=datetime.utcnow()))
+                db.commit()
+            return {"followup":False, "tutees":0, "message":f"已请 {names[b.tutorId][0]} 同学讲解本题思路；大屏和学生页面会收到邀请。"}
+
         q = db.get(TQ, b.questionId)
         if q is None or int(q.school_id) != int(u.school_id) or int(q.lesson_id or 0) != int(row.lesson_id):
             raise HTTPException(404, "没有找到这道题")
@@ -352,6 +399,25 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
             if int(p.question_id) in seen:
                 continue
             seen.add(int(p.question_id))
+            if int(p.question_id) < 0:
+                from changying.web.weekend_written import register_written_tables
+                from changying.services.weekend_answers import answers_published
+                from changying.services.weekend_roster import student_in_session
+                wt = register_written_tables(implementation)
+                row = db.execute(select(sessions).where(sessions.c.id == p.session_id)).first()
+                if row is None or not student_in_session(implementation, db, row, u.id):
+                    continue
+                q = db.execute(select(wt['questions']).where(wt['questions'].c.id == -p.question_id,
+                    wt['questions'].c.session_id == p.session_id, wt['questions'].c.school_id == u.school_id)).first()
+                a = db.execute(select(wt['submissions']).where(wt['submissions'].c.session_id == p.session_id,
+                    wt['submissions'].c.question_id == -p.question_id, wt['submissions'].c.student_id == u.id)).first()
+                if q is not None and a is not None:
+                    item = {"questionType":"written", "questionId":q.id, "stem":q.stem,
+                            "answerText":a.answer_text, "submission":{"id":a.id,"hasPhoto":a.photo is not None}}
+                    if answers_published(implementation, db, row, q.id, "written"):
+                        item['reference'] = q.reference
+                    items.append(item)
+                continue
             q = db.get(TQ, int(p.question_id))
             if q is None:
                 continue
@@ -390,7 +456,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
     def result(pid: int, b: ResultBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         p = db.execute(select(peer).where(peer.c.id == pid, peer.c.school_id == u.school_id)).first()
-        if p is None:
+        if p is None or p.question_id < 0:
             raise HTTPException(404, "没有找到这条记录")
         my_session(db, u, int(p.session_id))
         db.execute(update(peer).where(peer.c.id == pid).values(followup_correct=bool(b.correct)))
@@ -453,7 +519,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
     @router.post("/student/weekend/followup")
     def answer_followup(b: FollowBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "student")
-        p = db.execute(select(peer).where(peer.c.id == b.peerHelpId, peer.c.school_id == u.school_id, peer.c.tutee_id == u.id)).first()
+        p = db.execute(select(peer).where(peer.c.id == b.peerHelpId, peer.c.school_id == u.school_id, peer.c.tutee_id == u.id, peer.c.question_id > 0)).first()
         if p is None or not p.followup_json:
             raise HTTPException(404, "没有找到这道题")
         if p.followup_correct is not None:
@@ -604,7 +670,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
                                                                                            awards.c.session_id.in_([int(x[0]) for x in sess] or [0])).group_by(awards.c.student_id)).all():
             points[int(a[0])] = int(a[1] or 0)
         tutor = {}
-        for p in db.execute(select(peer.c.tutor_id, func.count()).where(peer.c.school_id == u.school_id, peer.c.session_id.in_([int(x[0]) for x in sess] or [0])).group_by(peer.c.tutor_id)).all():
+        for p in db.execute(select(peer.c.tutor_id, func.count()).where(peer.c.school_id == u.school_id, peer.c.question_id > 0, peer.c.session_id.in_([int(x[0]) for x in sess] or [0])).group_by(peer.c.tutor_id)).all():
             tutor[int(p[0])] = int(p[1])
         return {"lessons": len(sess), "students": [{"studentId": s, "name": names.get(s, ("学生",))[0], "attended": len(t), "trend": t, "points": points.get(s, 0), "tutoredTimes": tutor.get(s, 0)}
                                                   for s, t in sorted(trend.items(), key=lambda kv: names.get(kv[0], ("学生",))[0])]}

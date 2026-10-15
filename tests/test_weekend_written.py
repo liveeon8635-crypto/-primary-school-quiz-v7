@@ -59,6 +59,22 @@ with TestClient(app) as client:
     r = client.post(url, headers=sh, data={'text':'为救乡亲牺牲自己'}, files={'photo':('answer.png',PNG,'image/png')})
     assert r.status_code == 200, r.text
     assert r.json()['result'] == 'pending'
+    candidates=client.get(base+'/peer-suggest',headers=th).json()
+    assert candidates['mode']=='peer' and candidates['questions'][0]['questionType']=='written'
+    assert candidates['questions'][0]['submitted'][0]['result']=='pending'
+    assert '还没有学生作答' not in candidates['message']
+    invite=client.post(base+'/explain',headers=th,json={'questionType':'written','questionId':qid,'tutorId':sid})
+    assert invite.status_code==200,invite.text
+    assert invite.json()['followup'] is False
+    assert client.post(base+'/explain',headers=th,json={'questionType':'written','questionId':qid,'tutorId':sid}).status_code==200
+    invitation=client.get('/student/weekend/explain',headers=sh).json()['items']
+    assert len(invitation)==1 and invitation[0]['questionType']=='written'
+    assert invitation[0]['answerText']=='为救乡亲牺牲自己' and invitation[0]['submission']['hasPhoto']
+    assert 'reference' not in invitation[0]
+    assert '请 ' in str(client.get(base+'/board',headers=th).json()['content'])
+    assert client.get(base+'/peer-help',headers=th).json()['items']==[]
+    assert client.get('/student/weekend/followup',headers=sh).json()['active'] is False
+
     assert client.post(url, headers=sh, data={'text':'stale'}).status_code == 409
     d = client.get(base+'/written', headers=th).json()
     assert d['submitted'] == 1 and d['pending'] == 1 and d['reviewed'] == 0 and d['submissionRate'] == 100
@@ -67,10 +83,13 @@ with TestClient(app) as client:
     assert client.get(photo, headers=th).content == PNG and client.get(photo, headers=sh).content == PNG
     with legacy.SessionLocal() as db:
         other = legacy.User(school_id=school_id, username='written_other', password_hash=legacy.hash_password('x'), name='同班同学', role='student', grade=3)
-        db.add(other);db.flush();db.add(legacy.ClassStudent(class_id=class_id, student_id=other.id));db.commit()
+        db.add(other);db.flush();db.add(legacy.ClassStudent(class_id=class_id, student_id=other.id));other_id=other.id;db.commit()
     oh = {'Authorization':'Bearer '+login_and_change(client,'written_other','x','Other1234')}
     assert client.get(photo, headers=oh).status_code == 404
     assert client.get(student, headers=oh).json()['questions'][0]['submission'] is None
+    assert client.get('/student/weekend/explain',headers=oh).json()['items']==[]
+    assert client.post(base+'/explain',headers=th,json={'questionType':'written','questionId':qid,'tutorId':other_id}).status_code in (400,404)
+
     assert client.post(url+'/hint', headers=sh).status_code == 409
     review = base+f"/written/{a['id']}/review"
     assert client.post(review, headers=sh, json={'revision':1,'result':'correct'}).status_code == 403
@@ -90,6 +109,9 @@ with TestClient(app) as client:
     published = client.post(base+'/publish-answers', headers=th, json={'question':1})
     assert published.status_code == 200, published.text
     assert '舍己救人' in client.get(base+'/board', headers=th).text
+    assert client.get('/student/weekend/explain',headers=sh).json()['items'][0]['reference']=='舍己救人'
+    candidates=client.get(base+'/peer-suggest',headers=th).json()['questions'][0]['submitted']
+    assert candidates[0]['result']=='correct' and candidates[0]['asked'] is True
     assert client.post(url, headers=sh, data={'text':'late','revision':4}).status_code == 409
     assert client.get(student, headers=sh).json()['questions'][0]['submission']['comment'] == '完整'
     client.post(base+'/finish', headers=th)
