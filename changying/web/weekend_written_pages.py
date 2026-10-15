@@ -19,6 +19,7 @@ var WRITTEN_RESULT={pending:'已提交，待老师批改',correct:'正确',parti
 function writtenTeacher(box){
   box.appendChild(el('h2',{text:'学生作答与批改'}));
   box.appendChild(el('p',{class:'muted',text:'学生在自己的设备上输入答案或拍照提交；这里查看本班提交并批改。教案中已审核的题目会自动带入，无需再次添加。'}));
+  var lastClass=null,loadRevision=0,currentStatus="";
   var out=el('div'),form=el('details',{},el('summary',{text:'临时补充一道题（仅开课前）'})),stem=el('textarea',{placeholder:'题目（开课前添加）',maxlength:4000}),
       ref=el('textarea',{placeholder:'参考答案／评分要点，仅老师可见',maxlength:4000}),hs=[];
   form.appendChild(stem);form.appendChild(ref);
@@ -30,8 +31,10 @@ function writtenTeacher(box){
   }});form.appendChild(add);box.appendChild(form);
   box.appendChild(el('button',{text:'刷新提交与批改进度',onclick:load}));box.appendChild(out);
   function load(){
+    var revision=++loadRevision;
     api('/teacher/weekend/sessions/'+SID+'/written').then(function(d){
-      form.hidden=d.status!=='planned';
+      if(revision!==loadRevision)return;
+      form.hidden=(currentStatus||d.status)!=='planned';
       out.textContent='';
       if(!d.questions.length)out.appendChild(el('p',{class:'muted',text:'本节没有文字／拍照作答题。需要时请返回备课页审核题目，再为班级创建课堂。'}));
       out.appendChild(el('div',{class:'notice',text:'已提交 '+d.submitted+'/'+d.total+'（'+d.submissionRate+'%） · 已批改 '+d.reviewed+' · 待批改 '+d.pending+' · 正确 '+d.correct+' · 部分正确 '+d.partial}));
@@ -50,7 +53,7 @@ function writtenTeacher(box){
       });
     }).catch(function(e){alert(e.message)});
   }load();
-  return function(status){form.hidden=status!=='planned';add.disabled=status!=='planned'};
+  return function(status,classId){currentStatus=status;form.hidden=status!=='planned';add.disabled=status!=='planned';if(lastClass!==classId){lastClass=classId;load()}};
 }
 function writtenStudent(box){
   var out=el('div'),dirty=false,busy=false,drafts={},lastSid=+(new URLSearchParams(location.search).get('s')||0);

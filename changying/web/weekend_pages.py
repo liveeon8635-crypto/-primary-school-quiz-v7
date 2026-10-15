@@ -64,7 +64,7 @@ function control(){
   function post(path,body){return api('/teacher/weekend/sessions/'+SID+'/'+path,{json:body||{}}).then(paint).catch(function(e){msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
   function paint(d){
     head.textContent='';stagesBox.textContent='';content.textContent='';remain=d.remainingSeconds;progress(progBox,d);
-    var running=d.status==='running';updateWritten(d.status);
+    var running=d.status==='running';updateWritten(d.status,d.class?d.class.id:0);
     head.appendChild(el('h2',{text:d.title}));
     head.appendChild(el('div',{class:d.class?'notice ok':'notice warn',text:d.class?'上课班级：'+d.class.name+' · '+d.class.studentCount+'人':'本节课尚未指定班级，请先选择班级'}));
     head.appendChild(el('button',{text:d.class?'更换上课班级':'选择上课班级',onclick:function(){chooseWeekendClass(function(classId){return api('/teacher/weekend/sessions/'+SID+'/class',{method:'PUT',json:{classId:classId}}).then(paint)})}}));

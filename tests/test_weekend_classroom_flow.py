@@ -87,7 +87,7 @@ with TestClient(app) as client:
     html=client.get('/v1/weekend').text
     assert '选择本次上课的班级' in html and 'createWeekendClassroom(x.lessonId)' in html
     assert '学生作答与批改' in html and '临时补充一道题（仅开课前）' in html
-    assert 'form.hidden=d.status' in html
+    assert 'currentStatus||d.status' in html
     assert 'createWeekendClassroom(r.lessonId)' in client.get('/v1/weekend-plan').text
 print('OK')
 ''')
