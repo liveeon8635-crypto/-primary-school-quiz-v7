@@ -19,7 +19,7 @@ class Element {
  set textContent(t){this._text=t;this.children=[]}get textContent(){return this._text+this.children.map(n=>n.textContent||'').join(' ')}
 }
 const rootNode=new Element('div'),back=new Element('a'),calls=[],intervals=[];
-global.document={getElementById:()=>rootNode,querySelector:()=>back,createElement:t=>new Element(t),createTextNode:t=>({textContent:t}),addEventListener:()=>{}};
+global.document={body:new Element('body'),getElementById:()=>rootNode,querySelector:()=>back,createElement:t=>new Element(t),createTextNode:t=>({textContent:t}),addEventListener:()=>{}};
 global.window={addEventListener:()=>{}};global.location={search:'?s=42'};
 global.localStorage=global.sessionStorage={getItem:k=>k==='v717Token'?'test-token':null};
 global.requestAnimationFrame=()=>{};global.setInterval=fn=>{intervals.push(fn);return intervals.length};global.clearInterval=()=>{};
@@ -64,4 +64,77 @@ with TestClient(app) as client:
     result=subprocess.run(['node','-e',harness+'\n'+scripts+'\n'+check],text=True,capture_output=True,timeout=20)
     assert result.returncode==0,result.stdout+result.stderr
 print("OK")
+''')
+
+
+def test_board_new_context_consumes_staged_login_and_popup_fallback(tmp_path):
+    helpers.run_isolated(tmp_path,helpers.COMMON+'\nharness='+repr(HARNESS)+'\n'+r'''
+import re,subprocess,json
+with TestClient(app) as client:
+    scripts={}
+    for key,url in [('control','/v1/weekend?s=42'),('board','/v1/weekend-board?s=42')]:
+        response=client.get(url)
+        assert response.status_code==200
+        scripts[key]='\n'.join(re.findall(r'<script[^>]*>(.*?)</script>',response.text,re.S))
+    check=r"""
+const vm=require('node:vm'),assert=require('node:assert/strict');
+async function scenario(blocked){
+ const net={staged:false,consumed:0,release:null},popup={opener:{},location:{href:'about:blank'}};
+ const c={console,require,URLSearchParams,net,popup,blocked};c.global=c;vm.createContext(c);
+ vm.runInContext(HARNESS+`
+ let clickHandler;
+ document.addEventListener=(event,fn)=>{if(event==='click')clickHandler=fn};
+ window.open=(url,target)=>{assert.equal(url,'about:blank');return blocked?null:popup};
+ const baseFetch=fetch;
+ fetch=(path,opts)=>{
+  if(path==='/v1/auth-handoff'){
+   assert.equal(opts.headers.Authorization,'Bearer test-token');
+   assert.equal(opts.credentials,'same-origin');
+   return new Promise(resolve=>{net.release=()=>{net.staged=true;resolve({ok:true})}});
+  }
+  return baseFetch(path,opts);
+ };
+ `+SCRIPTS.control,c);
+ await vm.runInContext('settle()',c);
+ vm.runInContext(`
+ const link=nodes(rootNode).find(n=>n.tag==='a'&&n.textContent==='打开大屏');assert(link);
+ assert.equal(link['data-cy-open-window'],'1');assert.equal(typeof clickHandler,'function');
+ link.getAttribute=k=>link[k];
+ clickHandler({target:{closest:selector=>selector==='a[data-cy-open-window]'?link:null},preventDefault(){},stopPropagation(){}});
+ assert(net.release,'Click must stage handoff');
+ assert.equal(popup.location.href,'about:blank','Do not navigate before handoff completes');
+ if(!blocked)assert.equal(popup.opener,null);
+ net.release();
+ `,c);
+ await vm.runInContext('settle()',c);
+ const href=blocked?c.location.href:popup.location.href;
+ assert.equal(href,'/v1/weekend-board?s=42');assert(!href.includes('token'));
+ const b={console,require,URLSearchParams,net};b.global=b;vm.createContext(b);
+ vm.runInContext(HARNESS+`
+ localStorage={getItem:()=>null,setItem:()=>{throw Error('Must not persist login')}};
+ const saved={};sessionStorage={getItem:k=>saved[k]||null,setItem:(k,v)=>{saved[k]=v}};
+ fetch=(path,opts)=>{
+  let data;
+  if(path==='/v1/auth-handoff/consume'){
+   assert(net.staged);net.staged=false;net.consumed++;assert.equal(opts.credentials,'same-origin');
+   data={token:'test-token',userID:7,role:'teacher'};
+  }else{
+   assert.equal(opts.headers.Authorization,'Bearer test-token');
+   if(path==='/session')data={role:'teacher'};
+   else if(path==='/teacher/weekend/sessions/42/board')data=state();
+   else throw Error(path);
+  }
+  return Promise.resolve({ok:true,json:()=>Promise.resolve(data)});
+ };
+ `+SCRIPTS.board,b);
+ await vm.runInContext('settle()',b);
+ vm.runInContext(`assert(rootNode.textContent.includes('马上开始上课'),rootNode.textContent);assert.equal(saved.v717Token,'test-token');assert.equal(intervals.length,2)`,b);
+ assert.equal(net.consumed,1);
+}
+(async()=>{await scenario(false);await scenario(true)})().catch(e=>{console.error(e);process.exitCode=1});
+"""
+    script='const HARNESS='+json.dumps(harness)+';const SCRIPTS='+json.dumps(scripts)+';\n'+check
+    result=subprocess.run(['node','-e',script],text=True,capture_output=True,timeout=20)
+    assert result.returncode==0,result.stdout+result.stderr
+print('OK')
 ''')
