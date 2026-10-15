@@ -34,6 +34,7 @@ from changying.services.lesson_written import (literal_written_questions, valid_
 AI_FEATURE = "weekend_lesson_draft"
 SUBJECTS = ("语文", "数学")
 LESSONS = 18
+REMOVED_STAGE = "weekend_removed"
 LEVELS = ("C", "C", "B", "B", "A", "A")
 
 
@@ -83,6 +84,12 @@ class WrittenDraftBody(BaseModel):
     reference: str = Field(default="", max_length=4000)
     type: str = "short_answer"
     hints: list[str] = Field(default_factory=list, max_length=3)
+
+
+class DeleteLessonBody(BaseModel):
+    subject: str
+    lessonNo: int
+    confirmed: bool = False
 
 
 class ApproveBody(BaseModel):
@@ -218,8 +225,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         return row
 
     def lesson_status(db: Any, u: Any, lesson: Any) -> dict[str, Any]:
-        approved = db.scalar(select(func.count()).select_from(TQ).where(TQ.lesson_id == lesson.id, TQ.active.is_(True))) or 0
-        draft = db.scalar(select(func.count()).select_from(TQ).where(TQ.lesson_id == lesson.id, TQ.active.is_(False))) or 0
+        approved = db.scalar(select(func.count()).select_from(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(True))) or 0
+        draft = db.scalar(select(func.count()).select_from(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False))) or 0
         templates = written_templates(db, written, u.school_id, u.id, lesson.id)
         written_approved = sum(bool(template_meta(q).get("approved")) for q in templates)
         approved += written_approved
@@ -348,7 +355,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                       closure_training=str(data.get("closureTraining") or "")[:1000], unit=(row.school_unit if row and row.school_unit else "")[:120] or "待配置单元",
                       published=False, updated_at=now)
         if b.onlyQuestions:
-            db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.active.is_(False)))
+            db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False)))
         elif lesson is None:
             lesson = Lesson(school_id=u.school_id, program_id=p.id, subject=b.subject, lesson_no=b.lessonNo, duration_min=120, **fields)
             db.add(lesson)
@@ -356,7 +363,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         else:
             for k, v in fields.items():
                 setattr(lesson, k, v)
-            db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.active.is_(False)))      # replace the earlier un-approved draft
+            db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False)))      # replace the earlier un-approved draft
         for i, q in enumerate(qs[:6]):
             db.add(TQ(school_id=u.school_id, program_id=p.id, lesson_id=lesson.id, stage="lesson", subject=b.subject, level=LEVELS[i], knowledge=q["kp"], stem=q["stem"],
                       options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False))
@@ -432,7 +439,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         else:
             for k, v in fields.items():
                 setattr(lesson, k, v)
-            db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.active.is_(False)))
+            db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False)))
         qs = _valid_questions(data.get("questions"))
         wqs = valid_written_questions(data.get("writtenQuestions"))
         literal = literal_written_questions(extracted["text"])
@@ -453,6 +460,34 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         db.commit()
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs) + len(wqs), "writtenQuestionsFound": len(wqs),
                 "sourceChars": len(extracted["text"]), "message": f"原文 {len(extracted['text'])} 字已完整保留（含阅读材料及非选择题）。已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道选择题、{len(wqs)} 道简答/写作题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
+
+    @router.delete("/teacher/weekend/lessons/{lid}")
+    def delete_lesson(lid: int, b: DeleteLessonBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        lesson = my_lesson(db, u, lid)
+        if not b.confirmed or b.subject != lesson.subject or b.lessonNo != lesson.lesson_no:
+            raise HTTPException(400, "请核对学科和课次，并确认删除教案")
+        if db.execute(select(sessions.c.id).where(sessions.c.lesson_id == lid).limit(1)).first():
+            raise HTTPException(409, "这节课已有课堂记录（含待开课），为保留课堂和学生作答，不能删除教案")
+        for model in (implementation.TeachingAdaptiveSession, implementation.TeachingAttempt, implementation.TeachingEssay):
+            if db.scalar(select(model.id).where(model.lesson_id == lid).limit(1)) is not None:
+                raise HTTPException(409, "这节课已有学生学习记录，不能删除教案")
+        other = db.execute(select(written.c.id).where(written.c.lesson_id == lid, written.c.session_id == 0,
+            written.c.teacher_id != u.id).limit(1)).first()
+        if other:
+            raise HTTPException(409, "其他老师也在使用这份教案，不能删除")
+        # Retire question IDs rather than breaking foreign-key references.
+        db.execute(update(TQ).where(TQ.lesson_id == lid).values(active=False, stage=REMOVED_STAGE))
+        db.execute(delete(written).where(written.c.lesson_id == lid, written.c.session_id == 0,
+            written.c.school_id == u.school_id, written.c.teacher_id == u.id))
+        lesson.title = f"{lesson.subject}第{lesson.lesson_no}课"
+        for field in ("core_target", "teacher_plan", "reading_plan", "writing_plan", "closure_training", "essay_review"):
+            setattr(lesson, field, "")
+        lesson.examples_json = lesson.ppt_json = "[]"
+        lesson.published = False
+        lesson.updated_at = datetime.utcnow()
+        db.commit()
+        return {"message": "教案及本课习题已清除，课次和进度表保留，可重新导入", "status": lesson_status(db, u, lesson)}
 
     @router.put("/teacher/weekend/lessons/{lid}")
     def edit_lesson(lid: int, b: LessonEditBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -485,7 +520,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         need(u, "teacher")
         lesson = my_lesson(db, u, lid)
         out = []
-        for q in db.scalars(select(TQ).where(TQ.lesson_id == lesson.id).order_by(TQ.id)).all():
+        for q in db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE).order_by(TQ.id)).all():
             try:
                 opts = json.loads(q.options_json or "[]")
             except Exception:  # noqa: BLE001
@@ -498,9 +533,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         need(u, "teacher")
         lesson = my_lesson(db, u, lid)
         if b.approve:
-            db.execute(update(TQ).where(TQ.lesson_id == lesson.id, TQ.id.in_(b.approve)).values(active=True))
+            db.execute(update(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.id.in_(b.approve)).values(active=True))
         if b.remove:
-            db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.id.in_(b.remove), TQ.active.is_(False)))   # an approved question is never deleted here
+            db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.id.in_(b.remove), TQ.active.is_(False)))   # an approved question is never deleted here
         db.commit()
         return lesson_status(db, u, lesson)
 
