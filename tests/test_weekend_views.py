@@ -405,6 +405,8 @@ with TestClient(app) as client:
 
     s = client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()
     assert len(s["items"]) == 18
+    # the school's seeded template lessons are blank: they must not show up as "has a plan"
+    assert s["items"][0]["lessonId"] is not None and s["items"][0]["hasPlan"] is False
 
     # save the school's progress, then the school postpones everything from lesson 3 by two weeks
     rows = [{"lessonNo": 1, "schoolWeek": 1, "schoolUnit": "分数的意义", "plannedDate": "2026-09-05"},

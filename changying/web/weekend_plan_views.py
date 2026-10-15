@@ -109,6 +109,21 @@ def _lines(items: Any, limit: int = 12, size: int = 300) -> list[str]:
     return out[:limit]
 
 
+PLACEHOLDER_PREFIX = "请依据学校"      # the school's seeded template lessons carry this text: they are blank, not a plan
+
+
+def has_real_plan(lesson: Any) -> bool:
+    """A lesson counts as prepared only when the teacher (or AI) wrote real content: a real target or examples.
+    The seeded template (generic timeline + "请依据学校…填写") does not count."""
+    target = (lesson.core_target or "").strip()
+    if target and not target.startswith(PLACEHOLDER_PREFIX):
+        return True
+    try:
+        return bool(_lines(json.loads(lesson.examples_json or "[]")))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _valid_date(text: str) -> str:
     try:
         return date.fromisoformat(text).isoformat() if text else ""
@@ -164,7 +179,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         approved = db.scalar(select(func.count()).select_from(TQ).where(TQ.lesson_id == lesson.id, TQ.active.is_(True))) or 0
         draft = db.scalar(select(func.count()).select_from(TQ).where(TQ.lesson_id == lesson.id, TQ.active.is_(False))) or 0
         ran = db.scalar(select(func.count()).select_from(sessions).where(sessions.c.lesson_id == lesson.id, sessions.c.teacher_id == u.id, sessions.c.status != "planned")) or 0
-        return {"lessonId": lesson.id, "title": lesson.title, "hasPlan": bool((lesson.teacher_plan or "").strip() or (lesson.core_target or "").strip()),
+        return {"lessonId": lesson.id, "title": lesson.title, "hasPlan": has_real_plan(lesson),
                 "approvedQuestions": int(approved), "draftQuestions": int(draft), "taught": bool(ran)}
 
     @router.get("/v1/weekend-plan", include_in_schema=False)
@@ -255,7 +270,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == b.subject, Lesson.lesson_no == b.lessonNo))
         if b.onlyQuestions and lesson is None:
             raise HTTPException(404, "这节课还没有教案，请先用 AI 备课草稿")
-        if lesson is not None and not b.onlyQuestions and not b.force and ((lesson.teacher_plan or "").strip() or (lesson.core_target or "").strip()):
+        if lesson is not None and not b.onlyQuestions and not b.force and has_real_plan(lesson):
             raise HTTPException(409, "这节课已经有教案了。要让 AI 重写请选择覆盖。")
         row = db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == b.subject, sched.c.lesson_no == b.lessonNo)).first()
         weak = weak_knowledge(db, u, b.subject)

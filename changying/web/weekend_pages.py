@@ -436,7 +436,7 @@ function plan(){
         api('/teacher/weekend/lessons/draft',{json:{subject:SUBJ,lessonNo:r.lessonNo,onlyQuestions:true}}).then(function(){note('ok','习题草稿已生成，展开“审改”逐题通过后才会给学生。');load()}).catch(function(e){note('error',e.message);qBtn.disabled=false});
       }}):null;
       var open=el('button',{text:'审改',disabled:!r.lessonId,onclick:function(){detail.hidden=!detail.hidden;if(!detail.hidden)lessonDetail(r,detail)}});
-      var go=el('button',{class:'primary',text:'开课',disabled:!r.lessonId,onclick:function(){
+      var go=el('button',{class:'primary',text:'开课',title:'需要教案和已通过的习题',disabled:!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0),onclick:function(){
         api('/teacher/weekend/sessions',{json:{lessonId:r.lessonId}}).then(function(d){location.href='/v1/weekend?s='+d.id}).catch(function(e){note('error',e.message)})}});
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
         el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),draftBtn,qBtn,open,go),detail));
