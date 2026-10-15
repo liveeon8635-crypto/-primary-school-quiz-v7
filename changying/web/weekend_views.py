@@ -182,6 +182,13 @@ def install_weekend_views(implementation: Any) -> APIRouter:
             # 随堂练习: the big screen shows the question stems (never options or answers) next to the instructions.
             TQ = implementation.TeachingQuestion
             stems = db.scalars(select(TQ.stem).where(TQ.school_id == row.school_id, TQ.lesson_id == row.lesson_id, TQ.active.is_(True)).order_by(TQ.id).limit(12)).all()
+            from changying.web.weekend_written import register_written_tables
+            written_q = register_written_tables(implementation)["questions"]
+            written_stems = db.scalars(select(written_q.c.stem).where(written_q.c.session_id == row.id,
+                written_q.c.school_id == row.school_id, written_q.c.teacher_id == row.teacher_id).order_by(written_q.c.id)).all()
+            # Reading material remains on the pupil's question card; the board
+            # shows concise question lines and never teacher references.
+            stems = list(stems) + [stem.split("\n")[-1] for stem in written_stems]
             out["content"] = out["content"] + [f"{i}. {t}" for i, t in enumerate(stems, start=1)]
         if board:
             if row.covered:
@@ -217,6 +224,9 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         sid = int(db.execute(insert(sessions).values(
             school_id=u.school_id, teacher_id=u.id, lesson_id=b.lessonId, status="planned", current_stage=0, covered=False,
             title=f"{lesson['subject']} 第{lesson['lesson_no']}课 {lesson['title']}"[:220], created_at=datetime.utcnow())).inserted_primary_key[0])
+        from changying.services.lesson_written import snapshot_written_questions
+        from changying.web.weekend_written import register_written_tables
+        snapshot_written_questions(db, register_written_tables(implementation)["questions"], u.school_id, u.id, b.lessonId, sid)
         db.commit()
         return state(db, mine(db, u, sid))
 
@@ -352,4 +362,3 @@ def install_weekend_views(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_views", "register_weekend_tables"]
-
