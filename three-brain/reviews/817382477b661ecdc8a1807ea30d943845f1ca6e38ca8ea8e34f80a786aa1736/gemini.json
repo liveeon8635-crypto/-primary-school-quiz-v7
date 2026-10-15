@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:817382477b661ecdc8a1807ea30d943845f1ca6e38ca8ea8e34f80a786aa1736",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "2d24613bf199cf0c9926ea371f14c4ee89db5614",
+  "headSha": "c8818b67a837132046b1efc68ec64cba94f08f72",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：改动为周末课控制页面的“打开大屏”链接添加了免登跨页传递属性，并引入对应的前端初始化脚本，成功解决了新标签页中登录凭证丢失的问题，且测试和 CI 均已通过。",
+      "evidenceRefs": [
+        "file:changying/web/weekend_pages.py#L5-L66",
+        "file:changying/web/weekend_pages.py#L597-L600",
+        "file:tests/test_weekend_control_boot.py#L65-L138",
+        "run:116372873457",
+        "run:116372873761"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:ab22abdbbbccb242f4e48a00e9cc4408d4d6567f767a95acf22cb88c2745d32f"
+}
