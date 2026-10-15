@@ -220,8 +220,9 @@ with TestClient(app) as client:
         db.commit()
 
     sug = client.get(base + "/peer-suggest", headers=th).json()
-    assert sug["mode"] == "peer" and sug["tutors"][0]["studentId"] == strong_id and sug["tutees"][0]["studentId"] == sid
-    assert sug["tutees"][0]["wrong"][0]["questionId"] == qid
+    assert sug["mode"] == "peer" and len(sug["questions"]) == 1
+    sq = sug["questions"][0]
+    assert sq["questionId"] == qid and [x["studentId"] for x in sq["right"]] == [strong_id] and [x["studentId"] for x in sq["wrong"]] == [sid]
     assert client.get(base + "/peer-suggest", headers=sh).status_code == 403          # students never see who is "strong"
 
     # pairing rules
@@ -570,6 +571,72 @@ with TestClient(app) as client:
     client.post(base + "/next", headers=th)                                                       # stage 4: no deck
     assert "deck" not in client.get(base + "/board", headers=th).json()
     assert client.post(base + "/slide", headers=th, json={"delta": 1}).status_code == 409
+    print("OK")
+''',
+    )
+
+
+def test_ask_a_pupil_to_explain_big_screen_and_student_card(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+from datetime import datetime
+from sqlalchemy import insert
+FOLLOW = json.dumps({"stem": "类似小题？", "options": ["x", "y"], "correctIndex": 1, "explanation": "e"}, ensure_ascii=False)
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=93, title="讲解", core_target="目标")
+        db.add(l); db.flush()
+        q = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=l.id, stage="lesson", subject="数学", level="C", knowledge="k",
+                                    stem="4/8 约分？", options_json=json.dumps(["1/2", "1/4"]), correct_index=0, explanation="同除 4")
+        db.add(q); db.flush(); qid = q.id
+        teacher_id = db.scalar(select(legacy.User.id).where(legacy.User.username == "teacher1"))
+        cls = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id)); cls.teacher_id = teacher_id
+        link = db.scalar(select(legacy.ClassStudent).where(legacy.ClassStudent.student_id == sid))
+        if link is None: db.add(legacy.ClassStudent(class_id=cls.id, student_id=sid))
+        else: link.class_id = cls.id
+        ids = {}
+        for name, uname in (("小强", "e_strong"), ("小乙", "e_b")):
+            u2 = legacy.User(school_id=school_id, username=uname, password_hash=legacy.hash_password("x"), name=name, role="student", grade=3)
+            db.add(u2); db.flush(); db.add(legacy.ClassStudent(class_id=cls.id, student_id=u2.id)); ids[name] = u2.id
+        s_name = db.get(legacy.User, sid); s_name.name = "小明"
+        db.commit(); lid = l.id
+    s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    base = f"/teacher/weekend/sessions/{s}"
+    client.post(base + "/start", headers=th); client.post(base + "/goto", headers=th, json={"stage": 5})
+    with legacy.SessionLocal() as db:
+        t = legacy.Base.metadata.tables["weekend_answers"]
+        for stu, sel, ok in ((ids["小强"], 0, True), (sid, 1, False), (ids["小乙"], 1, False)):
+            db.execute(insert(t).values(school_id=school_id, session_id=s, student_id=stu, question_id=qid, selected=sel, correct=ok, max_hint=0, created_at=datetime.utcnow()))
+        db.commit()
+
+    # question-first: the pupils who got it right are the ones that can be asked; no "strong/weak" labels, no rates
+    sug = client.get(base + "/peer-suggest", headers=th).json()
+    q0 = sug["questions"][0]
+    assert [x["name"] for x in q0["right"]] == ["小强"] and sorted(x["name"] for x in q0["wrong"]) == ["小乙", "小明"]
+    assert "completionRate" not in json.dumps(sug)
+
+    # must be someone who got it right; a pupil who got it wrong cannot be asked
+    assert client.post(base + "/explain", headers=th, json={"tutorId": sid, "questionId": qid}).status_code == 400
+    replies.append(FOLLOW)
+    r = client.post(base + "/explain", headers=th, json={"tutorId": ids["小强"], "questionId": qid}).json()
+    assert r["tutees"] == 2 and r["followup"] is True and "小强" in r["message"] and len([c for c in calls if c["feature"] == "weekend_followup"]) == 1   # one AI call for both pupils
+    assert client.post(base + "/explain", headers=th, json={"tutorId": ids["小强"], "questionId": qid}).status_code == 409
+
+    # the big screen names the pupil asked to explain and the question, never the ones who got it wrong
+    board = client.get(base + "/board", headers=th).json()["content"]
+    assert "请 小强 同学来讲：4/8 约分？" in board and not any("小明" in x or "小乙" in x for x in board)
+
+    # the asked pupil's page shows the question, the right answer and the explanation; classmates see nothing
+    assert client.get("/student/weekend/explain", headers=sh).json() == {"items": []}             # 小明 was not asked
+    strong_h = {"Authorization": "Bearer " + login_and_change(client, "e_strong", "x", "Strong1234")}
+    card = client.get("/student/weekend/explain", headers=strong_h).json()["items"]
+    assert len(card) == 1 and card[0]["stem"] == "4/8 约分？" and card[0]["correctIndex"] == 0 and card[0]["explanation"] == "同除 4"
+    # both pupils who got it wrong get the same follow-up
+    assert client.get("/student/weekend/followup", headers=sh).json()["active"] is True
     print("OK")
 ''',
     )

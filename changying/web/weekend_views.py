@@ -161,6 +161,23 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                 idx = max(0, min(idx, len(deck) - 1))
                 out["deck"] = {"total": len(deck), "index": idx}
                 out["content"] = [deck[idx]]
+        if no == 5 and row.status == "running":
+            # 练习复盘: name the pupil asked to explain, and the question — never the pupils who got it wrong.
+            peer_t = implementation.Base.metadata.tables.get("weekend_peer_help")
+            if peer_t is not None:
+                User, TQ = implementation.User, implementation.TeachingQuestion
+                seen: set[tuple[int, int]] = set()
+                lines = []
+                for p in db.execute(select(peer_t.c.tutor_id, peer_t.c.question_id).where(peer_t.c.session_id == row.id).order_by(peer_t.c.id)).all():
+                    key = (int(p.tutor_id), int(p.question_id))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    who = db.scalar(select(User.name).where(User.id == p.tutor_id))
+                    stem = db.scalar(select(TQ.stem).where(TQ.id == p.question_id))
+                    if who and stem:
+                        lines.append(f"请 {who} 同学来讲：{stem}")
+                out["content"] = out["content"] + lines
         if no == 4 and row.status == "running":
             # 随堂练习: the big screen shows the question stems (never options or answers) next to the instructions.
             TQ = implementation.TeachingQuestion
