@@ -72,14 +72,14 @@ def test_agent_and_build_identity():
 def test_missing_browser_apis_and_login_submitter():
     script = r'''
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-const listeners={};
+const listeners={},windowListeners={};let storedToken='A',reloads=0;
 function Element(){}
-const context=vm.createContext({console, setTimeout, Element, document:{
+const context=vm.createContext({console, setTimeout, Element, windowListeners, location:{reload(){reloads++}}, localStorage:{getItem:()=>storedToken},sessionStorage:{getItem:()=>null},document:{
   addEventListener:(type,fn)=>listeners[type]=fn,
   createElement:()=>({showModal:()=>{}}),
   getElementById:()=>null
 }, Blob, crypto:require('crypto').webcrypto});
-vm.runInContext(`window=this; window.addEventListener=()=>{};
+vm.runInContext(`window=this; window.addEventListener=(name,fn)=>windowListeners[name]=fn;
 Object.fromEntries=undefined;Object.hasOwn=undefined;String.prototype.replaceAll=undefined;
 String.prototype.matchAll=undefined;Array.prototype.at=undefined;String.prototype.at=undefined;
 Array.prototype.flat=undefined;Array.prototype.flatMap=undefined;Promise.allSettled=undefined;
@@ -93,6 +93,9 @@ if(Array.from('aba'.matchAll(/a/g)).length!==2)throw Error('matchAll');
 const a={x:1};a.self=a;const b=structuredClone(a);if(b===a||b.self!==b)throw Error('clone');
 Promise.allSettled([Promise.resolve(1),Promise.reject('x')]).then(r=>{if(r[1].status!=='rejected')throw Error('settled')});
 `,context);
+windowListeners.pagehide();windowListeners.pageshow({persisted:true});assert.equal(reloads,0);
+storedToken='B';windowListeners.pageshow({persisted:true});assert.equal(reloads,1);
+windowListeners.pagehide();windowListeners.pageshow({persisted:true});assert.equal(reloads,1);
 const element={firstChild:{},removeChild(){this.firstChild=null},appendChild(node){this.node=node}};
 Element.prototype.replaceChildren.call(element,{name:'new'});assert.equal(element.node.name,'new');assert.equal(element.firstChild,null);
 const button={type:'submit'},form={querySelector:()=>button};button.form=form;

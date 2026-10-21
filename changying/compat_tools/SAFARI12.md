@@ -19,7 +19,9 @@ No production npm dependency, runtime compiler or external compatibility CDN.
 Feature-checked shims address current API use. CSS fallbacks cover viewport sizing,
 unsupported sizing functions/inset, flex spacing and modal scrolling. Photo crop
 and assistant dragging use touch events when Pointer Events are missing. Account,
-JWT, assignment APIs, schema and data ownership are unchanged.
+JWT, assignment APIs, schema and data ownership are unchanged. Restored history pages
+reload only if stored account tokens changed while the page was suspended, to avoid
+reusing a previous student’s captured in-memory token.
 
 ## Regeneration and regression
 

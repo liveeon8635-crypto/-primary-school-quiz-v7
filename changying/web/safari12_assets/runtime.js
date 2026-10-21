@@ -62,6 +62,16 @@
     while (this.firstChild) this.removeChild(this.firstChild);
     for (var i=0;i<arguments.length;i++) this.appendChild(typeof arguments[i] === 'string' ? document.createTextNode(arguments[i]) : arguments[i]);
   });
+  /* A restored history page must not retain another student's captured token. */
+  function storedAuth() {
+    try { return [localStorage.getItem('v717Token'), sessionStorage.getItem('v717Token'), localStorage.getItem('v6Token'), sessionStorage.getItem('v6Token'), localStorage.getItem('v717Remember')].join('\n'); }
+    catch (_) { return ''; }
+  }
+  var suspendedAuth = storedAuth();
+  window.addEventListener('pagehide', function () { suspendedAuth = storedAuth(); });
+  window.addEventListener('pageshow', function (event) {
+    if (event.persisted && suspendedAuth !== storedAuth()) window.location.reload();
+  });
   /* Safari 12 has no SubmitEvent.submitter. Keep the existing login handler. */
   document.addEventListener('click', function (event) {
     var target = event.target.closest && event.target.closest('button,input[type=submit]');
