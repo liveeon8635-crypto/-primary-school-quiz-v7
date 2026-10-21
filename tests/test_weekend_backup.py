@@ -196,8 +196,8 @@ function el(tag,attrs,...children){const e=new E(tag,attrs);children.forEach(c=>
 function all(e,tag){return e.children.flatMap(c=>c instanceof E?[(c.tag===tag?c:null),...all(c,tag)].filter(Boolean):[])}
 var SID=1,TOKEN='t',yes=true,confirm=()=>yes;
 var data={version:'aaaaaaaaaaaaaaaa',status:'finished',settled:false,students:[{id:1,name:'甲'},{id:2,name:'乙'}],questions:[{kind:'written',id:101,stem:'原题101'},{kind:'choice',id:201,stem:'原题201',options:['a','b']}],recorded:[]};
-var posts=[];
-function api(url,opts){if(opts&&opts.json){posts.push(opts.json);data.questions.reverse();data.recorded=[{studentId:2,kind:'written',questionId:101}];return Promise.resolve({message:'已保存'})}return Promise.resolve(data)}
+var posts=[],failNext=false;
+function api(url,opts){if(opts&&opts.json){if(failNext)return Promise.reject(Error('纸质包版本冲突'));posts.push(opts.json);data.questions.reverse();data.recorded=[{studentId:2,kind:'written',questionId:101}];return Promise.resolve({message:'已保存'})}return Promise.resolve(data)}
 async function settle(){for(let i=0;i<20;i++)await Promise.resolve()}
 ''' + BACKUP_JS + r'''
 (async()=>{
@@ -210,6 +210,8 @@ async function settle(){for(let i=0;i<20;i++)await Promise.resolve()}
  text.value='乙的答案';const save=all(root,'button').find(x=>x.attrs.text==='核对并补入原课堂');save.onclick();await settle();
  assert.equal(posts.length,1);assert.equal(posts[0].studentId,2);assert.equal(posts[0].questionId,101);assert.equal(posts[0].text,'乙的答案');
  assert.equal(question.value,'written:101');assert.equal(text.value,'');assert(save.disabled);
+ question.value='choice:201';question.onchange();const choice=selects[2];choice.value='1';failNext=true;save.onclick();await settle();
+ assert(all(root,'p').some(x=>x.textContent==='纸质包版本冲突'));assert.equal(choice.value,'1');assert(!save.disabled);
  console.log('OK');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
