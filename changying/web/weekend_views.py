@@ -458,7 +458,10 @@ def install_weekend_views(implementation: Any) -> APIRouter:
     app.include_router(router)
     app.state.weekend_installed = True
     app.state.weekend_router = router
+    from changying.web.weekend_backup import install_weekend_backup
+    install_weekend_backup(implementation)
     return router
 
 
 __all__ = ["install_weekend_views", "register_weekend_tables"]
+

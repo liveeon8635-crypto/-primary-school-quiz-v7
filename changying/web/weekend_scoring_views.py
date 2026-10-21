@@ -26,6 +26,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Table, Text, UniqueConstraint, func, insert, select, update
 
 from fastapi.responses import HTMLResponse
@@ -175,6 +176,20 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
             if bound is not None and int(a.student_id) not in members:
                 continue
             done.setdefault(int(a.student_id), {})[int(a.question_id)] = Answer(bool(a.correct), int(a.max_hint), knowledge.get(int(a.question_id), ""))
+        from changying.web.weekend_written import register_written_tables
+        wt = register_written_tables(implementation)
+        written = db.execute(select(wt['questions']).where(wt['questions'].c.session_id == sid,
+            wt['questions'].c.school_id == sess.school_id)).all()
+        target = (db.get(Lesson, sess.lesson_id).core_target or '')
+        knowledge.update({-int(q.id): target for q in written})
+        hints = {(int(a.student_id), int(a.question_id)):int(a.used) for a in db.execute(
+            select(wt['hint_log'].c.student_id, wt['hint_log'].c.question_id, func.max(wt['hint_log'].c.level).label('used'))
+            .where(wt['hint_log'].c.session_id == sid).group_by(wt['hint_log'].c.student_id,wt['hint_log'].c.question_id))}
+        for a in db.execute(select(wt['submissions']).where(wt['submissions'].c.session_id == sid,
+                wt['submissions'].c.school_id == sess.school_id, wt['submissions'].c.result != 'pending')):
+            if bound is not None and int(a.student_id) not in members: continue
+            done.setdefault(int(a.student_id), {})[-int(a.question_id)] = Answer(a.result == 'correct',
+                hints.get((int(a.student_id),int(a.question_id)),0),target)
         for stu, mine in done.items():
             out[stu] = [mine.get(qid) or Answer(False, 0, knowledge[qid]) for qid in knowledge] or list(mine.values())
         return out
@@ -480,6 +495,13 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
     def settle(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         row = my_session(db, u, sid)
+        db.execute(select(sessions.c.id).where(sessions.c.id == sid).with_for_update()).first()
+        from changying.web.weekend_written import register_written_tables
+        written = register_written_tables(implementation)['submissions']
+        members = roster(db, u, row)
+        if db.scalar(select(func.count()).select_from(written).where(written.c.session_id == sid,
+                written.c.student_id.in_(list(members)), written.c.result == 'pending')):
+            raise HTTPException(409, '还有文字／照片答案待批改，请核对纸质补录后再结算')
         if db.scalar(select(func.count()).select_from(awards).where(awards.c.session_id == sid)):
             raise HTTPException(409, "这节课已经结算过了")
         result = compute(db, u, row)
@@ -487,19 +509,23 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
             raise HTTPException(400, "还没有学生作答，没有可结算的内容")
         names = roster(db, u, row)
         now = datetime.utcnow()
-        for it in result["items"]:
-            for kind, (pts, basis) in it["parts"].items():
-                ledger_id = None
-                if pts > 0:
-                    led = PointLedger(school_id=u.school_id, student_id=it["studentId"], class_id=names.get(it["studentId"], ("", None))[1], actor_id=u.id,
-                                      category=CATEGORY[kind], points=int(pts), reason=REASON[kind], note=f"周末课 {row.title}", source=SOURCE, related_id=sid, created_at=now)
-                    db.add(led)
-                    db.flush()
-                    ledger_id = int(led.id)
-                db.execute(insert(awards).values(school_id=u.school_id, session_id=sid, student_id=it["studentId"], kind=kind, points=int(pts),
-                                                  basis_json=json.dumps(basis, ensure_ascii=False), ledger_id=ledger_id, created_at=now))
-        db.execute(insert(metrics).values(school_id=u.school_id, session_id=sid, pre_rate=result["preRate"], post_rate=result["postRate"], created_at=now))
-        db.commit()
+        try:
+            for it in result["items"]:
+                for kind, (pts, basis) in it["parts"].items():
+                    ledger_id = None
+                    if pts > 0:
+                        led = PointLedger(school_id=u.school_id, student_id=it["studentId"], class_id=names.get(it["studentId"], ("", None))[1], actor_id=u.id,
+                                          category=CATEGORY[kind], points=int(pts), reason=REASON[kind], note=f"周末课 {row.title}", source=SOURCE, related_id=sid, created_at=now)
+                        db.add(led)
+                        db.flush()
+                        ledger_id = int(led.id)
+                    db.execute(insert(awards).values(school_id=u.school_id, session_id=sid, student_id=it["studentId"], kind=kind, points=int(pts),
+                                                      basis_json=json.dumps(basis, ensure_ascii=False), ledger_id=ledger_id, created_at=now))
+            db.execute(insert(metrics).values(school_id=u.school_id, session_id=sid, pre_rate=result["preRate"], post_rate=result["postRate"], created_at=now))
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(409, "原课堂已被另一请求结算，请刷新核对；未重复发分")
         return public(compute(db, u, row))
 
     # ------------------------------------------------------------------ student
@@ -548,6 +574,14 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         for (k,) in rows:
             if k and k not in out:
                 out.append(str(k))
+        from changying.web.weekend_written import register_written_tables
+        written = register_written_tables(implementation)['submissions']
+        if db.scalar(select(func.count()).select_from(written).where(written.c.session_id == sid,
+                written.c.student_id == stu, written.c.result.in_(['partial', 'revise']))):
+            session = db.execute(select(sessions).where(sessions.c.id == sid)).first()
+            lesson = db.get(Lesson, session.lesson_id) if session else None
+            if lesson and lesson.core_target and lesson.core_target not in out:
+                out.append(lesson.core_target)
         return out
 
     def student_line(db: Any, row: Any, stu: int, ans: list[Any], points: dict[str, int], helped: int) -> dict[str, Any]:
@@ -682,4 +716,5 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_scoring", "register_scoring_tables"]
+
 

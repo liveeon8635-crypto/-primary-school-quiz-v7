@@ -5,6 +5,7 @@ from __future__ import annotations
 from changying.web.classroom_window_handoff import OPEN_WINDOW_JS, PAGE_AUTH_JS
 from changying.web.homework_assistant_pages import PAGE_CSS
 from changying.web.weekend_written_pages import WRITTEN_JS
+from changying.web.weekend_backup_pages import BACKUP_JS
 
 COMMON_JS = r"""
 __PAGE_AUTH__
@@ -48,7 +49,7 @@ function boot(run){
 }
 """
 
-CONTROL_JS = r"""
+CONTROL_JS = BACKUP_JS + r"""
 var SID=+(new URLSearchParams(location.search).get('s')||0),timer=null,remain=null,tick=null;
 function control(){
   root.textContent='';
@@ -61,6 +62,7 @@ function control(){
   var peerDetails=el('details',{},el('summary',{text:'请同学讲解（复盘时使用）'}));peerBox.appendChild(peerDetails);peerCard(peerDetails);
   var scoreDetails=el('details',{},el('summary',{text:'课后积分结算'}));scoreBox.appendChild(scoreDetails);scoreCard(scoreDetails);
   var writtenBox=el('div',{class:'card'});root.appendChild(writtenBox);var updateWritten=writtenTeacher(writtenBox);
+  var backupBox=el('div',{class:'card'});root.appendChild(backupBox);backupTeacher(backupBox);
   function post(path,body){return api('/teacher/weekend/sessions/'+SID+'/'+path,{json:body||{}}).then(paint).catch(function(e){msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
   function paint(d){
     head.textContent='';stagesBox.textContent='';content.textContent='';remain=d.remainingSeconds;progress(progBox,d);
@@ -641,3 +643,4 @@ def board_page_html() -> str:
 
 
 __all__ = ["board_page_html", "brief_page_html", "control_page_html", "plan_page_html", "practice_page_html"]
+
