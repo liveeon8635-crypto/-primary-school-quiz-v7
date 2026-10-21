@@ -11,9 +11,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 
-def collect():
-    os.environ['HOMEWORK_ASSISTANT'] = '1'
-    os.environ['CLASSROOM_QUICK_LOGIN'] = '1'
+def collect_variant():
+    # Startup feature flags must be set before app import in this fresh process.
     from app import app
     from changying.web.safari12 import SCRIPTS, script_key, normalize_script
     paths = {'/v1/homework','/join','/v1/classroom-board/1','/v1/classroom-join-code/1','/','/classic?legacy=1','/classic?legacy=1&unified=1&page=syncLearning','/classic?legacy=1&embedded=1'}
@@ -30,23 +29,40 @@ def collect():
             paths.add(path)
     sources, coverage = {}, {}
     with TestClient(app) as client:
-        for homework, quick_login in [('0','0'),('0','1'),('1','0'),('1','1')]:
-            os.environ['HOMEWORK_ASSISTANT'] = homework
-            os.environ['CLASSROOM_QUICK_LOGIN'] = quick_login
-            for path in sorted(paths):
-                response = client.get(path, headers={'User-Agent':'Safari12-build-modern'}, follow_redirects=True)
-                if response.status_code != 200 or 'text/html' not in response.headers.get('content-type',''):continue
-                keys = coverage.setdefault(path, [])
-                for match in SCRIPTS.finditer(response.text):
-                    tag, source, _ = match.groups()
-                    if 'src=' in tag or 'application/json' in tag or 'ld+json' in tag:continue
-                    key = script_key(source);sources[key]=normalize_script(source)[0]
-                    if key not in keys: keys.append(key)
+        for path in sorted(paths):
+            response = client.get(path, headers={'User-Agent':'Safari12-build-modern'}, follow_redirects=True)
+            if response.status_code != 200 or 'text/html' not in response.headers.get('content-type',''):continue
+            keys = coverage.setdefault(path, [])
+            for match in SCRIPTS.finditer(response.text):
+                tag, source, _ = match.groups()
+                if 'src=' in tag or 'application/json' in tag or 'ld+json' in tag:continue
+                key = script_key(source);sources[key]=normalize_script(source)[0]
+                if key not in keys: keys.append(key)
+    return sources, coverage
+
+
+def collect():
+    sources, coverage = {}, {}
+    for homework, quick_login in [('0','0'),('0','1'),('1','0'),('1','1')]:
+        env = dict(os.environ, HOMEWORK_ASSISTANT=homework, CLASSROOM_QUICK_LOGIN=quick_login)
+        result = subprocess.run(
+            [sys.executable, '-m', 'changying.compat_tools.build_safari12', '--collect'],
+            env=env, text=True, capture_output=True, check=True, timeout=90,
+        )
+        variant = json.loads(result.stdout)
+        sources.update(variant['scripts'])
+        for path, keys in variant['routes'].items():
+            merged = coverage.setdefault(path, [])
+            merged.extend(key for key in keys if key not in merged)
     return sources, coverage
 
 
 if __name__ == '__main__':
     if not os.environ.get('DATABASE_URL','').startswith('sqlite:'):
         raise SystemExit('Use an isolated SQLite DATABASE_URL')
+    if sys.argv[1] == '--collect':
+        sources, coverage = collect_variant()
+        print(json.dumps({'scripts': sources, 'routes': coverage}))
+        raise SystemExit(0)
     sources, coverage = collect()
     subprocess.run(['node',str(Path(__file__).with_name('compile_safari12.cjs')),sys.argv[1]],input=json.dumps({'scripts':sources,'routes':coverage}),text=True,check=True)

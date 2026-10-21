@@ -13,7 +13,7 @@ IPAD = 'Mozilla/5.0 (iPad; CPU OS 12_5_8 like Mac OS X) AppleWebKit/605.1.15 Ver
 def isolated(name, tmp_path):
     if os.environ.get('CY_SAFARI_TEST_CHILD'):
         return False
-    env = dict(os.environ, CY_SAFARI_TEST_CHILD='1', HOMEWORK_ASSISTANT='1', CLASSROOM_QUICK_LOGIN='1', DATABASE_URL='sqlite:///'+str(tmp_path/'safari.sqlite3'))
+    env = dict(os.environ, CY_SAFARI_TEST_CHILD='1', HOMEWORK_ASSISTANT='1', CLASSROOM_QUICK_LOGIN='0' if 'disabled' in name else '1', DATABASE_URL='sqlite:///'+str(tmp_path/'safari.sqlite3'))
     code = "import runpy; m=runpy.run_path('tests/test_safari12_compat.py'); m[%r](None)" % name
     result = subprocess.run([sys.executable, '-c', code], env=env, text=True, capture_output=True, timeout=120)
     assert result.returncode == 0, result.stdout+result.stderr
@@ -159,3 +159,15 @@ function Image(){this.naturalWidth=600;this.naturalHeight=600;Object.definePrope
     result = subprocess.run(['node','-e',PHOTO_CROP_JS+harness], text=True, capture_output=True, timeout=30)
     assert result.returncode == 0, result.stdout+result.stderr
     assert 'OK' in result.stdout
+
+
+def test_disabled_quick_login_startup_serves_safari(tmp_path):
+    if isolated('test_disabled_quick_login_startup_serves_safari', tmp_path): return
+    from app import app
+    from fastapi.testclient import TestClient
+    with TestClient(app) as client:
+        for path in ['/', '/v1', '/v1/student']:
+            response = client.get(path, headers={'User-Agent': IPAD})
+            assert response.status_code == 200, response.text
+            assert 'cy-safari12-runtime' in response.text
+            assert response.headers['x-changying-safari12'] == 'compiled-v1'
