@@ -12,6 +12,7 @@ import hashlib
 from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
+from changying.web.safari12 import safari12_response
 
 # Pages whose contract (and tests) require a strict ``no-store``.
 _STRICT_NO_STORE = frozenset({"/v1/feedback"})
@@ -41,7 +42,7 @@ def install_v1_html_etag(app: FastAPI) -> None:
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        response = await call_next(request)
+        response = await safari12_response(request, await call_next(request))
         if request.method != "GET" or not _is_shell_path(request.url.path):
             return response
         if response.status_code != 200 or "text/html" not in response.headers.get("content-type", ""):
@@ -52,9 +53,12 @@ def install_v1_html_etag(app: FastAPI) -> None:
             return response
 
         chunks: list[bytes] = []
-        async for chunk in response.body_iterator:  # type: ignore[attr-defined]
-            chunks.append(chunk.encode("utf-8") if isinstance(chunk, str) else chunk)
-        body = b"".join(chunks)
+        if hasattr(response, "body_iterator"):
+            async for chunk in response.body_iterator:
+                chunks.append(chunk.encode("utf-8") if isinstance(chunk, str) else chunk)
+            body = b"".join(chunks)
+        else:
+            body = response.body
 
         encoding = response.headers.get("content-encoding", "identity")
         digest = hashlib.sha256(body).hexdigest()[:32]
@@ -74,7 +78,7 @@ def install_v1_html_etag(app: FastAPI) -> None:
         ]
 
         if _etag_matches(request.headers.get("if-none-match", ""), etag):
-            keep = {b"cache-control", b"etag", b"vary", b"x-changying-v1", b"x-changying-v1-tool"}
+            keep = {b"cache-control", b"etag", b"vary", b"x-changying-v1", b"x-changying-v1-tool", b"x-changying-safari12"}
             not_modified = Response(status_code=304)
             not_modified.raw_headers = [(k, v) for k, v in raw if k.lower() in keep]
             not_modified.background = response.background
@@ -86,3 +90,4 @@ def install_v1_html_etag(app: FastAPI) -> None:
 
 
 __all__ = ["install_v1_html_etag"]
+

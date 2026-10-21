@@ -2490,6 +2490,14 @@ _ASSISTANT_SNIPPET = r'''
       try{sessionStorage.setItem(POS_KEY,JSON.stringify({l:r.left,t:r.top,w:r.width}))}catch(_e){}
     };
     head.addEventListener('pointerup',stop);head.addEventListener('pointercancel',stop);
+    if(!window.PointerEvent){
+      head.addEventListener('touchstart',e=>{
+        if(e.touches.length!==1||e.target.closest('button'))return;
+        const t=e.touches[0],r=panel.getBoundingClientRect();drag={dx:t.clientX-r.left,dy:t.clientY-r.top,w:r.width};e.preventDefault();
+      },{passive:false});
+      head.addEventListener('touchmove',e=>{if(!drag||e.touches.length!==1)return;const t=e.touches[0];place(t.clientX-drag.dx,t.clientY-drag.dy,drag.w);e.preventDefault()},{passive:false});
+      head.addEventListener('touchend',stop);head.addEventListener('touchcancel',stop);
+    }
     head.addEventListener('dblclick',e=>{if(!e.target.closest('button'))reset()});
   })();
 })();
@@ -2588,3 +2596,4 @@ __all__ = [
     "MATH_DIFFICULTY_RAISED_MARKER",
     "math_difficulty_contract",
 ]
+

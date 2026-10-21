@@ -1,0 +1,22 @@
+/* Only accompanies the Safari 12 representation; no separate application mode. */
+html,body{min-height:100vh}body{overflow-wrap:break-word}
+.app{min-height:100vh}.layout{min-height:calc(100vh - 101px);padding-left:100px}
+.top{padding-left:16px;padding-right:16px}.cy-seg{left:8px;height:calc(100vh - 125px)}
+main{padding-left:20px;padding-right:20px}h1,.cy-term-year{font-size:30px}
+.login-wrap{min-height:calc(100vh - 101px)}.login{width:100%;max-width:470px}
+#screen,#page,.main,.card,.row-main{min-width:0}.card{word-wrap:break-word}
+html.cy-v1-unified .shell:not(.hidden){min-height:calc(100vh - 152px)!important}
+html.cy-v1-unified .main{min-height:calc(100vh - 152px)!important;padding:28px 20px 90px!important}
+#cy-v1-unified-bottom{left:8px;height:calc(100vh - 125px)}
+#cy-v1-tool-hub-card{max-height:82vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+button,a.btn,input,select,textarea{touch-action:manipulation}button,.btn{min-height:44px}
+[hidden],.hidden{display:none!important}
+dialog:not([open]){display:none!important}dialog[open]{display:block;position:fixed;left:5%;right:5%;top:5%;bottom:auto;margin:0 auto;width:90%;max-width:900px;max-height:85vh;overflow-y:auto;-webkit-overflow-scrolling:touch;z-index:2147483646!important;background:white;border:1px solid #ccc;box-sizing:border-box}
+.cy-safari12-backdrop{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.48);z-index:2147483645;touch-action:none}
+@supports not (gap:1px){.row>*+*,.top-actions>*+*,.page-head>*+*{margin-left:8px}}
+/* Safari 12 parses grid gap but not flex gap: use a targeted flex-only fallback. */
+.row>*+*,.top-actions>*+*,.page-head>*+*,.brand>*+*{margin-left:8px}
+@media(max-width:720px){.layout{padding-left:0}.top{height:78px;padding-left:12px;padding-right:12px}.app{padding-top:78px}.login-wrap{padding:14px;min-height:calc(100vh - 78px)}.login{padding:20px}.cy-seg{top:auto;left:8px;right:8px;bottom:8px;width:auto;height:58px;min-height:0}html.cy-v1-unified .main{padding:20px 14px 104px!important;min-height:calc(100vh - 142px)!important}#cy-v1-unified-bottom{top:auto;left:8px;right:8px;bottom:8px;width:auto;height:58px;min-height:0}main{padding-left:14px;padding-right:14px}}
+@supports not (inset:0){[style*="inset:0"],[style*="inset: 0"],.cy-action-layer{top:0!important;left:0!important;right:0!important;bottom:0!important}}
+.cy-action-sheet{width:100%;max-width:820px;max-height:88vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#cy-pa-panel{max-width:94vw;max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
