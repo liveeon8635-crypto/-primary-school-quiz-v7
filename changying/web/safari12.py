@@ -25,7 +25,7 @@ def normalize_script(source: str) -> tuple[str, str | None]:
     match = BUILD.search(source)
     value = match.group(2) if match else None
     normalized = BUILD.sub(r'\1"__CY_BUILD__";', source)
-    return SESSION_ID.sub(r'\1"__CY_SESSION__"', normalized), value
+    return SESSION_ID.sub(r'\1"__CY_SESSION__"', normalized).rstrip(), value
 
 
 def script_key(source: str) -> str:

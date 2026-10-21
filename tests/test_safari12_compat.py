@@ -65,6 +65,7 @@ def test_actual_entry_cache_and_modern_representation(tmp_path):
 def test_agent_and_build_identity():
     assert safari12_agent(IPAD)
     assert not safari12_agent(IPAD.replace('OS 12_5_8','OS 17_0').replace('Version/12.1.2','Version/17.0'))
+    assert script_key('window.example=1;\n\n') == script_key('window.example=1;\n')
     assert script_key('const PAGE_BUILD="one";') == script_key('const PAGE_BUILD="two";')
 
 
