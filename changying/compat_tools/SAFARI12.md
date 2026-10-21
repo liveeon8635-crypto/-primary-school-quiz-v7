@@ -46,7 +46,10 @@ first render, existing login submission, A logout/B login storage isolation and
 modal closure/scroll unlocking. API responses are mocks, not production records.
 
 The builder renders existing routes and Classic query variants through TestClient,
-covers enabled/disabled homework and classroom-login flags, compiles unsupported syntax to the iOS 12 target, and checks ES2019 grammar and
+starts a fresh Python process for each enabled/disabled homework and classroom-login
+flag combination before importing the app. Changing these flags after app import
+is insufficient: quick-login installs its HTML patch only at startup. The builder
+merges all variants, compiles unsupported syntax to the iOS 12 target, and checks ES2019 grammar and
 regexp lookbehind. Assets are gzip/base64 text for GitHub review. Regenerate after
 any inline script changes. Route coverage tests reject missing/stale snapshots;
 they deliberately fail rather than silently serving stale business logic.
