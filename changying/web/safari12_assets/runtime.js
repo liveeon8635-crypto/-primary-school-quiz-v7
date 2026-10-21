@@ -58,6 +58,10 @@
     }
     return clone(value);
   });
+  if (window.Element) define(window.Element.prototype, 'replaceChildren', function () {
+    while (this.firstChild) this.removeChild(this.firstChild);
+    for (var i=0;i<arguments.length;i++) this.appendChild(typeof arguments[i] === 'string' ? document.createTextNode(arguments[i]) : arguments[i]);
+  });
   /* Safari 12 has no SubmitEvent.submitter. Keep the existing login handler. */
   document.addEventListener('click', function (event) {
     var target = event.target.closest && event.target.closest('button,input[type=submit]');

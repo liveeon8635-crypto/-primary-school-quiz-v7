@@ -72,7 +72,8 @@ def test_missing_browser_apis_and_login_submitter():
     script = r'''
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const listeners={};
-const context=vm.createContext({console, setTimeout, document:{
+function Element(){}
+const context=vm.createContext({console, setTimeout, Element, document:{
   addEventListener:(type,fn)=>listeners[type]=fn,
   createElement:()=>({showModal:()=>{}}),
   getElementById:()=>null
@@ -91,6 +92,8 @@ if(Array.from('aba'.matchAll(/a/g)).length!==2)throw Error('matchAll');
 const a={x:1};a.self=a;const b=structuredClone(a);if(b===a||b.self!==b)throw Error('clone');
 Promise.allSettled([Promise.resolve(1),Promise.reject('x')]).then(r=>{if(r[1].status!=='rejected')throw Error('settled')});
 `,context);
+const element={firstChild:{},removeChild(){this.firstChild=null},appendChild(node){this.node=node}};
+Element.prototype.replaceChildren.call(element,{name:'new'});assert.equal(element.node.name,'new');assert.equal(element.firstChild,null);
 const button={type:'submit'},form={querySelector:()=>button};button.form=form;
 listeners.click({target:{closest:()=>button}});
 const event={target:form};listeners.submit(event);assert.equal(event.submitter,button);
