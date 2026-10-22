@@ -275,11 +275,27 @@ boot(board);
 
 PRACTICE_JS = r"""
 var LETTERS='ABCDEFGH',wait=null;
+function invitationCard(q){
+  var card=el('div',{class:'card'}),stem=String(q.stem||''),cut=stem.lastIndexOf('\n\n');
+  card.appendChild(el('h2',{text:'老师请你给大家讲这道题'}));
+  function folded(title,text){return el('details',{},el('summary',{text:title}),el('div',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font-weight:400;line-height:1.7',text:text}))}
+  if(cut>0){card.appendChild(folded('阅读材料（展开查看）',stem.slice(0,cut)));card.appendChild(el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere',text:stem.slice(cut+2)}))}
+  else if(stem.length>360)card.appendChild(folded('完整题目与阅读材料（展开查看）',stem));
+  else card.appendChild(el('p',{style:'white-space:pre-wrap',text:stem}));
+  if(q.questionType==='written'){
+    card.appendChild(el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere',text:'你提交的答案：'+(q.answerText||'见答案照片')}));
+    writtenPhoto(card,q.submission);
+    if(q.reference)card.appendChild(folded('已公布参考答案与评分要点（展开查看）',q.reference));
+  }else card.appendChild(el('div',{class:'muted',text:'正确答案：'+LETTERS[q.correctIndex]+'. '+(q.options[q.correctIndex]||'')}));
+  if(q.explanation)card.appendChild(folded('解析（展开查看）',q.explanation));
+  card.appendChild(el('p',{class:'muted',text:'用自己的话讲清思路、依据和容易出错的地方。'}));
+  return card;
+}
 function practice(){
   root.textContent='';
-  var box=el('div'),lastPracticeSignature='',selectedAnswers={};root.appendChild(box);
+  var box=el('div'),lastPracticeSignature='',selectedAnswers={},currentSession=null,currentStage=null,loadNo=0,explainNo=0;root.appendChild(box);
   function load(){
-    api('/student/weekend/current').then(paint).catch(function(e){lastPracticeSignature='';box.textContent='';box.appendChild(el('div',{class:'card'},el('div',{class:'notice error',text:e.message})))});
+    var request=++loadNo;api('/student/weekend/current').then(function(d){if(request!==loadNo)return;var sid=d.active?d.sessionId:null;if(sid!==currentSession){ebox.textContent='';fbox.textContent='';explainNo++}currentSession=sid;currentStage=d.stage;if(currentStage!==4&&currentStage!==5)fbox.textContent='';paint(d);explain();if(!fbox.firstChild)followup()}).catch(function(e){if(request!==loadNo)return;currentSession=null;explainNo++;ebox.textContent='';fbox.textContent='';lastPracticeSignature='';box.textContent='';box.appendChild(el('div',{class:'card'},el('div',{class:'notice error',text:e.message})))});
   }
   function paint(d){
     var signature=JSON.stringify(d);if(signature===lastPracticeSignature)return;lastPracticeSignature=signature;
@@ -327,27 +343,18 @@ function practice(){
   }
   var ebox=el('div');root.insertBefore(ebox,box);
   function explain(){
-    api('/student/weekend/explain').then(function(d){
-      ebox.textContent='';
-      d.items.forEach(function(q){
-        var card=el('div',{class:'card'});
-        card.appendChild(el('h2',{text:'老师请你给大家讲这道题'}));
-        card.appendChild(el('b',{text:q.stem}));
-        if(q.questionType==='written'){
-          card.appendChild(el('p',{text:'你提交的答案：'+(q.answerText||'见答案照片')}));
-          writtenPhoto(card,q.submission);
-          if(q.reference)card.appendChild(el('p',{text:'老师已公布的参考答案／评分要点：'+q.reference}));
-        }else card.appendChild(el('div',{class:'muted',text:'正确答案：'+LETTERS[q.correctIndex]+'. '+(q.options[q.correctIndex]||'')}));
-        if(q.explanation)card.appendChild(el('div',{text:'解析：'+q.explanation}));
-        card.appendChild(el('div',{class:'muted',text:'用自己的话讲：先说第一步做什么，为什么这样做，最后得到什么。'}));
-        ebox.appendChild(card);
-      });
-    }).catch(function(){});
+    var sid=currentSession,request=++explainNo;
+    if(!sid||(currentStage!==4&&currentStage!==5)){ebox.textContent='';return}
+    api('/student/weekend/explain?sessionId='+sid).then(function(d){
+      if(request!==explainNo||sid!==currentSession||d.sessionId!==sid)return;
+      ebox.textContent='';d.items.forEach(function(q){ebox.appendChild(invitationCard(q))});
+    }).catch(function(){if(request===explainNo)ebox.textContent=''});
   }
   var fbox=el('div');root.insertBefore(fbox,box);
   function followup(){
+    var sid=currentSession;if(!sid||(currentStage!==4&&currentStage!==5)){fbox.textContent='';return}
     api('/student/weekend/followup').then(function(f){
-      fbox.textContent='';if(!f.active)return;
+      if(sid!==currentSession||(currentStage!==4&&currentStage!==5))return;fbox.textContent='';if(!f.active||f.sessionId!==sid)return;
       var card=el('div',{class:'card'}),chosen=-1,out=el('div'),opts=el('div');
       card.appendChild(el('h2',{text:'巩固小题：刚讲过的方法，再试一道'}));card.appendChild(el('b',{text:f.stem}));
       f.options.forEach(function(o,i){opts.appendChild(el('button',{style:'display:block;width:100%;text-align:left;margin:6px 0',text:LETTERS[i]+'. '+o,onclick:function(){chosen=i;Array.prototype.forEach.call(opts.children,function(x,j){x.className=j===i?'on':''})}}))});
@@ -362,8 +369,8 @@ function practice(){
     }).catch(function(){});
   }
   var writtenBox=el('div',{class:'card'});root.appendChild(writtenBox);writtenStudent(writtenBox);
-  load();followup();explain();
-  wait=setInterval(function(){if(!document.hidden){load();explain();if(!fbox.firstChild)followup()}},5000);
+  load();
+  wait=setInterval(function(){if(!document.hidden){load()}},5000);
 }
 boot_student(practice);
 """

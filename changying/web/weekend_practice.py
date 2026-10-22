@@ -230,10 +230,8 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
 
     # ------------------------------------------------------------------ student
     def running_session_for(db: Any, u: Any) -> Any:
-        from changying.services.weekend_roster import student_in_session
-        candidates = db.execute(select(sessions).where(sessions.c.school_id == u.school_id,
-                                                 sessions.c.status == "running").order_by(sessions.c.id.desc())).all()
-        return next((row for row in candidates if student_in_session(implementation, db, row, u.id)), None)
+        from changying.services.weekend_roster import current_student_session
+        return current_student_session(implementation, db, u)
 
     def student_session(db: Any, u: Any, sid: int) -> Any:
         row = running_session_for(db, u)
