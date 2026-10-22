@@ -31,6 +31,7 @@ from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Table,
 
 from fastapi.responses import HTMLResponse
 
+from changying.services.weekend_roster import current_student_session
 from changying.services.weekend_scoring import (
     Answer, History, Student, class_post_rate, completion_bonus, completion_rate, hint_dependence, progress_points,
     team_points, tutor_points,
@@ -403,11 +404,14 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
                 ("讲完后，没做对的同学会收到一道类似的小题。" if follow else "AI 没能出类似的小题，讲完后请你手动记录结果。")}
 
     @router.get("/student/weekend/explain")
-    def my_explain(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    def my_explain(sessionId: int | None = None, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """The question(s) the teacher asked me to explain to the class (I answered them correctly)."""
         need(u, "student")
-        rows = db.execute(select(peer).join(sessions, sessions.c.id == peer.c.session_id)
-                          .where(peer.c.school_id == u.school_id, peer.c.tutor_id == u.id, sessions.c.status == "running").order_by(peer.c.id)).all()
+        current = current_student_session(implementation, db, u)
+        if current is None or current.current_stage not in (4, 5) or (sessionId is not None and sessionId != current.id):
+            return {"sessionId": current.id if current else None, "items": []}
+        rows = db.execute(select(peer).where(peer.c.school_id == u.school_id, peer.c.tutor_id == u.id,
+            peer.c.session_id == current.id).order_by(peer.c.id.desc())).all()
         seen: set[int] = set()
         items = []
         for p in rows:
@@ -434,14 +438,14 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
                     items.append(item)
                 continue
             q = db.get(TQ, int(p.question_id))
-            if q is None:
+            if q is None or q.school_id != u.school_id or q.lesson_id != current.lesson_id:
                 continue
             try:
                 opts = json.loads(q.options_json or "[]")
             except Exception:  # noqa: BLE001
                 opts = []
             items.append({"questionId": q.id, "stem": q.stem, "options": opts, "correctIndex": int(q.correct_index), "explanation": q.explanation or ""})
-        return {"items": items}
+        return {"sessionId": current.id, "items": items}
 
     @router.post("/teacher/weekend/sessions/{sid}/peer-help")
     def pair(sid: int, b: PairBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -532,7 +536,9 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
     @router.get("/student/weekend/followup")
     def my_followup(u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "student")
-        p = db.execute(select(peer).where(peer.c.school_id == u.school_id, peer.c.tutee_id == u.id, peer.c.followup_correct.is_(None), peer.c.followup_json != "")
+        current = current_student_session(implementation, db, u)
+        if current is None or current.current_stage not in (4, 5): return {"active": False}
+        p = db.execute(select(peer).where(peer.c.school_id == u.school_id, peer.c.tutee_id == u.id, peer.c.followup_correct.is_(None), peer.c.followup_json != "", peer.c.session_id == current.id)
                        .order_by(peer.c.id.desc()).limit(1)).first()
         if p is None:
             return {"active": False}
@@ -540,12 +546,15 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         if sess is None or sess.status != "running":
             return {"active": False}
         data = json.loads(p.followup_json)
-        return {"active": True, "peerHelpId": p.id, "stem": data["stem"], "options": data["options"]}
+        return {"active": True, "sessionId":current.id, "peerHelpId": p.id, "stem": data["stem"], "options": data["options"]}
 
     @router.post("/student/weekend/followup")
     def answer_followup(b: FollowBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "student")
         p = db.execute(select(peer).where(peer.c.id == b.peerHelpId, peer.c.school_id == u.school_id, peer.c.tutee_id == u.id, peer.c.question_id > 0)).first()
+        current = current_student_session(implementation, db, u)
+        if current is None or current.current_stage not in (4, 5) or p is None or p.session_id != current.id:
+            raise HTTPException(404, "不是当前课堂的巩固题")
         if p is None or not p.followup_json:
             raise HTTPException(404, "没有找到这道题")
         if p.followup_correct is not None:

@@ -654,7 +654,7 @@ with TestClient(app) as client:
     assert "请 小强 同学来讲：4/8 约分？" in board and not any("小明" in x or "小乙" in x for x in board)
 
     # the asked pupil's page shows the question, the right answer and the explanation; classmates see nothing
-    assert client.get("/student/weekend/explain", headers=sh).json() == {"items": []}             # 小明 was not asked
+    assert client.get("/student/weekend/explain", headers=sh).json()["items"] == []             # 小明 was not asked
     strong_h = {"Authorization": "Bearer " + login_and_change(client, "e_strong", "x", "Strong1234")}
     card = client.get("/student/weekend/explain", headers=strong_h).json()["items"]
     assert len(card) == 1 and card[0]["stem"] == "4/8 约分？" and card[0]["correctIndex"] == 0 and card[0]["explanation"] == "同除 4"

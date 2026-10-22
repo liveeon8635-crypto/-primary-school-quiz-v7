@@ -60,3 +60,11 @@ def session_roster(implementation: Any, db: Any, row: Any) -> dict[int, tuple[st
 
 def student_in_session(implementation: Any, db: Any, row: Any, student_id: int) -> bool:
     return student_id in session_roster(implementation,db,row)
+
+
+def current_student_session(implementation: Any, db: Any, u: Any) -> Any:
+    """One shared current-class selection for practice, invitations and follow-ups."""
+    sessions = implementation.Base.metadata.tables['weekend_sessions']
+    candidates = db.execute(select(sessions).where(sessions.c.school_id == u.school_id,
+        sessions.c.status == 'running').order_by(sessions.c.id.desc())).all()
+    return next((row for row in candidates if student_in_session(implementation, db, row, u.id)), None)
