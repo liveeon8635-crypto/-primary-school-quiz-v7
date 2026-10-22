@@ -52,33 +52,84 @@ def prepare(client):
 '''
 
 
-def test_backup_download_real_route_complete_private_and_script_free(tmp_path):
+def test_backup_download_real_route_two_printable_word_files(tmp_path):
     helpers.run_isolated(tmp_path, COMMON+r'''
+from xml.etree import ElementTree as ET
+
+def document_text(data):
+    package=zipfile.ZipFile(io.BytesIO(data))
+    assert '[Content_Types].xml' in package.namelist()
+    for name in package.namelist():
+        if name.endswith('.xml') or name.endswith('.rels'):ET.fromstring(package.read(name))
+    rels=package.read('word/_rels/document.xml.rels').decode()
+    assert 'TargetMode="External"' not in rels and 'vbaProject' not in str(package.namelist())
+    return '\n'.join(ET.fromstring(package.read('word/document.xml')).itertext())
+
 with TestClient(app) as client:
     th,sh,student,school,lid,qid,wid,sid,base,body=prepare(client)
-    assert client.get(base+'/backup.zip').status_code==401
-    assert client.get(base+'/backup.zip',headers=sh).status_code==403
+    for suffix in ('/backup.zip','/backup.docx?audience=teacher','/backup.docx?audience=student'):
+        assert client.get(base+suffix).status_code==401
+        assert client.get(base+suffix,headers=sh).status_code==403
+    assert client.get(base+'/backup.docx?audience=other',headers=th).status_code==400
     response=client.get(base+'/backup.zip',headers=th)
     assert response.status_code==200,response.text
     assert 'no-store' in response.headers['cache-control']
-    Path('/tmp/weekend-paper-qa.zip').write_bytes(response.content)
-    pack=zipfile.ZipFile(io.BytesIO(response.content));names=pack.namelist()
-    assert len([n for n in names if n.endswith('.html')])==5
-    teacher=pack.read('01-teacher.html').decode();student_doc=pack.read('02-students.html').decode()
-    assert '教师原稿尾部完整保留' in teacher and '材料最后一句' in teacher
-    assert '阅读最后一句' in student_doc and '材料最后一句' in student_doc and 'SECRET_' not in student_doc
-    assert '&lt;script&gt;' in student_doc and '<script>' not in student_doc
-    assert 'SECRET_WRITTEN' in pack.read('03-answers.html').decode()
-    for name in names:
-        if name.endswith('.html'):
-            html=pack.read(name).decode();assert '<script' not in html.lower() and '<link' not in html.lower()
-    assert any(n.startswith('resources/') and pack.read(n)==b'%PDF-original-stored-diagram' for n in names)
-    meta=json.loads(pack.read('manifest.json'));assert meta['sessionId']==sid and meta['roster'][0]['id']==student
-    assert meta['version']==body['version'] and 'package_version' in pack.read('06-records.csv').decode('utf-8-sig')
+    pack=zipfile.ZipFile(io.BytesIO(response.content))
+    assert set(pack.namelist())=={'教师版.docx','学生版.docx'}
+    teacher=document_text(pack.read('教师版.docx'));student_doc=document_text(pack.read('学生版.docx'))
+    for text in (teacher,student_doc):
+        assert '选择正确的旋转方向<script>alert(1)</script>' in text and '阅读最后一句' in text
+        assert '第1题' in text and '第2题' in text and '满分7分' in text
+        assert '教师原稿尾部完整保留' not in text and '长阅读材料开头' not in text
+        assert '备课核对' not in text and '故障接续记录卡' not in text and '课后练习安排' not in text
+    assert 'SECRET_WRITTEN' in teacher and 'SECRET_CHOICE' in teacher and '考点提醒：旋转中心' in teacher
+    assert 'SECRET_' not in student_doc and '考点提醒' not in student_doc and '提示级别' not in student_doc
+    for role in ('teacher','student'):
+        r=client.get(base+'/backup.docx?audience='+role,headers=th)
+        assert r.status_code==200,r.text
+        assert r.headers['content-type']=='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        assert role+'.docx' in r.headers['content-disposition']
+        assert r.headers['x-changying-paper-version']==body['version']
+        document_text(r.content)
+        # Fixture copies for offline renderer QA only; not production teaching files.
+        qa=Path('/tmp/weekend-word-qa');qa.mkdir(exist_ok=True);(qa/(role+'.docx')).write_bytes(r.content)
+    footer=zipfile.ZipFile(io.BytesIO(pack.read('教师版.docx'))).read('word/footer1.xml').decode()
+    assert body['version'] in footer
     page=client.get('/v1/weekend').text
-    assert 'backupTeacher(backupBox)' in page and 'backup-record' in page and '恢复到所选环节' in page
+    assert '下载教师版 Word' in page and '下载学生版 Word' in page and '/backup.docx?audience=' in page
+    assert 'backupTeacher(backupBox)' in page and 'backup-record' in page
     assert client.post(base+'/finish',headers=th).status_code==200
     assert client.get(base+'/backup',headers=th).json()['version']==body['version']
+    print('OK')
+''')
+
+
+def test_word_exports_all_questions_marks_and_shared_reading_once(tmp_path):
+    helpers.run_isolated(tmp_path, COMMON+r'''
+from xml.etree import ElementTree as ET
+with TestClient(app) as client:
+    th,sh,student,school,lid,qid,wid,sid,base,body=prepare(client)
+    reading='篇目一 旋转中的故事\n'+'这是完整文章。'*80
+    with legacy.SessionLocal() as db:
+        db.get(legacy.TeachingQuestion,qid).stem='原题（4分）'
+        wt=register_written_tables(legacy)['questions']
+        db.execute(update(wt).where(wt.c.id==wid).values(stem=reading+'\n\n1. 说明原因（6分）'))
+        program=db.get(legacy.TeachingQuestion,qid).program_id
+        for n in range(31):
+            db.add(legacy.TeachingQuestion(school_id=school,program_id=program,lesson_id=lid,subject='数学',stage='lesson',
+                level='B',knowledge='旋转',stem='额外原题'+str(n),options_json='["甲","乙"]',correct_index=0,active=True))
+        db.commit()
+    r=client.post(base+'/written/questions',headers=th,json={'stem':reading+'\n\n2. 写出方法（2.5分）','reference':'第二题教师答案'})
+    assert r.status_code==200,r.text
+    for role in ('teacher','student'):
+        response=client.get(base+'/backup.docx?audience='+role,headers=th)
+        assert response.status_code==200,response.text
+        package=zipfile.ZipFile(io.BytesIO(response.content))
+        text=''.join(ET.fromstring(package.read('word/document.xml')).itertext())
+        assert '额外原题30' in text and '共34题' in text and '满分74.5分' in text
+        assert '第1题　4分' in text and '第33题　6分' in text and '第34题　2.5分' in text
+        assert text.count('这是完整文章。')==80 and '说明原因' in text and '写出方法' in text
+        if role=='student':assert '第二题教师答案' not in text and 'SECRET_' not in text
     print('OK')
 ''')
 
@@ -147,6 +198,7 @@ with TestClient(app) as client:
     with legacy.SessionLocal() as db:
         table=register_weekend_tables(legacy)['sessions'];db.execute(update(table).where(table.c.id==sid).values(teacher_id=999999));db.commit()
     assert client.get(base+'/backup.zip',headers=th).status_code==404
+    assert client.get(base+'/backup.docx?audience=teacher',headers=th).status_code==404
     assert client.post(base+'/backup-record',headers=th,json=body).status_code==404
     print('OK')
 ''')
@@ -189,12 +241,15 @@ def test_backup_form_keeps_question_identity_and_clears_other_pupil_drafts():
     import subprocess
     harness = r'''
 const assert=require('assert');
-class E{constructor(tag,attrs){this.tag=tag;this.attrs=attrs||{};this.children=[];this.handlers={};this.value=String(this.attrs.value||'');this.files=[];this.disabled=false}
+var links=[],downloads=[];
+class E{click(){if(this.tag==='a')links.push(this.attrs)}remove(){}constructor(tag,attrs){this.tag=tag;this.attrs=attrs||{};this.children=[];this.handlers={};this.value=String(this.attrs.value||'');this.files=[];this.disabled=false}
  appendChild(e){this.children.push(e);if(this.tag==='select'&&this.value==='')this.value=String(e.attrs.value);return e}
  addEventListener(k,f){this.handlers[k]=f}set textContent(v){this._text=v;this.children=[];if(this.tag==='select')this.value=''}get textContent(){return this._text||this.attrs.text||''}}
 function el(tag,attrs,...children){const e=new E(tag,attrs);children.forEach(c=>e.appendChild(c));return e}
 function all(e,tag){return e.children.flatMap(c=>c instanceof E?[(c.tag===tag?c:null),...all(c,tag)].filter(Boolean):[])}
 var SID=1,TOKEN='t',yes=true,confirm=()=>yes;
+var document={body:new E('body')},URL={createObjectURL:()=> 'blob:local',revokeObjectURL:()=>{}},setTimeout=()=>0;
+function fetch(url,options){downloads.push({url,options});return Promise.resolve({ok:true,headers:{get:()=>data.version},blob:()=>Promise.resolve({})})}
 var data={version:'aaaaaaaaaaaaaaaa',status:'finished',settled:false,students:[{id:1,name:'甲'},{id:2,name:'乙'}],questions:[{kind:'written',id:101,stem:'原题101'},{kind:'choice',id:201,stem:'原题201',options:['a','b']}],recorded:[]};
 var posts=[],failNext=false;
 function api(url,opts){if(opts&&opts.json){if(failNext)return Promise.reject(Error('纸质包版本冲突'));posts.push(opts.json);data.questions.reverse();data.recorded=[{studentId:2,kind:'written',questionId:101}];return Promise.resolve({message:'已保存'})}return Promise.resolve(data)}
@@ -212,6 +267,10 @@ async function settle(){for(let i=0;i<20;i++)await Promise.resolve()}
  assert.equal(question.value,'written:101');assert.equal(text.value,'');assert(save.disabled);
  question.value='choice:201';question.onchange();const choice=selects[2];choice.value='1';failNext=true;save.onclick();await settle();
  assert(all(root,'p').some(x=>x.textContent==='纸质包版本冲突'));assert.equal(choice.value,'1');assert(!save.disabled);
+ choice.value='';
+ for(const role of ['teacher','student']){all(root,'button').find(x=>x.attrs.text===(role==='teacher'?'下载教师版 Word':'下载学生版 Word')).onclick();await settle()}
+ assert.deepEqual(downloads.map(x=>x.url),['/teacher/weekend/sessions/1/backup.docx?audience=teacher','/teacher/weekend/sessions/1/backup.docx?audience=student']);
+ assert(downloads.every(x=>x.options.headers.Authorization==='Bearer t'));assert.deepEqual(links.map(x=>x.download),['weekend-1-teacher.docx','weekend-1-student.docx']);
  console.log('OK');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
