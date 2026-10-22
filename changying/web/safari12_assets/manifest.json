@@ -370,7 +370,7 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/weekend": [
-      "e5ccf2b9a111baca3688bb764d38994667ce3d26a5aa355102ae985a158fca75"
+      "650b2390724163f901fc04a237c8934d67c8703d1ecbc5265df104c91006276a"
     ],
     "/v1/weekend-board": [
       "1f9024154287bc962ddee8108bfdda11252925cf57813d46452e4abdb34b24ca"
@@ -639,10 +639,10 @@
       "sourceBytes": 54255,
       "compiledBytes": 58172
     },
-    "e5ccf2b9a111baca3688bb764d38994667ce3d26a5aa355102ae985a158fca75": {
+    "650b2390724163f901fc04a237c8934d67c8703d1ecbc5265df104c91006276a": {
       "unchanged": true,
-      "sourceBytes": 52358,
-      "compiledBytes": 52358
+      "sourceBytes": 52633,
+      "compiledBytes": 52633
     },
     "1f9024154287bc962ddee8108bfdda11252925cf57813d46452e4abdb34b24ca": {
       "unchanged": true,

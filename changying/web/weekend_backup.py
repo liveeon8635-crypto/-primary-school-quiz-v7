@@ -12,6 +12,7 @@ from sqlalchemy import func, insert, select
 from sqlalchemy.exc import IntegrityError
 
 from changying.services.weekend_backup import backup_material, backup_zip
+from changying.services.weekend_handouts import question_document
 
 
 class PaperAnswer(BaseModel):
@@ -51,13 +52,20 @@ def install_weekend_backup(impl):
     @router.get('/teacher/weekend/sessions/{sid}/backup.zip')
     def download(sid: int, u=Depends(impl.current_user), db=Depends(impl.get_db)):
         row = owned(db, u, sid)
-        material, files = backup_material(impl, db, row, include_files=True)
-        slide = impl.Base.metadata.tables['weekend_slide_state']
-        cursor = db.execute(select(slide).where(slide.c.session_id == sid)).first()
-        page = str(cursor.idx + 1) if cursor is not None and cursor.stage_no in (2,3) else '见原控制页题号'
-        checkpoint = '环节 '+str(row.current_stage)+'，页码 '+page
-        return Response(backup_zip(material, files, checkpoint), media_type='application/zip',
+        material, _ = backup_material(impl, db, row)
+        return Response(backup_zip(material), media_type='application/zip',
             headers={'Content-Disposition':f'attachment; filename=weekend-{sid}-paper-backup.zip','Cache-Control':'no-store','X-Changying-Paper-Version':material['version']})
+
+    @router.get('/teacher/weekend/sessions/{sid}/backup.docx')
+    def download_word(sid: int, audience: str = 'teacher', u=Depends(impl.current_user), db=Depends(impl.get_db)):
+        row = owned(db, u, sid)
+        if audience not in ('teacher', 'student'):
+            raise HTTPException(400, '请选择教师版或学生版')
+        material, _ = backup_material(impl, db, row)
+        return Response(question_document(material, audience),
+            media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={'Content-Disposition':f'attachment; filename=weekend-{sid}-{audience}.docx',
+                'Cache-Control':'no-store','X-Changying-Paper-Version':material['version']})
 
     @router.get('/teacher/weekend/sessions/{sid}/backup')
     def status(sid: int, u=Depends(impl.current_user), db=Depends(impl.get_db)):
