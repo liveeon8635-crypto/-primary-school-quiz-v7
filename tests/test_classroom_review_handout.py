@@ -569,3 +569,15 @@ def test_classroom_review_ai_generation_uses_long_timeout_without_changing_defau
     assert "delete requestOptions.timeoutMs" in html
     assert "timeoutMs:90000" in html
     assert "setTimeout(()=>controller.abort(),timeoutMs)" in html
+
+
+
+def test_classroom_review_requires_explicit_assignment_instead_of_old_default():
+    """Regression: finishing a new class must not open an unrelated old lesson."""
+    html = patch_v1_classroom_review_html(v1_html())
+    assert "let current=requested||0,summary=null;" in html
+    assert "let current=requested||Number(assignments[0]?.id||0)" not in html
+    assert "if(!requested || !assignments.some(a=>Number(a.id)===requested))" in html
+    assert "系统不会自动选取另一堂课的历史作业" in html
+    assert "此课堂尚未核实关联的作业" in html
+    assert "if(e.target.value)load(e.target.value)" in html
