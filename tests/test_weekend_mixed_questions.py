@@ -140,7 +140,7 @@ async function settle(){for(let i=0;i<15;i++)await Promise.resolve()}
 (async()=>{
  plan();await settle();let go=all(root,'button').find(x=>x.textContent==='开课');assert(go.disabled);
  all(root,'button').find(x=>x.textContent==='审改').attrs.onclick();await settle();
- const tabs=all(root,'button').filter(x=>x.attrs.role==='tab');assert.equal(tabs.length,3);
+ const tabs=all(root,'button').filter(x=>x.attrs.role==='tab');assert.equal(tabs.length,4);assert.equal(tabs[3].textContent,'互动课件');
  let panes=all(root,'div').find(x=>x.attrs.role==='tablist');
  const form=all(root,'textarea').find(x=>x.value==='流程');form.value='尚未保存的编辑';
  tabs[1].attrs.onclick();assert.equal(tabs[1].attrs['aria-selected'],'true');

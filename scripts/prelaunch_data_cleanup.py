@@ -55,7 +55,7 @@ KEEP_TABLES = (
     "commercial_payments", "commercial_quota_overrides", "commercial_renewals",
     "point_rules", "class_point_rules", "reward_items", "auto_reward_rules",
     "homework_ai_knowledge",
-    "kp_cards", "weekend_hints", "weekend_written_questions",
+    "kp_cards", "weekend_hints", "weekend_written_questions", "weekend_courseware",
     "kp_card_images",
     "questions", "papers", "import_jobs",
     "teaching_programs", "teaching_lessons", "teaching_questions", "teaching_resources",

@@ -206,6 +206,11 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                     stem = db.scalar(select(written_q.c.stem).where(written_q.c.id == -p.question_id, written_q.c.session_id == row.id))
                     if who and stem:
                         out['content'].append(f"请 {who} 同学来讲：{stem.split(chr(10)+chr(10))[-1]}")
+        if row.status == "running" and not (board and row.covered):
+            from changying.web.weekend_courseware import courseware_for_session
+            courseware = courseware_for_session(implementation, db, row)
+            if courseware is not None:
+                out["courseware"] = courseware
         if board:
             if row.covered:
                 out["content"] = []
