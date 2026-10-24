@@ -223,7 +223,8 @@ with TestClient(app) as client:
     assert client.get(photo,headers=sh).content==PNG
     assert client.get(photo,headers=th).content==PNG
     archive=client.get(base+'/archive',headers=th).json()
-    assert '旋转' in next(x for x in archive['students'] if x['studentId']==student)['wrongKnowledge']
+    # A partial written answer is listed as such, not under the lesson goal (written questions have no knowledge point).
+    assert next(x for x in archive['students'] if x['studentId']==student)['wrongKnowledge']==['文字／照片题（未标注考点）']
     assert client.post(base+'/settle',headers=th).status_code==200
     # The missing choice answer cannot change already-settled award inputs.
     assert client.post(base+'/backup-record',headers=th,json=body).status_code==409
