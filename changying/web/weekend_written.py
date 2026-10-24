@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from changying.services.weekend_answers import answers_published, practice_release
+from changying.services.weekend_submissions import submission_attempts, record_submission, require_unsettled
 
 import json
 from datetime import datetime
@@ -25,6 +26,14 @@ class WrittenReviewBody(BaseModel):
     revision: int = Field(ge=1)
     result: str
     comment: str = Field(default="", max_length=1000)
+
+
+class ReviewItem(WrittenReviewBody):
+    id: int
+
+
+class ReviewBatch(BaseModel):
+    items: list[ReviewItem] = Field(min_length=1, max_length=1000)
 
 
 def register_written_tables(implementation: Any) -> dict[str, Table]:
@@ -124,7 +133,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         names = {i: n for i, (n, _) in members.items()}
         ans = [a for a in ans if a.student_id in roster]
         total = len(qs) * len(roster | {a.student_id for a in ans})
-        return {"status": row.status, "total": total, "submissionRate": round(100 * len(ans) / total) if total else 0,
+        return {"status": row.status, "students": [{"id":i,"name":n} for i,n in names.items()], "total": total, "submissionRate": round(100 * len(ans) / total) if total else 0,
                 "questions": [{"id": q.id, "stem": q.stem, "reference": q.reference} for q in qs],
                 "items": [{**submission_dict(a), "name": names.get(a.student_id, "学生")} for a in ans],
                 "submitted": len(ans), "reviewed": sum(a.result != "pending" for a in ans),
@@ -148,7 +157,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
                 "answersPublished": all_released,
                 "questions": [{"id": q.id, "answersPublished": q.id in released, "canSubmit": row.status == "running" and row.current_stage == 4 and q.id not in released, "stem": q.stem, "hasHints": bool(json.loads(q.hints_json)), "hintUsed": used.get(q.id, 0),
                                "hintTexts": json.loads(q.hints_json)[:used.get(q.id, 0)],
-                               "submission": ({**submission_dict(ans[q.id]), **({} if q.id in released else {"result": "pending", "comment": ""})}) if q.id in ans else None} for q in question_rows(db, row)]}
+                               "submission": ({**submission_dict(ans[q.id]), 'attempts':submission_attempts(implementation,db,u,sid,'written',q.id,True), **({} if q.id in released else {"result": "pending", "comment": ""})}) if q.id in ans else None} for q in question_rows(db, row)]}
 
     @router.post("/student/weekend/sessions/{sid}/written/{qid}/hint")
     def student_hint(sid: int, qid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -179,12 +188,13 @@ def install_weekend_written(implementation: Any) -> APIRouter:
 
     @router.post("/student/weekend/sessions/{sid}/written/{qid}")
     async def submit(sid: int, qid: int, text: str = Form(""), revision: int = Form(0),
-                     photo: UploadFile | None = File(None), u: Any = Depends(current_user), db: Any = Depends(get_db)):
+                     photo: UploadFile | None = File(None), removePhoto: bool = Form(False), u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
         if row.status != "running" or row.current_stage != 4 or answers_published(implementation, db, row, qid, "written"):
             raise HTTPException(409, "现在不是随堂练习时间")
         if not any(q.id == qid for q in question_rows(db, row)):
             raise HTTPException(404, "没有找到这道题")
+        require_unsettled(implementation, db, sid)
         text = text.strip()
         if len(text) > 4000:
             raise HTTPException(400, "文字不能超过4000字")
@@ -199,17 +209,20 @@ def install_weekend_written(implementation: Any) -> APIRouter:
                 mime = "image/png"
             else:
                 raise HTTPException(400, "请上传有效的JPEG或PNG照片")
-        if not text and not data:
-            raise HTTPException(400, "请填写答案或拍照提交")
         old = db.execute(select(submissions).where(submissions.c.session_id == sid, submissions.c.question_id == qid,
             submissions.c.student_id == u.id)).first()
+        if old and photo is None and not removePhoto:
+            data, mime = old.photo, old.photo_type
+        if not text and not data: raise HTTPException(400,'请填写答案或拍照提交')
+        attempts = submission_attempts(implementation, db, u, sid, 'written', qid, old is not None)
+        if old and old.answer_text == text and old.photo == data:
+            return {"submitted":True,"revision":old.revision,"attempts":attempts,"submission":{**submission_dict(old),"result":"pending","comment":""}}
+        if attempts >= 3: raise HTTPException(409, '本题已提交3次，不能继续修改')
         values = dict(answer_text=text, photo=data, photo_type=mime, result="pending", comment="",
                       revision=revision + 1, submitted_at=datetime.utcnow(), reviewed_at=None)
         if old:
             if old.revision != revision:
                 raise HTTPException(409, "答案已更新，请刷新后重试")
-            if old.result not in ("pending", "revise", "partial"):
-                raise HTTPException(409, "老师已经批改，请按评语订正；当前答案已保留")
             changed = db.execute(update(submissions).where(submissions.c.id == old.id,
                 submissions.c.revision == revision, submissions.c.result == old.result).values(**values))
             if changed.rowcount != 1:
@@ -223,26 +236,40 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             except IntegrityError:
                 db.rollback()
                 raise HTTPException(409, "答案已经提交，请刷新查看")
+        record_submission(implementation, db, u, sid, 'written', qid, attempts+1)
         try:
             db.commit()
         except IntegrityError:
             db.rollback()
             raise HTTPException(409, "答案已经提交，请刷新查看")
-        return {"submitted": True, "revision": revision + 1, "result": "pending"}
+        saved = db.execute(select(submissions).where(submissions.c.session_id==sid,submissions.c.question_id==qid,submissions.c.student_id==u.id)).first()
+        return {"submitted": True, "revision":saved.revision, "attempts":attempts+1, "submission":{**submission_dict(saved),"result":"pending","comment":""}, "result": "pending"}
+
+    def apply_reviews(sid, items, u, db):
+        teacher_session(db, u, sid)
+        db.execute(select(sessions.c.id).where(sessions.c.id==sid).with_for_update()).first()
+        require_unsettled(implementation, db, sid)
+        if len({item.id for item in items}) != len(items): raise HTTPException(400, '批改列表包含重复答案')
+        if any(item.result not in ('correct','partial','revise') for item in items): raise HTTPException(400,'请选择批改结果')
+        saved=[]
+        for item in items:
+            changed=db.execute(update(submissions).where(submissions.c.id==item.id,submissions.c.session_id==sid,
+                submissions.c.school_id==u.school_id,submissions.c.revision==item.revision).values(result=item.result,
+                comment=item.comment.strip(),reviewed_at=datetime.utcnow(),revision=item.revision+1))
+            if changed.rowcount != 1:
+                db.rollback()
+                raise HTTPException(409, '学生答案已更新，本批未保存；请刷新后重新核对')
+            saved.append({'id':item.id,'revision':item.revision+1,'result':item.result,'comment':item.comment.strip()})
+        db.commit()
+        return {'reviewed':True,'items':saved}
+
+    @router.post('/teacher/weekend/sessions/{sid}/written/review-batch')
+    def review_batch(sid: int, b: ReviewBatch, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        return apply_reviews(sid,b.items,u,db)
 
     @router.post("/teacher/weekend/sessions/{sid}/written/{aid}/review")
     def review(sid: int, aid: int, b: WrittenReviewBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
-        teacher_session(db, u, sid)
-        if b.result not in ("correct", "partial", "revise"):
-            raise HTTPException(400, "请选择正确、部分正确或需订正")
-        changed = db.execute(update(submissions).where(submissions.c.id == aid, submissions.c.session_id == sid,
-            submissions.c.school_id == u.school_id, submissions.c.revision == b.revision).values(
-                result=b.result, comment=b.comment.strip(), reviewed_at=datetime.utcnow(), revision=b.revision + 1))
-        if changed.rowcount != 1:
-            db.rollback()
-            raise HTTPException(409, "答案已更新，请重新查看后批改")
-        db.commit()
-        return {"reviewed": True}
+        return apply_reviews(sid,[ReviewItem(id=aid,**b.model_dump())],u,db)
 
     @router.get("/weekend/written/submissions/{aid}/photo")
     def read_photo(aid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):

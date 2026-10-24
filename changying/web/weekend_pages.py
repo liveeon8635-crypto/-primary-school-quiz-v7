@@ -305,24 +305,25 @@ function practice(){
       return;
     }
     box.appendChild(el('div',{class:'card'},el('h2',{text:d.title}),el('div',{class:'muted',text:'按老师要求完成本节练习；各题的作答方式和提交状态显示在题目旁。'})));
-    if(d.questions.length)box.appendChild(el('p',{class:'muted',text:'选择题：选好后提交，每道选择题只能提交一次。'}));
+    if(d.questions.length)box.appendChild(el('p',{class:'muted',text:'选择题：每题最多提交3次；老师公布本题答案后停止修改。'}));
     d.questions.forEach(function(q,qi){
-      var card=el('div',{class:'card'}),out=el('div'),hintsOut=el('div');
+      var locked=q.canSubmit===false||(q.attempts||0)>=3,card=el('div',{class:'card'}),out=el('div'),hintsOut=el('div');
       card.appendChild(el('b',{text:(qi+1)+'. '+q.stem}));
-      var selectionKey=d.sessionId+':'+q.id,chosen=selectedAnswers[selectionKey]==null?-1:selectedAnswers[selectionKey],opts=el('div');
+      var selectionKey=d.sessionId+':'+q.id,chosen=selectedAnswers[selectionKey]==null?(q.answered?q.selected:-1):selectedAnswers[selectionKey],opts=el('div');
       q.options.forEach(function(o,i){
         var b=el('button',{style:'display:block;width:100%;text-align:left;margin:6px 0',text:LETTERS[i]+'. '+o});
-        if(q.answered||q.canSubmit===false){
+        if(locked){
           if(i===q.selected)b.className='on';
           b.disabled=true;
         }else b.addEventListener('click',function(){chosen=i;selectedAnswers[selectionKey]=i;Array.prototype.forEach.call(opts.children,function(x,j){x.className=j===i?'on':''})});
-        if(!q.answered&&chosen===i)b.className='on';
+        if(!locked&&chosen===i)b.className='on';
         opts.appendChild(b);
       });
       card.appendChild(opts);
       if(q.answered||q.canSubmit===false){
         out.appendChild(el('div',{class:'notice',text:q.answered?(q.answersPublished?'已提交，请看大屏核对答案并听老师讲评。':'已提交，请等待老师统一在大屏公布答案。'):'老师已公布答案，停止提交；请看大屏听讲评。'}));
-      }else{
+      }
+      if(!locked){
         var hintBtn=el('button',{text:q.hintUsed>=3?'提示已用完':'要提示（已用 '+q.hintUsed+'/3）',disabled:q.hintUsed>=3,onclick:function(){
           hintBtn.disabled=true;
           api('/student/weekend/hint',{json:{sessionId:d.sessionId,questionId:q.id}}).then(function(h){
@@ -330,12 +331,12 @@ function practice(){
             q.hintUsed=h.level;hintBtn.textContent=h.last?'提示已用完':'要提示（已用 '+h.level+'/3）';hintBtn.disabled=!!h.last;
           }).catch(function(e){hintsOut.appendChild(el('div',{class:'notice error',text:e.message}));hintBtn.disabled=false});
         }});
-        var submit=el('button',{class:'primary',text:'提交答案',onclick:function(){
+        var submit=el('button',{class:'primary',text:q.answered?'修改并提交（已用'+q.attempts+'/3次）':'提交答案',onclick:function(){
           if(chosen<0){alert('先选一个答案');return}
           submit.disabled=true;
-          api('/student/weekend/answer',{json:{sessionId:d.sessionId,questionId:q.id,selected:chosen}}).then(load).catch(function(e){alert(e.message);submit.disabled=false});
+          api('/student/weekend/answer',{json:{sessionId:d.sessionId,questionId:q.id,selected:chosen,attempt:q.attempts||0}}).then(function(saved){if(!saved.submitted)throw Error('未收到保存回执，请刷新核对');return load()}).catch(function(e){alert(e.message);submit.disabled=false});
         }});
-        card.appendChild(el('div',{class:'row'},hintBtn,submit));
+        hintBtn.hidden=!!q.answered;card.appendChild(el('div',{class:'row'},hintBtn,submit));
         (q.hintTexts||[]).forEach(function(t,i){hintsOut.appendChild(el('div',{class:'notice warn',text:'提示'+(i+1)+'（'+q.levelNames[i]+'）：'+t}))});
       }
       card.appendChild(hintsOut);card.appendChild(out);box.appendChild(card);
