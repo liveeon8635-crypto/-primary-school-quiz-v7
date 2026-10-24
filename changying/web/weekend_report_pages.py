@@ -15,6 +15,17 @@ function reportView(r){
     box.appendChild(card);
   });
   if(r.comment)box.appendChild(el('div',{class:'card'},el('b',{text:'老师的话'}),el('p',{style:'white-space:pre-wrap',text:r.comment})));
+  var p=r.practice;
+  if(p&&p.state&&p.state!=='none'){
+    var pc=el('div',{class:'card'},el('h2',{text:'针对性练习 · '+(p.label||'')}));
+    if(!p.groups)pc.appendChild(el('div',{class:'muted',text:'老师正在审核根据错题出的新题，审核后会布置到孩子的“作业”里。'}));
+    (p.assignments||[]).forEach(function(a){pc.appendChild(el('div',{class:'notice',text:a.subject+'：'+a.title+(a.state==='graded'?' · 已提交并批改，做对 '+a.correct+'/'+a.total+'（'+a.submittedAt+'）':' · 已布置，孩子在“作业”中完成'+(a.dueDate?'，截止 '+a.dueDate:''))}))});
+    (p.groups||[]).forEach(function(g){
+      pc.appendChild(el('b',{text:g.subject+' · '+g.topic}));
+      g.questions.forEach(function(q,i){pc.appendChild(el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0',text:(i+1)+'. '+q.text+(q.options.length?'\n'+q.options.map(function(o,j){return String.fromCharCode(65+j)+'. '+o}).join('　'):'')}))});
+    });
+    box.appendChild(pc);
+  }
   return box;
 }
 function saveDocx(path,name,status){
@@ -157,12 +168,14 @@ function reportPage(){
     });
     ed.comment=el('textarea',{maxlength:1500,placeholder:'老师的话（可留空）'});ed.comment.value=r.draft.comment||'';ed.comment.addEventListener('input',function(){ed.dirty=true;status.textContent='有未保存的修改'});
     card.appendChild(el('label',{class:'field'},el('span',{text:'老师的话'}),ed.comment));
+    ed.evidence=evidencePanel(card,r,function(){ed.dirty=true;status.textContent='有未保存的修改'});
     function values(){return {sections:ed.fields.map(function(f,i){var o={sessionId:r.facts[i].sessionId};Object.keys(f).forEach(function(k){o[k]=f[k].value});return o}),comment:ed.comment.value}}
-    function save(){var v=values();return api('/teacher/weekend/reports/'+r.id,{method:'PUT',json:{revision:r.draft.revision,sections:v.sections,comment:v.comment}}).then(function(n){ed.dirty=false;return n})}
+    function save(){var v=values();return api('/teacher/weekend/reports/'+r.id,{method:'PUT',json:{revision:r.draft.revision,sections:v.sections,comment:v.comment,evidence:ed.evidence()}}).then(function(n){ed.dirty=false;return n})}
+    practicePanel(card,r,ed,function(n){showReport(n,{});load()});
     var preview=el('div');
     var buttons=el('div',{class:'row'});
     buttons.appendChild(el('button',{class:'primary',text:'保存草稿',onclick:function(){status.textContent='正在保存…';save().then(function(n){showReport(n,{});load()}).catch(function(e){status.textContent=e.message})}}));
-    buttons.appendChild(el('button',{text:'预览家长看到的内容',onclick:function(){var v=values();preview.textContent='';preview.appendChild(el('div',{class:'notice',text:'预览（与家长页面相同的排版；不含答案、参考答案、照片和其他学生信息）'}));preview.appendChild(reportView({facts:r.parentFacts,sections:v.sections,comment:v.comment,titles:r.titles}))}}));
+    buttons.appendChild(el('button',{text:'预览家长看到的内容',onclick:function(){var v=values();preview.textContent='';preview.appendChild(el('div',{class:'notice',text:'预览（与家长页面相同的排版；不含答案、参考答案、照片和其他学生信息）'}));preview.appendChild(reportView({facts:r.parentFacts,sections:v.sections,comment:v.comment,titles:r.titles,practice:r.parentPractice}))}}));
     buttons.appendChild(el('button',{text:r.published?'发布更新给家长':'发布给家长',onclick:function(){
       if(!confirm('发布后，'+r.studentName+' 已关联的家长可以看到这份反馈'+(r.published?'（替换第 '+r.published.version+' 版）':'')+'。确定发布吗？'))return;
       status.textContent='正在发布…';
@@ -178,6 +191,104 @@ function reportPage(){
     buttons.appendChild(el('button',{text:'关闭',onclick:function(){if(ed.dirty&&!confirm('有未保存的修改，确定关闭吗？'))return;EDITOR=null;editorBox.textContent=''}}));
     card.appendChild(buttons);card.appendChild(status);card.appendChild(preview);
     card.scrollIntoView&&card.scrollIntoView();
+  }
+  var EV_STATUS={correct:'正确',partial:'部分正确',revise:'需订正'};
+  function evidencePanel(card,r,changed){
+    var box=el('details',{class:'card'},el('summary',{text:'考点与表现依据（家长报告里的“已掌握”“需要改进”由此生成）'})),rows=[];
+    box.appendChild(el('div',{class:'muted',text:'没有标注考点的题，可填写具体考点（如“旋转后对应点的位置判断”）；错因只在有依据时填写。勾选“已核实”后才会写进家长报告，再点“按最新数据重新生成”更新文字。AI 建议需核实后使用。'}));
+    var pending=0;
+    (r.draft.evidence||[]).forEach(function(e){
+      var k=el('input',{type:'text',maxlength:80,placeholder:'具体考点（需教师补充）',disabled:e.knowledgeSource==='question'}),c=el('input',{type:'text',maxlength:200,placeholder:'错因（有依据再填）',hidden:e.status==='correct'}),ok=el('input',{type:'checkbox'});
+      k.value=e.knowledge||'';c.value=e.cause||'';ok.checked=e.knowledgeSource==='teacher'||e.causeSource==='teacher';
+      if(e.knowledgeSource==='ai'||e.causeSource==='ai')pending++;
+      [k,c,ok].forEach(function(n){n.addEventListener('input',changed);n.addEventListener('change',changed)});
+      var tag=e.knowledgeSource==='question'?'题目考点':e.knowledgeSource==='teacher'?'教师已核实':e.knowledgeSource==='ai'?'AI 建议，待核实':'考点待补充';
+      box.appendChild(el('div',{class:'item'},el('span',{class:'t'},
+        el('b',{text:e.subject+' 第'+e.no+'题 · '+EV_STATUS[e.status]+' · '+tag}),
+        el('div',{class:'muted',text:'题目任务：'+e.task+(e.material?' · 材料《'+e.material+'》':'')+(e.answer?' · 学生答案：'+e.answer:'')+(e.comment?' · 批注：'+e.comment:'')}),
+        el('div',{class:'row'},k,c,el('label',{class:'row'},ok,el('span',{text:'已核实'}))))));
+      rows.push({key:e.key,k:k,c:c,ok:ok});
+    });
+    if(pending)box.insertBefore(el('div',{class:'notice warn',text:'有 '+pending+' 条 AI 建议待核实，未核实前不会出现在家长报告中。'}),box.children[2]||null);
+    if(!rows.length)box.appendChild(el('div',{class:'muted',text:'暂无已批改的题目。'}));
+    card.appendChild(box);
+    return function(){return rows.map(function(x){return {key:x.key,knowledge:x.k.value,cause:x.c.value,confirmed:x.ok.checked}})};
+  }
+  var QT={single_choice:'单选',true_false:'判断',fill_blank:'填空',calculation:'计算',short_answer:'简答'};
+  function questionEditor(q,onchange){
+    var box=el('div',{class:'item'}),t=el('span',{class:'t'}),text=el('textarea',{maxlength:4000}),answer=el('input',{type:'text',maxlength:300,placeholder:'标准答案'}),exp=el('textarea',{maxlength:1000,placeholder:'解析（仅老师可见）'}),know=el('input',{type:'text',maxlength:120,placeholder:'考点'});
+    text.value=q.text;answer.value=q.answer||'';exp.value=q.explanation||'';know.value=q.knowledge||'';
+    var opts=(q.options||[]).map(function(o){var n=el('input',{type:'text',value:o});return n}),ci=el('select');
+    opts.forEach(function(_,i){ci.appendChild(el('option',{value:i,text:'正确答案：'+String.fromCharCode(65+i)}))});ci.value=String(q.correct_index);
+    t.appendChild(el('b',{text:(QT[q.question_type]||q.question_type)+' · 难度 '+q.level}));t.appendChild(text);
+    if(q.question_type==='single_choice'){opts.forEach(function(n,i){t.appendChild(el('label',{class:'row'},el('span',{text:String.fromCharCode(65+i)+'.'}),n))});t.appendChild(ci)}
+    else if(q.question_type==='true_false'){ci.textContent='';['正确','错误'].forEach(function(x,i){ci.appendChild(el('option',{value:i,text:'答案：'+x}))});ci.value=String(q.correct_index);t.appendChild(ci)}
+    else t.appendChild(answer);
+    if(q.figure&&q.figure.type)t.appendChild(el('div',{class:'muted',text:'含图示（'+q.figure.type+'），布置后学生页面显示。'}));
+    t.appendChild(know);t.appendChild(exp);box.appendChild(t);
+    [text,answer,exp,know,ci].concat(opts).forEach(function(n){n.addEventListener('input',onchange);n.addEventListener('change',onchange)});
+    return {box:box,value:function(){return {question_type:q.question_type,level:q.level,text:text.value,options:q.question_type==='single_choice'?opts.map(function(n){return n.value}):q.options,
+      correct_index:+ci.value,answer:answer.value,accepted_answers:q.accepted_answers||[],figure:q.figure||{},explanation:exp.value,knowledge:know.value}}};
+  }
+  function practicePanel(card,r,ed,refresh){
+    var p=r.draft.practice||{},box=el('div',{class:'card'}),msg=el('div',{role:'status','aria-live':'polite'}),dirty=false;
+    var stored={};(p.groups||[]).forEach(function(g){stored[g.key]=g});
+    box.appendChild(el('h2',{text:'针对性练习 · '+(r.practiceLabels[p.state||'none']||'未生成')}));
+    box.appendChild(el('div',{class:'muted',text:'按本报告中需订正、部分正确的题，为'+r.studentName+'单独出新题（不重发原题）。生成和发布报告都不会布置；审核后点“确认并布置”，才会通过现有针对性练习发到该生的“作业”。'}));
+    if(!r.practiceGroups.length&&!(p.groups||[]).length){box.appendChild(el('div',{class:'muted',text:'本报告没有需订正或部分正确的题，不需要针对性练习。'}));card.appendChild(box);return}
+    var locked=['assigning','assigned','graded','partial'].indexOf(p.state)>=0,counts={},editors=[];
+    function changed(){dirty=true;msg.textContent='练习有未保存的修改'}
+    r.practiceGroups.forEach(function(g){
+      var sg=stored[g.key]||{},gb=el('div',{class:'card'});
+      gb.appendChild(el('b',{text:g.subject+' · 薄弱点：'+g.topic}));
+      gb.appendChild(el('div',{class:'muted',text:'错题依据：'+g.basis}));
+      if(!locked){
+        var n=el('input',{type:'number',min:1,max:5,value:sg.count||g.count,style:'width:70px'});counts[g.key]=n;
+        gb.appendChild(el('div',{class:'row'},el('span',{class:'muted',text:'题数'}),n,el('button',{text:(sg.questions||[]).length?'重新生成本薄弱点':'生成本薄弱点',onclick:function(){generate([g.key])}})));
+      }
+      var list=[];
+      (sg.questions||[]).forEach(function(q,i){
+        if(locked){gb.appendChild(el('p',{style:'white-space:pre-wrap',text:(i+1)+'. ['+(QT[q.question_type]||'')+'] '+q.text+(q.options.length?'\n'+q.options.map(function(o,j){return String.fromCharCode(65+j)+'. '+o}).join('　'):'')+'\n答案：'+(q.question_type==='single_choice'||q.question_type==='true_false'?String.fromCharCode(65+q.correct_index):q.answer)+(q.explanation?'　解析：'+q.explanation:'')}));return}
+        var qe=questionEditor(q,changed),holder=el('div');holder.appendChild(qe.box);
+        holder.appendChild(el('button',{text:'删除这题',onclick:function(){holder.remove();list.splice(list.indexOf(qe),1);changed()}}));
+        list.push(qe);gb.appendChild(holder);
+      });
+      editors.push({key:g.key,list:list});
+      box.appendChild(gb);
+    });
+    function generate(keys){
+      if(dirty&&!confirm('练习有未保存的修改，重新生成会替换所选薄弱点的题目。确定吗？'))return;
+      if(ed.dirty){msg.textContent='请先保存报告草稿，再生成练习';return}
+      var c={};Object.keys(counts).forEach(function(k){c[k]=+counts[k].value||2});
+      msg.textContent='正在出题，约半分钟…';
+      api('/teacher/weekend/reports/'+r.id+'/practice/generate',{json:{revision:r.draft.revision,groupKeys:keys||[],counts:c}}).then(function(d){refresh(d.report);if(d.problems.length)alert('部分题目没有生成：\n'+d.problems.join('\n'))}).catch(function(e){msg.textContent=e.message});
+    }
+    var actions=el('div',{class:'row'});
+    if(!locked){
+      actions.appendChild(el('button',{text:(p.groups||[]).length?'全部重新生成':'生成针对性练习（不会布置）',onclick:function(){generate([])}}));
+      if((p.groups||[]).length){
+        actions.appendChild(el('button',{text:'保存练习修改',onclick:function(){
+          if(ed.dirty){msg.textContent='请先保存报告草稿';return}
+          api('/teacher/weekend/reports/'+r.id+'/practice',{method:'PUT',json:{revision:r.draft.revision,groups:editors.map(function(x){return {key:x.key,questions:x.list.map(function(q){return q.value()})}})}}).then(refresh).catch(function(e){msg.textContent=e.message});
+        }}));
+        var due=el('input',{type:'text',placeholder:'截止日期（可空，默认3天）',style:'width:190px'}),go=el('button',{class:'primary',text:'审核确认并布置给'+r.studentName,onclick:function(){
+          if(dirty||ed.dirty){msg.textContent='请先保存修改，再布置';return}
+          if(!confirm('确认题目、答案和解析都已审核？将只布置给'+r.studentName+'，布置后不能再修改，也不会重复布置。'))return;
+          go.disabled=true;msg.textContent='正在布置…';
+          api('/teacher/weekend/reports/'+r.id+'/practice/assign',{json:{revision:r.draft.revision,dueDate:due.value}}).then(refresh).catch(function(e){msg.textContent=e.message;go.disabled=false});
+        }});
+        actions.appendChild(due);actions.appendChild(go);
+      }
+    }else{
+      (p.assignments||[]).forEach(function(a){
+        var out=el('div');
+        box.appendChild(el('div',{class:'notice '+(a.state==='graded'?'ok':''),text:a.subject+'：'+a.title+(a.state==='graded'?' · 已提交并自动批改，做对 '+a.correct+'/'+a.total+'（'+a.submittedAt+'）':' · 已布置，等待学生提交')}));
+        box.appendChild(el('button',{text:'查看作答与批改',onclick:function(){api('/teacher/assignments/'+a.assignmentId+'/submissions').then(function(rows){out.textContent='';rows.forEach(function(x){out.appendChild(el('div',{class:'muted',text:x.studentName+'：'+(x.id?'做对 '+x.correct+'/'+x.total+'，得分 '+x.score+'，错题 '+x.wrongCount+' 道':'未提交')}))})}).catch(function(e){out.textContent=e.message})}}));
+        box.appendChild(out);
+      });
+      if(p.state==='partial')actions.appendChild(el('button',{class:'primary',text:'继续布置未完成的科目',onclick:function(){api('/teacher/weekend/reports/'+r.id+'/practice/assign',{json:{revision:r.draft.revision}}).then(refresh).catch(function(e){msg.textContent=e.message})}}));
+    }
+    box.appendChild(actions);box.appendChild(msg);card.appendChild(box);
   }
   load();
 }
@@ -212,7 +323,9 @@ function paintChildren(list){
           var keep=r.facts.map(function(f,i){return i}).filter(function(i){return !subject.value||r.facts[i].subject===subject.value});
           if(!keep.length)return;shown++;
           out.appendChild(el('div',{class:'row'},el('b',{text:r.date+' · '+keep.map(function(i){return r.facts[i].subject}).join('、')}),el('span',{class:'muted',text:'发布于 '+r.publishedAt+(r.version>1?' · 已更新为第 '+r.version+' 版（最新）':'')})));
-          out.appendChild(reportView({facts:keep.map(function(i){return r.facts[i]}),sections:keep.map(function(i){return r.sections[i]}),comment:r.comment,titles:r.titles}));
+          var pr=r.practice&&Object.assign({},r.practice);
+          if(pr&&subject.value){if(pr.groups)pr.groups=pr.groups.filter(function(g){return g.subject===subject.value});if(pr.assignments)pr.assignments=pr.assignments.filter(function(a){return a.subject===subject.value})}
+          out.appendChild(reportView({facts:keep.map(function(i){return r.facts[i]}),sections:keep.map(function(i){return r.sections[i]}),comment:r.comment,titles:r.titles,practice:pr}));
         });
         if(!shown&&reports.length)out.appendChild(el('div',{class:'muted',text:'所选日期或科目还没有已发布的反馈。'}));
       }

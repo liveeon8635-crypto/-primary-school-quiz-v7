@@ -28,6 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from changying.services import weekend_reports as wr
 
 AI_FEATURE = "weekend_report"
+PRACTICE_FEATURE = "weekend_practice"
 MAX_LESSONS = 4
 STATE_LABEL = {"none": "未生成", "draft": "草稿", "published": "已发布", "stale": "发布后有新数据"}
 
@@ -44,6 +45,23 @@ class SaveBody(BaseModel):
     revision: int = Field(ge=1)
     sections: list[dict[str, Any]] = Field(min_length=1, max_length=MAX_LESSONS)
     comment: str = Field(default="", max_length=wr.TEXT_LIMIT)
+    evidence: list[dict[str, Any]] | None = Field(default=None, max_length=200)
+
+
+class PracticeGenerateBody(BaseModel):
+    revision: int = Field(ge=1)
+    groupKeys: list[str] = Field(default_factory=list, max_length=40)
+    counts: dict[str, int] = Field(default_factory=dict)
+
+
+class PracticeSaveBody(BaseModel):
+    revision: int = Field(ge=1)
+    groups: list[dict[str, Any]] = Field(min_length=1, max_length=40)
+
+
+class PracticeAssignBody(BaseModel):
+    revision: int = Field(ge=1)
+    dueDate: str = Field(default="", max_length=20)
 
 
 class PublishBody(BaseModel):
@@ -75,6 +93,24 @@ def register_report_table(implementation: Any) -> Table:
     return md.tables["weekend_reports"]
 
 
+def live_practice(implementation: Any, db: Any, practice: dict[str, Any] | None, student_id: int) -> dict[str, Any]:
+    """Practice with the live state of each assigned homework, read from the original submissions."""
+    practice = dict(practice or {})
+    assignments = []
+    for a in practice.get("assignments") or []:
+        sub = db.scalar(select(implementation.Submission).where(implementation.Submission.assignment_id == a["assignmentId"],
+                                                                implementation.Submission.student_id == student_id).limit(1))
+        assignments.append({**a, "state": "graded" if sub else "assigned", "correct": sub.correct if sub else None,
+                            "total": sub.total if sub else None,
+                            "submittedAt": wr.local_dt(implementation, sub.submitted_at).strftime("%Y-%m-%d %H:%M") if sub else ""})
+    practice["assignments"] = assignments
+    if assignments and practice.get("state") == "assigned" and all(a["state"] == "graded" for a in assignments):
+        practice["state"] = "graded"
+    elif not assignments and practice.get("groups") and practice.get("state") != "assigning":
+        practice["state"] = "review"
+    return practice
+
+
 def published_reports(implementation: Any, db: Any, school_id: int, student_id: int) -> list[dict[str, Any]]:
     """Parent-safe published versions only; drafts and teacher-only data never leave here."""
     t = register_report_table(implementation)
@@ -86,7 +122,8 @@ def published_reports(implementation: Any, db: Any, school_id: int, student_id: 
         out.append({"id": r.id, "date": r.report_date, "subjects": [f["subject"] for f in facts], "facts": facts,
                     "sections": body["sections"], "comment": body.get("comment", ""), "titles": wr.SECTION_TITLES,
                     "version": int(r.published_version), "publishedAt": wr.local_dt(implementation, r.published_at).strftime("%Y-%m-%d %H:%M"),
-                    "sessionIds": [int(x) for x in r.session_key.split(",")]})
+                    "sessionIds": [int(x) for x in r.session_key.split(",")],
+                    "practice": wr.practice_view(live_practice(implementation, db, json.loads(r.draft_json).get("practice"), student_id), "parent")})
     return out
 
 
@@ -152,7 +189,11 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
             published = {"sections": body["sections"], "comment": body.get("comment", ""), "facts": json.loads(r.published_facts_json),
                          "version": int(r.published_version), "revision": int(r.published_revision),
                          "at": wr.local_dt(implementation, r.published_at).strftime("%Y-%m-%d %H:%M")}
+        draft["evidence"] = draft.get("evidence") or wr.evidence_items(parts)
+        draft["practice"] = live_practice(implementation, db, draft.get("practice"), int(r.student_id))
         return {"id": r.id, "studentId": int(r.student_id), "studentName": parts[0]["name"], "date": r.report_date, "sessionIds": ids,
+                "practiceGroups": wr.practice_groups(draft["evidence"]), "practiceLabels": wr.PRACTICE_LABEL,
+                "parentPractice": wr.practice_view(draft["practice"], "parent"),
                 "state": state, "stateLabel": STATE_LABEL[state], "facts": parts, "parentFacts": [wr.parent_facts(p) for p in parts],
                 "draft": {**draft, "revision": int(r.draft_revision), "savedAt": wr.local_dt(implementation, r.draft_saved_at).strftime("%Y-%m-%d %H:%M"),
                           "factsChanged": r.draft_hash != live,
@@ -212,18 +253,32 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
                         "participants": [{"studentId": p["studentId"], "name": p["name"]} for p in facts["students"].values() if p["participated"]]})
         return {"date": date, "items": out}
 
-    def generated(db: Any, u: Any, parts: list[dict[str, Any]], use_ai: bool) -> tuple[list[dict[str, str]], str]:
-        drafts = [wr.draft_section(p) for p in parts]
-        if not use_ai:
-            return drafts, "template"
-        try:
-            cfg = implementation.ai_config_for(db, u.school_id, False)
-            if not cfg or not cfg.enabled or not cfg.allow_student_data:
-                return drafts, "ai_not_allowed"
-            data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, wr.ai_prompt(parts, drafts), timeout=45))
-            return wr.apply_ai(drafts, data), "ai"
-        except Exception:  # noqa: BLE001 - the factual template is always usable without AI
-            return drafts, "ai_failed"
+    def sources_for(db: Any, u: Any, parts: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+        for p in parts:
+            out.update(wr.source_questions(wr.session_facts(implementation, db, my_session(db, u, p["sessionId"]))))
+        return out
+
+    def ai_allowed(db: Any, u: Any) -> bool:
+        cfg = implementation.ai_config_for(db, u.school_id, False)
+        return bool(cfg and cfg.enabled and cfg.allow_student_data)
+
+    def generated(db: Any, u: Any, parts: list[dict[str, Any]], use_ai: bool,
+                  previous: list[dict[str, Any]] | None = None) -> tuple[list[dict[str, str]], list[dict[str, Any]], str]:
+        evidence = wr.evidence_items(parts, previous)
+        source = "template"
+        if use_ai:
+            try:
+                if not ai_allowed(db, u):
+                    source = "ai_not_allowed"
+                else:
+                    data = implementation._ai_json(implementation._ai_call(
+                        db, u, AI_FEATURE, wr.suggestion_prompt(parts, evidence, sources_for(db, u, parts)), timeout=45))
+                    wr.apply_suggestions(evidence, data)
+                    source = "ai"
+            except Exception:  # noqa: BLE001 - the factual template is always usable without AI
+                evidence, source = wr.evidence_items(parts, previous), "ai_failed"
+        return [wr.draft_section(p, evidence) for p in parts], evidence, source
 
     @router.post("/teacher/weekend/reports")
     def create_report(b: ReportBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -235,10 +290,11 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
         if existing is not None and not b.replace:
             # Never overwrite the teacher's edits silently; the page opens the saved draft instead.
             return {"id": existing.id, "created": False, "source": "existing", "report": describe(db, u, existing)}
-        sections, source = generated(db, u, parts, b.useAi)
+        old = json.loads(existing.draft_json) if existing is not None else {}
+        sections, evidence, source = generated(db, u, parts, b.useAi, old.get("evidence"))
         now = datetime.utcnow()
         if existing is None:
-            body = {"sections": [{**s, "sessionId": p["sessionId"]} for s, p in zip(sections, parts)], "comment": ""}
+            body = {"sections": [{**s, "sessionId": p["sessionId"]} for s, p in zip(sections, parts)], "comment": "", "evidence": evidence}
             try:
                 rid = db.execute(insert(reports).values(school_id=u.school_id, teacher_id=u.id, student_id=b.studentId, report_date=day,
                     session_key=key, draft_json=json.dumps(body, ensure_ascii=False), draft_revision=1, draft_hash=wr.fingerprint(parts),
@@ -250,11 +306,11 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
             return {"id": rid, "created": True, "source": source, "report": describe(db, u, report_row(db, u, rid))}
         if b.revision != int(existing.draft_revision):
             raise HTTPException(409, "草稿已被修改，请刷新核对后再重新生成")
-        # Regenerating replaces only the system-written sections; the teacher's observation and comment stay.
-        old = json.loads(existing.draft_json)
+        # Regenerating replaces only the system-written sections; the teacher's observation, comment,
+        # confirmed knowledge points and the targeted practice stay.
         kept = {int(s.get("sessionId", 0)): s.get("observation", "") for s in old.get("sections", [])}
-        body = {"sections": [{**s, "sessionId": p["sessionId"], "observation": kept.get(p["sessionId"], "")} for s, p in zip(sections, parts)],
-                "comment": old.get("comment", "")}
+        body = {**old, "sections": [{**s, "sessionId": p["sessionId"], "observation": kept.get(p["sessionId"], "")} for s, p in zip(sections, parts)],
+                "comment": old.get("comment", ""), "evidence": evidence}
         changed = db.execute(update(reports).where(reports.c.id == existing.id, reports.c.draft_revision == existing.draft_revision).values(
             draft_json=json.dumps(body, ensure_ascii=False), draft_revision=existing.draft_revision + 1, draft_hash=wr.fingerprint(parts), draft_saved_at=now))
         if changed.rowcount != 1:
@@ -277,7 +333,10 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
             sections = wr.clean_sections(b.sections, parts)
         except ValueError as e:
             raise HTTPException(400, str(e))
-        body = {"sections": sections, "comment": b.comment.replace("\r\n", "\n").strip()}
+        old = json.loads(r.draft_json)
+        body = {**old, "sections": sections, "comment": b.comment.replace("\r\n", "\n").strip()}
+        if b.evidence is not None:
+            body["evidence"] = wr.apply_teacher_evidence(old.get("evidence") or wr.evidence_items(parts), b.evidence)
         changed = db.execute(update(reports).where(reports.c.id == rid, reports.c.draft_revision == b.revision).values(
             draft_json=json.dumps(body, ensure_ascii=False), draft_revision=b.revision + 1, draft_saved_at=datetime.utcnow()))
         if changed.rowcount != 1:
@@ -305,6 +364,162 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
         db.commit()
         return describe(db, u, report_row(db, u, rid))
 
+    def save_draft(db: Any, rid: int, revision: int, body: dict[str, Any], message: str) -> None:
+        changed = db.execute(update(reports).where(reports.c.id == rid, reports.c.draft_revision == revision).values(
+            draft_json=json.dumps(body, ensure_ascii=False), draft_revision=revision + 1, draft_saved_at=datetime.utcnow()))
+        if changed.rowcount != 1:
+            db.rollback()
+            raise HTTPException(409, message)
+        db.commit()
+
+    def practice_context(db: Any, u: Any, r: Any, revision: int, retry: bool = False) -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:
+        if int(r.draft_revision) != revision:
+            raise HTTPException(409, "报告已在别处更新，请刷新核对后再操作练习")
+        parts, _ = report_parts(db, u, int(r.student_id), [int(x) for x in r.session_key.split(",")])
+        draft = json.loads(r.draft_json)
+        state = (draft.get("practice") or {}).get("state")
+        if state in ("assigning", "assigned") or (state == "partial" and not retry):
+            raise HTTPException(409, "针对性练习已布置，不能再修改；如需调整请在作业中处理")
+        return parts, draft, draft.get("evidence") or wr.evidence_items(parts)
+
+    @router.post("/teacher/weekend/reports/{rid}/practice/generate")
+    def generate_practice(rid: int, b: PracticeGenerateBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """New variants of this pupil's own wrong and partly right answers, for the teacher to review. Assigns nothing."""
+        need(u, "teacher")
+        r = report_row(db, u, rid)
+        parts, draft, evidence = practice_context(db, u, r, b.revision)
+        groups = wr.practice_groups(evidence, b.counts)
+        if not groups:
+            raise HTTPException(400, "这份报告没有需订正或部分正确的题，不需要生成针对性练习")
+        targets = [g for g in groups if not b.groupKeys or g["key"] in b.groupKeys]
+        if not targets:
+            raise HTTPException(400, "请选择要生成的薄弱点")
+        if not ai_allowed(db, u):
+            raise HTTPException(400, "学校未开启 AI 或未允许发送学生学习数据，无法自动出新题；已有报告和题目未改动，可手动添加题目")
+        sources = sources_for(db, u, parts)
+        stu = db.get(implementation.User, int(r.student_id))
+        grade = int(getattr(stu, "grade", 0) or 5)
+        try:
+            data = implementation._ai_json(implementation._ai_call(db, u, PRACTICE_FEATURE, wr.practice_prompt(targets, sources, grade), timeout=90))
+            returned = {str(g.get("key")): g for g in (data.get("groups") or []) if isinstance(g, dict)} if isinstance(data, dict) else {}
+        except Exception as e:  # noqa: BLE001 - nothing is saved; the existing report and questions stay
+            detail = getattr(e, "detail", "") or "AI 服务不可用"
+            raise HTTPException(502, f"生成失败：{detail}。已有报告和题目未改动，请稍后重试或手动添加题目")
+        old_groups = {g["key"]: g for g in (draft.get("practice") or {}).get("groups") or []}
+        problems, made = [], 0
+        new_groups = []
+        for g in groups:
+            entry = {k: g[k] for k in ("key", "sessionId", "subject", "topic", "knowledge", "count", "basis")}
+            entry["sourceNos"] = [e["no"] for e in g["items"]]
+            entry["questions"] = list(old_groups.get(g["key"], {}).get("questions") or [])
+            if g in targets:
+                valid, reasons = [], []
+                for raw in (returned.get(g["key"]) or {}).get("questions") or []:
+                    try:
+                        q = wr.clean_question(raw, g, sources, implementation._sanitize_figure)
+                    except ValueError as err:
+                        reasons.append(str(err))
+                        continue
+                    if all(wr._norm(q["text"]) != wr._norm(x["text"]) for x in valid):
+                        valid.append(q)
+                valid = valid[: g["count"]]
+                if valid:
+                    entry["questions"], made = valid, made + len(valid)
+                    if len(valid) < g["count"]:
+                        problems.append(f"{g['topic']}：只得到 {len(valid)} 道合格新题（{'；'.join(dict.fromkeys(reasons)) or 'AI 返回不足'}）")
+                else:
+                    problems.append(f"{g['topic']}：生成失败（{'；'.join(dict.fromkeys(reasons)) or 'AI 没有返回这个薄弱点的题'}），保留原有题目")
+            new_groups.append(entry)
+        if not made:
+            raise HTTPException(502, "生成失败：" + "；".join(problems) + "。已有报告和题目未改动")
+        draft["practice"] = {"state": "review", "groups": new_groups, "generatedAt": wr.local_dt(implementation, datetime.utcnow()).strftime("%Y-%m-%d %H:%M"),
+                             "assignments": (draft.get("practice") or {}).get("assignments") or []}
+        draft["evidence"] = evidence
+        save_draft(db, rid, b.revision, draft, "报告已在别处更新，请刷新核对后再生成")
+        implementation.audit(db, u, "weekend.report.practice.generate", f"report={rid}:student={r.student_id}:questions={made}")
+        db.commit()
+        return {"report": describe(db, u, report_row(db, u, rid)), "problems": problems}
+
+    @router.put("/teacher/weekend/reports/{rid}/practice")
+    def save_practice(rid: int, b: PracticeSaveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Teacher edits or deletes reviewed variants; the same rules as generated questions apply."""
+        need(u, "teacher")
+        r = report_row(db, u, rid)
+        parts, draft, evidence = practice_context(db, u, r, b.revision)
+        sources = sources_for(db, u, parts)
+        current = {g["key"]: g for g in (draft.get("practice") or {}).get("groups") or []}
+        weak = {g["key"]: g for g in wr.practice_groups(evidence)}
+        out = []
+        for edit in b.groups:
+            key = str(edit.get("key") or "")
+            if key not in weak:
+                raise HTTPException(400, "练习题对应的薄弱点已不存在，请刷新后重试")
+            g = weak[key]
+            questions = []
+            for i, raw in enumerate(edit.get("questions") or [], 1):
+                try:
+                    questions.append(wr.clean_question(raw, g, sources, implementation._sanitize_figure))
+                except ValueError as err:
+                    raise HTTPException(400, f"{g['topic']} 第{i}题：{err}")
+            base = current.get(key) or {k: g[k] for k in ("key", "sessionId", "subject", "topic", "knowledge", "count", "basis")}
+            out.append({**base, "sourceNos": [e["no"] for e in g["items"]], "questions": questions[:5]})
+        draft["practice"] = {**(draft.get("practice") or {}), "state": "review", "groups": out}
+        save_draft(db, rid, b.revision, draft, "报告已在别处更新，本次修改未保存；请刷新核对")
+        return describe(db, u, report_row(db, u, rid))
+
+    @router.post("/teacher/weekend/reports/{rid}/practice/assign")
+    def assign_practice(rid: int, b: PracticeAssignBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """After review, assign through the existing targeted-practice homework, only to this pupil, once."""
+        need(u, "teacher")
+        r = report_row(db, u, rid)
+        parts, draft, evidence = practice_context(db, u, r, b.revision, retry=True)
+        practice = draft.get("practice") or {}
+        groups = [g for g in practice.get("groups") or [] if g.get("questions")]
+        if not groups:
+            raise HTTPException(400, "还没有审核过的练习题，请先生成或添加题目")
+        # Mark first under the revision check, so a second click or another tab cannot assign twice.
+        practice["state"] = "assigning"
+        draft["practice"] = practice
+        save_draft(db, rid, b.revision, draft, "练习已在布置或报告已更新，请刷新查看，避免重复布置")
+        stu = db.get(implementation.User, int(r.student_id))
+        cls = implementation.current_class_for(db, stu.id, u.school_id)
+        grade = int(stu.grade or (cls.grade if cls else 5) or 5)
+        textbook = {"数学": "人教版", "语文": "统编版（人民教育出版社）"}
+        done = {a["subject"] for a in practice.get("assignments") or []}
+        assigned, error = list(practice.get("assignments") or []), ""
+        for subject in dict.fromkeys(g["subject"] for g in groups):
+            if subject in done:
+                continue
+            mine = [q for g in groups if g["subject"] == subject for q in g["questions"]]
+            unit = next((p["unit"] for p in parts if p["subject"] == subject), "")
+            title = f"{stu.name} · {r.report_date} {subject}周末课针对性练习"
+            body = implementation.AIReinforcementAssignBody(
+                questions=[{"grade": grade, "subject": subject, "textbook": textbook.get(subject, ""), "semester": "上册", "unit": unit,
+                            "knowledge": q["knowledge"], "text": q["text"], "options": q["options"], "correct_index": q["correct_index"],
+                            "explanation": q["explanation"], "question_type": q["question_type"], "answer": q["answer"],
+                            "accepted_answers": q["accepted_answers"], "figure": q["figure"]} for q in mine],
+                title=title, due_date=b.dueDate.strip(), wrong_ids=[],
+                instructions="根据周末课错题生成的针对性练习，请独立完成后提交。")
+            try:
+                res = implementation.teacher_reinforcement_assign(int(r.student_id), body, u, db)
+            except Exception as e:  # noqa: BLE001 - record what was assigned; never leave the report locked
+                db.rollback()
+                error = f"{subject}：{getattr(e, 'detail', '') or '布置失败'}"
+                break
+            assigned.append({"subject": subject, "assignmentId": int(res["assignment"]["id"]), "title": title,
+                             "dueDate": res["assignment"].get("due_date") or res["assignment"].get("dueDate") or b.dueDate,
+                             "questionCount": len(mine)})
+        fresh = report_row(db, u, rid)
+        draft = json.loads(fresh.draft_json)
+        all_subjects = set(g["subject"] for g in groups)
+        draft["practice"] = {**practice, "assignments": assigned,
+                             "state": "assigned" if {a["subject"] for a in assigned} >= all_subjects else ("partial" if assigned else "review"),
+                             "assignedAt": wr.local_dt(implementation, datetime.utcnow()).strftime("%Y-%m-%d %H:%M") if assigned else ""}
+        save_draft(db, rid, int(fresh.draft_revision), draft, "布置结果保存冲突，请刷新查看")
+        if error:
+            raise HTTPException(409, f"布置未全部完成（{error}）；已布置的科目不会重复布置，请处理后重试")
+        return describe(db, u, report_row(db, u, rid))
+
     @router.get("/teacher/weekend/reports/{rid}/report.docx")
     def report_docx(rid: int, version: str = "draft", u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
@@ -320,7 +535,7 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
             raise HTTPException(400, "请选择草稿或已发布版本")
         titles = [(k, wr.SECTION_TITLES[k]) for k in wr.SECTION_KEYS]
         data = report_document({"studentName": d["studentName"], "date": d["date"], "facts": facts, "sections": body["sections"],
-                                "comment": body.get("comment", ""), "titles": titles, "stateLabel": label})
+                                "comment": body.get("comment", ""), "titles": titles, "stateLabel": label, "practice": d["parentPractice"]})
         from urllib.parse import quote
         name = f"{d['studentName']}-{d['date']}-周末课学情反馈.docx"
         return Response(data, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",

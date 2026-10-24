@@ -158,5 +158,17 @@ def report_document(report):
     if report.get('comment'):
         _paragraph(body, '老师的话', 'Heading1', keep=True, before=200)
         _paragraph(body, report['comment'])
+    practice = report.get('practice') or {}
+    if practice.get('state') not in (None, 'none'):
+        _paragraph(body, '针对性练习（'+str(practice.get('label') or '')+'）', 'Heading1', keep=True, before=200)
+        if not practice.get('groups'):
+            _paragraph(body, '老师审核后会布置到孩子的“作业”里。')
+        for group in practice.get('groups') or []:
+            _paragraph(body, str(group.get('subject') or '')+'　'+str(group.get('topic') or ''), keep=True, before=80, after=40)
+            for number, q in enumerate(group.get('questions') or [], 1):
+                # Question text only: answers and explanations follow the homework's own release rules.
+                _paragraph(body, str(number)+'. '+str(q.get('text') or ''), keep=bool(q.get('options')))
+                for index, option in enumerate(q.get('options') or []):
+                    _paragraph(body, chr(65+index)+'. '+str(option), after=40)
     _a4(body)
     return _package(document)

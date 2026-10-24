@@ -114,7 +114,7 @@ def test_weekend_reports_use_real_records_without_touching_them(tmp_path):
     b_photo = next(i for i in B["items"] if i["kind"] == "written")
     assert b_photo["status"] == "pending" and b_photo["photoUrl"].endswith("/photo")
     assert s["summary"]["counts"]["total"] == 9 and s["summary"]["pendingReview"] == 1 and s["summary"]["participated"] == 2
-    assert {k["knowledge"] for k in s["summary"]["knowledge"]} == {"旋转的意义", "旋转作图", "未标注考点"}
+    assert {k["knowledge"] for k in s["summary"]["knowledge"]} == {"旋转的意义", "旋转作图", "「写出旋转过程」（考点待教师补充）"}
     assert client.get(f"/teacher/weekend/sessions/{m}/summary", headers=a_h).status_code == 403
 
     # ---- the day's lessons and who actually took part
@@ -133,8 +133,12 @@ def test_weekend_reports_use_real_records_without_touching_them(tmp_path):
     math_part, chin_part = rep["draft"]["sections"]
     assert math_part["sessionId"] == m and chin_part["sessionId"] == ch                  # one report, one section per subject
     assert "应做 3 题，已提交 2 题，未提交 1 题" in math_part["completion"] and "部分正确 1 题" in math_part["completion"]
-    assert "第3题（未标注考点）部分正确" in math_part["issues"] and "会用旋转解决问题" not in math_part["issues"]
-    assert "第1题（旋转的意义）" in math_part["mastery"] and "补做未提交的第2题" in math_part["homework"]
+    # Concrete for parents: task + performance + teacher's note; never a bare number, "未标注考点" or the lesson goal.
+    assert "题目任务「写出旋转过程」（第3题）：答对了一部分；老师批注：过程不完整。" in math_part["issues"]
+    assert "旋转的意义（题目任务：数学选择0）（第1题）：作答正确。" in math_part["mastery"]
+    assert "补做未提交的题目：「数学选择1」（第2题）" in math_part["homework"]
+    for generic in ("未标注考点", "会用旋转解决问题", "概念理解、方法选择", "同类练习 3 题", "练3题"):
+        assert generic not in math_part["issues"] + math_part["mastery"] + math_part["homework"], generic
     assert "待老师批改 1 题（待批改不算错误）" in chin_part["completion"]
     assert math_part["observation"] == "" and math_part["consolidation"] == ""
     joined = json.dumps(rep["draft"], ensure_ascii=False)
@@ -169,7 +173,7 @@ def test_weekend_reports_use_real_records_without_touching_them(tmp_path):
     assert got[0]["sections"][0]["observation"] == "能主动说出旋转中心" and got[0]["comment"] == "继续加油"
     assert got[0]["facts"][0]["counts"]["unsubmitted"] == 1 and "points" not in got[0]["facts"][0]
     text = json.dumps(got, ensure_ascii=False)
-    for word in ("秘密参考", "乙同学", "丙同学", "过程不完整", "绕O点", "photo", "reference"):
+    for word in ("秘密参考", "乙同学", "丙同学", "绕O点", "photo", "reference"):
         assert word not in text, word
     assert client.get(f"/parent/children/{a_id}/weekend-briefs", headers=pb_h).status_code == 404     # other child's parent
     assert client.get(f"/parent/children/{b_id}/weekend-briefs", headers=pb_h).json()["reports"] == []
@@ -196,7 +200,7 @@ def test_weekend_reports_use_real_records_without_touching_them(tmp_path):
     assert regen.status_code == 409
     regen = client.post("/teacher/weekend/reports", headers=th, json={"studentId": a_id, "sessionIds": [m, ch], "replace": True, "revision": 2}).json()["report"]
     assert regen["draft"]["sections"][0]["observation"] == "能主动说出旋转中心" and regen["draft"]["comment"] == "继续加油"
-    assert "补做未提交的第2题" in regen["draft"]["sections"][0]["homework"] and regen["draft"]["factsChanged"] is False
+    assert "补做未提交的题目：「数学选择1」（第2题）" in regen["draft"]["sections"][0]["homework"] and regen["draft"]["factsChanged"] is False
     assert regen["state"] == "stale" and regen["draft"]["unpublishedEdits"] is True
     assert client.get(f"/parent/children/{a_id}/weekend-briefs", headers=pa_h).json()["reports"][0]["version"] == 1
     republished = client.post(f"/teacher/weekend/reports/{rid}/publish", headers=th, json={"revision": 3}).json()
@@ -211,7 +215,7 @@ def test_weekend_reports_use_real_records_without_touching_them(tmp_path):
     xml = zipfile.ZipFile(io.BytesIO(d.content)).read("word/document.xml").decode()
     assert "周末课学情反馈" in xml and "能主动说出旋转中心" in xml and "继续加油" in xml and "已发布第2版" in xml
     assert "应做 3 题，已提交 2 题，未提交 1 题" in xml and "数学" in xml and "语文" in xml
-    for word in ("乙同学", "丙同学", "秘密参考", "过程不完整"):
+    for word in ("乙同学", "丙同学", "秘密参考"):
         assert word not in xml, word
     assert client.get(f"/teacher/weekend/reports/{rid}/report.docx?version=published", headers=a_h).status_code == 403
 
@@ -237,17 +241,33 @@ def test_weekend_reports_use_real_records_without_touching_them(tmp_path):
 ''')
 
 
-def test_ai_wording_falls_back_to_the_factual_template(tmp_path):
+def test_ai_suggestions_stay_unconfirmed_until_the_teacher_checks_them(tmp_path):
     helpers.run_isolated(tmp_path, helpers.COMMON + SETUP + r'''
     replies.append(RuntimeError("model down"))
-    r = client.post("/teacher/weekend/reports", headers=th, json={"studentId": b_id, "sessionIds": [m], "useAi": True}).json()
+    r = client.post("/teacher/weekend/reports", headers=th, json={"studentId": a_id, "sessionIds": [ch], "useAi": True}).json()
     assert r["source"] == "ai_failed" and "应做 3 题" in r["report"]["draft"]["sections"][0]["completion"]
-    replies.append(json.dumps({"sections": [{"mastery": "孩子第1题旋转的意义答对。", "issues": "", "homework": "", "followup": ""}]}, ensure_ascii=False))
+    rid = r["id"]; ev = r["report"]["draft"]["evidence"]
+    assert [e["status"] for e in ev] == ["correct"]                       # 语文: choice right, written still pending
+    # Maths for 乙: wrong choice (旋转的意义), right choice, photo pending.
+    r = client.post("/teacher/weekend/reports", headers=th, json={"studentId": b_id, "sessionIds": [m]}).json()
+    bid, ev = r["id"], r["report"]["draft"]["evidence"]
+    wrong = next(e for e in ev if e["status"] == "revise")
+    assert wrong["knowledge"] == "旋转的意义" and wrong["knowledgeSource"] == "question" and wrong["answer"] == "B. 错"
+    issues = r["report"]["draft"]["sections"][0]["issues"]
+    assert "旋转的意义（题目任务：数学选择0）（第1题）：选择了「B. 错」，未选出正确答案；具体错因需教师核实。" in issues
+    replies.append(json.dumps({"items": [{"key": wrong["key"], "knowledge": "别的考点", "cause": "把顺时针看成逆时针"}]}, ensure_ascii=False))
     r = client.post("/teacher/weekend/reports", headers=th, json={"studentId": b_id, "sessionIds": [m], "useAi": True, "replace": True, "revision": 1}).json()
-    assert r["source"] == "ai" and r["report"]["draft"]["sections"][0]["mastery"] == "孩子第1题旋转的意义答对。"
-    assert "应做 3 题" in r["report"]["draft"]["sections"][0]["completion"]               # facts stay deterministic
-    assert prompts and "乙同学" not in prompts[-1] and "周末五年级" not in prompts[-1] and "秘密参考" not in prompts[-1]
-    assert r["report"]["state"] == "draft"
+    assert r["source"] == "ai"
+    got = next(e for e in r["report"]["draft"]["evidence"] if e["key"] == wrong["key"])
+    assert got["knowledge"] == "旋转的意义" and got["cause"] == "把顺时针看成逆时针" and got["causeSource"] == "ai"   # question knowledge never replaced
+    assert "把顺时针看成逆时针" not in r["report"]["draft"]["sections"][0]["issues"]                                   # unconfirmed: not shown
+    assert prompts and "乙同学" not in prompts[-1] and "周末五年级" not in prompts[-1]
+    rep = r["report"]
+    saved = client.put(f"/teacher/weekend/reports/{bid}", headers=th, json={"revision": rep["draft"]["revision"], "sections": rep["draft"]["sections"],
+        "comment": "", "evidence": [{"key": wrong["key"], "knowledge": "旋转的意义", "cause": "能判断旋转中心，但把顺时针看成了逆时针", "confirmed": True}]}).json()
+    regen = client.post("/teacher/weekend/reports", headers=th, json={"studentId": b_id, "sessionIds": [m], "replace": True,
+                                                                      "revision": saved["draft"]["revision"]}).json()["report"]
+    assert "选择了「B. 错」，未选出正确答案；能判断旋转中心，但把顺时针看成了逆时针。" in regen["draft"]["sections"][0]["issues"]
     with legacy.SessionLocal() as db:
         assert counts(db) == before
     print("OK")
@@ -263,11 +283,137 @@ with TestClient(app) as client:
     assert page.status_code == 200
     html = page.text
     for text in ("/summary", "/teacher/weekend/reports", "/publish", "report.docx", "/report-sessions?date=",
-                 "预览家长看到的内容", "发布给家长", "按最新数据重新生成", "待批", "未提交", "需订正"):
+                 "预览家长看到的内容", "发布给家长", "按最新数据重新生成", "待批", "未提交", "需订正",
+                 "/practice/generate", "/practice/assign", "审核确认并布置给", "考点与表现依据", "已核实", "删除这题", "查看作答与批改"):
         assert text in html, text
     parent = client.get("/v1/weekend-brief").text
     assert "周末课学情反馈" in parent and "d.reports" in parent and "老师发布后会显示在这里" in parent
     top = client.get("/classic?legacy=1&unified=1&page=childProgress").text
     assert "cy-wkr-band" in top and "/v1/weekend-brief?child=" in top
+    print("OK")
+''')
+
+
+def test_variant_practice_is_per_pupil_reviewed_then_assigned_once_through_homework(tmp_path):
+    helpers.run_isolated(tmp_path, helpers.COMMON + SETUP + r'''
+    # 丙's Chinese short answer is marked "revise" with a concrete teacher note.
+    w = client.get(f"/teacher/weekend/sessions/{ch}/written", headers=th).json()["items"]
+    c_cw = next(i for i in w if i["studentId"] == c_id)
+    client.post(f"/teacher/weekend/sessions/{ch}/written/review-batch", headers=th,
+                json={"items": [{"id": c_cw["id"], "revision": c_cw["revision"], "result": "revise", "comment": "只写了“爱国”，缺少原文依据"}]})
+    def assignments():
+        with legacy.SessionLocal() as db:
+            return db.scalar(select(func.count()).select_from(legacy.Assignment))
+    n0 = assignments()
+
+    # ---- 乙 (maths): one wrong choice question -> one weak point, 2 variants by default
+    rb = client.post("/teacher/weekend/reports", headers=th, json={"studentId": b_id, "sessionIds": [m]}).json()["report"]
+    groups = rb["practiceGroups"]
+    assert len(groups) == 1 and groups[0]["count"] == 2 and groups[0]["topic"] == "旋转的意义"
+    gkey = groups[0]["key"]
+    replies.append(json.dumps({"groups": [{"key": gkey, "questions": [
+        {"question_type": "single_choice", "level": 1, "text": "数学选择0", "options": ["对", "错", "不确定", "都不是"], "correct_index": 0},   # the original
+        {"question_type": "single_choice", "level": 1, "text": "数学选择7", "options": ["对", "错", "不确定", "都不是"], "correct_index": 0},   # only a number changed
+        {"question_type": "fill_blank", "level": 1, "text": "钟面上的分针从12走到3，绕中心按什么方向旋转了多少度？", "answer": "顺时针90度",
+         "accepted_answers": ["顺时针旋转90度"], "explanation": "从12到3是四分之一圈", "knowledge": "旋转的意义"},
+        {"question_type": "single_choice", "level": 2, "text": "风车叶片绕中心逆时针旋转90°后，原来朝上的叶片会朝向哪里？",
+         "options": ["朝左", "朝右", "朝下", "不变"], "correct_index": 0, "explanation": "逆时针旋转四分之一圈", "knowledge": "旋转的意义"},
+        {"question_type": "single_choice", "level": 3, "text": "如图，三角形绕点O旋转后……", "options": ["甲", "乙", "丙", "丁"], "correct_index": 1}]}]},
+        ensure_ascii=False))
+    g = client.post(f"/teacher/weekend/reports/{rb['id']}/practice/generate", headers=th, json={"revision": rb["draft"]["revision"]})
+    assert g.status_code == 200, g.text
+    rb = g.json()["report"]
+    qs = rb["draft"]["practice"]["groups"][0]["questions"]
+    assert [q["text"][:4] for q in qs] == ["钟面上的", "风车叶片"]                                  # copy, number-swap and figure-less rejected
+    assert rb["draft"]["practice"]["state"] == "review" and qs[0]["answer"] == "顺时针90度" and qs[1]["explanation"]
+    assert "B. 错" in prompts[-1] and "旋转的意义" in prompts[-1] and "乙同学" not in prompts[-1] and "过程不完整" not in prompts[-1]
+    assert "数学选择0" in rb["draft"]["practice"]["groups"][0]["basis"]
+    assert assignments() == n0                                                                     # generating assigns nothing
+
+    # ---- 丙 (语文): a different weak point and a different set; reading material is required
+    rc = client.post("/teacher/weekend/reports", headers=th, json={"studentId": c_id, "sessionIds": [ch]}).json()["report"]
+    cg = rc["practiceGroups"]
+    assert len(cg) == 1 and cg[0]["topic"] == "「说说你的理解」" and cg[0]["key"] != gkey
+    assert "阅读材料《文章》—题目任务「说说你的理解」（第3题）：答案需要订正；老师批注：只写了“爱国”，缺少原文依据。" in rc["draft"]["sections"][0]["issues"]
+    passage = "阅读短文：外公是一名老兵。每年国庆，他都早早换上旧军装，站在阳台上看升旗直播，眼里含着泪。他常说：“没有国，哪有家。”他把攒下的退休金捐给了家乡的学校。"
+    replies.append(json.dumps({"groups": [{"key": cg[0]["key"], "knowledge": "结合人物言行说明人物品质", "questions": [
+        {"question_type": "single_choice", "level": 1, "text": "外公看升旗时眼里含着泪，说明了什么？", "options": ["爱国", "怕冷", "生气", "无聊"], "correct_index": 0},
+        {"question_type": "single_choice", "level": 2, "text": passage + "\n下列哪句话最能作为“外公热爱祖国”的原文依据？",
+         "options": ["“没有国，哪有家。”", "外公是一名老兵。", "他站在阳台上。", "每年国庆。"], "correct_index": 0, "explanation": "直接表达观点的语言描写",
+         "knowledge": "结合人物言行说明人物品质"},
+        {"question_type": "fill_blank", "level": 3, "text": passage + "\n外公把退休金捐给了家乡的____，这一行为表现了他热爱家乡。", "answer": "学校",
+         "explanation": "原文最后一句"}]}]}, ensure_ascii=False))
+    gc = client.post(f"/teacher/weekend/reports/{rc['id']}/practice/generate", headers=th,
+                     json={"revision": rc["draft"]["revision"], "counts": {cg[0]["key"]: 3}}).json()                # teacher raised the count
+    cq = gc["report"]["draft"]["practice"]["groups"][0]["questions"]
+    assert len(cq) == 2 and all(passage in q["text"] for q in cq) and any("阅读材料" in p for p in gc["problems"])
+    assert "缺少原文依据" in prompts[-1] and "说说你的理解" in prompts[-1] and "B. 错" not in prompts[-1]
+    assert {q["text"] for q in qs}.isdisjoint({q["text"] for q in cq})                              # not one generic set for everyone
+
+    # ---- a failed generation keeps the report and existing questions
+    replies.append(RuntimeError("model down"))
+    before_fail = client.get(f"/teacher/weekend/reports/{rb['id']}", headers=th).json()
+    fail = client.post(f"/teacher/weekend/reports/{rb['id']}/practice/generate", headers=th, json={"revision": before_fail["draft"]["revision"]})
+    assert fail.status_code == 502 and "生成失败" in fail.json()["detail"] and "未改动" in fail.json()["detail"]
+    after_fail = client.get(f"/teacher/weekend/reports/{rb['id']}", headers=th).json()
+    assert after_fail["draft"]["revision"] == before_fail["draft"]["revision"] and after_fail["draft"]["practice"]["groups"][0]["questions"] == qs
+
+    # ---- teacher edits / deletes under the same rules
+    bad = [{**qs[0], "text": "如图，求旋转角。"}]
+    assert client.put(f"/teacher/weekend/reports/{rb['id']}/practice", headers=th,
+                      json={"revision": after_fail["draft"]["revision"], "groups": [{"key": gkey, "questions": bad}]}).status_code == 400
+    edited = [{**qs[0], "text": "钟面上的时针从12走到3，绕中心按什么方向旋转了多少度？"}, qs[1]]
+    rb = client.put(f"/teacher/weekend/reports/{rb['id']}/practice", headers=th,
+                    json={"revision": after_fail["draft"]["revision"], "groups": [{"key": gkey, "questions": edited}]}).json()
+    assert rb["draft"]["practice"]["groups"][0]["questions"][0]["text"].startswith("钟面上的时针")
+
+    # ---- parents see the review state only after the report is published, never answers
+    pub = client.post(f"/teacher/weekend/reports/{rb['id']}/publish", headers=th, json={"revision": rb["draft"]["revision"]}).json()
+    assert assignments() == n0                                                                     # publishing does not assign
+    pr = client.get(f"/parent/children/{b_id}/weekend-briefs", headers=pb_h).json()["reports"][0]["practice"]
+    assert pr == {"state": "review", "label": "待教师审核"}
+
+    # ---- assign once, only to 乙, through the existing targeted-practice homework
+    rev = pub["draft"]["revision"]
+    first = client.post(f"/teacher/weekend/reports/{rb['id']}/practice/assign", headers=th, json={"revision": rev})
+    assert first.status_code == 200, first.text
+    again = client.post(f"/teacher/weekend/reports/{rb['id']}/practice/assign", headers=th, json={"revision": rev})
+    assert again.status_code == 409
+    rb = first.json()
+    assert assignments() == n0 + 1 and rb["draft"]["practice"]["state"] == "assigned"
+    aid = rb["draft"]["practice"]["assignments"][0]["assignmentId"]
+    with legacy.SessionLocal() as db:
+        recips = db.scalars(select(legacy.AssignmentRecipient.student_id).where(legacy.AssignmentRecipient.assignment_id == aid)).all()
+        assert list(recips) == [b_id]
+        assert db.scalar(select(func.count()).select_from(legacy.ReinforcementLink).where(legacy.ReinforcementLink.assignment_id == aid)) == 1
+    assert client.post(f"/teacher/weekend/reports/{rb['id']}/practice/generate", headers=th,
+                       json={"revision": rb["draft"]["revision"]}).status_code == 409                  # assigned questions are locked
+    assert all(x["id"] != aid for x in client.get("/student/assignments", headers=c_h).json())
+    mine = next(x for x in client.get("/student/assignments", headers=b_h).json() if x["id"] == aid)
+    paper = client.get(f"/papers/{mine['paperID']}/questions", headers=b_h).json()
+    assert len(paper) == 2 and all("correct_index" not in q and "explanation" not in q and "answer_json" not in q for q in paper)
+    parent = client.get(f"/parent/children/{b_id}/weekend-briefs", headers=pb_h).json()["reports"][0]["practice"]
+    assert parent["state"] == "assigned" and parent["label"] == "已布置" and len(parent["groups"][0]["questions"]) == 2
+    ptext = json.dumps(parent, ensure_ascii=False)
+    assert "顺时针90度" not in ptext and "四分之一圈" not in ptext and "correct_index" not in ptext
+
+    # ---- the pupil answers in the existing homework; results return to the teacher and parent
+    answers = [{"question_id": q["id"], "text_answer": "顺时针90度"} if q["questionType"] == "fill_blank" else {"question_id": q["id"], "selected_index": 1}
+               for q in paper]
+    done = client.post(f"/student/assignments/{aid}/submit", headers=b_h, json={"answers": answers})
+    assert done.status_code == 200, done.text
+    view = client.get(f"/teacher/weekend/reports/{rb['id']}", headers=th).json()["draft"]["practice"]
+    assert view["state"] == "graded" and view["assignments"][0]["correct"] == 1 and view["assignments"][0]["total"] == 2
+    subs = client.get(f"/teacher/assignments/{aid}/submissions", headers=th).json()
+    assert subs[0]["studentID"] == b_id and subs[0]["correct"] == 1
+    parent = client.get(f"/parent/children/{b_id}/weekend-briefs", headers=pb_h).json()["reports"][0]["practice"]
+    assert parent["label"] == "已批改" and parent["assignments"][0]["correct"] == 1
+    d = client.get(f"/teacher/weekend/reports/{rb['id']}/report.docx?version=published", headers=th)
+    xml = zipfile.ZipFile(io.BytesIO(d.content)).read("word/document.xml").decode()
+    assert "针对性练习（已批改）" in xml and "风车叶片" in xml and "顺时针90度" not in xml
+    with legacy.SessionLocal() as db:
+        md = legacy.Base.metadata.tables
+        assert db.scalar(select(func.count()).select_from(md["weekend_answers"])) == before["weekend_answers"]
+        assert db.scalar(select(func.count()).select_from(md["weekend_awards"])) == before["weekend_awards"]
     print("OK")
 ''')
