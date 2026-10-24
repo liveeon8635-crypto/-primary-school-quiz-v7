@@ -587,10 +587,8 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         written = register_written_tables(implementation)['submissions']
         if db.scalar(select(func.count()).select_from(written).where(written.c.session_id == sid,
                 written.c.student_id == stu, written.c.result.in_(['partial', 'revise']))):
-            session = db.execute(select(sessions).where(sessions.c.id == sid)).first()
-            lesson = db.get(Lesson, session.lesson_id) if session else None
-            if lesson and lesson.core_target and lesson.core_target not in out:
-                out.append(lesson.core_target)
+            # Written questions carry no knowledge point; the lesson goal is not a stand-in for it.
+            out.append("文字／照片题（未标注考点）")
         return out
 
     def student_line(db: Any, row: Any, stu: int, ans: list[Any], points: dict[str, int], helped: int) -> dict[str, Any]:
@@ -632,7 +630,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
                 "classRates": {"pre": met.pre_rate, "post": met.post_rate} if met else None, "settled": bool(pts)}
 
     def brief_text(row: Any, lesson: Any, name: str, line: dict[str, Any]) -> str:
-        parts = [f"{name}本节{lesson.subject if lesson else ''}课《{lesson.title if lesson else row.title}》：完成 {line['correct']}/{line['total']} 题。"]
+        parts = [f"{name}本节{lesson.subject if lesson else ''}课《{lesson.title if lesson else row.title}》：已批改做对 {line['correct']} 题（本节共 {line['total']} 题）。"]
         if line["hintAvg"] > 0:
             parts.append(f"做题时有需要提示的地方（平均提示 {line['hintAvg']} 级），能在提示下完成，继续练习会更独立。")
         else:
@@ -693,7 +691,10 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
             raise HTTPException(404, "没有找到这个孩子")
         rows = db.execute(select(briefs.c.text, briefs.c.created_at, sessions.c.title).join(sessions, sessions.c.id == briefs.c.session_id)
                           .where(briefs.c.student_id == cid, briefs.c.school_id == u.school_id).order_by(briefs.c.id.desc()).limit(30)).all()
-        return {"childName": child.name, "items": [{"title": r.title, "text": r.text, "at": r.created_at.strftime("%Y-%m-%d")} for r in rows]}
+        from changying.web.weekend_report_views import published_reports
+        # Both parent entries (孩子课程 and 孩子学情) read this one endpoint, so they show the same published data.
+        return {"childName": child.name, "items": [{"title": r.title, "text": r.text, "at": r.created_at.strftime("%Y-%m-%d")} for r in rows],
+                "reports": published_reports(implementation, db, int(u.school_id), cid)}
 
     @router.get("/teacher/weekend/term-summary")
     def term_summary(subject: str = "", u: Any = Depends(current_user), db: Any = Depends(get_db)):

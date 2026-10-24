@@ -203,6 +203,24 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
   }
   setInterval(ensure,1300);
  })();
+ // 周末课：家长“孩子学情”页顶部放学情反馈入口（链接到同一份已发布数据，不发起请求）。
+ (function(){
+  var ID='cy-wkr-band';
+  function ensure(){
+   var page='',role='',child=null;
+   try{if(stateReady()){role=currentRole();page=currentPage();child=state.childID}}catch(_e){}
+   var old=document.getElementById(ID),href='/v1/weekend-brief?child='+encodeURIComponent(child||'');
+   if(role!=='parent'||page!=='childProgress'||!child){if(old)old.remove();return}
+   if(old){if(old.getAttribute('href')!==href)old.href=href;return}
+   var pg=document.getElementById('page');if(!pg)return;
+   var band=document.createElement('a');band.id=ID;band.href=href;
+   band.style.cssText='display:block;margin:0 0 14px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#a8101c;font-weight:700;font-size:14px;text-decoration:none';
+   band.textContent='周末课学情反馈：查看老师发布的语文、数学课后反馈 ›';
+   var head=pg.querySelector('.page-head');
+   if(head&&head.parentNode===pg)pg.insertBefore(band,head.nextSibling);else pg.insertBefore(band,pg.firstChild);
+  }
+  setInterval(ensure,1300);
+ })();
  // 知识点讲解：学生“我的错题”页顶部放一个入口（只是链接，不发起任何请求）；搜索和讲解都在 /v1/knowledge。
  (function(){
   var ID='cy-kp-band';

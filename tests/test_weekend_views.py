@@ -385,7 +385,7 @@ with TestClient(app) as client:
     assert client.get(base + "/archive", headers=sh).status_code == 403
 
     d = client.get(base + "/briefs", headers=th).json()["items"][0]
-    assert "1/2" in d["text"] and "通分" in d["text"] and d["published"] is False
+    assert "已批改做对 1 题（本节共 2 题）" in d["text"] and "完成 1/2" not in d["text"] and "通分" in d["text"] and d["published"] is False
     assert "排名" not in d["text"] and "第" not in d["text"].split("：")[-1]          # never a ranking
 
     # a parent sees nothing until the teacher publishes; only the linked parent ever sees it

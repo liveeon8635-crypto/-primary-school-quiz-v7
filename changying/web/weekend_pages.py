@@ -6,6 +6,7 @@ from changying.web.classroom_window_handoff import OPEN_WINDOW_JS, PAGE_AUTH_JS
 from changying.web.homework_assistant_pages import PAGE_CSS
 from changying.web.weekend_written_pages import WRITTEN_JS
 from changying.web.weekend_backup_pages import BACKUP_JS
+from changying.web.weekend_report_pages import PARENT_JS, REPORT_JS
 
 COMMON_JS = r"""
 __PAGE_AUTH__
@@ -57,7 +58,8 @@ function control(){
   var back=document.querySelector('header a');if(back){back.href='/v1/weekend';back.textContent='返回周末课'}
   var head=el('div',{class:'card'}),stagesBox=el('div',{class:'card'}),content=el('div',{class:'card'}),msgBox=el('div'),
       progBox=el('div',{class:'card'}),hintBox=el('div',{class:'card'}),peerBox=el('div',{class:'card'}),scoreBox=el('div',{class:'card'});
-  root.appendChild(head);root.appendChild(stagesBox);root.appendChild(content);root.appendChild(progBox);root.appendChild(peerBox);root.appendChild(scoreBox);root.appendChild(hintBox);root.appendChild(msgBox);
+  root.appendChild(head);root.appendChild(stagesBox);root.appendChild(content);root.appendChild(progBox);root.appendChild(peerBox);root.appendChild(el('div',{class:'card'},el('h2',{text:'课后总结与家长反馈'}),el('div',{class:'muted',text:'用本节已有的提交与批改记录查看全班汇总，为每位学生生成学情草稿，编辑、预览后再发布给家长；不会结算积分或公布答案。'}),
+    el('a',{class:'btn primary',href:'/v1/weekend-report?s='+SID,text:'打开课后总结与家长反馈'})));root.appendChild(scoreBox);root.appendChild(hintBox);root.appendChild(msgBox);
   var hintDetails=el('details',{},el('summary',{text:'提示准备（课前使用）'}));hintBox.appendChild(hintDetails);hintsCard(hintDetails);
   var peerDetails=el('details',{},el('summary',{text:'请同学讲解（复盘时使用）'}));peerBox.appendChild(peerDetails);peerCard(peerDetails);
   var scoreDetails=el('details',{},el('summary',{text:'课后积分结算'}));scoreBox.appendChild(scoreDetails);scoreCard(scoreDetails);
@@ -223,14 +225,15 @@ function picker(){
       createWeekendClassroom(x.lessonId);
     }});
     stepsBox.appendChild(step(false,'④ 开课','点开后进入上课页：开始上课、按 7 个环节推进、打开大屏。'+(ready?'':'（先完成上面三步）'),start));
-    stepsBox.appendChild(el('div',{class:'muted',text:'下课后在同一个上课页点“预览得分→确认结算”，再发布家长简报。'}));
+    stepsBox.appendChild(el('div',{class:'muted',text:'下课后在同一个上课页点“预览得分→确认结算”；在“课后总结与家长反馈”为每位学生生成、审核并发布学情反馈。'}));
     if(x.weakKnowledge.length)stepsBox.appendChild(el('div',{class:'notice warn',text:'班里近期错得最多：'+x.weakKnowledge.map(function(w){return w.knowledge+'（'+w.count+' 次）'}).join('、')+'，备课时可以重点安排。'}));
   }).catch(function(e){stepsBox.appendChild(el('div',{class:'notice error',text:e.message}))});
   recent.appendChild(el('h2',{text:'最近的课堂'}));
   var rlist=el('div');recent.appendChild(rlist);
   api('/teacher/weekend/sessions').then(function(d){
     if(!d.items.length){rlist.appendChild(el('div',{class:'muted',text:'还没有。'}));return}
-    d.items.forEach(function(s){rlist.appendChild(el('div',{class:'row'},el('a',{href:'/v1/weekend?s='+s.id,text:s.title}),el('span',{class:'muted',text:s.createdAt+' · '+(s.status==='finished'?'已结束':s.status==='running'?'进行中':'未开始')})))});
+    d.items.forEach(function(s){rlist.appendChild(el('div',{class:'row'},el('a',{href:'/v1/weekend?s='+s.id,text:s.title}),el('span',{class:'muted',text:s.createdAt+' · '+(s.status==='finished'?'已结束':s.status==='running'?'进行中':'未开始')}),
+      s.status==='planned'?null:el('a',{class:'btn',href:'/v1/weekend-report?s='+s.id,text:'课后总结与家长反馈'})))});
   });
   recent.appendChild(el('hr'));
   recent.appendChild(el('div',{class:'row'},el('a',{class:'btn',href:'/v1/weekend-plan',text:'18 次课进度表与备课'}),el('a',{class:'btn',href:'/v1/knowledge',text:'知识点讲解卡片（学生搜索、错题讲解）'})));
@@ -395,27 +398,6 @@ def _page(title: str, js: str, with_header: bool, back: tuple[str, str] = ("/v1"
         html = html.replace("<body>", f'<body><header><h1>{title}</h1><a href="{back[0]}">{back[1]}</a></header>', 1)
     return html.replace("__JS__", (COMMON_JS + js).replace("__PAGE_AUTH__", PAGE_AUTH_JS))
 
-
-PARENT_JS = r"""
-function parentBoot(){
-  obtainToken().then(function(t){TOKEN=t;if(!TOKEN){msg('请先登录后再打开');return}
-    return api('/session').then(function(s){if(s.role!=='parent'){msg('这个页面给家长使用');return}return api('/parent/children').then(paintChildren)})}).catch(function(e){msg(e.message||'打不开')});
-}
-function paintChildren(list){
-  root.textContent='';
-  var items=Array.isArray(list)?list:(list.items||list.children||[]);
-  if(!items.length){root.appendChild(el('div',{class:'card'},el('h2',{text:'还没有关联孩子'})));return}
-  items.forEach(function(c){
-    var id=c.id||c.studentID||c.studentId,box=el('div',{class:'card'},el('h2',{text:(c.name||'孩子')+' 的周末课简报'}));
-    root.appendChild(box);
-    api('/parent/children/'+id+'/weekend-briefs').then(function(d){
-      if(!d.items.length){box.appendChild(el('div',{class:'muted',text:'老师发布后会显示在这里。'}));return}
-      d.items.forEach(function(b){box.appendChild(el('div',{class:'item'},el('span',{class:'t'},el('b',{text:b.title+' · '+b.at}),el('div',{text:b.text}))))});
-    }).catch(function(e){box.appendChild(el('div',{class:'notice error',text:e.message}))});
-  });
-}
-parentBoot();
-"""
 
 PLAN_JS = r"""
 var SUBJ='数学';
@@ -639,7 +621,11 @@ def plan_page_html() -> str:
 
 
 def brief_page_html() -> str:
-    return _page("周末课简报", PARENT_JS, True)
+    return _page("周末课学情反馈", PARENT_JS, True)
+
+
+def report_page_html() -> str:
+    return _page("课后总结与家长反馈", WRITTEN_JS + REPORT_JS, True, ("/v1/weekend", "返回周末课"))
 
 
 def control_page_html() -> str:
@@ -650,5 +636,5 @@ def board_page_html() -> str:
     return _page("课堂大屏", BOARD_JS, False)
 
 
-__all__ = ["board_page_html", "brief_page_html", "control_page_html", "plan_page_html", "practice_page_html"]
+__all__ = ["board_page_html", "brief_page_html", "control_page_html", "plan_page_html", "practice_page_html", "report_page_html"]
 
