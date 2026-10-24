@@ -103,7 +103,8 @@ with TestClient(app) as client:
     assert client.post(review, headers=th, json={'revision':3,'result':'correct','comment':'完整'}).status_code == 200
     d = client.get(base+'/written', headers=th).json()
     assert d['submitted'] == d['reviewed'] == d['correct'] == 1 and d['pending'] == 0
-    assert client.post(url, headers=sh, data={'text':'overwrite','revision':4}).status_code == 409
+    assert client.post(url, headers=sh, data={'text':'第三次核对后的答案','revision':4}).status_code == 200
+    assert client.post(review, headers=th, json={'revision':5,'result':'correct','comment':'完整'}).status_code == 200
     before = client.get(base+'/board', headers=th)
     assert '舍己救人' not in before.text
     published = client.post(base+'/publish-answers', headers=th, json={'question':1})
@@ -151,8 +152,8 @@ var questions=[{id:1,stem:'篇目一：阅读\n共同文章正文\n\n题一',has
 function api(path,opts){
   if(path==='/student/weekend/current')return Promise.resolve({active:true,practice:practiceOpen,sessionId:1});
   if(path.endsWith('/written'))return Promise.resolve({canSubmit:true,questions:questions});
-  saved.push(opts.body.get('text'));questions[0].submission={id:10,text:opts.body.get('text'),revision:1,result:'pending',hasPhoto:false};
-  return Promise.resolve({submitted:true});
+  saved.push(opts.body.get('text'));questions[0].submission={id:10,questionId:1,text:opts.body.get('text'),revision:1,result:'pending',hasPhoto:false};
+  return Promise.resolve({submitted:true,attempts:1,submission:questions[0].submission});
 }
 function all(root,tag){return root.children.flatMap(n=>n instanceof Element?[(n.tag===tag?n:null),...all(n,tag)].filter(Boolean):[])}
 async function settle(){for(let i=0;i<8;i++)await Promise.resolve()}
@@ -167,7 +168,7 @@ async function settle(){for(let i=0;i<8;i++)await Promise.resolve()}
  practiceOpen=true;ticks[0]();await settle();assert(!send.disabled);
  send.attrs.onclick();await settle();
  assert.deepEqual(saved,['第一题答案']);areas=all(root,'textarea');
- assert.equal(areas.length,1);assert.equal(areas[0].value,'第二题尚未交的草稿');
+ assert.equal(areas.length,2);assert.equal(areas[1].value,'第二题尚未交的草稿');
  console.log('OK');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''

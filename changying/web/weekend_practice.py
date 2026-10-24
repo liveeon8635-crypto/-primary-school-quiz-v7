@@ -6,7 +6,7 @@ teacher  GET  /teacher/weekend/sessions/{id}/questions    the lesson's questions
          GET  /teacher/weekend/sessions/{id}/progress     per student: answered, correct, completion rate, hint use
 student  GET  /student/weekend/current                    the running class of the student's teacher (questions only in 随堂练习)
          POST /student/weekend/hint                       {sessionId, questionId} next hint level (1 -> 3)
-         POST /student/weekend/answer                     {sessionId, questionId, selected} one recorded attempt per question
+         POST /student/weekend/answer                     {sessionId, questionId, selected} at most three saved submissions per question
 page     /v1/weekend-practice
 
 Hint levels (数学) 1 方向 · 2 第一步 · 3 完整讲解; (语文) 1 找关键句 · 2 概括段意 · 3 完整思路.
@@ -17,6 +17,7 @@ on the spot and they are stored as "auto" (visible to students, flagged for teac
 from __future__ import annotations
 
 from changying.services.weekend_answers import answers_published, practice_release
+from changying.services.weekend_submissions import submission_attempts, record_submission, require_unsettled
 
 import json
 from datetime import datetime
@@ -56,6 +57,7 @@ class AnswerBody(BaseModel):
     sessionId: int
     questionId: int
     selected: int
+    attempt: int = 0
 
 
 def register_practice_tables(implementation: Any) -> dict[str, Table]:
@@ -278,7 +280,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
                 hs = hint_rows(db, int(u.school_id), q.id)
                 item["hintTexts"] = [hs[i].text for i in range(1, used[q.id] + 1) if i in hs]
             if a is not None:
-                item.update({"answered": True, "selected": int(a.selected)})
+                item.update({"answered": True, "selected": int(a.selected), "attempts":submission_attempts(implementation,db,u,row.id,'choice',q.id,True)})
             qs.append(item)
         return {**base, "publishedWrittenQuestionIds": [q["id"] for q in release_items[:release_count] if q["kind"] == "written"], "practice": True, "canSubmit": not published, "answersPublished": published, "questions": qs}
 
@@ -319,14 +321,20 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
             raise HTTPException(409, "老师已公布本题答案，停止提交")
         if not 0 <= int(b.selected) < len(options(q)):
             raise HTTPException(400, "没有这个选项")
-        if db.execute(select(answers.c.id).where(answers.c.session_id == b.sessionId, answers.c.student_id == u.id, answers.c.question_id == q.id)).first():
-            raise HTTPException(409, "这道题已经作答了")
-        used = db.scalar(select(func.max(hlog.c.level)).where(hlog.c.session_id == b.sessionId, hlog.c.student_id == u.id, hlog.c.question_id == q.id)) or 0
-        correct = int(b.selected) == int(q.correct_index)
-        db.execute(insert(answers).values(school_id=u.school_id, session_id=b.sessionId, student_id=u.id, question_id=q.id, selected=int(b.selected),
-                                          correct=correct, max_hint=int(used), created_at=datetime.utcnow()))
+        require_unsettled(implementation, db, b.sessionId)
+        old = db.execute(select(answers).where(answers.c.session_id==b.sessionId,answers.c.student_id==u.id,answers.c.question_id==q.id)).first()
+        attempts = submission_attempts(implementation,db,u,b.sessionId,'choice',q.id,old is not None)
+        if old and old.selected == b.selected:
+            return {'submitted':True,'attempts':attempts,'selected':old.selected,'message':'答案已保存'}
+        if b.attempt != attempts: raise HTTPException(409,'答案已更新，请刷新核对后重试')
+        if attempts >= 3: raise HTTPException(409,'本题已提交3次，不能继续修改')
+        used = db.scalar(select(func.max(hlog.c.level)).where(hlog.c.session_id==b.sessionId,hlog.c.student_id==u.id,hlog.c.question_id==q.id)) or 0
+        values=dict(selected=b.selected,correct=b.selected==q.correct_index,max_hint=max(int(used),int(old.max_hint) if old else 0))
+        if old: db.execute(update(answers).where(answers.c.id==old.id).values(**values))
+        else: db.execute(insert(answers).values(school_id=u.school_id,session_id=b.sessionId,student_id=u.id,question_id=q.id,created_at=datetime.utcnow(),**values))
+        record_submission(implementation,db,u,b.sessionId,'choice',q.id,attempts+1)
         db.commit()
-        return {"submitted": True, "hintUsed": int(used), "message": "已提交，请等待老师在大屏公布答案"}
+        return {"submitted": True, "attempts":attempts+1, "selected":b.selected, "hintUsed": int(used), "message": "已提交，请等待老师在大屏公布答案"}
 
     from changying.web.weekend_written import install_weekend_written
     install_weekend_written(implementation)
