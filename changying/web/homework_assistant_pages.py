@@ -481,6 +481,64 @@ function knowledgeCard(){
 """
 
 TEACHER_KNOWLEDGE_JS = r"""
+function newRequestId(){return 'r'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10)}
+var PQ_TYPES={single_choice:'单选',true_false:'判断',fill_blank:'填空',calculation:'计算',short_answer:'简答'};
+function practicePanel(box,sid){
+  box.textContent='';var msg=el('div',{role:'status','aria-live':'polite'}),card=el('div',{class:'card'});box.appendChild(card);
+  card.appendChild(el('h3',{text:'晚托提问 → 巩固练习'}));
+  card.appendChild(el('div',{class:'muted',text:'勾选这名学生近 30 天由 AI 讲解过的题，按知识点出新题（不重发原题）。生成后由你审核、修改，确认后才通过“针对性练习”只布置给这名学生；已匹配知识点的题默认出够 3 道，做得好会自动消除“待巩固”。'}));
+  api('/teacher/homework/students/'+sid+'/practice-sources').then(function(d){
+    (d.practice||[]).forEach(function(p){card.appendChild(notice(p.state==='graded'?'ok':'',p.title+' · '+p.assignedAt+' · '+(p.state==='graded'?'已完成，做对 '+p.correct+'/'+p.total:'已布置，等待学生完成')))});
+    if(!d.items.length){card.appendChild(el('div',{class:'muted',text:'近 30 天没有 AI 讲解过的题。'}));return}
+    var checks=[],subjectSel=el('select');['数学','语文','英语'].forEach(function(x){subjectSel.appendChild(el('option',{value:x,text:x}))});
+    d.items.forEach(function(it){
+      var cb=el('input',{type:'checkbox'});cb.checked=!it.practised;checks.push({cb:cb,it:it});
+      var tag=it.matched?(it.flag==='open'?'待巩固':it.flag==='cleared'?'已巩固':'已归类'):'未归类';
+      card.appendChild(el('label',{class:'item'},cb,el('span',{class:'t'},el('b',{text:(it.knowledge||'未写知识点')+' · '+tag+(it.practised?' · 已出过练习':'')+(it.verify==='mismatch'?' · AI 答案未通过核对':'')}),el('div',{class:'muted',text:it.createdAt+' · '+it.question}))));
+    });
+    card.appendChild(el('div',{class:'row'},el('span',{class:'muted',text:'未归类题目的科目'}),subjectSel));
+    var out=el('div'),go=el('button',{class:'primary',text:'生成巩固题（不会布置）',onclick:function(){
+      var picked=checks.filter(function(x){return x.cb.checked});if(!picked.length){msg.textContent='请至少勾选一道题';return}
+      var subjects={};picked.forEach(function(x){if(!x.it.matched)subjects[x.it.groupKey]=subjectSel.value});
+      go.disabled=true;msg.textContent='AI 正在出题，约半分钟…';
+      api('/teacher/homework/students/'+sid+'/practice/generate',{json:{helpIds:picked.map(function(x){return x.it.helpId}),subjects:subjects}}).then(function(r){msg.textContent=r.problems.length?'部分题目没有生成：'+r.problems.join('；'):'';review(out,r)}).catch(function(e){msg.textContent=e.message}).then(function(){go.disabled=false});
+    }});
+    card.appendChild(go);card.appendChild(msg);card.appendChild(out);
+  }).catch(function(e){card.appendChild(notice('error',e.message))});
+  function review(out,r){
+    out.textContent='';var editors=[],requestId=newRequestId(),status=el('div',{role:'status'});
+    r.groups.forEach(function(g){
+      var gb=el('div',{class:'card'},el('b',{text:g.subject+' · '+g.topic+(g.matched?'':'（未归类）')}),el('div',{class:'muted',text:'依据（学生问过的题）：'+g.basis.join('；')}));
+      if(g.matched&&g.questions.length<r.minQuestions)gb.appendChild(notice('warn','少于 '+r.minQuestions+' 道题时，完成后不足以消除“待巩固”标记。'));
+      var list=[];
+      g.questions.forEach(function(q){
+        var item=el('div',{class:'item'}),t=el('span',{class:'t'}),text=el('textarea');text.value=q.text;
+        var answer=el('input',{type:'text',value:q.answer||'',placeholder:'标准答案'}),exp=el('textarea',{placeholder:'解析（仅老师可见）'});exp.value=q.explanation||'';
+        var opts=(q.options||[]).map(function(o){return el('input',{type:'text',value:o})}),ci=el('select');
+        if(q.question_type==='single_choice')opts.forEach(function(_,i){ci.appendChild(el('option',{value:i,text:'正确答案：'+String.fromCharCode(65+i)}))});
+        if(q.question_type==='true_false')['正确','错误'].forEach(function(x,i){ci.appendChild(el('option',{value:i,text:'答案：'+x}))});
+        ci.value=String(q.correct_index);
+        t.appendChild(el('b',{text:(PQ_TYPES[q.question_type]||q.question_type)+' · 难度 '+q.level}));t.appendChild(text);
+        if(q.question_type==='single_choice')opts.forEach(function(n,i){t.appendChild(el('div',{class:'row'},el('span',{text:String.fromCharCode(65+i)+'.'}),n))});
+        if(q.question_type==='single_choice'||q.question_type==='true_false')t.appendChild(ci);else t.appendChild(answer);
+        t.appendChild(exp);item.appendChild(t);
+        var rec={value:function(){return {question_type:q.question_type,level:q.level,text:text.value,options:q.question_type==='single_choice'?opts.map(function(n){return n.value}):q.options,
+          correct_index:+ci.value,answer:answer.value,accepted_answers:q.accepted_answers||[],figure:q.figure||{},explanation:exp.value,knowledge:q.knowledge}}};
+        item.appendChild(el('button',{text:'删除这题',onclick:function(){item.remove();list.splice(list.indexOf(rec),1)}}));
+        list.push(rec);gb.appendChild(item);
+      });
+      editors.push({g:g,list:list});out.appendChild(gb);
+    });
+    var due=el('input',{type:'text',placeholder:'截止日期（可空，默认3天）'}),assign=el('button',{class:'primary',text:'审核确认并布置',onclick:function(){
+      if(!confirm('确认题目、答案和解析都已审核？将只布置给这名学生，不会重复布置。'))return;
+      assign.disabled=true;status.textContent='正在布置…';
+      api('/teacher/homework/students/'+sid+'/practice/assign',{json:{requestId:requestId,dueDate:due.value,groups:editors.map(function(x){return {key:x.g.key,subject:x.g.subject,helpIds:x.g.helpIds,questions:x.list.map(function(q){return q.value()})}})}})
+        .then(function(res){out.textContent='';out.appendChild(notice('ok','已布置：'+res.assigned.map(function(a){return a.title+'（'+a.questionCount+' 题）'}).join('、')+'。学生在“作业”中完成后，这里会显示结果。'))})
+        .catch(function(e){status.textContent=e.message;if(e.status!==409){requestId=newRequestId();assign.disabled=false}});
+    }});
+    out.appendChild(el('div',{class:'row'},due,assign));out.appendChild(status);
+  }
+}
 function knowledgeView(body){
   var sumBox=el('div'),listBox=el('div');
   body.appendChild(el('div',{class:'card'},el('h2',{text:'学生的 AI 辅助记录'}),
@@ -489,8 +547,9 @@ function knowledgeView(body){
   api('/teacher/homework/knowledge-summary').then(function(d){
     if(!d.students.length){sumBox.appendChild(el('div',{class:'muted',text:'还没有学生用过 AI 辅助。'}));return}
     d.students.forEach(function(s){
-      var box=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:s.studentName}),' · 问过 '+s.assists+' 次 · 待巩固 '+s.open+' 个知识点'));
-      sumBox.appendChild(box);
+      var panel=el('div'),box=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:s.studentName}),' · 问过 '+s.assists+' 次 · 待巩固 '+s.open+' 个知识点'),
+        el('button',{text:'生成巩固练习',onclick:function(){practicePanel(panel,s.studentId)}}));
+      sumBox.appendChild(box);sumBox.appendChild(panel);
       s.flags.forEach(function(f){sumBox.appendChild(el('div',{class:'muted',text:'　'+flagLine(f)}))});
     });
     sumBox.appendChild(el('div',{class:'muted',text:ruleText(d.rule)}));

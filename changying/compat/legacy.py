@@ -160,6 +160,7 @@ from changying.services.homework_knowledge import register_homework_knowledge_ta
 from changying.web.homework_assistant import install_homework_assistant
 from changying.web.homework_help import install_homework_help
 from changying.web.homework_knowledge_views import install_homework_knowledge_views
+from changying.web.homework_practice_views import install_homework_practice_views
 from changying.web.kp_cards_views import install_kp_cards_views
 from changying.web.weekend_plan_views import install_weekend_plan
 from changying.web.weekend_practice import install_weekend_practice
@@ -488,6 +489,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_homework_assistant(implementation)
     install_homework_help(implementation)
     install_homework_knowledge_views(implementation)
+    install_homework_practice_views(implementation)
     install_kp_cards_views(implementation)
     install_weekend_views(implementation)
     install_weekend_practice(implementation)
