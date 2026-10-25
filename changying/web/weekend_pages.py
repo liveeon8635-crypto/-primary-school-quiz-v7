@@ -105,9 +105,10 @@ function control(){
       content.appendChild(el('div',{class:'row'},el('button',{text:'‹ 上一页',disabled:d.deck.index<=0,onclick:function(){post('slide',{delta:-1})}}),
         el('b',{text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}),el('button',{class:'primary',text:'下一页 ›',disabled:d.deck.index>=d.deck.total-1,onclick:function(){post('slide',{delta:1})}})));
     }
-    if(d.courseware){var cwBox=el('div');content.appendChild(cwBox);cwControl(cwBox,d.courseware,SID)}
     if(!d.content.length&&!d.courseware)content.appendChild(el('div',{class:'muted',text:running?(d.covered?'大屏遮盖中':'这个环节没有内容'):'开始上课后显示'}));
     d.content.forEach(function(x){content.appendChild(el('p',{text:x}))});
+    if(d.coursewareNotice)content.appendChild(el('div',{class:'notice warn',text:d.coursewareNotice}));
+    if(d.courseware){var cwBox=el('div');content.appendChild(cwBox);cwControl(cwBox,d.courseware,SID)}
   }
   function load(){api('/teacher/weekend/sessions/'+SID).then(paint).catch(function(e){msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
   load();
@@ -266,7 +267,11 @@ function board(){
     wrap.appendChild(el('div',{style:'font-size:3vh;opacity:.8;margin:1vh 0 3vh',text:d.goal}));
     if(d.deck)wrap.appendChild(el('div',{style:'opacity:.6;font-size:2.4vh',text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}));
     var body=el('div',{style:'flex:1;min-height:0;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45'});wrap.appendChild(body);
-    if(d.courseware){body.style.overflow='auto';cwRender(body,d.courseware,d.courseware.view,true,false);return}
+    if(d.courseware){
+      // The page's own content stays on screen; the courseware for this page is shown below it.
+      body.style.overflow='auto';d.content.forEach(function(x){body.appendChild(el('p',{style:'margin:.3em 0;font-size:2.6vh',text:x}))});
+      var cwBox=el('div');body.appendChild(cwBox);cwRender(cwBox,d.courseware,d.courseware.view,true,false);return;
+    }
     d.content.forEach(function(x){body.appendChild(el('p',{style:'margin:.5em 0',text:x}))});
     requestAnimationFrame(function(){fitText(body)});
   }

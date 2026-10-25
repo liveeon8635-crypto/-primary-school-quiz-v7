@@ -54,3 +54,14 @@ def presentation_pages(raw: Any, *, preserve_pages: bool = False, source: str = 
         current.append(text);size+=len(text)+2
     if current:grouped.append('\n\n'.join(current))
     return [chunk for page in grouped for chunk in _screen_chunks(page)]
+
+
+def lesson_deck(lesson: dict[str, Any], stage_no: int) -> list[str]:
+    """Pages the teacher pages through on the big screen: their own slides (stage 2) or worked examples (stage 3)."""
+    if stage_no not in (2, 3):
+        return []
+    raw = lesson.get("ppt_json") if stage_no == 2 else lesson.get("examples_json")
+    source = str(lesson.get("reading_plan") or "")
+    return presentation_pages(raw, preserve_pages=stage_no == 2 and source.startswith("第1页："),
+                              source=source if stage_no == 2 else "", example_mode=stage_no == 3)
+
