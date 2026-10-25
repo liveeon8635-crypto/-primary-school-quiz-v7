@@ -50,7 +50,35 @@ function cwReading(box,p,view,big,teacher,onTap){
   if(p.material&&(view.showMaterial||teacher))wrap.appendChild(el('p',{style:'background:#f2f4f7;padding:8px;border-radius:8px',text:'补充资料：'+p.material}));
   if(view.showPrompt||teacher)wrap.appendChild(el('p',{text:'书面解释：'+p.writingPrompt}));
 }
-function cwRender(box,c,view,big,teacher,onTap){box.textContent='';if(c.kind==='rotation')cwRotation(box,c.params,view||{},big);else cwReading(box,c.params,view||{},big,teacher,onTap)}
+function cwSteps(box,p,view,big,teacher){
+  var wrap=el('div',{style:'background:#fff;color:#111;border-radius:12px;padding:12px;line-height:1.8;'+(big?'font-size:2.8vh':'')});box.appendChild(wrap);
+  wrap.appendChild(el('b',{text:p.title}));
+  var shown=teacher?p.steps.length:(view.step||0),list=el('ol');
+  p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?'':'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
+  wrap.appendChild(list);
+  if(view.showAnswer||teacher)wrap.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
+}
+function cwClock(box,p,view,big){
+  var wrap=el('div',{style:'background:#fff;color:#111;border-radius:12px;padding:8px'});box.appendChild(wrap);
+  var way=p.direction==='cw'?'顺时针':'逆时针';
+  wrap.appendChild(el('b',{style:big?'font-size:3vh':'',text:p.title+'：从 '+p.start+' 出发，'+way+'旋转 '+p.angle+'°'}));
+  if(!document.createElementNS||!cwNode('svg',{}).createSVGRect){wrap.appendChild(el('p',{text:view.showResult?'指向数字 '+p.end:'请想一想指针会指向几'}));return}
+  var svg=cwNode('svg',{viewBox:'0 0 300 300',width:'100%',style:'display:block;max-height:'+(big?'50vh':'360px'),role:'img','aria-label':p.title});
+  svg.appendChild(cwNode('circle',{cx:150,cy:150,r:130,fill:'#fff',stroke:'#344054','stroke-width':4}));
+  for(var n=1;n<=12;n++){var a=(n*30-90)*Math.PI/180;svg.appendChild(cwNode('text',{x:150+108*Math.cos(a),y:150+108*Math.sin(a)+8,'text-anchor':'middle','font-size':22,'font-weight':700,fill:'#111'},String(n)))}
+  function hand(deg,color,dash){var a=(deg-90)*Math.PI/180;svg.appendChild(cwNode('line',{x1:150,y1:150,x2:150+88*Math.cos(a),y2:150+88*Math.sin(a),stroke:color,'stroke-width':6,'stroke-linecap':'round','stroke-dasharray':dash||''}))}
+  var from=p.start*30,sign=p.direction==='cw'?1:-1;
+  hand(from,'#1d4ed8');
+  if(view.angle>0&&!(view.showResult&&view.angle>=p.angle))hand(from+sign*view.angle,'#f97316','8 6');
+  if(view.showResult)hand(p.end*30,'#dc2626');
+  svg.appendChild(cwNode('circle',{cx:150,cy:150,r:7,fill:'#111'}));
+  wrap.appendChild(svg);
+  var steps=el('ol',{style:big?'font-size:2.6vh':''});p.steps.forEach(function(s,k){steps.appendChild(el('li',{style:k<(view.step||0)?'font-weight:700;color:#b42318':'opacity:.7',text:s}))});wrap.appendChild(steps);
+  wrap.appendChild(el('div',{style:'opacity:.8',text:'当前转过 '+(view.angle||0)+'° / '+p.angle+'°'+(view.showResult?' · 指向数字 '+p.end:'')}));
+}
+function cwRender(box,c,view,big,teacher,onTap){box.textContent='';view=view||{};
+  if(c.kind==='rotation')cwRotation(box,c.params,view,big);else if(c.kind==='clock')cwClock(box,c.params,view,big);
+  else if(c.kind==='steps')cwSteps(box,c.params,view,big,teacher);else cwReading(box,c.params,view,big,teacher,onTap)}
 function cwControl(box,c,sid){
   var view=JSON.parse(JSON.stringify(c.view||{})),stage=el('div'),bar=el('div',{class:'row'}),msg=el('div',{role:'status'});
   box.textContent='';box.appendChild(el('h2',{text:'互动课件：'+c.kindLabel+'（大屏同步，约3秒）'}));box.appendChild(bar);box.appendChild(stage);box.appendChild(msg);
@@ -68,6 +96,20 @@ function cwControl(box,c,sid){
     button('显示/隐藏中心',function(){view.showCenter=view.showCenter===false});
     button('下一步讲解',function(){view.step=Math.min(p.steps.length,(view.step||0)+1)});
     button('重来',function(){view.angle=0;view.step=0;view.showResult=false;range.value=0});
+  }else if(c.kind==='clock'){
+    var q=c.params,dial=el('input',{type:'range',min:0,max:q.angle,step:30,value:view.angle||0,style:'width:220px;min-height:44px','aria-label':'旋转角度'});
+    dial.addEventListener('input',function(){view.angle=+dial.value;draw()});dial.addEventListener('change',function(){view.angle=+dial.value;send()});
+    button('−30°',function(){view.angle=Math.max(0,(view.angle||0)-30);dial.value=view.angle});
+    bar.appendChild(dial);
+    button('+30°',function(){view.angle=Math.min(q.angle,(view.angle||0)+30);dial.value=view.angle});
+    button('显示/隐藏结果',function(){view.showResult=!view.showResult});
+    button('下一步讲解',function(){view.step=Math.min(q.steps.length,(view.step||0)+1)});
+    button('重来',function(){view.angle=0;view.step=0;view.showResult=false;dial.value=0});
+  }else if(c.kind==='steps'){
+    button('上一步',function(){view.step=Math.max(0,(view.step||0)-1)});
+    button('下一步',function(){view.step=Math.min(c.params.steps.length,(view.step||0)+1)});
+    button('显示/隐藏答案',function(){view.showAnswer=!view.showAnswer});
+    button('重来',function(){view.step=0;view.showAnswer=false});
   }else{
     bar.appendChild(el('span',{class:'muted',text:'点句子＝在大屏上高亮为同学们找到的依据'}));
     button('显示/隐藏补充资料',function(){view.showMaterial=!view.showMaterial});
@@ -76,75 +118,116 @@ function cwControl(box,c,sid){
   }
   draw();
 }
+"""
+
+# Preparation editor: only the lesson-plan page needs it.
+COURSEWARE_PLAN_JS = r"""
+var CW_STAGES=['到课与热身','知识点介绍','例题讲解','随堂练习','练习复盘','课堂互动','布置课后'];
 function cwPlan(box,lessonId,refresh){
-  var msg=el('div',{role:'status','aria-live':'polite'});
-  function load(){box.textContent='';api('/teacher/weekend/lessons/'+lessonId+'/courseware').then(paint).catch(function(e){box.appendChild(el('div',{class:'notice error',text:e.message}))})}
+  var stageNo='3',msg=el('div',{role:'status','aria-live':'polite'}),data=null,busy=false;
+  function load(){api('/teacher/weekend/lessons/'+lessonId+'/courseware').then(paint).catch(function(e){box.textContent='';box.appendChild(el('div',{class:'notice error',text:e.message}))})}
+  function itemAt(page){return (data.items||[]).filter(function(i){return String(i.stage)===stageNo&&i.page===page})[0]}
   function paint(d){
-    box.textContent='';msg.textContent='';
-    box.appendChild(el('p',{class:'muted',text:'试点：'+d.kindLabel+'。由 AI 按固定模板填写参数，你预览、修改、审核后才会用于课堂；上课翻页和拖动不调用 AI。审核后会同时生成一道学生书面作答题（文字／拍照提交，老师批改，按逐题公布规则公布）。'}));
-    var stageSel=el('select');['到课与热身','知识点介绍','例题讲解','随堂练习','练习复盘','课堂互动','布置课后'].forEach(function(x,i){stageSel.appendChild(el('option',{value:i+1,text:'放在第'+(i+1)+'环节：'+x}))});
-    stageSel.value=String(d.item?d.item.stageNo:3);
-    var pageSel=el('select',{'aria-label':'课件对应的页'}),pageHint=el('div',{class:'muted'});
-    function fillPages(){
-      var pages=(d.pages||{})[stageSel.value]||[],want=d.item&&String(d.item.stageNo)===stageSel.value&&d.item.params.page!=null?d.item.params.page:0;
-      pageSel.textContent='';pages.forEach(function(x,i){pageSel.appendChild(el('option',{value:i,text:'第'+(i+1)+'页：'+x}))});
-      pageSel.hidden=!pages.length;if(pages.length)pageSel.value=String(Math.min(want,pages.length-1));
-      pageHint.textContent=pages.length?'课件只在大屏翻到这一页时出现，并按这一页的例题生成；其他页照常显示原内容。':'这个环节没有分页，课件在整个环节显示。';
-    }
-    function pageValue(){return pageSel.hidden?null:+pageSel.value}
-    stageSel.addEventListener('change',fillPages);fillPages();
-    var gen=el('button',{class:'primary',text:d.item?'重新生成互动课件':'生成互动课件',disabled:d.kind==='reading'&&!d.hasSource,onclick:function(){
-      if(d.item&&!confirm('重新生成会替换当前草稿（已审核的版本在重新审核前仍用于课堂）。确定吗？'))return;
-      gen.disabled=true;msg.textContent='AI 正在按模板生成，约半分钟…';
-      api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate',{json:{stageNo:+stageSel.value,page:pageValue()}}).then(paint).catch(function(e){msg.textContent=e.message;gen.disabled=false});
+    data=d;box.textContent='';
+    box.appendChild(el('p',{class:'muted',text:'每一页讲解／例题可配一个互动课件。AI 从审核过的模板（'+d.templates.map(function(k){return d.kindLabels[k]}).join('、')+'）中为每页选一个并填写参数；你逐页预览、修改、审核后才会在大屏那一页出现。上课翻页和操作不调用 AI。'}));
+    var stageSel=el('select',{'aria-label':'环节'});CW_STAGES.forEach(function(x,i){stageSel.appendChild(el('option',{value:i+1,text:'第'+(i+1)+'环节：'+x+((d.pages[String(i+1)]||[]).length?'（'+d.pages[String(i+1)].length+' 页）':'')}))});
+    stageSel.value=stageNo;stageSel.onchange=function(){stageNo=stageSel.value;paint(data)};
+    var pages=d.pages[stageNo]||[],list=pages.length?pages.map(function(x,i){return {page:i,text:x}}):[{page:null,text:'整个环节'}];
+    var redo=el('input',{type:'checkbox'});
+    var all=el('button',{class:'primary',text:'为本环节全部 '+list.length+' 页生成',onclick:function(){
+      var todo=list.filter(function(x){var it=itemAt(x.page);return redo.checked||!it});
+      if(!todo.length){msg.textContent='本环节每页都已有课件；如需重新生成请勾选“包括已有课件的页”。';return}
+      if(!confirm('将逐页调用 AI 生成 '+todo.length+' 页课件草稿（每页约十几秒），生成后需逐页审核才会上课堂。确定吗？'))return;
+      run(todo,function(x){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate',{json:{stageNo:+stageNo,page:x.page}})},'生成');
     }});
-    box.appendChild(el('div',{class:'row'},stageSel,pageSel,gen));box.appendChild(pageHint);
-    if(d.kind==='reading'&&!d.hasSource)box.appendChild(el('div',{class:'notice warn',text:'这节课没有阅读原文，请先导入教案。'}));
+    var approveAll=el('button',{text:'全部草稿审核通过',onclick:function(){
+      var todo=list.filter(function(x){var it=itemAt(x.page);return it&&it.status==='draft'});
+      if(!todo.length){msg.textContent='没有待审核的草稿';return}
+      if(!confirm('确认已逐页预览这 '+todo.length+' 页课件的内容和答案？审核后会在大屏对应页显示。'))return;
+      run(todo,function(x){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:x.page}})},'审核');
+    }});
+    box.appendChild(el('div',{class:'row'},stageSel,all,el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})),approveAll));
     box.appendChild(msg);
-    var it=d.item||{kind:d.kind,stageNo:3,status:'none',params:d.kind==='rotation'?{title:'图形的旋转',width:10,height:10,shape:[[2,2],[5,2],[2,4]],center:[2,2],direction:'cw',angle:90,steps:[],question:'',reference:''}:{title:'找文本依据',passage:'',question:'',evidence:[],material:'',writingPrompt:'',reference:''}};
-    if(d.item)box.appendChild(el('div',{class:'row'},el('span',{class:'tag '+(it.status==='approved'?'ok':'warn'),text:it.status==='approved'?'已审核，课堂可用':'草稿，审核前不会上课堂、不会发给学生'}),el('span',{class:'muted',text:'更新于 '+it.updatedAt+(it.hasApproved&&it.status!=='approved'?' · 课堂仍使用上次审核的版本':'')})));
-    var form=el('div'),preview=el('div',{class:'card'}),p=JSON.parse(JSON.stringify(it.params)),fields={};
-    function field(key,label,node){fields[key]=node;form.appendChild(el('label',{class:'field'},el('span',{text:label}),node));return node}
+    var rows=el('div'),editor=el('div');box.appendChild(rows);box.appendChild(editor);
+    list.forEach(function(x){
+      var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
+      var line=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:(x.page==null?'':'第'+(x.page+1)+'页：')+x.text}),
+        el('div',{class:'row'},el('span',{class:'tag '+tag[0],text:tag[1]}),it?el('span',{class:'muted',text:d.kindLabels[it.kind]+(it.writtenTask?' · 含学生作答题':'')}):null)));
+      line.appendChild(el('button',{text:it?'重新生成':'生成',onclick:function(){run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate',{json:{stageNo:+stageNo,page:y.page}})},'生成')}}));
+      line.appendChild(el('button',{text:it?'预览／修改':'手动填写',onclick:function(){edit(editor,x,itemAt(x.page))}}));
+      if(it&&it.status==='draft')line.appendChild(el('button',{class:'primary',text:'审核通过',onclick:function(){run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:y.page}})},'审核')}}));
+      if(it)line.appendChild(el('button',{text:'删除',onclick:function(){if(confirm('删除这一页的课件？'))api('/teacher/weekend/lessons/'+lessonId+'/courseware/remove',{json:{stageNo:+stageNo,page:x.page}}).then(paint).catch(function(e){msg.textContent=e.message})}}));
+      rows.appendChild(line);
+    });
+  }
+  function run(todo,call,label){
+    if(busy)return;busy=true;var failed=[],i=0,last=null;
+    function next(){
+      if(i>=todo.length){busy=false;if(last)paint(last);else load();msg.textContent=label+'完成 '+(todo.length-failed.length)+'/'+todo.length+' 页'+(failed.length?'。未完成：\n'+failed.join('\n'):'');if(refresh)refresh();return}
+      var x=todo[i++];msg.textContent='正在'+label+'第 '+i+'/'+todo.length+' 页…';
+      call(x).then(function(d){last=d}).catch(function(e){failed.push(e.message)}).then(next);
+    }
+    next();
+  }
+  function edit(box2,x,it){
+    box2.textContent='';var card=el('div',{class:'card'}),fields={},kinds=data.templates,kind=it?it.kind:kinds[kinds.length-1],p=JSON.parse(JSON.stringify(it?it.params:{})),preview=el('div',{class:'card'});
+    card.appendChild(el('h3',{text:(x.page==null?'整个环节':'第'+(x.page+1)+'页')+' 的课件'}));
+    card.appendChild(el('p',{class:'muted',style:'white-space:pre-wrap',text:'这一页的内容：'+x.text}));
+    var kindSel=el('select');kinds.forEach(function(k){kindSel.appendChild(el('option',{value:k,text:data.kindLabels[k]}))});kindSel.value=kind;
+    var task=el('input',{type:'checkbox'});task.checked=!!(it&&it.writtenTask);
+    card.appendChild(el('div',{class:'row'},el('span',{text:'模板'}),kindSel,el('label',{class:'row'},task,el('span',{text:'审核后同时生成学生书面作答题'}))));
+    var form=el('div');card.appendChild(form);card.appendChild(preview);
     function input(v){var n=el('input',{type:'text'});n.value=v==null?'':String(v);return n}
     function area(v){var n=el('textarea');n.value=v||'';return n}
-    if(it.kind==='rotation'){
-      field('title','标题',input(p.title));field('width','网格宽（6—12）',input(p.width));field('height','网格高（6—12）',input(p.height));
-      field('shape','原图顶点（如 2,2; 5,2; 2,4）',input(p.shape.map(function(q){return q.join(',')}).join('; ')));
-      field('center','旋转中心（如 2,2）',input(p.center.join(',')));
-      var dir=el('select');[['cw','顺时针'],['ccw','逆时针']].forEach(function(x){dir.appendChild(el('option',{value:x[0],text:x[1]}))});dir.value=p.direction;field('direction','方向',dir);
-      var ang=el('select');[90,180,270].forEach(function(x){ang.appendChild(el('option',{value:x,text:x+'°'}))});ang.value=String(p.angle);field('angle','角度',ang);
-      field('steps','讲解步骤（每行一步）',area((p.steps||[]).join('\n')));field('question','学生书面作答问题',area(p.question));field('reference','评分要点（仅老师可见）',area(p.reference));
-    }else{
-      field('title','标题',input(p.title));field('passage','阅读材料（必须是原文中的连续段落）',area(p.passage));field('question','阅读问题',area(p.question));
-      field('material','补充资料（请核实）',area(p.material));field('writingPrompt','书面解释要求',area(p.writingPrompt));field('reference','评分要点（仅老师可见）',area(p.reference));
-    }
-    function collect(){
-      if(it.kind==='rotation'){
-        function pt(s){var a=String(s).split(/[,，]/).map(function(x){return Number(x.trim())});return a}
-        return {title:fields.title.value,width:+fields.width.value,height:+fields.height.value,shape:fields.shape.value.split(/[;；]/).filter(function(x){return x.trim()}).map(pt),
-          center:pt(fields.center.value),direction:fields.direction.value,angle:+fields.angle.value,steps:fields.steps.value.split('\n').filter(function(x){return x.trim()}),question:fields.question.value,reference:fields.reference.value};
+    function field(key,label,node){fields[key]=node;form.appendChild(el('label',{class:'field'},el('span',{text:label}),node));node.addEventListener('input',show);node.addEventListener('change',show)}
+    function sel(opts,v){var n=el('select');opts.forEach(function(o){n.appendChild(el('option',{value:o[0],text:o[1]}))});n.value=String(v);return n}
+    function build(){
+      form.textContent='';fields={};kind=kindSel.value;
+      field('title','标题',input(p.title));
+      if(kind==='rotation'){
+        field('width','网格宽（6—12）',input(p.width||10));field('height','网格高（6—12）',input(p.height||10));
+        field('shape','原图顶点（如 2,2; 5,2; 2,4）',input((p.shape||[[2,2],[5,2],[2,4]]).map(function(q){return q.join(',')}).join('; ')));
+        field('center','旋转中心（如 2,2）',input((p.center||[2,2]).join(',')));
+        field('direction','方向',sel([['cw','顺时针'],['ccw','逆时针']],p.direction||'cw'));field('angle','角度',sel([[90,'90°'],[180,'180°'],[270,'270°']],p.angle||90));
+        field('steps','讲解步骤（每行一步）',area((p.steps||[]).join('\n')));
+      }else if(kind==='clock'){
+        field('start','起始数字（1—12）',input(p.start||12));field('direction','方向',sel([['cw','顺时针'],['ccw','逆时针']],p.direction||'cw'));
+        field('angle','角度（30° 的倍数）',input(p.angle||90));field('steps','讲解步骤（每行一步）',area((p.steps||[]).join('\n')));
+      }else if(kind==='steps'){
+        field('problem','题目原文（不含答案，生成学生作答题时使用）',area(p.problem));
+        field('steps','讲解步骤（每行一步，2—6 步）',area((p.steps||[]).join('\n')));field('answer','答案',input(p.answer));
+      }else{
+        field('passage','阅读材料（必须是原文中的连续段落）',area(p.passage));field('question','阅读问题',area(p.question));
+        field('material','补充资料（请核实）',area(p.material));field('writingPrompt','书面解释要求',area(p.writingPrompt));p.evidence=p.evidence||[];
       }
-      var s=cwSplit(fields.passage.value);p.evidence=(p.evidence||[]).filter(function(i){return i<s.length});
-      return {title:fields.title.value,passage:fields.passage.value,sentences:s,question:fields.question.value,evidence:p.evidence,material:fields.material.value,writingPrompt:fields.writingPrompt.value,reference:fields.reference.value};
+      if(kind!=='reading')field('question','学生书面作答问题',area(p.question));
+      field('reference','评分要点（仅老师可见）',area(p.reference));
+      show();
+    }
+    function lines(n){return n.value.split('\n').map(function(v){return v.trim()}).filter(Boolean)}
+    function pt(v){return String(v).split(/[,，]/).map(function(x){return Number(x.trim())})}
+    function collect(){
+      var v={title:fields.title.value,question:fields.question.value,reference:fields.reference.value};
+      if(kind==='rotation'){v.width=+fields.width.value;v.height=+fields.height.value;v.shape=fields.shape.value.split(/[;；]/).filter(function(x){return x.trim()}).map(pt);v.center=pt(fields.center.value);v.direction=fields.direction.value;v.angle=+fields.angle.value;v.steps=lines(fields.steps)}
+      else if(kind==='clock'){v.start=+fields.start.value;v.direction=fields.direction.value;v.angle=+fields.angle.value;v.steps=lines(fields.steps)}
+      else if(kind==='steps'){v.problem=fields.problem.value;v.steps=lines(fields.steps);v.answer=fields.answer.value}
+      else{v.passage=fields.passage.value;v.sentences=cwSplit(v.passage);v.material=fields.material.value;v.writingPrompt=fields.writingPrompt.value;p.evidence=(p.evidence||[]).filter(function(i){return i<v.sentences.length});v.evidence=p.evidence}
+      return v;
     }
     function show(){
-      var v=collect();preview.textContent='';preview.appendChild(el('b',{text:'预览（教师视角）'}));
-      if(it.kind==='rotation'){var ok=v.shape.length>=3&&v.shape.every(function(q){return q.length===2&&isFinite(q[0])&&isFinite(q[1])})&&v.center.length===2;
-        if(!ok){preview.appendChild(el('div',{class:'notice warn',text:'坐标格式不完整'}));return}
-        v.rotated=v.shape.map(function(q){return cwRotate(q,v.center,v.direction,v.angle)});
-        cwRender(preview,{kind:'rotation',params:v},{angle:v.angle,showResult:true,showCenter:true,step:v.steps.length},false,true);
-      }else cwRender(preview,{kind:'reading',params:v},{showMaterial:true,showPrompt:true},false,true,function(i){var k=p.evidence.indexOf(i);if(k>=0)p.evidence.splice(k,1);else p.evidence.push(i);show()});
-      if(it.kind==='reading')preview.insertBefore(el('div',{class:'muted',text:'点句子标记／取消“文本依据”。'}),preview.children[1]||null);
+      var v=collect(),title=el('b',{text:'预览（教师视角，含答案）'}),view=el('div');preview.textContent='';preview.appendChild(title);preview.appendChild(view);
+      if(kind==='rotation'){if(!(v.shape.length>=3&&v.center.length===2&&v.shape.every(function(q){return q.length===2&&isFinite(q[0])&&isFinite(q[1])}))){view.appendChild(el('div',{class:'notice warn',text:'坐标格式不完整'}));return}
+        v.rotated=v.shape.map(function(q){return cwRotate(q,v.center,v.direction,v.angle)});cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,showCenter:true,step:v.steps.length},false,true)}
+      else if(kind==='clock'){var t=v.angle/30*(v.direction==='cw'?1:-1);v.end=((v.start-1+t)%12+12)%12+1;cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,step:v.steps.length},false,true)}
+      else if(kind==='steps')cwRender(view,{kind:kind,params:v},{},false,true);
+      else cwRender(view,{kind:kind,params:v},{showMaterial:true,showPrompt:true},false,true,function(i){var k=p.evidence.indexOf(i);if(k>=0)p.evidence.splice(k,1);else p.evidence.push(i);show()});
     }
-    Object.keys(fields).forEach(function(k){fields[k].addEventListener('input',show);fields[k].addEventListener('change',show)});
-    box.appendChild(form);box.appendChild(preview);show();
-    var save=el('button',{text:'保存修改（需重新审核）',onclick:function(){msg.textContent='正在保存…';api('/teacher/weekend/lessons/'+lessonId+'/courseware',{method:'PUT',json:{stageNo:+stageSel.value,page:pageValue(),params:collect()}}).then(paint).catch(function(e){msg.textContent=e.message})}});
-    var ok=el('button',{class:'primary',text:'审核通过，用于课堂',disabled:!d.item||it.status==='approved',onclick:function(){
-      if(!confirm('确认课件内容和答案都已核对？审核后本课新开的课堂会在所选环节显示，并为学生生成一道书面作答题。'))return;
-      api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{}}).then(function(n){paint(n);if(refresh)refresh()}).catch(function(e){msg.textContent=e.message});
-    }});
-    box.appendChild(el('div',{class:'row'},save,ok));
-    if(d.item&&d.item.writtenTask)box.appendChild(el('details',{},el('summary',{text:'审核后生成的学生书面作答题'}),el('pre',{style:'white-space:pre-wrap;font:inherit',text:d.item.writtenTask.stem}),el('pre',{style:'white-space:pre-wrap;font:inherit;color:#667085',text:'参考答案（仅老师可见）：'+d.item.writtenTask.reference})));
+    kindSel.onchange=build;build();
+    var m2=el('div',{role:'status'});
+    var save=el('button',{text:'保存修改（需重新审核）',onclick:function(){api('/teacher/weekend/lessons/'+lessonId+'/courseware',{method:'PUT',json:{stageNo:+stageNo,page:x.page,kind:kind,params:collect(),writtenTask:task.checked}}).then(function(d){paint(d);m2.textContent='已保存为草稿'}).catch(function(e){m2.textContent=e.message})}});
+    card.appendChild(el('div',{class:'row'},save));card.appendChild(m2);
+    if(it&&it.writtenTaskPreview)card.appendChild(el('details',{},el('summary',{text:'学生书面作答题（勾选后审核时生成）'}),el('pre',{style:'white-space:pre-wrap;font:inherit',text:it.writtenTaskPreview.stem}),el('pre',{style:'white-space:pre-wrap;font:inherit;color:#667085',text:'参考答案（仅老师可见）：'+it.writtenTaskPreview.reference})));
+    box2.appendChild(card);card.scrollIntoView&&card.scrollIntoView();
   }
   load();
 }

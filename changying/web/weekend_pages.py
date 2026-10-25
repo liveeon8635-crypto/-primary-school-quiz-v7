@@ -7,7 +7,7 @@ from changying.web.homework_assistant_pages import PAGE_CSS
 from changying.web.weekend_written_pages import WRITTEN_JS
 from changying.web.weekend_backup_pages import BACKUP_JS
 from changying.web.weekend_report_pages import PARENT_JS, REPORT_JS
-from changying.web.weekend_courseware_pages import COURSEWARE_JS
+from changying.web.weekend_courseware_pages import COURSEWARE_JS, COURSEWARE_PLAN_JS
 
 COMMON_JS = r"""
 __PAGE_AUTH__
@@ -628,7 +628,7 @@ def practice_page_html() -> str:
 
 
 def plan_page_html() -> str:
-    return _page("周末课备课", COURSEWARE_JS + PLAN_JS, True, ("/v1/weekend", "返回周末课"))
+    return _page("周末课备课", COURSEWARE_JS + COURSEWARE_PLAN_JS + PLAN_JS, True, ("/v1/weekend", "返回周末课"))
 
 
 def brief_page_html() -> str:

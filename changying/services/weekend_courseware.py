@@ -1,4 +1,4 @@
-"""Interactive weekend courseware: two reviewed templates filled with validated parameters.
+"""Interactive weekend courseware: reviewed templates filled with validated parameters.
 
 AI (or the teacher) only supplies structured parameters; the page code is fixed and reviewed. Nothing
 here produces HTML or script from AI output, and playing a courseware in class never calls AI.
@@ -7,6 +7,10 @@ rotation  数学·图形旋转：grid, shape points, centre, direction, angle ->
 reading   语文·文本依据：an excerpt of the lesson's own reading text split into sentences, the question,
           supplementary material and a written-explanation prompt; evidence sentences and the reference
           answer stay teacher-only.
+clock     数学·钟面指针旋转：start number, direction, angle (multiple of 30°) -> the number the hand points to
+steps     通用·分步讲解：the page's own worked example revealed step by step, then the answer; fits any example
+
+A lesson may have one courseware per slide/example page; the AI picks the best fitting template per page.
 """
 from __future__ import annotations
 
@@ -14,8 +18,8 @@ import json
 import re
 from typing import Any
 
-KINDS = {"数学": "rotation", "语文": "reading"}
-KIND_LABEL = {"rotation": "数学·图形旋转", "reading": "语文·阅读与文本依据"}
+TEMPLATES = {"数学": ("rotation", "clock", "steps"), "语文": ("reading", "steps")}
+KIND_LABEL = {"rotation": "数学·图形旋转", "reading": "语文·阅读与文本依据", "clock": "数学·钟面指针旋转", "steps": "分步讲解"}
 ANGLES = (90, 180, 270)
 LETTERS = "ABCDEF"
 
@@ -128,12 +132,56 @@ def clean_reading(raw: Any, source_text: str) -> dict[str, Any]:
             "reference": _text(raw.get("reference"), 1000)}
 
 
+def clock_end(start: int, direction: str, angle: int) -> int:
+    turns = (angle // 30) * (1 if direction == "cw" else -1)
+    return (start - 1 + turns) % 12 + 1
+
+
+def clean_clock(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ValueError("课件参数格式不正确")
+    try:
+        start, angle = _int(raw.get("start")), _int(raw.get("angle"))
+    except ValueError:
+        raise ValueError("起始数字和角度必须是整数")
+    if not 1 <= start <= 12:
+        raise ValueError("起始数字需在 1—12 之间")
+    if angle % 30 or not 30 <= angle <= 360:
+        raise ValueError("钟面旋转角度需是 30° 的整数倍（30°—360°）")
+    direction = str(raw.get("direction") or "")
+    if direction not in ("cw", "ccw"):
+        raise ValueError("旋转方向只能是顺时针或逆时针")
+    steps = [_text(s, 80) for s in (raw.get("steps") or []) if _text(s, 80)][:5]
+    return {"title": _text(raw.get("title"), 40) or "钟面上的旋转", "start": start, "direction": direction, "angle": angle,
+            "end": clock_end(start, direction, angle),
+            "steps": steps or ["钟面一圈 360°，每两个数字之间 30°", "看清旋转方向", "算出转过几个大格"],
+            "question": _text(raw.get("question"), 200) or "指针旋转后指向数字几？写出你的想法。", "reference": _text(raw.get("reference"), 1000)}
+
+
+def clean_steps(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ValueError("课件参数格式不正确")
+    steps = [_text(s, 120) for s in (raw.get("steps") or []) if _text(s, 120)]
+    if not 2 <= len(steps) <= 6:
+        raise ValueError("分步讲解需要 2—6 步")
+    answer = _text(raw.get("answer"), 200)
+    if not answer:
+        raise ValueError("请填写例题答案")
+    return {"title": _text(raw.get("title"), 40) or "分步讲解", "steps": steps, "answer": answer,
+            "problem": _text(raw.get("problem"), 600),        # the example's own question, without its answer (pupils' task)
+            "question": _text(raw.get("question"), 200) or "写出解题过程和答案。", "reference": _text(raw.get("reference"), 1000)}
+
+
 def clean(kind: str, raw: Any, source_text: str = "") -> dict[str, Any]:
     if kind == "rotation":
         return clean_rotation(raw)
     if kind == "reading":
         return clean_reading(raw, source_text)
-    raise ValueError("暂只支持数学图形旋转和语文文本依据两种课件")
+    if kind == "clock":
+        return clean_clock(raw)
+    if kind == "steps":
+        return clean_steps(raw)
+    raise ValueError("没有这种课件模板")
 
 
 def public_params(kind: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -145,14 +193,19 @@ def public_params(kind: str, params: dict[str, Any]) -> dict[str, Any]:
 def clean_view(kind: str, params: dict[str, Any], raw: Any) -> dict[str, Any]:
     """The teacher's live screen state; small, validated, no AI."""
     raw = raw if isinstance(raw, dict) else {}
+    try:
+        angle, step = _int(raw.get("angle", 0)), _int(raw.get("step", 0))
+    except ValueError:
+        angle, step = 0, 0
     if kind == "rotation":
-        try:
-            angle, step = _int(raw.get("angle", 0)), _int(raw.get("step", 0))
-        except ValueError:
-            angle, step = 0, 0
         return {"angle": max(0, min(int(params["angle"]), angle)), "showOriginal": bool(raw.get("showOriginal", True)),
                 "showResult": bool(raw.get("showResult")), "showCenter": bool(raw.get("showCenter", True)),
                 "step": max(0, min(len(params["steps"]), step))}
+    if kind == "clock":
+        return {"angle": max(0, min(int(params["angle"]), angle)), "showResult": bool(raw.get("showResult")),
+                "step": max(0, min(len(params["steps"]), step))}
+    if kind == "steps":
+        return {"step": max(0, min(len(params["steps"]), step)), "showAnswer": bool(raw.get("showAnswer"))}
     count = len(params["sentences"])
     marks = []
     for i in raw.get("highlight") or []:
@@ -165,8 +218,19 @@ def clean_view(kind: str, params: dict[str, Any], raw: Any) -> dict[str, Any]:
     return {"highlight": marks[:20], "showMaterial": bool(raw.get("showMaterial")), "showPrompt": bool(raw.get("showPrompt"))}
 
 
-def written_question(kind: str, params: dict[str, Any]) -> tuple[str, str]:
+def written_question(kind: str, params: dict[str, Any], page_text: str = "") -> tuple[str, str]:
     """The pupils' task for the existing written answer flow (text/photo, teacher-reviewed)."""
+    if kind == "clock":
+        way = "顺时针" if params["direction"] == "cw" else "逆时针"
+        stem = f"钟面上的指针从数字 {params['start']} 出发，{way}旋转 {params['angle']}°。\n\n{params['question']}"
+        return stem, f"指向数字 {params['end']}。" + (f"\n{params['reference']}" if params["reference"] else "")
+    if kind == "steps":
+        # Never the board page itself: worked-example pages often carry their answer.
+        if not params.get("problem"):
+            raise ValueError("要生成学生作答题，请先填写这道例题的题目原文（不含答案）")
+        stem = params["problem"] + "\n\n" + params["question"]
+        reference = "；".join(params["steps"]) + f"\n答案：{params['answer']}" + (f"\n{params['reference']}" if params["reference"] else "")
+        return stem, reference
     if kind == "rotation":
         names = LETTERS[: len(params["shape"])]
         points = "、".join(f"{n}({x},{y})" for n, (x, y) in zip(names, params["shape"]))
@@ -186,23 +250,24 @@ def written_question(kind: str, params: dict[str, Any]) -> tuple[str, str]:
     return stem, reference
 
 
-def generation_prompt(kind: str, lesson: dict[str, Any]) -> str:
-    """Structured parameters only; the model never writes markup or code."""
-    base = f"课题：{lesson['title']}\n教学目标：{lesson['coreTarget']}\n教学流程：{lesson['teacherPlan'][:3000]}\n"
-    if lesson.get("pageText"):
-        base += ("本课件放在大屏的这一页上，必须直接演示这一页的内容本身（图形、数据、问题与之一致），不能另换一道题：\n"
-                 + lesson["pageText"][:1500] + "\n如果这一页的内容不适合本模板（例如钟面指针、角度计算而不是方格中的图形旋转；"
-                 "或没有可摘取的阅读原文），只输出 {\"unsuitable\":\"一句话原因\"}。\n")
-    if kind == "rotation":
-        return ("你是小学数学教师，为“图形的旋转”设计一个课堂演示。只输出 JSON，不要 HTML、代码或 Markdown。\n" + base +
-                "要求：网格 width、height 为 6—12 的整数；shape 为 3—6 个整数顶点坐标（y 轴向上）；center 为整数旋转中心；"
-                "direction 为 cw（顺时针）或 ccw（逆时针）；angle 为 90、180 或 270；旋转后图形必须仍在网格内；"
-                "steps 为 3—5 条讲解步骤（每条不超过40字）；question 为学生书面作答的问题；reference 为给老师的评分要点。\n"
-                '格式：{"title":"","width":10,"height":10,"shape":[[2,2],[5,2],[2,4]],"center":[2,2],"direction":"cw","angle":90,'
-                '"steps":[""],"question":"","reference":""}')
-    return ("你是小学语文教师，为本课设计一个“找文本依据”的课堂活动。只输出 JSON，不要 HTML、代码或 Markdown。\n" + base +
-            "本课原文：\n" + lesson["sourceText"][:6000] +
-            "\n要求：passage 必须从上面原文中原样摘取一段连续文字（40—600字），不得改写；question 是需要用原文依据回答的问题；"
-            "evidence 是 passage 按句号、问号、感叹号、分号或换行切分后，作为依据的句子序号（从0开始）；material 是帮助理解的补充资料"
-            "（不超过150字，只写确定的常识，没有就留空）；writingPrompt 是书面解释要求；reference 是给老师的评分要点。\n"
-            '格式：{"title":"","passage":"","question":"","evidence":[0],"material":"","writingPrompt":"","reference":""}')
+def generation_prompt(subject: str, lesson: dict[str, Any]) -> str:
+    """The model picks one reviewed template for this page and returns its parameters as JSON, never markup or code."""
+    kinds = [k for k in TEMPLATES[subject] if k != "reading" or lesson.get("sourceText", "").strip()]
+    spec = {
+        "rotation": '方格中的图形旋转（顶点、旋转中心、方向、90/180/270°）：{"template":"rotation","title":"","width":10,"height":10,'
+                    '"shape":[[2,2],[5,2],[2,4]],"center":[2,2],"direction":"cw或ccw","angle":90,"steps":["讲解步骤"],"question":"","reference":""}'
+                    '；width/height 6—12，坐标为整数且 y 轴向上，旋转后必须仍在网格内。',
+        "clock": '钟面指针旋转（从某个数字出发，顺/逆时针转 30° 的整数倍）：{"template":"clock","title":"","start":2,"direction":"cw或ccw",'
+                 '"angle":120,"steps":["讲解步骤"],"question":"","reference":""}；一道例题有多个小问时，选第一个小问的数据。',
+        "reading": '阅读找文本依据：{"template":"reading","title":"","passage":"从本课原文原样摘取的连续段落（40—600字）","question":"",'
+                   '"evidence":[作为依据的句子序号，从0开始],"material":"不超过150字的确定常识，可留空","writingPrompt":"","reference":""}',
+        "steps": '分步讲解（任何例题都可用）：{"template":"steps","title":"","problem":"这一页例题的题目原文，不含答案","steps":["第1步……","第2步……"],'
+                 '"answer":"本题答案","question":"学生书面作答的要求","reference":""}；2—6 步，每步不超过60字，严格按这一页的题目和数据讲解。',
+    }
+    text = (f"你是小学{subject}教师，为大屏上的一页例题选择一个互动课件模板并填写参数。只输出 JSON，不要 HTML、代码或 Markdown。\n"
+            f"课题：{lesson['title']}\n教学目标：{lesson['coreTarget']}\n"
+            "这一页的内容（课件必须演示这一页本身，图形、数据、问题与之一致，不能另换一道题）：\n" + lesson.get("pageText", "")[:1500] + "\n"
+            "可选模板（优先选最贴合的专用模板；都不贴合时选 steps）：\n" + "\n".join(f"- {spec[k]}" for k in kinds))
+    if "reading" in kinds:
+        text += "\n本课原文：\n" + lesson["sourceText"][:6000]
+    return text
