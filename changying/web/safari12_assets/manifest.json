@@ -370,16 +370,16 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/weekend": [
-      "88faa64839ad3956575cf5ea1cd9b1346d924171ecca7da45333b6e5eed0516a"
+      "fc904b15bfb5d141de728e63a0f739d14d4be944f2d5d03376a0cf1ddeaf3b3f"
     ],
     "/v1/weekend-board": [
-      "7b6b25168f487567b9dae66108820f71ab8593ea9b4ba2bac2de58b86171939a"
+      "ae38fb8290db42b812fda543a85cbefc9572f5d0fd599398b7619987a6abd72f"
     ],
     "/v1/weekend-brief": [
       "70ab878a1a065d5b87014dd9053255bcd513fad0c5e45eb35961711c5c8e6b52"
     ],
     "/v1/weekend-plan": [
-      "7daeb18c9fc0c6f20b6887d6341c177ddc0a5604dea97da7275dc8677691bb8f"
+      "beed85432a6ead4eefa4b977d75b05a5407bf54fa56b439bef3583e83c920da7"
     ],
     "/v1/weekend-practice": [
       "d79ca2de3ed4cbcda0b37893f5801019f561fa03ba79570bb87ab331a9ef753b"
@@ -642,25 +642,25 @@
       "sourceBytes": 54255,
       "compiledBytes": 58172
     },
-    "88faa64839ad3956575cf5ea1cd9b1346d924171ecca7da45333b6e5eed0516a": {
+    "fc904b15bfb5d141de728e63a0f739d14d4be944f2d5d03376a0cf1ddeaf3b3f": {
       "unchanged": true,
-      "sourceBytes": 72848,
-      "compiledBytes": 72848
+      "sourceBytes": 74051,
+      "compiledBytes": 74051
     },
-    "7b6b25168f487567b9dae66108820f71ab8593ea9b4ba2bac2de58b86171939a": {
+    "ae38fb8290db42b812fda543a85cbefc9572f5d0fd599398b7619987a6abd72f": {
       "unchanged": true,
-      "sourceBytes": 22484,
-      "compiledBytes": 22484
+      "sourceBytes": 23850,
+      "compiledBytes": 23850
     },
     "70ab878a1a065d5b87014dd9053255bcd513fad0c5e45eb35961711c5c8e6b52": {
       "unchanged": true,
       "sourceBytes": 11261,
       "compiledBytes": 11261
     },
-    "7daeb18c9fc0c6f20b6887d6341c177ddc0a5604dea97da7275dc8677691bb8f": {
+    "beed85432a6ead4eefa4b977d75b05a5407bf54fa56b439bef3583e83c920da7": {
       "unchanged": true,
-      "sourceBytes": 40480,
-      "compiledBytes": 40480
+      "sourceBytes": 41579,
+      "compiledBytes": 41579
     },
     "d79ca2de3ed4cbcda0b37893f5801019f561fa03ba79570bb87ab331a9ef753b": {
       "unchanged": true,

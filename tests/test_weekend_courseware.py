@@ -130,7 +130,7 @@ with TestClient(app) as client:
     client.post(b1 + "/goto", headers=th, json={"stage": 4})
     assert client.post(b1 + "/courseware/view", headers=th, json={"view": {}}).status_code == 409
     mine = client.get(f"/student/weekend/sessions/{s1}/written", headers=sh).json()
-    task = next(q for q in mine["questions"] if "绕点 O(4,4) 顺时针旋转 90°" in q["stem"])
+    task = next(q for q in mine["questions"] if "绕点 A 顺时针旋转 90°" in q["stem"])
     assert "A′(4,1)" not in json.dumps(mine, ensure_ascii=False) and "reference" not in json.dumps(mine)
     r = client.post(f"/student/weekend/sessions/{s1}/written/{task['id']}", headers=sh, data={"text": "A′(4,4) B′(4,1) C′(6,4)", "revision": "0"})
     assert r.status_code == 200, r.text
@@ -167,10 +167,80 @@ with TestClient(app) as client:
     assert "生成互动课件" in plan and "/courseware/generate" in plan and "审核通过，用于课堂" in plan and "cwPlan(" in plan
     control = client.get("/v1/weekend").text
     assert "cwControl(cwBox,d.courseware,SID)" in control and "/courseware/view" in control
-    assert "cwRender(body,d.courseware" in client.get("/v1/weekend-board").text
+    assert "cwRender(cwBox,d.courseware" in client.get("/v1/weekend-board").text
     print("OK")
 '''
 
 
 def test_courseware_preparation_class_play_and_written_answers(tmp_path):
     helpers.run_isolated(tmp_path, helpers.COMMON + f"SOURCE = {SOURCE!r}\nPASSAGE = {PASSAGE!r}\n" + FLOW)
+
+
+PAGES = r'''
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    examples = [{"title": "例题1 | 旋转方向与角度", "question": "钟面上的指针从数字2出发，顺时针旋转120°，指向数字几？", "answer": "6"},
+                {"title": "例题2 | 方格中旋转作图", "question": "三角形ABC的顶点A(4,4)、B(7,4)、C(4,6)，绕点A逆时针旋转90°，画出旋转后的图形。", "answer": "见图"},
+                {"title": "例题3 | 旋转与对称", "question": "说一说旋转和平移有什么不同。", "answer": "略"}]
+    with legacy.SessionLocal() as db:
+        teacher = db.scalar(select(legacy.User).where(legacy.User.username == "teacher1"))
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        cls = legacy.SchoolClass(school_id=school_id, name="周末五年级", grade=5, teacher_id=teacher.id); db.add(cls); db.flush()
+        db.add(legacy.ClassStudent(class_id=cls.id, student_id=sid))
+        lesson = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=93, title="分层综合提升：旋转",
+                                       core_target="旋转三要素", teacher_plan="讲例题", examples_json=json.dumps(examples, ensure_ascii=False))
+        db.add(lesson); db.flush()
+        db.add(legacy.TeachingQuestion(school_id=school_id, program_id=p.id, level="C", lesson_id=lesson.id, subject="数学",
+                                       stem="热身题", options_json='["甲","乙"]', correct_index=0, active=True, knowledge="热身"))
+        db.commit(); lid, cls_id = lesson.id, cls.id
+    base = f"/teacher/weekend/lessons/{lid}/courseware"
+    info = client.get(base, headers=th).json()
+    assert len(info["pages"]["3"]) == 3 and "钟面" in info["pages"]["3"][0] and "三角形ABC" in info["pages"]["3"][1]
+    # a stage with pages needs a page; the clock-face example is reported as unsuitable, nothing saved
+    assert client.post(base + "/generate", headers=th, json={"stageNo": 3}).status_code == 400
+    replies.append(json.dumps({"unsuitable": "这是钟面指针的旋转角度，不是方格中的图形旋转"}, ensure_ascii=False))
+    r = client.post(base + "/generate", headers=th, json={"stageNo": 3, "page": 0})
+    assert r.status_code == 400 and "钟面" in r.json()["detail"] and client.get(base, headers=th).json()["item"] is None
+    assert "钟面上的指针从数字2出发" in prompts[-1]
+    replies.append(json.dumps({"title": "例题2：三角形绕点A逆时针旋转90°", "width": 10, "height": 10, "shape": [[4, 4], [7, 4], [4, 6]],
+                               "center": [4, 4], "direction": "ccw", "angle": 90, "steps": ["找中心A", "逆时针", "90°"], "question": "写出旋转后的坐标"},
+                              ensure_ascii=False))
+    d = client.post(base + "/generate", headers=th, json={"stageNo": 3, "page": 1}).json()
+    assert d["item"]["params"]["page"] == 1 and "三角形ABC" in prompts[-1] and "钟面上的指针从数字2出发" not in prompts[-1]
+    client.post(base + "/approve", headers=th)
+
+    s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid, "classId": cls_id}).json()["id"]
+    b = f"/teacher/weekend/sessions/{s}"
+    client.post(b + "/start", headers=th); client.post(b + "/goto", headers=th, json={"stage": 3})
+    page0 = client.get(b + "/board", headers=th).json()
+    assert "courseware" not in page0 and "钟面" in page0["content"][0]                       # page 1: the clock example itself
+    assert "第 2 页" in client.get(b, headers=th).json()["coursewareNotice"]
+    assert client.post(b + "/courseware/view", headers=th, json={"view": {"angle": 30}}).status_code == 409
+    client.post(b + "/slide", headers=th, json={"delta": 1})
+    page1 = client.get(b + "/board", headers=th).json()
+    assert page1["deck"]["index"] == 1 and page1["courseware"]["page"] == 1 and "三角形ABC" in page1["content"][0]   # text and courseware together
+    assert client.post(b + "/courseware/view", headers=th, json={"view": {"angle": 30}}).json()["view"]["angle"] == 30
+    client.post(b + "/slide", headers=th, json={"delta": 1})
+    page2 = client.get(b + "/board", headers=th).json()
+    assert page2["deck"]["index"] == 2 and "courseware" not in page2 and "旋转和平移" in page2["content"][0]
+
+    # an approved courseware from before page binding no longer covers every page
+    t = legacy.Base.metadata.tables["weekend_courseware"]
+    with legacy.SessionLocal() as db:
+        row = db.execute(select(t)).first()
+        params = json.loads(row.approved_json); params.pop("page")
+        db.execute(t.update().where(t.c.id == row.id).values(approved_json=json.dumps(params))); db.commit()
+    client.post(b + "/slide", headers=th, json={"delta": -1})
+    old = client.get(b, headers=th).json()
+    assert "courseware" not in old and "没有对应到具体的页" in old["coursewareNotice"]
+    assert "courseware" not in client.get(b + "/board", headers=th).json()
+    assert "coursewareNotice" not in client.get(b + "/board", headers=th).json()
+    plan = client.get("/v1/weekend-plan").text
+    assert "课件对应的页" in plan and "page:pageValue()" in plan
+    assert "d.coursewareNotice" in client.get("/v1/weekend").text
+    print("OK")
+'''
+
+
+def test_courseware_belongs_to_one_page_and_keeps_the_page_content(tmp_path):
+    helpers.run_isolated(tmp_path, helpers.COMMON + PAGES)

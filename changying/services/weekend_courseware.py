@@ -172,8 +172,10 @@ def written_question(kind: str, params: dict[str, Any]) -> tuple[str, str]:
         points = "、".join(f"{n}({x},{y})" for n, (x, y) in zip(names, params["shape"]))
         cx, cy = params["center"]
         way = "顺时针" if params["direction"] == "cw" else "逆时针"
+        on = next((n for n, p in zip(names, params["shape"]) if p == params["center"]), "")
+        center = f"点 {on}" if on else f"点 O({cx},{cy})"
         stem = (f"在 {params['width']}×{params['height']} 的方格纸上，图形顶点为 {points}。"
-                f"把图形绕点 O({cx},{cy}) {way}旋转 {params['angle']}°。\n\n{params['question']}")
+                f"把图形绕{center} {way}旋转 {params['angle']}°。\n\n{params['question']}")
         result = "、".join(f"{n}′({x},{y})" for n, (x, y) in zip(names, params["rotated"]))
         reference = f"旋转后顶点：{result}。" + (f"\n{params['reference']}" if params["reference"] else "")
         return stem, reference
@@ -187,6 +189,10 @@ def written_question(kind: str, params: dict[str, Any]) -> tuple[str, str]:
 def generation_prompt(kind: str, lesson: dict[str, Any]) -> str:
     """Structured parameters only; the model never writes markup or code."""
     base = f"课题：{lesson['title']}\n教学目标：{lesson['coreTarget']}\n教学流程：{lesson['teacherPlan'][:3000]}\n"
+    if lesson.get("pageText"):
+        base += ("本课件放在大屏的这一页上，必须直接演示这一页的内容本身（图形、数据、问题与之一致），不能另换一道题：\n"
+                 + lesson["pageText"][:1500] + "\n如果这一页的内容不适合本模板（例如钟面指针、角度计算而不是方格中的图形旋转；"
+                 "或没有可摘取的阅读原文），只输出 {\"unsuitable\":\"一句话原因\"}。\n")
     if kind == "rotation":
         return ("你是小学数学教师，为“图形的旋转”设计一个课堂演示。只输出 JSON，不要 HTML、代码或 Markdown。\n" + base +
                 "要求：网格 width、height 为 6—12 的整数；shape 为 3—6 个整数顶点坐标（y 轴向上）；center 为整数旋转中心；"
