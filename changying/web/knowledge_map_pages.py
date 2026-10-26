@@ -188,15 +188,32 @@ function kmClassLoad(cid,out){
     if(!d.students.length){out.appendChild(el('p',{text:'这个班还没有学生。'}));return}
     var head=el('tr',{},el('th',{text:'学生'}),el('th',{text:'入门诊断'}));
     d.units.forEach(function(u){head.appendChild(el('th',{text:u.name}))});
-    var tb=el('tbody');
+    var tb=el('tbody'),changes={};
     d.students.forEach(function(st){
       var g=st.diagnosis,tr=el('tr',{},el('td',{text:st.name}),
         el('td',{text:g.status==='submitted'?'已完成 '+g.correct+'/'+g.count:g.status==='open'?'做了一半':'未开始'}));
-      d.units.forEach(function(u){tr.appendChild(el('td',{},kmMasteryTag(st.units[u.key],L)))});
+      d.units.forEach(function(u){
+        // 老师自己的判断：与系统判断对照，算一致率（验收用）。
+        var pick=el('select',{'aria-label':st.name+' '+u.name+' 老师判断','data-rate':st.id+':'+u.key});
+        [['','我的判断'],['weak',L.weak],['pass',L.pass],['fluent',L.fluent]].forEach(function(x){var o=el('option',{value:x[0],text:x[1]});if((st.ratings||{})[u.key]===x[0])o.selected=true;pick.appendChild(o)});
+        pick.addEventListener('change',function(){changes[st.id+':'+u.key]={studentId:st.id,unitKey:u.key,level:pick.value||null}});
+        tr.appendChild(el('td',{},kmMasteryTag(st.units[u.key],L),el('div',{},pick)));
+      });
       tb.appendChild(tr);
     });
+    var ag=d.agreement,agText=ag.compared?'老师判断与系统判断一致 '+ag.agreed+' / '+ag.compared+' 项，一致率 '+Math.round(ag.rate*100)+'%（验收要求不低于 '+Math.round(ag.threshold*100)+'%）'+(ag.passed?'，已达到':'，未达到'):
+      '还没有可比对的判断：在下表每格选“我的判断”后保存。系统为“证据不足”的格不计入一致率。';
+    var save=el('button',{class:'btn',text:'保存我的判断',onclick:function(){
+      var list=Object.keys(changes).map(function(k){return changes[k]});if(!list.length){kmSay('没有改动');return}
+      save.disabled=true;
+      api('/teacher/knowledge-maps/'+KM.id+'/classes/'+d.classId+'/ratings',{method:'PUT',json:{ratings:list}}).then(function(){kmSay('判断已保存');kmClassLoad(d.classId,out)})
+        .catch(function(e){save.disabled=false;kmSay(e.message,true)});
+    }});
     out.appendChild(el('h3',{text:d.className+' · 各单元'}));
+    out.appendChild(el('p',{},ag.compared?kmTag(agText,ag.passed?'ok':'warn'):el('span',{class:'muted',text:agText}),
+      ag.rated>ag.compared?el('span',{class:'muted',text:'（另有 '+(ag.rated-ag.compared)+' 项系统证据不足，未计入）'}):null));
     out.appendChild(el('div',{style:'overflow-x:auto'},el('table',{},el('thead',{},head),tb)));
+    out.appendChild(save);
     var detail=el('div'),nb=el('tbody');
     d.nodes.forEach(function(n){
       var c=d.tally[n.key],tr=el('tr',{style:'cursor:pointer',tabindex:'0','data-tally':n.key},el('td',{text:n.key+' '+n.name}),

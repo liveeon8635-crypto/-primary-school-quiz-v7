@@ -13,6 +13,8 @@ teacher  GET  /v1/knowledge-map                                  page
          GET  /teacher/knowledge-maps/{mid}/classes/{cid}        mastery of every pupil of the class (published map)
          POST /teacher/knowledge-maps/{mid}/classes/{cid}/reinforce  {nodeKey, studentIds, count} one consolidation
                                                                     homework per pupil from the node's levelled questions
+         PUT  /teacher/knowledge-maps/{mid}/classes/{cid}/ratings    {ratings} the teacher's own judgement per pupil and
+                                                                    unit; the class view reports agreement with the map
 
 Everything sits behind the ``KNOWLEDGE_MAP`` environment flag (default off; 404 when off). One map per school,
 grade, subject and term; teachers of the school share it. Students and diagnosis (later PRs) only read the
@@ -28,7 +30,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, func, insert, select, update
+from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, delete, func, insert, select, update
 
 from changying.services import knowledge_maps as km
 
@@ -56,6 +58,16 @@ class LevelsBody(BaseModel):
 
 class PublishBody(BaseModel):
     revision: int = Field(ge=0)
+
+
+class Rating(BaseModel):
+    studentId: int
+    unitKey: str = Field(max_length=12)
+    level: str | None = None
+
+
+class RatingsBody(BaseModel):
+    ratings: list[Rating] = Field(max_length=600)
 
 
 class ReinforceBody(BaseModel):
@@ -88,11 +100,28 @@ def register_knowledge_map_table(implementation: Any) -> Table:
     return md.tables["knowledge_maps"]
 
 
+def register_knowledge_map_rating_table(implementation: Any) -> Table:
+    md = implementation.Base.metadata
+    if "knowledge_map_ratings" not in md.tables:
+        Table("knowledge_map_ratings", md,
+              Column("id", Integer, primary_key=True),
+              Column("school_id", Integer, nullable=False, index=True),
+              Column("map_id", Integer, nullable=False, index=True),
+              Column("student_id", Integer, nullable=False, index=True),
+              Column("unit_key", String(12), nullable=False),
+              Column("level", String(10), nullable=False),              # weak | pass | fluent
+              Column("teacher_id", Integer, nullable=False),
+              Column("updated_at", DateTime, nullable=False),
+              UniqueConstraint("map_id", "student_id", "unit_key", name="uq_knowledge_map_ratings_unit"))
+    return md.tables["knowledge_map_ratings"]
+
+
 def install_knowledge_map_views(implementation: Any) -> APIRouter:
     app = implementation.app
     if getattr(app.state, "knowledge_map_installed", False):
         return app.state.knowledge_map_router
     t = register_knowledge_map_table(implementation)
+    ratings = register_knowledge_map_rating_table(implementation)
     Question = implementation.Question
     current_user, get_db, need = implementation.current_user, implementation.get_db, implementation.need
     router = APIRouter()
@@ -337,7 +366,22 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
             for st in students:
                 c[st["nodes"][n["key"]]["level"] or "insufficient"] += 1
             tally[n["key"]] = c
-        return {"classId": cls.id, "className": cls.name, "title": row.title, "publishedRevision": int(row.published_revision),
+        rated: dict[int, dict[str, str]] = {}
+        if ids:
+            for r in db.execute(select(ratings).where(ratings.c.map_id == row.id, ratings.c.school_id == u.school_id,
+                                                      ratings.c.student_id.in_(ids))):
+                rated.setdefault(r.student_id, {})[r.unit_key] = r.level
+        units_shown = [x["key"] for x in m["units"] if any(n["unit"] == x["key"] for n in nodes)]
+        pairs = [(st["units"][k]["level"], rated.get(st["id"], {}).get(k)) for st in students for k in units_shown
+                 if st["units"].get(k) and rated.get(st["id"], {}).get(k)]
+        compared = [(a, b) for a, b in pairs if a]
+        agreed = sum(1 for a, b in compared if a == b)
+        agreement = {"rated": len(pairs), "compared": len(compared), "agreed": agreed, "threshold": km.AGREEMENT_TARGET,
+                     "rate": round(agreed / len(compared), 2) if compared else None,
+                     "passed": bool(compared) and agreed / len(compared) >= km.AGREEMENT_TARGET}
+        for st in students:
+            st["ratings"] = rated.get(st["id"], {})
+        return {"agreement": agreement, "classId": cls.id, "className": cls.name, "title": row.title, "publishedRevision": int(row.published_revision),
                 "units": [x for x in m["units"] if any(n["unit"] == x["key"] for n in nodes)], "nodes": nodes, "tally": tally,
                 "students": students, "masteryLabels": km.MASTERY_LABELS, "confidenceLabels": km.CONFIDENCE_LABELS}
 
@@ -393,10 +437,41 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         db.commit()
         return {"node": {"key": node["key"], "name": node["name"]}, "results": results}
 
+    @router.put("/teacher/knowledge-maps/{mid}/classes/{cid}/ratings")
+    def put_ratings(mid: int, cid: int, b: RatingsBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        teacher(u)
+        row = my_map(db, u, mid)
+        cls = own_class(db, u, cid)
+        if row.published_json is None:
+            raise HTTPException(409, "知识地图还没有发布")
+        m = json.loads(row.published_json)
+        units = {x["key"] for x in m["units"] if any(km.assessed(m, n) and n["unit"] == x["key"] for n in m["nodes"])}
+        kids = {k.id for k in pupils(db, u, cls.id)}
+        for r in b.ratings:
+            if r.studentId not in kids or r.unitKey not in units:
+                raise HTTPException(400, "只能给本班学生、已学单元填写判断")
+            if r.level is not None and r.level not in km.MASTERY_LABELS:
+                raise HTTPException(400, "判断只能是薄弱、达标或熟练")
+        now = datetime.utcnow()
+        for r in b.ratings:
+            where = (ratings.c.map_id == row.id, ratings.c.student_id == r.studentId, ratings.c.unit_key == r.unitKey,
+                     ratings.c.school_id == u.school_id)
+            old = db.execute(select(ratings.c.id).where(*where)).first()
+            if r.level is None:
+                if old:
+                    db.execute(delete(ratings).where(ratings.c.id == old.id))
+            elif old:
+                db.execute(update(ratings).where(ratings.c.id == old.id).values(level=r.level, teacher_id=u.id, updated_at=now))
+            else:
+                db.execute(insert(ratings).values(school_id=u.school_id, map_id=row.id, student_id=r.studentId, unit_key=r.unitKey,
+                                                  level=r.level, teacher_id=u.id, updated_at=now))
+        db.commit()
+        return class_mastery(mid, cid, u, db)
+
     app.include_router(router)
     app.state.knowledge_map_installed = True
     app.state.knowledge_map_router = router
     return router
 
 
-__all__ = ["install_knowledge_map_views", "knowledge_map_enabled", "register_knowledge_map_table"]
+__all__ = ["install_knowledge_map_views", "knowledge_map_enabled", "register_knowledge_map_rating_table", "register_knowledge_map_table"]

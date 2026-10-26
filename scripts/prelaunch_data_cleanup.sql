@@ -55,6 +55,7 @@ WITH d AS (DELETE FROM assignments RETURNING 1) INSERT INTO _deleted SELECT 'ass
 WITH d AS (DELETE FROM reward_redemptions RETURNING 1) INSERT INTO _deleted SELECT 'reward_redemptions', COUNT(*) FROM d;
 WITH d AS (DELETE FROM learning_evidence_events RETURNING 1) INSERT INTO _deleted SELECT 'learning_evidence_events', COUNT(*) FROM d;
 WITH d AS (DELETE FROM knowledge_map_runs RETURNING 1) INSERT INTO _deleted SELECT 'knowledge_map_runs', COUNT(*) FROM d;
+WITH d AS (DELETE FROM knowledge_map_ratings RETURNING 1) INSERT INTO _deleted SELECT 'knowledge_map_ratings', COUNT(*) FROM d;
 WITH d AS (DELETE FROM homework_notices RETURNING 1) INSERT INTO _deleted SELECT 'homework_notices', COUNT(*) FROM d;
 WITH d AS (DELETE FROM ai_usage_logs RETURNING 1) INSERT INTO _deleted SELECT 'ai_usage_logs', COUNT(*) FROM d;
 WITH d AS (DELETE FROM account_deletion_requests RETURNING 1) INSERT INTO _deleted SELECT 'account_deletion_requests', COUNT(*) FROM d;
