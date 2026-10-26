@@ -307,7 +307,7 @@
       "17ec48f00404044f4477143c0d4bf7c2d74caec26ad138fe52f0a3a7ae627d25"
     ],
     "/v1/my-knowledge-map": [
-      "765b62fbcce4c34393ec6a524e895300f7d8ee33f3f3c72ec29db41eb9efd83c"
+      "0522bf7767fcd279a6753ce09832b44e77ee77fe593fd28c1f337ec97c730953"
     ],
     "/v1/student": [
       "f8f56c33f77910ed27ccfcd07ceabe918d7a478077bf789b962e71dc84f0b6cd",
@@ -643,10 +643,10 @@
       "sourceBytes": 14891,
       "compiledBytes": 14891
     },
-    "765b62fbcce4c34393ec6a524e895300f7d8ee33f3f3c72ec29db41eb9efd83c": {
+    "0522bf7767fcd279a6753ce09832b44e77ee77fe593fd28c1f337ec97c730953": {
       "unchanged": true,
-      "sourceBytes": 13677,
-      "compiledBytes": 13677
+      "sourceBytes": 14733,
+      "compiledBytes": 14733
     },
     "b94931721e21344278fba3113024972f1358095153156c78ff9aa8fe2788ad1d": {
       "unchanged": true,

@@ -141,9 +141,14 @@ function smStateText(n){
   if(!m.level)return '证据不足：已有 '+m.evidence+' 道题的第一次作答，至少 3 道才判断';
   return SM.masteryLabels[m.level]+'（加权正确率 '+Math.round(m.rate*100)+'%，'+m.evidence+' 道题的第一次作答，'+SM.confidenceLabels[m.confidence]+'）';
 }
+function smUnitText(n){
+  var u=SM.units.filter(function(x){return x.key===n.unit})[0],m=u&&u.mastery;
+  if(!m)return null;
+  return el('p',{class:'muted',text:m.level?'整个单元：'+SM.masteryLabels[m.level]+'（加权正确率 '+Math.round(m.rate*100)+'%，'+m.evidence+' 道题，'+SM.confidenceLabels[m.confidence]+'）':'整个单元：证据不足（已有 '+m.evidence+' 道题的第一次作答）'});
+}
 function smShort(text,len){return text.length>len?text.slice(0,len)+'…':text}
 function smDraw(){
-  var cols=window.innerWidth>=720?3:2,W=300,GAP=16,ROWH=50,HEAD=44,pos={},regions=[],svg;
+  var cols=window.innerWidth>=720?3:window.innerWidth>=520?2:1,W=300,GAP=16,ROWH=50,HEAD=44,pos={},regions=[],svg;
   var units=SM.units,y=0,heights=[];
   for(var i=0;i<units.length;i+=cols){
     var h=0;for(var j=i;j<Math.min(i+cols,units.length);j++){var cnt=SM.nodes.filter(function(n){return n.unit===units[j].key}).length;h=Math.max(h,HEAD+Math.max(cnt,1)*ROWH+10)}
@@ -151,15 +156,21 @@ function smDraw(){
     y+=h+GAP;
   }
   svg=svgEl('svg',{viewBox:'0 0 '+(cols*W+(cols-1)*GAP)+' '+Math.max(y-GAP,10),width:'100%',role:'img','aria-label':'知识地图'});
-  var edges=svgEl('g',{}),body=svgEl('g',{});svg.appendChild(edges);svg.appendChild(body);
+  var back=svgEl('g',{}),edges=svgEl('g',{}),body=svgEl('g',{});svg.appendChild(back);svg.appendChild(edges);svg.appendChild(body);
   regions.forEach(function(r){
-    body.appendChild(svgEl('rect',{x:r.x,y:r.y,width:W,height:r.h,rx:14,fill:r.u.learned?'#f8faff':'#f9fafb',stroke:r.u.learned?'#c7d7fe':'#e4e7ec'}));
-    body.appendChild(svgEl('text',{x:r.x+14,y:r.y+28,'font-size':16,'font-weight':700,fill:'#1d2939',text:smShort(r.u.name,12)+(r.u.learned?'':'（未学）')}));
+    back.appendChild(svgEl('rect',{x:r.x,y:r.y,width:W,height:r.h,rx:14,fill:r.u.learned?'#f8faff':'#f9fafb',stroke:r.u.learned?'#c7d7fe':'#e4e7ec'}));
+    body.appendChild(svgEl('text',{x:r.x+14,y:r.y+28,'font-size':16,'font-weight':700,fill:'#1d2939',text:smShort(r.u.name,10)+(r.u.learned?'':'（未学）')}));
+    var um=r.u.mastery;
+    if(um&&um.level){body.appendChild(svgEl('rect',{x:r.x+W-92,y:r.y+11,width:80,height:24,rx:12,fill:SM_COLORS[um.level]}));
+      body.appendChild(svgEl('text',{x:r.x+W-52,y:r.y+28,'font-size':13,'text-anchor':'middle',fill:'#fff',text:'单元'+SM.masteryLabels[um.level]}))}
     SM.nodes.filter(function(n){return n.unit===r.u.key}).forEach(function(n,k){pos[n.key]={x:r.x+30,y:r.y+HEAD+k*ROWH+22}});
   });
+  var unitOf={};SM.nodes.forEach(function(n){unitOf[n.key]=n.unit});
   SM.nodes.forEach(function(n){n.prereqs.forEach(function(p){var a=pos[p],b=pos[n.key];if(!a||!b)return;
+    // Links inside a unit always show; links to other units only for the node the pupil picked.
+    var hot=SMSEL===n.key||SMSEL===p;if(unitOf[p]!==n.unit&&!hot)return;
     var same=Math.abs(a.x-b.x)<1,d=same?'M'+a.x+' '+a.y+' C'+(a.x-26)+' '+a.y+','+(b.x-26)+' '+b.y+','+b.x+' '+b.y:'M'+a.x+' '+a.y+' C'+(a.x+120)+' '+a.y+','+(b.x-120)+' '+b.y+','+b.x+' '+b.y;
-    edges.appendChild(svgEl('path',{d:d,fill:'none',stroke:'#98a2b3','stroke-opacity':same?'.7':'.35','stroke-width':1.5}))})});
+    edges.appendChild(svgEl('path',{d:d,fill:'none',stroke:hot?'#475467':'#98a2b3','stroke-opacity':hot?'.9':'.6','stroke-width':hot?2.5:1.5}))})});
   SM.nodes.forEach(function(n){
     var p=pos[n.key],st=smState(n),g=svgEl('g',{tabindex:'0',role:'button','aria-label':n.key+' '+n.name,'data-node':n.key,style:'cursor:pointer'});
     g.appendChild(svgEl('circle',{cx:p.x,cy:p.y,r:13,fill:st==='insufficient'||st==='locked'?'#fff':SM_COLORS[st],stroke:SM_COLORS[st],'stroke-width':2.5,
@@ -177,7 +188,7 @@ function smInfo(n){
   var before=n.prereqs.map(function(k){var x=SM.nodes.filter(function(y){return y.key===k})[0];return x?k+' '+x.name:k});
   SMINFO.textContent='';
   SMINFO.appendChild(el('div',{class:'card'},el('h3',{text:n.key+'  '+n.name}),n.detail?el('p',{class:'muted',text:n.detail}):null,
-    el('p',{text:smStateText(n)}),el('p',{class:'muted',text:'先学：'+(before.length?before.join('、'):'无')}),el('p',{class:'muted',text:'接着学：'+(after.length?after.join('、'):'无')})));
+    el('p',{text:smStateText(n)}),smUnitText(n),el('p',{class:'muted',text:'先学：'+(before.length?before.join('、'):'无')}),el('p',{class:'muted',text:'接着学：'+(after.length?after.join('、'):'无')})));
 }
 function smLegend(){
   var row=el('div',{class:'row'});

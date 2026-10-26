@@ -127,10 +127,15 @@ def install_knowledge_map_student(implementation: Any) -> APIRouter:
             nodes.append({"key": n["key"], "unit": n["unit"], "name": n["name"], "detail": n["detail"], "kind": n["kind"],
                           "prereqs": n["prereqs"], "learned": bool(units[n["unit"]]["learned"]), "assessed": on,
                           "mastery": km.node_mastery(n["levels"], first) if on else None})
+        unit_rows = []
+        for x in m["units"]:
+            pooled = {q: lv for n in m["nodes"] if n["unit"] == x["key"] and km.assessed(m, n) for q, lv in n["levels"].items()}
+            # 12 diagnosis questions give each node one answer; pooled per unit they already say something.
+            unit_rows.append({**x, "mastery": km.node_mastery(pooled, first) if pooled else None})
         r = run_of(db, u, row)
         diagnosis = {"status": "new"} if r is None else {"status": r.status, "count": len(json.loads(r.items_json)),
                                                            "correct": r.correct}
-        return {"title": row.title, "units": m["units"], "nodes": nodes, "unitKinds": km.UNIT_KINDS, "nodeKinds": km.NODE_KINDS,
+        return {"title": row.title, "units": unit_rows, "nodes": nodes, "unitKinds": km.UNIT_KINDS, "nodeKinds": km.NODE_KINDS,
                 "masteryLabels": km.MASTERY_LABELS, "confidenceLabels": km.CONFIDENCE_LABELS, "diagnosis": diagnosis}
 
     @router.get("/v1/my-knowledge-map", include_in_schema=False)

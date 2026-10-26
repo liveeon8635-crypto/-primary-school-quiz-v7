@@ -146,10 +146,10 @@ with TestClient(app) as client:
         assert sub.correct == 10 and sub.total == 12 and sub.assignment_id is None and sub.completion_actor == "student"
         run = db.execute(select(runs).where(runs.c.student_id == sid)).one()
         assert run.status == "submitted" and run.submission_id == sub.id
-    # Every diagnosed node now has one more first-attempt answer.
-    first_node = next(x for x in res["nodes"])
-    after = next(n for n in res["map"]["nodes"] if n["key"] == first_node["key"])
-    assert after["assessed"]
+    # Twelve answers judge units, not single nodes: 第二单元 pools the diagnosis with the earlier homework.
+    units = {u["key"]: u["mastery"] for u in res["map"]["units"]}
+    assert units["U5"] is None and units["U1"]["evidence"] == 3 and units["U1"]["level"] is not None
+    assert units["U2"]["evidence"] == 7 and units["U2"]["confidence"] == "reliable"
 
     page = client.get("/v1/my-knowledge-map").text
     for t in ("我的知识地图", "smLoad", "/student/knowledge-map/diagnosis/submit", "入门诊断", "createElementNS"):
