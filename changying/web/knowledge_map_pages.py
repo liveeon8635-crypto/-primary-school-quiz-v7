@@ -211,10 +211,26 @@ function kmClassLoad(cid,out){
   }).catch(function(e){out.textContent='';out.appendChild(el('p',{class:'warn',text:e.message}))});
 }
 function kmNodeStudents(d,n,box){
-  var order={weak:0,pass:1,fluent:2},rows=d.students.map(function(st){return {name:st.name,m:st.nodes[n.key]}});
+  var order={weak:0,pass:1,fluent:2},rows=d.students.map(function(st){return {id:st.id,name:st.name,m:st.nodes[n.key]}});
   rows.sort(function(a,b){var x=a.m.level?order[a.m.level]:3,y=b.m.level?order[b.m.level]:3;return x-y||b.m.evidence-a.m.evidence});
-  var ul=el('ul');rows.forEach(function(r){ul.appendChild(el('li',{},r.name+'：',kmMasteryTag(r.m,d.masteryLabels),' 第一次作答 '+r.m.evidence+' 题'))});
-  box.textContent='';box.appendChild(el('div',{class:'card'},el('h4',{text:n.key+' '+n.name}),ul));
+  var ul=el('ul'),picked={};
+  rows.forEach(function(r){var on=r.m.level==='weak';if(on)picked[r.id]=1;
+    var cb=el('input',{type:'checkbox',checked:on,'aria-label':'选择 '+r.name,onchange:function(e){if(e.target.checked)picked[r.id]=1;else delete picked[r.id]}});
+    ul.appendChild(el('li',{},cb,' '+r.name+'：',kmMasteryTag(r.m,d.masteryLabels),' 第一次作答 '+r.m.evidence+' 题'))});
+  var count=el('select',{'aria-label':'每人题数'});[3,4,5,6].forEach(function(c){var o=el('option',{value:String(c),text:'每人 '+c+' 题'});if(c===4)o.selected=true;count.appendChild(o)});
+  var res=el('div');
+  var go=el('button',{class:'btn primary',text:'给勾选的学生布置巩固练习',onclick:function(){
+    var ids=Object.keys(picked).map(Number);if(!ids.length){res.textContent='请先勾选学生';return}
+    go.disabled=true;res.textContent='正在布置…';
+    api('/teacher/knowledge-maps/'+KM.id+'/classes/'+d.classId+'/reinforce',{json:{nodeKey:n.key,studentIds:ids,count:+count.value}}).then(function(r){
+      go.disabled=false;res.textContent='';var out=el('ul');
+      r.results.forEach(function(x){out.appendChild(el('li',{text:x.name+'：'+(x.ok?'已布置 '+x.questionCount+' 题':x.reason)}))});
+      res.appendChild(out);
+    }).catch(function(e){go.disabled=false;res.textContent=e.message});
+  }});
+  box.textContent='';box.appendChild(el('div',{class:'card'},el('h4',{text:n.key+' '+n.name}),
+    el('p',{class:'muted',text:'薄弱的学生已默认勾选。巩固题从这个知识点已分档的题里选学生没做过的，先基础后中等；学生按普通作业完成，做完后掌握情况自动更新。'}),
+    ul,el('div',{class:'row'},count,go),res));
 }
 function kmOpen(id){api('/teacher/knowledge-maps/'+id).then(function(d){KM=d;QPANEL={};kmRender()}).catch(function(e){kmSay(e.message,true)})}
 function kmStart(){
