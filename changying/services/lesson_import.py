@@ -87,4 +87,33 @@ def extract(ext: str, data: bytes) -> dict[str, Any]:
     return {"text": text, "slides": slides}
 
 
-__all__ = ["MAX_FILE_BYTES", "MAX_TEXT_CHARS", "SUPPORTED", "extract"]
+_LESSON_NO_PATTERNS = (
+    re.compile(r"第\s*(\d{1,2})\s*课"),
+    re.compile(r"lesson[\s_-]*(\d{1,2})", re.IGNORECASE),
+    re.compile(r"课次[\s_-]*(\d{1,2})"),
+    re.compile(r"^\s*(\d{1,2})\s*[-_.、\s]"),
+)
+
+
+def detect_lesson_no(filename: str, *, max_lesson: int = 18) -> int | None:
+    """The 课次 a teacher wrote in the file name: 第03课 / lesson-03 / 03-教案.docx.
+
+    A bare number is only read at the start of the name, so a date such as
+    2026-10-26 can never be mistaken for a lesson number. None when it cannot be told.
+    """
+    name = str(filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+    stem = name.rsplit(".", 1)[0] if "." in name else name
+    for pattern in _LESSON_NO_PATTERNS:
+        match = pattern.search(stem)
+        if not match:
+            continue
+        try:
+            value = int(match.group(1))
+        except (TypeError, ValueError):
+            continue
+        if 1 <= value <= max_lesson:
+            return value
+    return None
+
+
+__all__ = ["MAX_FILE_BYTES", "MAX_TEXT_CHARS", "SUPPORTED", "extract", "detect_lesson_no"]
