@@ -382,6 +382,24 @@ def test_variant_practice_is_per_pupil_reviewed_then_assigned_once_through_homew
     rb = first.json()
     assert assignments() == n0 + 1 and rb["draft"]["practice"]["state"] == "assigned"
     aid = rb["draft"]["practice"]["assignments"][0]["assignmentId"]
+    answers_path = f"/teacher/weekend/reports/{rb['id']}/practice/{aid}/answers"
+    waiting = client.get(answers_path, headers=th)
+    assert waiting.status_code == 200, waiting.text
+    assert waiting.json()["state"] == "assigned" and waiting.json()["helpStatus"] == "unknown"
+    assert len(waiting.json()["items"]) == 2
+    assert all(q["studentAnswer"] == "" and q["correct"] is None for q in waiting.json()["items"])
+    assert client.get(answers_path).status_code == 401
+    assert client.get(answers_path, headers=b_h).status_code == 403
+    assert client.get(answers_path, headers=pb_h).status_code == 403
+    assert client.get(f"/teacher/weekend/reports/{rc['id']}/practice/{aid}/answers", headers=th).status_code == 404
+    assert client.get(f"/teacher/weekend/reports/{rb['id']}/practice/999999/answers", headers=th).status_code == 404
+    with legacy.SessionLocal() as db:
+        school = legacy.School(name="隔离学校", code="trace-isolation"); db.add(school); db.flush()
+        strangers = [legacy.User(school_id=s, username="trace_teacher_"+str(s), name="另一位教师", role="teacher",
+                                 password_hash=legacy.hash_password("Teacher1234")) for s in (school_id, school.id)]
+        db.add_all(strangers); db.flush(); stranger_ids = [x.id for x in strangers]; db.commit()
+    for teacher_id in stranger_ids:
+        assert client.get(answers_path, headers=token_for(teacher_id)).status_code == 404
     with legacy.SessionLocal() as db:
         recips = db.scalars(select(legacy.AssignmentRecipient.student_id).where(legacy.AssignmentRecipient.assignment_id == aid)).all()
         assert list(recips) == [b_id]
@@ -404,6 +422,23 @@ def test_variant_practice_is_per_pupil_reviewed_then_assigned_once_through_homew
     assert done.status_code == 200, done.text
     view = client.get(f"/teacher/weekend/reports/{rb['id']}", headers=th).json()["draft"]["practice"]
     assert view["state"] == "graded" and view["assignments"][0]["correct"] == 1 and view["assignments"][0]["total"] == 2
+    detail = client.get(answers_path, headers=th).json()
+    assert detail["state"] == "submitted" and detail["correct"] == 1 and detail["total"] == 2
+    assert detail["items"][0]["studentAnswer"] == "顺时针90度" and detail["items"][0]["correct"] is True
+    assert detail["items"][1]["studentAnswer"].startswith("B.") and detail["items"][1]["correct"] is False
+    assert detail["helpStatus"] == "unknown" and "当前题库" in detail["questionNotice"]
+    with legacy.SessionLocal() as db:
+        before_read = counts(db)
+        sub_before = db.scalar(select(legacy.Submission).where(legacy.Submission.assignment_id == aid)).answers_json
+        paper_row = db.get(legacy.Assignment, aid)
+        ids = json.loads(db.get(legacy.Paper, paper_row.paper_id).question_ids_json)
+        changed = db.get(legacy.Question, ids[0]); changed.text = "编辑后的当前题干"; db.commit()
+    reread = client.get(answers_path, headers=th).json()
+    assert reread["items"][0]["text"] == "编辑后的当前题干"
+    assert reread["items"][0]["correct"] is True  # do not regrade historical answers against current content
+    with legacy.SessionLocal() as db:
+        assert counts(db) == before_read
+        assert db.scalar(select(legacy.Submission).where(legacy.Submission.assignment_id == aid)).answers_json == sub_before
     subs = client.get(f"/teacher/assignments/{aid}/submissions", headers=th).json()
     assert subs[0]["studentID"] == b_id and subs[0]["correct"] == 1
     parent = client.get(f"/parent/children/{b_id}/weekend-briefs", headers=pb_h).json()["reports"][0]["practice"]
@@ -412,8 +447,20 @@ def test_variant_practice_is_per_pupil_reviewed_then_assigned_once_through_homew
     xml = zipfile.ZipFile(io.BytesIO(d.content)).read("word/document.xml").decode()
     assert "针对性练习（已批改）" in xml and "风车叶片" in xml and "顺时针90度" not in xml
     with legacy.SessionLocal() as db:
+        db.delete(db.get(legacy.Question, ids[0])); db.commit()
+    missing = client.get(answers_path, headers=th).json()["items"][0]
+    assert missing["questionAvailable"] is False and missing["text"] == "题目已不可用"
+    assert missing["studentAnswer"] == "顺时针90度" and missing["correct"] is True
+    with legacy.SessionLocal() as db:
+        sub = db.scalar(select(legacy.Submission).where(legacy.Submission.assignment_id == aid))
+        sub.answers_json = "legacy-unreadable"; db.commit()
+    legacy_view = client.get(answers_path, headers=th)
+    assert legacy_view.status_code == 200
+    assert all(q["correct"] is None and q["studentAnswer"] == "" for q in legacy_view.json()["items"])
+    with legacy.SessionLocal() as db:
         md = legacy.Base.metadata.tables
         assert db.scalar(select(func.count()).select_from(md["weekend_answers"])) == before["weekend_answers"]
         assert db.scalar(select(func.count()).select_from(md["weekend_awards"])) == before["weekend_awards"]
     print("OK")
 ''')
+

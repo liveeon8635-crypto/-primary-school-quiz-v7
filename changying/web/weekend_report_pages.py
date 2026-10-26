@@ -283,7 +283,26 @@ function reportPage(){
       (p.assignments||[]).forEach(function(a){
         var out=el('div');
         box.appendChild(el('div',{class:'notice '+(a.state==='graded'?'ok':''),text:a.subject+'：'+a.title+(a.state==='graded'?' · 已提交并自动批改，做对 '+a.correct+'/'+a.total+'（'+a.submittedAt+'）':' · 已布置，等待学生提交')}));
-        box.appendChild(el('button',{text:'查看作答与批改',onclick:function(){api('/teacher/assignments/'+a.assignmentId+'/submissions').then(function(rows){out.textContent='';rows.forEach(function(x){out.appendChild(el('div',{class:'muted',text:x.studentName+'：'+(x.id?'做对 '+x.correct+'/'+x.total+'，得分 '+x.score+'，错题 '+x.wrongCount+' 道':'未提交')}))})}).catch(function(e){out.textContent=e.message})}}));
+        var expanded=false,detailButton=el('button',{text:'查看作答与批改',onclick:function(){
+          if(expanded){out.textContent='';expanded=false;detailButton.textContent='查看作答与批改';return}
+          detailButton.disabled=true;out.textContent='正在读取逐题作答…';
+          api('/teacher/weekend/reports/'+r.id+'/practice/'+a.assignmentId+'/answers').then(function(d){
+            out.textContent='';expanded=true;detailButton.textContent='收起作答，返回报告';
+            out.appendChild(el('div',{class:'notice',text:d.state==='submitted'?'作业汇总：做对 '+d.correct+'/'+d.total:'尚未提交；以下为当前练习题目'}));
+            out.appendChild(el('div',{class:'muted',text:d.questionNotice}));
+            if(!d.items.length)out.appendChild(el('div',{class:'muted',text:'没有可读取的逐题记录，请在原作业中核对。'}));
+            d.items.forEach(function(q,i){
+              var item=el('div',{class:'card'});
+              item.appendChild(el('b',{text:(i+1)+'. '+(q.knowledge||'未标注考点')}));
+              item.appendChild(el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere',text:q.text}));
+              if(q.options.length)item.appendChild(el('p',{style:'white-space:pre-wrap',text:q.options.map(function(o,j){return String.fromCharCode(65+j)+'. '+o}).join('\n')}));
+              item.appendChild(el('div',{text:'记录的回答：'+(q.studentAnswer||'未记录')}));
+              item.appendChild(el('div',{class:'muted',text:'提交时判定：'+(q.correct===true?'正确':q.correct===false?'需订正':'无逐题判定记录')}));
+              out.appendChild(item);
+            });
+          }).catch(function(e){out.textContent=e.message}).then(function(){detailButton.disabled=false});
+        }});
+        box.appendChild(detailButton);
         box.appendChild(out);
       });
       if(p.state==='partial')actions.appendChild(el('button',{class:'primary',text:'继续布置未完成的科目',onclick:function(){api('/teacher/weekend/reports/'+r.id+'/practice/assign',{json:{revision:r.draft.revision}}).then(refresh).catch(function(e){msg.textContent=e.message})}}));
@@ -340,3 +359,4 @@ function paintChildren(list){
 }
 parentBoot();
 """
+
