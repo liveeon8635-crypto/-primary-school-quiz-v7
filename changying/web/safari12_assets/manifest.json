@@ -47,7 +47,7 @@
     ],
     "/classic?legacy=1&unified=1&page=syncLearning": [
       "d881ec81d8ea5b4f7b44bcfb173f8e1fe09c7416cf30a4490737b0809b3e3fb5",
-      "4eeca6775a58caffd8e3bf076fcf6c765e0af67a3555f69763cc905418c45f83",
+      "48600ad66159938de2d827bbbabc0eab3a9c4a42c17f168ba6087454aaaf29c0",
       "d1e5d7dcfd33869626fae0a94202f55c4a421a5ebe18189c4918a396533254a0",
       "705628d302fc824a37cce5ace348a816cea8d7377d8379957c387475739b2498",
       "d92b1a3fbbb3d332834fe92d2b2566ec1505c5ee3a05790a8b7d101344549769",
@@ -305,6 +305,9 @@
     ],
     "/v1/knowledge-map": [
       "17ec48f00404044f4477143c0d4bf7c2d74caec26ad138fe52f0a3a7ae627d25"
+    ],
+    "/v1/my-knowledge-map": [
+      "0522bf7767fcd279a6753ce09832b44e77ee77fe593fd28c1f337ec97c730953"
     ],
     "/v1/student": [
       "f8f56c33f77910ed27ccfcd07ceabe918d7a478077bf789b962e71dc84f0b6cd",
@@ -605,10 +608,10 @@
       "sourceBytes": 624,
       "compiledBytes": 624
     },
-    "4eeca6775a58caffd8e3bf076fcf6c765e0af67a3555f69763cc905418c45f83": {
+    "48600ad66159938de2d827bbbabc0eab3a9c4a42c17f168ba6087454aaaf29c0": {
       "unchanged": false,
-      "sourceBytes": 280316,
-      "compiledBytes": 289186
+      "sourceBytes": 280939,
+      "compiledBytes": 289710
     },
     "8582513c4cc6b1a0b2d17229bb9eb64a95c3b041ebfefd40771c7324f2cc74f3": {
       "unchanged": false,
@@ -639,6 +642,11 @@
       "unchanged": true,
       "sourceBytes": 14891,
       "compiledBytes": 14891
+    },
+    "0522bf7767fcd279a6753ce09832b44e77ee77fe593fd28c1f337ec97c730953": {
+      "unchanged": true,
+      "sourceBytes": 14733,
+      "compiledBytes": 14733
     },
     "b94931721e21344278fba3113024972f1358095153156c78ff9aa8fe2788ad1d": {
       "unchanged": true,

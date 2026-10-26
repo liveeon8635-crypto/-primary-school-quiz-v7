@@ -236,4 +236,87 @@ def summary(m: dict[str, Any], ready: dict[str, bool]) -> dict[str, Any]:
             "assessedReady": sum(1 for n in now if ready.get(n["key"])), "learnedUnits": sum(1 for u in m["units"] if u["learned"])}
 
 
-__all__ = ["LEVELS", "NODE_KINDS", "TEMPLATES", "UNIT_KINDS", "assessed", "clean_map", "coverage", "dependents", "summary", "template"]
+# 掌握度：只看每道题的第一次作答；基础 1、中等 1.5、提高 2 加权。
+WEIGHTS = {"basic": 1.0, "medium": 1.5, "hard": 2.0}
+MASTERY_LABELS = {"weak": "薄弱", "pass": "达标", "fluent": "熟练"}
+CONFIDENCE_LABELS = {"reliable": "可信", "preliminary": "初步", "insufficient": "证据不足"}
+DIAGNOSIS_SIZE = 12
+DIAGNOSIS_MIN = 6
+
+
+def node_mastery(levels: dict[str, str], first: dict[int, bool]) -> dict[str, Any]:
+    """Weighted first-attempt rate of one node: <0.6 薄弱, 0.6—0.85 达标, >0.85 熟练; 5+ answers 可信, 3—4 初步."""
+    seen = [(WEIGHTS[level], first[int(qid)]) for qid, level in levels.items() if int(qid) in first]
+    n = len(seen)
+    if n < 3:
+        return {"evidence": n, "rate": None, "level": None, "confidence": "insufficient"}
+    rate = sum(w for w, ok in seen if ok) / sum(w for w, _ in seen)
+    level = "weak" if rate < 0.6 else "pass" if rate <= 0.85 else "fluent"
+    return {"evidence": n, "rate": round(rate, 2), "level": level, "confidence": "reliable" if n >= 5 else "preliminary"}
+
+
+def first_attempts(answer_lists: Iterable[list[Any]]) -> dict[int, bool]:
+    """answer_lists in submission order; the first answer to each question wins."""
+    out: dict[int, bool] = {}
+    for answers in answer_lists:
+        for a in answers if isinstance(answers, list) else []:
+            if isinstance(a, dict) and str(a.get("question_id", "")).isdigit() and isinstance(a.get("correct"), bool):
+                out.setdefault(int(a["question_id"]), a["correct"])
+    return out
+
+
+def _spread(seed: int, qid: int) -> int:
+    return (qid * 2654435761 + seed * 40503) % 4294967296
+
+
+def pick_diagnosis(m: dict[str, Any], usable: set[int], attempted: set[int], seed: int, size: int = DIAGNOSIS_SIZE) -> list[tuple[str, int]]:
+    """Choose up to `size` questions over the learned units, in proportion to each unit's assessed nodes.
+
+    Within a unit the nodes take turns; each node prefers 中等, then 基础, then 提高, and questions the pupil
+    has never answered (so the answer is a first attempt)."""
+    queues: list[list[tuple[str, int]]] = []
+    for unit in m["units"]:
+        lists = []
+        for n in m["nodes"]:
+            if n["unit"] != unit["key"] or not assessed(m, n):
+                continue
+            qs = [(int(q), lv) for q, lv in n["levels"].items() if int(q) in usable]
+            order = {"medium": 0, "basic": 1, "hard": 2}
+            qs.sort(key=lambda x: (x[0] in attempted, order[x[1]], _spread(seed, x[0])))
+            if qs:
+                lists.append([(n["key"], q) for q, _ in qs])
+        if lists:
+            start = seed % len(lists)
+            lists = lists[start:] + lists[:start]
+            queue, depth = [], max(len(x) for x in lists)
+            for i in range(depth):
+                queue.extend(x[i] for x in lists if i < len(x))
+            queues.append(queue)
+    if not queues:
+        return []
+    weights = [len({k for k, _ in q}) for q in queues]
+    total = sum(weights)
+    exact = [size * w / total for w in weights]
+    quota = [int(x) for x in exact]
+    for i in sorted(range(len(queues)), key=lambda i: -(exact[i] - quota[i]))[: size - sum(quota)]:
+        quota[i] += 1
+    if size >= len(queues):
+        for i in range(len(queues)):
+            if quota[i] == 0:
+                quota[max(range(len(queues)), key=lambda j: quota[j])] -= 1
+                quota[i] = 1
+    picked, used = [], set()
+    for i, q in enumerate(queues):
+        for key, qid in q[: quota[i]]:
+            picked.append((key, qid)); used.add(qid)
+    for q in queues:                                   # a short unit leaves room for the others
+        for key, qid in q:
+            if len(picked) >= size:
+                break
+            if qid not in used:
+                picked.append((key, qid)); used.add(qid)
+    return picked[:size]
+
+
+__all__ = ["CONFIDENCE_LABELS", "DIAGNOSIS_MIN", "LEVELS", "MASTERY_LABELS", "NODE_KINDS", "TEMPLATES", "UNIT_KINDS", "assessed", "clean_map", "coverage", "dependents", "first_attempts", "node_mastery",
+           "pick_diagnosis", "summary", "template"]

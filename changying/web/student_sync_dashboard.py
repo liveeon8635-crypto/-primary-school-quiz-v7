@@ -15,6 +15,7 @@ async function syncLearning(){
  const invites=(invitations||[]).filter(x=>['invited','accepted','presenting'].includes(x.status));
  $('#page').innerHTML=head('同步课堂','查看本班当前课堂和老师已发布的学习内容')+
   '<div id="student-current-class" class="section card" style="color:#1f2738;background:#fff"></div>'+
+  '<div id="student-knowledge-map" class="section card hidden"></div>'+
   (invites.length?'<div class="section card"><h2>课堂讲解邀请</h2><p>'+invites.map(x=>esc(x.knowledgeKey)).join('、')+'</p><button class="btn primary full openClassroomInvitation">查看课堂讲解邀请</button></div>':'')+
   (checks.length?'<div class="section card"><h2>正在进行的课堂互动</h2>'+checks.map(q=>'<button class="btn primary full openClassroomQuickCheck" data-id="'+Number(q.id)+'">进入随堂检测 · '+esc(q.knowledgeKey)+'</button>').join('')+'</div>':'')+
   (lessons.length?'<div class="section"><h2>老师已发布的课时</h2><div class="list">'+lessons.map(l=>'<div class="item"><div class="item-main"><b>'+esc(l.subject)+' · '+esc(l.title)+'</b><small>'+esc(l.coreTarget||'')+'</small></div><button class="btn primary small enterSyncLesson" data-id="'+Number(l.id)+'">进入学习</button></div>').join('')+'</div></div>':'')+
@@ -29,6 +30,10 @@ async function syncLearning(){
  }
  function refreshCurrent(){return api('/student/weekend/current').then(paintCurrent).catch(()=>paintCurrent({loadError:true}))}
  paintCurrent(current);
+ // 知识地图：功能开启且老师发布了本年级的地图时才显示入口。
+ api('/student/knowledge-map').then(m=>{const box=document.getElementById('student-knowledge-map');if(!box||!m||!m.title||!Array.isArray(m.nodes))return;const d=m.diagnosis||{};
+  box.innerHTML='<h2>我的知识地图</h2><p>'+esc(m.title)+(d.status==='submitted'?' · 入门诊断已完成':' · 先做 12 道题的入门诊断')+'</p><a class="btn primary" href="/v1/my-knowledge-map">打开知识地图</a>';
+  box.classList.remove('hidden')}).catch(()=>{});
  if(window.__cyStudentClassTimer)clearInterval(window.__cyStudentClassTimer);
  window.__cyStudentClassTimer=setInterval(()=>{if(document.getElementById('student-current-class')!==panel){clearInterval(window.__cyStudentClassTimer);return}if(!document.hidden)refreshCurrent()},5000);
  document.querySelectorAll(".openClassroomInvitation").forEach(b=>b.onclick=()=>classroomInvitationsClassic());
