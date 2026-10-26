@@ -163,6 +163,7 @@ from changying.web.homework_knowledge_views import install_homework_knowledge_vi
 from changying.web.homework_practice_views import install_homework_practice_views
 from changying.web.kp_cards_views import install_kp_cards_views
 from changying.web.knowledge_map_views import install_knowledge_map_views
+from changying.web.knowledge_map_student import install_knowledge_map_student
 from changying.web.weekend_plan_views import install_weekend_plan
 from changying.web.weekend_practice import install_weekend_practice
 from changying.web.weekend_scoring_views import install_weekend_scoring
@@ -499,6 +500,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_weekend_plan(implementation)
     install_weekend_courseware(implementation)
     install_knowledge_map_views(implementation)
+    install_knowledge_map_student(implementation)
     install_paper_composition_routes(implementation)
     install_paper_import_routes(implementation)
     install_v1_classroom_presentation_review_patch()
