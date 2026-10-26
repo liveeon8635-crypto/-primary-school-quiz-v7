@@ -104,6 +104,10 @@ with TestClient(app) as client:
     assert client.post("/student/practice-submit", headers=sh, json={"answers": early}).status_code == 200
     redo = [{"question_id": q22[2], "selected_index": 1}]
     assert client.post("/student/practice-submit", headers=sh, json={"answers": redo}).status_code == 200
+    classes = client.get(f"/teacher/knowledge-maps/{mid}/classes", headers=th).json()["items"]
+    assert classes and client.get(f"/teacher/knowledge-maps/{mid}/classes", headers=sh).status_code == 403
+    r = client.get(f"/teacher/knowledge-maps/{mid}/classes/{classes[0]['id']}", headers=th)
+    assert r.status_code == 409 and "发布" in r.json()["detail"]
     client.post(f"/teacher/knowledge-maps/{mid}/publish", headers=th, json={"revision": rev})
 
     m = client.get("/student/knowledge-map", headers=sh).json()
@@ -151,6 +155,24 @@ with TestClient(app) as client:
     assert units["U5"] is None and units["U1"]["evidence"] == 3 and units["U1"]["level"] is not None
     assert units["U2"]["evidence"] == 7 and units["U2"]["confidence"] == "reliable"
 
+    # The teacher's class view uses the same first-attempt rules as the pupil's map.
+    mine = None
+    for c in classes:
+        view = client.get(f"/teacher/knowledge-maps/{mid}/classes/{c['id']}", headers=th).json()
+        mine = next((st for st in view["students"] if st["id"] == sid), None)
+        if mine:
+            break
+    assert mine is not None
+    assert mine["diagnosis"] == {"status": "submitted", "count": 12, "correct": 10}
+    assert mine["units"] == {u["key"]: u["mastery"] for u in res["map"]["units"]}
+    assert mine["nodes"]["2-2"] == next(n for n in res["map"]["nodes"] if n["key"] == "2-2")["mastery"]
+    assert [u["key"] for u in view["units"]] == ["U1", "U2", "U3", "U4"] and len(view["nodes"]) == 19
+    for key, c in view["tally"].items():
+        assert sum(c.values()) == len(view["students"]), key
+    assert view["tally"]["2-2"]["weak"] >= 1
+    assert client.get(f"/teacher/knowledge-maps/{mid}/classes/999999", headers=th).status_code == 404
+    assert "查看全班掌握情况" in client.get("/v1/knowledge-map").text
+
     page = client.get("/v1/my-knowledge-map").text
     for t in ("我的知识地图", "smLoad", "/student/knowledge-map/diagnosis/submit", "入门诊断", "createElementNS"):
         assert t in page, t
@@ -160,7 +182,7 @@ print("OK")
 '''
 
 
-def test_pupil_sees_published_map_and_takes_the_diagnosis_once(tmp_path):
+def test_pupil_takes_the_diagnosis_once_and_the_teacher_sees_the_class(tmp_path):
     helpers.run_isolated(tmp_path, helpers.COMMON + FLOW, {"KNOWLEDGE_MAP": "1"})
 
 
