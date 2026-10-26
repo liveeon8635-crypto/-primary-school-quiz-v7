@@ -171,6 +171,36 @@ with TestClient(app) as client:
         assert sum(c.values()) == len(view["students"]), key
     assert view["tally"]["2-2"]["weak"] >= 1
     assert client.get(f"/teacher/knowledge-maps/{mid}/classes/999999", headers=th).status_code == 404
+
+    # One click: consolidation homework for a weak pupil from the node's levelled questions the pupil never answered.
+    rbase = f"/teacher/knowledge-maps/{mid}/classes/{view['classId']}/reinforce"
+    assert client.post(rbase, headers=th, json={"nodeKey": "2-2", "studentIds": [999999], "count": 4}).status_code == 400
+    assert client.post(rbase, headers=th, json={"nodeKey": "5-1", "studentIds": [sid], "count": 4}).status_code == 404
+    answered = set()
+    with legacy.SessionLocal() as db:
+        for raw in db.scalars(select(legacy.Submission.answers_json).where(legacy.Submission.student_id == sid)):
+            answered |= {int(a["question_id"]) for a in json.loads(raw)}
+    before = mine["nodes"]["2-2"]["evidence"]
+    r = client.post(rbase, headers=th, json={"nodeKey": "2-2", "studentIds": [sid], "count": 4}).json()
+    one = r["results"][0]
+    assert one["ok"] and r["node"]["name"] == "小数乘小数"
+    with legacy.SessionLocal() as db:
+        a = db.get(legacy.Assignment, one["assignmentId"])
+        paper_ids = json.loads(db.get(legacy.Paper, a.paper_id).question_ids_json)
+        qrows = {q.id: q for q in db.scalars(select(legacy.Question).where(legacy.Question.id.in_(paper_ids)))}
+    remaining = [q for q, _ in ids["2-2"] if q not in answered]
+    assert paper_ids == remaining[:4] and one["questionCount"] == len(paper_ids) and not set(paper_ids) & answered
+    assert a.title == "知识地图巩固 · 小数乘小数"
+    again = client.post(rbase, headers=th, json={"nodeKey": "2-2", "studentIds": [sid], "count": 4}).json()["results"][0]
+    assert not again["ok"] and "未完成" in again["reason"]
+    # The pupil does it as normal homework; each answer is a first attempt and the map moves.
+    sub = [{"question_id": q, "selected_index": 1} if qrows[q].question_type == "single_choice" else {"question_id": q, "text_answer": "7"}
+           for q in paper_ids]
+    assert client.post(f"/student/assignments/{one['assignmentId']}/submit", headers=sh, json={"answers": sub}).status_code == 200
+    m2 = client.get("/student/knowledge-map", headers=sh).json()
+    assert next(n for n in m2["nodes"] if n["key"] == "2-2")["mastery"]["evidence"] == before + len(paper_ids)
+    done = client.post(rbase, headers=th, json={"nodeKey": "2-2", "studentIds": [sid], "count": 4}).json()["results"][0]
+    assert not done["ok"] and "补题" in done["reason"]
     assert "查看全班掌握情况" in client.get("/v1/knowledge-map").text
 
     page = client.get("/v1/my-knowledge-map").text

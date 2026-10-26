@@ -11,6 +11,8 @@ teacher  GET  /v1/knowledge-map                                  page
          POST /teacher/knowledge-maps/{mid}/publish              {revision} the draft becomes the published map
          GET  /teacher/knowledge-maps/{mid}/classes              the teacher's classes
          GET  /teacher/knowledge-maps/{mid}/classes/{cid}        mastery of every pupil of the class (published map)
+         POST /teacher/knowledge-maps/{mid}/classes/{cid}/reinforce  {nodeKey, studentIds, count} one consolidation
+                                                                    homework per pupil from the node's levelled questions
 
 Everything sits behind the ``KNOWLEDGE_MAP`` environment flag (default off; 404 when off). One map per school,
 grade, subject and term; teachers of the school share it. Students and diagnosis (later PRs) only read the
@@ -20,7 +22,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -54,6 +56,13 @@ class LevelsBody(BaseModel):
 
 class PublishBody(BaseModel):
     revision: int = Field(ge=0)
+
+
+class ReinforceBody(BaseModel):
+    nodeKey: str = Field(max_length=12)
+    studentIds: list[int] = Field(max_length=60)
+    count: int = Field(default=4, ge=1, le=10)
+    dueDate: str | None = Field(default=None, max_length=20)
 
 
 def register_knowledge_map_table(implementation: Any) -> Table:
@@ -279,21 +288,9 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
             CS.class_id == cid, User.school_id == u.school_id, User.role == "student", User.active == True)  # noqa: E712
             .order_by(User.name, User.id)))
 
-    @router.get("/teacher/knowledge-maps/{mid}/classes/{cid}")
-    def class_mastery(mid: int, cid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
-        teacher(u)
-        row = my_map(db, u, mid)
-        SC, Submission = implementation.SchoolClass, implementation.Submission
-        cls = db.scalar(select(SC).where(SC.id == cid, SC.school_id == u.school_id, SC.teacher_id == u.id))
-        if cls is None:
-            raise HTTPException(404, "没有找到这个班级")
-        if row.published_json is None:
-            raise HTTPException(409, "知识地图还没有发布，发布后才能查看全班掌握情况")
-        from changying.web.knowledge_map_student import register_knowledge_map_run_table
-        runs = register_knowledge_map_run_table(implementation)
-        m = json.loads(row.published_json)
-        kids = pupils(db, u, cls.id)
-        ids = [k.id for k in kids]
+    def answers_of(db: Any, u: Any, ids: list[int]) -> dict[int, list[Any]]:
+        """Every pupil's submissions in order (oldest first), read in one query."""
+        Submission = implementation.Submission
         answers: dict[int, list[Any]] = {i: [] for i in ids}
         if ids:
             for sid, raw in db.execute(select(Submission.student_id, Submission.answers_json).where(
@@ -302,6 +299,28 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
                     answers[sid].append(json.loads(raw or "[]"))
                 except ValueError:
                     continue
+        return answers
+
+    def own_class(db: Any, u: Any, cid: int) -> Any:
+        SC = implementation.SchoolClass
+        cls = db.scalar(select(SC).where(SC.id == cid, SC.school_id == u.school_id, SC.teacher_id == u.id))
+        if cls is None:
+            raise HTTPException(404, "没有找到这个班级")
+        return cls
+
+    @router.get("/teacher/knowledge-maps/{mid}/classes/{cid}")
+    def class_mastery(mid: int, cid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        teacher(u)
+        row = my_map(db, u, mid)
+        cls = own_class(db, u, cid)
+        if row.published_json is None:
+            raise HTTPException(409, "知识地图还没有发布，发布后才能查看全班掌握情况")
+        from changying.web.knowledge_map_student import register_knowledge_map_run_table
+        runs = register_knowledge_map_run_table(implementation)
+        m = json.loads(row.published_json)
+        kids = pupils(db, u, cls.id)
+        ids = [k.id for k in kids]
+        answers = answers_of(db, u, ids)
         diag = {r.student_id: r for r in db.execute(select(runs).where(runs.c.map_id == row.id, runs.c.school_id == u.school_id,
                                                                          runs.c.student_id.in_(ids)))} if ids else {}
         students = []
@@ -321,6 +340,58 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         return {"classId": cls.id, "className": cls.name, "title": row.title, "publishedRevision": int(row.published_revision),
                 "units": [x for x in m["units"] if any(n["unit"] == x["key"] for n in nodes)], "nodes": nodes, "tally": tally,
                 "students": students, "masteryLabels": km.MASTERY_LABELS, "confidenceLabels": km.CONFIDENCE_LABELS}
+
+    @router.post("/teacher/knowledge-maps/{mid}/classes/{cid}/reinforce")
+    def reinforce(mid: int, cid: int, b: ReinforceBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        teacher(u)
+        row = my_map(db, u, mid)
+        cls = own_class(db, u, cid)
+        if row.published_json is None:
+            raise HTTPException(409, "知识地图还没有发布")
+        m = json.loads(row.published_json)
+        node = next((n for n in m["nodes"] if n["key"] == b.nodeKey and km.assessed(m, n)), None)
+        if node is None:
+            raise HTTPException(404, "这个知识点现在不参加诊断，不能布置巩固")
+        kids = {k.id: k for k in pupils(db, u, cls.id)}
+        wanted = list(dict.fromkeys(b.studentIds))
+        if not wanted or any(s not in kids for s in wanted):
+            raise HTTPException(400, "只能给本班学生布置")
+        I = implementation
+        levelled = {int(q): lv for q, lv in node["levels"].items()}
+        bank = {q.id: q for q in db.scalars(select(Question).where(Question.school_id == u.school_id, Question.id.in_(list(levelled))))} if levelled else {}
+        usable = [q for q in bank.values() if I.question_type_of(q) in I.AUTO_GRADED_QUESTION_TYPES
+                  and (not I.question_figure(q) or I.question_figure(q).get("type") == "uploaded_image")]
+        title = f"知识地图巩固 · {node['name']}"[:160]
+        answers = answers_of(db, u, wanted)
+        order = {"basic": 0, "medium": 1, "hard": 2}
+        results = []
+        for sid in wanted:
+            kid = kids[sid]
+            open_one = db.scalar(select(I.Assignment.id).join(I.AssignmentRecipient, I.AssignmentRecipient.assignment_id == I.Assignment.id).where(
+                I.Assignment.school_id == u.school_id, I.Assignment.title == title, I.AssignmentRecipient.student_id == sid,
+                ~select(I.Submission.id).where(I.Submission.assignment_id == I.Assignment.id, I.Submission.student_id == sid).exists()).limit(1))
+            if open_one:
+                results.append({"studentId": sid, "name": kid.name, "ok": False, "reason": "已有未完成的这项巩固练习"})
+                continue
+            seen = set(km.first_attempts(answers[sid])) | I.protected_question_ids_for_student(db, kid)
+            # Questions the pupil has never answered, easiest first: their answers count as first attempts.
+            picks = sorted((q for q in usable if q.id not in seen), key=lambda q: (order[levelled[q.id]], q.id))[: b.count]
+            if not picks:
+                results.append({"studentId": sid, "name": kid.name, "ok": False, "reason": "没有这名学生没做过的题，请先给这个知识点补题"})
+                continue
+            p = I.Paper(school_id=u.school_id, title=title, grade=row.grade, subject=row.subject, textbook=picks[0].textbook or "",
+                        unit=picks[0].unit or "", question_ids_json=json.dumps([q.id for q in picks]), teacher_id=u.id)
+            db.add(p); db.flush()
+            due = (b.dueDate or (datetime.now(I.SCHOOL_TZ).date() + timedelta(days=3)).isoformat())[:20]
+            a = I.Assignment(school_id=u.school_id, title=title, class_id=cls.id, paper_id=p.id, due_date=due)
+            db.add(a); db.flush()
+            db.add(I.AssignmentSubmissionSetting(school_id=u.school_id, assignment_id=a.id, mode="quiz",
+                                                 instructions=f"知识地图巩固：{node['name']}。认真完成，每道题都按第一次作答记入掌握情况。"))
+            I.ensure_recipient(db, a, sid, "knowledge_map")
+            I.audit(db, u, "knowledge_map.reinforce", f"map={row.id}:node={node['key']}:student={sid}:assignment={a.id}:questions={len(picks)}")
+            results.append({"studentId": sid, "name": kid.name, "ok": True, "assignmentId": a.id, "questionCount": len(picks)})
+        db.commit()
+        return {"node": {"key": node["key"], "name": node["name"]}, "results": results}
 
     app.include_router(router)
     app.state.knowledge_map_installed = True
