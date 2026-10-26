@@ -43,7 +43,8 @@ function kmQuestions(n,box){
     box.textContent='';var picks={};
     var head=el('p',{class:'muted',text:'题库中知识点名为“'+d.bankKeys.join('”或“')+'”的题目共 '+d.items.length+' 道。每题选一个难度档；选“不用”表示不进入诊断和掌握度。每个知识点至少 '+KM.minPerNode+' 题，每档至少 '+KM.minPerLevel+' 题。'});
     box.appendChild(head);
-    if(!d.items.length){box.appendChild(el('p',{text:'题库里还没有匹配的题目：请先在题库中录入或导入知识点名一致的题目，或在“编辑”里补充题库知识点名。'}));return}
+    var gen=el('div');box.appendChild(gen);kmAIGen(n,gen);
+    if(!d.items.length){box.appendChild(el('p',{text:'题库里还没有匹配的题目：可以用上面的“AI 出题”，或在题库中录入知识点名一致的题目，或在“编辑”里补充题库知识点名。'}));return}
     var list=el('ol');
     d.items.forEach(function(q){
       var sel=el('select',{'aria-label':'难度档'});sel.appendChild(el('option',{value:'',text:'不用'}));
@@ -61,6 +62,54 @@ function kmQuestions(n,box){
           .then(function(r){KM=r;QPANEL={};kmSay('分档已保存');kmRender()}).catch(function(e){kmSay(e.message,true)})}}),
       el('button',{class:'btn',text:'收起',onclick:function(){box.textContent='';delete QPANEL[n.key]}})));
   }).catch(function(e){box.textContent='';box.appendChild(el('p',{class:'warn',text:e.message}))});
+}
+// AI 出题：复用现有的 /ai/questions/generate 和 /ai/questions/save（教师审核后才入库），保存后按所选难度档分档。
+// 教材名沿用题库核定的“人教版”（出题接口只接受核定教材）。
+function kmAIGen(n,holder){
+  var level=el('select',{'aria-label':'难度档'}),count=el('select',{'aria-label':'题数'});
+  Object.keys(KM.levels).forEach(function(k){level.appendChild(el('option',{value:k,text:KM.levels[k]}))});
+  [2,3,4,6].forEach(function(c){count.appendChild(el('option',{value:String(c),text:c+' 题'}))});
+  var drafts=el('div'),note=el('p',{class:'muted'});
+  holder.appendChild(el('div',{class:'card'},el('h4',{text:'AI 出题（选择题，需老师审核）'}),
+    el('div',{class:'row'},el('label',{},'难度 ',level),el('label',{},'数量 ',count),
+      el('button',{class:'btn',text:'生成草稿',onclick:function(e){
+        var btn=e.target,unit=KM.map.units.filter(function(u){return u.key===n.unit})[0];
+        btn.disabled=true;note.textContent='AI 正在出题，大约需要半分钟…';drafts.textContent='';
+        api('/ai/questions/generate',{json:{grade:KM.grade,subject:KM.subject,textbook:'人教版',semester:KM.term,unit:unit?unit.name:'',
+          knowledge:n.name,difficulty:KM.levels[level.value],count:+count.value,question_type:'choice',
+          notes:'知识点说明：'+(n.detail||n.name)+'。难度档：'+KM.levels[level.value]+'。题目只考这一个知识点；题干不能依赖图片，涉及图形、方向、方格位置时用文字说清楚。'}})
+          .then(function(r){btn.disabled=false;note.textContent=r.notice||'';kmDrafts(n,level.value,r.items||[],drafts)})
+          .catch(function(err){btn.disabled=false;note.textContent=err.message})}})),note,drafts));
+}
+function kmDrafts(n,lv,items,box){
+  box.textContent='';var rows=[];
+  items.forEach(function(q,i){
+    var text=el('textarea',{class:'s','aria-label':'题干'});text.value=q.text;
+    var opts=(q.options||[]).map(function(o,k){return el('input',{value:o,'aria-label':'选项 '+String.fromCharCode(65+k)})});
+    var right=el('select',{'aria-label':'正确答案'});opts.forEach(function(_,k){var o=el('option',{value:String(k),text:String.fromCharCode(65+k)});if(k===q.correct_index)o.selected=true;right.appendChild(o)});
+    var exp=el('textarea',{class:'s','aria-label':'解析'});exp.value=q.explanation||'';
+    var keep=el('input',{type:'checkbox',checked:true});
+    var card=el('div',{class:'card','data-draft':String(i)},el('label',{},keep,' 保留这道题'),el('label',{},'题干 ',text));
+    opts.forEach(function(o,k){card.appendChild(el('label',{},String.fromCharCode(65+k)+' ',o))});
+    card.appendChild(el('label',{},'正确答案 ',right));card.appendChild(el('label',{},'解析 ',exp));
+    box.appendChild(card);
+    rows.push(function(){if(!keep.checked)return null;var unit=KM.map.units.filter(function(u){return u.key===n.unit})[0];
+      return {grade:KM.grade,subject:KM.subject,textbook:'人教版',semester:KM.term,unit:unit?unit.name:'',knowledge:n.bankKeys[0]||n.name,
+        text:text.value.trim(),options:opts.map(function(o){return o.value.trim()}),correct_index:+right.value,explanation:exp.value,question_type:'single_choice'}});
+  });
+  if(!items.length)return;
+  var msgBox=el('p',{class:'muted'});
+  box.appendChild(el('button',{class:'btn primary',text:'审核无误，存入题库并分为“'+KM.levels[lv]+'”',onclick:function(e){
+    var qs=rows.map(function(f){return f()}).filter(function(x){return x});
+    if(!qs.length){msgBox.textContent='没有勾选要保留的题';return}
+    e.target.disabled=true;msgBox.textContent='正在保存…';
+    api('/ai/questions/save',{json:{questions:qs}}).then(function(r){
+      var levels={};r.items.forEach(function(q){levels[q.id]=lv});
+      return api('/teacher/knowledge-maps/'+KM.id+'/nodes/'+encodeURIComponent(n.key)+'/levels',{method:'PUT',json:{levels:levels,revision:KM.revision}})
+        .then(function(d){KM=d;QPANEL[n.key]=1;kmSay('已存入 '+r.items.length+' 道题并分档');kmRender()});
+    }).catch(function(err){e.target.disabled=false;msgBox.textContent=err.message});
+  }}));
+  box.appendChild(msgBox);
 }
 function kmNodeRow(n,unit){
   var after=KM.dependents[n.key]||[],edit=el('div'),qs=el('div');
