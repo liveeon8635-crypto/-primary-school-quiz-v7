@@ -43,7 +43,7 @@ DELETE_TABLES = (
     # 晚托作业助手
     "homework_notices", "homework_recipients", "help_requests",
     # 知识地图诊断（学生作答记录）
-    "knowledge_map_runs",
+    "knowledge_map_runs", "knowledge_map_ratings",
     # usage and housekeeping logs
     "ai_usage_logs", "account_deletion_requests",
 )

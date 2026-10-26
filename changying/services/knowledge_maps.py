@@ -241,6 +241,7 @@ WEIGHTS = {"basic": 1.0, "medium": 1.5, "hard": 2.0}
 MASTERY_LABELS = {"weak": "薄弱", "pass": "达标", "fluent": "熟练"}
 CONFIDENCE_LABELS = {"reliable": "可信", "preliminary": "初步", "insufficient": "证据不足"}
 DIAGNOSIS_SIZE = 12
+AGREEMENT_TARGET = 0.8          # 验收：系统判断与教师判断一致率
 DIAGNOSIS_MIN = 6
 
 
@@ -330,5 +331,5 @@ def pick_diagnosis(m: dict[str, Any], usable: set[int], attempted: set[int], see
     return picked[:size]
 
 
-__all__ = ["CONFIDENCE_LABELS", "DIAGNOSIS_MIN", "LEVELS", "MASTERY_LABELS", "NODE_KINDS", "TEMPLATES", "UNIT_KINDS", "assessed", "clean_map", "coverage", "dependents", "first_attempts", "mastery_view", "node_mastery",
+__all__ = ["AGREEMENT_TARGET", "CONFIDENCE_LABELS", "DIAGNOSIS_MIN", "LEVELS", "MASTERY_LABELS", "NODE_KINDS", "TEMPLATES", "UNIT_KINDS", "assessed", "clean_map", "coverage", "dependents", "first_attempts", "mastery_view", "node_mastery",
            "pick_diagnosis", "summary", "template"]
