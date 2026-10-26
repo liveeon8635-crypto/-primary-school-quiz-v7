@@ -9,6 +9,8 @@ teacher  GET  /v1/knowledge-map                                  page
          GET  /teacher/knowledge-maps/{mid}/nodes/{key}/questions  questions of the bank matching the node
          PUT  /teacher/knowledge-maps/{mid}/nodes/{key}/levels   {levels, revision} question levels of one node
          POST /teacher/knowledge-maps/{mid}/publish              {revision} the draft becomes the published map
+         GET  /teacher/knowledge-maps/{mid}/classes              the teacher's classes
+         GET  /teacher/knowledge-maps/{mid}/classes/{cid}        mastery of every pupil of the class (published map)
 
 Everything sits behind the ``KNOWLEDGE_MAP`` environment flag (default off; 404 when off). One map per school,
 grade, subject and term; teachers of the school share it. Students and diagnosis (later PRs) only read the
@@ -261,6 +263,64 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
                                                             published_at=datetime.utcnow()))
         db.commit()
         return detail(db, my_map(db, u, mid))
+
+    @router.get("/teacher/knowledge-maps/{mid}/classes")
+    def classes(mid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        teacher(u)
+        row = my_map(db, u, mid)
+        SC = implementation.SchoolClass
+        rows = db.scalars(select(SC).where(SC.school_id == u.school_id, SC.teacher_id == u.id).order_by(SC.name, SC.id)).all()
+        return {"items": [{"id": c.id, "name": c.name, "grade": c.grade, "sameGrade": int(c.grade or 0) == int(row.grade),
+                           "studentCount": len(pupils(db, u, c.id))} for c in rows]}
+
+    def pupils(db: Any, u: Any, cid: int) -> list[Any]:
+        User, CS = implementation.User, implementation.ClassStudent
+        return list(db.scalars(select(User).join(CS, CS.student_id == User.id).where(
+            CS.class_id == cid, User.school_id == u.school_id, User.role == "student", User.active == True)  # noqa: E712
+            .order_by(User.name, User.id)))
+
+    @router.get("/teacher/knowledge-maps/{mid}/classes/{cid}")
+    def class_mastery(mid: int, cid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        teacher(u)
+        row = my_map(db, u, mid)
+        SC, Submission = implementation.SchoolClass, implementation.Submission
+        cls = db.scalar(select(SC).where(SC.id == cid, SC.school_id == u.school_id, SC.teacher_id == u.id))
+        if cls is None:
+            raise HTTPException(404, "没有找到这个班级")
+        if row.published_json is None:
+            raise HTTPException(409, "知识地图还没有发布，发布后才能查看全班掌握情况")
+        from changying.web.knowledge_map_student import register_knowledge_map_run_table
+        runs = register_knowledge_map_run_table(implementation)
+        m = json.loads(row.published_json)
+        kids = pupils(db, u, cls.id)
+        ids = [k.id for k in kids]
+        answers: dict[int, list[Any]] = {i: [] for i in ids}
+        if ids:
+            for sid, raw in db.execute(select(Submission.student_id, Submission.answers_json).where(
+                    Submission.school_id == u.school_id, Submission.student_id.in_(ids)).order_by(Submission.submitted_at, Submission.id)):
+                try:
+                    answers[sid].append(json.loads(raw or "[]"))
+                except ValueError:
+                    continue
+        diag = {r.student_id: r for r in db.execute(select(runs).where(runs.c.map_id == row.id, runs.c.school_id == u.school_id,
+                                                                         runs.c.student_id.in_(ids)))} if ids else {}
+        students = []
+        for k in kids:
+            node_m, unit_m = km.mastery_view(m, km.first_attempts(answers[k.id]))
+            r = diag.get(k.id)
+            students.append({"id": k.id, "name": k.name, "nodes": node_m, "units": unit_m,
+                             "diagnosis": {"status": "new"} if r is None else {"status": r.status, "count": len(json.loads(r.items_json)),
+                                                                                 "correct": r.correct}})
+        nodes = [{"key": n["key"], "unit": n["unit"], "name": n["name"]} for n in m["nodes"] if km.assessed(m, n)]
+        tally = {}
+        for n in nodes:
+            c = {"weak": 0, "pass": 0, "fluent": 0, "insufficient": 0}
+            for st in students:
+                c[st["nodes"][n["key"]]["level"] or "insufficient"] += 1
+            tally[n["key"]] = c
+        return {"classId": cls.id, "className": cls.name, "title": row.title, "publishedRevision": int(row.published_revision),
+                "units": [x for x in m["units"] if any(n["unit"] == x["key"] for n in nodes)], "nodes": nodes, "tally": tally,
+                "students": students, "masteryLabels": km.MASTERY_LABELS, "confidenceLabels": km.CONFIDENCE_LABELS}
 
     app.include_router(router)
     app.state.knowledge_map_installed = True

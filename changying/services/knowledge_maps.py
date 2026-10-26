@@ -255,6 +255,18 @@ def node_mastery(levels: dict[str, str], first: dict[int, bool]) -> dict[str, An
     return {"evidence": n, "rate": round(rate, 2), "level": level, "confidence": "reliable" if n >= 5 else "preliminary"}
 
 
+def mastery_view(m: dict[str, Any], first: dict[int, bool]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Mastery of every assessed node, and of every unit with all its assessed nodes' questions pooled.
+
+    Twelve diagnosis questions give most nodes a single answer; pooled per unit they already say something."""
+    nodes = {n["key"]: node_mastery(n["levels"], first) for n in m["nodes"] if assessed(m, n)}
+    units = {}
+    for u in m["units"]:
+        pooled = {q: lv for n in m["nodes"] if n["unit"] == u["key"] and assessed(m, n) for q, lv in n["levels"].items()}
+        units[u["key"]] = node_mastery(pooled, first) if pooled else None
+    return nodes, units
+
+
 def first_attempts(answer_lists: Iterable[list[Any]]) -> dict[int, bool]:
     """answer_lists in submission order; the first answer to each question wins."""
     out: dict[int, bool] = {}
@@ -318,5 +330,5 @@ def pick_diagnosis(m: dict[str, Any], usable: set[int], attempted: set[int], see
     return picked[:size]
 
 
-__all__ = ["CONFIDENCE_LABELS", "DIAGNOSIS_MIN", "LEVELS", "MASTERY_LABELS", "NODE_KINDS", "TEMPLATES", "UNIT_KINDS", "assessed", "clean_map", "coverage", "dependents", "first_attempts", "node_mastery",
+__all__ = ["CONFIDENCE_LABELS", "DIAGNOSIS_MIN", "LEVELS", "MASTERY_LABELS", "NODE_KINDS", "TEMPLATES", "UNIT_KINDS", "assessed", "clean_map", "coverage", "dependents", "first_attempts", "mastery_view", "node_mastery",
            "pick_diagnosis", "summary", "template"]

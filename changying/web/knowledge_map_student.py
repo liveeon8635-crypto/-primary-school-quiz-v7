@@ -121,17 +121,11 @@ def install_knowledge_map_student(implementation: Any) -> APIRouter:
         m = json.loads(row.published_json)
         first = first_answers(db, u)
         units = {x["key"]: x for x in m["units"]}
-        nodes = []
-        for n in m["nodes"]:
-            on = km.assessed(m, n)
-            nodes.append({"key": n["key"], "unit": n["unit"], "name": n["name"], "detail": n["detail"], "kind": n["kind"],
-                          "prereqs": n["prereqs"], "learned": bool(units[n["unit"]]["learned"]), "assessed": on,
-                          "mastery": km.node_mastery(n["levels"], first) if on else None})
-        unit_rows = []
-        for x in m["units"]:
-            pooled = {q: lv for n in m["nodes"] if n["unit"] == x["key"] and km.assessed(m, n) for q, lv in n["levels"].items()}
-            # 12 diagnosis questions give each node one answer; pooled per unit they already say something.
-            unit_rows.append({**x, "mastery": km.node_mastery(pooled, first) if pooled else None})
+        node_m, unit_m = km.mastery_view(m, first)
+        nodes = [{"key": n["key"], "unit": n["unit"], "name": n["name"], "detail": n["detail"], "kind": n["kind"],
+                  "prereqs": n["prereqs"], "learned": bool(units[n["unit"]]["learned"]), "assessed": n["key"] in node_m,
+                  "mastery": node_m.get(n["key"])} for n in m["nodes"]]
+        unit_rows = [{**x, "mastery": unit_m[x["key"]]} for x in m["units"]]
         r = run_of(db, u, row)
         diagnosis = {"status": "new"} if r is None else {"status": r.status, "count": len(json.loads(r.items_json)),
                                                            "correct": r.correct}

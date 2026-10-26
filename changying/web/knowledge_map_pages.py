@@ -108,7 +108,64 @@ function kmRender(){
     el('button',{class:'btn primary',text:p&&p.upToDate?'已是最新发布':'发布知识地图',disabled:!!(p&&p.upToDate),onclick:function(){
       if(!confirm('发布后，学生端和诊断将使用这份知识地图。确定发布？'))return;
       api('/teacher/knowledge-maps/'+KM.id+'/publish',{json:{revision:KM.revision}}).then(function(d){KM=d;kmSay('已发布');kmRender()}).catch(function(e){kmSay(e.message,true)})}})));
+  var cv=el('div');
+  KMBOX.appendChild(el('div',{class:'card'},el('h3',{text:'全班掌握情况'}),
+    p?el('button',{class:'btn',text:'查看全班掌握情况',onclick:function(){kmClassView(cv)}}):el('p',{class:'muted',text:'发布知识地图后可以查看。'}),cv));
   KM.map.units.forEach(function(u){KMBOX.appendChild(kmUnit(u))});
+}
+var KM_LEVEL_TAG={weak:'warn',pass:'',fluent:'ok'};
+function kmMasteryTag(x,labels){
+  if(!x)return kmTag('—');
+  if(!x.level)return kmTag('证据不足（'+x.evidence+' 题）');
+  return kmTag(labels[x.level]+' '+Math.round(x.rate*100)+'%'+(x.confidence==='preliminary'?'（初步）':''),KM_LEVEL_TAG[x.level]);
+}
+function kmClassView(box){
+  box.textContent='';box.appendChild(el('p',{class:'muted',text:'正在读取班级…'}));
+  api('/teacher/knowledge-maps/'+KM.id+'/classes').then(function(d){
+    box.textContent='';
+    if(!d.items.length){box.appendChild(el('p',{text:'你还没有自己任教的班级。'}));return}
+    var out=el('div'),sel=el('select',{'aria-label':'选择班级'});sel.appendChild(el('option',{value:'',text:'选择班级'}));
+    d.items.forEach(function(c){sel.appendChild(el('option',{value:String(c.id),text:c.name+'（'+c.studentCount+' 人'+(c.sameGrade?'':'，年级与地图不同')+'）'}))});
+    sel.addEventListener('change',function(){if(sel.value)kmClassLoad(+sel.value,out)});
+    box.appendChild(el('div',{class:'row'},el('label',{},'班级 ',sel)));box.appendChild(out);
+    if(d.items.length===1){sel.value=String(d.items[0].id);kmClassLoad(d.items[0].id,out)}
+  }).catch(function(e){box.textContent='';box.appendChild(el('p',{class:'warn',text:e.message}))});
+}
+function kmClassLoad(cid,out){
+  out.textContent='';out.appendChild(el('p',{class:'muted',text:'正在计算…'}));
+  api('/teacher/knowledge-maps/'+KM.id+'/classes/'+cid).then(function(d){
+    out.textContent='';var L=d.masteryLabels;
+    out.appendChild(el('p',{class:'muted',text:'按已发布的知识地图计算：只看每道已分档题目的第一次作答，基础 1、中等 1.5、提高 2 加权；不足 3 题为证据不足，3—4 题为初步，5 题及以上可信。单元一栏把该单元所有题目合并计算。'}));
+    if(!d.students.length){out.appendChild(el('p',{text:'这个班还没有学生。'}));return}
+    var head=el('tr',{},el('th',{text:'学生'}),el('th',{text:'入门诊断'}));
+    d.units.forEach(function(u){head.appendChild(el('th',{text:u.name}))});
+    var tb=el('tbody');
+    d.students.forEach(function(st){
+      var g=st.diagnosis,tr=el('tr',{},el('td',{text:st.name}),
+        el('td',{text:g.status==='submitted'?'已完成 '+g.correct+'/'+g.count:g.status==='open'?'做了一半':'未开始'}));
+      d.units.forEach(function(u){tr.appendChild(el('td',{},kmMasteryTag(st.units[u.key],L)))});
+      tb.appendChild(tr);
+    });
+    out.appendChild(el('h3',{text:d.className+' · 各单元'}));
+    out.appendChild(el('div',{style:'overflow-x:auto'},el('table',{},el('thead',{},head),tb)));
+    var detail=el('div'),nb=el('tbody');
+    d.nodes.forEach(function(n){
+      var c=d.tally[n.key],tr=el('tr',{style:'cursor:pointer',tabindex:'0','data-tally':n.key},el('td',{text:n.key+' '+n.name}),
+        el('td',{text:String(c.weak)}),el('td',{text:String(c.pass)}),el('td',{text:String(c.fluent)}),el('td',{text:String(c.insufficient)}));
+      var show=function(){kmNodeStudents(d,n,detail)};
+      tr.addEventListener('click',show);tr.addEventListener('keydown',function(e){if(e.key==='Enter')show()});
+      nb.appendChild(tr);
+    });
+    out.appendChild(el('h3',{text:'各知识点（点一行看学生名单）'}));
+    out.appendChild(el('div',{style:'overflow-x:auto'},el('table',{},el('thead',{},el('tr',{},el('th',{text:'知识点'}),el('th',{text:L.weak}),el('th',{text:L.pass}),el('th',{text:L.fluent}),el('th',{text:'证据不足'}))),nb)));
+    out.appendChild(detail);
+  }).catch(function(e){out.textContent='';out.appendChild(el('p',{class:'warn',text:e.message}))});
+}
+function kmNodeStudents(d,n,box){
+  var order={weak:0,pass:1,fluent:2},rows=d.students.map(function(st){return {name:st.name,m:st.nodes[n.key]}});
+  rows.sort(function(a,b){var x=a.m.level?order[a.m.level]:3,y=b.m.level?order[b.m.level]:3;return x-y||b.m.evidence-a.m.evidence});
+  var ul=el('ul');rows.forEach(function(r){ul.appendChild(el('li',{},r.name+'：',kmMasteryTag(r.m,d.masteryLabels),' 第一次作答 '+r.m.evidence+' 题'))});
+  box.textContent='';box.appendChild(el('div',{class:'card'},el('h4',{text:n.key+' '+n.name}),ul));
 }
 function kmOpen(id){api('/teacher/knowledge-maps/'+id).then(function(d){KM=d;QPANEL={};kmRender()}).catch(function(e){kmSay(e.message,true)})}
 function kmStart(){
