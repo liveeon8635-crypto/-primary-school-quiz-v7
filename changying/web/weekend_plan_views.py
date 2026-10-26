@@ -26,7 +26,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, UniqueConstraint, delete, func, insert, select, update
 
-from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUPPORTED, extract
+from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUPPORTED, detect_lesson_no, extract
 from changying.web.weekend_pages import plan_page_html
 from changying.services.lesson_written import (literal_written_questions, valid_written_questions,
     replace_written_drafts, written_templates, template_meta)
@@ -34,6 +34,7 @@ from changying.services.lesson_written import (literal_written_questions, valid_
 AI_FEATURE = "weekend_lesson_draft"
 SUBJECTS = ("语文", "数学")
 LESSONS = 18
+MAX_BATCH_FILES = 18
 REMOVED_STAGE = "weekend_removed"
 LEVELS = ("C", "C", "B", "B", "A", "A")
 
@@ -371,14 +372,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         db.commit()
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "weakKnowledge": weak}
 
-    @router.post("/teacher/weekend/lessons/import")
-    def import_lesson(subject: str = Form(...), lessonNo: int = Form(...), force: str = Form("0"), text: str = Form(""), file: UploadFile | None = File(None),
-                            u: Any = Depends(current_user), db: Any = Depends(get_db)):
-        """Teacher uploads their own lesson plan (.docx/.pptx/.pdf/.txt) or pastes the text; AI only tidies it into the lesson fields (no inventing)."""
-        need(u, "teacher")
-        check_subject(subject)
-        if not 1 <= lessonNo <= LESSONS:
-            raise HTTPException(400, f"课次需要在 1–{LESSONS} 之间")
+    def _extract_upload(file: UploadFile | None, text: str) -> dict[str, Any]:
+        """Validate and extract one uploaded file (or pasted text). Shared by the single and batch import routes."""
         extracted: dict[str, Any] = {"text": text.strip(), "slides": []}
         raw = b""
         ext = ""
@@ -407,6 +402,10 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(413, "教案文字超过20万字，请拆分后导入；未截断保存")
         if len(extracted["text"]) < 20:
             raise HTTPException(400, "没有读到足够的文字（扫描版 PDF 和纯图片暂不支持），请换文件或直接粘贴文字")
+        return extracted
+
+    def _apply_lesson_extract(db: Any, u: Any, subject: str, lessonNo: int, force: str, extracted: dict[str, Any]) -> dict[str, Any]:
+        """AI tidies the extracted text into one lesson plus its draft questions, then commits."""
         p = program(db, int(u.school_id))
         lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == subject, Lesson.lesson_no == lessonNo))
         if lesson is not None and force != "1" and has_real_plan(lesson):
@@ -460,6 +459,76 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         db.commit()
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs) + len(wqs), "writtenQuestionsFound": len(wqs),
                 "sourceChars": len(extracted["text"]), "message": f"原文 {len(extracted['text'])} 字已完整保留（含阅读材料及非选择题）。已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道选择题、{len(wqs)} 道简答/写作题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
+
+    @router.post("/teacher/weekend/lessons/import")
+    def import_lesson(subject: str = Form(...), lessonNo: int = Form(...), force: str = Form("0"), text: str = Form(""), file: UploadFile | None = File(None),
+                            u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Teacher uploads their own lesson plan (.docx/.pptx/.pdf/.txt) or pastes the text; AI only tidies it into the lesson fields (no inventing)."""
+        need(u, "teacher")
+        check_subject(subject)
+        if not 1 <= lessonNo <= LESSONS:
+            raise HTTPException(400, f"课次需要在 1–{LESSONS} 之间")
+        return _apply_lesson_extract(db, u, subject, lessonNo, force, _extract_upload(file, text))
+
+    @router.post("/teacher/weekend/lessons/import/preview")
+    def import_preview(subject: str = Form(""), files: list[UploadFile] = File(...),
+                            u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Read every selected file and report what would be imported. No model call, no database write."""
+        need(u, "teacher")
+        if not files:
+            raise HTTPException(400, "请至少选择一个文件")
+        if len(files) > MAX_BATCH_FILES:
+            raise HTTPException(400, f"一次最多 {MAX_BATCH_FILES} 个文件")
+        p = program(db, int(u.school_id)) if subject in SUBJECTS else None
+        items: list[dict[str, Any]] = []
+        for item in files:
+            name = (item.filename or "").strip()
+            lesson_no = detect_lesson_no(name, max_lesson=LESSONS)
+            row: dict[str, Any] = {"filename": name, "lessonNo": lesson_no, "ok": False, "chars": 0, "error": "", "hasPlan": False}
+            try:
+                extracted = _extract_upload(item, "")
+                row.update(ok=True, chars=len(extracted["text"]), preview=extracted["text"][:120])
+                if lesson_no is not None and p is not None:
+                    lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id,
+                                                            Lesson.subject == subject, Lesson.lesson_no == lesson_no))
+                    row["hasPlan"] = bool(lesson is not None and has_real_plan(lesson))
+            except HTTPException as exc:
+                row["error"] = str(exc.detail)
+            items.append(row)
+        return {"items": items, "detected": sum(1 for i in items if i["lessonNo"]),
+                "ready": sum(1 for i in items if i["ok"] and i["lessonNo"])}
+
+    @router.post("/teacher/weekend/lessons/import/batch")
+    def import_lessons(subject: str = Form(...), force: str = Form("0"), files: list[UploadFile] = File(...),
+                            u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Import several lesson plans in one go: each file's 课次 comes from its name (第03课 / lesson-03).
+        One bad file never stops the others and every file reports its own result."""
+        need(u, "teacher")
+        check_subject(subject)
+        if not files:
+            raise HTTPException(400, "请至少选择一个文件")
+        if len(files) > MAX_BATCH_FILES:
+            raise HTTPException(400, f"一次最多 {MAX_BATCH_FILES} 个文件")
+        items: list[dict[str, Any]] = []
+        for item in files:
+            name = (item.filename or "").strip()
+            lesson_no = detect_lesson_no(name, max_lesson=LESSONS)
+            try:
+                if lesson_no is None:
+                    raise HTTPException(400, "没能从文件名看出课次，请把文件命名为「第03课」或「lesson-03」")
+                got = _apply_lesson_extract(db, u, subject, lesson_no, force, _extract_upload(item, ""))
+                items.append({"filename": name, "lessonNo": lesson_no, "ok": True, "lessonId": got["lessonId"],
+                              "sourceChars": got["sourceChars"], "error": ""})
+            except HTTPException as exc:
+                db.rollback()
+                items.append({"filename": name, "lessonNo": lesson_no, "ok": False, "error": str(exc.detail)})
+            except Exception:  # noqa: BLE001
+                db.rollback()
+                items.append({"filename": name, "lessonNo": lesson_no, "ok": False, "error": "这个文件导入失败，请单独重试"})
+        imported = sum(1 for i in items if i["ok"])
+        failed = len(items) - imported
+        return {"items": items, "imported": imported, "failed": failed,
+                "message": f"成功导入 {imported} 节，失败 {failed} 节" + ("（失败的文件可以单独重试）" if failed else "")}
 
     @router.delete("/teacher/weekend/lessons/{lid}")
     def delete_lesson(lid: int, b: DeleteLessonBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
