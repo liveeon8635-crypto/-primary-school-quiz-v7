@@ -324,6 +324,48 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
         need(u, "teacher")
         return describe(db, u, report_row(db, u, rid))
 
+    @router.get("/teacher/weekend/reports/{rid}/practice/{aid}/answers")
+    def practice_answers(rid: int, aid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Read this report pupil's recorded results; never regrade against mutable question-bank content."""
+        need(u, "teacher")
+        r = report_row(db, u, rid)
+        practice = (json.loads(r.draft_json).get("practice") or {})
+        if not any(a.get("assignmentId") == aid for a in practice.get("assignments") or []):
+            raise HTTPException(404, "该作业不属于这份报告的针对性练习")
+        assignment, _ = implementation._teacher_assignment_student(db, u, aid, int(r.student_id))
+        sub = db.scalar(select(implementation.Submission).where(
+            implementation.Submission.school_id == u.school_id,
+            implementation.Submission.assignment_id == aid,
+            implementation.Submission.student_id == r.student_id
+        ).order_by(implementation.Submission.id.desc()).limit(1))
+        paper = db.scalar(select(implementation.Paper).where(
+            implementation.Paper.id == assignment.paper_id, implementation.Paper.school_id == u.school_id))
+        def read_list(raw: str) -> list:
+            try:
+                value = json.loads(raw or "[]")
+                return value if isinstance(value, list) else []
+            except (ValueError, TypeError):
+                return []
+        recorded = {a["question_id"]: a for a in read_list(sub.answers_json if sub else "[]")
+                    if isinstance(a, dict) and isinstance(a.get("question_id"), int)}
+        ids = list(dict.fromkeys([i for i in read_list(paper.question_ids_json if paper else "[]") if isinstance(i, int)] + list(recorded)))
+        questions = {q.id: q for q in db.scalars(select(implementation.Question).where(
+            implementation.Question.school_id == u.school_id, implementation.Question.id.in_(ids))).all()} if ids else {}
+        items = []
+        for qid in ids:
+            q, answer = questions.get(qid), recorded.get(qid, {})
+            selected = answer.get("selected_index")
+            choice = isinstance(selected, int) and not isinstance(selected, bool) and 0 <= selected < 26
+            items.append({"questionId": qid, "text": q.text if q else "题目已不可用",
+                          "options": read_list(q.options_json) if q else [],
+                          "knowledge": q.knowledge if q else "", "questionAvailable": q is not None,
+                          "studentAnswer": (chr(65 + selected) + ".（记录的选项序号）") if choice else str(answer.get("text_answer") or ""),
+                          "correct": answer.get("correct") if isinstance(answer.get("correct"), bool) else None})
+        return {"assignmentId": aid, "studentId": int(r.student_id), "state": "submitted" if sub else "assigned",
+                "correct": sub.correct if sub else None, "total": sub.total if sub else None,
+                "helpStatus": "unknown", "items": items,
+                "questionNotice": "题干、选项和考点为当前题库内容，提交时版本未保存；对错沿用提交记录，不重新判分。帮助情况未知，不能据此判断独立完成或已经掌握。"}
+
     @router.put("/teacher/weekend/reports/{rid}")
     def save_report(rid: int, b: SaveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
@@ -549,3 +591,4 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_reports", "published_reports", "register_report_table"]
+

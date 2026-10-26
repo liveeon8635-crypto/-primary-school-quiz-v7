@@ -391,7 +391,7 @@
       "d79ca2de3ed4cbcda0b37893f5801019f561fa03ba79570bb87ab331a9ef753b"
     ],
     "/v1/weekend-report": [
-      "f904971492b4043c3bc19330dc26d72c6693d7485b70ba4b126ba5dd6098d559"
+      "fa1ede0cd580bfb478858960333678bceb93d974972274b1a23eb596c2853433"
     ],
     "/v1/workspace": [
       "f8f56c33f77910ed27ccfcd07ceabe918d7a478077bf789b962e71dc84f0b6cd",
@@ -683,10 +683,10 @@
       "sourceBytes": 37122,
       "compiledBytes": 37122
     },
-    "f904971492b4043c3bc19330dc26d72c6693d7485b70ba4b126ba5dd6098d559": {
+    "fa1ede0cd580bfb478858960333678bceb93d974972274b1a23eb596c2853433": {
       "unchanged": true,
-      "sourceBytes": 58390,
-      "compiledBytes": 58390
+      "sourceBytes": 59806,
+      "compiledBytes": 59806
     },
     "6c2a988d2da692ed99321ee7a9d95edf5937a34cc5a4d622a29eda9aae220871": {
       "unchanged": false,
