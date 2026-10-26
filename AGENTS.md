@@ -2,6 +2,8 @@
 
 本文件是进入本仓库进行自主工程工作的首要规则。任何 agent 在写代码前都必须先读取本文件，并读取 GitHub Issue #174 `[HARNESS] Current Engineering State` 作为当前工程断点。
 
+文档入口：先读 [`docs/INDEX.md`](docs/INDEX.md)（文档地图：产品范围、架构、工程流程、功能设计各在哪份文件）。
+
 ## 1. 产品与边界
 
 长缨辅学只处理小学阶段的教学与学习管理：
