@@ -24,6 +24,7 @@
 | 文档 | 内容 |
 |---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 代码结构与模块化路线、生产启动链、legacy 兼容桥 |
+| [`ops/runbook.md`](ops/runbook.md) | 生产运维手册：应用回滚、数据回滚、备份恢复、故障处理、变更前检查清单 |
 | [`AGENTS.md`](../AGENTS.md) §2 | 生产事实与验收口径（deploy=live、`/health` 200、`/v1` 200） |
 | `render.yaml` | Render 服务定义（**受保护**，不要随意修改） |
 
