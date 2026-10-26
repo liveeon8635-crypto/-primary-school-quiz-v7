@@ -82,6 +82,10 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
         const wk=document.createElement('a');wk.className='cy-ws-row';wk.href='/v1/weekend';
         wk.innerHTML='<b>周末课</b><i>›</i><small>备课、上课、下课结算都从这里开始：按步骤告诉你下一次课准备到哪一步</small>';
         paperRow.after(wk);
+        const km=document.createElement('a');km.className='cy-ws-row';km.href='/v1/knowledge-map';km.hidden=true;km.setAttribute('data-knowledge-map-entry','1');
+        km.innerHTML='<b>知识地图</b><i>›</i><small>按教材单元维护知识点和前置关系，标记已学单元，给每个知识点的题目分难度档</small>';
+        wk.after(km);
+        fetch('/knowledge-map/config',{cache:'no-store'}).then(r=>{if(r.ok)km.hidden=false}).catch(()=>{});
       }
       main.insertBefore(all,main.firstChild);
     }

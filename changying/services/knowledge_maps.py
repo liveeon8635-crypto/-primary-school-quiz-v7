@@ -1,0 +1,239 @@
+"""知识地图：教师维护的单元—知识点—前置关系，以及每个知识点的题目分档。
+
+A map is one JSON document per (school, grade, subject, term):
+
+    {"version": 1,
+     "units": [{"key": "U1", "name": "观察简单组合体", "kind": "unit|activity|review", "learned": true}],
+     "nodes": [{"key": "1-1", "unit": "U1", "name": "...", "detail": "...", "kind": "core|optional|display|review",
+                "prereqs": ["..."], "bankKeys": ["..."], "levels": {"<question id>": "basic|medium|hard"},
+                "enabled": false}]}
+
+Only teachers write it. Diagnosis and mastery (later PRs) read the published copy: learned units, core/review
+nodes and the nodes the teacher enabled among the optional ones. Display-only nodes never get questions.
+"""
+from __future__ import annotations
+
+import copy
+import re
+from typing import Any, Iterable
+
+UNIT_KINDS = {"unit": "单元", "activity": "综合实践", "review": "复习与关联"}
+NODE_KINDS = {"core": "必学", "optional": "选学", "display": "只展示", "review": "综合"}
+LEVELS = {"basic": "基础", "medium": "中等", "hard": "提高"}
+MIN_PER_LEVEL = 2
+MIN_PER_NODE = 6
+MAX_UNITS = 20
+MAX_NODES = 120
+_KEY = re.compile(r"^[0-9A-Za-z一-鿿-]{1,12}$")
+
+
+def _u(key: str, name: str, learned: bool, kind: str = "unit") -> dict[str, Any]:
+    return {"key": key, "name": name, "kind": kind, "learned": learned}
+
+
+def _n(key: str, unit: str, name: str, detail: str, prereqs: Iterable[str] = (), kind: str = "core") -> dict[str, Any]:
+    return {"key": key, "unit": unit, "name": name, "detail": detail, "kind": kind, "prereqs": list(prereqs),
+            "bankKeys": [name], "levels": {}, "enabled": kind != "optional"}
+
+
+# 人教版 2026 五年级上册数学，按教材“整理和复习”知识梳理与教学安排表整理，教师已确认（学生学完第四单元）。
+RJ2026_G5_MATH_UP = {
+    "version": 1,
+    "units": [
+        _u("U1", "观察简单组合体", True), _u("U2", "小数乘法", True), _u("U3", "小数除法", True), _u("U4", "图形的运动", True),
+        _u("U5", "用字母表示数和数量关系", False), _u("U6", "多边形的面积", False),
+        _u("UT", "有趣的密铺", False, "activity"), _u("U7", "可能性", False), _u("U8", "复习与关联", False, "review"),
+    ],
+    "nodes": [
+        _n("1-1", "U1", "从不同位置观察同一组合体", "从前面、上面、左面观察同一个组合体，看到的图形可能不同"),
+        _n("1-2", "U1", "从同一位置观察不同组合体", "不同的组合体从同一方向看，看到的图形可能相同"),
+        _n("1-3", "U1", "根据三个方向的图形确定组合体",
+           "只看一个方向的图形不能确定组合体；上面看几行几列，前面看几层几列，左面看几行几层", ["1-1", "1-2"]),
+        _n("1-4", "U1", "根据三个方向的图形还原组合体", "先从上面看到的图形入手推测，再补全、调整，最后从三个方向验证", ["1-3"]),
+        _n("2-1", "U2", "小数乘整数", "意义和算法"),
+        _n("2-2", "U2", "小数乘小数", "积的小数位数；位数不够补 0；末尾的 0 去掉", ["2-1"]),
+        _n("2-3", "U2", "积的近似数", "用四舍五入法求积的近似数", ["2-2"]),
+        _n("2-4", "U2", "积与乘数的大小关系", "一个数（0 除外）乘大于 1 的数、小于 1 的数，积与这个数的大小关系", ["2-2"]),
+        _n("2-5", "U2", "整数乘法运算律推广到小数", "交换律、结合律、分配律用于小数乘法的简便计算", ["2-2"]),
+        _n("2-6", "U2", "小数乘法解决问题", "求小数倍、估算、分段计费", ["2-2", "2-3", "2-5"]),
+        _n("3-1", "U3", "除数是整数的小数除法", "商的小数点和被除数的小数点对齐；用 0 占位；添 0 继续除", ["2-1"]),
+        _n("3-2", "U3", "除数是小数的除法", "用商不变的性质把除数转化成整数", ["3-1"]),
+        _n("3-3", "U3", "商与被除数的大小关系", "一个数（0 除外）除以大于 1 的数、小于 1 的数，商与被除数的大小关系", ["3-2"]),
+        _n("3-4", "U3", "用近似值解决问题", "进一法、去尾法、四舍五入法", ["3-2", "2-3"]),
+        _n("3-5", "U3", "有限小数、无限小数、循环小数", "认识循环节，用简便写法表示循环小数", ["3-1"]),
+        _n("4-1", "U4", "轴对称", "对应点到对称轴的距离相等；补全轴对称图形（找点、定点、连线）"),
+        _n("4-2", "U4", "平移", "平移的特点；在方格纸上画平移后的图形；用平移、割补的方法求面积"),
+        _n("4-3", "U4", "旋转", "旋转的三要素（旋转中心、方向、角度）；旋转的特征；在方格纸上画旋转后的图形"),
+        _n("4-4", "U4", "用平移和旋转解决问题", "图形的拼组；欣赏和设计图案", ["4-2", "4-3"]),
+        _n("5-1", "U5", "用字母表示数和数量关系", "用字母表示某个量、数量关系、运算律、周长和面积公式、规律", ["2-5"]),
+        _n("5-2", "U5", "用含字母的式子解决实际问题", "例如华氏温度和摄氏温度的换算", ["5-1"]),
+        _n("6-1", "U6", "平行四边形的面积", "割补法转化成长方形，S=ah；会反求底和高（a=S÷h，h=S÷a）", ["4-2", "2-2", "5-1"]),
+        _n("6-2", "U6", "三角形的面积", "两个完全一样的三角形拼成平行四边形，S=ah÷2；会反求高和底（h=2S÷a，a=2S÷h）", ["6-1", "3-2"]),
+        _n("6-3", "U6", "梯形的面积", "两个完全一样的梯形拼成平行四边形，S=(a+b)h÷2；会反求高、上底、下底", ["6-1", "3-2"]),
+        _n("6-4", "U6", "组合图形的面积", "分割法、添补法、等积变形", ["6-1", "6-2", "6-3"]),
+        _n("6-5", "U6", "估计不规则图形的面积", "数格子法；转化为近似的规则图形", ["6-4"]),
+        _n("6-6", "U6", "格点多边形的面积", "数学活动：用学过的方法计算格点多边形面积，简要介绍皮克定理", ["6-1", "6-2", "6-3"], "optional"),
+        _n("6-7", "U6", "公顷和平方千米", "1 公顷 = 10000 m²；1 km² = 100 公顷 = 1000000 m²"),
+        _n("T-1", "UT", "密铺", "认识密铺现象，探索可以密铺的图形的特征"),
+        _n("T-2", "UT", "设计密铺图案", "由可以密铺的图形变化得到：借助平移、旋转，或者割补", ["T-1", "4-2", "4-3", "6-1"]),
+        _n("T-3", "UT", "密铺小讲堂", "基于密铺的艺术作品；数学上关于密铺的更多知识（拓展阅读）", ["T-1"], "display"),
+        _n("7-1", "U7", "认识确定现象和随机现象", "用“可能”“不可能”“一定”描述事件发生的可能性"),
+        _n("7-2", "U7", "可能性的大小", "判断事件发生的可能性大小；数量越多可能性越大；抽奖、游戏公平性", ["7-1"]),
+        _n("7-3", "U7", "根据试验结果推测可能性的大小", "逆向推理，强化辨析", ["7-2"]),
+        _n("7-4", "U7", "掷一掷", "数学活动：类比推理、归纳推理（统计）、演绎推理", ["7-2"], "optional"),
+        _n("8-1", "U8", "数与运算：小数的乘、除法", "小数乘、除法运算综合",
+           ["2-1", "2-2", "2-3", "2-4", "2-5", "3-1", "3-2", "3-3"], "review"),
+        _n("8-2", "U8", "数量关系：表示数量关系的新方法", "用字母和含有字母的式子表示数量关系", ["5-1", "5-2"], "review"),
+        _n("8-3", "U8", "图形的位置：还原简单组合体", "根据从不同角度观察的结果还原简单组合体，结果可能不唯一", ["1-3", "1-4"], "review"),
+        _n("8-4", "U8", "图形的运动与测量", "借助平移和旋转研究多边形的面积公式；图形在运动中面积不变",
+           ["4-2", "4-3", "6-1", "6-2", "6-3"], "review"),
+        _n("8-5", "U8", "可能性综合", "不同现象发生的可能性有大有小", ["7-1", "7-2", "7-3"], "review"),
+        _n("8-6", "U8", "植树问题", "数学广角：两端都种；两端都不种；一端种另一端不种（与封闭曲线上种相同）", (), "optional"),
+    ],
+}
+
+TEMPLATES = {
+    "rj2026-g5-math-up": {"label": "人教版 2026 五年级上册数学", "grade": 5, "subject": "数学", "term": "上册",
+                          "textbook": "人教版2026", "map": RJ2026_G5_MATH_UP},
+}
+
+
+def template(key: str) -> dict[str, Any]:
+    if key not in TEMPLATES:
+        raise ValueError("没有这个知识地图模板")
+    return copy.deepcopy(TEMPLATES[key]["map"])
+
+
+def _text(value: Any, field: str, limit: int, required: bool = True) -> str:
+    text = " ".join(str(value or "").split())
+    if required and not text:
+        raise ValueError(f"{field}不能为空")
+    if len(text) > limit:
+        raise ValueError(f"{field}不能超过 {limit} 个字")
+    return text
+
+
+def _key(value: Any, field: str) -> str:
+    key = str(value or "").strip()
+    if not _KEY.match(key):
+        raise ValueError(f"{field}“{key}”只能用 1—12 个字母、数字、汉字或短横线")
+    return key
+
+
+def clean_map(raw: Any) -> dict[str, Any]:
+    """Validate a teacher-edited map; raises ValueError with a message the teacher can act on."""
+    if not isinstance(raw, dict) or not isinstance(raw.get("units"), list) or not isinstance(raw.get("nodes"), list):
+        raise ValueError("知识地图格式不对")
+    if not raw["units"] or len(raw["units"]) > MAX_UNITS:
+        raise ValueError(f"单元数量应为 1—{MAX_UNITS} 个")
+    if len(raw["nodes"]) > MAX_NODES:
+        raise ValueError(f"知识点不能超过 {MAX_NODES} 个")
+    units: list[dict[str, Any]] = []
+    for u in raw["units"]:
+        if not isinstance(u, dict):
+            raise ValueError("单元格式不对")
+        key = _key(u.get("key"), "单元编号")
+        if any(x["key"] == key for x in units):
+            raise ValueError(f"单元编号“{key}”重复")
+        kind = u.get("kind") or "unit"
+        if kind not in UNIT_KINDS:
+            raise ValueError(f"单元“{key}”的类型不对")
+        units.append({"key": key, "name": _text(u.get("name"), f"单元“{key}”的名称", 40), "kind": kind, "learned": bool(u.get("learned"))})
+    unit_keys = {u["key"] for u in units}
+    nodes: list[dict[str, Any]] = []
+    for n in raw["nodes"]:
+        if not isinstance(n, dict):
+            raise ValueError("知识点格式不对")
+        key = _key(n.get("key"), "知识点编号")
+        if any(x["key"] == key for x in nodes):
+            raise ValueError(f"知识点编号“{key}”重复")
+        if n.get("unit") not in unit_keys:
+            raise ValueError(f"知识点“{key}”所属的单元不存在")
+        kind = n.get("kind") or "core"
+        if kind not in NODE_KINDS:
+            raise ValueError(f"知识点“{key}”的类型不对")
+        name = _text(n.get("name"), f"知识点“{key}”的名称", 40)
+        prereqs = [str(p).strip() for p in (n.get("prereqs") or []) if str(p).strip()]
+        if len(set(prereqs)) != len(prereqs) or key in prereqs:
+            raise ValueError(f"知识点“{key}”的前置重复或指向自己")
+        bank = [_text(b, f"知识点“{key}”的题库知识点名", 120) for b in (n.get("bankKeys") or []) if str(b or "").strip()]
+        levels: dict[str, str] = {}
+        if kind != "display":
+            for qid, level in (n.get("levels") or {}).items():
+                if not str(qid).isdigit() or level not in LEVELS:
+                    raise ValueError(f"知识点“{key}”的题目分档不对")
+                levels[str(int(qid))] = level
+        nodes.append({"key": key, "unit": n["unit"], "name": name, "detail": _text(n.get("detail"), f"知识点“{key}”的说明", 200, False),
+                      "kind": kind, "prereqs": prereqs, "bankKeys": list(dict.fromkeys(bank or [name])), "levels": levels,
+                      "enabled": kind in ("core", "review") or (kind == "optional" and bool(n.get("enabled")))})
+    keys = {n["key"] for n in nodes}
+    for n in nodes:
+        missing = [p for p in n["prereqs"] if p not in keys]
+        if missing:
+            raise ValueError(f"知识点“{n['key']}”的前置“{'、'.join(missing)}”不存在")
+    cycle = _cycle(nodes)
+    if cycle:
+        raise ValueError("前置关系出现循环：" + " → ".join(cycle))
+    return {"version": 1, "units": units, "nodes": nodes}
+
+
+def _cycle(nodes: list[dict[str, Any]]) -> list[str]:
+    graph = {n["key"]: n["prereqs"] for n in nodes}
+    state: dict[str, int] = {}
+    stack: list[str] = []
+
+    def visit(k: str) -> list[str]:
+        state[k] = 1
+        stack.append(k)
+        for p in graph[k]:
+            if state.get(p) == 1:
+                return stack[stack.index(p):] + [p]
+            if p not in state:
+                found = visit(p)
+                if found:
+                    return found
+        stack.pop()
+        state[k] = 2
+        return []
+
+    for k in graph:
+        if k not in state:
+            found = visit(k)
+            if found:
+                return found
+    return []
+
+
+def assessed(m: dict[str, Any], node: dict[str, Any]) -> bool:
+    """Whether a node takes part in diagnosis and mastery: learned unit, not display-only, optional only when enabled."""
+    unit = next(u for u in m["units"] if u["key"] == node["unit"])
+    return bool(unit["learned"]) and node["kind"] != "display" and bool(node["enabled"])
+
+
+def coverage(node: dict[str, Any], existing_ids: set[int]) -> dict[str, Any]:
+    """How many reviewed questions each level has; questions deleted from the bank no longer count."""
+    counts = {k: 0 for k in LEVELS}
+    for qid, level in node["levels"].items():
+        if int(qid) in existing_ids:
+            counts[level] += 1
+    total = sum(counts.values())
+    ready = node["kind"] == "display" or (total >= MIN_PER_NODE and all(c >= MIN_PER_LEVEL for c in counts.values()))
+    return {"counts": counts, "total": total, "ready": ready}
+
+
+def dependents(m: dict[str, Any]) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {n["key"]: [] for n in m["nodes"]}
+    for n in m["nodes"]:
+        for p in n["prereqs"]:
+            out[p].append(n["key"])
+    return out
+
+
+def summary(m: dict[str, Any], ready: dict[str, bool]) -> dict[str, Any]:
+    """Counts for the page header: assessed nodes now and how many already have enough reviewed questions."""
+    now = [n for n in m["nodes"] if assessed(m, n)]
+    return {"units": len(m["units"]), "nodes": len(m["nodes"]), "assessed": len(now),
+            "assessedReady": sum(1 for n in now if ready.get(n["key"])), "learnedUnits": sum(1 for u in m["units"] if u["learned"])}
+
+
+__all__ = ["LEVELS", "NODE_KINDS", "TEMPLATES", "UNIT_KINDS", "assessed", "clean_map", "coverage", "dependents", "summary", "template"]
