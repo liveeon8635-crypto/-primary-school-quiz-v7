@@ -201,6 +201,32 @@ with TestClient(app) as client:
     assert next(n for n in m2["nodes"] if n["key"] == "2-2")["mastery"]["evidence"] == before + len(paper_ids)
     done = client.post(rbase, headers=th, json={"nodeKey": "2-2", "studentIds": [sid], "count": 4}).json()["results"][0]
     assert not done["ok"] and "补题" in done["reason"]
+
+    # The teacher's own judgement per pupil and unit, compared with the map (units with too little evidence do not count).
+    vb = f"/teacher/knowledge-maps/{mid}/classes/{view['classId']}"
+    v = client.get(vb, headers=th).json()
+    assert v["agreement"] == {"rated": 0, "compared": 0, "agreed": 0, "threshold": 0.8, "rate": None, "passed": False}
+    me = next(st for st in v["students"] if st["id"] == sid)
+    u1, u2 = me["units"]["U1"]["level"], me["units"]["U2"]["level"]
+    assert u1 and u2 and me["units"]["U4"]["level"] is None
+    other = next(x for x in ("weak", "pass", "fluent") if x != u2)
+    for bad in ({"studentId": sid, "unitKey": "U5", "level": "weak"}, {"studentId": sid, "unitKey": "U1", "level": "good"},
+                {"studentId": 999999, "unitKey": "U1", "level": "weak"}):
+        assert client.put(vb + "/ratings", headers=th, json={"ratings": [bad]}).status_code == 400, bad
+    assert client.put(vb + "/ratings", headers=sh, json={"ratings": []}).status_code == 403
+    v = client.put(vb + "/ratings", headers=th, json={"ratings": [
+        {"studentId": sid, "unitKey": "U1", "level": u1}, {"studentId": sid, "unitKey": "U2", "level": other},
+        {"studentId": sid, "unitKey": "U4", "level": "weak"}]}).json()
+    assert v["agreement"] == {"rated": 3, "compared": 2, "agreed": 1, "threshold": 0.8, "rate": 0.5, "passed": False}
+    assert next(st for st in v["students"] if st["id"] == sid)["ratings"] == {"U1": u1, "U2": other, "U4": "weak"}
+    v = client.put(vb + "/ratings", headers=th, json={"ratings": [{"studentId": sid, "unitKey": "U2", "level": u2}]}).json()
+    assert v["agreement"]["agreed"] == 2 and v["agreement"]["rate"] == 1.0 and v["agreement"]["passed"] is True
+    v = client.put(vb + "/ratings", headers=th, json={"ratings": [{"studentId": sid, "unitKey": "U4", "level": None}]}).json()
+    assert v["agreement"]["rated"] == 2
+    with legacy.SessionLocal() as db:
+        kr = legacy.Base.metadata.tables["knowledge_map_ratings"]
+        assert db.execute(select(kr.c.unit_key, kr.c.level).where(kr.c.student_id == sid).order_by(kr.c.unit_key)).all() == [("U1", u1), ("U2", u2)]
+    assert "保存我的判断" in client.get("/v1/knowledge-map").text
     assert "查看全班掌握情况" in client.get("/v1/knowledge-map").text
 
     page = client.get("/v1/my-knowledge-map").text
