@@ -56,6 +56,7 @@ KEEP_TABLES = (
     "point_rules", "class_point_rules", "reward_items", "auto_reward_rules",
     "homework_ai_knowledge",
     "kp_cards", "weekend_hints", "weekend_written_questions", "weekend_courseware",
+    "knowledge_maps",
     "kp_card_images",
     "questions", "papers", "import_jobs",
     "teaching_programs", "teaching_lessons", "teaching_questions", "teaching_resources",
