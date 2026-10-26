@@ -172,3 +172,48 @@ print("OK")
 
 def test_everything_is_off_without_the_flag(tmp_path):
     helpers.run_isolated(tmp_path, helpers.COMMON + OFF)
+
+
+AI_FLOW = r'''
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    d = client.post("/teacher/knowledge-maps", headers=th, json={"template": "rj2026-g5-math-up"}).json()
+    mid, rev = d["id"], d["revision"]
+    node = next(n for n in d["map"]["nodes"] if n["key"] == "4-3")
+    unit = next(u for u in d["map"]["units"] if u["key"] == node["unit"])
+
+    # What the page sends: the node's name, detail and level; choice questions only; no picture-only stems.
+    replies.append(json.dumps({"questions": [
+        {"question_type": "choice", "text": "钟面上的指针从 12 绕中心顺时针旋转 90°，指向几？", "options": ["3", "6", "9", "12"],
+         "correct_index": 0, "explanation": "顺时针 90° 是 3 个大格", "knowledge": "旋转的意义"},
+        {"question_type": "choice", "text": "下面哪一项不是确定旋转所需要的？", "options": ["旋转中心", "旋转方向", "旋转角度", "图形颜色"],
+         "correct_index": 3, "explanation": "旋转三要素", "knowledge": "旋转"}]}, ensure_ascii=False))
+    gen = client.post("/ai/questions/generate", headers=th, json={
+        "grade": d["grade"], "subject": d["subject"], "textbook": "人教版", "semester": d["term"], "unit": unit["name"],
+        "knowledge": node["name"], "difficulty": "中等", "count": 2, "question_type": "choice",
+        "notes": "知识点说明：" + node["detail"] + "。难度档：中等。题目只考这一个知识点；题干不能依赖图片，涉及图形、方向、方格位置时用文字说清楚。"})
+    assert gen.status_code == 200, gen.text
+    items = gen.json()["items"]
+    assert len(items) == 2 and gen.json()["reviewRequired"] is True
+    assert "旋转的三要素" in prompts[-1] and "题干不能依赖图片" in prompts[-1] and "图形的运动" in prompts[-1]
+
+    # The teacher keeps both; the page forces the node's bank name so they match the node, then levels them.
+    keep = [{**q, "knowledge": node["bankKeys"][0], "question_type": "single_choice"} for q in items]
+    saved = client.post("/ai/questions/save", headers=th, json={"questions": keep}).json()["items"]
+    assert {q["knowledge"] for q in saved} == {"旋转"}
+    d = client.put(f"/teacher/knowledge-maps/{mid}/nodes/4-3/levels", headers=th,
+                   json={"levels": {str(q["id"]): "medium" for q in saved}, "revision": rev}).json()
+    n = next(x for x in d["map"]["nodes"] if x["key"] == "4-3")
+    assert n["bankCount"] == 2 and n["coverage"]["counts"] == {"basic": 0, "medium": 2, "hard": 0}
+    listed = client.get(f"/teacher/knowledge-maps/{mid}/nodes/4-3/questions", headers=th).json()["items"]
+    assert [x["level"] for x in listed] == ["medium", "medium"]
+
+    page = client.get("/v1/knowledge-map").text
+    for t in ("kmAIGen(", "/ai/questions/generate", "/ai/questions/save", "存入题库并分为", "题干不能依赖图片"):
+        assert t in page, t
+print("OK")
+'''
+
+
+def test_ai_drafts_for_a_node_are_reviewed_saved_and_levelled(tmp_path):
+    helpers.run_isolated(tmp_path, helpers.COMMON + AI_FLOW, {"KNOWLEDGE_MAP": "1"})
