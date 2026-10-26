@@ -409,6 +409,44 @@ def _page(title: str, js: str, with_header: bool, back: tuple[str, str] = ("/v1"
 
 PLAN_JS = r"""
 var SUBJ='数学';
+function batchItemTag(it){
+  if(!it.ok)return {cls:'warn',text:'读不出文字：'+(it.error||'')};
+  if(!it.lessonNo)return {cls:'warn',text:'文件名里看不出课次'};
+  return {cls:'ok',text:'第 '+it.lessonNo+' 课'+(it.hasPlan?'（已有教案，会覆盖）':'')};
+}
+function batchForm(picked,force){
+  var fd=new FormData();fd.append('subject',SUBJ);
+  if(force!=null)fd.append('force',force?'1':'0');
+  picked.forEach(function(f){fd.append('files',f)});
+  return fd;
+}
+function batchShowResult(r,panel){
+  panel.textContent='';
+  panel.appendChild(el('div',{class:'notice '+(r.failed?'warn':'ok'),text:r.message}));
+  r.items.forEach(function(it){
+    panel.appendChild(el('div',{class:'row'},el('span',{text:it.filename}),
+      el('span',{class:'tag '+(it.ok?'ok':'warn'),text:it.ok?('第 '+it.lessonNo+' 课已导入'):('没导入：'+it.error)})));
+  });
+}
+function batchPlanPanel(d,picked,panel,after){
+  panel.textContent='';
+  var ready=d.items.filter(function(i){return i.ok&&i.lessonNo});
+  var over=d.items.filter(function(i){return i.ok&&i.lessonNo&&i.hasPlan});
+  d.items.forEach(function(it){
+    var tag=batchItemTag(it);
+    panel.appendChild(el('div',{class:'row'},el('span',{text:it.filename}),el('span',{class:'tag '+tag.cls,text:tag.text})));
+  });
+  if(!ready.length){panel.appendChild(el('div',{class:'notice warn',text:'没有可以导入的文件：请确认文件名里有课次，并且文件能读出文字。'}));return null}
+  var go=el('button',{class:'primary',text:'确认导入 '+ready.length+' 节',onclick:function(){
+    if(over.length&&!confirm('有 '+over.length+' 节课已经有教案，导入会覆盖教案文字和未审核的草稿题（已通过的习题保留）。确定吗？'))return;
+    go.disabled=true;panel.appendChild(el('div',{class:'notice',text:'正在逐份导入，每份大约半分钟…'}));
+    api('/teacher/weekend/lessons/import/batch',{method:'POST',body:batchForm(picked,over.length>0)})
+      .then(function(r){batchShowResult(r,panel);if(after)after(r)})
+      .catch(function(e){panel.appendChild(el('div',{class:'notice error',text:e.message}));go.disabled=false});
+  }});
+  panel.appendChild(el('div',{class:'row'},go));
+  return go;
+}
 function approveQuestionInPlace(path,q,button,actions,badge,feedback,refreshStatus){
   if(button.disabled)return Promise.resolve();
   var buttons=actions.querySelectorAll('button');
@@ -444,9 +482,9 @@ function saveLessonEdits(url,payload,button,status,fields,onSaved){
 }
 function plan(){
   root.textContent='';
-  var tabs=el('div',{class:'tabs'}),nextBox=el('div',{class:'card'}),toolBox=el('div',{class:'card'}),list=el('div'),msg=el('div');
+  var tabs=el('div',{class:'tabs'}),nextBox=el('div',{class:'card'}),toolBox=el('div',{class:'card'}),batchBox=el('div',{class:'card'}),list=el('div'),msg=el('div');
   ['数学','语文'].forEach(function(s){tabs.appendChild(el('button',{class:s===SUBJ?'on':'',text:s,onclick:function(){SUBJ=s;plan()}}))});
-  root.appendChild(tabs);root.appendChild(nextBox);root.appendChild(toolBox);root.appendChild(msg);root.appendChild(list);
+  root.appendChild(tabs);root.appendChild(nextBox);root.appendChild(toolBox);root.appendChild(batchBox);root.appendChild(msg);root.appendChild(list);
   function note(kind,text){msg.textContent='';msg.appendChild(el('div',{class:'notice '+kind,text:text}))}
   nextBox.appendChild(el('h2',{text:'下一次课怎么准备'}));
   api('/teacher/weekend/next').then(function(d){
@@ -476,6 +514,22 @@ function plan(){
     api('/teacher/weekend/schedule/shift',{json:{subject:SUBJ,fromLessonNo:+fromNo.value,weeks:+weeks.value}}).then(function(r){note('ok','已顺延 '+r.moved+' 次课');load()}).catch(function(e){note('error',e.message)})}});
   toolBox.appendChild(paste);
   toolBox.appendChild(el('div',{class:'row'},parseBtn,el('span',{class:'muted',text:'从第'}),fromNo,el('span',{class:'muted',text:'次课起，推迟'}),weeks,el('span',{class:'muted',text:'周'}),shiftBtn));
+
+  var batchPanel=el('div'),batchInput=el('input',{type:'file',accept:'.docx,.pptx,.pdf,.txt,.md',multiple:true,hidden:true});
+  batchBox.appendChild(el('h2',{text:'批量导入教案'}));
+  batchBox.appendChild(el('div',{class:'muted',text:'一次选一个单元的文件。文件名里写上第几课，例如「第03课-民间英雄.docx」「lesson-07.pdf」，系统按文件名判断课次；先预览，确认后再导入。'}));
+  var batchBtn=el('button',{text:'选择多个文件',onclick:function(){batchInput.click()}});
+  batchBox.appendChild(el('div',{class:'row'},batchBtn,el('span',{class:'muted',text:'一次最多 18 个'})));
+  batchBox.appendChild(batchInput);batchBox.appendChild(batchPanel);
+  batchInput.addEventListener('change',function(){
+    var picked=Array.prototype.slice.call(batchInput.files||[]);batchInput.value='';
+    if(!picked.length)return;
+    batchBtn.disabled=true;batchPanel.textContent='';batchPanel.appendChild(el('div',{class:'notice',text:'正在读取 '+picked.length+' 个文件…'}));
+    api('/teacher/weekend/lessons/import/preview',{method:'POST',body:batchForm(picked)})
+      .then(function(d){batchPlanPanel(d,picked,batchPanel,function(r){if(r&&r.imported)load()})})
+      .catch(function(e){batchPanel.textContent='';batchPanel.appendChild(el('div',{class:'notice error',text:e.message}))})
+      .then(function(){batchBtn.disabled=false});
+  });
 
   var state=[];
   function paintRows(rows){
