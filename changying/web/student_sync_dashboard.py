@@ -31,7 +31,7 @@ async function syncLearning(){
  function refreshCurrent(){return api('/student/weekend/current').then(paintCurrent).catch(()=>paintCurrent({loadError:true}))}
  paintCurrent(current);
  // 知识地图：功能开启且老师发布了本年级的地图时才显示入口。
- api('/student/knowledge-map').then(m=>{const box=document.getElementById('student-knowledge-map');if(!box)return;const d=m.diagnosis||{};
+ api('/student/knowledge-map').then(m=>{const box=document.getElementById('student-knowledge-map');if(!box||!m||!m.title||!Array.isArray(m.nodes))return;const d=m.diagnosis||{};
   box.innerHTML='<h2>我的知识地图</h2><p>'+esc(m.title)+(d.status==='submitted'?' · 入门诊断已完成':' · 先做 12 道题的入门诊断')+'</p><a class="btn primary" href="/v1/my-knowledge-map">打开知识地图</a>';
   box.classList.remove('hidden')}).catch(()=>{});
  if(window.__cyStudentClassTimer)clearInterval(window.__cyStudentClassTimer);
