@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:7ec36880a3f317c6099a0e811b6d9a72d85865b8f90277b3280634293a0f14a7",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "1eb4ef42ac42099da210bb23d97dfc67f08426da",
+  "headSha": "46460899ae210b8cbd7208e530e32874422d1238",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：本次变更新增了教师端人教版五年级上册数学知识地图维护功能（包含单元、知识点、前置关系及题目难度分档），功能完整，权限隔离与参数校验均无问题，且全部受 KNOWLEDGE_MAP 特性开关保护。",
+      "evidenceRefs": [
+        "file:changying/web/knowledge_map_views.py#L1-L245",
+        "file:changying/services/knowledge_maps.py#L1-L225",
+        "file:tests/test_knowledge_maps.py#L1-L174",
+        "pr:#837",
+        "run:121421289624",
+        "run:121421289208"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "新功能完整实现了人教版五年级上册数学知识地图模版、前置循环依赖检测、题目难度分档以及草稿与发布隔离机制，并提供了完整的单元测试覆盖。",
+      "evidenceRefs": [
+        "file:changying/services/knowledge_maps.py#L1-L225",
+        "file:changying/web/knowledge_map_views.py#L1-L245",
+        "file:tests/test_knowledge_maps.py#L1-L174"
+      ]
+    },
+    {
+      "id": "GEMINI-003",
+      "text": "所有新增路由均已按学校与教师身份进行严格隔离，并在未开启 KNOWLEDGE_MAP 特性开关时安全返回 404。",
+      "evidenceRefs": [
+        "file:changying/web/knowledge_map_views.py#L30-L50",
+        "file:tests/test_knowledge_maps.py#L150-L174"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:092232379498ab9f22e465d0b13b23fb76d70678f5a56540f261c9456b8ee81f"
+}

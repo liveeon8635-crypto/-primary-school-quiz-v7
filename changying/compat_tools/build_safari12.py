@@ -44,7 +44,7 @@ def collect_variant():
 def collect():
     sources, coverage = {}, {}
     for homework, quick_login in [('0','0'),('0','1'),('1','0'),('1','1')]:
-        env = dict(os.environ, HOMEWORK_ASSISTANT=homework, CLASSROOM_QUICK_LOGIN=quick_login)
+        env = dict(os.environ, HOMEWORK_ASSISTANT=homework, CLASSROOM_QUICK_LOGIN=quick_login, KNOWLEDGE_MAP='1')
         result = subprocess.run(
             [sys.executable, '-m', 'changying.compat_tools.build_safari12', '--collect'],
             env=env, text=True, capture_output=True, check=True, timeout=90,
