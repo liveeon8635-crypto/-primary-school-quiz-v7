@@ -323,8 +323,9 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         ids = []
         for raw in b.questions:
             try:
+                qt = raw.get("question_type") if raw.get("question_type") in ("single_choice", "fill_blank") else "single_choice"
                 q = I.QuestionCreate(**{**raw, "grade": row.grade, "subject": row.subject, "textbook": "人教版", "semester": row.term,
-                                        "unit": unit, "knowledge": node["bankKeys"][0], "question_type": "single_choice"})
+                                        "unit": unit, "knowledge": node["bankKeys"][0], "question_type": qt})
             except ValueError:
                 raise HTTPException(400, "图形题格式不对，请重新生成")
             if not vq.sanitize(q.figure) or not q.text.strip():

@@ -6,7 +6,9 @@ A figure is a W×H square grid (y pointing up, like the textbook's 方格纸) wi
      "shapes": [{"points": [[x, y], ...], "tone": "a" | "b" | "ghost", "label": "A"}],
      "axis": [[x1, y1], [x2, y2]],        # optional symmetry axis l (drawn dashed across the grid)
      "center": [x, y],                    # optional rotation centre O
-     "panels": [{"label": "图A", "shapes": [...], "axis": ..., "center": ...}]}   # optional answer pictures
+     "panels": [{"label": "图A", "shapes": [...], "axis": ..., "center": ...}],   # optional answer pictures
+     "hideGrid": true,                    # optional: a plain drawing with measurements instead of squared paper
+     "marks": [{"from": [x, y], "to": [x, y], "text": "8 cm", "style": "dim" | "height"}]}   # optional measurements
 
 The moved shapes, the answer and the distractors are computed here (typical mistakes: one square too few or too
 many, wrong direction, wrong turning direction, flipped instead of turned), so the picture and the answer agree.
@@ -63,6 +65,24 @@ def _shapes(value: Any, w: int, h: int) -> list[dict[str, Any]] | None:
     return out
 
 
+MAX_MARKS = 6
+
+
+def _marks(value: Any, w: int, h: int) -> list[dict[str, Any]] | None:
+    if not isinstance(value, list) or len(value) > MAX_MARKS:
+        return None
+    out = []
+    for m in value:
+        if not isinstance(m, dict) or m.get("style") not in ("dim", "height"):
+            return None
+        a, b = _pt(m.get("from"), w, h), _pt(m.get("to"), w, h)
+        text = str(m.get("text") or "").strip()[:12]
+        if a is None or b is None or a == b or not text:
+            return None
+        out.append({"from": a, "to": b, "text": text, "style": m["style"]})
+    return out
+
+
 def _extras(src: dict[str, Any], dst: dict[str, Any], w: int, h: int) -> bool:
     if src.get("axis") is not None:
         a = src["axis"]
@@ -77,6 +97,12 @@ def _extras(src: dict[str, Any], dst: dict[str, Any], w: int, h: int) -> bool:
         if c is None:
             return False
         dst["center"] = c
+    if src.get("marks") is not None:
+        marks = _marks(src["marks"], w, h)
+        if marks is None:
+            return False
+        if marks:
+            dst["marks"] = marks
     return True
 
 
@@ -87,6 +113,8 @@ def sanitize(value: Any) -> dict[str, Any]:
     if any(isinstance(x, bool) or not isinstance(x, int) or not 3 <= x <= MAX_SIDE for x in (w, h)):
         return {}
     out: dict[str, Any] = {"type": FIGURE_TYPE, "width": w, "height": h}
+    if value.get("hideGrid") is True:
+        out["hideGrid"] = True
     shapes = _shapes(value.get("shapes") or [], w, h)
     if shapes is None or not _extras(value, out, w, h):
         return {}

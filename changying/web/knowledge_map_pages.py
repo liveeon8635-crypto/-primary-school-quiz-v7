@@ -87,8 +87,8 @@ function kmVisualDrafts(n,d,out){
     var keep=el('input',{type:'checkbox',checked:true}),text=el('textarea',{class:'s','aria-label':'题干'}),exp=el('textarea',{class:'s','aria-label':'解析'});
     text.value=q.text;exp.value=q.explanation||'';
     out.appendChild(el('div',{class:'card','data-visual':String(i)},el('label',{},keep,' 保留这道题'),el('label',{},'题干 ',text),cyCubeSvgNode(q.figure),
-      el('p',{text:'选项：'+q.options.join('　')+'　　正确答案：'+q.options[q.correct_index]}),el('label',{},'解析 ',exp)));
-    rows.push(function(){return keep.checked?{text:text.value.trim(),options:q.options,correct_index:q.correct_index,explanation:exp.value,figure:q.figure}:null});
+      el('p',{text:q.question_type==='fill_blank'?'填空题，答案：'+q.answer:'选项：'+q.options.join('　')+'　　正确答案：'+q.options[q.correct_index]}),el('label',{},'解析 ',exp)));
+    rows.push(function(){return keep.checked?{text:text.value.trim(),question_type:q.question_type,options:q.options,correct_index:q.correct_index,answer:q.answer||'',explanation:exp.value,figure:q.figure}:null});
   });
   var msgBox=el('p',{class:'muted'});
   out.appendChild(el('div',{class:'row'},
