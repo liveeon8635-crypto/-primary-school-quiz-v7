@@ -21,7 +21,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, DateTime, Integer, String, Table, Text, delete, insert, select, update
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, Text, delete, insert, select, update
 
 from changying.services import weekend_courseware as cw
 from changying.services.weekend_stages import STAGE_COUNT
@@ -38,6 +38,14 @@ class SaveBody(PageBody):
     kind: str = Field(max_length=20)
     params: dict[str, Any]
     writtenTask: bool = False
+
+
+class TemplateBody(PageBody):
+    name: str = Field(default="", max_length=80)
+
+
+class ApplyTemplateBody(PageBody):
+    templateId: int
 
 
 class ViewBody(BaseModel):
@@ -62,6 +70,31 @@ def register_courseware_table(implementation: Any) -> Table:
               Column("live_json", Text, nullable=False),               # {"session:stage:page": screen state}
               Column("updated_at", DateTime, nullable=False))
     return md.tables["weekend_courseware"]
+
+
+def register_courseware_template_table(implementation: Any) -> Table:
+    """Courseware templates a school can reuse across lessons; created by the startup create_all.
+
+    Kept apart from ``weekend_courseware`` because that table's ``lesson_id`` is unique and
+    non-null (one row per lesson), so a template cannot live there without breaking its shape.
+    """
+    md = implementation.Base.metadata
+    if "weekend_courseware_template" not in md.tables:
+        Table("weekend_courseware_template", md,
+              Column("id", Integer, primary_key=True),
+              Column("school_id", Integer, nullable=False, index=True),
+              Column("grade", Integer, nullable=False, default=0, index=True),
+              Column("subject", String(30), nullable=False, index=True),
+              Column("name", String(80), nullable=False),
+              Column("kind", String(20), nullable=False),
+              Column("stage_no", Integer, nullable=False),
+              Column("page", Integer, nullable=True),
+              Column("params_json", Text, nullable=False),
+              Column("written_task", Boolean, nullable=False, default=False),
+              Column("source_lesson_id", Integer, nullable=True),
+              Column("created_by", Integer, nullable=True),
+              Column("created_at", DateTime, nullable=False, default=datetime.utcnow))
+    return md.tables["weekend_courseware_template"]
 
 
 def stage_pages(lesson: Any, stage_no: int) -> list[str]:
@@ -133,6 +166,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     from changying.web.weekend_written import register_written_tables
 
     t = register_courseware_table(implementation)
+    register_courseware_template_table(implementation)   # must exist in metadata before the startup create_all
     tables = register_weekend_tables(implementation)
     sessions, slide = tables["sessions"], tables["slide"]
     written = register_written_tables(implementation)["questions"]
@@ -161,6 +195,15 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         if page is None or not 0 <= page < len(pages):
             raise HTTPException(400, "这个环节有分页，请选择课件对应的页（例题）")
         return page
+
+    def lesson_grade(db: Any, lesson: Any) -> int:
+        """The school's current grade, kept on the template so a listing can be filtered later."""
+        Program = getattr(implementation, "TeachingProgram", None)
+        if Program is None:
+            return 0
+        p = db.scalar(select(Program).where(Program.school_id == lesson.school_id)
+                      .order_by(Program.active.desc(), Program.id.desc()).limit(1))
+        return int(getattr(p, "grade", 0) or 0) if p is not None else 0
 
     def write(db: Any, u: Any, lesson: Any, items: list[dict[str, Any]]) -> None:
         c = row_for(db, lesson, lock=True)
@@ -302,6 +345,64 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         write(db, u, lesson, items)
         return payload(db, lesson)
 
+    @router.get("/teacher/weekend/courseware/templates")
+    def list_templates(subject: str = "", u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """This school's saved courseware templates, newest first."""
+        need(u, "teacher")
+        qt = register_courseware_template_table(implementation)
+        q = select(qt).where(qt.c.school_id == u.school_id)
+        if subject in cw.TEMPLATES:
+            q = q.where(qt.c.subject == subject)
+        rows = db.execute(q.order_by(qt.c.id.desc()).limit(200)).all()
+        return {"items": [{"id": r.id, "name": r.name, "kind": r.kind, "kindLabel": cw.KIND_LABEL.get(r.kind, r.kind),
+                           "grade": r.grade, "subject": r.subject, "stageNo": r.stage_no, "page": r.page,
+                           "writtenTask": bool(r.written_task)} for r in rows]}
+
+    @router.post("/teacher/weekend/lessons/{lid}/courseware/save-as-template")
+    def save_as_template(lid: int, b: TemplateBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Save one page's current courseware as a template this school can reuse in other lessons."""
+        lesson = my_lesson(db, u, lid)
+        page = checked_page(lesson, b.stageNo, b.page)
+        item = find(items_of(row_for(db, lesson)), b.stageNo, page)
+        if item is None:
+            raise HTTPException(404, "这一页还没有课件，请先生成或填写")
+        try:
+            params = cw.clean(item["kind"], item["params"], lesson.reading_plan or "")
+        except ValueError as e:
+            raise HTTPException(400, f"这一页的课件参数还不完整，不能存为模板（{e}）")
+        name = (b.name or "").strip()[:80] or f"{lesson.subject}第{lesson.lesson_no}课 第{b.stageNo}环节"
+        qt = register_courseware_template_table(implementation)
+        tid = db.execute(insert(qt).values(school_id=u.school_id, grade=lesson_grade(db, lesson), subject=lesson.subject,
+                                           name=name, kind=item["kind"], stage_no=b.stageNo, page=page,
+                                           params_json=json.dumps(params, ensure_ascii=False),
+                                           written_task=bool(item.get("writtenTask")), source_lesson_id=lesson.id,
+                                           created_by=u.id, created_at=datetime.utcnow())).inserted_primary_key[0]
+        implementation.audit(db, u, "weekend.courseware.save_template", f"lesson={lid}:stage={b.stageNo}:page={page}:template={tid}")
+        db.commit()
+        return {"templateId": tid, "name": name, "kind": item["kind"]}
+
+    @router.post("/teacher/weekend/lessons/{lid}/courseware/from-template")
+    def from_template(lid: int, b: ApplyTemplateBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Copy a saved template onto one page of this lesson; re-validated and stored as a draft."""
+        lesson = my_lesson(db, u, lid)
+        page = checked_page(lesson, b.stageNo, b.page)
+        qt = register_courseware_template_table(implementation)
+        row = db.execute(select(qt).where(qt.c.id == b.templateId, qt.c.school_id == u.school_id)).first()
+        if row is None:
+            raise HTTPException(404, "没有找到这个模板")
+        if row.subject != lesson.subject:
+            raise HTTPException(400, "这个模板属于另一门学科，不能用在当前课程")
+        try:
+            params = cw.clean(row.kind, json.loads(row.params_json or "{}"), lesson.reading_plan or "")
+        except ValueError as e:
+            raise HTTPException(400, f"这个模板套用到本节课不合适（{e}），可以改用生成或手动填写")
+        pages = stage_pages(lesson, b.stageNo)
+        page_text = pages[page] if page is not None else ""
+        upsert(db, u, lesson, b.stageNo, page, row.kind, params, bool(row.written_task), page_text)
+        implementation.audit(db, u, "weekend.courseware.from_template", f"lesson={lid}:stage={b.stageNo}:page={page}:template={row.id}")
+        db.commit()
+        return payload(db, lesson)
+
     @router.post("/teacher/weekend/sessions/{sid}/courseware/view")
     def set_view(sid: int, b: ViewBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Teacher drags, turns or reveals during class: stores the screen state only (no AI)."""
@@ -335,4 +436,5 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     return router
 
 
-__all__ = ["courseware_for_session", "install_weekend_courseware", "items_of", "register_courseware_table", "stage_pages"]
+__all__ = ["courseware_for_session", "install_weekend_courseware", "items_of", "register_courseware_table",
+           "register_courseware_template_table", "stage_pages"]
