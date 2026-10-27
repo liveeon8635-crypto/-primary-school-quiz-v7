@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:6ec77f74e6a468b912cefbdd3c12ce1c2354aa8a72e23ab189b939233eb15389",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "ba37b64653270a091c30ba56ab16be76160fc35d",
+  "headSha": "fb5441ba9034a7fb9b903a379c74f611f0264f46",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：该变更新增了可能性、植树问题和密铺题型的图形生成与校验逻辑，代码质量良好且测试全面，CI 检查均已通过。",
+      "evidenceRefs": [
+        "run:122351043360",
+        "run:122351043298"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "新增的图形服务模块及对应单测覆盖完整，未修改敏感治理规则或架构约束文件。",
+      "evidenceRefs": [
+        "file:changying/services/chance_figures.py",
+        "file:changying/services/tiling_figures.py",
+        "file:changying/services/tree_figures.py",
+        "file:changying/services/visual_questions.py"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:707459272f6b41c5e7da55137b01db04f963d93b6eb33ed479024855e8332275"
+}

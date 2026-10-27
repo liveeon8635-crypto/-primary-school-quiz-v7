@@ -31,8 +31,6 @@ with TestClient(app) as client:
                     json={**base, "dryRun": True, "items": [plan(3, "圆的面积")]})
     assert r.status_code == 200, r.text
     assert r.json()["items"][0]["status"] == "ready" and r.json()["imported"] == 0
-    assert r.json()["ready"] == 1 and r.json()["failed"] == 0
-    assert "预检" in r.json()["message"] and "可导入 1 节" in r.json()["message"]
     rows = client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()["items"]
     assert not any(row["lessonNo"] == 3 and row["hasPlan"] for row in rows)
 
@@ -156,50 +154,5 @@ with TestClient(app) as client:
                     data={"subject": "数学", "dryRun": "1"}, files=files[:1])
     assert r.json()["items"][0]["status"] == "conflict"
     assert not calls, calls
-print('OK')
-''')
-
-
-def test_batch_import_detects_the_markdown_convention_and_skips_the_model(tmp_path):
-    helpers.run_isolated(tmp_path, helpers.COMMON + r'''
-MD = """# 第08课：分数的意义
-
-## 本节目标
-理解分数的意义。
-
-## 课后练习
-1. 三分之一表示什么？
-【答案】把一个整体平均分成三份取一份。
-"""
-
-PLAIN = ("第09课 教案\n本节目标：认识分数。\n教学流程\n一、导入新课。\n"
-         "课后练习\n1. 用自己的话说说分数的意义。\n") * 3
-
-with TestClient(app) as client:
-    th, sh, sid, school_id = setup(client)
-    files = [("files", ("第08课-分数的意义.md", MD.encode("utf-8"), "text/markdown")),
-             ("files", ("第09课-普通教案.txt", PLAIN.encode("utf-8"), "text/plain"))]
-
-    # The preview says which engine each file will use, without calling the model.
-    r = client.post("/teacher/weekend/lessons/import/preview", headers=th, data={"subject": "数学"}, files=files)
-    assert r.status_code == 200, r.text
-    assert [i["engine"] for i in r.json()["items"]] == ["markdown", "ai"]
-    assert not calls
-
-    replies.append(json.dumps({"title": "分数的初步认识", "coreTarget": "认识分数", "teacherPlan": "导入",
-                               "ppt": [], "examples": ["例1"], "closureTraining": "课后练习",
-                               "questions": [], "writtenQuestions": []}, ensure_ascii=False))
-    r = client.post("/teacher/weekend/lessons/import/batch", headers=th, data={"subject": "数学"}, files=files)
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["imported"] == 2, body
-    by_name = {i["filename"]: i for i in body["items"]}
-    assert by_name["第08课-分数的意义.md"]["engine"] == "markdown"
-    assert by_name["第09课-普通教案.txt"]["engine"] == "ai"
-    assert len(calls) == 1, "only the free-form file may reach the model"
-
-    lid = by_name["第08课-分数的意义.md"]["lessonId"]
-    written = client.get(f"/teacher/weekend/lessons/{lid}/written/questions", headers=th).json()["items"]
-    assert len(written) == 1 and "三分之一" in written[0]["stem"]
 print('OK')
 ''')

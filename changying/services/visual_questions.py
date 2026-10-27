@@ -1,21 +1,26 @@
-"""系统画图的图形题：按知识点分派到各类图示（组合体、方格纸上的图形运动和面积），并统一保存校验."""
+"""系统画图的图形题：按知识点分派到各类图示（组合体、方格纸上的图形运动/面积/植树/密铺、可能性），并统一保存校验."""
 from __future__ import annotations
 
 from typing import Any
 
 from changying.services import area_figures as af
+from changying.services import chance_figures as ch
 from changying.services import cube_figures as cf
 from changying.services import grid_figures as gf
+from changying.services import tiling_figures as tl
+from changying.services import tree_figures as tf
 
-_FAMILIES = (cf, gf)                          # one per figure type: generation and saving checks
-_GENERATORS = (cf, gf, af)                    # area questions draw on squared paper (the gridshape type)
+_FAMILIES = (cf, gf, ch)                      # one per figure type: generation and saving checks
+_GENERATORS = (cf, gf, af, tf, tl, ch)        # area, tree and tiling questions draw on the gridshape type
 FIGURE_TYPES = {m.FIGURE_TYPE for m in _FAMILIES}
-# Review points mix the kinds of the units they review (8-4 图形的运动与测量).
+# Review points mix the kinds of the units they review (8-4 图形的运动与测量, 8-5 可能性综合).
 REVIEW = {"8-4": [(gf, "translate"), (gf, "rotate"), (gf, "reflect"), (af, "parallelogram"), (af, "triangle"),
-                  (af, "trapezoid"), (af, "composite")]}
-NODE_KINDS = {**cf.NODE_KINDS, **gf.NODE_KINDS, **af.NODE_KINDS, **{k: "review" for k in REVIEW}}
+                  (af, "trapezoid"), (af, "composite")],
+          "8-5": [(ch, "certain"), (ch, "compare"), (ch, "infer")]}
+NODE_KINDS = {**cf.NODE_KINDS, **gf.NODE_KINDS, **af.NODE_KINDS, **tf.NODE_KINDS, **tl.NODE_KINDS, **ch.NODE_KINDS,
+              **{k: "review" for k in REVIEW}}
 NODE_LABELS = {**{key: fam.KIND_LABELS[kind] for fam in _GENERATORS for key, kind in fam.NODE_KINDS.items()},
-               "8-4": "复习：图形的运动和面积混合"}
+               "8-4": "复习：图形的运动和面积混合", "8-5": "复习：可能性综合（摸球、转盘、推测）"}
 
 
 def _review(node_key: str, level: str, n: int, seed: int) -> list[dict[str, Any]]:
