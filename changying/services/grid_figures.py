@@ -26,8 +26,9 @@ MAX_SHAPES = 3
 MAX_PANELS = 4
 TONES = ("a", "b", "ghost")
 
-NODE_KINDS = {"4-1": "reflect", "4-2": "translate", "4-3": "rotate"}
-KIND_LABELS = {"reflect": "选轴对称图形", "translate": "平移：选位置或说出怎样平移", "rotate": "旋转：选位置或说出怎样旋转"}
+NODE_KINDS = {"4-1": "reflect", "4-2": "translate", "4-3": "rotate", "4-4": "combo"}
+KIND_LABELS = {"reflect": "选轴对称图形", "translate": "平移：选位置或说出怎样平移", "rotate": "旋转：选位置或说出怎样旋转",
+               "combo": "先平移再旋转：说出图形怎样变换"}
 
 # Asymmetric shapes (no mirror or turn of one equals another), so every move draws differently.
 SHAPES = [
@@ -175,6 +176,12 @@ def _inside(pts: Pts, w: int, h: int) -> bool:
     return all(0 <= x <= w and 0 <= y <= h for x, y in pts)
 
 
+def _apart(p: Pts, q: Pts) -> bool:
+    """The bounding boxes of the two shapes at most touch."""
+    return (max(x for x, _ in p) <= min(x for x, _ in q) or max(x for x, _ in q) <= min(x for x, _ in p)
+            or max(y for _, y in p) <= min(y for _, y in q) or max(y for _, y in q) <= min(y for _, y in p))
+
+
 def _distinct(cands: list[Pts], n: int = 4) -> bool:
     return len({_key(c) for c in cands[:n]}) == n
 
@@ -309,6 +316,39 @@ def make_question(kind: str, level: str, seed: int) -> dict[str, Any] | None:
                   "shapes": [{"points": original, "tone": "a", "label": "A"}, {"points": moved, "tone": "b", "label": "B"}]}
         why = f"看和点 O 相连的一条边：从图形 A 到图形 B，它按{turn}方向转了一个直角（90°）。"
         return _q("图形 A 怎样旋转得到图形 B？（　　）", options, right, why, figure)
+    if kind == "combo":
+        d = rng.choice(list(DIR_TEXT))
+        span = (max(p[0] for p in a) - min(p[0] for p in a)) if d[0] else (max(p[1] for p in a) - min(p[1] for p in a))
+        n = span + rng.randint(1, 2)
+        original = _place(rng, a, (0, 6), (0, 5))
+        moved = translate(original, d[0] * n, d[1] * n)
+        o = rng.choice(moved)                       # O marks a vertex of the shape after the move
+        cw = rng.random() < 0.5
+        final = rotate(moved, o, cw, 90)
+        if not (_inside(moved, W, H) and _inside(final, W, H)) or not _apart(original, final):
+            return None                              # A and B must not overlap, or the picture is unreadable
+        turn, other = ("顺时针", "逆时针") if cw else ("逆时针", "顺时针")
+        back = DIR_TEXT[(-d[0], -d[1])]
+
+        def apply(dd: tuple[int, int], k: int, clockwise: bool | None) -> Pts:
+            t = translate(original, dd[0] * k, dd[1] * k)
+            return rotate(t, o, True, 180) if clockwise is None else rotate(t, o, clockwise, 90)
+
+        plans = [(f"先向{DIR_TEXT[d]}平移 {n} 格，再绕点 O {turn}旋转 90°", apply(d, n, cw)),
+                 (f"先向{DIR_TEXT[d]}平移 {n} 格，再绕点 O {other}旋转 90°", apply(d, n, not cw)),
+                 (f"先向{DIR_TEXT[d]}平移 {n - 1} 格，再绕点 O {turn}旋转 90°", apply(d, n - 1, cw)),
+                 (f"先向{back}平移 {n} 格，再绕点 O {turn}旋转 90°", apply((-d[0], -d[1]), n, cw)),
+                 (f"先向{DIR_TEXT[d]}平移 {n} 格，再绕点 O 旋转 180°", apply(d, n, None))]
+        right_key = _key(final)
+        wrong = [t for t, r in plans[1:] if _key(r) != right_key][:3]
+        if len(wrong) < 3:
+            return None
+        options, k = _options(rng, plans[0][0], wrong)
+        figure = {"type": FIGURE_TYPE, "width": W, "height": H, "center": o,
+                  "shapes": [{"points": original, "tone": "a", "label": "A"}, {"points": final, "tone": "b", "label": "B"}]}
+        why = (f"先把图形 A 向{DIR_TEXT[d]}平移 {n} 格，这时它的一个顶点正好落在点 O；再绕点 O {turn}旋转 90°，就和图形 B 重合。"
+               "做这类题可以先找平移后的位置，再看绕点 O 转的方向和角度。")
+        return _q("图形 A 怎样变换得到图形 B？（　　）", options, k, why, figure)
     raise ValueError(kind)
 
 

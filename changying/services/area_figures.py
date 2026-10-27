@@ -11,9 +11,10 @@ from typing import Any
 
 from changying.services.grid_figures import FIGURE_TYPE, LETTERS
 
-NODE_KINDS = {"6-1": "parallelogram", "6-2": "triangle", "6-3": "trapezoid", "6-4": "composite"}
+NODE_KINDS = {"6-1": "parallelogram", "6-2": "triangle", "6-3": "trapezoid", "6-4": "composite", "6-6": "lattice"}
 KIND_LABELS = {"parallelogram": "平行四边形的面积（方格图、标尺寸）", "triangle": "三角形的面积（方格图、标尺寸）",
-               "trapezoid": "梯形的面积（方格图、标尺寸）", "composite": "组合图形的面积（分割、添补）"}
+               "trapezoid": "梯形的面积（方格图、标尺寸）", "composite": "组合图形的面积（分割、添补）",
+               "lattice": "格点多边形的面积（方格图）"}
 W, H = 12, 8
 
 
@@ -153,7 +154,53 @@ def make_question(kind: str, level: str, seed: int) -> dict[str, Any] | None:
                            [f"{fmt(bw * bh)} {cm}", f"{fmt(bw * bh + cw * ch)} {cm}", f"{fmt(2 * (bw + bh))} {cm}"],
                            "缺掉的部分要减去，不能直接用长 × 宽；周长和面积也不要混淆。" + why, _fig(pts, marks, grid=False))
         return _fill("下面组合图形的面积是（　　）平方厘米。", area, why, _fig(pts, marks, grid=False))
+    if kind == "lattice":
+        size = {"basic": (4, 3), "medium": (5, 4), "hard": (6, 5)}[level]
+        pts = [[x0 + rng.randint(0, size[0]), y0 + rng.randint(0, size[1])] for _ in range(rng.randint(4, 6))]
+        hull = _hull(pts)
+        if len(hull) < (3 if level == "basic" else 4):
+            return None
+        area = _area(hull)
+        if area < 3:
+            return None
+        border = sum(_gcd(abs(b[0] - a[0]), abs(b[1] - a[1])) for a, b in zip(hull, hull[1:] + hull[:1]))
+        inner = int(area - border / 2 + 1)
+        why = (f"可以用添补法：先算把它围住的长方形，再减去四周的直角三角形和长方形。也可以数格点：图形内部有 {inner} 个格点，"
+               f"边上有 {border} 个格点，面积 = {inner} + {border} ÷ 2 − 1 = {fmt(area)}（平方厘米）。")
+        return _fill("下面格点多边形的面积是（　　）平方厘米。", area, why, _fig(hull, title=GRID_TITLE))
     raise ValueError(kind)
+
+
+def _gcd(a: int, b: int) -> int:
+    while b:
+        a, b = b, a % b
+    return a
+
+
+def _area(pts: list[list[int]]) -> float:
+    return abs(sum(x1 * y2 - x2 * y1 for (x1, y1), (x2, y2) in zip(pts, pts[1:] + pts[:1]))) / 2
+
+
+def _hull(pts: list[list[int]]) -> list[list[int]]:
+    """Convex hull of lattice points (counter-clockwise), collinear points dropped."""
+    p = sorted({(x, y) for x, y in pts})
+    if len(p) < 3:
+        return []
+
+    def cross(o: tuple[int, int], a: tuple[int, int], b: tuple[int, int]) -> int:
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower: list[tuple[int, int]] = []
+    for q in p:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], q) <= 0:
+            lower.pop()
+        lower.append(q)
+    upper: list[tuple[int, int]] = []
+    for q in reversed(p):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], q) <= 0:
+            upper.pop()
+        upper.append(q)
+    return [list(q) for q in lower[:-1] + upper[:-1]]
 
 
 def generate(node_key: str, level: str, n: int, seed: int) -> list[dict[str, Any]]:
