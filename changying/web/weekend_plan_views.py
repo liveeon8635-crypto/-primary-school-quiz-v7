@@ -457,6 +457,18 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(400, "没有读到足够的文字（扫描版 PDF 和纯图片暂不支持），请换文件或直接粘贴文字")
         return extracted
 
+    def _markdown_plan(extracted: dict[str, Any]) -> dict[str, Any] | None:
+        """A plan parsed by rule when the text follows the documented convention, else None.
+
+        Detection is deliberately conservative: the parser only accepts the fixed ``##``
+        section names, so an ordinary free-form teaching document raises and falls back
+        to the AI path unchanged.
+        """
+        try:
+            return lesson_markdown.parse(extracted.get("text") or "", max_lesson=LESSONS)
+        except ValueError:
+            return None
+
     def _apply_lesson_plan(db: Any, u: Any, subject: str, lessonNo: int, data: dict[str, Any], source_text: str,
                            *, slides_hint: list[str] | None = None, use_literal: bool = True) -> dict[str, Any]:
         """Write one structured lesson plan plus its draft questions, then commit.
@@ -511,6 +523,11 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == subject, Lesson.lesson_no == lessonNo))
         if lesson is not None and force != "1" and has_real_plan(lesson):
             raise HTTPException(409, "这节课已经有教案了。导入会覆盖教案文字（已通过的习题保留）。")
+        plan = _markdown_plan(extracted)
+        if plan is not None:
+            got = _apply_lesson_plan(db, u, subject, lessonNo, plan, extracted["text"], use_literal=False)
+            got["engine"] = "markdown"
+            return got
         prompt = (
             f"下面是一位小学{p.grade}年级{subject}老师自己写的周末课教案内容。请只整理、归类里面已有的内容，不要编造新内容；文档里没有的字段留空。\n"
             f"---教案内容开始---\n{extracted['text']}\n---教案内容结束---\n"
@@ -522,7 +539,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=90))
         if not isinstance(data, dict) or not (str(data.get("title") or "").strip() or str(data.get("coreTarget") or "").strip() or _lines(data.get("examples"))):
             raise HTTPException(502, "AI 没能整理出教案，请再试一次，或在“审改”里手动填写")
-        return _apply_lesson_plan(db, u, subject, lessonNo, data, extracted["text"], slides_hint=extracted["slides"] or None)
+        got = _apply_lesson_plan(db, u, subject, lessonNo, data, extracted["text"], slides_hint=extracted["slides"] or None)
+        got["engine"] = "ai"
+        return got
 
     @router.post("/teacher/weekend/lessons/import")
     def import_lesson(subject: str = Form(...), lessonNo: int = Form(...), force: str = Form("0"), text: str = Form(""), file: UploadFile | None = File(None),
@@ -548,10 +567,11 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         for item in files:
             name = (item.filename or "").strip()
             lesson_no = detect_lesson_no(name, max_lesson=LESSONS)
-            row: dict[str, Any] = {"filename": name, "lessonNo": lesson_no, "ok": False, "chars": 0, "error": "", "hasPlan": False}
+            row: dict[str, Any] = {"filename": name, "lessonNo": lesson_no, "ok": False, "chars": 0, "error": "", "hasPlan": False, "engine": ""}
             try:
                 extracted = _extract_upload(item, "")
-                row.update(ok=True, chars=len(extracted["text"]), preview=extracted["text"][:120])
+                row.update(ok=True, chars=len(extracted["text"]), preview=extracted["text"][:120],
+                           engine="markdown" if _markdown_plan(extracted) is not None else "ai")
                 if lesson_no is not None and p is not None:
                     lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id,
                                                             Lesson.subject == subject, Lesson.lesson_no == lesson_no))
@@ -582,7 +602,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                     raise HTTPException(400, "没能从文件名看出课次，请把文件命名为「第03课」或「lesson-03」")
                 got = _apply_lesson_extract(db, u, subject, lesson_no, force, _extract_upload(item, ""))
                 items.append({"filename": name, "lessonNo": lesson_no, "ok": True, "lessonId": got["lessonId"],
-                              "sourceChars": got["sourceChars"], "error": ""})
+                              "sourceChars": got["sourceChars"], "engine": got.get("engine", ""), "error": ""})
             except HTTPException as exc:
                 db.rollback()
                 items.append({"filename": name, "lessonNo": lesson_no, "ok": False, "error": str(exc.detail)})
@@ -693,9 +713,26 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             except HTTPException as exc:
                 db.rollback()
                 results.append({**base, "ok": False, "status": "invalid", "error": str(exc.detail)})
-        failed = len(results) - imported
-        return {"items": results, "imported": imported, "failed": failed, "dryRun": dry_run,
-                "message": f"成功导入 {imported} 节，失败 {failed} 节" + ("（失败项可单独重试）" if failed else "")}
+        # A dry run writes nothing, so "not imported" is not "failed": count each status.
+        ready = sum(1 for item in results if item["status"] == "ready")
+        invalid = sum(1 for item in results if item["status"] == "invalid")
+        blocked = len(results) - imported - ready - invalid
+        if dry_run:
+            parts = [f"可导入 {ready} 节"]
+            if blocked:
+                parts.append(f"冲突或跳过 {blocked} 节")
+            if invalid:
+                parts.append(f"非法 {invalid} 节")
+            message = "预检（未写入）：" + "，".join(parts)
+        else:
+            parts = [f"成功导入 {imported} 节"]
+            if blocked:
+                parts.append(f"冲突或跳过 {blocked} 节")
+            if invalid:
+                parts.append(f"失败 {invalid} 节（可单独重试）")
+            message = "，".join(parts)
+        return {"items": results, "imported": imported, "ready": ready, "blocked": blocked,
+                "failed": invalid, "dryRun": dry_run, "message": message}
 
     @router.post("/teacher/weekend/lessons/import/structured")
     def import_structured(b: StructuredImportBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
