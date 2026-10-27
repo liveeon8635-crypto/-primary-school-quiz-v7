@@ -63,18 +63,50 @@ function cyGridShapes(fig){
   var out=[],W=fig.width,H=fig.height;
   var TONE={a:{fill:'#bfdbfe',stroke:'#1e3a8a',dash:''},b:{fill:'#fecaca',stroke:'#b91c1c',dash:''},ghost:{fill:'none',stroke:'#94a3b8',dash:'4 3'}};
   function draw(f,c,ox,oy){
-    var i,X=function(x){return ox+x*c},Y=function(y){return oy+(H-y)*c};
-    for(i=0;i<=W;i++)out.push({t:'line',a:{x1:X(i),y1:Y(0),x2:X(i),y2:Y(H),stroke:'#e2e8f0','stroke-width':1}});
-    for(i=0;i<=H;i++)out.push({t:'line',a:{x1:X(0),y1:Y(i),x2:X(W),y2:Y(i),stroke:'#e2e8f0','stroke-width':1}});
+    var i,X=function(x){return ox+x*c},Y=function(y){return oy+(H-y)*c},plain=f.hideGrid||fig.hideGrid;
+    if(plain){
+      // A plain drawing is cropped to the shape and its measurements, with room for the labels around it.
+      var xs=[],ys=[],M=46;
+      (f.shapes||[]).forEach(function(s){s.points.forEach(function(p){xs.push(p[0]);ys.push(p[1])})});
+      (f.marks||[]).forEach(function(m){xs.push(m.from[0],m.to[0]);ys.push(m.from[1],m.to[1])});
+      var minx=Math.min.apply(null,xs),maxx=Math.max.apply(null,xs),miny=Math.min.apply(null,ys),maxy=Math.max.apply(null,ys);
+      X=function(x){return ox+M+(x-minx)*c};Y=function(y){return oy+M+(maxy-y)*c};
+    }
+    if(!plain){
+      for(i=0;i<=W;i++)out.push({t:'line',a:{x1:X(i),y1:Y(0),x2:X(i),y2:Y(H),stroke:'#e2e8f0','stroke-width':1}});
+      for(i=0;i<=H;i++)out.push({t:'line',a:{x1:X(0),y1:Y(i),x2:X(W),y2:Y(i),stroke:'#e2e8f0','stroke-width':1}});
+    }
     (f.shapes||[]).forEach(function(s){var t=TONE[s.tone]||TONE.a,a={points:s.points.map(function(p){return X(p[0])+','+Y(p[1])}).join(' '),fill:t.fill,stroke:t.stroke,'stroke-width':c>14?2:1.5};
       if(t.dash)a['stroke-dasharray']=t.dash;out.push({t:'polygon',a:a});
       if(s.label){var sx=0,sy=0;s.points.forEach(function(p){sx+=p[0];sy+=p[1]});
         out.push({t:'text',a:{x:X(sx/s.points.length),y:Y(sy/s.points.length)+5,'text-anchor':'middle','font-size':Math.max(11,c*0.6),'font-weight':700,fill:t.stroke},s:s.label})}});
     if(f.axis){out.push({t:'line',a:{x1:X(f.axis[0][0]),y1:Y(f.axis[0][1]),x2:X(f.axis[1][0]),y2:Y(f.axis[1][1]),stroke:'#dc2626','stroke-width':2,'stroke-dasharray':'6 4'}});
       out.push({t:'text',a:{x:X(f.axis[1][0])+4,y:Y(f.axis[1][1])+12,'font-size':Math.max(11,c*0.6),fill:'#dc2626','font-style':'italic'},s:'l'})}
+    // Measurements: 底/边 as a dimension line set off from the shape, 高 as a dashed line with a right angle at its foot.
+    (f.marks||[]).forEach(function(m){
+      var ax=X(m.from[0]),ay=Y(m.from[1]),bx=X(m.to[0]),by=Y(m.to[1]),fs=Math.max(12,c*0.55),
+          len=Math.sqrt((bx-ax)*(bx-ax)+(by-ay)*(by-ay))||1,nx=(by-ay)/len,ny=-(bx-ax)/len,cx=0,cy=0,k=0;
+      (f.shapes||[]).forEach(function(s){s.points.forEach(function(p){cx+=X(p[0]);cy+=Y(p[1]);k++})});
+      if(k){cx/=k;cy/=k}
+      var mx=(ax+bx)/2,my=(ay+by)/2;if((mx-cx)*nx+(my-cy)*ny<0){nx=-nx;ny=-ny}
+      if(m.style==='height'){
+        out.push({t:'line',a:{x1:ax,y1:ay,x2:bx,y2:by,stroke:'#475569','stroke-width':1.5,'stroke-dasharray':'5 4'}});
+        var q=Math.min(10,c*0.4),sx=bx+(ax>=cx?-q:q);
+        out.push({t:'polyline',a:{points:[sx,by,sx,by-q,bx,by-q].join(','),fill:'none',stroke:'#475569','stroke-width':1.2}});
+        out.push({t:'text',a:{x:mx+(ax>=cx?-6:6),y:my+4,'text-anchor':ax>=cx?'end':'start','font-size':fs,fill:'#0f172a'},s:m.text});
+      }else{
+        var off=c*0.45,px=nx*off,py=ny*off;
+        out.push({t:'line',a:{x1:ax+px,y1:ay+py,x2:bx+px,y2:by+py,stroke:'#64748b','stroke-width':1.2}});
+        out.push({t:'line',a:{x1:ax+px*0.5,y1:ay+py*0.5,x2:ax+px*1.5,y2:ay+py*1.5,stroke:'#64748b','stroke-width':1.2}});
+        out.push({t:'line',a:{x1:bx+px*0.5,y1:by+py*0.5,x2:bx+px*1.5,y2:by+py*1.5,stroke:'#64748b','stroke-width':1.2}});
+        // Upright or slanted lines: the label sits beside the line (anchored on its outer side), not across it.
+        if(Math.abs(nx)>0.6)out.push({t:'text',a:{x:mx+nx*(off+6),y:my+ny*(off+6)+fs*0.35,'text-anchor':nx<0?'end':'start','font-size':fs,fill:'#0f172a'},s:m.text});
+        else out.push({t:'text',a:{x:mx+nx*(off+fs*0.9),y:my+ny*(off+fs*0.9)+fs*0.35,'text-anchor':'middle','font-size':fs,fill:'#0f172a'},s:m.text});
+      }
+    });
     if(f.center){out.push({t:'circle',a:{cx:X(f.center[0]),cy:Y(f.center[1]),r:c>14?4:3,fill:'#111827'}});
       out.push({t:'text',a:{x:X(f.center[0])-(c>14?12:8),y:Y(f.center[1])+(c>14?16:11),'font-size':Math.max(11,c*0.6),'font-weight':700,fill:'#111827'},s:'O'})}
-    return {w:W*c,h:H*c};
+    return plain?{w:(maxx-minx)*c+2*M,h:(maxy-miny)*c+2*M}:{w:W*c,h:H*c};
   }
   var y=0,MW=0;
   if(fig.title){out.push({t:'text',a:{x:4,y:16,'font-size':14,fill:'#111827'},s:fig.title});y=24}
