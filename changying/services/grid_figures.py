@@ -26,7 +26,7 @@ FIGURE_TYPE = "gridshape"
 LETTERS = "ABCD"
 MAX_SIDE = 12
 MAX_POINTS = 10
-MAX_SHAPES = 3
+MAX_SHAPES = 40                              # a tiling picture (密铺) holds many tiles
 MAX_PANELS = 4
 TONES = ("a", "b", "ghost")
 
