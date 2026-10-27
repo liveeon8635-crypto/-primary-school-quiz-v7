@@ -93,6 +93,30 @@ def test_every_generated_question_has_exactly_one_right_option(node, level):
         assert q["explanation"].endswith(f"所以选 {'ABCD'[q['correct_index']]}。")
 
 
+COMBO = re.compile(r"先向(右|左|上|下)平移 (\d+) 格，再绕点 O (?:(顺时针|逆时针)旋转 90°|旋转 180°)")
+
+
+@pytest.mark.parametrize("level", ["basic", "medium", "hard"])
+def test_translate_then_rotate_has_exactly_one_right_plan(level):
+    qs = gf.generate("4-4", level, 6, 17)
+    assert len(qs) == 6
+    for q in qs:
+        fig = q["figure"]
+        a = next(s["points"] for s in fig["shapes"] if s["label"] == "A")
+        b = next(s["points"] for s in fig["shapes"] if s["label"] == "B")
+        assert gf._apart(a, b) and gf.sanitize(fig) == fig            # A and B never overlap in the picture
+        hits = []
+        for i, option in enumerate(q["options"]):
+            m = COMBO.fullmatch(option)
+            assert m, option
+            d, n = DIRS[m.group(1)], int(m.group(2))
+            moved = gf.translate(a, d[0] * n, d[1] * n)
+            end = gf.rotate(moved, fig["center"], True, 180) if m.group(3) is None else gf.rotate(moved, fig["center"], m.group(3) == "顺时针", 90)
+            if key(end) == key(b):
+                hits.append(i)
+        assert hits == [q["correct_index"]], q
+
+
 def test_sanitize_rejects_bad_figures():
     good = {"type": "gridshape", "width": 10, "height": 8, "shapes": [{"points": [[0, 0], [1, 0], [0, 1]], "tone": "a", "label": "A"}],
             "axis": [[5, 0], [5, 8]], "center": [1, 1]}
@@ -105,7 +129,7 @@ def test_sanitize_rejects_bad_figures():
 
 
 def test_both_families_share_one_entry_point():
-    assert set(vq.NODE_KINDS) == {"1-1", "1-2", "1-3", "1-4", "8-3", "4-1", "4-2", "4-3", "6-1", "6-2", "6-3", "6-4"}
+    assert set(vq.NODE_KINDS) == {"1-1", "1-2", "1-3", "1-4", "8-3", "4-1", "4-2", "4-3", "4-4", "6-1", "6-2", "6-3", "6-4", "6-6", "8-4"}
     assert vq.FIGURE_TYPES == {"cubes", "gridshape"}
     assert vq.generate("4-2", "basic", 2, 1)[0]["figure"]["type"] == "gridshape"
     assert vq.generate("1-1", "basic", 1, 1)[0]["figure"]["type"] == "cubes"

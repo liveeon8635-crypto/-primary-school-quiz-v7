@@ -79,7 +79,10 @@ function cyGridShapes(fig){
     (f.shapes||[]).forEach(function(s){var t=TONE[s.tone]||TONE.a,a={points:s.points.map(function(p){return X(p[0])+','+Y(p[1])}).join(' '),fill:t.fill,stroke:t.stroke,'stroke-width':c>14?2:1.5};
       if(t.dash)a['stroke-dasharray']=t.dash;out.push({t:'polygon',a:a});
       if(s.label){var sx=0,sy=0;s.points.forEach(function(p){sx+=p[0];sy+=p[1]});
-        out.push({t:'text',a:{x:X(sx/s.points.length),y:Y(sy/s.points.length)+5,'text-anchor':'middle','font-size':Math.max(11,c*0.6),'font-weight':700,fill:t.stroke},s:s.label})}});
+        var lx=X(sx/s.points.length),ly=Y(sy/s.points.length)+5;
+        if(f.center){var ox2=X(f.center[0]),oy2=Y(f.center[1]);          // keep the shape's letter clear of the point O
+          if(Math.abs(lx-ox2)<c&&Math.abs(ly-oy2)<c){lx+=lx>=ox2?c:-c;ly+=ly>=oy2?c*0.6:-c*0.6}}
+        out.push({t:'text',a:{x:lx,y:ly,'text-anchor':'middle','font-size':Math.max(11,c*0.6),'font-weight':700,fill:t.stroke},s:s.label})}});
     if(f.axis){out.push({t:'line',a:{x1:X(f.axis[0][0]),y1:Y(f.axis[0][1]),x2:X(f.axis[1][0]),y2:Y(f.axis[1][1]),stroke:'#dc2626','stroke-width':2,'stroke-dasharray':'6 4'}});
       out.push({t:'text',a:{x:X(f.axis[1][0])+4,y:Y(f.axis[1][1])+12,'font-size':Math.max(11,c*0.6),fill:'#dc2626','font-style':'italic'},s:'l'})}
     // Measurements: 底/边 as a dimension line set off from the shape, 高 as a dashed line with a right angle at its foot.

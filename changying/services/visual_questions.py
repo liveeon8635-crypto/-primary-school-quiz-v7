@@ -10,11 +10,29 @@ from changying.services import grid_figures as gf
 _FAMILIES = (cf, gf)                          # one per figure type: generation and saving checks
 _GENERATORS = (cf, gf, af)                    # area questions draw on squared paper (the gridshape type)
 FIGURE_TYPES = {m.FIGURE_TYPE for m in _FAMILIES}
-NODE_KINDS = {**cf.NODE_KINDS, **gf.NODE_KINDS, **af.NODE_KINDS}
-NODE_LABELS = {key: fam.KIND_LABELS[kind] for fam in _GENERATORS for key, kind in fam.NODE_KINDS.items()}
+# Review points mix the kinds of the units they review (8-4 图形的运动与测量).
+REVIEW = {"8-4": [(gf, "translate"), (gf, "rotate"), (gf, "reflect"), (af, "parallelogram"), (af, "triangle"),
+                  (af, "trapezoid"), (af, "composite")]}
+NODE_KINDS = {**cf.NODE_KINDS, **gf.NODE_KINDS, **af.NODE_KINDS, **{k: "review" for k in REVIEW}}
+NODE_LABELS = {**{key: fam.KIND_LABELS[kind] for fam in _GENERATORS for key, kind in fam.NODE_KINDS.items()},
+               "8-4": "复习：图形的运动和面积混合"}
+
+
+def _review(node_key: str, level: str, n: int, seed: int) -> list[dict[str, Any]]:
+    mix = REVIEW[node_key]
+    out, tries = [], 0
+    while len(out) < n and tries < n * 40:
+        fam, kind = mix[(seed + tries) % len(mix)]
+        q = fam.make_question(kind, level, seed * 1000 + tries)
+        tries += 1
+        if q is not None and all(q["text"] != o["text"] or q["figure"] != o["figure"] for o in out):
+            out.append(q)
+    return out
 
 
 def generate(node_key: str, level: str, n: int, seed: int) -> list[dict[str, Any]]:
+    if node_key in REVIEW:
+        return _review(node_key, level, n, seed)
     for fam in _GENERATORS:
         if node_key in fam.NODE_KINDS:
             return fam.generate(node_key, level, n, seed)
