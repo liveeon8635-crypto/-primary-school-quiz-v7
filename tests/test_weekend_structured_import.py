@@ -31,6 +31,8 @@ with TestClient(app) as client:
                     json={**base, "dryRun": True, "items": [plan(3, "圆的面积")]})
     assert r.status_code == 200, r.text
     assert r.json()["items"][0]["status"] == "ready" and r.json()["imported"] == 0
+    assert r.json()["ready"] == 1 and r.json()["failed"] == 0
+    assert "预检" in r.json()["message"] and "可导入 1 节" in r.json()["message"]
     rows = client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()["items"]
     assert not any(row["lessonNo"] == 3 and row["hasPlan"] for row in rows)
 
