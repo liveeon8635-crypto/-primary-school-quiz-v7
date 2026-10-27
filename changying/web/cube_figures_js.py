@@ -138,8 +138,38 @@ function cyGridShapes(fig){
   if(panels.length)y+=Math.ceil(panels.length/2)*(PH+26);
   return {w:Math.ceil(MW),h:Math.ceil(y+4),items:out};
 }
-function cyFigureShapes(fig){return String(fig.type||'').toLowerCase()==='gridshape'?cyGridShapes(fig):cyCubeShapes(fig)}
-function cyIsDrawnFigure(fig){var t=String((fig&&fig.type)||'').toLowerCase();return t==='cubes'||t==='gridshape'}
+function cyChanceShapes(fig){
+  // 可能性: balls in a box, an equal-part spinner, or a bar chart of drawing results. Each colour also shows its character.
+  var C={red:['#ef4444','#7f1d1d','红'],yellow:['#facc15','#713f12','黄'],blue:['#3b82f6','#1e3a8a','蓝'],green:['#22c55e','#14532d','绿'],white:['#ffffff','#475569','白']};
+  var out=[],y=0,W=300,i,j;
+  function ball(cx,cy,r,c){var k=C[c];out.push({t:'circle',a:{cx:cx,cy:cy,r:r,fill:k[0],stroke:k[1],'stroke-width':1.5}});
+    out.push({t:'text',a:{x:cx,y:cy+r*0.4,'text-anchor':'middle','font-size':r*1.05,fill:c==='yellow'||c==='white'?'#111827':'#ffffff'},s:k[2]})}
+  if(fig.title){out.push({t:'text',a:{x:4,y:16,'font-size':14,fill:'#111827'},s:fig.title});y=26;W=Math.max(W,fig.title.length*14+8)}
+  if(fig.kind==='box'){
+    var balls=[];(fig.balls||[]).forEach(function(b){for(j=0;j<b.count;j++)balls.push(b.color)});
+    var per=Math.min(7,Math.max(4,Math.ceil(Math.sqrt(balls.length*2)))),R=15,rows=Math.ceil(balls.length/per),bw=per*2*R+(per+1)*8,bh=rows*2*R+(rows+1)*8+14;
+    out.push({t:'path',a:{d:'M8,'+(y+10)+' L8,'+(y+10+bh)+' L'+(8+bw)+','+(y+10+bh)+' L'+(8+bw)+','+(y+10),fill:'#fef3c7',stroke:'#92400e','stroke-width':3,'stroke-linejoin':'round'}});
+    balls.forEach(function(c,k){var r=Math.floor(k/per),q=k%per;ball(8+8+R+q*(2*R+8),y+10+bh-8-R-r*(2*R+8),R,c)});
+    W=Math.max(W,bw+16);y+=bh+20;
+  }else if(fig.kind==='spinner'){
+    var n=fig.sectors.length,R2=90,cx=110,cy=y+R2+10;
+    fig.sectors.forEach(function(c,k){var a0=-Math.PI/2+2*Math.PI*k/n,a1=a0+2*Math.PI/n,k2=C[c];
+      out.push({t:'path',a:{d:'M'+cx+','+cy+' L'+(cx+R2*Math.cos(a0))+','+(cy+R2*Math.sin(a0))+' A'+R2+','+R2+' 0 0 1 '+(cx+R2*Math.cos(a1))+','+(cy+R2*Math.sin(a1))+' Z',fill:k2[0],stroke:'#334155','stroke-width':1.5}});
+      var am=(a0+a1)/2;out.push({t:'text',a:{x:cx+R2*0.68*Math.cos(am),y:cy+R2*0.68*Math.sin(am)+6,'text-anchor':'middle','font-size':16,'font-weight':700,fill:c==='yellow'||c==='white'?'#111827':'#ffffff'},s:k2[2]})});
+    out.push({t:'polygon',a:{points:[cx-5,cy,cx+5,cy,cx,cy-R2*0.55].join(','),fill:'#111827'}});
+    out.push({t:'circle',a:{cx:cx,cy:cy,r:7,fill:'#111827'}});
+    W=Math.max(W,cx+R2+20);y+=2*R2+24;
+  }else if(fig.kind==='tally'){
+    var rows2=fig.rows||[],top=1;rows2.forEach(function(r){top=Math.max(top,r.count)});
+    rows2.forEach(function(r,k){var by=y+8+k*34,len=Math.max(2,200*r.count/top);ball(22,by+12,12,r.color);
+      out.push({t:'rect',a:{x:44,y:by+2,width:len,height:20,rx:3,fill:C[r.color][0],stroke:C[r.color][1]}});
+      out.push({t:'text',a:{x:50+len,y:by+18,'font-size':14,fill:'#111827'},s:r.count+' 次'})});
+    W=Math.max(W,300);y+=rows2.length*34+16;
+  }
+  return {w:Math.ceil(W),h:Math.ceil(y),items:out};
+}
+function cyFigureShapes(fig){var t=String(fig.type||'').toLowerCase();return t==='gridshape'?cyGridShapes(fig):t==='chance'?cyChanceShapes(fig):cyCubeShapes(fig)}
+function cyIsDrawnFigure(fig){var t=String((fig&&fig.type)||'').toLowerCase();return t==='cubes'||t==='gridshape'||t==='chance'}
 function cyCubeEsc(v){return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function cyCubeSvgString(fig){
   var g=cyFigureShapes(fig),body=g.items.map(function(it){
