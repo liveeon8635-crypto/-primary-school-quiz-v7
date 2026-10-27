@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
 
+from changying.web.cube_figures_js import patch_cube_figures
 from changying.web.paper_import_ui import (
     patch_classic_catalog_edit_unit,
     patch_classic_catalog_find_imported,
@@ -413,6 +414,7 @@ def inject_classic_ui(html: str) -> str:
     html = patch_classic_catalog_find_imported(html)
     html = patch_classic_catalog_edit_unit(html)
     html = patch_classic_toast_in_dialog(html)
+    html = patch_cube_figures(html)
     if CLASSIC_UI_MARKER in html:
         return html
     if "</body>" in html:

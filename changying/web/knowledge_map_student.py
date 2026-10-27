@@ -108,8 +108,8 @@ def install_knowledge_map_student(implementation: Any) -> APIRouter:
             figure = implementation.question_figure(q)
             if q.id in protected or implementation.question_type_of(q) not in implementation.AUTO_GRADED_QUESTION_TYPES:
                 continue
-            if figure and figure.get("type") != "uploaded_image":
-                continue            # structured figures are drawn only by the classic app; photos are shown here
+            if figure and figure.get("type") not in km.SHOWN_FIGURES:
+                continue            # other drawn figures are drawn only by the classic app
             out[q.id] = q
         return out
 

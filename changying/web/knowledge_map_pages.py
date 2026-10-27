@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from changying.web.cube_figures_js import CUBES_JS
 from changying.web.weekend_pages import _page
 
 KNOWLEDGE_MAP_JS = r"""
@@ -43,6 +44,7 @@ function kmQuestions(n,box){
     box.textContent='';var picks={};
     var head=el('p',{class:'muted',text:'题库中知识点名为“'+d.bankKeys.join('”或“')+'”的题目共 '+d.items.length+' 道。每题选一个难度档；选“不用”表示不进入诊断和掌握度。每个知识点至少 '+KM.minPerNode+' 题，每档至少 '+KM.minPerLevel+' 题。'});
     box.appendChild(head);
+    if(KM.visualNodes&&KM.visualNodes[n.key]){var vis=el('div');box.appendChild(vis);kmVisual(n,vis)}
     var gen=el('div');box.appendChild(gen);kmAIGen(n,gen);
     var pick=el('div');box.appendChild(pick);kmBankPick(n,pick);
     if(!d.items.length){box.appendChild(el('p',{text:'这个知识点还没有题目：可以用上面的“从题库挑题”按单元挑选已导入的题，或用“AI 出题”。'}));return}
@@ -64,6 +66,40 @@ function kmQuestions(n,box){
           .then(function(r){KM=r;QPANEL={};kmSay('分档已保存');kmRender()}).catch(function(e){kmSay(e.message,true)})}}),
       el('button',{class:'btn',text:'收起',onclick:function(){box.textContent='';delete QPANEL[n.key]}})));
   }).catch(function(e){box.textContent='';box.appendChild(el('p',{class:'warn',text:e.message}))});
+}
+// 图形题：系统按数据画出小正方体组合体、算出视图和答案；老师只改题干和解析，图、选项、答案不可改。
+function kmVisual(n,holder){
+  var level=el('select',{'aria-label':'难度档'}),count=el('select',{'aria-label':'题数'}),out=el('div'),note=el('p',{class:'muted'});
+  Object.keys(KM.levels).forEach(function(k){level.appendChild(el('option',{value:k,text:KM.levels[k]}))});
+  [2,4,6].forEach(function(c){var o=el('option',{value:String(c),text:c+' 题'});if(c===4)o.selected=true;count.appendChild(o)});
+  var make=function(){
+    note.textContent='正在画图出题…';out.textContent='';
+    api('/teacher/knowledge-maps/'+KM.id+'/nodes/'+encodeURIComponent(n.key)+'/visual',{json:{level:level.value,count:+count.value}})
+      .then(function(d){note.textContent='题型：'+d.kind+'。图和答案由系统计算，保证一致；题干和解析可以改。';kmVisualDrafts(n,d,out)})
+      .catch(function(e){note.textContent=e.message});
+  };
+  holder.appendChild(el('div',{class:'card'},el('h4',{text:'图形题（系统画图，答案由系统计算）'}),
+    el('div',{class:'row'},el('label',{},'难度 ',level),el('label',{},'数量 ',count),el('button',{class:'btn',text:'生成图形题',onclick:make})),note,out));
+}
+function kmVisualDrafts(n,d,out){
+  out.textContent='';var rows=[];
+  d.items.forEach(function(q,i){
+    var keep=el('input',{type:'checkbox',checked:true}),text=el('textarea',{class:'s','aria-label':'题干'}),exp=el('textarea',{class:'s','aria-label':'解析'});
+    text.value=q.text;exp.value=q.explanation||'';
+    out.appendChild(el('div',{class:'card','data-visual':String(i)},el('label',{},keep,' 保留这道题'),el('label',{},'题干 ',text),cyCubeSvgNode(q.figure),
+      el('p',{text:'选项：'+q.options.join('　')+'　　正确答案：'+q.options[q.correct_index]}),el('label',{},'解析 ',exp)));
+    rows.push(function(){return keep.checked?{text:text.value.trim(),options:q.options,correct_index:q.correct_index,explanation:exp.value,figure:q.figure}:null});
+  });
+  var msgBox=el('p',{class:'muted'});
+  out.appendChild(el('div',{class:'row'},
+    el('button',{class:'btn primary',text:'存入题库并分为“'+KM.levels[d.level]+'”',onclick:function(e){
+      var qs=rows.map(function(f){return f()}).filter(function(x){return x});
+      if(!qs.length){msgBox.textContent='没有勾选要保留的题';return}
+      e.target.disabled=true;msgBox.textContent='正在保存…';
+      api('/teacher/knowledge-maps/'+KM.id+'/nodes/'+encodeURIComponent(n.key)+'/visual/save',{json:{level:d.level,revision:KM.revision,questions:qs}})
+        .then(function(r){KM=r;QPANEL[n.key]=1;kmSay('已存入 '+r.saved.length+' 道图形题并分档');kmRender()})
+        .catch(function(err){e.target.disabled=false;msgBox.textContent=err.message});
+    }})),msgBox);
 }
 // 从题库挑题：按单元或关键词搜索本校题库，不要求题目的知识点名与地图一致；分档按题目编号保存。
 function kmBankPick(n,holder){
@@ -409,6 +445,7 @@ function smQuiz(qs){
   qs.forEach(function(q,i){
     var box=el('div',{class:'card','data-q':String(q.id)},el('p',{text:(i+1)+'. '+q.text}));
     if(q.figure&&q.figure.type==='uploaded_image')box.appendChild(el('img',{src:q.figure.data_url,alt:q.figure.alt||'题目图片',style:'max-width:100%;max-height:260px'}));
+    if(q.figure&&q.figure.type==='cubes')box.appendChild(cyCubeSvgNode(q.figure));
     if(q.questionType==='single_choice'||q.questionType==='true_false'){
       var opts=el('div',{class:'row'});
       (q.options||[]).forEach(function(o,k){var b=el('button',{class:'btn',type:'button',text:String.fromCharCode(65+k)+'. '+o,onclick:function(){
@@ -447,11 +484,11 @@ obtainToken().then(function(t){TOKEN=t;if(!TOKEN){msg('请先登录后再打开'
 
 
 def student_map_page_html() -> str:
-    return _page("我的知识地图", STUDENT_MAP_JS, True)
+    return _page("我的知识地图", CUBES_JS + STUDENT_MAP_JS, True)
 
 
 def knowledge_map_page_html() -> str:
-    return _page("知识地图", KNOWLEDGE_MAP_JS, True)
+    return _page("知识地图", CUBES_JS + KNOWLEDGE_MAP_JS, True)
 
 
 __all__ = ["KNOWLEDGE_MAP_JS", "STUDENT_MAP_JS", "knowledge_map_page_html", "student_map_page_html"]
