@@ -7,6 +7,8 @@ teacher  GET  /v1/knowledge-map                                  page
          GET  /teacher/knowledge-maps/{mid}                      draft + coverage per node + published state
          PUT  /teacher/knowledge-maps/{mid}                      {map, revision} save the draft (validated)
          GET  /teacher/knowledge-maps/{mid}/nodes/{key}/questions  questions of the bank matching the node
+         GET  /teacher/knowledge-maps/{mid}/bank?unit=&q=          search the school's bank by unit / keyword to pick
+                                                                questions for a node whatever their knowledge name
          PUT  /teacher/knowledge-maps/{mid}/nodes/{key}/levels   {levels, revision} question levels of one node
          POST /teacher/knowledge-maps/{mid}/publish              {revision} the draft becomes the published map
          GET  /teacher/knowledge-maps/{mid}/classes              the teacher's classes
@@ -261,8 +263,39 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         if extra:
             found.update({q.id: q for q in db.scalars(select(Question).where(Question.school_id == row.school_id, Question.id.in_(extra)))})
         items = [{"id": q.id, "text": q.text, "type": q.question_type or "single_choice", "knowledge": q.knowledge, "unit": q.unit,
-                  "level": node["levels"].get(str(q.id))} for q in sorted(found.values(), key=lambda q: q.id)]
+                  "level": node["levels"].get(str(q.id)), "note": diagnosis_note(q)} for q in sorted(found.values(), key=lambda q: q.id)]
         return {"key": key, "name": node["name"], "bankKeys": node["bankKeys"], "items": items, "revision": int(row.revision)}
+
+    def diagnosis_note(q: Any) -> str:
+        """Why a question can be levelled but will not be picked for the diagnosis (empty when it can)."""
+        if implementation.question_type_of(q) not in implementation.AUTO_GRADED_QUESTION_TYPES:
+            return "需老师批改，诊断不会选"
+        figure = implementation.question_figure(q)
+        if figure and figure.get("type") != "uploaded_image":
+            return "含绘制图示，诊断暂不选"
+        return ""
+
+    @router.get("/teacher/knowledge-maps/{mid}/bank")
+    def bank_search(mid: int, unit: str = "", q: str = "", u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        teacher(u)
+        row = my_map(db, u, mid)
+        base = select(Question).where(Question.school_id == row.school_id, Question.grade == row.grade, Question.subject == row.subject)
+        units = [x for x in db.scalars(select(Question.unit).where(Question.school_id == row.school_id, Question.grade == row.grade,
+                                                                     Question.subject == row.subject).distinct().order_by(Question.unit)) if x]
+        unit, q = unit.strip()[:100], " ".join(q.split())[:60]
+        if not unit and not q:
+            return {"units": units, "items": [], "total": 0}
+        if unit:
+            base = base.where(Question.unit == unit)
+        if q:
+            like = "%" + q.replace("%", "").replace("_", "") + "%"
+            base = base.where((Question.text.like(like)) | (Question.knowledge.like(like)))
+        total = db.scalar(select(func.count()).select_from(base.subquery()))
+        m = json.loads(row.map_json)
+        placed = {int(qid): (n["key"], lv) for n in m["nodes"] for qid, lv in n["levels"].items()}
+        items = [{"id": x.id, "text": x.text, "type": x.question_type or "single_choice", "knowledge": x.knowledge, "unit": x.unit,
+                  "note": diagnosis_note(x), "placed": placed.get(x.id)} for x in db.scalars(base.order_by(Question.id).limit(80))]
+        return {"units": units, "items": items, "total": int(total or 0)}
 
     @router.put("/teacher/knowledge-maps/{mid}/nodes/{key}/levels")
     def put_levels(mid: int, key: str, b: LevelsBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
