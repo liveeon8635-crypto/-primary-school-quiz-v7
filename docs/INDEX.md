@@ -35,12 +35,13 @@
 | [`HARNESS_ENGINEERING.md`](HARNESS_ENGINEERING.md) | 控制平面设计：可恢复、可验证、可追踪 |
 | [`AGENTS.md`](../AGENTS.md) §3–§8 | 固定执行协议、并行与恢复规则、C2 服务层规则、反空壳规则、完成定义 |
 
-## 4. 功能设计与分析（未实现或待评审）
+## 4. 功能：现状与设计
 
 | 文档 | 内容 | 状态 |
 |---|---|---|
+| [`analysis/knowledge-map.md`](analysis/knowledge-map.md) | 知识地图：单元/知识点/前置关系 + 题目分档 + 学生诊断 | **已上线**（`KNOWLEDGE_MAP=1`） |
+| [`analysis/courseware-reuse.md`](analysis/courseware-reuse.md) | 课程资料复用：批量导入 / 课程模板 / 跨校复制 | A、B 已上线；C 待权限模型 |
 | [`analysis/after-school-homework-assistant.md`](analysis/after-school-homework-assistant.md) | 晚托作业助手 MVP 设计 | 设计，未写代码 |
-| [`analysis/courseware-reuse.md`](analysis/courseware-reuse.md) | 课程资料复用：批量导入 / 课程模板 / 跨校复制 | 设计，未写代码 |
 | [`training-sandbox-plan.md`](training-sandbox-plan.md) | 角色实操沙盒实施方案 | 方案 |
 | [`weekend-course/1-现状核对.md`](weekend-course/1-现状核对.md) | 周末课：可复用能力盘点 | 设计稿 |
 | [`weekend-course/2-数据设计稿.md`](weekend-course/2-数据设计稿.md) | 周末课：新增表设计（均带 school_id） | 设计稿 |
