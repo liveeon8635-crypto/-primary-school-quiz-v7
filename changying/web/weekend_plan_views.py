@@ -713,9 +713,26 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             except HTTPException as exc:
                 db.rollback()
                 results.append({**base, "ok": False, "status": "invalid", "error": str(exc.detail)})
-        failed = len(results) - imported
-        return {"items": results, "imported": imported, "failed": failed, "dryRun": dry_run,
-                "message": f"成功导入 {imported} 节，失败 {failed} 节" + ("（失败项可单独重试）" if failed else "")}
+        # A dry run writes nothing, so "not imported" is not "failed": count each status.
+        ready = sum(1 for item in results if item["status"] == "ready")
+        invalid = sum(1 for item in results if item["status"] == "invalid")
+        blocked = len(results) - imported - ready - invalid
+        if dry_run:
+            parts = [f"可导入 {ready} 节"]
+            if blocked:
+                parts.append(f"冲突或跳过 {blocked} 节")
+            if invalid:
+                parts.append(f"非法 {invalid} 节")
+            message = "预检（未写入）：" + "，".join(parts)
+        else:
+            parts = [f"成功导入 {imported} 节"]
+            if blocked:
+                parts.append(f"冲突或跳过 {blocked} 节")
+            if invalid:
+                parts.append(f"失败 {invalid} 节（可单独重试）")
+            message = "，".join(parts)
+        return {"items": results, "imported": imported, "ready": ready, "blocked": blocked,
+                "failed": invalid, "dryRun": dry_run, "message": message}
 
     @router.post("/teacher/weekend/lessons/import/structured")
     def import_structured(b: StructuredImportBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
