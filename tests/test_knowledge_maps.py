@@ -58,6 +58,7 @@ def test_coverage_needs_six_questions_and_two_per_level():
 
 
 def test_page_code_never_renders_markup():
+    assert "prompt(" not in KNOWLEDGE_MAP_JS                       # adding a point uses the in-page form
     assert "innerHTML" not in KNOWLEDGE_MAP_JS and "insertAdjacentHTML" not in KNOWLEDGE_MAP_JS and "eval(" not in KNOWLEDGE_MAP_JS
 
 
@@ -270,3 +271,55 @@ print("OK")
 
 def test_bank_search_picks_questions_whatever_their_knowledge_name(tmp_path):
     helpers.run_isolated(tmp_path, helpers.COMMON + BANK_FLOW, {"KNOWLEDGE_MAP": "1"})
+
+
+def test_restore_unit_adds_back_missing_points_and_their_links_only():
+    tmpl = km.template("rj2026-g5-math-up")
+    m = km.clean_map(copy.deepcopy(tmpl))
+    gone = {"1-1", "1-2", "1-3", "1-4"}
+    m["nodes"] = [n for n in m["nodes"] if n["key"] not in gone]
+    for n in m["nodes"]:
+        n["prereqs"] = [p for p in n["prereqs"] if p not in gone]
+    next(n for n in m["nodes"] if n["key"] == "2-1")["name"] = "小数乘整数（老师改过）"
+    next(n for n in m["nodes"] if n["key"] == "2-2")["levels"] = {"7": "basic"}
+    next(n for n in m["nodes"] if n["key"] == "2-6")["prereqs"] = ["2-2"]        # a deliberate teacher edit
+    out, restored = km.restore_unit(m, tmpl, "U1")
+    out = km.clean_map(out)
+    assert restored == ["1-1", "1-2", "1-3", "1-4"]
+    by = {n["key"]: n for n in out["nodes"]}
+    assert by["1-3"]["prereqs"] == ["1-1", "1-2"] and by["1-4"]["prereqs"] == ["1-3"]
+    assert {"1-3", "1-4"} <= set(by["8-3"]["prereqs"])
+    assert by["2-1"]["name"] == "小数乘整数（老师改过）" and by["2-2"]["levels"] == {"7": "basic"}
+    assert by["2-6"]["prereqs"] == ["2-2"]                                          # links not touching U1 are left alone
+    assert km.restore_unit(out, tmpl, "U1")[1] == []
+
+
+RESTORE_FLOW = r'''
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    d = client.post("/teacher/knowledge-maps", headers=th, json={"template": "rj2026-g5-math-up"}).json()
+    mid = d["id"]
+    m = d["map"]
+    m["nodes"] = [n for n in m["nodes"] if n["unit"] != "U1"]
+    for n in m["nodes"]:
+        n["prereqs"] = [p for p in n["prereqs"] if not p.startswith("1-")]
+    d = client.put(f"/teacher/knowledge-maps/{mid}", headers=th, json={"map": m, "revision": d["revision"]}).json()
+    assert not [n for n in d["map"]["nodes"] if n["unit"] == "U1"]
+    base = f"/teacher/knowledge-maps/{mid}/units"
+    assert client.post(base + "/U1/restore", headers=th, json={"revision": d["revision"] - 1}).status_code == 409   # stale
+    assert client.post(base + "/U9/restore", headers=th, json={"revision": d["revision"]}).status_code == 404
+    assert client.post(base + "/U1/restore", headers=sh, json={"revision": d["revision"]}).status_code == 403
+    r = client.post(base + "/U1/restore", headers=th, json={"revision": d["revision"]}).json()
+    assert r["restored"] == ["1-1", "1-2", "1-3", "1-4"] and r["summary"]["assessed"] == 19
+    assert {"1-3", "1-4"} <= set(next(n for n in r["map"]["nodes"] if n["key"] == "8-3")["prereqs"])
+    again = client.post(base + "/U1/restore", headers=th, json={"revision": r["revision"]})
+    assert again.status_code == 409 and "都还在" in again.json()["detail"]
+    page = client.get("/v1/knowledge-map").text
+    for t in ("按模板恢复本单元知识点", "kmAddForm(", "/restore", "已经有了"):
+        assert t in page, t
+print("OK")
+'''
+
+
+def test_teacher_restores_a_deleted_unit_from_the_template(tmp_path):
+    helpers.run_isolated(tmp_path, helpers.COMMON + RESTORE_FLOW, {"KNOWLEDGE_MAP": "1"})

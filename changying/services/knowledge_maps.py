@@ -177,6 +177,29 @@ def clean_map(raw: Any) -> dict[str, Any]:
     return {"version": 1, "units": units, "nodes": nodes}
 
 
+def restore_unit(m: dict[str, Any], template_map: dict[str, Any], unit_key: str) -> tuple[dict[str, Any], list[str]]:
+    """Add back the template's knowledge points of one unit that are missing now, with the prerequisite links that
+    touch them (also from other units, e.g. 8-3 ← 1-3). Existing points, their edits and their levels stay as they are."""
+    out = copy.deepcopy(m)
+    have = {n["key"] for n in out["nodes"]}
+    restored = []
+    for n in template_map["nodes"]:
+        if n["unit"] == unit_key and n["key"] not in have:
+            out["nodes"].append({**copy.deepcopy(n), "prereqs": [], "levels": {}})
+            restored.append(n["key"])
+    if not restored:
+        return out, []
+    keys = {n["key"] for n in out["nodes"]}
+    now = {n["key"]: n for n in out["nodes"]}
+    for n in template_map["nodes"]:
+        if n["key"] not in now:
+            continue
+        for p in n["prereqs"]:
+            if p in keys and p not in now[n["key"]]["prereqs"] and (n["key"] in restored or p in restored):
+                now[n["key"]]["prereqs"].append(p)
+    return out, restored
+
+
 def _cycle(nodes: list[dict[str, Any]]) -> list[str]:
     graph = {n["key"]: n["prereqs"] for n in nodes}
     state: dict[str, int] = {}
@@ -332,4 +355,4 @@ def pick_diagnosis(m: dict[str, Any], usable: set[int], attempted: set[int], see
 
 
 __all__ = ["AGREEMENT_TARGET", "CONFIDENCE_LABELS", "DIAGNOSIS_MIN", "LEVELS", "MASTERY_LABELS", "NODE_KINDS", "TEMPLATES", "UNIT_KINDS", "assessed", "clean_map", "coverage", "dependents", "first_attempts", "mastery_view", "node_mastery",
-           "pick_diagnosis", "summary", "template"]
+           "pick_diagnosis", "restore_unit", "summary", "template"]
