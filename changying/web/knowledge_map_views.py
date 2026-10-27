@@ -11,6 +11,7 @@ teacher  GET  /v1/knowledge-map                                  page
                                                                 questions for a node whatever their knowledge name
          PUT  /teacher/knowledge-maps/{mid}/nodes/{key}/levels   {levels, revision} question levels of one node
          POST /teacher/knowledge-maps/{mid}/publish              {revision} the draft becomes the published map
+         POST /teacher/knowledge-maps/{mid}/units/{ukey}/restore {revision} add back the template's missing points of a unit
          GET  /teacher/knowledge-maps/{mid}/classes              the teacher's classes
          GET  /teacher/knowledge-maps/{mid}/classes/{cid}        mastery of every pupil of the class (published map)
          POST /teacher/knowledge-maps/{mid}/classes/{cid}/reinforce  {nodeKey, studentIds, count} one consolidation
@@ -321,6 +322,23 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
                 raise HTTPException(400, "难度档只能是基础、中等或提高")
         save(db, u, row, cleaned(m))
         return detail(db, my_map(db, u, mid))
+
+    @router.post("/teacher/knowledge-maps/{mid}/units/{ukey}/restore")
+    def restore_unit(mid: int, ukey: str, b: PublishBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        teacher(u)
+        row = my_map(db, u, mid, lock=True)
+        fresh(row, b.revision)
+        if row.template_key not in km.TEMPLATES:
+            raise HTTPException(400, "这份知识地图没有对应的模板")
+        tmpl = km.template(row.template_key)
+        m = json.loads(row.map_json)
+        if not any(x["key"] == ukey for x in m["units"]) or not any(x["key"] == ukey for x in tmpl["units"]):
+            raise HTTPException(404, "模板里没有这个单元")
+        restored_map, restored = km.restore_unit(m, tmpl, ukey)
+        if not restored:
+            raise HTTPException(409, "这个单元模板里的知识点都还在，不需要恢复")
+        save(db, u, row, cleaned(restored_map))
+        return {**detail(db, my_map(db, u, mid)), "restored": restored}
 
     @router.post("/teacher/knowledge-maps/{mid}/publish")
     def publish(mid: int, b: PublishBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):

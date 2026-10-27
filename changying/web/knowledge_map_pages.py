@@ -177,13 +177,32 @@ function kmUnit(u){
     el('div',{class:'row'},el('h3',{text:u.key}),name,kmTag(KM.unitKinds[u.kind]),
       el('label',{},el('input',{type:'checkbox',checked:!!u.learned,onchange:function(e){var on=e.target.checked;kmSave(function(m){m.units.forEach(function(x){if(x.key===u.key)x.learned=on})})}}),' 已学'),
       el('button',{class:'btn',text:'保存名称',onclick:function(){kmSave(function(m){m.units.forEach(function(x){if(x.key===u.key)x.name=name.value})})}}),
-      el('button',{class:'btn',text:'添加知识点',onclick:function(){
-        var key=prompt('新知识点编号（如 '+u.key.replace('U','')+'-'+(nodes.length+1)+'）');if(!key)return;
-        var nm=prompt('知识点名称');if(!nm)return;
-        kmSave(function(m){if(kmNode(m,key))return '编号 '+key+' 已存在';m.nodes.push({key:key,unit:u.key,name:nm,detail:'',kind:'core',prereqs:[],bankKeys:[nm],levels:{},enabled:true})})}})));
+      el('button',{class:'btn',text:'添加知识点',onclick:function(){kmAddForm(u,nodes,add)}}),
+      el('button',{class:'btn',text:'按模板恢复本单元知识点',onclick:function(){
+        if(!confirm('把模板里这个单元缺少的知识点补回来（连同前置关系）。已有的知识点、修改和分档都不会动。继续？'))return;
+        api('/teacher/knowledge-maps/'+KM.id+'/units/'+encodeURIComponent(u.key)+'/restore',{json:{revision:KM.revision}})
+          .then(function(d){KM=d;kmSay('已恢复：'+d.restored.join('、'));kmRender()}).catch(function(e){kmSay(e.message,true)})}})));
+  var add=el('div');card.appendChild(add);
   nodes.forEach(function(n){card.appendChild(kmNodeRow(n,u))});
-  if(!nodes.length)card.appendChild(el('p',{class:'muted',text:'这个单元还没有知识点'}));
+  if(!nodes.length)card.appendChild(el('p',{class:'muted',text:'这个单元还没有知识点：可以点“按模板恢复本单元知识点”，或“添加知识点”。'}));
   return card;
+}
+// 页面内的添加表单：编号和名称分开填，当场检查格式和重复。
+function kmAddForm(u,nodes,box){
+  var prefix=u.key.replace(/^U/,''),key=el('input',{value:prefix+'-'+(nodes.length+1),maxlength:'12','aria-label':'新知识点编号'}),
+      name=el('input',{maxlength:'40','aria-label':'新知识点名称',placeholder:'例如：从不同位置观察同一组合体'}),err=el('p',{class:'warn'});
+  var go=function(){
+    var k=key.value.trim(),nm=name.value.trim();err.textContent='';
+    if(!/^[0-9A-Za-z\u4e00-\u9fff-]{1,12}$/.test(k)){err.textContent='编号只能用 1—12 个字母、数字、汉字或短横线，例如 '+prefix+'-1';return}
+    if(kmNode(KM.map,k)){err.textContent='编号 '+k+' 已经有了（'+kmNode(KM.map,k).name+'），请换一个';return}
+    if(!nm){err.textContent='请填写知识点名称';return}
+    kmSave(function(m){m.nodes.push({key:k,unit:u.key,name:nm,detail:'',kind:'core',prereqs:[],bankKeys:[nm],levels:{},enabled:true})});
+  };
+  box.textContent='';
+  box.appendChild(el('div',{class:'card'},el('h4',{text:'在“'+u.name+'”里添加知识点'}),
+    el('label',{},'编号 ',key),el('label',{},'名称 ',name),err,
+    el('div',{class:'row'},el('button',{class:'btn primary',text:'添加',onclick:go}),el('button',{class:'btn',text:'取消',onclick:function(){box.textContent=''}}))));
+  name.focus();
 }
 function kmRender(){
   var s=KM.summary,p=KM.published;KMBOX.textContent='';
