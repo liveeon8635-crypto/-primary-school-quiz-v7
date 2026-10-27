@@ -3,6 +3,7 @@
     {"type": "chance", "kind": "box", "balls": [{"color": "red", "count": 5}, ...]}       # balls in a box
     {"type": "chance", "kind": "spinner", "sectors": ["red", "yellow", ...]}               # equal sectors
     {"type": "chance", "kind": "tally", "rows": [{"color": "red", "count": 16}, ...]}     # results of drawing
+    {"type": "chance", "kind": "dice", "faces": [3, 5], "table": true}                     # two dice (+ the sums table)
 
 Every ball and sector also carries its colour's character (红、黄…), so the picture still reads in black and white.
 """
@@ -18,9 +19,9 @@ MAX_BALLS = 20
 MAX_SECTORS = 12
 MAX_TALLY = 100
 
-NODE_KINDS = {"7-1": "certain", "7-2": "compare", "7-3": "infer"}
+NODE_KINDS = {"7-1": "certain", "7-2": "compare", "7-3": "infer", "7-4": "dice"}
 KIND_LABELS = {"certain": "一定、可能、不可能（摸球）", "compare": "可能性的大小（摸球、转盘）",
-               "infer": "根据摸球结果推测盒子里的球"}
+               "infer": "根据摸球结果推测盒子里的球", "dice": "掷一掷：两个骰子点数之和"}
 
 
 # ---------------------------------------------------------------- data checks
@@ -59,6 +60,13 @@ def sanitize(value: Any) -> dict[str, Any]:
         if rows is None:
             return {}
         out["rows"] = rows
+    elif kind == "dice":
+        faces = value.get("faces")
+        if not isinstance(faces, list) or len(faces) != 2 or any(_count(f, 6) in (None, 0) for f in faces):
+            return {}
+        out["faces"] = list(faces)
+        if value.get("table") is True:
+            out["table"] = True
     elif kind == "spinner":
         sectors = value.get("sectors")
         if not isinstance(sectors, list) or not 2 <= len(sectors) <= MAX_SECTORS or any(c not in COLORS for c in sectors):
@@ -182,6 +190,9 @@ def make_question(kind: str, level: str, seed: int) -> dict[str, Any] | None:
         return _q(rng, f"从盒子里任意摸出一个球，摸到哪种颜色的球可能性{'最大' if ask_most else '最小'}？（　　）",
                   f"{COLORS[target]}色", [n for n in names if n != f"{COLORS[target]}色"], why, box(counts))
 
+    if kind == "dice":
+        return _dice_question(rng, level)
+
     if kind == "infer":
         trials = rng.choice([20, 30, 40, 50])
         if level == "basic":
@@ -230,6 +241,36 @@ def make_question(kind: str, level: str, seed: int) -> dict[str, Any] | None:
     raise ValueError(kind)
 
 
+def ways(total: int) -> int:
+    """How many of the 36 ways two dice can fall give this sum."""
+    return sum(1 for a in range(1, 7) for b in range(1, 7) if a + b == total)
+
+
+def _dice_question(rng: random.Random, level: str) -> dict[str, Any] | None:
+    faces = [rng.randint(1, 6), rng.randint(1, 6)]
+    fig: dict[str, Any] = {"type": FIGURE_TYPE, "kind": "dice", "faces": faces}
+    table = "可以列表：第一个骰子 1～6，第二个骰子 1～6，一共 6 × 6 = 36 种情况。"
+    if level == "basic":
+        ask = rng.choice(["impossible", "max", "min"])
+        if ask == "impossible":
+            right, pool = rng.choice([1, 13]), list(range(2, 13))
+            why = f"两个骰子点数之和最小是 1 + 1 = 2，最大是 6 + 6 = 12，{right} 不可能出现。"
+            return _q(rng, "同时掷两个骰子，点数之和不可能是（　　）。", str(right), [str(v) for v in rng.sample(pool, 3)], why, fig)
+        right = 12 if ask == "max" else 2
+        why = "两个骰子点数之和最小是 1 + 1 = 2，最大是 6 + 6 = 12。"
+        wrong = [str(v) for v in ([6, 11, 36] if ask == "max" else [1, 0, 3])]
+        return _q(rng, f"同时掷两个骰子，点数之和{'最大' if ask == 'max' else '最小'}是（　　）。", str(right), wrong, why, fig)
+    fig["table"] = True
+    if level == "medium":
+        others = rng.sample([s for s in range(2, 13) if s != 7], 3)
+        why = table + "和是 7 的有 6 种（1+6、2+5、3+4、4+3、5+2、6+1），比其他的和都多，所以和是 7 的可能性最大。"
+        return _q(rng, "同时掷两个骰子，点数之和是几的可能性最大？（　　）", "7", [str(v) for v in others], why, fig)
+    total = rng.choice([s for s in range(3, 12) if s != 7])
+    pairs = "、".join(f"{a}+{total - a}" for a in range(1, 7) if 1 <= total - a <= 6)
+    return _fill(f"同时掷两个骰子，点数之和是 {total} 的情况有（　　）种。", ways(total),
+                 table + f"和是 {total} 的有：{pairs}，共 {ways(total)} 种。", fig)
+
+
 def generate(node_key: str, level: str, n: int, seed: int) -> list[dict[str, Any]]:
     kind = NODE_KINDS[node_key]
     out, seen, tries = [], set(), 0
@@ -246,4 +287,5 @@ def generate(node_key: str, level: str, n: int, seed: int) -> list[dict[str, Any
     return out
 
 
-__all__ = ["COLORS", "FIGURE_TYPE", "KIND_LABELS", "NODE_KINDS", "box", "generate", "make_question", "sanitize", "statement_true"]
+__all__ = ["COLORS", "FIGURE_TYPE", "KIND_LABELS", "NODE_KINDS", "box", "generate", "make_question", "sanitize", "statement_true",
+           "ways"]

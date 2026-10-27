@@ -67,6 +67,7 @@ function cyGridShapes(fig){
     if(plain){
       // A plain drawing is cropped to the shape and its measurements, with room for the labels around it.
       var xs=[],ys=[],M=46;
+      (f.marks||[]).forEach(function(m){M=Math.max(M,String(m.text).length*9+24)});   // room for the longest label
       (f.shapes||[]).forEach(function(s){s.points.forEach(function(p){xs.push(p[0]);ys.push(p[1])})});
       (f.marks||[]).forEach(function(m){xs.push(m.from[0],m.to[0]);ys.push(m.from[1],m.to[1])});
       (f.dots||[]).forEach(function(p){xs.push(p[0]);ys.push(p[1])});
@@ -128,7 +129,9 @@ function cyGridShapes(fig){
   }
   var y=0,MW=0;
   if(fig.title){out.push({t:'text',a:{x:4,y:16,'font-size':14,fill:'#111827'},s:fig.title});y=24;MW=fig.title.length*14+8}
-  if((fig.shapes&&fig.shapes.length)||(fig.dots&&fig.dots.length)){var m=draw(fig,26,8,y+4);MW=Math.max(MW,m.w+20);y+=m.h+16}
+  // Measurements on squared paper sit outside the grid: leave room on the left and below.
+  var pad=fig.marks&&fig.marks.length&&!fig.hideGrid?34:0;
+  if((fig.shapes&&fig.shapes.length)||(fig.dots&&fig.dots.length)){var m=draw(fig,26,8+pad,y+4);MW=Math.max(MW,m.w+20+pad);y+=m.h+16+pad}
   var panels=fig.panels||[],c=Math.min(13,104/W),PW=W*c+16,PH=H*c+8;
   panels.forEach(function(p,i){var col=i%2,row=Math.floor(i/2),px=col*(PW+12),py=y+row*(PH+26);
     out.push({t:'rect',a:{x:px+2,y:py,width:PW,height:PH,rx:8,fill:'#f8fafc',stroke:'#e5e7eb'}});
@@ -159,6 +162,25 @@ function cyChanceShapes(fig){
     out.push({t:'polygon',a:{points:[cx-5,cy,cx+5,cy,cx,cy-R2*0.55].join(','),fill:'#111827'}});
     out.push({t:'circle',a:{cx:cx,cy:cy,r:7,fill:'#111827'}});
     W=Math.max(W,cx+R2+20);y+=2*R2+24;
+  }else if(fig.kind==='dice'){
+    // Two dice with their pips; with table, the 6 × 6 sums table (the sum 7 diagonal shaded).
+    var PIP={1:[[1,1]],2:[[0,0],[2,2]],3:[[0,0],[1,1],[2,2]],4:[[0,0],[2,0],[0,2],[2,2]],5:[[0,0],[2,0],[1,1],[0,2],[2,2]],6:[[0,0],[2,0],[0,1],[2,1],[0,2],[2,2]]};
+    (fig.faces||[]).forEach(function(f,k){var dx=10+k*76,dy=y+6,S=60;
+      out.push({t:'rect',a:{x:dx,y:dy,width:S,height:S,rx:10,fill:'#ffffff',stroke:'#1f2937','stroke-width':2}});
+      (PIP[f]||[]).forEach(function(p){out.push({t:'circle',a:{cx:dx+15+p[0]*15,cy:dy+15+p[1]*15,r:5.5,fill:f===1?'#dc2626':'#111827'}})})});
+    y+=78;
+    if(fig.table){var T=30,tx=10,ty=y+4;
+      out.push({t:'text',a:{x:tx+T/2,y:ty+T/2+5,'text-anchor':'middle','font-size':13,fill:'#475569'},s:'和'});
+      for(i=1;i<=6;i++){
+        out.push({t:'rect',a:{x:tx+i*T,y:ty,width:T,height:T,fill:'#e2e8f0',stroke:'#94a3b8'}});
+        out.push({t:'text',a:{x:tx+i*T+T/2,y:ty+T/2+5,'text-anchor':'middle','font-size':14,'font-weight':700,fill:'#111827'},s:String(i)});
+        out.push({t:'rect',a:{x:tx,y:ty+i*T,width:T,height:T,fill:'#e2e8f0',stroke:'#94a3b8'}});
+        out.push({t:'text',a:{x:tx+T/2,y:ty+i*T+T/2+5,'text-anchor':'middle','font-size':14,'font-weight':700,fill:'#111827'},s:String(i)});
+        for(j=1;j<=6;j++){out.push({t:'rect',a:{x:tx+j*T,y:ty+i*T,width:T,height:T,fill:i+j===7?'#fde68a':'#ffffff',stroke:'#94a3b8'}});
+          out.push({t:'text',a:{x:tx+j*T+T/2,y:ty+i*T+T/2+5,'text-anchor':'middle','font-size':13,fill:'#111827'},s:String(i+j)})}
+      }
+      W=Math.max(W,tx+7*T+10);y+=7*T+14;
+    }
   }else if(fig.kind==='tally'){
     var rows2=fig.rows||[],top=1;rows2.forEach(function(r){top=Math.max(top,r.count)});
     rows2.forEach(function(r,k){var by=y+8+k*34,len=Math.max(2,200*r.count/top);ball(22,by+12,12,r.color);
