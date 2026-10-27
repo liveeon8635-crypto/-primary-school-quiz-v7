@@ -64,6 +64,27 @@ def test_answers_match_the_drawn_shape(node, level):
                 assert heights and v > max(heights), (m, q)                  # a slanted side is longer than the height
 
 
+@pytest.mark.parametrize("level", ["basic", "medium", "hard"])
+def test_lattice_polygons_follow_picks_theorem(level):
+    qs = af.generate("6-6", level, 6, 5)
+    assert len(qs) == 6
+    for q in qs:
+        pts = q["figure"]["shapes"][0]["points"]
+        assert len(pts) >= (3 if level == "basic" else 4) and gf.sanitize(q["figure"]) == q["figure"]
+        assert float(q["answer"]) == shoelace(pts)
+        inner, border = map(int, re.search(r"内部有 (\d+) 个格点，边上有 (\d+) 个格点", q["explanation"]).groups())
+        assert inner + border / 2 - 1 == shoelace(pts)
+
+
+@pytest.mark.parametrize("level", ["basic", "medium", "hard"])
+def test_review_8_4_mixes_moves_and_areas(level):
+    qs = vq.generate("8-4", level, 7, 3)
+    assert len(qs) == 7
+    texts = " ".join(q["text"] for q in qs)
+    assert "面积" in texts and any(w in texts for w in ("平移", "旋转", "对称轴"))
+    assert all(gf.sanitize(q["figure"]) == q["figure"] for q in qs)
+
+
 def test_marks_and_plain_drawings_are_checked():
     base = {"type": "gridshape", "width": 12, "height": 8, "hideGrid": True,
             "shapes": [{"points": [[1, 1], [6, 1], [3, 4]], "tone": "a", "label": ""}],
@@ -77,9 +98,10 @@ def test_marks_and_plain_drawings_are_checked():
 
 
 def test_every_area_point_is_served_by_the_dispatcher():
-    for key in ("6-1", "6-2", "6-3", "6-4"):
+    for key in ("6-1", "6-2", "6-3", "6-4", "6-6"):
         assert key in vq.NODE_KINDS and "面积" in vq.NODE_LABELS[key]
         assert vq.generate(key, "medium", 1, 2)[0]["figure"]["type"] == "gridshape"
+    assert "面积" in vq.NODE_LABELS["8-4"] and "平移" in vq.NODE_LABELS["4-4"]
 
 
 def test_plain_drawing_has_no_squares_and_draws_measurements():
