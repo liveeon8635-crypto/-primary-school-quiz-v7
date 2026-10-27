@@ -15,7 +15,9 @@ jobs:
   automation-boundary-guard:
     name: automation-boundary-guard
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # The smoke suite grows over time (250 test files as of 2026-10). This job
+    # waits for it, so its timeout must stay above the suite's real duration.
+    timeout-minutes: 45
     steps:
       - name: Enforce trusted automation boundary
         uses: actions/github-script@v7
@@ -126,7 +128,9 @@ jobs:
               }
 
               const requiredWorkflows = [...new Set(policy.automaticMerge.requiredWorkflowRuns || [])];
-              const workflowDeadline = Date.now() + 420000;
+              // Wait up to 40 minutes for "CI" / "Harness Guard": the smoke suite
+              // alone takes 8–25 minutes, so a shorter deadline fails every PR.
+              const workflowDeadline = Date.now() + 2400000;
               let requiredWorkflowEvidence = [];
               while (requiredWorkflows.length) {
                 const runsResponse = await github.rest.actions.listWorkflowRunsForRepo({
