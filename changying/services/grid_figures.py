@@ -3,18 +3,22 @@
 A figure is a W×H square grid (y pointing up, like the textbook's 方格纸) with polygons given by integer vertices:
 
     {"type": "gridshape", "width": 10, "height": 8,
-     "shapes": [{"points": [[x, y], ...], "tone": "a" | "b" | "ghost", "label": "A"}],
+     "shapes": [{"points": [[x, y], ...], "tone": "a" | "b" | "ghost", "label": "A", "smooth": true}],   # smooth: a
+                                          # closed curve through the points (irregular shapes), else a polygon
      "axis": [[x1, y1], [x2, y2]],        # optional symmetry axis l (drawn dashed across the grid)
      "center": [x, y],                    # optional rotation centre O
      "panels": [{"label": "图A", "shapes": [...], "axis": ..., "center": ...}],   # optional answer pictures
      "hideGrid": true,                    # optional: a plain drawing with measurements instead of squared paper
-     "marks": [{"from": [x, y], "to": [x, y], "text": "8 cm", "style": "dim" | "height"}]}   # optional measurements
+     "marks": [{"from": [x, y], "to": [x, y], "text": "8 cm", "style": "dim" | "height" | "seg"}],  # optional measurements;
+                                          # seg is a plain line (a road) labelled underneath
+     "dots": [[x, y], ...]}               # optional trees / pots drawn as dots (植树问题)
 
 The moved shapes, the answer and the distractors are computed here (typical mistakes: one square too few or too
 many, wrong direction, wrong turning direction, flipped instead of turned), so the picture and the answer agree.
 """
 from __future__ import annotations
 
+import math
 import random
 from typing import Any
 
@@ -22,7 +26,7 @@ FIGURE_TYPE = "gridshape"
 LETTERS = "ABCD"
 MAX_SIDE = 12
 MAX_POINTS = 10
-MAX_SHAPES = 3
+MAX_SHAPES = 40                              # a tiling picture (密铺) holds many tiles
 MAX_PANELS = 4
 TONES = ("a", "b", "ghost")
 
@@ -43,8 +47,11 @@ DIR_TEXT = {(1, 0): "右", (-1, 0): "左", (0, 1): "上", (0, -1): "下"}
 
 
 # ---------------------------------------------------------------- data checks
-def _pt(v: Any, w: int, h: int) -> list[int] | None:
-    if not isinstance(v, list) or len(v) != 2 or any(isinstance(x, bool) or not isinstance(x, int) for x in v):
+def _pt(v: Any, w: int, h: int, half: bool = False) -> list[Any] | None:
+    """A grid point; curves (``half``) may also pass through the middle of a square (x.5)."""
+    if not isinstance(v, list) or len(v) != 2 or any(isinstance(x, bool) or not isinstance(x, (int, float)) for x in v):
+        return None
+    if not all(isinstance(x, int) or (half and math.isfinite(x) and (x * 2).is_integer()) for x in v):
         return None
     return [v[0], v[1]] if 0 <= v[0] <= w and 0 <= v[1] <= h else None
 
@@ -59,14 +66,19 @@ def _shapes(value: Any, w: int, h: int) -> list[dict[str, Any]] | None:
         pts = s.get("points")
         if not isinstance(pts, list) or not 3 <= len(pts) <= MAX_POINTS:
             return None
-        clean = [_pt(p, w, h) for p in pts]
+        clean = [_pt(p, w, h, half=s.get("smooth") is True) for p in pts]
         if any(p is None for p in clean):
             return None
-        out.append({"points": clean, "tone": s.get("tone", "a"), "label": str(s.get("label") or "")[:4]})
+        item = {"points": clean, "tone": s.get("tone", "a"), "label": str(s.get("label") or "")[:4]}
+        if s.get("smooth") is True:
+            item["smooth"] = True
+        out.append(item)
     return out
 
 
 MAX_MARKS = 6
+MARK_STYLES = ("dim", "height", "seg")
+MAX_DOTS = 40
 
 
 def _marks(value: Any, w: int, h: int) -> list[dict[str, Any]] | None:
@@ -74,7 +86,7 @@ def _marks(value: Any, w: int, h: int) -> list[dict[str, Any]] | None:
         return None
     out = []
     for m in value:
-        if not isinstance(m, dict) or m.get("style") not in ("dim", "height"):
+        if not isinstance(m, dict) or m.get("style") not in MARK_STYLES:
             return None
         a, b = _pt(m.get("from"), w, h), _pt(m.get("to"), w, h)
         text = str(m.get("text") or "").strip()[:12]
@@ -98,6 +110,15 @@ def _extras(src: dict[str, Any], dst: dict[str, Any], w: int, h: int) -> bool:
         if c is None:
             return False
         dst["center"] = c
+    if src.get("dots") is not None:
+        dots = src["dots"]
+        if not isinstance(dots, list) or len(dots) > MAX_DOTS:
+            return False
+        clean = [_pt(p, w, h) for p in dots]
+        if any(p is None for p in clean):
+            return False
+        if clean:
+            dst["dots"] = clean
     if src.get("marks") is not None:
         marks = _marks(src["marks"], w, h)
         if marks is None:
@@ -137,7 +158,7 @@ def sanitize(value: Any) -> dict[str, Any]:
         clean.append(item)
     if clean:
         out["panels"] = clean
-    if not shapes and not clean:
+    if not shapes and not clean and "dots" not in out:
         return {}
     title = str(value.get("title") or "").strip()[:40]
     if title:

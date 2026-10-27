@@ -6,15 +6,16 @@ angle). The slanted side is labelled too, because 底 × 斜边 is the classic m
 """
 from __future__ import annotations
 
+import math
 import random
 from typing import Any
 
 from changying.services.grid_figures import FIGURE_TYPE, LETTERS
 
-NODE_KINDS = {"6-1": "parallelogram", "6-2": "triangle", "6-3": "trapezoid", "6-4": "composite", "6-6": "lattice"}
+NODE_KINDS = {"6-1": "parallelogram", "6-2": "triangle", "6-3": "trapezoid", "6-4": "composite", "6-5": "estimate", "6-6": "lattice"}
 KIND_LABELS = {"parallelogram": "平行四边形的面积（方格图、标尺寸）", "triangle": "三角形的面积（方格图、标尺寸）",
                "trapezoid": "梯形的面积（方格图、标尺寸）", "composite": "组合图形的面积（分割、添补）",
-               "lattice": "格点多边形的面积（方格图）"}
+               "estimate": "估计不规则图形的面积（满格按 1 格、不满按半格）", "lattice": "格点多边形的面积（方格图）"}
 W, H = 12, 8
 
 
@@ -168,7 +169,93 @@ def make_question(kind: str, level: str, seed: int) -> dict[str, Any] | None:
         why = (f"可以用添补法：先算把它围住的长方形，再减去四周的直角三角形和长方形。也可以数格点：图形内部有 {inner} 个格点，"
                f"边上有 {border} 个格点，面积 = {inner} + {border} ÷ 2 − 1 = {fmt(area)}（平方厘米）。")
         return _fill("下面格点多边形的面积是（　　）平方厘米。", area, why, _fig(hull, title=GRID_TITLE))
+
+    if kind == "estimate":
+        k = rng.randint(6, 8)
+        r0 = {"basic": 2.2, "medium": 2.6, "hard": 3.0}[level]
+        cx, cy = rng.randint(5, 7), 4
+        pts = []
+        for i in range(k):
+            t = 2 * math.pi * (i + rng.uniform(-0.2, 0.2)) / k
+            r = r0 * rng.uniform(0.75, 1.2)
+            # Through the middle of a square, not a corner, so the curve rarely just grazes a square.
+            pts.append([math.floor(cx + r * 1.3 * math.cos(t)) + 0.5, math.floor(cy + r * math.sin(t)) + 0.5])
+        if any(p == q for p, q in zip(pts, pts[1:] + pts[:1])):
+            return None
+        counted = count_cells(pts, W, H)
+        if counted is None:
+            return None
+        full, part, unsure = counted
+        est = full + part / 2
+        wrong = [full, full + part, part / 2]
+        # A pupil may read a grazed or nearly full square differently; keep every other option out of that reach.
+        if full < 3 or min(abs(est - v) for v in wrong) < unsure + 1.5:
+            return None
+        why = f"满格的有 {full} 个，不满整格的有 {part} 个，不满整格的都按半格算：{full} + {part} ÷ 2 = {fmt(est)}（平方厘米）。"
+        fig = {**_fig([], title=GRID_TITLE), "shapes": [{"points": pts, "tone": "a", "label": "", "smooth": True}]}
+        return _choice(rng, "估一估，下面不规则图形的面积大约是（　　）。（不满整格的按半格计算）", f"{fmt(est)} {cm}",
+                       [f"{fmt(v)} {cm}" for v in wrong], "不满整格的不能丢掉，也不能都按一整格算。" + why, fig)
     raise ValueError(kind)
+
+
+# ---------------------------------------------------------------- irregular shapes (6-5)
+def curve(pts: list[list[int]], steps: int = 24) -> list[tuple[float, float]]:
+    """The closed Catmull-Rom curve the browser draws through the points (as cubic Béziers), sampled."""
+    n, out = len(pts), []
+    for i in range(n):
+        p0, p1, p2, p3 = pts[i - 1], pts[i], pts[(i + 1) % n], pts[(i + 2) % n]
+        c1 = (p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6)
+        c2 = (p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6)
+        for j in range(steps):
+            t = j / steps
+            u = 1 - t
+            out.append((u ** 3 * p1[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t ** 3 * p2[0],
+                        u ** 3 * p1[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t ** 3 * p2[1]))
+    return out
+
+
+def _inside_poly(x: float, y: float, poly: list[tuple[float, float]]) -> bool:
+    hit = False
+    for (x1, y1), (x2, y2) in zip(poly, poly[1:] + poly[:1]):
+        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+            hit = not hit
+    return hit
+
+
+def _crosses(poly: list[tuple[float, float]]) -> bool:
+    segs = list(zip(poly, poly[1:] + poly[:1]))
+
+    def ccw(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> float:
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+    for i, (a, b) in enumerate(segs):
+        for j in range(i + 2, len(segs)):
+            if i == 0 and j == len(segs) - 1:
+                continue
+            c, d = segs[j]
+            if ccw(a, b, c) * ccw(a, b, d) < 0 and ccw(c, d, a) * ccw(c, d, b) < 0:
+                return True
+    return False
+
+
+def count_cells(pts: list[list[float]], w: int, h: int, sub: int = 8) -> tuple[int, int, int] | None:
+    """(full squares, part squares, squares a pupil might read either way) for the drawn curve, or None when the
+    curve leaves the paper or crosses itself. A part square is one the curve passes through."""
+    poly = curve(pts)
+    if _crosses(poly) or any(not (0.3 <= x <= w - 0.3 and 0.3 <= y <= h - 0.3) for x, y in poly):
+        return None
+    touched = {(math.floor(x), math.floor(y)) for x, y in curve(pts, 160)}
+    xs, ys = [x for x, _ in poly], [y for _, y in poly]
+    full = part = unsure = 0
+    for i in range(math.floor(min(xs)), math.ceil(max(xs))):
+        for j in range(math.floor(min(ys)), math.ceil(max(ys))):
+            if (i, j) in touched:
+                inside = sum(_inside_poly(i + (a + 0.5) / sub, j + (b + 0.5) / sub, poly) for a in range(sub) for b in range(sub))
+                part += 1
+                unsure += not 0.06 <= inside / sub / sub <= 0.94
+            elif _inside_poly(i + 0.5, j + 0.5, poly):
+                full += 1
+    return full, part, unsure
 
 
 def _gcd(a: int, b: int) -> int:
