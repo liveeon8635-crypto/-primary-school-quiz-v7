@@ -124,7 +124,7 @@ function cwControl(box,c,sid){
 COURSEWARE_PLAN_JS = r"""
 var CW_STAGES=['到课与热身','知识点介绍','例题讲解','随堂练习','练习复盘','课堂互动','布置课后'];
 function cwPlan(box,lessonId,refresh){
-  var stageNo='3',msg=el('div',{role:'status','aria-live':'polite'}),data=null,busy=false,editorBox=null;
+  var stageNo='3',msg=el('div',{role:'status','aria-live':'polite'}),data=null,busy=false;
   function load(){api('/teacher/weekend/lessons/'+lessonId+'/courseware').then(paint).catch(function(e){box.textContent='';box.appendChild(el('div',{class:'notice error',text:e.message}))})}
   function itemAt(page){return (data.items||[]).filter(function(i){return String(i.stage)===stageNo&&i.page===page})[0]}
   function paint(d){
@@ -148,45 +148,17 @@ function cwPlan(box,lessonId,refresh){
     }});
     box.appendChild(el('div',{class:'row'},stageSel,all,el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})),approveAll));
     box.appendChild(msg);
-    var rows=el('div'),editor=el('div');box.appendChild(rows);box.appendChild(editor);editorBox=editor;
+    var rows=el('div'),editor=el('div');box.appendChild(rows);box.appendChild(editor);
     list.forEach(function(x){
       var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
       var line=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:(x.page==null?'':'第'+(x.page+1)+'页：')+x.text}),
         el('div',{class:'row'},el('span',{class:'tag '+tag[0],text:tag[1]}),it?el('span',{class:'muted',text:d.kindLabels[it.kind]+(it.writtenTask?' · 含学生作答题':'')}):null)));
       line.appendChild(el('button',{text:it?'重新生成':'生成',onclick:function(){run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate',{json:{stageNo:+stageNo,page:y.page}})},'生成')}}));
       line.appendChild(el('button',{text:it?'预览／修改':'手动填写',onclick:function(){edit(editor,x,itemAt(x.page))}}));
-      if(it)line.appendChild(el('button',{text:'存为模板',onclick:function(){
-        var name=prompt('给这个模板起个名字，以后可以套用到其它课：',(data.subject||'')+'课件模板');
-        if(name===null)return;
-        api('/teacher/weekend/lessons/'+lessonId+'/courseware/save-as-template',{json:{stageNo:+stageNo,page:x.page,name:name}})
-          .then(function(r){msg.textContent='已存为模板：'+r.name}).catch(function(e){msg.textContent=e.message});
-      }}));
-      line.appendChild(el('button',{text:'套用模板',onclick:function(){pickTemplate(x)}}));
       if(it&&it.status==='draft')line.appendChild(el('button',{class:'primary',text:'审核通过',onclick:function(){run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:y.page}})},'审核')}}));
       if(it)line.appendChild(el('button',{text:'删除',onclick:function(){if(confirm('删除这一页的课件？'))api('/teacher/weekend/lessons/'+lessonId+'/courseware/remove',{json:{stageNo:+stageNo,page:x.page}}).then(paint).catch(function(e){msg.textContent=e.message})}}));
       rows.appendChild(line);
     });
-  }
-  function pickTemplate(x){
-    editorBox.textContent='';
-    var card=el('div',{class:'card'}),listBox=el('div');
-    card.appendChild(el('h2',{text:'套用本校模板（'+(x.page==null?'整个环节':'第'+(x.page+1)+'页')+'）'}));
-    card.appendChild(listBox);
-    card.appendChild(el('button',{text:'关闭',onclick:function(){editorBox.textContent=''}}));
-    editorBox.appendChild(card);
-    api('/teacher/weekend/courseware/templates?subject='+encodeURIComponent(data.subject||'')).then(function(d){
-      if(!d.items.length){listBox.appendChild(el('div',{class:'notice warn',text:'本校还没有模板。先在某个课件上点“存为模板”。'}));return}
-      d.items.forEach(function(t){
-        listBox.appendChild(el('div',{class:'row'},el('b',{text:t.name}),
-          el('span',{class:'muted',text:t.kindLabel+' · 第'+t.stageNo+'环节'}),
-          el('button',{class:'primary',text:'套用',onclick:function(){
-            if(!confirm('把“'+t.name+'”套用到这一页？套用后是新的草稿，需要你重新审核。'))return;
-            api('/teacher/weekend/lessons/'+lessonId+'/courseware/from-template',{json:{stageNo:+stageNo,page:x.page,templateId:t.id}})
-              .then(function(d2){msg.textContent='已套用模板，请预览后点“审核通过”。';paint(d2)})
-              .catch(function(e){msg.textContent=e.message});
-          }})));
-      });
-    }).catch(function(e){listBox.appendChild(el('div',{class:'notice error',text:e.message}))});
   }
   function run(todo,call,label){
     if(busy)return;busy=true;var failed=[],i=0,last=null;

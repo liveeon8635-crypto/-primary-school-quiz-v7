@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:f9f7e78997c8e42ce5f615ab20f114390ad3a0524b6e568a0573601ad5eabe01",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "ce04d3c8ecbf638b820828e50bbff43f21ea06eb",
+  "headSha": "2abc3880da200fa75d1dfe3b13c4ebdcd94fb5ec",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：该变更添加了按模板恢复单元知识点的功能，并优化了添加知识点的界面表单，代码逻辑清晰且测试覆盖完整。",
+      "evidenceRefs": [
+        "file:changying/services/knowledge_maps.py#L180-L200",
+        "file:changying/web/knowledge_map_views.py#L326-L341"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:c4a774916cdcec16366c73499e114250ae439ede178a139935a91bd5529b240c"
+}
