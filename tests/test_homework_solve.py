@@ -269,6 +269,8 @@ with TestClient(app) as client:
     os.environ["HOMEWORK_STUDENT_DAILY_LIMIT"] = "1"
     from datetime import datetime, timedelta
     from sqlalchemy import update
+    # Pin the school day so rows from 10 minutes ago still count when the test runs just after UTC+8 midnight.
+    homework_limits.school_day_start_utc = lambda now=None: datetime.utcnow() - timedelta(hours=1)
     with legacy.SessionLocal() as db:
         for _ in range(3):
             db.add(legacy.AIUsageLog(school_id=school_id, user_id=sid, feature="homework_help_vision", provider="p", model="m", status="ok",
