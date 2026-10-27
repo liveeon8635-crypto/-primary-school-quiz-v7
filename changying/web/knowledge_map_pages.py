@@ -44,14 +44,16 @@ function kmQuestions(n,box){
     var head=el('p',{class:'muted',text:'题库中知识点名为“'+d.bankKeys.join('”或“')+'”的题目共 '+d.items.length+' 道。每题选一个难度档；选“不用”表示不进入诊断和掌握度。每个知识点至少 '+KM.minPerNode+' 题，每档至少 '+KM.minPerLevel+' 题。'});
     box.appendChild(head);
     var gen=el('div');box.appendChild(gen);kmAIGen(n,gen);
-    if(!d.items.length){box.appendChild(el('p',{text:'题库里还没有匹配的题目：可以用上面的“AI 出题”，或在题库中录入知识点名一致的题目，或在“编辑”里补充题库知识点名。'}));return}
+    var pick=el('div');box.appendChild(pick);kmBankPick(n,pick);
+    if(!d.items.length){box.appendChild(el('p',{text:'这个知识点还没有题目：可以用上面的“从题库挑题”按单元挑选已导入的题，或用“AI 出题”。'}));return}
+    box.appendChild(el('h4',{text:'已归到这个知识点的题'}));
     var list=el('ol');
     d.items.forEach(function(q){
       var sel=el('select',{'aria-label':'难度档'});sel.appendChild(el('option',{value:'',text:'不用'}));
       Object.keys(KM.levels).forEach(function(k){var o=el('option',{value:k,text:KM.levels[k]});if(q.level===k)o.selected=true;sel.appendChild(o)});
       sel.addEventListener('change',function(){picks[q.id]=sel.value||null});
       list.appendChild(el('li',{},el('div',{text:q.text.length>160?q.text.slice(0,160)+'…':q.text}),
-        el('div',{class:'row'},kmTag(q.knowledge),q.unit?kmTag(q.unit):null,sel)));
+        el('div',{class:'row'},kmTag(q.knowledge),q.unit?kmTag(q.unit):null,q.note?kmTag(q.note,'warn'):null,sel)));
     });
     box.appendChild(list);
     box.appendChild(el('div',{class:'row'},
@@ -62,6 +64,42 @@ function kmQuestions(n,box){
           .then(function(r){KM=r;QPANEL={};kmSay('分档已保存');kmRender()}).catch(function(e){kmSay(e.message,true)})}}),
       el('button',{class:'btn',text:'收起',onclick:function(){box.textContent='';delete QPANEL[n.key]}})));
   }).catch(function(e){box.textContent='';box.appendChild(el('p',{class:'warn',text:e.message}))});
+}
+// 从题库挑题：按单元或关键词搜索本校题库，不要求题目的知识点名与地图一致；分档按题目编号保存。
+function kmBankPick(n,holder){
+  var unit=el('select',{'aria-label':'单元'}),kw=el('input',{placeholder:'关键词（题干或知识点）','aria-label':'关键词',maxlength:'60'}),out=el('div');
+  unit.appendChild(el('option',{value:'',text:'全部单元'}));
+  var run=function(){
+    if(!unit.value&&!kw.value.trim()){out.textContent='请先选单元或输入关键词';return}
+    out.textContent='正在搜索…';
+    api('/teacher/knowledge-maps/'+KM.id+'/bank?unit='+encodeURIComponent(unit.value)+'&q='+encodeURIComponent(kw.value.trim())).then(function(d){kmBankList(n,d,out)})
+      .catch(function(e){out.textContent=e.message});
+  };
+  holder.appendChild(el('div',{class:'card'},el('h4',{text:'从题库挑题（按单元或关键词，不要求知识点名一致）'}),
+    el('div',{class:'row'},unit,kw,el('button',{class:'btn',text:'搜索',onclick:run})),out));
+  api('/teacher/knowledge-maps/'+KM.id+'/bank').then(function(d){d.units.forEach(function(x){unit.appendChild(el('option',{value:x,text:x}))})}).catch(function(){});
+}
+function kmBankList(n,d,out){
+  out.textContent='';var picks={};
+  out.appendChild(el('p',{class:'muted',text:'找到 '+d.total+' 道'+(d.total>d.items.length?'，先显示前 '+d.items.length+' 道，可加关键词缩小范围':'')+'。给要放进“'+n.name+'”的题选难度档，再点“把选中的题归到这个知识点”。'}));
+  if(!d.items.length)return;
+  var list=el('ol');
+  d.items.forEach(function(q){
+    var sel=el('select',{'aria-label':'难度档'});sel.appendChild(el('option',{value:'',text:'不选'}));
+    Object.keys(KM.levels).forEach(function(k){sel.appendChild(el('option',{value:k,text:KM.levels[k]}))});
+    sel.addEventListener('change',function(){if(sel.value)picks[q.id]=sel.value;else delete picks[q.id]});
+    var where=q.placed?(q.placed[0]===n.key?'已在本知识点（'+KM.levels[q.placed[1]]+'）':'已归到 '+q.placed[0]+'（'+KM.levels[q.placed[1]]+'）'):null;
+    list.appendChild(el('li',{'data-bank':String(q.id)},el('div',{text:q.text.length>160?q.text.slice(0,160)+'…':q.text}),
+      el('div',{class:'row'},kmTag(q.knowledge),q.unit?kmTag(q.unit):null,q.note?kmTag(q.note,'warn'):null,where?kmTag(where):null,sel)));
+  });
+  out.appendChild(list);
+  out.appendChild(el('button',{class:'btn primary',text:'把选中的题归到这个知识点',onclick:function(e){
+    if(!Object.keys(picks).length){kmSay('还没有给题目选难度档');return}
+    e.target.disabled=true;
+    api('/teacher/knowledge-maps/'+KM.id+'/nodes/'+encodeURIComponent(n.key)+'/levels',{method:'PUT',json:{levels:picks,revision:KM.revision}})
+      .then(function(r){KM=r;QPANEL[n.key]=1;kmSay('已把 '+Object.keys(picks).length+' 道题归到 '+n.key+' 并分档');kmRender()})
+      .catch(function(err){e.target.disabled=false;kmSay(err.message,true)});
+  }}));
 }
 // AI 出题：复用现有的 /ai/questions/generate 和 /ai/questions/save（教师审核后才入库），保存后按所选难度档分档。
 // 教材名沿用题库核定的“人教版”（出题接口只接受核定教材）。

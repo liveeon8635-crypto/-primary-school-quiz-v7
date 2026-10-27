@@ -217,3 +217,56 @@ print("OK")
 
 def test_ai_drafts_for_a_node_are_reviewed_saved_and_levelled(tmp_path):
     helpers.run_isolated(tmp_path, helpers.COMMON + AI_FLOW, {"KNOWLEDGE_MAP": "1"})
+
+
+BANK_FLOW = r'''
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    d = client.post("/teacher/knowledge-maps", headers=th, json={"template": "rj2026-g5-math-up"}).json()
+    mid, rev = d["id"], d["revision"]
+    with legacy.SessionLocal() as db:
+        other = legacy.School(name="别校", code="OTHER-BANK"); db.add(other); db.flush()
+        def q(text, knowledge, unit="第一单元", qtype="fill_blank", figure="{}", school=school_id):
+            row = legacy.Question(school_id=school, grade=5, subject="数学", unit=unit, knowledge=knowledge, text=text, options_json="[]",
+                                  correct_index=-1, question_type=qtype, answer_json=json.dumps({"answer": "①③④"}), figure_json=figure)
+            db.add(row); db.flush(); return row.id
+        front = q("从前面看是图A的有（ ）。", "从前面观察简单组合体")
+        top = q("从上面看是图B的有（ ）。", "从上面观察简单组合体")
+        draw = q("在方格纸上画出从前面、上面和左面看到的图形。", "画简单组合体的三视图", qtype="non_choice")
+        drawn = q("看图填空", "从左面观察简单组合体", figure=json.dumps({"type": "geometry", "shape": "cube"}))
+        q("0.3×0.2=（ ）", "小数乘小数", unit="第二单元")
+        q("外校题：从前面看", "从前面观察简单组合体", school=other.id)
+        db.commit()
+
+    base = f"/teacher/knowledge-maps/{mid}/bank"
+    assert client.get(base, headers=sh).status_code == 403
+    first = client.get(base, headers=th).json()
+    assert first["items"] == [] and {"第一单元", "第二单元"} <= set(first["units"])
+    by_unit = client.get(base, headers=th, params={"unit": "第一单元"}).json()
+    assert [x["id"] for x in by_unit["items"]] == [front, top, draw, drawn] and by_unit["total"] == 4
+    notes = {x["id"]: x["note"] for x in by_unit["items"]}
+    assert notes[front] == "" and "批改" in notes[draw] and "图示" in notes[drawn]
+    assert "外校" not in json.dumps(by_unit, ensure_ascii=False)
+    by_word = client.get(base, headers=th, params={"q": "前面"}).json()
+    assert {x["id"] for x in by_word["items"]} == {front, draw}            # text or knowledge name
+
+    # Picked into 1-1 whatever their knowledge names; the node lists them with the notes, the bank shows where they went.
+    d = client.put(f"/teacher/knowledge-maps/{mid}/nodes/1-1/levels", headers=th,
+                   json={"levels": {str(front): "basic", str(top): "medium", str(draw): "hard"}, "revision": rev}).json()
+    n11 = next(n for n in d["map"]["nodes"] if n["key"] == "1-1")
+    assert n11["coverage"]["counts"] == {"basic": 1, "medium": 1, "hard": 1}
+    listed = client.get(f"/teacher/knowledge-maps/{mid}/nodes/1-1/questions", headers=th).json()["items"]
+    assert [(x["id"], x["level"]) for x in listed] == [(front, "basic"), (top, "medium"), (draw, "hard")]
+    assert "批改" in next(x for x in listed if x["id"] == draw)["note"]
+    again = client.get(base, headers=th, params={"unit": "第一单元"}).json()
+    assert next(x for x in again["items"] if x["id"] == front)["placed"] == ["1-1", "basic"]
+    assert next(x for x in again["items"] if x["id"] == drawn)["placed"] is None
+    page = client.get("/v1/knowledge-map").text
+    for t in ("kmBankPick(", "/bank?unit=", "从题库挑题", "把选中的题归到这个知识点"):
+        assert t in page, t
+print("OK")
+'''
+
+
+def test_bank_search_picks_questions_whatever_their_knowledge_name(tmp_path):
+    helpers.run_isolated(tmp_path, helpers.COMMON + BANK_FLOW, {"KNOWLEDGE_MAP": "1"})
