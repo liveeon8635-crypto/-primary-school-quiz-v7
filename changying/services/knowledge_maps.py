@@ -264,8 +264,8 @@ WEIGHTS = {"basic": 1.0, "medium": 1.5, "hard": 2.0}
 MASTERY_LABELS = {"weak": "薄弱", "pass": "达标", "fluent": "熟练"}
 CONFIDENCE_LABELS = {"reliable": "可信", "preliminary": "初步", "insufficient": "证据不足"}
 DIAGNOSIS_SIZE = 12
-# Figures the diagnosis and knowledge-map pages can show: photos, and cube solids drawn from their data.
-SHOWN_FIGURES = {"uploaded_image", "cubes"}
+# Figures the diagnosis and knowledge-map pages can show: photos, and system-drawn figures (cubes, grid moves).
+SHOWN_FIGURES = {"uploaded_image", "cubes", "gridshape"}
 AGREEMENT_TARGET = 0.8          # 验收：系统判断与教师判断一致率
 DIAGNOSIS_MIN = 6
 

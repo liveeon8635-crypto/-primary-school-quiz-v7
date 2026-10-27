@@ -445,7 +445,7 @@ function smQuiz(qs){
   qs.forEach(function(q,i){
     var box=el('div',{class:'card','data-q':String(q.id)},el('p',{text:(i+1)+'. '+q.text}));
     if(q.figure&&q.figure.type==='uploaded_image')box.appendChild(el('img',{src:q.figure.data_url,alt:q.figure.alt||'题目图片',style:'max-width:100%;max-height:260px'}));
-    if(q.figure&&q.figure.type==='cubes')box.appendChild(cyCubeSvgNode(q.figure));
+    if(cyIsDrawnFigure(q.figure))box.appendChild(cyCubeSvgNode(q.figure));
     if(q.questionType==='single_choice'||q.questionType==='true_false'){
       var opts=el('div',{class:'row'});
       (q.options||[]).forEach(function(o,k){var b=el('button',{class:'btn',type:'button',text:String.fromCharCode(65+k)+'. '+o,onclick:function(){
