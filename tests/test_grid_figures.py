@@ -129,7 +129,7 @@ def test_sanitize_rejects_bad_figures():
 
 
 def test_both_families_share_one_entry_point():
-    assert set(vq.NODE_KINDS) == {"1-1", "1-2", "1-3", "1-4", "8-3", "4-1", "4-2", "4-3", "4-4", "6-1", "6-2", "6-3", "6-4", "6-6", "8-4"}
+    assert set(vq.NODE_KINDS) == {"1-1", "1-2", "1-3", "1-4", "8-3", "4-1", "4-2", "4-3", "4-4", "6-1", "6-2", "6-3", "6-4", "6-5", "6-6", "8-4", "8-6"}
     assert vq.FIGURE_TYPES == {"cubes", "gridshape"}
     assert vq.generate("4-2", "basic", 2, 1)[0]["figure"]["type"] == "gridshape"
     assert vq.generate("1-1", "basic", 1, 1)[0]["figure"]["type"] == "cubes"

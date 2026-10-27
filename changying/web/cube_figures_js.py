@@ -69,6 +69,7 @@ function cyGridShapes(fig){
       var xs=[],ys=[],M=46;
       (f.shapes||[]).forEach(function(s){s.points.forEach(function(p){xs.push(p[0]);ys.push(p[1])})});
       (f.marks||[]).forEach(function(m){xs.push(m.from[0],m.to[0]);ys.push(m.from[1],m.to[1])});
+      (f.dots||[]).forEach(function(p){xs.push(p[0]);ys.push(p[1])});
       var minx=Math.min.apply(null,xs),maxx=Math.max.apply(null,xs),miny=Math.min.apply(null,ys),maxy=Math.max.apply(null,ys);
       X=function(x){return ox+M+(x-minx)*c};Y=function(y){return oy+M+(maxy-y)*c};
     }
@@ -77,7 +78,14 @@ function cyGridShapes(fig){
       for(i=0;i<=H;i++)out.push({t:'line',a:{x1:X(0),y1:Y(i),x2:X(W),y2:Y(i),stroke:'#e2e8f0','stroke-width':1}});
     }
     (f.shapes||[]).forEach(function(s){var t=TONE[s.tone]||TONE.a,a={points:s.points.map(function(p){return X(p[0])+','+Y(p[1])}).join(' '),fill:t.fill,stroke:t.stroke,'stroke-width':c>14?2:1.5};
-      if(t.dash)a['stroke-dasharray']=t.dash;out.push({t:'polygon',a:a});
+      if(t.dash)a['stroke-dasharray']=t.dash;
+      if(s.smooth){
+        // Irregular shape: a closed curve through the points (Catmull-Rom as cubic Béziers, as the server counts it).
+        var P=s.points,n=P.length,d='M'+X(P[0][0])+','+Y(P[0][1]);
+        for(i=0;i<n;i++){var p0=P[(i+n-1)%n],p1=P[i],p2=P[(i+1)%n],p3=P[(i+2)%n];
+          d+=' C'+X(p1[0]+(p2[0]-p0[0])/6)+','+Y(p1[1]+(p2[1]-p0[1])/6)+' '+X(p2[0]-(p3[0]-p1[0])/6)+','+Y(p2[1]-(p3[1]-p1[1])/6)+' '+X(p2[0])+','+Y(p2[1])}
+        delete a.points;a.d=d+' Z';a['fill-opacity']=0.75;out.push({t:'path',a:a});
+      }else out.push({t:'polygon',a:a});
       if(s.label){var sx=0,sy=0;s.points.forEach(function(p){sx+=p[0];sy+=p[1]});
         var lx=X(sx/s.points.length),ly=Y(sy/s.points.length)+5;
         if(f.center){var ox2=X(f.center[0]),oy2=Y(f.center[1]);          // keep the shape's letter clear of the point O
@@ -90,9 +98,14 @@ function cyGridShapes(fig){
       var ax=X(m.from[0]),ay=Y(m.from[1]),bx=X(m.to[0]),by=Y(m.to[1]),fs=Math.max(12,c*0.55),
           len=Math.sqrt((bx-ax)*(bx-ax)+(by-ay)*(by-ay))||1,nx=(by-ay)/len,ny=-(bx-ax)/len,cx=0,cy=0,k=0;
       (f.shapes||[]).forEach(function(s){s.points.forEach(function(p){cx+=X(p[0]);cy+=Y(p[1]);k++})});
+      (f.dots||[]).forEach(function(p){cx+=X(p[0]);cy+=Y(p[1]);k++});
       if(k){cx/=k;cy/=k}
       var mx=(ax+bx)/2,my=(ay+by)/2;if((mx-cx)*nx+(my-cy)*ny<0){nx=-nx;ny=-ny}
-      if(m.style==='height'){
+      if(m.style==='seg'){
+        // A road: a plain thick line, its length written underneath.
+        out.push({t:'line',a:{x1:ax,y1:ay,x2:bx,y2:by,stroke:'#a8a29e','stroke-width':Math.max(4,c*0.22),'stroke-linecap':'round'}});
+        out.push({t:'text',a:{x:mx,y:Math.max(ay,by)+c*0.5+fs,'text-anchor':'middle','font-size':fs,fill:'#0f172a'},s:m.text});
+      }else if(m.style==='height'){
         out.push({t:'line',a:{x1:ax,y1:ay,x2:bx,y2:by,stroke:'#475569','stroke-width':1.5,'stroke-dasharray':'5 4'}});
         var q=Math.min(10,c*0.4),sx=bx+(ax>=cx?-q:q);
         out.push({t:'polyline',a:{points:[sx,by,sx,by-q,bx,by-q].join(','),fill:'none',stroke:'#475569','stroke-width':1.2}});
@@ -107,13 +120,15 @@ function cyGridShapes(fig){
         else out.push({t:'text',a:{x:mx+nx*(off+fs*0.9),y:my+ny*(off+fs*0.9)+fs*0.35,'text-anchor':'middle','font-size':fs,fill:'#0f172a'},s:m.text});
       }
     });
+    // Trees (or pots) as green dots, drawn last so they sit on the road.
+    (f.dots||[]).forEach(function(p){out.push({t:'circle',a:{cx:X(p[0]),cy:Y(p[1]),r:Math.max(4,c*0.2),fill:'#16a34a',stroke:'#14532d','stroke-width':1.2}})});
     if(f.center){out.push({t:'circle',a:{cx:X(f.center[0]),cy:Y(f.center[1]),r:c>14?4:3,fill:'#111827'}});
       out.push({t:'text',a:{x:X(f.center[0])-(c>14?12:8),y:Y(f.center[1])+(c>14?16:11),'font-size':Math.max(11,c*0.6),'font-weight':700,fill:'#111827'},s:'O'})}
     return plain?{w:(maxx-minx)*c+2*M,h:(maxy-miny)*c+2*M}:{w:W*c,h:H*c};
   }
   var y=0,MW=0;
-  if(fig.title){out.push({t:'text',a:{x:4,y:16,'font-size':14,fill:'#111827'},s:fig.title});y=24}
-  if(fig.shapes&&fig.shapes.length){var m=draw(fig,26,8,y+4);MW=m.w+20;y+=m.h+16}
+  if(fig.title){out.push({t:'text',a:{x:4,y:16,'font-size':14,fill:'#111827'},s:fig.title});y=24;MW=fig.title.length*14+8}
+  if((fig.shapes&&fig.shapes.length)||(fig.dots&&fig.dots.length)){var m=draw(fig,26,8,y+4);MW=Math.max(MW,m.w+20);y+=m.h+16}
   var panels=fig.panels||[],c=Math.min(13,104/W),PW=W*c+16,PH=H*c+8;
   panels.forEach(function(p,i){var col=i%2,row=Math.floor(i/2),px=col*(PW+12),py=y+row*(PH+26);
     out.push({t:'rect',a:{x:px+2,y:py,width:PW,height:PH,rx:8,fill:'#f8fafc',stroke:'#e5e7eb'}});

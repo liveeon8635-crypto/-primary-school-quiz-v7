@@ -6,14 +6,15 @@ from typing import Any
 from changying.services import area_figures as af
 from changying.services import cube_figures as cf
 from changying.services import grid_figures as gf
+from changying.services import tree_figures as tf
 
 _FAMILIES = (cf, gf)                          # one per figure type: generation and saving checks
-_GENERATORS = (cf, gf, af)                    # area questions draw on squared paper (the gridshape type)
+_GENERATORS = (cf, gf, af, tf)                # area and tree questions draw on the gridshape type
 FIGURE_TYPES = {m.FIGURE_TYPE for m in _FAMILIES}
 # Review points mix the kinds of the units they review (8-4 图形的运动与测量).
 REVIEW = {"8-4": [(gf, "translate"), (gf, "rotate"), (gf, "reflect"), (af, "parallelogram"), (af, "triangle"),
                   (af, "trapezoid"), (af, "composite")]}
-NODE_KINDS = {**cf.NODE_KINDS, **gf.NODE_KINDS, **af.NODE_KINDS, **{k: "review" for k in REVIEW}}
+NODE_KINDS = {**cf.NODE_KINDS, **gf.NODE_KINDS, **af.NODE_KINDS, **tf.NODE_KINDS, **{k: "review" for k in REVIEW}}
 NODE_LABELS = {**{key: fam.KIND_LABELS[kind] for fam in _GENERATORS for key, kind in fam.NODE_KINDS.items()},
                "8-4": "复习：图形的运动和面积混合"}
 
