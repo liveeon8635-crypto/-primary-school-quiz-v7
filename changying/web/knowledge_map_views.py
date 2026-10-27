@@ -8,7 +8,7 @@ teacher  GET  /v1/knowledge-map                                  page
          PUT  /teacher/knowledge-maps/{mid}                      {map, revision} save the draft (validated)
          GET  /teacher/knowledge-maps/{mid}/nodes/{key}/questions  questions of the bank matching the node
          POST /teacher/knowledge-maps/{mid}/nodes/{key}/visual        {level, count} picture questions drawn and solved
-                                                                by the system (cube solids, 观察物体), not saved
+                                                                by the system (cube solids, grid moves), not saved
          POST /teacher/knowledge-maps/{mid}/nodes/{key}/visual/save   {level, revision, questions} save reviewed ones, level
          GET  /teacher/knowledge-maps/{mid}/bank?unit=&q=          search the school's bank by unit / keyword to pick
                                                                 questions for a node whatever their knowledge name
@@ -39,7 +39,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, delete, func, insert, select, update
 
-from changying.services import cube_figures as cf
+from changying.services import visual_questions as vq
 from changying.services import knowledge_maps as km
 
 KNOWLEDGE_MAP_FLAG = "KNOWLEDGE_MAP"
@@ -199,7 +199,7 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
                 "revision": int(row.revision), "map": {**m, "nodes": nodes}, "dependents": km.dependents(m),
                 "summary": km.summary(m, ready), "unitKinds": km.UNIT_KINDS, "nodeKinds": km.NODE_KINDS, "levels": km.LEVELS,
                 "minPerLevel": km.MIN_PER_LEVEL, "minPerNode": km.MIN_PER_NODE,
-                "visualNodes": {k: cf.KIND_LABELS[v] for k, v in cf.NODE_KINDS.items()},
+                "visualNodes": vq.NODE_LABELS,
                 "published": None if row.published_revision is None else {
                     "revision": int(row.published_revision), "upToDate": int(row.published_revision) == int(row.revision),
                     "at": row.published_at.replace(tzinfo=None).isoformat(timespec="minutes") if row.published_at else None},
@@ -296,7 +296,7 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
     def visual_node(db: Any, u: Any, mid: int, key: str, lock: bool = False) -> tuple[Any, dict[str, Any]]:
         row = my_map(db, u, mid, lock=lock)
         node = next((n for n in json.loads(row.map_json)["nodes"] if n["key"] == key), None)
-        if node is None or key not in cf.NODE_KINDS:
+        if node is None or key not in vq.NODE_KINDS:
             raise HTTPException(404, "这个知识点暂时没有系统画图题")
         return row, node
 
@@ -306,10 +306,10 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         visual_node(db, u, mid, key)
         if b.level not in km.LEVELS:
             raise HTTPException(400, "难度档只能是基础、中等或提高")
-        items = cf.generate(key, b.level, b.count, secrets.randbelow(10 ** 9))
+        items = vq.generate(key, b.level, b.count, secrets.randbelow(10 ** 9))
         if not items:
             raise HTTPException(502, "这次没有生成合适的题，请再点一次")
-        return {"kind": cf.KIND_LABELS[cf.NODE_KINDS[key]], "level": b.level, "items": items}
+        return {"kind": vq.NODE_LABELS[key], "level": b.level, "items": items}
 
     @router.post("/teacher/knowledge-maps/{mid}/nodes/{key}/visual/save")
     def visual_save(mid: int, key: str, b: VisualSaveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -327,7 +327,7 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
                                         "unit": unit, "knowledge": node["bankKeys"][0], "question_type": "single_choice"})
             except ValueError:
                 raise HTTPException(400, "图形题格式不对，请重新生成")
-            if not cf.sanitize(q.figure) or not q.text.strip():
+            if not vq.sanitize(q.figure) or not q.text.strip():
                 raise HTTPException(400, "图形题的图或题干不完整，请重新生成")
             qt, opts, ci, exp, answer_json, figure_json = I._ai_question_storage_parts(q)
             r = Question(school_id=u.school_id, grade=q.grade, subject=q.subject, textbook=q.textbook, semester=q.semester, unit=q.unit[:100],

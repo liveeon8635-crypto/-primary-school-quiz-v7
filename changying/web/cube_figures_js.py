@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from changying.services import cube_figures as cf
+from changying.services import visual_questions as vq
 
 CUBE_FIGURES_MARKER = "changying_cube_figures_v1"
 
@@ -58,17 +59,48 @@ function cyCubeShapes(fig){
   if(panels.length)y+=(row+1)*(PH+22);
   return {w:Math.ceil(W),h:Math.ceil(y+4),items:out};
 }
+function cyGridShapes(fig){
+  var out=[],W=fig.width,H=fig.height;
+  var TONE={a:{fill:'#bfdbfe',stroke:'#1e3a8a',dash:''},b:{fill:'#fecaca',stroke:'#b91c1c',dash:''},ghost:{fill:'none',stroke:'#94a3b8',dash:'4 3'}};
+  function draw(f,c,ox,oy){
+    var i,X=function(x){return ox+x*c},Y=function(y){return oy+(H-y)*c};
+    for(i=0;i<=W;i++)out.push({t:'line',a:{x1:X(i),y1:Y(0),x2:X(i),y2:Y(H),stroke:'#e2e8f0','stroke-width':1}});
+    for(i=0;i<=H;i++)out.push({t:'line',a:{x1:X(0),y1:Y(i),x2:X(W),y2:Y(i),stroke:'#e2e8f0','stroke-width':1}});
+    (f.shapes||[]).forEach(function(s){var t=TONE[s.tone]||TONE.a,a={points:s.points.map(function(p){return X(p[0])+','+Y(p[1])}).join(' '),fill:t.fill,stroke:t.stroke,'stroke-width':c>14?2:1.5};
+      if(t.dash)a['stroke-dasharray']=t.dash;out.push({t:'polygon',a:a});
+      if(s.label){var sx=0,sy=0;s.points.forEach(function(p){sx+=p[0];sy+=p[1]});
+        out.push({t:'text',a:{x:X(sx/s.points.length),y:Y(sy/s.points.length)+5,'text-anchor':'middle','font-size':Math.max(11,c*0.6),'font-weight':700,fill:t.stroke},s:s.label})}});
+    if(f.axis){out.push({t:'line',a:{x1:X(f.axis[0][0]),y1:Y(f.axis[0][1]),x2:X(f.axis[1][0]),y2:Y(f.axis[1][1]),stroke:'#dc2626','stroke-width':2,'stroke-dasharray':'6 4'}});
+      out.push({t:'text',a:{x:X(f.axis[1][0])+4,y:Y(f.axis[1][1])+12,'font-size':Math.max(11,c*0.6),fill:'#dc2626','font-style':'italic'},s:'l'})}
+    if(f.center){out.push({t:'circle',a:{cx:X(f.center[0]),cy:Y(f.center[1]),r:c>14?4:3,fill:'#111827'}});
+      out.push({t:'text',a:{x:X(f.center[0])-(c>14?12:8),y:Y(f.center[1])+(c>14?16:11),'font-size':Math.max(11,c*0.6),'font-weight':700,fill:'#111827'},s:'O'})}
+    return {w:W*c,h:H*c};
+  }
+  var y=0,MW=0;
+  if(fig.title){out.push({t:'text',a:{x:4,y:16,'font-size':14,fill:'#111827'},s:fig.title});y=24}
+  if(fig.shapes&&fig.shapes.length){var m=draw(fig,26,8,y+4);MW=m.w+20;y+=m.h+16}
+  var panels=fig.panels||[],c=Math.min(13,104/W),PW=W*c+16,PH=H*c+8;
+  panels.forEach(function(p,i){var col=i%2,row=Math.floor(i/2),px=col*(PW+12),py=y+row*(PH+26);
+    out.push({t:'rect',a:{x:px+2,y:py,width:PW,height:PH,rx:8,fill:'#f8fafc',stroke:'#e5e7eb'}});
+    draw(p,c,px+10,py+4);
+    out.push({t:'text',a:{x:px+2+PW/2,y:py+PH+18,'text-anchor':'middle','font-size':14,'font-weight':700,fill:'#111827'},s:p.label||''});
+    MW=Math.max(MW,px+PW+4)});
+  if(panels.length)y+=Math.ceil(panels.length/2)*(PH+26);
+  return {w:Math.ceil(MW),h:Math.ceil(y+4),items:out};
+}
+function cyFigureShapes(fig){return String(fig.type||'').toLowerCase()==='gridshape'?cyGridShapes(fig):cyCubeShapes(fig)}
+function cyIsDrawnFigure(fig){var t=String((fig&&fig.type)||'').toLowerCase();return t==='cubes'||t==='gridshape'}
 function cyCubeEsc(v){return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function cyCubeSvgString(fig){
-  var g=cyCubeShapes(fig),body=g.items.map(function(it){
+  var g=cyFigureShapes(fig),body=g.items.map(function(it){
     var attrs=Object.keys(it.a).map(function(k){return k+'="'+cyCubeEsc(it.a[k])+'"'}).join(' ');
     return it.t==='text'?'<text '+attrs+'>'+cyCubeEsc(it.s)+'</text>':'<'+it.t+' '+attrs+'/>';
   }).join('');
-  return '<div class="question-figure" style="margin:10px 0"><svg viewBox="0 0 '+g.w+' '+g.h+'" width="100%" style="max-width:'+Math.min(480,g.w*1.15)+'px;display:block" role="img" aria-label="小正方体组合体图">'+body+'</svg></div>';
+  return '<div class="question-figure" style="margin:10px 0"><svg viewBox="0 0 '+g.w+' '+g.h+'" width="100%" style="max-width:'+Math.min(480,g.w*1.15)+'px;display:block" role="img" aria-label="题目图形">'+body+'</svg></div>';
 }
 function cyCubeSvgNode(fig){
-  var g=cyCubeShapes(fig),NS='http://www.w3.org/2000/svg',svg=document.createElementNS(NS,'svg');
-  svg.setAttribute('viewBox','0 0 '+g.w+' '+g.h);svg.setAttribute('width','100%');svg.setAttribute('role','img');svg.setAttribute('aria-label','小正方体组合体图');
+  var g=cyFigureShapes(fig),NS='http://www.w3.org/2000/svg',svg=document.createElementNS(NS,'svg');
+  svg.setAttribute('viewBox','0 0 '+g.w+' '+g.h);svg.setAttribute('width','100%');svg.setAttribute('role','img');svg.setAttribute('aria-label','题目图形');
   svg.setAttribute('style','max-width:'+Math.min(480,g.w*1.15)+'px;display:block;margin:10px 0');
   g.items.forEach(function(it){var n=document.createElementNS(NS,it.t);Object.keys(it.a).forEach(function(k){n.setAttribute(k,it.a[k])});if(it.t==='text')n.textContent=it.s;svg.appendChild(n)});
   return svg;
@@ -79,7 +111,7 @@ function cyCubeSvgNode(fig){
 _WRAP = r"""
 (function(){
   function wrap(name){var orig=window[name];if(typeof orig!=='function'||orig.__cyCubes)return;
-    var w=function(fig){if(fig&&String(fig.type||'').toLowerCase()==='cubes'){try{return cyCubeSvgString(fig)}catch(e){return ''}}return orig.apply(this,arguments)};
+    var w=function(fig){if(cyIsDrawnFigure(fig)){try{return cyCubeSvgString(fig)}catch(e){return ''}}return orig.apply(this,arguments)};
     w.__cyCubes=true;window[name]=w;}
   wrap('renderQuestionFigure');
 })();
@@ -94,14 +126,14 @@ def patch_cube_figures(html: str) -> str:
 
 
 def install_cube_figure_storage(implementation: Any) -> None:
-    """Let questions keep a cubes figure: the legacy whitelist drops unknown figure types when saving."""
+    """Let questions keep system-drawn figures (cubes, grid moves): the legacy whitelist drops unknown types."""
     if getattr(implementation, "_cube_figures_installed", False):
         return
     original = implementation._sanitize_figure
 
     def sanitize_figure(value: Any) -> dict[str, Any]:
-        if isinstance(value, dict) and str(value.get("type") or "").strip().lower() == cf.FIGURE_TYPE:
-            return cf.sanitize(value)
+        if isinstance(value, dict) and str(value.get("type") or "").strip().lower() in vq.FIGURE_TYPES:
+            return vq.sanitize(value)
         return original(value)
 
     implementation._sanitize_figure = sanitize_figure
@@ -115,7 +147,7 @@ def patch_v1_cube_figures(html: str) -> str:
     """V1's figure function lives inside an IIFE, so it cannot be wrapped from outside: hand cubes figures over at
     its first line instead."""
     if _V1_FIGURE_FN in html and "cyCubeSvgString(fig)" not in html:
-        html = html.replace(_V1_FIGURE_FN, _V1_FIGURE_FN + "if(fig&&String(fig.type||'').toLowerCase()==='cubes'&&window.cyCubeSvgString)"
+        html = html.replace(_V1_FIGURE_FN, _V1_FIGURE_FN + "if(window.cyIsDrawnFigure&&window.cyIsDrawnFigure(fig))"
                             "return window.cyCubeSvgString(fig);", 1)
     return patch_cube_figures(html)
 
