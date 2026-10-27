@@ -7,6 +7,9 @@ teacher  GET  /v1/knowledge-map                                  page
          GET  /teacher/knowledge-maps/{mid}                      draft + coverage per node + published state
          PUT  /teacher/knowledge-maps/{mid}                      {map, revision} save the draft (validated)
          GET  /teacher/knowledge-maps/{mid}/nodes/{key}/questions  questions of the bank matching the node
+         POST /teacher/knowledge-maps/{mid}/nodes/{key}/visual        {level, count} picture questions drawn and solved
+                                                                by the system (cube solids, 观察物体), not saved
+         POST /teacher/knowledge-maps/{mid}/nodes/{key}/visual/save   {level, revision, questions} save reviewed ones, level
          GET  /teacher/knowledge-maps/{mid}/bank?unit=&q=          search the school's bank by unit / keyword to pick
                                                                 questions for a node whatever their knowledge name
          PUT  /teacher/knowledge-maps/{mid}/nodes/{key}/levels   {levels, revision} question levels of one node
@@ -27,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -35,6 +39,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, delete, func, insert, select, update
 
+from changying.services import cube_figures as cf
 from changying.services import knowledge_maps as km
 
 KNOWLEDGE_MAP_FLAG = "KNOWLEDGE_MAP"
@@ -71,6 +76,17 @@ class Rating(BaseModel):
 
 class RatingsBody(BaseModel):
     ratings: list[Rating] = Field(max_length=600)
+
+
+class VisualBody(BaseModel):
+    level: str = Field(max_length=10)
+    count: int = Field(default=4, ge=1, le=8)
+
+
+class VisualSaveBody(BaseModel):
+    level: str = Field(max_length=10)
+    revision: int = Field(ge=0)
+    questions: list[dict[str, Any]] = Field(min_length=1, max_length=8)
 
 
 class ReinforceBody(BaseModel):
@@ -183,6 +199,7 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
                 "revision": int(row.revision), "map": {**m, "nodes": nodes}, "dependents": km.dependents(m),
                 "summary": km.summary(m, ready), "unitKinds": km.UNIT_KINDS, "nodeKinds": km.NODE_KINDS, "levels": km.LEVELS,
                 "minPerLevel": km.MIN_PER_LEVEL, "minPerNode": km.MIN_PER_NODE,
+                "visualNodes": {k: cf.KIND_LABELS[v] for k, v in cf.NODE_KINDS.items()},
                 "published": None if row.published_revision is None else {
                     "revision": int(row.published_revision), "upToDate": int(row.published_revision) == int(row.revision),
                     "at": row.published_at.replace(tzinfo=None).isoformat(timespec="minutes") if row.published_at else None},
@@ -272,9 +289,59 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         if implementation.question_type_of(q) not in implementation.AUTO_GRADED_QUESTION_TYPES:
             return "需老师批改，诊断不会选"
         figure = implementation.question_figure(q)
-        if figure and figure.get("type") != "uploaded_image":
+        if figure and figure.get("type") not in km.SHOWN_FIGURES:
             return "含绘制图示，诊断暂不选"
         return ""
+
+    def visual_node(db: Any, u: Any, mid: int, key: str, lock: bool = False) -> tuple[Any, dict[str, Any]]:
+        row = my_map(db, u, mid, lock=lock)
+        node = next((n for n in json.loads(row.map_json)["nodes"] if n["key"] == key), None)
+        if node is None or key not in cf.NODE_KINDS:
+            raise HTTPException(404, "这个知识点暂时没有系统画图题")
+        return row, node
+
+    @router.post("/teacher/knowledge-maps/{mid}/nodes/{key}/visual")
+    def visual_drafts(mid: int, key: str, b: VisualBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        teacher(u)
+        visual_node(db, u, mid, key)
+        if b.level not in km.LEVELS:
+            raise HTTPException(400, "难度档只能是基础、中等或提高")
+        items = cf.generate(key, b.level, b.count, secrets.randbelow(10 ** 9))
+        if not items:
+            raise HTTPException(502, "这次没有生成合适的题，请再点一次")
+        return {"kind": cf.KIND_LABELS[cf.NODE_KINDS[key]], "level": b.level, "items": items}
+
+    @router.post("/teacher/knowledge-maps/{mid}/nodes/{key}/visual/save")
+    def visual_save(mid: int, key: str, b: VisualSaveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        teacher(u)
+        row, node = visual_node(db, u, mid, key, lock=True)
+        fresh(row, b.revision)
+        if b.level not in km.LEVELS:
+            raise HTTPException(400, "难度档只能是基础、中等或提高")
+        I = implementation
+        unit = next((x["name"] for x in json.loads(row.map_json)["units"] if x["key"] == node["unit"]), "")
+        ids = []
+        for raw in b.questions:
+            try:
+                q = I.QuestionCreate(**{**raw, "grade": row.grade, "subject": row.subject, "textbook": "人教版", "semester": row.term,
+                                        "unit": unit, "knowledge": node["bankKeys"][0], "question_type": "single_choice"})
+            except ValueError:
+                raise HTTPException(400, "图形题格式不对，请重新生成")
+            if not cf.sanitize(q.figure) or not q.text.strip():
+                raise HTTPException(400, "图形题的图或题干不完整，请重新生成")
+            qt, opts, ci, exp, answer_json, figure_json = I._ai_question_storage_parts(q)
+            r = Question(school_id=u.school_id, grade=q.grade, subject=q.subject, textbook=q.textbook, semester=q.semester, unit=q.unit[:100],
+                         knowledge=q.knowledge[:120], text=q.text, options_json=json.dumps(opts, ensure_ascii=False), correct_index=ci,
+                         explanation=exp, question_type=qt, answer_json=answer_json, figure_json=figure_json, creator_id=u.id)
+            db.add(r)
+            db.flush()
+            ids.append(r.id)
+        m = json.loads(row.map_json)
+        target = next(n for n in m["nodes"] if n["key"] == key)
+        target["levels"].update({str(i): b.level for i in ids})
+        I.audit(db, u, "knowledge_map.visual.save", f"map={row.id}:node={key}:level={b.level}:questions={len(ids)}")
+        save(db, u, row, cleaned(m))
+        return {**detail(db, my_map(db, u, mid)), "saved": ids}
 
     @router.get("/teacher/knowledge-maps/{mid}/bank")
     def bank_search(mid: int, unit: str = "", q: str = "", u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -455,7 +522,7 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         levelled = {int(q): lv for q, lv in node["levels"].items()}
         bank = {q.id: q for q in db.scalars(select(Question).where(Question.school_id == u.school_id, Question.id.in_(list(levelled))))} if levelled else {}
         usable = [q for q in bank.values() if I.question_type_of(q) in I.AUTO_GRADED_QUESTION_TYPES
-                  and (not I.question_figure(q) or I.question_figure(q).get("type") == "uploaded_image")]
+                  and (not I.question_figure(q) or I.question_figure(q).get("type") in km.SHOWN_FIGURES)]
         title = f"知识地图巩固 · {node['name']}"[:160]
         answers = answers_of(db, u, wanted)
         order = {"basic": 0, "medium": 1, "hard": 2}
