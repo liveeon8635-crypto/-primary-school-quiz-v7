@@ -16,16 +16,18 @@ AI output is always a DRAFT: the lesson stays unpublished, drafted questions are
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, UniqueConstraint, delete, func, insert, select, update
 
+from changying.services import lesson_markdown
 from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUPPORTED, detect_lesson_no, extract
 from changying.web.weekend_pages import plan_page_html
 from changying.services.lesson_written import (literal_written_questions, valid_written_questions,
@@ -37,6 +39,13 @@ LESSONS = 18
 MAX_BATCH_FILES = 18
 REMOVED_STAGE = "weekend_removed"
 LEVELS = ("C", "C", "B", "B", "A", "A")
+# The structured import maps these aliases and rejects anything else: a silent default
+# would turn a written question into a choice one (or the reverse) without anyone noticing.
+WRITTEN_TYPE_ALIASES = {
+    "short_answer": "short_answer", "简答": "short_answer", "简答题": "short_answer", "问答": "short_answer",
+    "final_answer": "final_answer", "最终答案": "final_answer", "填空": "final_answer", "填空题": "final_answer",
+    "composition": "composition", "作文": "composition", "写作": "composition", "习作": "composition",
+}
 
 
 class RowBody(BaseModel):
@@ -61,6 +70,50 @@ class ShiftBody(BaseModel):
 class ParseBody(BaseModel):
     subject: str
     text: str
+
+
+class PlanQuestionBody(BaseModel):
+    """One choice question of a structured lesson plan (no model involved)."""
+
+    stem: str = Field(min_length=1, max_length=300)
+    options: list[str] = Field(default_factory=list, max_length=4)
+    correctIndex: int | None = None
+    explanation: str = Field(default="", max_length=300)
+    knowledge: str = Field(default="", max_length=160)
+
+
+class PlanWrittenBody(BaseModel):
+    """One written question (short answer / final answer / composition)."""
+
+    type: str = "short_answer"
+    material: str = Field(default="", max_length=20000)
+    stem: str = Field(min_length=1, max_length=20000)
+    reference: str = Field(default="", max_length=4000)
+    hints: list[str] = Field(default_factory=list, max_length=3)
+
+
+class PlanLessonBody(BaseModel):
+    """One lesson of a structured import; the same fields the AI path fills."""
+
+    lessonNo: int = Field(ge=1, le=LESSONS)
+    title: str = Field(default="", max_length=180)
+    coreTarget: str = Field(default="", max_length=1000)
+    teacherPlan: str = Field(default="", max_length=MAX_TEXT_CHARS)
+    ppt: list[str] = Field(default_factory=list)
+    examples: list[str] = Field(default_factory=list)
+    closureTraining: str = Field(default="", max_length=MAX_TEXT_CHARS)
+    questions: list[PlanQuestionBody] = Field(default_factory=list, max_length=12)
+    writtenQuestions: list[PlanWrittenBody] = Field(default_factory=list, max_length=30)
+
+
+class StructuredImportBody(BaseModel):
+    """Batch envelope for ``import/structured``: deterministic, no model call."""
+
+    schemaVersion: int = 1
+    subject: str
+    dryRun: bool = False
+    onConflict: Literal["ask", "skip", "overwrite"] = "ask"
+    items: list[PlanLessonBody] = Field(min_length=1, max_length=LESSONS)
 
 
 class DraftBody(BaseModel):
@@ -404,6 +457,54 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(400, "没有读到足够的文字（扫描版 PDF 和纯图片暂不支持），请换文件或直接粘贴文字")
         return extracted
 
+    def _apply_lesson_plan(db: Any, u: Any, subject: str, lessonNo: int, data: dict[str, Any], source_text: str,
+                           *, slides_hint: list[str] | None = None, use_literal: bool = True) -> dict[str, Any]:
+        """Write one structured lesson plan plus its draft questions, then commit.
+
+        Shared by the AI import, the structured JSON import and the Markdown import, so all
+        three keep exactly the same validation and write behaviour.
+        """
+        p = program(db, int(u.school_id))
+        lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == subject, Lesson.lesson_no == lessonNo))
+        slides = slides_hint or _content_lines(data.get("ppt"))
+        row = db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == subject, sched.c.lesson_no == lessonNo)).first()
+        now = datetime.utcnow()
+        fields = dict(title=(str(data.get("title") or "").strip() or f"{subject}第{lessonNo}课")[:180], core_target=str(data.get("coreTarget") or "")[:1000],
+                      teacher_plan=str(data.get("teacherPlan") or ""), reading_plan=source_text, ppt_json=json.dumps(slides, ensure_ascii=False),
+                      examples_json=json.dumps(_content_lines(data.get("examples")), ensure_ascii=False),
+                      closure_training=_homework_from_source(source_text, str(data.get("closureTraining") or "")),
+                      unit=(row.school_unit if row and row.school_unit else "")[:120] or "待配置单元", published=False, updated_at=now)
+        if not fields["core_target"].strip() and not _lines(data.get("examples")):
+            fields["core_target"] = fields["title"]            # a real (non-placeholder) target, so the lesson counts as prepared
+        if lesson is None:
+            lesson = Lesson(school_id=u.school_id, program_id=p.id, subject=subject, lesson_no=lessonNo, duration_min=120, **fields)
+            db.add(lesson)
+            db.flush()
+        else:
+            for k, v in fields.items():
+                setattr(lesson, k, v)
+            db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False)))
+        qs = _valid_questions(data.get("questions"))
+        wqs = valid_written_questions(data.get("writtenQuestions"))
+        literal = literal_written_questions(source_text) if use_literal else []
+        if literal:
+            # Literal paper questions take priority; retain model references only
+            # when the original question text matches, never by array position.
+            for q in literal:
+                question = q["stem"].split("\n")[-1]
+                match = next((a for a in wqs if question in a["stem"]), None)
+                if match:
+                    q["reference"] = q["reference"] or match["reference"]
+                    q["hints"] = match["hints"]
+            wqs = valid_written_questions(literal)
+        replace_written_drafts(db, written, u.school_id, u.id, lesson.id, wqs)
+        for i, q in enumerate(qs[:12]):
+            db.add(TQ(school_id=u.school_id, program_id=p.id, lesson_id=lesson.id, stage="lesson", subject=subject, level=LEVELS[min(i, len(LEVELS) - 1)], knowledge=q["kp"],
+                      stem=q["stem"], options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False))
+        db.commit()
+        return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs) + len(wqs), "writtenQuestionsFound": len(wqs),
+                "sourceChars": len(source_text), "message": f"原文 {len(source_text)} 字已完整保留（含阅读材料及非选择题）。已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道选择题、{len(wqs)} 道简答/写作题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
+
     def _apply_lesson_extract(db: Any, u: Any, subject: str, lessonNo: int, force: str, extracted: dict[str, Any]) -> dict[str, Any]:
         """AI tidies the extracted text into one lesson plus its draft questions, then commits."""
         p = program(db, int(u.school_id))
@@ -421,44 +522,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=90))
         if not isinstance(data, dict) or not (str(data.get("title") or "").strip() or str(data.get("coreTarget") or "").strip() or _lines(data.get("examples"))):
             raise HTTPException(502, "AI 没能整理出教案，请再试一次，或在“审改”里手动填写")
-        slides = extracted["slides"] or _content_lines(data.get("ppt"))
-        row = db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == subject, sched.c.lesson_no == lessonNo)).first()
-        now = datetime.utcnow()
-        fields = dict(title=(str(data.get("title") or "").strip() or f"{subject}第{lessonNo}课")[:180], core_target=str(data.get("coreTarget") or "")[:1000],
-                      teacher_plan=str(data.get("teacherPlan") or ""), reading_plan=extracted["text"], ppt_json=json.dumps(slides, ensure_ascii=False),
-                      examples_json=json.dumps(_content_lines(data.get("examples")), ensure_ascii=False),
-                      closure_training=_homework_from_source(extracted["text"], str(data.get("closureTraining") or "")),
-                      unit=(row.school_unit if row and row.school_unit else "")[:120] or "待配置单元", published=False, updated_at=now)
-        if not fields["core_target"].strip() and not _lines(data.get("examples")):
-            fields["core_target"] = fields["title"]            # a real (non-placeholder) target, so the lesson counts as prepared
-        if lesson is None:
-            lesson = Lesson(school_id=u.school_id, program_id=p.id, subject=subject, lesson_no=lessonNo, duration_min=120, **fields)
-            db.add(lesson)
-            db.flush()
-        else:
-            for k, v in fields.items():
-                setattr(lesson, k, v)
-            db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False)))
-        qs = _valid_questions(data.get("questions"))
-        wqs = valid_written_questions(data.get("writtenQuestions"))
-        literal = literal_written_questions(extracted["text"])
-        if literal:
-            # Literal paper questions take priority; retain model references only
-            # when the original question text matches, never by array position.
-            for q in literal:
-                question = q["stem"].split("\n")[-1]
-                match = next((a for a in wqs if question in a["stem"]), None)
-                if match:
-                    q["reference"] = q["reference"] or match["reference"]
-                    q["hints"] = match["hints"]
-            wqs = valid_written_questions(literal)
-        replace_written_drafts(db, written, u.school_id, u.id, lesson.id, wqs)
-        for i, q in enumerate(qs[:12]):
-            db.add(TQ(school_id=u.school_id, program_id=p.id, lesson_id=lesson.id, stage="lesson", subject=subject, level=LEVELS[min(i, len(LEVELS) - 1)], knowledge=q["kp"],
-                      stem=q["stem"], options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False))
-        db.commit()
-        return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs) + len(wqs), "writtenQuestionsFound": len(wqs),
-                "sourceChars": len(extracted["text"]), "message": f"原文 {len(extracted['text'])} 字已完整保留（含阅读材料及非选择题）。已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道选择题、{len(wqs)} 道简答/写作题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
+        return _apply_lesson_plan(db, u, subject, lessonNo, data, extracted["text"], slides_hint=extracted["slides"] or None)
 
     @router.post("/teacher/weekend/lessons/import")
     def import_lesson(subject: str = Form(...), lessonNo: int = Form(...), force: str = Form("0"), text: str = Form(""), file: UploadFile | None = File(None),
@@ -529,6 +593,152 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         failed = len(items) - imported
         return {"items": items, "imported": imported, "failed": failed,
                 "message": f"成功导入 {imported} 节，失败 {failed} 节" + ("（失败的文件可以单独重试）" if failed else "")}
+
+    def _plan_from_body(item: PlanLessonBody) -> dict[str, Any]:
+        """Validate one structured lesson and convert it to the internal plan shape."""
+        questions = []
+        for index, q in enumerate(item.questions, start=1):
+            options = [str(x).strip() for x in q.options]
+            if q.correctIndex is None:
+                raise HTTPException(422, f"第 {index} 道选择题缺少 correctIndex")
+            if len(options) < 2 or any(not x for x in options):
+                raise HTTPException(422, f"第 {index} 道选择题至少要两个非空选项")
+            if not 0 <= int(q.correctIndex) < len(options):
+                raise HTTPException(422, f"第 {index} 道选择题的 correctIndex 超出范围（0–{len(options) - 1}）")
+            questions.append({"stem": q.stem.strip(), "options": options, "correctIndex": int(q.correctIndex),
+                              "explanation": q.explanation.strip(), "knowledge": q.knowledge.strip()})
+        written = []
+        for index, w in enumerate(item.writtenQuestions, start=1):
+            kind = WRITTEN_TYPE_ALIASES.get(str(w.type or "").strip())
+            if kind is None:
+                raise HTTPException(422, f"第 {index} 道简答题的 type 不认识：{w.type}；可用 short_answer / final_answer / composition")
+            hints = [str(h).strip() for h in w.hints if str(h).strip()]
+            if hints and len(hints) != 3:
+                raise HTTPException(422, f"第 {index} 道简答题的 hints 要么不填，要么正好 3 条")
+            written.append({"type": kind, "material": w.material.strip(), "stem": w.stem.strip(),
+                            "reference": w.reference.strip(), "hints": hints})
+        plan = {"title": item.title.strip(), "coreTarget": item.coreTarget.strip(), "teacherPlan": item.teacherPlan,
+                "ppt": [str(x) for x in item.ppt], "examples": [str(x) for x in item.examples],
+                "closureTraining": item.closureTraining, "questions": questions, "writtenQuestions": written}
+        if not (plan["title"] or plan["coreTarget"] or plan["examples"] or plan["ppt"] or questions or written):
+            raise HTTPException(422, "这一节没有任何内容（title / coreTarget / examples / ppt / 题目 全空）")
+        return plan
+
+    def _plan_fingerprint(plan: dict[str, Any]) -> str:
+        """Content hash of the payload only; the identity (subject / lessonNo) stays out of it."""
+        payload = json.dumps({k: plan.get(k) for k in ("title", "coreTarget", "teacherPlan", "ppt", "examples",
+                                                       "closureTraining", "questions", "writtenQuestions")},
+                             ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(lesson_markdown.canonical(payload).encode("utf-8")).hexdigest()
+
+    def _plan_source_text(plan: dict[str, Any]) -> str:
+        """A readable 原文 for the lesson page when the input carries no original text."""
+        parts = []
+        if plan.get("title"):
+            parts.append(str(plan["title"]))
+        if plan.get("coreTarget"):
+            parts.append("本节目标\n" + str(plan["coreTarget"]))
+        if plan.get("teacherPlan"):
+            parts.append("教学流程\n" + str(plan["teacherPlan"]))
+        if plan.get("examples"):
+            parts.append("例题\n" + "\n\n".join(str(x) for x in plan["examples"]))
+        if plan.get("closureTraining"):
+            parts.append(str(plan["closureTraining"]))
+        return "\n\n".join(parts)
+
+    def _assert_lesson_not_in_use(db: Any, lesson: Any) -> None:
+        """A classroom record or any pupil record blocks an overwrite (same checks as delete)."""
+        if lesson is None:
+            return
+        if db.execute(select(sessions.c.id).where(sessions.c.lesson_id == lesson.id).limit(1)).first():
+            raise HTTPException(409, "这节课已经有课堂记录（含待开课），不能覆盖教案。请改用其它课次，或先归档课堂。")
+        for model in (implementation.TeachingAdaptiveSession, implementation.TeachingAttempt, implementation.TeachingEssay):
+            if db.scalar(select(model.id).where(model.lesson_id == lesson.id).limit(1)) is not None:
+                raise HTTPException(409, "这节课已经有学生学习记录，不能覆盖教案。请改用其它课次。")
+
+    def _import_plans(db: Any, u: Any, subject: str, jobs: list[dict[str, Any]], *, dry_run: bool, on_conflict: str) -> dict[str, Any]:
+        """Import already-structured plans one by one; one bad item never stops the rest."""
+        p = program(db, int(u.school_id))
+        results: list[dict[str, Any]] = []
+        imported = 0
+        for job in jobs:
+            base = {"filename": job.get("filename") or "", "lessonNo": job.get("lessonNo")}
+            plan = job.get("plan")
+            if plan is None:
+                results.append({**base, "ok": False, "status": "invalid", "error": job.get("error") or "内容无法解析"})
+                continue
+            try:
+                fingerprint = _plan_fingerprint(plan)
+                lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id,
+                                                        Lesson.subject == subject, Lesson.lesson_no == int(job["lessonNo"])))
+                if lesson is not None and has_real_plan(lesson):
+                    if on_conflict == "skip":
+                        results.append({**base, "ok": False, "status": "skipped", "contentHash": fingerprint, "error": "这节课已有教案，已跳过"})
+                        continue
+                    if on_conflict == "ask":
+                        results.append({**base, "ok": False, "status": "conflict", "contentHash": fingerprint,
+                                        "error": "这节课已有教案；确认覆盖请把 onConflict 设为 overwrite"})
+                        continue
+                    _assert_lesson_not_in_use(db, lesson)
+                if dry_run:
+                    results.append({**base, "ok": True, "status": "ready", "contentHash": fingerprint})
+                    continue
+                source_text = job.get("sourceText") or _plan_source_text(plan)
+                got = _apply_lesson_plan(db, u, subject, int(job["lessonNo"]), plan, source_text, use_literal=False)
+                implementation.audit(db, u, "weekend.lessons.import_structured",
+                                     f"lesson={job['lessonNo']}:hash={fingerprint[:16]}:chars={len(source_text)}")
+                imported += 1
+                results.append({**base, "ok": True, "status": "imported", "lessonId": got["lessonId"],
+                                "contentHash": fingerprint, "questionsFound": got["questionsFound"]})
+            except HTTPException as exc:
+                db.rollback()
+                results.append({**base, "ok": False, "status": "invalid", "error": str(exc.detail)})
+        failed = len(results) - imported
+        return {"items": results, "imported": imported, "failed": failed, "dryRun": dry_run,
+                "message": f"成功导入 {imported} 节，失败 {failed} 节" + ("（失败项可单独重试）" if failed else "")}
+
+    @router.post("/teacher/weekend/lessons/import/structured")
+    def import_structured(b: StructuredImportBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Import already-structured lesson plans: no model call, deterministic fields."""
+        need(u, "teacher")
+        check_subject(b.subject)
+        if b.schemaVersion != 1:
+            raise HTTPException(422, "schemaVersion 只支持 1")
+        jobs: list[dict[str, Any]] = []
+        for item in b.items:
+            try:
+                jobs.append({"lessonNo": item.lessonNo, "plan": _plan_from_body(item), "sourceText": ""})
+            except HTTPException as exc:
+                jobs.append({"lessonNo": item.lessonNo, "plan": None, "error": str(exc.detail)})
+        return _import_plans(db, u, b.subject, jobs, dry_run=b.dryRun, on_conflict=b.onConflict)
+
+    @router.post("/teacher/weekend/lessons/import/markdown")
+    def import_markdown(subject: str = Form(...), dryRun: str = Form("0"), onConflict: str = Form("ask"),
+                        files: list[UploadFile] = File(...), u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Import .md/.txt files written in the documented convention: regex parsing, no model call."""
+        need(u, "teacher")
+        check_subject(subject)
+        if onConflict not in ("ask", "skip", "overwrite"):
+            raise HTTPException(400, "onConflict 只能是 ask / skip / overwrite")
+        if not files:
+            raise HTTPException(400, "请至少选择一个文件")
+        if len(files) > MAX_BATCH_FILES:
+            raise HTTPException(400, f"一次最多 {MAX_BATCH_FILES} 个文件")
+        jobs: list[dict[str, Any]] = []
+        for item in files:
+            name = (item.filename or "").strip()
+            try:
+                extracted = _extract_upload(item, "")
+                plan = lesson_markdown.parse(extracted["text"], max_lesson=LESSONS)
+                lesson_no = plan.get("lessonNo") or detect_lesson_no(name, max_lesson=LESSONS)
+                if lesson_no is None:
+                    raise HTTPException(400, "文件名或标题里看不出课次，请命名为「第03课」或在标题写「第 3 课」")
+                jobs.append({"filename": name, "lessonNo": lesson_no, "plan": plan, "sourceText": extracted["text"]})
+            except HTTPException as exc:
+                jobs.append({"filename": name, "lessonNo": None, "plan": None, "error": str(exc.detail)})
+            except ValueError as exc:
+                jobs.append({"filename": name, "lessonNo": None, "plan": None, "error": str(exc)})
+        return _import_plans(db, u, subject, jobs, dry_run=dryRun == "1", on_conflict=onConflict)
 
     @router.delete("/teacher/weekend/lessons/{lid}")
     def delete_lesson(lid: int, b: DeleteLessonBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
