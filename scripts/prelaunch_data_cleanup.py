@@ -44,6 +44,8 @@ DELETE_TABLES = (
     "homework_notices", "homework_recipients", "help_requests",
     # 知识地图诊断（学生作答记录）
     "knowledge_map_runs", "knowledge_map_ratings",
+    # 应试专项（考试目标和模拟卷，模拟卷本身是作业）
+    "exam_goals", "exam_goal_papers",
     # usage and housekeeping logs
     "ai_usage_logs", "account_deletion_requests",
 )
