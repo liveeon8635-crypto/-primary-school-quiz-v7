@@ -66,6 +66,41 @@ print('OK')
 ''')
 
 
+def test_recall_only_questions_are_rejected_above_basic(tmp_path):
+    """Prompt wording is not enough: a stem with no number or operator is filtered out."""
+    helpers.run_isolated(tmp_path, helpers.COMMON + r'''
+import json
+
+import app_v924 as legacy
+
+
+def fake_call(db, user, feature, prompt, *args, **kwargs):
+    return json.dumps({"questions": [{
+        "question_type": "choice",
+        "text": "下面各题中，可以用竖式表示的是（　）",
+        "options": ["甲种情形", "乙种情形", "丙种情形", "丁种情形"],
+        "correct_index": 0,
+        "explanation": "略",
+        "knowledge": "小数乘整数",
+    }]}, ensure_ascii=False)
+
+
+legacy._ai_call = fake_call
+
+BODY = ''' + BODY + r'''
+
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    r = client.post("/ai/questions/generate", headers=th, json={**BODY, "difficulty": "中等"})
+    assert r.status_code == 502, r.text
+    assert "记忆" in r.json()["detail"] or "辨认" in r.json()["detail"]
+
+    r = client.post("/ai/questions/generate", headers=th, json={**BODY, "difficulty": "基础"})
+    assert r.status_code == 200, r.text
+print('OK')
+''')
+
+
 def test_reviewed_bank_questions_become_the_style_reference(tmp_path):
     """Same knowledge point, already reviewed by this school, used as few-shot examples."""
     helpers.run_isolated(tmp_path, helpers.COMMON + STUB + r'''

@@ -144,16 +144,35 @@ function kmAIGen(n,holder){
   Object.keys(KM.levels).forEach(function(k){level.appendChild(el('option',{value:k,text:KM.levels[k]}))});
   [2,3,4,6].forEach(function(c){count.appendChild(el('option',{value:String(c),text:c+' 题'}))});
   var drafts=el('div'),note=el('p',{class:'muted'});
+  var refIds=[],refBox=el('div',{class:'muted',text:'正在读取本校教学资源…'});
+  // 参考资料是可选项：读不到资源也不影响出题。
+  api('/teaching/resources?grade='+encodeURIComponent(KM.grade)+'&subject='+encodeURIComponent(KM.subject))
+    .then(function(d){
+      refBox.textContent='';
+      var list=(d.items||[]).slice(0,40);
+      if(!list.length){refBox.textContent='本校还没有教学资源。可先在“教学资源”里上传课件、教案或真题，出题时会作为参考。';return}
+      list.forEach(function(r){
+        var cb=el('input',{type:'checkbox','aria-label':'参考资料'});
+        cb.onchange=function(){
+          var i=refIds.indexOf(r.id);
+          if(cb.checked&&i<0)refIds.push(r.id);
+          if(!cb.checked&&i>=0)refIds.splice(i,1);
+        };
+        refBox.appendChild(el('label',{},cb,' '+(r.title||r.fileName||r.file_name||('资料 '+r.id))));
+      });
+    })
+    .catch(function(){refBox.textContent='参考资料读取失败，不影响出题。'});
   holder.appendChild(el('div',{class:'card'},el('h4',{text:'AI 出题（选择题，需老师审核）'}),
     el('div',{class:'row'},el('label',{},'难度 ',level),el('label',{},'数量 ',count),
       el('button',{class:'btn',text:'生成草稿',onclick:function(e){
         var btn=e.target,unit=KM.map.units.filter(function(u){return u.key===n.unit})[0];
         btn.disabled=true;note.textContent='AI 正在出题，大约需要半分钟…';drafts.textContent='';
         api('/ai/questions/generate',{json:{grade:KM.grade,subject:KM.subject,textbook:'人教版',semester:KM.term,unit:unit?unit.name:'',
-          knowledge:n.name,difficulty:KM.levels[level.value],count:+count.value,question_type:'choice',
+          knowledge:n.name,difficulty:KM.levels[level.value],count:+count.value,question_type:'choice',resource_ids:refIds,
           notes:'知识点说明：'+(n.detail||n.name)+'。难度档：'+KM.levels[level.value]+'。题目只考这一个知识点；题干不能依赖图片，涉及图形、方向、方格位置时用文字说清楚。'}})
           .then(function(r){btn.disabled=false;note.textContent=r.notice||'';kmDrafts(n,level.value,r.items||[],drafts)})
-          .catch(function(err){btn.disabled=false;note.textContent=err.message})}})),note,drafts));
+          .catch(function(err){btn.disabled=false;note.textContent=err.message})}})),
+    el('details',{},el('summary',{text:'参考资料（可选）'}),refBox),note,drafts));
 }
 function kmDrafts(n,lv,items,box){
   box.textContent='';var rows=[];
