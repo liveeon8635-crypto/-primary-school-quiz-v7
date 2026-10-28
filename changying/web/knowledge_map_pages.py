@@ -503,19 +503,11 @@ obtainToken().then(function(t){TOKEN=t;if(!TOKEN){msg('请先登录后再打开'
 
 
 def student_map_page_html() -> str:
-    return _page("我的知识地图", CUBES_JS + STUDENT_MAP_JS, True).replace("</head>", KM_WIDE_CSS + "</head>", 1)
-
-
-# 知识地图页在宽屏上放宽容器：共用样式是 980px，在 1440/1920 的桌面上会挤成一条窄栏。
-# 这里只注入 <style>，不改内联 JS，所以 Safari 12 清单无需重建。
-KM_WIDE_CSS = """<style>
-@media (min-width:1100px){main{max-width:1440px;padding:20px 28px}}
-@media (min-width:1600px){main{max-width:1600px;padding:22px 32px}}
-</style>"""
+    return _page("我的知识地图", CUBES_JS + STUDENT_MAP_JS, True)
 
 
 def knowledge_map_page_html() -> str:
-    return _page("知识地图", CUBES_JS + KNOWLEDGE_MAP_JS, True).replace("</head>", KM_WIDE_CSS + "</head>", 1)
+    return _page("知识地图", CUBES_JS + KNOWLEDGE_MAP_JS, True)
 
 
 __all__ = ["KNOWLEDGE_MAP_JS", "STUDENT_MAP_JS", "knowledge_map_page_html", "student_map_page_html"]

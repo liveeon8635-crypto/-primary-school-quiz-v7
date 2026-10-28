@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:f32514edb712826a987f1abe9ded0569a52b49fb89d770ff69ff9fe9a3a67675",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "ade0ad43af493548c6ca7540bd6799052676ebb2",
+  "headSha": "62a3789775d34e80748a78383b84589980d7fab9",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：该变更补全了应试专项模块的完整闭环，增加了限时模拟卷、失分点专项练习、再测对比、提分趋势与家长报告功能，权限判定和数据隔离清晰，相关测试已全面覆盖并全部通过。",
+      "evidenceRefs": [
+        "run:122906975451",
+        "run:122906974648",
+        "file:changying/services/exam_prep.py#L80-L150",
+        "file:changying/web/exam_prep_views.py#L30-L200"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:eeee6294f8fba7cbc4ffc00289da528be170939f6bf402159b1f188d7f7f9b11"
+}
