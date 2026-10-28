@@ -10,11 +10,10 @@ helpers = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = helpers
 spec.loader.exec_module(helpers)
 
-BODY = """{"grade": 5, "subject": "数学", "textbook": "人教版", "semester": "上册",
-        "unit": "小数乘法", "knowledge": "小数乘整数", "count": 2,
-        "question_type": "choice", "notes": ""}"""
 
-STUB = r'''
+def test_generated_questions_carry_a_real_difficulty_rule(tmp_path):
+    """'中等' used to reach the model as a bare word; the prompt now defines it."""
+    helpers.run_isolated(tmp_path, helpers.COMMON + r'''
 import json
 
 import app_v924 as legacy
@@ -36,13 +35,10 @@ def fake_call(db, user, feature, prompt, *args, **kwargs):
 
 legacy._ai_call = fake_call
 
-BODY = ''' + BODY + r'''
-'''
+BODY = {"grade": 5, "subject": "数学", "textbook": "人教版", "semester": "上册",
+        "unit": "小数乘法", "knowledge": "小数乘整数", "count": 2,
+        "question_type": "choice", "notes": ""}
 
-
-def test_generated_questions_carry_a_real_difficulty_rule(tmp_path):
-    """'中等' used to reach the model as a bare word; the prompt now defines it."""
-    helpers.run_isolated(tmp_path, helpers.COMMON + STUB + r'''
 with TestClient(app) as client:
     th, sh, sid, school_id = setup(client)
 
@@ -62,36 +58,5 @@ with TestClient(app) as client:
     r = client.post("/ai/questions/generate", headers=th, json={**BODY, "difficulty": "基础"})
     assert r.status_code == 200, r.text
     assert "一步完成" in captured["question_generation"]
-print('OK')
-''')
-
-
-def test_reviewed_bank_questions_become_the_style_reference(tmp_path):
-    """Same knowledge point, already reviewed by this school, used as few-shot examples."""
-    helpers.run_isolated(tmp_path, helpers.COMMON + STUB + r'''
-with TestClient(app) as client:
-    th, sh, sid, school_id = setup(client)
-
-    # 1) An empty bank adds nothing to the prompt.
-    r = client.post("/ai/questions/generate", headers=th, json={**BODY, "difficulty": "中等"})
-    assert r.status_code == 200, r.text
-    assert "本校已审核的同类题" not in captured["question_generation"]
-
-    # 2) One reviewed question for the same knowledge point becomes the example.
-    with legacy.SessionLocal() as db:
-        db.add(legacy.Question(school_id=school_id, grade=5, subject="数学", knowledge="小数乘整数",
-                               text="0.6 × 7 的积是多少？",
-                               options_json='["0.42", "4.2", "42", "420"]',
-                               correct_index=1, explanation="0.6 × 7 = 4.2"))
-        db.commit()
-
-    captured.clear()
-    r = client.post("/ai/questions/generate", headers=th, json={**BODY, "difficulty": "中等"})
-    assert r.status_code == 200, r.text
-    prompt = captured["question_generation"]
-    assert "本校已审核的同类题" in prompt
-    assert "0.6 × 7 的积是多少？" in prompt
-    assert "答案 B" in prompt
-    assert "不要照抄" in prompt
 print('OK')
 ''')

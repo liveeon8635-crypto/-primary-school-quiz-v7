@@ -165,6 +165,7 @@ from changying.web.kp_cards_views import install_kp_cards_views
 from changying.web.knowledge_map_views import install_knowledge_map_views
 from changying.web.cube_figures_js import install_cube_figure_storage, install_v1_cube_figures
 from changying.web.knowledge_map_student import install_knowledge_map_student
+from changying.web.exam_prep_views import install_exam_prep_views
 from changying.web.weekend_plan_views import install_weekend_plan
 from changying.web.weekend_practice import install_weekend_practice
 from changying.web.weekend_scoring_views import install_weekend_scoring
@@ -503,6 +504,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_cube_figure_storage(implementation)
     install_knowledge_map_views(implementation)
     install_knowledge_map_student(implementation)
+    install_exam_prep_views(implementation)
     install_paper_composition_routes(implementation)
     install_paper_import_routes(implementation)
     install_v1_classroom_presentation_review_patch()

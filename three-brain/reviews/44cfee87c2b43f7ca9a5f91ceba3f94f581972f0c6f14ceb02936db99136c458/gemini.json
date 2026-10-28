@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-flash",
+  "evidencePacketHash": "sha256:44cfee87c2b43f7ca9a5f91ceba3f94f581972f0c6f14ceb02936db99136c458",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "5dbcc03f275f4813c47df6b6ba262a0a9d9ba522",
+  "headSha": "fa164fb72466a183b5e4b8c8a479e33ccc6c7c01",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：新增应试专项功能，可基于已发布知识地图组卷摸底并分析学生薄弱知识点，权限检查规范且单元测试完备。",
+      "evidenceRefs": [
+        "file:changying/services/exam_prep.py#L1-L88",
+        "file:tests/test_exam_prep.py#L1-L127"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:342e7a76c1f882eb512560aa2f02258fd2858bb93655e1beadb87b60cbb1edaf"
+}
