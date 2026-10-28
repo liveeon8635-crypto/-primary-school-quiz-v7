@@ -279,23 +279,32 @@ def _rich_generate_call(implementation: ModuleType):
 
         count = max(1, min(int(b.count or 5), 20))
         difficulty = str(b.difficulty or "中等")[:20]
-        # Feedback #332: make the selected math difficulty materially affect generation,
-        # rather than forwarding a label that the model may ignore.
-        math_difficulty_rule = ""
+        # The label used to reach the model as a bare word, and the computed rule was
+        # never interpolated, so "中等" still produced recall questions. Each level now
+        # carries a measurable requirement that the prompt below actually contains.
+        difficulty_alias = {"简单": "基础", "基础": "基础", "中等": "中等",
+                            "提高": "提高", "偏难": "提高", "挑战": "挑战"}
+        level = difficulty_alias.get(difficulty, "中等")
+        requirements = {
+            "基础": (2, 1, "一步完成：直接套用本知识点的一个法则或公式，数字简单、不含干扰信息"),
+            "中等": (3, 2, "两步以上：先判断该用哪个法则，再列式计算；含一个学生常见易错点（小数点位、进位借位、单位换算、运算顺序）"),
+            "提高": (4, 3, "三步以上，或需要逆向思考（已知结果求条件）、分类讨论、排除多余条件"),
+            "挑战": (4, 4, "多步推理，并含逆向思考或条件筛选，可含一个无关条件"),
+        }
+        operands, steps, detail = requirements[level]
+        difficulty_lines = [f"【难度硬性要求】本次选中的难度是「{difficulty}」，按「{level}」执行。"]
         if "数学" in str(b.subject or ""):
-            difficulty_alias = {"简单": "基础", "中等": "提高", "偏难": "挑战", "基础": "基础", "提高": "提高", "挑战": "挑战"}
-            level = difficulty_alias.get(difficulty, "提高")
-            requirements = {
-                "基础": (2, 2, "至少包含两项有效数量关系，避免一眼直接代入"),
-                "提高": (3, 3, "至少包含三项有效数量关系，并要求两次以上推理或运算转换"),
-                "挑战": (4, 4, "至少包含四项有效数量关系，要求多步推理、条件筛选或逆向思考"),
-            }
-            operands, steps, detail = requirements[level]
-            math_difficulty_rule = (
-                f"【数学难度硬约束】当前等级：{level}。每题至少体现 {operands} 个有效数量/条件，"
-                f"解题过程至少 {steps} 个有意义步骤；{detail}。"
+            difficulty_lines.append(
+                f"每题至少体现 {operands} 个有效数量/条件，解题过程至少 {steps} 个有意义步骤；{detail}。"
+                "中等及以上必须给出具体数值并要求算出结果，不得只问概念、定义或“用什么方法”。"
                 "不得仅通过放大数字、增加小数位或更换人名来伪装难度。"
             )
+        difficulty_lines += [
+            "「下列说法正确的是」「可以用……表示的是」「下面算法和结果都正确的是」这类只考记忆和辨认的题干，只有「基础」难度允许；中等及以上一律禁止，必须让学生动笔算或推理。",
+            "选择题的3个干扰项要来自学生真实会犯的错误（小数点错位、运算顺序错、单位没统一、把“多多少”当成“是多少”），不要用一眼就假的说法凑数。",
+            "解析必须写出完整算式或完整推理步骤，学生能照着重算一遍。",
+        ]
+        difficulty_block = "\n".join(difficulty_lines)
         refs = implementation._resource_context(db, u.school_id, b.resource_ids)
         rule = format_rule(requested, b.subject, count)
         s_rule = subject_rule(b.subject)
@@ -310,6 +319,8 @@ def _rich_generate_call(implementation: ModuleType):
 难度：{difficulty}
 数量：{count}道
 老师补充要求：{b.notes or '无'}
+
+{difficulty_block}
 
 【通用质量要求】
 1. 每题必须是学生真实可作答的任务，不把教案目标机械改成题干。
