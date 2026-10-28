@@ -514,8 +514,8 @@ KM_WIDE_CSS = """<style>
 @media (min-width:1100px){main{max-width:1440px;padding:20px 28px}}
 @media (min-width:1600px){main{max-width:1600px;padding:22px 32px}}
 .km-grid{display:block}
-/* 平板（≥760）两列，宽屏（≥1500）三列；手机保持单列。 */
-@media (min-width:760px){.km-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}.km-grid>.card{margin-bottom:0}}
+/* 平板横屏（≥900）两列，宽屏（≥1500）三列；手机与 iPad 竖屏（768）保持单列。 */
+@media (min-width:900px){.km-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}.km-grid>.card{margin-bottom:0}}
 @media (min-width:1500px){.km-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 </style>"""
 
