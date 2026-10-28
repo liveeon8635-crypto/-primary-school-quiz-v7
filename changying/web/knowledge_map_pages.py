@@ -272,7 +272,9 @@ function kmRender(){
   var cv=el('div');
   KMBOX.appendChild(el('div',{class:'card'},el('h3',{text:'全班掌握情况'}),
     p?el('button',{class:'btn',text:'查看全班掌握情况',onclick:function(){kmClassView(cv)}}):el('p',{class:'muted',text:'发布知识地图后可以查看。'}),cv));
-  KM.map.units.forEach(function(u){KMBOX.appendChild(kmUnit(u))});
+  var grid=el('div',{class:'km-grid'});
+  KM.map.units.forEach(function(u){grid.appendChild(kmUnit(u))});
+  KMBOX.appendChild(grid);
 }
 var KM_LEVEL_TAG={weak:'warn',pass:'',fluent:'ok'};
 function kmMasteryTag(x,labels){
@@ -511,6 +513,10 @@ def student_map_page_html() -> str:
 KM_WIDE_CSS = """<style>
 @media (min-width:1100px){main{max-width:1440px;padding:20px 28px}}
 @media (min-width:1600px){main{max-width:1600px;padding:22px 32px}}
+.km-grid{display:block}
+/* 平板（≥760）两列，宽屏（≥1500）三列；手机保持单列。 */
+@media (min-width:760px){.km-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}.km-grid>.card{margin-bottom:0}}
+@media (min-width:1500px){.km-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 </style>"""
 
 
