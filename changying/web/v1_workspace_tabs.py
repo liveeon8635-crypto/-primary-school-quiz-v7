@@ -85,7 +85,10 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
         const km=document.createElement('a');km.className='cy-ws-row';km.href='/v1/knowledge-map';km.hidden=true;km.setAttribute('data-knowledge-map-entry','1');
         km.innerHTML='<b>知识地图</b><i>›</i><small>按教材单元维护知识点和前置关系，标记已学单元，给每个知识点的题目分难度档</small>';
         wk.after(km);
-        fetch('/knowledge-map/config',{cache:'no-store'}).then(r=>{if(r.ok)km.hidden=false}).catch(()=>{});
+        const ex=document.createElement('a');ex.className='cy-ws-row';ex.href='/v1/exam-prep';ex.hidden=true;ex.setAttribute('data-exam-prep-entry','1');
+        ex.innerHTML='<b>应试专项</b><i>›</i><small>为期中、期末建考试目标：发模拟卷摸底，找出每个学生失分最多的知识点</small>';
+        km.after(ex);
+        fetch('/knowledge-map/config',{cache:'no-store'}).then(r=>{if(r.ok){km.hidden=false;ex.hidden=false}}).catch(()=>{});
       }
       main.insertBefore(all,main.firstChild);
     }
