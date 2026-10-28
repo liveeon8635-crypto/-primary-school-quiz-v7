@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-flash",
+  "evidencePacketHash": "sha256:d6d093ea880232062b996cfa74ccafb0c2aa81e7dc93a5431b8d57b2f128c0b5",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "5dbcc03f275f4813c47df6b6ba262a0a9d9ba522",
+  "headSha": "4c621b4eb483e5b5e97cf89c9f2dab7a6fe15d62",
+  "decision": "reject",
+  "risk": "high",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议不合并：自动化测试 smoke 执行失败，代码更改未能通过系统基础功能校验。",
+      "evidenceRefs": [
+        "run:122865480018"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:f69965ed6b070100006ebb8fc8959a9bc11d5169e360d6626e3dedce513982b6"
+}
