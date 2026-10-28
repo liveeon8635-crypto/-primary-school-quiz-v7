@@ -23,8 +23,10 @@ with TestClient(app) as client:
     assert "参考资料（可选）" in body
     assert "resource_ids:refIds" in body
     assert "/teaching/resources?grade=" in body
-    # 宽屏适配：共用 980px 容器在桌面上会挤成窄栏
+    # 宽屏适配：共用 980px 容器在桌面上会挤成窄栏；平板起两列、宽屏三列
     assert "max-width:1440px" in body
+    assert "km-grid" in body
+    assert "@media (min-width:760px)" in body
 
     # The picker reads the existing school resource endpoint.
     r = client.get("/teaching/resources", headers=th)
