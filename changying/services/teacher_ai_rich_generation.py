@@ -7,6 +7,7 @@ non_choice; mixed mode contains only online server-graded types.
 
 from __future__ import annotations
 
+import json
 import re
 from types import ModuleType
 from typing import Any
@@ -262,6 +263,66 @@ def _route(implementation: ModuleType, path: str, method: str):
     raise RuntimeError(f"route not found: {method} {path}")
 
 
+def _bank_examples(implementation: ModuleType, db: Any, user: Any, body: Any, limit: int = 3) -> str:
+    """A few questions this school already reviewed for the same knowledge point.
+
+    Used only as a style and difficulty reference. It needs no network, carries no
+    copyright risk, and always comes from the same textbook line the teacher chose.
+    Anything unexpected yields an empty block, so generation never depends on it.
+    """
+    knowledge = str(getattr(body, "knowledge", "") or "").strip()
+    if not knowledge:
+        return ""
+    question = getattr(implementation, "Question", None)
+    if question is None:
+        return ""
+    from sqlalchemy import select
+
+    try:
+        rows = list(
+            db.scalars(
+                select(question)
+                .where(
+                    question.school_id == user.school_id,
+                    question.grade == body.grade,
+                    question.subject == body.subject,
+                    question.knowledge == knowledge,
+                )
+                .order_by(question.id.desc())
+                .limit(limit * 3)
+            )
+        )
+    except Exception:  # noqa: BLE001 - examples are a bonus; generation must not fail
+        return ""
+
+    lines: list[str] = []
+    for row in rows:
+        if getattr(row, "active", True) is False:
+            continue
+        stem = " ".join(str(getattr(row, "text", "") or "").split())[:160]
+        if len(stem) < 8:
+            continue
+        try:
+            options = json.loads(getattr(row, "options_json", "") or "[]")
+        except Exception:  # noqa: BLE001
+            options = []
+        if isinstance(options, list) and len(options) >= 2:
+            picks = " ".join(f"{chr(65 + k)}. {str(o)[:24]}" for k, o in enumerate(options[:4]))
+            answer = chr(65 + int(getattr(row, "correct_index", 0) or 0))
+            lines.append(f"{len(lines) + 1}. {stem}｜{picks}｜答案 {answer}")
+        else:
+            lines.append(f"{len(lines) + 1}. {stem}")
+        if len(lines) >= limit:
+            break
+
+    if not lines:
+        return ""
+    return (
+        "【本校已审核的同类题（只作风格与难度参照：不要照抄题干、数字或情景）】\n"
+        + "\n".join(lines)
+    )
+
+
 def _rich_generate_call(implementation: ModuleType):
     def generate(b, u, db):
         implementation.need(u, "admin", "teacher")
@@ -305,6 +366,7 @@ def _rich_generate_call(implementation: ModuleType):
             "解析必须写出完整算式或完整推理步骤，学生能照着重算一遍。",
         ]
         difficulty_block = "\n".join(difficulty_lines)
+        examples_block = _bank_examples(implementation, db, u, b)
         refs = implementation._resource_context(db, u.school_id, b.resource_ids)
         rule = format_rule(requested, b.subject, count)
         s_rule = subject_rule(b.subject)
@@ -321,6 +383,8 @@ def _rich_generate_call(implementation: ModuleType):
 老师补充要求：{b.notes or '无'}
 
 {difficulty_block}
+
+{examples_block}
 
 【通用质量要求】
 1. 每题必须是学生真实可作答的任务，不把教案目标机械改成题干。
