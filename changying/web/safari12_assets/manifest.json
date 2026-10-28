@@ -49,7 +49,7 @@
     ],
     "/classic?legacy=1&unified=1&page=syncLearning": [
       "d881ec81d8ea5b4f7b44bcfb173f8e1fe09c7416cf30a4490737b0809b3e3fb5",
-      "48600ad66159938de2d827bbbabc0eab3a9c4a42c17f168ba6087454aaaf29c0",
+      "ab0acab7519f0291df965d3ff807b690326dda8d58573dfeab646de804c56696",
       "d1e5d7dcfd33869626fae0a94202f55c4a421a5ebe18189c4918a396533254a0",
       "705628d302fc824a37cce5ace348a816cea8d7377d8379957c387475739b2498",
       "d92b1a3fbbb3d332834fe92d2b2566ec1505c5ee3a05790a8b7d101344549769",
@@ -57,7 +57,7 @@
       "439f11b64161b6c635d806944c16700a7746647b6aabd489ea7c9518da013994",
       "534754661c1163fef4d8c7cc7ecb9b74a14c66b17b764dc71b050cd44c3df111",
       "248d6c2291be02a088324ae890398e9e78b52691eb5b7a7a8c0762323a27015e",
-      "8582513c4cc6b1a0b2d17229bb9eb64a95c3b041ebfefd40771c7324f2cc74f3",
+      "734f165359622b5a7896adb822e741b66ef43794ff9cb1c435bd93d3eebf8d82",
       "a164acbca2d82eec432853cba2676546d75c7fc51866a2c531dfb6c77e5bde20",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b"
@@ -247,8 +247,14 @@
       "e4c368cad5406b407a09b8a756636c2b027d14e47a5a843ce0ee284b3f9e5767",
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
+    "/v1/exam-paper": [
+      "2c011ea5cab8f047e986aab8a580096134718440760fa10aef1258a3d888ba90"
+    ],
     "/v1/exam-prep": [
-      "4337d232ff1e1e2a63465a450f61a07facca15948559d3fcad58cc8415c12373"
+      "9275e7f87627c2a70eea8780cb0d68631ef92ea24ca4e2c6acd8719b1223b364"
+    ],
+    "/v1/exam-report": [
+      "8d2d181ff2b6c055b697c07ce0cb0a4c74dc03182b2086ffdae87be0ddb13bc0"
     ],
     "/v1/feedback": [
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b",
@@ -630,15 +636,15 @@
       "sourceBytes": 624,
       "compiledBytes": 624
     },
-    "48600ad66159938de2d827bbbabc0eab3a9c4a42c17f168ba6087454aaaf29c0": {
+    "ab0acab7519f0291df965d3ff807b690326dda8d58573dfeab646de804c56696": {
       "unchanged": false,
-      "sourceBytes": 280939,
-      "compiledBytes": 289710
+      "sourceBytes": 281583,
+      "compiledBytes": 290264
     },
-    "8582513c4cc6b1a0b2d17229bb9eb64a95c3b041ebfefd40771c7324f2cc74f3": {
+    "734f165359622b5a7896adb822e741b66ef43794ff9cb1c435bd93d3eebf8d82": {
       "unchanged": false,
-      "sourceBytes": 37620,
-      "compiledBytes": 36452
+      "sourceBytes": 38929,
+      "compiledBytes": 37581
     },
     "a164acbca2d82eec432853cba2676546d75c7fc51866a2c531dfb6c77e5bde20": {
       "unchanged": true,
@@ -650,10 +656,20 @@
       "sourceBytes": 6728,
       "compiledBytes": 6728
     },
-    "4337d232ff1e1e2a63465a450f61a07facca15948559d3fcad58cc8415c12373": {
+    "2c011ea5cab8f047e986aab8a580096134718440760fa10aef1258a3d888ba90": {
       "unchanged": true,
-      "sourceBytes": 12725,
-      "compiledBytes": 12725
+      "sourceBytes": 26273,
+      "compiledBytes": 26273
+    },
+    "9275e7f87627c2a70eea8780cb0d68631ef92ea24ca4e2c6acd8719b1223b364": {
+      "unchanged": true,
+      "sourceBytes": 19075,
+      "compiledBytes": 19075
+    },
+    "8d2d181ff2b6c055b697c07ce0cb0a4c74dc03182b2086ffdae87be0ddb13bc0": {
+      "unchanged": true,
+      "sourceBytes": 7464,
+      "compiledBytes": 7464
     },
     "8277e80c730842972c45f2a753872a83894a763c93526ef91314f9677d0357af": {
       "unchanged": true,
@@ -664,6 +680,11 @@
       "unchanged": true,
       "sourceBytes": 13253,
       "compiledBytes": 13253
+    },
+    "1be090c0dd4bdd172b536a6123f8831cf461462d649c74f27b6be84ee0fdab03": {
+      "unchanged": true,
+      "sourceBytes": 51421,
+      "compiledBytes": 51421
     },
     "b7f79e28a176de3f73e584c68d8feb1a6187af2c6510ce3e5ab9b4d92dc17b41": {
       "unchanged": true,
@@ -734,11 +755,6 @@
       "unchanged": true,
       "sourceBytes": 36927,
       "compiledBytes": 36927
-    },
-    "1be090c0dd4bdd172b536a6123f8831cf461462d649c74f27b6be84ee0fdab03": {
-      "unchanged": true,
-      "sourceBytes": 51421,
-      "compiledBytes": 51421
     }
   }
 }

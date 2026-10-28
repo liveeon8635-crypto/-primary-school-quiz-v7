@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import subprocess
 import sys
 from pathlib import Path
 
 from changying.services import exam_prep as ep
+from changying.web.exam_prep_pages import EXAM_PREP_JS, PAPER_JS, REPORT_JS
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("exam_prep_helpers", ROOT / "tests" / "test_homework_solve.py")
@@ -35,36 +38,87 @@ def test_compose_spreads_over_points_and_cycles_levels():
     qids = [q for _, q in plan]
     assert len(set(qids)) == len(qids)
     assert len(ep.compose(nodes, pools, 40)) == 7                          # stops when every pool is used up
+    assert 2 not in {q for _, q in ep.compose(nodes, pools, 40, avoid={2})}
 
 
-def test_losses_and_the_three_points_to_work_on():
+def test_a_sample_paper_sets_the_type_mix():
+    assert ep.type_targets(["single_choice"] * 4 + ["fill_blank"] * 3 + ["short_answer"] * 3, 7) == {
+        "single_choice": 3, "fill_blank": 2, "short_answer": 2}
+    assert ep.type_targets(["non_choice"], 5) == {}
+    nodes = ep.scope_nodes(MAP, ["U1", "U2"])
+    pools = {"1-1": [(1, "medium", "single_choice"), (2, "medium", "single_choice"), (3, "basic", "fill_blank")],
+             "2-1": [(5, "medium", "single_choice"), (6, "medium", "fill_blank")]}
+    plan = ep.compose(nodes, pools, 4, {"single_choice": 2, "fill_blank": 2})
+    kinds = {1: "c", 2: "c", 3: "f", 5: "c", 6: "f"}
+    assert sorted(kinds[q] for _, q in plan) == ["c", "c", "f", "f"]
+
+
+def test_losses_weigh_marks_and_pick_three_points():
     plan = [("a", 1), ("a", 2), ("b", 3), ("b", 4), ("c", 5), ("d", 6), ("d", 7), ("d", 8)]
     answers = {1: True, 2: False, 3: False, 4: False, 5: False, 6: False, 7: True}      # 8 left unanswered
     per = ep.losses(plan, answers)
-    assert per == {"a": {"asked": 2, "lost": 1}, "b": {"asked": 2, "lost": 2}, "c": {"asked": 1, "lost": 1},
-                   "d": {"asked": 3, "lost": 2}}
-    # Most questions lost first; tie broken by the share lost (b 2/2 before d 2/3); then c (1/1) before a (1/2).
+    assert {k: (v["asked"], v["lost"]) for k, v in per.items()} == {"a": (2, 1), "b": (2, 2), "c": (1, 1), "d": (3, 2)}
+    # Most marks lost first; tie broken by the share lost (b 2/2 before d 2/3); then c (1/1) before a (1/2).
     assert ep.top_losses(per, ["a", "b", "c", "d"]) == ["b", "d", "c"]
     assert ep.score(plan, answers) == 25
+    # With marks, one 5-mark question lost outweighs two 1-mark questions.
+    marks = {1: 1, 2: 1, 3: 1, 4: 1, 5: 5, 6: 1, 7: 1, 8: 1}
+    weighted = ep.losses(plan, answers, marks)
+    assert ep.top_losses(weighted, list("abcd"))[0] == "c" and weighted["c"]["lostMarks"] == 5
+    assert ep.score(plan, answers, marks) == round(100 * 2 / 12)
     assert ep.top_losses(ep.losses(plan, {q: True for _, q in plan}), list("abcd")) == []
-    assert ep.class_points(plan, [answers, {q: True for _, q in plan}])["d"] == {"asked": 6, "lost": 2}
+    assert ep.class_points(plan, [answers, {q: True for _, q in plan}])["d"]["lost"] == 2
+
+
+def test_drill_and_retest_use_fresh_questions():
+    pools = {"a": [(1, "hard"), (2, "basic"), (3, "medium"), (4, "basic")], "b": [(5, "medium"), (6, "basic")]}
+    assert ep.drill_picks(["a", "b"], pools, {2}, 2) == [("a", 4), ("a", 3), ("b", 6), ("b", 5)]     # basic first
+    base = [("a", 1), ("a", 2), ("b", 5)]
+    again = ep.retest_plan(base, pools, {1, 2, 5})
+    assert [k for k, _ in again] == ["a", "a", "b"] and not {q for _, q in again} & {1, 2, 5}
+
+
+def test_compare_and_countdown():
+    before = {"a": {"asked": 2, "lost": 2, "marks": 4, "lostMarks": 4}, "b": {"asked": 2, "lost": 1, "marks": 4, "lostMarks": 2}}
+    after = {"a": {"asked": 2, "lost": 0, "marks": 4, "lostMarks": 0}, "b": {"asked": 2, "lost": 1, "marks": 4, "lostMarks": 2}}
+    got = {c["key"]: c["verdict"] for c in ep.compare(before, after, ["a", "b", "c"])}
+    assert got == {"a": "已补上", "b": "还要练", "c": "未再测"}
+    assert [ep.countdown(d)["stage"] for d in (30, 14, 5, 2, 0, -1)] == ["摸底", "专项", "冲刺", "考前三天", "考试日", "考后"]
+
+
+def test_report_states_only_recorded_results():
+    r = ep.report("小明", "期末 · 再测卷 1", {"score": 80}, {"score": 65}, [{"name": "梯形的面积", "lost": 2, "asked": 4}],
+                  {"questionCount": 6, "handedIn": True, "correct": 5}, ep.countdown(10), "期末")
+    text = " ".join(r["lines"])
+    assert "80 分" in text and "提高了 15 分" in text and "梯形的面积（2/4" in text and "做对 5 题" in text
+    assert r["stage"] == "专项" and "排名" not in text
+
+
+def test_page_scripts_parse():
+    for js in (EXAM_PREP_JS, PAPER_JS, REPORT_JS):
+        subprocess.run(["node", "-e", "new Function(require('fs').readFileSync(0,'utf8'))"], input=js, check=True, capture_output=True, text=True)
 
 
 FLOW = r'''
+from datetime import datetime, timedelta
 with TestClient(app) as client:
     th, sh, sid, school_id = setup(client)
+    ph = {"Authorization": "Bearer " + login_and_change(client, "parent1", "123456", "Parent1234")}
     with legacy.SessionLocal() as db:
         db.get(legacy.User, sid).grade = 5
         db.commit()
-    assert client.get("/v1/exam-prep").status_code == 200
-    assert "href='/v1/exam-prep'" in client.get("/v1/workspace").text      # entry shown with the knowledge map
+    for path in ("/v1/exam-prep", "/v1/exam-paper", "/v1/exam-report"):
+        assert client.get(path).status_code == 200, path
+    assert "href='/v1/exam-prep'" in client.get("/v1/workspace").text
+    assert "student-exam-papers" in client.get("/classic?legacy=1&unified=1&page=syncLearning").text
+    assert "cy-exr-band" in client.get("/classic?legacy=1&unified=1&page=childProgress").text
     d = client.post("/teacher/knowledge-maps", headers=th, json={"template": "rj2026-g5-math-up"}).json()
     mid, rev = d["id"], d["revision"]
     base = f"/teacher/knowledge-maps/{mid}/nodes"
     items = {}
     for key in ("6-1", "6-2", "6-3", "6-4"):
         for level in ("basic", "medium"):
-            got = client.post(base + f"/{key}/visual", headers=th, json={"level": level, "count": 2}).json()
+            got = client.post(base + f"/{key}/visual", headers=th, json={"level": level, "count": 4}).json()
             r = client.post(base + f"/{key}/visual/save", headers=th, json={"level": level, "revision": rev, "questions": got["items"]}).json()
             rev = r["revision"]
             for qid, q in zip(r["saved"], got["items"]):
@@ -72,56 +126,112 @@ with TestClient(app) as client:
     lst = client.get("/teacher/exam-goals", headers=th).json()
     assert lst["items"] == [] and lst["maps"] == []                      # nothing until the map is published
     client.post(f"/teacher/knowledge-maps/{mid}/publish", headers=th, json={"revision": rev})
+    # A sample paper (for example an imported past paper): half fill-in, half choice.
+    fills = [q for q, (_, it) in items.items() if it["question_type"] == "fill_blank"][:2]
+    chos = [q for q, (_, it) in items.items() if it["question_type"] == "single_choice"][:2]
+    with legacy.SessionLocal() as db:
+        teacher = db.scalar(select(legacy.User).where(legacy.User.username == "teacher1"))
+        sample = legacy.Paper(school_id=school_id, title="往年期末卷", grade=5, subject="数学", textbook="人教版", unit="真题",
+                              question_ids_json=json.dumps(fills + chos), teacher_id=teacher.id)
+        db.add(sample); db.commit(); sample_id = sample.id
     lst = client.get("/teacher/exam-goals", headers=th).json()
     cid = lst["classes"][0]["id"]
-    assert lst["maps"][0]["id"] == mid
-    goal = {"mapId": mid, "classId": cid, "title": "期末", "examDate": "2027-01-15", "unitKeys": ["U6"]}
+    assert any(p["id"] == sample_id for p in lst["samplePapers"])
+    goal = {"mapId": mid, "classId": cid, "title": "期末", "examDate": (datetime.now() + timedelta(days=12)).strftime("%Y-%m-%d"), "unitKeys": ["U6"]}
     assert client.post("/teacher/exam-goals", headers=th, json={**goal, "unitKeys": ["U99"]}).status_code == 400
     assert client.post("/teacher/exam-goals", headers=th, json={**goal, "examDate": "2027-02-30"}).status_code == 400
     assert client.post("/teacher/exam-goals", headers=sh, json=goal).status_code == 403
     g = client.post("/teacher/exam-goals", headers=th, json=goal).json()
-    assert [u["key"] for u in g["units"]] == ["U6"] and {p["key"] for p in g["points"]} >= {"6-1", "6-2", "6-3", "6-4"}
-    # The mock paper: every saved question, spread over the four points, sent to the class as homework.
-    r = client.post(f"/teacher/exam-goals/{g['id']}/mock", headers=th, json={"count": 16, "timeLimit": 45})
-    assert r.status_code == 200, r.text
-    mock = r.json()
-    assert mock["questionCount"] == 16 and mock["recipients"] == 1 and not mock["short"]
+    assert g["plan"]["stage"] == "专项" and {p["key"] for p in g["points"]} >= {"6-1", "6-2", "6-3", "6-4"}
+    gb = f"/teacher/exam-goals/{g['id']}"
+
+    # Mock paper following the sample's type mix.
+    mock = client.post(gb + "/mock", headers=th, json={"count": 8, "timeLimit": 60, "samplePaperId": sample_id}).json()
+    assert mock["questionCount"] == 8 and mock["typeTargets"] == {"fill_blank": 4, "single_choice": 4}
     with legacy.SessionLocal() as db:
         a = db.get(legacy.Assignment, mock["assignmentId"])
         qids = json.loads(db.get(legacy.Paper, a.paper_id).question_ids_json)
-        setting = db.scalar(select(legacy.AssignmentSubmissionSetting).where(legacy.AssignmentSubmissionSetting.assignment_id == a.id))
-    assert set(qids) == set(items) and a.class_id == cid and "45 分钟" in setting.instructions
+    assert sorted(items[q][1]["question_type"] for q in qids) == ["fill_blank"] * 4 + ["single_choice"] * 4
     assert [items[q][0] for q in qids[:4]] == ["6-1", "6-2", "6-3", "6-4"]
-    # Before anyone hands in: the pupil is listed as not handed in.
-    an = client.get(f"/teacher/exam-goals/{g['id']}/papers/{mock['id']}/analysis", headers=th).json()
-    assert an["handedIn"] == 0 and an["pupils"][0]["handedIn"] is False
-    # The pupil gets 6-1 and 6-2 right, all of 6-4 and half of 6-3 wrong.
-    wrong_63 = [q for q in qids if items[q][0] == "6-3"][:2]
-    sub = []
-    for q in qids:
-        key, item = items[q]
-        bad = key == "6-4" or q in wrong_63
-        if item["question_type"] == "fill_blank":
-            sub.append({"question_id": q, "text_answer": "99999" if bad else item["answer"]})
-        else:
-            sub.append({"question_id": q, "selected_index": (item["correct_index"] + 1) % 4 if bad else item["correct_index"]})
+
+    # The pupil sees it on the timed page, starts the clock once, and hands in late.
+    mine = client.get("/student/exam-papers", headers=sh).json()["items"]
+    assert [x["assignmentId"] for x in mine] == [mock["assignmentId"]] and mine[0]["startedAt"] is None
+    s1 = client.post(f"/student/exam-papers/{mock['assignmentId']}/start", headers=sh).json()
+    assert client.post(f"/student/exam-papers/{mock['assignmentId']}/start", headers=sh).json()["startedAt"] == s1["startedAt"]
+    assert client.post(f"/student/exam-papers/{mock['assignmentId']}/start", headers=th).status_code == 403
+    att = legacy.Base.metadata.tables["exam_attempts"]
+    with legacy.SessionLocal() as db:
+        db.execute(att.update().values(started_at=datetime.utcnow() - timedelta(minutes=70))); db.commit()
+    assert client.get(f"/papers/{a.paper_id}/questions", headers=sh).status_code == 200
+
+    def answer(q, bad):
+        it = items[q][1]
+        if it["question_type"] == "fill_blank":
+            return {"question_id": q, "text_answer": "99999" if bad else it["answer"]}
+        return {"question_id": q, "selected_index": (it["correct_index"] + 1) % 4 if bad else it["correct_index"]}
+
+    sub = [answer(q, items[q][0] == "6-3") for q in qids]                 # all of 6-3 wrong
     assert client.post(f"/student/assignments/{mock['assignmentId']}/submit", headers=sh, json={"answers": sub}).status_code == 200
-    an = client.get(f"/teacher/exam-goals/{g['id']}/papers/{mock['id']}/analysis", headers=th).json()
+    an = client.get(gb + f"/papers/{mock['id']}/analysis", headers=th).json()
     me = an["pupils"][0]
-    assert an["handedIn"] == 1 and me["score"] == round(100 * 10 / 16)
-    assert [f["key"] for f in me["focus"]] == ["6-4", "6-3"] and me["focus"][0]["lost"] == 4 and me["focus"][1]["lost"] == 2
-    assert [p["key"] for p in an["points"]][:2] == ["6-4", "6-3"] and an["points"][0]["rate"] == 100
-    detail = client.get(f"/teacher/exam-goals/{g['id']}", headers=th).json()
-    assert detail["papers"][0]["handedIn"] == 1 and detail["papers"][0]["questionCount"] == 16
-    # Another teacher's goal is out of reach; the feature hides behind the knowledge-map flag.
+    assert an["paper"]["totalMarks"] == 16 and me["score"] == round(100 * 12 / 16)
+    assert [f["key"] for f in me["focus"]] == ["6-3"] and me["focus"][0]["lostMarks"] == 4
+    assert me["minutes"] >= 70 and me["overtime"] >= 10
+    assert client.post(f"/student/exam-papers/{mock['assignmentId']}/start", headers=sh).status_code == 409
+
+    # Practice on the lost point: fresh 6-3 questions, basic first, never the mock's own.
+    dr = client.post(gb + f"/papers/{mock['id']}/drill", headers=th, json={"perPoint": 3}).json()["results"]
+    assert dr[0]["ok"] and dr[0]["questionCount"] == 3
+    with legacy.SessionLocal() as db:
+        da = db.get(legacy.Assignment, dr[0]["assignmentId"])
+        dq = json.loads(db.get(legacy.Paper, da.paper_id).question_ids_json)
+    assert all(items[q][0] == "6-3" for q in dq) and not set(dq) & set(qids) and "梯形的面积" in da.title
+    assert not client.post(gb + f"/papers/{mock['id']}/drill", headers=th, json={}).json()["results"][0]["ok"]
+    assert client.post(f"/student/assignments/{dr[0]['assignmentId']}/submit", headers=sh, json={"answers": [answer(q, False) for q in dq]}).status_code == 200
+    me = client.get(gb + f"/papers/{mock['id']}/analysis", headers=th).json()["pupils"][0]
+    assert me["drill"] == {"assignmentId": dr[0]["assignmentId"], "questionCount": 3, "handedIn": True, "correct": 3}
+
+    # Retest: same number of questions per point, none used before; now 6-3 is right.
+    rt = client.post(gb + f"/papers/{mock['id']}/retest", headers=th, json={"timeLimit": 40}).json()
+    with legacy.SessionLocal() as db:
+        rq = json.loads(db.get(legacy.Paper, db.get(legacy.Assignment, rt["assignmentId"]).paper_id).question_ids_json)
+    assert sorted(items[q][0] for q in rq) == sorted(items[q][0] for q in qids) and not set(rq) & (set(qids) | set(dq))
+    assert client.post(gb + f"/papers/{rt['id']}/retest", headers=th, json={}).status_code == 409
+    client.post(f"/student/exam-papers/{rt['assignmentId']}/start", headers=sh)
+    assert client.post(f"/student/assignments/{rt['assignmentId']}/submit", headers=sh, json={"answers": [answer(q, False) for q in rq]}).status_code == 200
+    an2 = client.get(gb + f"/papers/{rt['id']}/analysis", headers=th).json()
+    me2 = an2["pupils"][0]
+    assert an2["paper"]["basePaperId"] == mock["id"] and me2["score"] == 100 and me2["before"] == 75
+    assert me2["change"] == [{"key": "6-3", "before": 100, "after": 0, "verdict": "已补上", "name": me["focus"][0]["name"]}]
+    tr = client.get(gb + "/trend", headers=th).json()
+    assert [p["kind"] for p in tr["papers"]] == ["mock", "retest"] and tr["pupils"][0]["scores"] == [75, 100]
+
+    # Parent report: drafted from the records, the teacher adds a note, publishes; later edits wait for a new publish.
+    reps = client.post(gb + f"/papers/{rt['id']}/reports", headers=th).json()["items"]
+    r = reps[0]
+    text = " ".join(r["draft"]["lines"])
+    assert "100 分" in text and "提高了 25 分" in text and r["draft"]["change"][0]["verdict"] == "已补上" and not r["published"]
+    assert client.get(f"/parent/children/{sid}/exam-reports", headers=ph).json()["items"] == []
+    client.put(f"/teacher/exam-reports/{r['id']}", headers=th, json={"note": "进步很大，继续保持"})
+    pub = client.post(f"/teacher/exam-reports/{r['id']}/publish", headers=th).json()
+    assert pub["published"] and not pub["changedSincePublish"]
+    seen = client.get(f"/parent/children/{sid}/exam-reports", headers=ph).json()
+    assert seen["items"][0]["note"] == "进步很大，继续保持" and "100 分" in " ".join(seen["items"][0]["lines"])
+    assert client.put(f"/teacher/exam-reports/{r['id']}", headers=th, json={"note": "改过的话"}).json()["changedSincePublish"]
+    assert client.get(f"/parent/children/{sid}/exam-reports", headers=ph).json()["items"][0]["note"] == "进步很大，继续保持"
+    assert client.get(f"/parent/children/{sid + 999}/exam-reports", headers=ph).status_code == 404
+    assert client.get(f"/parent/children/{sid}/exam-reports", headers=sh).status_code == 403
+
+    # Out of reach: other goals; and everything hides behind the knowledge-map flag.
     assert client.get("/teacher/exam-goals/999", headers=th).status_code == 404
     os.environ["KNOWLEDGE_MAP"] = "0"
     assert client.get("/teacher/exam-goals", headers=th).status_code == 404
-    assert client.get("/v1/exam-prep").status_code == 404
+    assert client.get("/student/exam-papers", headers=sh).status_code == 404
+    assert client.get("/v1/exam-paper").status_code == 404
 print("OK")
 '''
 
 
-def test_mock_paper_and_lost_points_through_the_routes(tmp_path):
+def test_the_whole_loop_through_the_routes(tmp_path):
     helpers.run_isolated(tmp_path, helpers.COMMON + FLOW, {"KNOWLEDGE_MAP": "1"})
-
