@@ -187,8 +187,8 @@ with TestClient(app) as client:
     replies.append(json.dumps({"questions": [
         {"question_type": "choice", "text": "钟面上的指针从 12 绕中心顺时针旋转 90°，指向几？", "options": ["3", "6", "9", "12"],
          "correct_index": 0, "explanation": "顺时针 90° 是 3 个大格", "knowledge": "旋转的意义"},
-        {"question_type": "choice", "text": "下面哪一项不是确定旋转所需要的？", "options": ["旋转中心", "旋转方向", "旋转角度", "图形颜色"],
-         "correct_index": 3, "explanation": "旋转三要素", "knowledge": "旋转"}]}, ensure_ascii=False))
+        {"question_type": "choice", "text": "钟面上的指针从 12 绕中心顺时针旋转 180°，指向几？", "options": ["3", "6", "9", "12"],
+         "correct_index": 1, "explanation": "180° 是 6 个大格，指向 6", "knowledge": "旋转"}]}, ensure_ascii=False))
     gen = client.post("/ai/questions/generate", headers=th, json={
         "grade": d["grade"], "subject": d["subject"], "textbook": "人教版", "semester": d["term"], "unit": unit["name"],
         "knowledge": node["name"], "difficulty": "中等", "count": 2, "question_type": "choice",

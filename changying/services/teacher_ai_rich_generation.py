@@ -263,6 +263,22 @@ def _route(implementation: ModuleType, path: str, method: str):
     raise RuntimeError(f"route not found: {method} {path}")
 
 
+_DIGIT = re.compile(r"[0-9０-９]")
+_OPERATOR = re.compile(r"[×÷+\-=＝<>]")
+
+
+def _meets_selected_difficulty(row: dict[str, Any], level: str, subject: str) -> bool:
+    """中等以上必须真的让学生算：题干里连数字和运算符都没有的，直接丢掉。
+
+    Prompt instructions alone did not stop recall-only stems ("下面各题中，可以用……表示的是"). 
+    This is the deterministic backstop: a rejected row triggers the existing repair pass.
+    """
+    if level == "基础" or "数学" not in str(subject or ""):
+        return True
+    stem = str(row.get("text") or "")
+    return bool(_DIGIT.search(stem) or _OPERATOR.search(stem))
+
+
 def _bank_examples(implementation: ModuleType, db: Any, user: Any, body: Any, limit: int = 3) -> str:
     """A few questions this school already reviewed for the same knowledge point.
 
@@ -412,7 +428,10 @@ def _rich_generate_call(implementation: ModuleType):
                 sanitize_figure=implementation._sanitize_figure,
             )
 
-        output = run_generation("question_generation", prompt, count)
+        def keep(row: dict[str, Any]) -> bool:
+            return _meets_selected_difficulty(row, level, b.subject)
+
+        output = [row for row in run_generation("question_generation", prompt, count) if keep(row)]
         if len(output) < count:
             missing = count - len(output)
             repair = f"""请补充 {missing} 道小学{b.subject}题目，保持课程信息完全一致：
@@ -421,7 +440,7 @@ def _rich_generate_call(implementation: ModuleType):
 {s_rule}
 {rule}
 只返回 JSON：{{"questions":[...]}}。"""
-            extra = run_generation("question_generation_repair", repair, missing)
+            extra = [row for row in run_generation("question_generation_repair", repair, missing) if keep(row)]
             existing = {re.sub(r"\s+", "", x["text"]) for x in output}
             for row in extra:
                 key = re.sub(r"\s+", "", row["text"])
@@ -438,6 +457,11 @@ def _rich_generate_call(implementation: ModuleType):
                     "AI 未形成足够多样的在线题型，请重试；系统不会用重复单选题冒充混合题型",
                 )
         if not output:
+            if level != "基础" and "数学" in str(b.subject or ""):
+                raise HTTPException(
+                    502,
+                    f"AI 连续两次给出的都是记忆/辨认类题目（没有数字或算式），已全部过滤。请重试，或把难度调成「基础」",
+                )
             raise HTTPException(502, "AI 未生成符合指定题型的题目，请重试或调整要求")
 
         implementation.audit(
