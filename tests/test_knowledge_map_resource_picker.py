@@ -23,6 +23,8 @@ with TestClient(app) as client:
     assert "参考资料（可选）" in body
     assert "resource_ids:refIds" in body
     assert "/teaching/resources?grade=" in body
+    # 宽屏适配：共用 980px 容器在桌面上会挤成窄栏
+    assert "max-width:1440px" in body
 
     # The picker reads the existing school resource endpoint.
     r = client.get("/teaching/resources", headers=th)
