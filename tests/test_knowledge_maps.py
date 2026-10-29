@@ -419,5 +419,6 @@ def test_ai_chance_questions_stay_qualitative():
                    {"text": "要使摸到红球的可能性为 0.35，应放几个红球？", "answer": "7"}):
         assert km.check_ai_question({**draft, **change}, "medium", "数学", "可能性")[1] == "可能性用数表示（小学只比较大小）"
     assert "不要用分数、小数、百分数表示可能性" in km.angle_brief("medium", 6, "可能性")
+    assert "同一种情境不超过 2 道" in km.angle_brief("hard", 6, "可能性") and "不能据此断定" in km.angle_brief("hard", 6, "可能性")
     assert "不要用分数" not in km.angle_brief("medium", 6, "小数除法")
 
