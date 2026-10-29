@@ -271,15 +271,22 @@ function kmUnit(u){
   var editBtn=el('button',{class:'btn',text:'编辑',onclick:function(){
     var open=editBox.hidden;editBox.hidden=!open;editBtn.textContent=open?'收起':'编辑';
   }});
+  // 默认收起：一屏能看到全部单元，顺序也是 U1→U8，点开才列知识点。
+  var caret=el('span',{class:'km-caret',text:'▸'});
+  var body=el('div',{class:'km-unit-b'});
+  var toggle=el('button',{class:'km-unit-t','aria-expanded':'false',onclick:function(){
+    var open=body.hidden;body.hidden=!open;caret.textContent=open?'▾':'▸';
+    toggle.setAttribute('aria-expanded',open?'true':'false');
+  }},caret,el('b',{text:u.key+'  '+u.name}));
+  body.hidden=true;
   var card=el('section',{class:'card','data-unit':u.key,id:'unit-'+u.key},
-    el('div',{class:'row km-unit-h'},
-      el('h3',{text:u.key+'  '+u.name}),
+    el('div',{class:'row km-unit-h'},toggle,
       el('span',{class:'muted',text:nodes.length+' 个知识点'}),
       editBtn),
-    editBox);
-  card.appendChild(add);
-  nodes.forEach(function(n){card.appendChild(kmNodeRow(n,u))});
-  if(!nodes.length)card.appendChild(el('p',{class:'muted',text:'这个单元还没有知识点：可以点“按模板恢复本单元知识点”，或“添加知识点”。'}));
+    editBox,body);
+  body.appendChild(add);
+  nodes.forEach(function(n){body.appendChild(kmNodeRow(n,u))});
+  if(!nodes.length)body.appendChild(el('p',{class:'muted',text:'这个单元还没有知识点：可以点“按模板恢复本单元知识点”，或“添加知识点”。'}));
   return card;
 }
 // 页面内的添加表单：编号和名称分开填，当场检查格式和重复。
@@ -321,6 +328,16 @@ function kmRender(){
     nav.appendChild(el('a',{href:'#unit-'+u.key,title:u.name,text:u.key+' · '+u.name+'（'+count+'）'}));
   });
   KMBOX.appendChild(el('div',{class:'km-layout'},nav,grid));
+  // 全部展开 / 收起：一屏看单元，或一次性铺开所有知识点。
+  nav.appendChild(el('button',{class:'btn km-expand',text:'展开全部',onclick:function(){
+    var open=this.getAttribute('data-open')!=='1';
+    var bs=KMBOX.querySelectorAll('.km-unit-b');
+    for(var i=0;i<bs.length;i++){bs[i].hidden=!open}
+    var cs=KMBOX.querySelectorAll('.km-unit-t .km-caret');
+    for(var j=0;j<cs.length;j++){cs[j].textContent=open?'▾':'▸'}
+    this.setAttribute('data-open',open?'1':'0');
+    this.textContent=open?'收起全部':'展开全部';
+  }}));
   // 滚动到哪个单元，左侧导航就高亮哪一项（Safari 12 没有 IntersectionObserver 时静默跳过）。
   if(window.IntersectionObserver){
     var links=[].slice.call(nav.querySelectorAll('a'));
@@ -578,7 +595,11 @@ section.card[data-unit] .card:first-of-type{border-top:0;padding-top:6px}
 section.card[data-unit] .card h4{margin:0 0 4px;font-size:16px}
 /* 单元标题行：默认只读，编辑控件收进 .km-unit-edit。 */
 .km-unit-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.km-unit-h h3{margin:0;font-size:18px;flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.km-unit-t{display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0;background:none;border:0;padding:2px;font:inherit;font-size:18px;text-align:left;cursor:pointer}
+.km-unit-t b{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.km-unit-t:hover b{color:#1f6feb}
+.km-unit-b{padding-top:6px}
+.km-unit-b[hidden]{display:none}
 .km-unit-edit{padding:8px 0 4px}
 .km-unit-edit[hidden]{display:none}
 /* 知识点默认只占一行，点开才展开详情与操作。 */
@@ -592,8 +613,8 @@ section.card[data-unit] .km-node{padding:0}
 /* AI 草稿卡片：每个选项、答案、解析各占一行，不和下一个选项字母挤在一起。 */
 .km-draft>label{display:block;margin:8px 0}.km-draft>label>input:not([type=checkbox]){width:calc(100% - 2.5em);max-width:420px}
 /* 平板横屏（≥900）起两列，同行等高；不做三列——出题面板带图形，三列会被压到 ~250px。 */
-/* 两列用多列流（column）而不是 grid：单元高度参差不齐，grid 会被行高拉出大片空白。 */
-@media (min-width:900px){.km-grid{column-count:2;column-gap:14px}.km-grid>.card{break-inside:avoid;-webkit-column-break-inside:avoid;page-break-inside:avoid;margin:0 0 14px}}
+/* 两列用 grid（行优先，顺序 U1→U2→…）；卡片收起后高度接近，不会再有大幅空白。 */
+@media (min-width:900px){.km-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}.km-grid>.card{margin-bottom:0}}
 /* 栅格子项默认 min-width:auto，长题干或图片会把整页撑出横向滚动条。 */
 .km-grid>.card{min-width:0}
 .km-grid img{max-width:100%;height:auto}
@@ -607,6 +628,7 @@ section.card[data-unit] .km-node{padding:0}
   .km-nav a{display:block;padding:7px 10px;border-radius:8px;color:#1c2333;text-decoration:none;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .km-nav a:hover{background:#eef2fa}
   .km-nav a.on{background:#e8f0ff;color:#1f6feb;font-weight:700}
+  .km-nav .km-expand{width:100%;margin-top:8px;min-height:34px;font-size:13px}
 }
 </style>"""
 
