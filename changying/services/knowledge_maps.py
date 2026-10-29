@@ -418,7 +418,7 @@ SHAPE_ANGLES: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
-# 可能性、统计单元。
+# 可能性、统计单元。小学只定性比较可能性的大小（课标第二学段），不用分数、小数、百分数表示可能性。
 CHANCE_ANGLES: dict[str, list[tuple[str, str]]] = {
     "basic": [
         ("判断可能性", "用“一定、可能、不可能”描述事件"),
@@ -426,19 +426,20 @@ CHANCE_ANGLES: dict[str, list[tuple[str, str]]] = {
         ("概念判断", "判断一个关于可能性的说法对不对"),
     ],
     "medium": [
-        ("比较可能性大小", "根据数量比较哪种结果的可能性大"),
-        ("按要求设计", "按要求放球、涂色或写数字，使可能性满足条件"),
-        ("由记录推断", "根据多次摸球或转盘的记录，推断哪种数量多"),
+        ("比较可能性大小", "根据数量多少比较哪种结果的可能性大，不用分数或小数表示可能性"),
+        ("按要求设计", "按“摸到红球的可能性最大”“不可能摸到黄球”这类要求放球、涂色或写数字"),
+        ("由记录推断", "根据多次摸球或转盘的记录，推断袋中哪种可能多、哪种可能少（不算具体个数）"),
         ("找错并改正", "给出一个有错的判断，找出错在哪里并改正"),
     ],
     "hard": [
         ("公平性判断", "判断游戏规则是否公平，不公平时怎样修改"),
-        ("逆向推理", "已知可能性的要求，倒推每种至少或最多放几个"),
+        ("逆向推理", "已知可能性大小的要求（如红球的可能性最大），倒推每种至少或最多放几个"),
         ("找全所有可能", "找全满足条件的所有放法或结果，并说明理由"),
         ("综合推理", "结合数量、条件多步推理，判断可能性并说明理由"),
     ],
 }
 
+_CHANCE_NUMBER = re.compile(r"可能性\s*(?:是|为|等于|约是|约为)\s*[\d一二三四五六七八九十百]|用(?:百分数|分数|小数)表示")
 _SHAPE_WORDS = ("图形", "观察", "面积", "密铺", "周长", "体积", "表面积", "对称", "平移", "旋转", "位置", "方向", "角的", "三角形", "四边形", "圆", "长方体", "正方体")
 _CHANCE_WORDS = ("可能性", "统计", "数据", "条形图", "折线图", "扇形图")
 
@@ -469,7 +470,9 @@ def angle_brief(level: str, count: int, unit: str = "") -> str:
     return (f"【命题角度】每道题必须从下面的角度里选一个，并在 \"angle\" 字段写出角度名称（原样照写）；"
             f"这一批 {count} 道题{rule}，不要多道题都是同一种考法。每道题都要真正用到这个知识点本身，"
             f"不能只把它当情境、实际考的是别的计算。数据要像练习册一样好算：中间结果和答案最多两位小数"
-            f"（题目要求保留的除外）；难度来自思路，不靠繁琐的数：\n{lines}")
+            f"（题目要求保留的除外）；难度来自思路，不靠繁琐的数。"
+            + ("可能性只用“一定、可能、不可能”和“大、小、相等”描述，不要用分数、小数、百分数表示可能性。" if math_angles(unit) is CHANCE_ANGLES else "")
+            + f"\n{lines}")
 
 
 def check_ai_question(item: dict[str, Any], level: str, subject: str, unit: str = "") -> tuple[dict[str, Any] | None, str]:
@@ -492,6 +495,9 @@ def check_ai_question(item: dict[str, Any], level: str, subject: str, unit: str 
         if not angle:
             return None, "命题角度不属于这一难度"
         out["angle"] = angle                                     # the listed name, so the per-batch cap counts it
+        said_all = " ".join(str(out.get(k) or "") for k in ("text", "answer", "explanation")) + " ".join(map(str, steps))
+        if angles is CHANCE_ANGLES and _CHANCE_NUMBER.search(said_all):
+            return None, "可能性用数表示（小学只比较大小）"
     if len(steps) < AI_MIN_STEPS.get(level, 1):
         return None, "步骤太少（中等至少 2 步、提高至少 3 步）"
     if qtype == "single_choice" and len({str(o).strip() for o in out.get("options") or []}) != 4:
