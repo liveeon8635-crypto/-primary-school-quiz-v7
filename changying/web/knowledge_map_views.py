@@ -325,14 +325,19 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         if b.questionType not in AI_REQUEST_TYPES or (b.questionType in ("calculation", "short_answer") and "数学" not in row.subject):
             raise HTTPException(400, "题型不对")
         unit = next((x for x in m["units"] if x["key"] == node["unit"]), {"name": ""})
+        maths = "数学" in row.subject
+        ids = [int(q) for q in node["levels"]][:12]
+        seen = db.scalars(select(Question.text).where(Question.school_id == row.school_id, Question.id.in_(ids))).all() if ids else []
+        avoid = ("已有题目（不要重复这些题，也不要只换数字）：" + "；".join(t.strip()[:40] for t in seen) + "。") if seen else ""
         body = implementation.AIQuestionGenerateBody(
             # The map says e.g. "人教版 2026"; the textbook registry knows the publisher line ("人教版").
             grade=row.grade, subject=row.subject, textbook="人教版" if "人教" in row.textbook else row.textbook, semester=row.term, unit=unit["name"],
             knowledge=(node["bankKeys"] or [node["name"]])[0], difficulty=km.LEVELS[b.level],
-            count=min(b.count + 3, 20),                                   # some will not pass the checks below
+            count=min(b.count + (4 if maths else 3), 20),                 # some will not pass the checks below
             question_type=b.questionType, resource_ids=b.resourceIds,
             notes=f"知识点：{node['name']}。说明：{node.get('detail') or node['name']}。题目只考这一个知识点；题干不能依赖图片，"
-                  "涉及图形、方向、方格位置时用文字说清楚。" + ("题型要多样，不要全是选择题。" if b.questionType == "mixed" else ""))
+                  "涉及图形、方向、方格位置时用文字说清楚。" + ("题型要多样，不要全是选择题。" if b.questionType == "mixed" else "") + avoid
+                  + ("\n" + km.angle_brief(b.level, b.count) if maths else ""))
         route = next(r for r in implementation.app.routes if getattr(r, "path", "") == "/ai/questions/generate" and "POST" in getattr(r, "methods", ()))
         got = route.dependant.call(b=body, u=u, db=db)
         kept, dropped = [], {}
@@ -342,7 +347,7 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
                 dropped[why] = dropped.get(why, 0) + 1
             else:
                 kept.append(ok)
-        items = km.pick_ai_drafts(kept, b.count)
+        items = km.pick_ai_drafts(kept, b.count, b.level if maths else "", list(seen))
         if not items:
             raise HTTPException(502, "AI 这次出的题都没通过检查（" + "、".join(f"{k} {v} 道" for k, v in dropped.items()) + "），请再试一次")
         return {"items": items, "dropped": dropped, "short": b.count - len(items), "level": b.level,
