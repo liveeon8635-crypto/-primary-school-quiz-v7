@@ -261,6 +261,7 @@ function blParse(texts){
     if(BL_EXAMPLE.test(line)){
       var rest=line.replace(/^示例\s*[：:]\s*/,''),cut=-1,re=/[：:]/g,m;
       while((m=re.exec(rest))){if(BL_BLANK.test(rest.slice(m.index+1))||blMath(rest.slice(m.index+1))){cut=m.index;break}}
+      if(cut<0){var k2=rest.search(/[：:]/);if(k2>0&&k2<=20)cut=k2}      // "例题13 中点问题：点B是…" -> short title, problem as text
       var b=open('example',cut>0?rest.slice(0,cut).replace(/\s*[|｜]\s*/,'　'):rest.replace(/\s*[|｜]\s*/,'　'));
       if(cut>0)b.lines.push(rest.slice(cut+1).trim());
       return;
@@ -271,35 +272,63 @@ function blParse(texts){
   return blocks;
 }
 function blItems(line){
-  // "5×m＝（  ）  a×1＝（  ）…" -> one item per blank, so a question never breaks in the middle.
+  // "当a＝2.5时，求下面各式的值：5×a＝（ ）1.2a＝（ ）…" -> the lead-in as text, then one short item per blank,
+  // so a question never breaks in the middle. Long items (a sentence with a blank) are not put in the grid.
   if(!BL_BLANK.test(line))return null;
-  var out=[],re=/[（(][\s　_＿]*[）)]|_{2,}|＿{2,}/g,last=0,m;
+  var out=[],re=/[（(][\s　_＿]*[）)]|_{2,}|＿{2,}/g,last=0,m,lead='';
   while((m=re.exec(line))){var stem=line.slice(last,m.index).trim();if(!stem&&!out.length)return null;out.push(stem);last=m.index+m[0].length}
-  var tail=line.slice(last).trim();
-  return out.length>=2?{items:out,tail:tail}:null;
+  if(out.length<2)return null;
+  var k=Math.max(out[0].lastIndexOf('：'),out[0].lastIndexOf(':'));
+  if(k>=0){lead=out[0].slice(0,k+1).trim();out[0]=out[0].slice(k+1).trim()}
+  if(out.some(function(q){return !q||q.length>14||!/[=＝]$|[×÷+＋−\-]/.test(q)}))return null;   // only short calculations go in the grid
+  return {lead:lead,items:out,tail:line.slice(last).trim().replace(/^[；;，,]\s*/,'')};
+}
+function blParts(line){
+  // "（1）…；（2）…；（3）…" on one line -> one line per part, so each part starts on its own row.
+  if(!/[（(]1[）)]/.test(line))return [line];
+  return line.split(/[；;]?\s*(?=[（(][2-9][）)])/).map(function(x){return x.trim()}).filter(Boolean);
+}
+function blBlanks(box,line,color){
+  // Text with its blanks drawn as underlines, wrapping normally.
+  var row=el('div',{style:'margin:.3em 0'}),re=/[（(][\s　_＿]*[）)]|_{2,}|＿{2,}/g,last=0,m;
+  while((m=re.exec(line))){row.appendChild(el('span',{text:line.slice(last,m.index)}));row.appendChild(el('span',{style:'display:inline-block;width:3.2em;border-bottom:.12em solid '+color+';margin:0 .2em'}));last=m.index+m[0].length}
+  row.appendChild(el('span',{text:line.slice(last)}));box.appendChild(row);
 }
 function blLine(line,number){
   if(BL_WARN.test(line))return el('div',{style:'color:#fca5a5;font-weight:700;margin:.35em 0',text:'⚠ '+line});
   var k=line.search(/[：:]/),row=el('div',{style:'display:flex;gap:.5em;align-items:baseline;margin:.3em 0'});
   if(number)row.appendChild(el('span',{style:'flex:none;background:#fbbf24;color:#0f172a;border-radius:50%;width:1.35em;height:1.35em;line-height:1.35em;text-align:center;font-weight:800;font-size:.8em',text:String(number)}));
   var body=el('span',{});row.appendChild(body);
-  if(k>0&&blMath(line.slice(k+1))){body.appendChild(el('span',{text:line.slice(0,k)+'　'}));var eg=line.slice(k+1).trim();body.appendChild(el('span',{style:'color:#7dd3fc'+(eg.length<=24?';white-space:nowrap':''),text:eg}))}
+  var eg=k>0?line.slice(k+1).trim():'',steps=eg.split(/[；;]/).map(function(x){return x.trim()}).filter(Boolean);
+  if(k>0&&k<20&&eg.length>30&&steps.length>=3){
+    // "四步走：写式子；把字母换成数…；…" -> the steps one under another, in white; only short examples are blue.
+    body.appendChild(el('span',{style:'font-weight:700',text:line.slice(0,k)}));
+    steps.forEach(function(x){body.appendChild(el('div',{style:'margin:.15em 0 0 .2em',text:'· '+x.replace(/[。.]$/,'')}))});
+  }else if(k>0&&blMath(eg)){body.appendChild(el('span',{text:line.slice(0,k)+'　'}));body.appendChild(el('span',{style:'color:#7dd3fc'+(eg.length<=24?';white-space:nowrap':''),text:eg}))}
   else body.appendChild(el('span',{text:line}));
   return row;
 }
 function blExampleLine(box,line){
-  var it=blItems(line);
-  if(!it){box.appendChild(BL_WARN.test(line)?el('div',{style:'color:#b42318;font-weight:700;margin:.3em 0',text:'⚠ '+line}):el('div',{style:'margin:.3em 0',text:line}));return}
-  var grid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(9em,1fr));gap:.4em 1.2em;margin:.3em 0'});
-  it.items.forEach(function(q){grid.appendChild(el('div',{style:'white-space:nowrap'},el('span',{text:q}),el('span',{style:'display:inline-block;width:3.2em;border-bottom:.12em solid #0369a1;margin-left:.2em'})))});
-  box.appendChild(grid);if(it.tail)box.appendChild(el('div',{style:'margin:.3em 0',text:it.tail}));
+  blParts(line).forEach(function(part){
+    var it=blItems(part);
+    if(BL_WARN.test(part)){box.appendChild(el('div',{style:'color:#b42318;font-weight:700;margin:.3em 0',text:'⚠ '+part}));return}
+    if(!it){if(BL_BLANK.test(part))blBlanks(box,part,'#0369a1');else box.appendChild(el('div',{style:'margin:.3em 0',text:part}));return}
+    if(it.lead)box.appendChild(el('div',{style:'margin:.3em 0',text:it.lead}));
+    var grid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(9em,1fr));gap:.4em 1.2em;margin:.3em 0 .3em 1em'});
+    it.items.forEach(function(q){grid.appendChild(el('div',{style:'white-space:nowrap'},el('span',{text:q}),el('span',{style:'display:inline-block;width:3.2em;border-bottom:.12em solid #0369a1;margin-left:.2em'})))});
+    box.appendChild(grid);if(it.tail)box.appendChild(el('div',{style:'margin:.3em 0',text:it.tail}));
+  });
 }
 function boardLayout(body,texts,wide){
   var blocks=blParse(texts),know=[],examples=[],plain=[];
   blocks.forEach(function(b){
     if(b.kind==='know'){
       var card=el('div',{style:'background:#13284a;border-left:.3em solid #fbbf24;border-radius:.5em;padding:.5em .8em;margin:0 0 .6em'},el('div',{style:'color:#fbbf24;font-weight:800;font-size:1.15em;margin-bottom:.2em',text:b.title}));
-      var n=0;b.lines.forEach(function(l){var rule=!BL_WARN.test(l)&&l.search(/[：:]/)>0&&blMath(l.slice(l.search(/[：:]/)+1));card.appendChild(blLine(l,rule?++n:0))});
+      var n=0,lines=[];
+      // "加法交换律：a＋b＝b＋a；加法结合律：…；…" -> one numbered rule per law.
+      b.lines.forEach(function(l){var parts=l.split(/[；;]/).map(function(x){return x.trim()}).filter(Boolean);
+        if(parts.length>=2&&parts.every(function(x){var k=x.search(/[：:]/);return k>0&&k<=12&&blMath(x.slice(k+1))}))lines=lines.concat(parts);else lines.push(l)});
+      lines.forEach(function(l){var rule=!BL_WARN.test(l)&&l.search(/[：:]/)>0&&blMath(l.slice(l.search(/[：:]/)+1));card.appendChild(blLine(l,rule?++n:0))});
       know.push(card);
     }else if(b.kind==='example'){
       var ex=el('div',{style:'background:#e0f2fe;color:#0f172a;border-radius:.5em;padding:.5em .8em;margin:0 0 .6em'},el('div',{style:'color:#0369a1;font-weight:800;font-size:1.05em;margin-bottom:.2em',text:b.title}));
@@ -349,8 +378,10 @@ function board(){
       body.style.overflow='auto';var top=el('div',{style:'font-size:2.6vh'});body.appendChild(top);boardLayout(top,d.content,false);
       var cwBox=el('div');body.appendChild(cwBox);cwRender(cwBox,d.courseware,d.courseware.view,true,false);return;
     }
-    boardLayout(body,d.content,window.innerWidth>=1000);
-    requestAnimationFrame(function(){fitText(body)});
+    // Side by side when it fits; when the two columns would make the text smaller, stack them (the larger text wins).
+    function laid(wide){body.textContent='';boardLayout(body,d.content,wide);fitText(body);return parseFloat(body.style.fontSize)||0}
+    boardLayout(body,d.content,false);
+    requestAnimationFrame(function(){if(window.innerWidth<1000){fitText(body);return}var two=laid(true),one=laid(false);if(two>=one)laid(true)});
   }
   var last=null,requestNo=0;
   function load(){var request=++requestNo;api('/teacher/weekend/sessions/'+SID+'/board').then(function(d){if(request!==requestNo)return;last=d;remain=d.remainingSeconds;paint(d)}).catch(function(e){if(request===requestNo&&!last)msg(e.message)})}
