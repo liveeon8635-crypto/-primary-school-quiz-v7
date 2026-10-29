@@ -271,28 +271,52 @@ function blParse(texts){
   return blocks;
 }
 function blItems(line){
-  // "5×m＝（  ）  a×1＝（  ）…" -> one item per blank, so a question never breaks in the middle.
+  // "当a＝2.5时，求下面各式的值：5×a＝（ ）1.2a＝（ ）…" -> the lead-in as text, then one short item per blank,
+  // so a question never breaks in the middle. Long items (a sentence with a blank) are not put in the grid.
   if(!BL_BLANK.test(line))return null;
-  var out=[],re=/[（(][\s　_＿]*[）)]|_{2,}|＿{2,}/g,last=0,m;
+  var out=[],re=/[（(][\s　_＿]*[）)]|_{2,}|＿{2,}/g,last=0,m,lead='';
   while((m=re.exec(line))){var stem=line.slice(last,m.index).trim();if(!stem&&!out.length)return null;out.push(stem);last=m.index+m[0].length}
-  var tail=line.slice(last).trim();
-  return out.length>=2?{items:out,tail:tail}:null;
+  if(out.length<2)return null;
+  var k=Math.max(out[0].lastIndexOf('：'),out[0].lastIndexOf(':'));
+  if(k>=0){lead=out[0].slice(0,k+1).trim();out[0]=out[0].slice(k+1).trim()}
+  if(out.some(function(q){return !q||q.length>14||!/[=＝]$|[×÷+＋−\-]/.test(q)}))return null;   // only short calculations go in the grid
+  return {lead:lead,items:out,tail:line.slice(last).trim().replace(/^[；;，,]\s*/,'')};
+}
+function blParts(line){
+  // "（1）…；（2）…；（3）…" on one line -> one line per part, so each part starts on its own row.
+  if(!/[（(]1[）)]/.test(line))return [line];
+  return line.split(/[；;]?\s*(?=[（(][2-9][）)])/).map(function(x){return x.trim()}).filter(Boolean);
+}
+function blBlanks(box,line,color){
+  // Text with its blanks drawn as underlines, wrapping normally.
+  var row=el('div',{style:'margin:.3em 0'}),re=/[（(][\s　_＿]*[）)]|_{2,}|＿{2,}/g,last=0,m;
+  while((m=re.exec(line))){row.appendChild(el('span',{text:line.slice(last,m.index)}));row.appendChild(el('span',{style:'display:inline-block;width:3.2em;border-bottom:.12em solid '+color+';margin:0 .2em'}));last=m.index+m[0].length}
+  row.appendChild(el('span',{text:line.slice(last)}));box.appendChild(row);
 }
 function blLine(line,number){
   if(BL_WARN.test(line))return el('div',{style:'color:#fca5a5;font-weight:700;margin:.35em 0',text:'⚠ '+line});
   var k=line.search(/[：:]/),row=el('div',{style:'display:flex;gap:.5em;align-items:baseline;margin:.3em 0'});
   if(number)row.appendChild(el('span',{style:'flex:none;background:#fbbf24;color:#0f172a;border-radius:50%;width:1.35em;height:1.35em;line-height:1.35em;text-align:center;font-weight:800;font-size:.8em',text:String(number)}));
   var body=el('span',{});row.appendChild(body);
-  if(k>0&&blMath(line.slice(k+1))){body.appendChild(el('span',{text:line.slice(0,k)+'　'}));var eg=line.slice(k+1).trim();body.appendChild(el('span',{style:'color:#7dd3fc'+(eg.length<=24?';white-space:nowrap':''),text:eg}))}
+  var eg=k>0?line.slice(k+1).trim():'',steps=eg.split(/[；;]/).map(function(x){return x.trim()}).filter(Boolean);
+  if(k>0&&k<20&&eg.length>30&&steps.length>=3){
+    // "四步走：写式子；把字母换成数…；…" -> the steps one under another, in white; only short examples are blue.
+    body.appendChild(el('span',{style:'font-weight:700',text:line.slice(0,k)}));
+    steps.forEach(function(x){body.appendChild(el('div',{style:'margin:.15em 0 0 .2em',text:'· '+x.replace(/[。.]$/,'')}))});
+  }else if(k>0&&blMath(eg)){body.appendChild(el('span',{text:line.slice(0,k)+'　'}));body.appendChild(el('span',{style:'color:#7dd3fc'+(eg.length<=24?';white-space:nowrap':''),text:eg}))}
   else body.appendChild(el('span',{text:line}));
   return row;
 }
 function blExampleLine(box,line){
-  var it=blItems(line);
-  if(!it){box.appendChild(BL_WARN.test(line)?el('div',{style:'color:#b42318;font-weight:700;margin:.3em 0',text:'⚠ '+line}):el('div',{style:'margin:.3em 0',text:line}));return}
-  var grid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(9em,1fr));gap:.4em 1.2em;margin:.3em 0'});
-  it.items.forEach(function(q){grid.appendChild(el('div',{style:'white-space:nowrap'},el('span',{text:q}),el('span',{style:'display:inline-block;width:3.2em;border-bottom:.12em solid #0369a1;margin-left:.2em'})))});
-  box.appendChild(grid);if(it.tail)box.appendChild(el('div',{style:'margin:.3em 0',text:it.tail}));
+  blParts(line).forEach(function(part){
+    var it=blItems(part);
+    if(BL_WARN.test(part)){box.appendChild(el('div',{style:'color:#b42318;font-weight:700;margin:.3em 0',text:'⚠ '+part}));return}
+    if(!it){if(BL_BLANK.test(part))blBlanks(box,part,'#0369a1');else box.appendChild(el('div',{style:'margin:.3em 0',text:part}));return}
+    if(it.lead)box.appendChild(el('div',{style:'margin:.3em 0',text:it.lead}));
+    var grid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(9em,1fr));gap:.4em 1.2em;margin:.3em 0 .3em 1em'});
+    it.items.forEach(function(q){grid.appendChild(el('div',{style:'white-space:nowrap'},el('span',{text:q}),el('span',{style:'display:inline-block;width:3.2em;border-bottom:.12em solid #0369a1;margin-left:.2em'})))});
+    box.appendChild(grid);if(it.tail)box.appendChild(el('div',{style:'margin:.3em 0',text:it.tail}));
+  });
 }
 function boardLayout(body,texts,wide){
   var blocks=blParse(texts),know=[],examples=[],plain=[];
