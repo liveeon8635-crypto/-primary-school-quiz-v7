@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:9ec15399e2181847600a69f3e7d111302ec24b78c7cd9caf041f6a0e982d4df0",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "c90bcbbf651e270e9fdbf4da9c71c0139a665b96",
+  "headSha": "e06b28b63c217c310507385805c56ef92ac126cf",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：在周末教案页面的“开课”按钮旁新增了未达到开课条件的原因提示，改进了移动端体验，并补充了相关测试。",
+      "evidenceRefs": [
+        "file:changying/web/weekend_pages.py#L660-L688",
+        "file:tests/test_weekend_approval_position.py#L38-L55",
+        "run:123580655851"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:22da8c9fb8e3bf0e929bc9510087d49b9575a06bc263b9e63f72eb7c01202c46"
+}
