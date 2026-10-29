@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same PR replaces its older run (the new head is still fully tested); runs on main are never cancelled.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
@@ -33,4 +38,5 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
       - name: Run smoke tests
-        run: pytest -q
+        # The same full suite, spread over the runner's cores: about half the wall time, so about half the minutes.
+        run: pytest -q -n auto
