@@ -569,8 +569,8 @@ def student_map_page_html() -> str:
 # 知识地图页在宽屏上放宽容器：共用样式是 980px，在 1440/1920 的桌面上会挤成一条窄栏。
 # 这里只注入 <style>，不改内联 JS，所以 Safari 12 清单无需重建。
 KM_WIDE_CSS = """<style>
-@media (min-width:1100px){main{max-width:1440px;padding:20px 28px}}
-@media (min-width:1600px){main{max-width:1600px;padding:22px 32px}}
+@media (min-width:1100px){main{max-width:1680px;padding:20px 28px}}
+@media (min-width:1700px){main{max-width:1840px;padding:22px 32px}}
 .km-grid{display:block}
 /* 知识点：去掉「卡片套卡片」，改成单元内的一条条分隔行，页面立刻轻一半。 */
 section.card[data-unit] .card{border:0;border-top:1px solid #e3e8f2;border-radius:0;box-shadow:none;margin:0;padding:14px 0 12px}
@@ -592,7 +592,8 @@ section.card[data-unit] .km-node{padding:0}
 /* AI 草稿卡片：每个选项、答案、解析各占一行，不和下一个选项字母挤在一起。 */
 .km-draft>label{display:block;margin:8px 0}.km-draft>label>input:not([type=checkbox]){width:calc(100% - 2.5em);max-width:420px}
 /* 平板横屏（≥900）起两列，同行等高；不做三列——出题面板带图形，三列会被压到 ~250px。 */
-@media (min-width:900px){.km-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.km-grid>.card{margin-bottom:0}}
+/* 两列用多列流（column）而不是 grid：单元高度参差不齐，grid 会被行高拉出大片空白。 */
+@media (min-width:900px){.km-grid{column-count:2;column-gap:14px}.km-grid>.card{break-inside:avoid;-webkit-column-break-inside:avoid;page-break-inside:avoid;margin:0 0 14px}}
 /* 栅格子项默认 min-width:auto，长题干或图片会把整页撑出横向滚动条。 */
 .km-grid>.card{min-width:0}
 .km-grid img{max-width:100%;height:auto}
