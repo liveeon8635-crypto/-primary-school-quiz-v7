@@ -50,9 +50,67 @@ function cwReading(box,p,view,big,teacher,onTap){
   if(p.material&&(view.showMaterial||teacher))wrap.appendChild(el('p',{style:'background:#f2f4f7;padding:8px;border-radius:8px',text:'补充资料：'+p.material}));
   if(view.showPrompt||teacher)wrap.appendChild(el('p',{text:'书面解释：'+p.writingPrompt}));
 }
+var CW_SHAPES={rectangle:'长方形',square:'正方形',triangle:'三角形',parallelogram:'平行四边形',trapezoid:'梯形'};
+function cwFigureText(f){
+  if(f.type==='segment')return '线段上的点：'+f.points.map(function(q){return q.name}).join(' — ')+(f.marks.length?'；'+f.marks.map(function(m){return m.from+m.to+'＝'+m.label}).join('，'):'');
+  if(f.type==='flow')return '程序：'+f.boxes.join(' → ')+(f.branches.length?'；'+f.branches.map(function(b){return b.when+'：'+b.boxes.join(' → ')}).join('；'):'');
+  if(f.type==='shape')return CW_SHAPES[f.shape]+'：'+Object.keys(f.labels).map(function(k){return f.labels[k]}).join('，');
+  return f.rows.map(function(r){return r.join(' | ')}).join('\n');
+}
+function cwFigureOk(f){
+  if(f.type==='segment'){var at=(f.points||[]).map(function(q){return q.at});return at.length>=2&&at.every(function(a){return isFinite(a)})&&Math.max.apply(null,at)>Math.min.apply(null,at)}
+  if(f.type==='flow')return (f.boxes||[]).length>0||(f.branches||[]).length>0;
+  if(f.type==='shape')return !!CW_SHAPES[f.shape];
+  return (f.rows||[]).length>0;
+}
+function cwFigure(wrap,f,big){
+  if(!f||!f.type)return;
+  var box=el('div',{style:'margin:8px 0'});wrap.appendChild(box);
+  if(!cwFigureOk(f)){box.appendChild(el('div',{class:'notice warn',text:'图示还没填完整'}));return}
+  f={type:f.type,points:(f.points||[]).slice().sort(function(a,b){return a.at-b.at}),marks:(f.marks||[]).filter(function(m){return m.from&&m.to}),
+    boxes:f.boxes||[],branches:f.branches||[],shape:f.shape,labels:f.labels||{},rows:f.rows||[]};
+  if(f.type==='table'){
+    var t=el('table',{style:'border-collapse:collapse;margin:0 auto;'+(big?'font-size:3vh':'')});
+    f.rows.forEach(function(r,i){var tr=el('tr');r.forEach(function(c){tr.appendChild(el(i?'td':'th',{style:'border:1px solid #98a2b3;padding:4px 12px;text-align:center',text:c}))});t.appendChild(tr)});
+    box.appendChild(t);return;
+  }
+  if(!document.createElementNS||!cwNode('svg',{}).createSVGRect){box.appendChild(el('p',{style:'white-space:pre-wrap',text:cwFigureText(f)}));return}
+  var W=600,H=f.type==='flow'?(f.branches.length?260:120):f.type==='shape'?300:120+f.marks.length*34,svg=cwNode('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',style:'display:block;max-height:'+(big?'40vh':'300px'),role:'img','aria-label':cwFigureText(f)});
+  function txt(x,y,t,size,anchor,color){svg.appendChild(cwNode('text',{x:x,y:y,'font-size':size||22,'text-anchor':anchor||'middle','font-weight':700,fill:color||'#111'},t))}
+  if(f.type==='segment'){
+    var lo=f.points[0].at,hi=f.points[f.points.length-1].at,X=function(a){return 40+(a-lo)/(hi-lo)*(W-80)},at={};
+    f.points.forEach(function(q){at[q.name]=X(q.at)});
+    svg.appendChild(cwNode('line',{x1:X(lo),y1:90,x2:X(hi),y2:90,stroke:'#1d2939','stroke-width':4}));
+    f.points.forEach(function(q){svg.appendChild(cwNode('line',{x1:at[q.name],y1:80,x2:at[q.name],y2:100,stroke:'#1d2939','stroke-width':3}));txt(at[q.name],70,q.name,24)});
+    f.marks.filter(function(m){return at[m.from]!=null&&at[m.to]!=null}).forEach(function(m,k){var a=Math.min(at[m.from],at[m.to]),b=Math.max(at[m.from],at[m.to]),y=115+k*34;
+      svg.appendChild(cwNode('path',{d:'M'+a+' '+(y-6)+' L'+a+' '+y+' L'+b+' '+y+' L'+b+' '+(y-6),fill:'none',stroke:'#2563eb','stroke-width':2}));
+      txt((a+b)/2,y+16,m.label,18,'middle','#2563eb')});
+  }else if(f.type==='flow'){
+    function row(items,y,x0){var n=items.length,w=Math.min(120,(W-x0-20)/n-24),x=x0;
+      items.forEach(function(t,i){svg.appendChild(cwNode('rect',{x:x,y:y-24,width:w,height:48,rx:8,fill:'#eff6ff',stroke:'#1d4ed8','stroke-width':2}));txt(x+w/2,y+7,t,w<90?15:18);
+        if(i<n-1){svg.appendChild(cwNode('line',{x1:x+w+2,y1:y,x2:x+w+20,y2:y,stroke:'#1d2939','stroke-width':2}));svg.appendChild(cwNode('path',{d:'M'+(x+w+20)+' '+(y-5)+' L'+(x+w+26)+' '+y+' L'+(x+w+20)+' '+(y+5)+'Z',fill:'#1d2939'}))}
+        x+=w+28});return x}
+    if(!f.branches.length)row(f.boxes,60,20);
+    else{var end=row(f.boxes,130,20);f.branches.forEach(function(b,k){var y=k?200:60;
+      svg.appendChild(cwNode('path',{d:'M'+(end-8)+' 130 L'+(end+10)+' '+y,fill:'none',stroke:'#1d2939','stroke-width':2}));
+      txt(end+14,y-30,b.when,16,'start','#b42318');row(b.boxes,y,end+14)})}
+  }else{
+    var L=f.labels,pts={rectangle:[[150,60],[450,60],[450,240],[150,240]],square:[[200,50],[400,50],[400,250],[200,250]],
+      triangle:[[300,50],[480,250],[120,250]],parallelogram:[[200,60],[480,60],[400,240],[120,240]],trapezoid:[[220,60],[380,60],[480,240],[120,240]]}[f.shape];
+    svg.appendChild(cwNode('polygon',{points:pts.map(function(q){return q.join(',')}).join(' '),fill:'#eff6ff',stroke:'#1d4ed8','stroke-width':3}));
+    var top=pts[0][1],bot=pts[pts.length-1][1];
+    if(L.top)txt(f.shape==='triangle'?300:(pts[0][0]+pts[1][0])/2,top-14,L.top,20);
+    if(L.bottom)txt(300,bot+30,L.bottom,20);
+    if(L.left)txt(Math.min(pts[0][0],pts[pts.length-1][0])-12,(top+bot)/2+7,L.left,20,'end');
+    if(L.right)txt(Math.max.apply(null,pts.map(function(q){return q[0]}))+12,(top+bot)/2+7,L.right,20,'start');
+    if(L.height){svg.appendChild(cwNode('line',{x1:pts[0][0],y1:top,x2:pts[0][0],y2:bot,stroke:'#b42318','stroke-width':2,'stroke-dasharray':'6 4'}));txt(pts[0][0]+8,(top+bot)/2,L.height,18,'start','#b42318')}
+  }
+  box.appendChild(svg);
+}
 function cwSteps(box,p,view,big,teacher){
   var wrap=el('div',{style:'background:#fff;color:#111;border-radius:12px;padding:12px;line-height:1.8;'+(big?'font-size:2.8vh':'')});box.appendChild(wrap);
   wrap.appendChild(el('b',{text:p.title}));
+  cwFigure(wrap,p.figure,big);
   var shown=teacher?p.steps.length:(view.step||0),list=el('ol');
   p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?'':'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
   wrap.appendChild(list);
@@ -124,7 +182,7 @@ function cwControl(box,c,sid){
 COURSEWARE_PLAN_JS = r"""
 var CW_STAGES=['到课与热身','知识点介绍','例题讲解','随堂练习','练习复盘','课堂互动','布置课后'];
 function cwPlan(box,lessonId,refresh){
-  var stageNo='3',msg=el('div',{role:'status','aria-live':'polite'}),data=null,busy=false,editorBox=null;
+  var stageNo='3',msg=el('div',{role:'status','aria-live':'polite'}),data=null,busy=false,editorBox=null,notes={};
   function load(){api('/teacher/weekend/lessons/'+lessonId+'/courseware').then(paint).catch(function(e){box.textContent='';box.appendChild(el('div',{class:'notice error',text:e.message}))})}
   function itemAt(page){return (data.items||[]).filter(function(i){return String(i.stage)===stageNo&&i.page===page})[0]}
   function paint(d){
@@ -148,12 +206,23 @@ function cwPlan(box,lessonId,refresh){
     }});
     box.appendChild(el('div',{class:'row'},stageSel,all,el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})),approveAll));
     box.appendChild(msg);
-    var rows=el('div'),editor=el('div');box.appendChild(rows);box.appendChild(editor);editorBox=editor;
+    var rows=el('div'),editor=el('div');box.appendChild(rows);box.appendChild(editor);editorBox=editor;notes={};
     list.forEach(function(x){
       var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
       var line=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:(x.page==null?'':'第'+(x.page+1)+'页：')+x.text}),
         el('div',{class:'row'},el('span',{class:'tag '+tag[0],text:tag[1]}),it?el('span',{class:'muted',text:d.kindLabels[it.kind]+(it.writtenTask?' · 含学生作答题':'')}):null)));
-      line.appendChild(el('button',{text:it?'重新生成':'生成',onclick:function(){run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate',{json:{stageNo:+stageNo,page:y.page}})},'生成')}}));
+      var note=el('div',{role:'status','aria-live':'polite',style:'flex-basis:100%'});notes[String(x.page)]=note;
+      line.appendChild(el('button',{text:it?'重新生成':'生成',onclick:function(e){
+        if(busy){note.textContent='正在处理另一页，请等它完成后再点。';return}
+        var b=e.target,label=b.textContent;busy=true;b.disabled=true;b.textContent='生成中…';
+        note.className='notice';note.textContent='AI 正在为这一页生成课件，约十几秒，请稍候…';
+        api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate',{json:{stageNo:+stageNo,page:x.page}}).then(function(d){
+          busy=false;paint(d);if(refresh)refresh();
+          // Say it on this page's row (the list can be long), then open the new draft's preview.
+          var n=notes[String(x.page)];if(n){n.className='notice ok';n.textContent='已生成新草稿'+(d.notice?'（'+d.notice+'）':'')+'，预览在下方，核对后点“审核通过”。'}
+          edit(editorBox,x,itemAt(x.page));
+        }).catch(function(err){busy=false;b.disabled=false;b.textContent=label;note.className='notice error';note.textContent=err.message});
+      }}));
       line.appendChild(el('button',{text:it?'预览／修改':'手动填写',onclick:function(){edit(editor,x,itemAt(x.page))}}));
       if(it)line.appendChild(el('button',{text:'存为模板',onclick:function(){
         var name=prompt('给这个模板起个名字，以后可以套用到其它课：',(data.subject||'')+'课件模板');
@@ -164,7 +233,7 @@ function cwPlan(box,lessonId,refresh){
       line.appendChild(el('button',{text:'套用模板',onclick:function(){pickTemplate(x)}}));
       if(it&&it.status==='draft')line.appendChild(el('button',{class:'primary',text:'审核通过',onclick:function(){run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:y.page}})},'审核')}}));
       if(it)line.appendChild(el('button',{text:'删除',onclick:function(){if(confirm('删除这一页的课件？'))api('/teacher/weekend/lessons/'+lessonId+'/courseware/remove',{json:{stageNo:+stageNo,page:x.page}}).then(paint).catch(function(e){msg.textContent=e.message})}}));
-      rows.appendChild(line);
+      rows.appendChild(line);line.appendChild(note);
     });
   }
   function pickTemplate(x){
@@ -191,7 +260,8 @@ function cwPlan(box,lessonId,refresh){
   function run(todo,call,label){
     if(busy)return;busy=true;var failed=[],i=0,last=null;
     function next(){
-      if(i>=todo.length){busy=false;if(last)paint(last);else load();msg.textContent=label+'完成 '+(todo.length-failed.length)+'/'+todo.length+' 页'+(failed.length?'。未完成：\n'+failed.join('\n'):'');if(refresh)refresh();return}
+      if(i>=todo.length){busy=false;if(last)paint(last);else load();msg.textContent=label+'完成 '+(todo.length-failed.length)+'/'+todo.length+' 页'+(failed.length?'。未完成：\n'+failed.join('\n'):'');if(refresh)refresh();
+        return}
       var x=todo[i++];msg.textContent='正在'+label+'第 '+i+'/'+todo.length+' 页…';
       call(x).then(function(d){last=d}).catch(function(e){failed.push(e.message)}).then(next);
     }
@@ -224,6 +294,21 @@ function cwPlan(box,lessonId,refresh){
       }else if(kind==='steps'){
         field('problem','题目原文（不含答案，生成学生作答题时使用）',area(p.problem));
         field('steps','讲解步骤（每行一步，2—6 步）',area((p.steps||[]).join('\n')));field('answer','答案',input(p.answer));
+        var f=p.figure||{},ft=sel([['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表']],f.type||'');
+        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure={type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
+        if(f.type==='segment'){
+          field('figA','线段上的点（名称:位置，分号隔开，如 A:0; C:3; B:6; D:10）',input((f.points||[]).map(function(q){return q.name+':'+q.at}).join('; ')));
+          field('figB','标注（如 A-D:L; A-B:x，可留空）',input((f.marks||[]).map(function(m){return m.from+'-'+m.to+':'+m.label}).join('; ')));
+        }else if(f.type==='flow'){
+          field('figA','程序框（用 → 隔开，如 输入 a → ÷0.5 → +b → 输出）',input((f.boxes||[]).join(' → ')));
+          field('figB','分两种情况时每行一种（如 n 是单数：2n+4），不分情况留空',area((f.branches||[]).map(function(b){return b.when+'：'+b.boxes.join(' → ')}).join('\n')));
+        }else if(f.type==='shape'){
+          field('figShape','图形',sel([['rectangle','长方形'],['square','正方形'],['triangle','三角形'],['parallelogram','平行四边形'],['trapezoid','梯形']],f.shape||'rectangle'));
+          var names={top:'上',bottom:'下',left:'左',right:'右',height:'高'};
+          field('figA','边上的标注（如 上:a cm; 左:b cm; 高:h，可用 上 下 左 右 高）',input(Object.keys(f.labels||{}).map(function(k){return names[k]+':'+f.labels[k]}).join('; ')));
+        }else if(f.type==='table'){
+          field('figA','数表（每行一行，格子用 | 隔开）',area((f.rows||[]).map(function(r){return r.join(' | ')}).join('\n')));
+        }
       }else{
         field('passage','阅读材料（必须是原文中的连续段落）',area(p.passage));field('question','阅读问题',area(p.question));
         field('material','补充资料（请核实）',area(p.material));field('writingPrompt','书面解释要求',area(p.writingPrompt));p.evidence=p.evidence||[];
@@ -233,12 +318,24 @@ function cwPlan(box,lessonId,refresh){
       show();
     }
     function lines(n){return n.value.split('\n').map(function(v){return v.trim()}).filter(Boolean)}
+    function parts(v,sep){return String(v||'').split(sep).map(function(x){return x.trim()}).filter(Boolean)}
+    function figure(){
+      var t=fields.figType?fields.figType.value:'';if(!t)return {};
+      if(!fields.figA)return {type:t,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};
+      if(t==='segment')return {type:t,points:parts(fields.figA.value,/[;；]/).map(function(x){var k=x.split(/[:：]/);return {name:(k[0]||'').trim(),at:Number((k[1]||'').trim())}}),
+        marks:parts(fields.figB.value,/[;；]/).map(function(x){var k=x.split(/[:：]/),ab=(k[0]||'').split(/[-－—]/);return {from:(ab[0]||'').trim(),to:(ab[1]||'').trim(),label:(k.slice(1).join(':')||'').trim()}})};
+      if(t==='flow')return {type:t,boxes:parts(fields.figA.value,/→|->|>/),branches:lines(fields.figB).map(function(x){var k=x.split(/[:：]/);return {when:(k[0]||'').trim(),boxes:parts(k.slice(1).join(':'),/→|->|>/)}})};
+      if(t==='shape'){var keys={'上':'top','下':'bottom','左':'left','右':'right','高':'height'},labels={};
+        parts(fields.figA.value,/[;；]/).forEach(function(x){var k=x.split(/[:：]/);if(keys[(k[0]||'').trim()])labels[keys[k[0].trim()]]=k.slice(1).join(':').trim()});
+        return {type:t,shape:fields.figShape.value,labels:labels}}
+      return {type:t,rows:lines(fields.figA).map(function(r){return parts(r,'|')})};
+    }
     function pt(v){return String(v).split(/[,，]/).map(function(x){return Number(x.trim())})}
     function collect(){
       var v={title:fields.title.value,question:fields.question.value,reference:fields.reference.value};
       if(kind==='rotation'){v.width=+fields.width.value;v.height=+fields.height.value;v.shape=fields.shape.value.split(/[;；]/).filter(function(x){return x.trim()}).map(pt);v.center=pt(fields.center.value);v.direction=fields.direction.value;v.angle=+fields.angle.value;v.steps=lines(fields.steps)}
       else if(kind==='clock'){v.start=+fields.start.value;v.direction=fields.direction.value;v.angle=+fields.angle.value;v.steps=lines(fields.steps)}
-      else if(kind==='steps'){v.problem=fields.problem.value;v.steps=lines(fields.steps);v.answer=fields.answer.value}
+      else if(kind==='steps'){v.problem=fields.problem.value;v.steps=lines(fields.steps);v.answer=fields.answer.value;v.figure=figure()}
       else{v.passage=fields.passage.value;v.sentences=cwSplit(v.passage);v.material=fields.material.value;v.writingPrompt=fields.writingPrompt.value;p.evidence=(p.evidence||[]).filter(function(i){return i<v.sentences.length});v.evidence=p.evidence}
       return v;
     }
