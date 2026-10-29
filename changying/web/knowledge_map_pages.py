@@ -536,6 +536,10 @@ KM_WIDE_CSS = """<style>
 @media (min-width:1100px){main{max-width:1440px;padding:20px 28px}}
 @media (min-width:1600px){main{max-width:1600px;padding:22px 32px}}
 .km-grid{display:block}
+/* 知识点：去掉「卡片套卡片」，改成单元内的一条条分隔行，页面立刻轻一半。 */
+section.card[data-unit] .card{border:0;border-top:1px solid #e3e8f2;border-radius:0;box-shadow:none;margin:0;padding:14px 0 12px}
+section.card[data-unit] .card:first-of-type{border-top:0;padding-top:6px}
+section.card[data-unit] .card h4{margin:0 0 4px;font-size:16px}
 /* AI 草稿卡片：每个选项、答案、解析各占一行，不和下一个选项字母挤在一起。 */
 .km-draft>label{display:block;margin:8px 0}.km-draft>label>input:not([type=checkbox]){width:calc(100% - 2.5em);max-width:420px}
 /* 平板横屏（≥900）起两列，同行等高；不做三列——出题面板带图形，三列会被压到 ~250px。 */
