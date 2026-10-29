@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:d9bdd1dd4cddc97ea1c6d4b7d8752b190197db555ce320fefccbaea6615c45e5",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "b67f8428b72e8ac842c77840cb718c6bfa826511",
+  "headSha": "5f6711ec857cb2453f619e4da6c89d330d320a3b",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：为知识图谱 AI 题目生成增加了数学命题角度校验与去重逻辑，扩展了单元测试且 CI 全部通过。",
+      "evidenceRefs": [
+        "file:changying/services/knowledge_maps.py#L391-L478",
+        "file:changying/web/knowledge_map_views.py#L325-L352",
+        "run:123344233955",
+        "run:123344236297"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:9de81bac7ab18e650c6bd29856c1664ddbb9b63d1fa9607e9eb53b7dec11f212"
+}
