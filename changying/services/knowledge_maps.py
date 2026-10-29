@@ -392,27 +392,90 @@ MATH_ANGLES: dict[str, list[tuple[str, str]]] = {
 }
 
 
-def angle_cap(level: str, count: int) -> int:
+# 图形单元（观察物体、图形的运动、多边形的面积、密铺）：考法要用到图形本身，不能把图形当情境外衣去考乘除。
+SHAPE_ANGLES: dict[str, list[tuple[str, str]]] = {
+    "basic": [
+        ("认识要素", "说出或填出要素，如旋转中心、方向、角度，平行四边形的底和对应的高"),
+        ("判断运动或特征", "判断是平移、旋转还是轴对称，或判断一个关于图形的说法对不对"),
+        ("数格读位置", "在用文字说清的方格里数格子，读出点的位置、移动的格数或边长"),
+        ("一步套用", "一步用公式或定义求结果，如已知底和高求面积"),
+    ],
+    "medium": [
+        ("描述运动过程", "用完整的话描述图形怎样运动：绕哪一点、哪个方向、转多少度，或向哪个方向移几格"),
+        ("确定运动后位置", "运动后点或图形到了第几列第几行、指针指向哪里"),
+        ("找错并改正", "给出一个有错的描述、画法或计算，找出错在哪里并改正"),
+        ("对应关系", "找出运动前后对应的点、边、角，或判断哪些量（形状、大小、位置）变了、哪些不变"),
+        ("两步求解", "先求出一个需要的量，再求结果，如先由面积求底，再求另一个图形的面积"),
+        ("性质判断", "不画图、不计算，用图形的性质判断能否重合、能否拼成、面积是否相等"),
+    ],
+    "hard": [
+        ("逆向推理", "已知运动后的位置或结果，倒推原来的位置、旋转中心、方向或角度"),
+        ("多次运动组合", "两三次运动连续进行，或交换运动的顺序后结果是否相同"),
+        ("规律探究", "连续旋转、重复排列或图形变化中找规律，再解决新问题"),
+        ("方案设计", "设计或比较几种拼法、分割法、运动路线，并说明理由"),
+        ("找全所有可能", "找全所有满足条件的位置、图形或拼法，并说明理由"),
+        ("转化思想", "通过割补、平移、旋转把图形转化成会算的图形，再求面积或周长"),
+    ],
+}
+
+# 可能性、统计单元。
+CHANCE_ANGLES: dict[str, list[tuple[str, str]]] = {
+    "basic": [
+        ("判断可能性", "用“一定、可能、不可能”描述事件"),
+        ("列举结果", "列出所有可能出现的结果"),
+        ("概念判断", "判断一个关于可能性的说法对不对"),
+    ],
+    "medium": [
+        ("比较可能性大小", "根据数量比较哪种结果的可能性大"),
+        ("按要求设计", "按要求放球、涂色或写数字，使可能性满足条件"),
+        ("由记录推断", "根据多次摸球或转盘的记录，推断哪种数量多"),
+        ("找错并改正", "给出一个有错的判断，找出错在哪里并改正"),
+    ],
+    "hard": [
+        ("公平性判断", "判断游戏规则是否公平，不公平时怎样修改"),
+        ("逆向推理", "已知可能性的要求，倒推每种至少或最多放几个"),
+        ("找全所有可能", "找全满足条件的所有放法或结果，并说明理由"),
+        ("综合推理", "结合数量、条件多步推理，判断可能性并说明理由"),
+    ],
+}
+
+_SHAPE_WORDS = ("图形", "观察", "面积", "密铺", "周长", "体积", "表面积", "对称", "平移", "旋转", "位置", "方向", "角的", "三角形", "四边形", "圆", "长方体", "正方体")
+_CHANCE_WORDS = ("可能性", "统计", "数据", "条形图", "折线图", "扇形图")
+
+
+def math_angles(unit: str = "") -> dict[str, list[tuple[str, str]]]:
+    """The angle lists for a maths unit: shapes, chance and data, or calculation (the default)."""
+    name = str(unit or "")
+    if any(w in name for w in _CHANCE_WORDS):
+        return CHANCE_ANGLES
+    if any(w in name for w in _SHAPE_WORDS):
+        return SHAPE_ANGLES
+    return MATH_ANGLES
+
+
+def angle_cap(level: str, count: int, unit: str = "") -> int:
     """How often one angle may appear in a batch of ``count``: once, unless the level has fewer angles than drafts."""
-    return max(1, -(-count // max(1, len(MATH_ANGLES.get(level, [])))))
+    return max(1, -(-count // max(1, len(math_angles(unit).get(level, [])))))
 
 
-def angle_brief(level: str, count: int) -> str:
+def angle_brief(level: str, count: int, unit: str = "") -> str:
     """The angles a level accepts, for the request, and how often one may be used in this batch."""
-    names = MATH_ANGLES.get(level, [])
+    names = math_angles(unit).get(level, [])
     if not names:
         return ""
     lines = "\n".join(f"- {n}：{d}" for n, d in names)
-    cap = angle_cap(level, count)
+    cap = angle_cap(level, count, unit)
     rule = "每道题用不同的角度" if cap == 1 else f"同一个角度最多用 {cap} 次"
     return (f"【命题角度】每道题必须从下面的角度里选一个，并在 \"angle\" 字段写出角度名称（原样照写）；"
-            f"这一批 {count} 道题{rule}，不要多道题都是同一种考法。数据要像练习册一样好算：中间结果和答案最多两位小数"
+            f"这一批 {count} 道题{rule}，不要多道题都是同一种考法。每道题都要真正用到这个知识点本身，"
+            f"不能只把它当情境、实际考的是别的计算。数据要像练习册一样好算：中间结果和答案最多两位小数"
             f"（题目要求保留的除外）；难度来自思路，不靠繁琐的数：\n{lines}")
 
 
-def check_ai_question(item: dict[str, Any], level: str, subject: str) -> tuple[dict[str, Any] | None, str]:
+def check_ai_question(item: dict[str, Any], level: str, subject: str, unit: str = "") -> tuple[dict[str, Any] | None, str]:
     """Keep an AI draft only when it is as hard as its level says and, in maths, its answer adds up.
 
+    Maths angles come from the unit's list (``math_angles``): calculation, shapes, or chance.
     Steps: 中等 needs 2, 提高 3 (the prompt asks for them; a draft without them is a recall question in disguise).
     A numeric maths answer is recomputed from the draft's expression; a wrong one is dropped. Fill-in, calculation and
     problem-solving drafts above 基础 must carry an expression; the rest without one are kept, marked as unchecked.
@@ -422,9 +485,10 @@ def check_ai_question(item: dict[str, Any], level: str, subject: str) -> tuple[d
     out = dict(item)
     qtype = str(out.get("question_type") or "")
     steps = [s for s in out.get("steps") or [] if str(s).strip()]
-    if "数学" in str(subject or "") and level in MATH_ANGLES:
+    angles = math_angles(unit)
+    if "数学" in str(subject or "") and level in angles:
         said = re.sub(r"\s+", "", str(out.get("angle") or ""))
-        angle = next((n for n, _ in MATH_ANGLES[level] if said and (n in said or said in n)), "")
+        angle = next((n for n, _ in angles[level] if said and (n in said or said in n)), "")
         if not angle:
             return None, "命题角度不属于这一难度"
         out["angle"] = angle                                     # the listed name, so the per-batch cap counts it
@@ -441,8 +505,8 @@ def check_ai_question(item: dict[str, Any], level: str, subject: str) -> tuple[d
         return out, ""
     value = qg.evaluate(out.get("expression"))
     if value is None:
-        if qtype != "single_choice" and level != "basic":
-            return None, "数学答案没有可验算的算式"
+        if qtype != "single_choice" and level != "basic" and angles is MATH_ANGLES:
+            return None, "数学答案没有可验算的算式"            # shapes and chance: an answer such as 90° is kept, unchecked
         return out, ""
     if not qg.agrees(value, target, str(out.get("text") or ""), str(answer)):
         return None, "验算不对"
@@ -450,11 +514,11 @@ def check_ai_question(item: dict[str, Any], level: str, subject: str) -> tuple[d
     return out, ""
 
 
-def pick_ai_drafts(items: list[dict[str, Any]], count: int, level: str = "", existing: list[str] = ()) -> list[dict[str, Any]]:
+def pick_ai_drafts(items: list[dict[str, Any]], count: int, level: str = "", existing: list[str] = (), unit: str = "") -> list[dict[str, Any]]:
     """Up to ``count`` drafts, taking the question types in turn so one type cannot fill the set; checked ones first.
     An angle (way of asking) is used at most ``angle_cap`` times per batch, so a set does not repeat one kind of question;
     a draft whose stem the point already has is skipped."""
-    cap = angle_cap(level, count)
+    cap = angle_cap(level, count, unit)
     known = {re.sub(r"\s+", "", t) for t in existing}
     by_type: dict[str, list[dict[str, Any]]] = {}
     for it in sorted(items, key=lambda x: not x.get("verified")):
@@ -478,4 +542,4 @@ def pick_ai_drafts(items: list[dict[str, Any]], count: int, level: str = "", exi
 
 
 __all__ = ["AGREEMENT_TARGET", "SHOWN_FIGURES", "CONFIDENCE_LABELS", "DIAGNOSIS_MIN", "LEVELS", "MASTERY_LABELS", "NODE_KINDS", "TEMPLATES", "UNIT_KINDS", "assessed", "clean_map", "coverage", "dependents", "first_attempts", "mastery_view", "node_mastery",
-           "pick_diagnosis", "restore_unit", "summary", "template", "AI_MIN_STEPS", "AI_TYPE_LABELS", "MATH_ANGLES", "angle_brief", "angle_cap", "check_ai_question", "pick_ai_drafts"]
+           "pick_diagnosis", "restore_unit", "summary", "template", "AI_MIN_STEPS", "AI_TYPE_LABELS", "MATH_ANGLES", "SHAPE_ANGLES", "CHANCE_ANGLES", "math_angles", "angle_brief", "angle_cap", "check_ai_question", "pick_ai_drafts"]

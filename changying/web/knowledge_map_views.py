@@ -337,17 +337,17 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
             question_type=b.questionType, resource_ids=b.resourceIds,
             notes=f"知识点：{node['name']}。说明：{node.get('detail') or node['name']}。题目只考这一个知识点；题干不能依赖图片，"
                   "涉及图形、方向、方格位置时用文字说清楚。" + ("题型要多样，不要全是选择题。" if b.questionType == "mixed" else "") + avoid
-                  + ("\n" + km.angle_brief(b.level, b.count) if maths else ""))
+                  + ("\n" + km.angle_brief(b.level, b.count, unit["name"]) if maths else ""))
         route = next(r for r in implementation.app.routes if getattr(r, "path", "") == "/ai/questions/generate" and "POST" in getattr(r, "methods", ()))
         got = route.dependant.call(b=body, u=u, db=db)
         kept, dropped = [], {}
         for item in got.get("items") or []:
-            ok, why = km.check_ai_question(item, b.level, row.subject)
+            ok, why = km.check_ai_question(item, b.level, row.subject, unit["name"])
             if ok is None:
                 dropped[why] = dropped.get(why, 0) + 1
             else:
                 kept.append(ok)
-        items = km.pick_ai_drafts(kept, b.count, b.level if maths else "", list(seen))
+        items = km.pick_ai_drafts(kept, b.count, b.level if maths else "", list(seen), unit["name"])
         if not items:
             raise HTTPException(502, "AI 这次出的题都没通过检查（" + "、".join(f"{k} {v} 道" for k, v in dropped.items()) + "），请再试一次")
         return {"items": items, "dropped": dropped, "short": b.count - len(items), "level": b.level,
