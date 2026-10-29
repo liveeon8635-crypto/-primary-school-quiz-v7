@@ -324,7 +324,7 @@
       "34300ee35f2f3a42f04328134a86648c95800c3525758e3f0089a2310f7ca9c3"
     ],
     "/v1/knowledge-map": [
-      "802993fdaa85b4ec64926a2abd7d3146c14cc886dc061d0163da968b4a61e86c"
+      "43dd2a21d0b039dc30ba7b34ba87df90b3630feb8533b87634c1ca6ff2e3f21c"
     ],
     "/v1/my-knowledge-map": [
       "24aeacba0bdf34b867c87f5e824f86078c0c6565c0b7ae66ca9af38e2d882239"
@@ -681,11 +681,6 @@
       "sourceBytes": 13253,
       "compiledBytes": 13253
     },
-    "802993fdaa85b4ec64926a2abd7d3146c14cc886dc061d0163da968b4a61e86c": {
-      "unchanged": true,
-      "sourceBytes": 55669,
-      "compiledBytes": 55669
-    },
     "24aeacba0bdf34b867c87f5e824f86078c0c6565c0b7ae66ca9af38e2d882239": {
       "unchanged": true,
       "sourceBytes": 31596,
@@ -755,6 +750,11 @@
       "unchanged": true,
       "sourceBytes": 36927,
       "compiledBytes": 36927
+    },
+    "43dd2a21d0b039dc30ba7b34ba87df90b3630feb8533b87634c1ca6ff2e3f21c": {
+      "unchanged": true,
+      "sourceBytes": 56701,
+      "compiledBytes": 56701
     }
   }
 }
