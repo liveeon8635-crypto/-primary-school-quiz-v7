@@ -66,6 +66,7 @@ function setInterval(f){interval=f;return 1}function boot_student(f){f()}functio
 function api(path){
  if(path==='/student/weekend/current')return Promise.resolve({active:true,sessionId:session,title:'当前课'+session,stage:4,practice:true,questions:[]});
  if(path.startsWith('/student/weekend/explain'))return new Promise(resolve=>requests.push({path,resolve}));
+ if(path==='/student/knowledge-map')return Promise.reject(Error('知识地图未开启'));
  if(path==='/student/weekend/followup')return Promise.resolve({active:false});
  throw Error(path);
 }

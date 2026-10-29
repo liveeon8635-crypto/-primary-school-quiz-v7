@@ -4,11 +4,15 @@ student  GET  /v1/my-knowledge-map                         page
          GET  /student/knowledge-map                       published map of the pupil's grade, mastery per node, diagnosis state
          POST /student/knowledge-map/diagnosis             start (or resume) the 12-question diagnosis; questions without answers
          POST /student/knowledge-map/diagnosis/submit      {answers} graded by the existing engine, saved as a practice submission
+         POST /student/knowledge-map/nodes/{key}/quiz      3—5 new questions of one point (a quick check, any time)
+         POST /student/knowledge-map/nodes/{key}/quiz/submit  {answers} graded and saved like the diagnosis
 
 Behind the ``KNOWLEDGE_MAP`` flag like the teacher side. Pupils only ever see the published map. Mastery uses the
 first answer the pupil gave to each levelled question in any submission (homework, practice or this diagnosis), so
 the diagnosis is one more piece of evidence in the same long-term record, not a separate score. Each pupil takes the
 diagnosis once per map; the questions avoid unfinished formal homework and ones the pupil has already answered.
+A point's quick check takes only questions the pupil has never answered, so every answer is a first attempt; it needs
+no table of its own (the set is recomputed on submit and must match what the pupil answered).
 """
 from __future__ import annotations
 
@@ -26,6 +30,7 @@ from changying.services import knowledge_maps as km
 from changying.web.knowledge_map_views import NO_CACHE, knowledge_map_enabled, register_knowledge_map_table
 
 DIAGNOSIS_TITLE = "知识地图诊断"
+QUIZ_TITLE = "知识地图小测"
 
 
 class DiagnosisAnswer(BaseModel):
@@ -113,6 +118,19 @@ def install_knowledge_map_student(implementation: Any) -> APIRouter:
             out[q.id] = q
         return out
 
+    def reserved(db: Any, u: Any, row: Any) -> set[int]:
+        """Questions waiting in the pupil's unfinished diagnosis: a quick check leaves them for it."""
+        r = run_of(db, u, row)
+        return {int(q) for _, q in json.loads(r.items_json)} if r is not None and r.status == "open" else set()
+
+    def quiz_of(db: Any, u: Any, row: Any, m: dict[str, Any], key: str, first: dict[int, bool]) -> tuple[dict[str, Any], list[int]]:
+        node = next((n for n in m["nodes"] if n["key"] == key), None)
+        if node is None:
+            raise HTTPException(404, "没有这个知识点")
+        if not km.assessed(m, node):
+            raise HTTPException(409, "这个知识点还没有开启做题")
+        return node, km.pick_node_quiz(node, set(usable_questions(db, u, m)), set(first) | reserved(db, u, row))
+
     def public(q: Any) -> dict[str, Any]:
         d = implementation.qj_public(q)
         return {k: d[k] for k in ("id", "text", "options", "questionType", "figure")}
@@ -122,9 +140,11 @@ def install_knowledge_map_student(implementation: Any) -> APIRouter:
         first = first_answers(db, u)
         units = {x["key"]: x for x in m["units"]}
         node_m, unit_m = km.mastery_view(m, first)
+        usable, skip = set(usable_questions(db, u, m)), set(first) | reserved(db, u, row)
         nodes = [{"key": n["key"], "unit": n["unit"], "name": n["name"], "detail": n["detail"], "kind": n["kind"],
                   "prereqs": n["prereqs"], "learned": bool(units[n["unit"]]["learned"]), "assessed": n["key"] in node_m,
-                  "mastery": node_m.get(n["key"])} for n in m["nodes"]]
+                  "mastery": node_m.get(n["key"]),
+                  "quiz": n["key"] in node_m and bool(km.pick_node_quiz(n, usable, skip))} for n in m["nodes"]]
         unit_rows = [{**x, "mastery": unit_m[x["key"]]} for x in m["units"]]
         r = run_of(db, u, row)
         diagnosis = {"status": "new"} if r is None else {"status": r.status, "count": len(json.loads(r.items_json)),
@@ -197,6 +217,33 @@ def install_knowledge_map_student(implementation: Any) -> APIRouter:
                 x["total"] += 1
                 x["right"] += 1 if ok[q] else 0
         return {"correct": correct, "total": total, "nodes": list(per.values()), "map": payload(db, u, row)}
+
+    @router.post("/student/knowledge-map/nodes/{key}/quiz")
+    def quiz(key: str, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        pupil(u)
+        row = published_map(db, u)
+        node, picked = quiz_of(db, u, row, json.loads(row.published_json), key, first_answers(db, u))
+        if not picked:
+            raise HTTPException(409, f"这个知识点暂时没有新题了（至少要 {km.QUIZ_MIN} 道没做过的题），等老师补题后再来")
+        found = {q.id: q for q in db.scalars(select(Question).where(Question.school_id == u.school_id, Question.id.in_(picked)))}
+        return {"key": key, "name": node["name"], "count": len(picked), "questions": [public(found[q]) for q in picked if q in found]}
+
+    @router.post("/student/knowledge-map/nodes/{key}/quiz/submit")
+    def quiz_submit(key: str, b: DiagnosisBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        pupil(u)
+        row = published_map(db, u)
+        m = json.loads(row.published_json)
+        node, picked = quiz_of(db, u, row, m, key, first_answers(db, u))
+        if not picked or sorted(a.question_id for a in b.answers) != sorted(picked):
+            raise HTTPException(409, "题目有变化（可能已经交过，或老师刚调整了题目），请重新开始小测")
+        answers = [implementation.AnswerItem(question_id=a.question_id, selected_index=a.selected_index, text_answer=a.text_answer)
+                   for a in b.answers]
+        normalized, correct, total, score = implementation.grade_answers(db, u, answers, allowed_question_ids=picked, require_all=True)
+        implementation.save_sub(db, u, None, f"{QUIZ_TITLE}：{key} {node['name']}"[:160], normalized, correct, total, score)
+        db.commit()
+        after = payload(db, u, row)
+        return {"key": key, "name": node["name"], "correct": correct, "total": total,
+                "mastery": next(n["mastery"] for n in after["nodes"] if n["key"] == key), "map": after}
 
     app.include_router(router)
     app.state.knowledge_map_student_installed = True
