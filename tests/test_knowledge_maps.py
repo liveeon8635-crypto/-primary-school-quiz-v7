@@ -181,36 +181,51 @@ with TestClient(app) as client:
     d = client.post("/teacher/knowledge-maps", headers=th, json={"template": "rj2026-g5-math-up"}).json()
     mid, rev = d["id"], d["revision"]
     node = next(n for n in d["map"]["nodes"] if n["key"] == "4-3")
-    unit = next(u for u in d["map"]["units"] if u["key"] == node["unit"])
+    url = f"/teacher/knowledge-maps/{mid}/nodes/4-3/ai"
+    assert client.post(url, headers=th, json={"level": "很难"}).status_code == 400
+    assert client.post(url, headers=sh, json={"level": "medium"}).status_code == 403
 
-    # What the page sends: the node's name, detail and level; choice questions only; no picture-only stems.
+    def q(kind, text, steps, expression="", answer="", options=None, ci=-1):
+        return {"question_type": kind, "text": text, "steps": steps, "expression": expression, "answer": answer,
+                "options": options or [], "correct_index": ci, "explanation": "解析", "knowledge": "旋转"}
+
+    # Mixed types for 中等: the drafts are checked here, not just passed on.
     replies.append(json.dumps({"questions": [
-        {"question_type": "choice", "text": "钟面上的指针从 12 绕中心顺时针旋转 90°，指向几？", "options": ["3", "6", "9", "12"],
-         "correct_index": 0, "explanation": "顺时针 90° 是 3 个大格", "knowledge": "旋转的意义"},
-        {"question_type": "choice", "text": "钟面上的指针从 12 绕中心顺时针旋转 180°，指向几？", "options": ["3", "6", "9", "12"],
-         "correct_index": 1, "explanation": "180° 是 6 个大格，指向 6", "knowledge": "旋转"}]}, ensure_ascii=False))
-    gen = client.post("/ai/questions/generate", headers=th, json={
-        "grade": d["grade"], "subject": d["subject"], "textbook": "人教版", "semester": d["term"], "unit": unit["name"],
-        "knowledge": node["name"], "difficulty": "中等", "count": 2, "question_type": "choice",
-        "notes": "知识点说明：" + node["detail"] + "。难度档：中等。题目只考这一个知识点；题干不能依赖图片，涉及图形、方向、方格位置时用文字说清楚。"})
-    assert gen.status_code == 200, gen.text
-    items = gen.json()["items"]
-    assert len(items) == 2 and gen.json()["reviewRequired"] is True
-    assert "旋转的三要素" in prompts[-1] and "题干不能依赖图片" in prompts[-1] and "图形的运动" in prompts[-1]
+        q("single_choice", "钟面上的指针从 12 绕中心顺时针旋转 90°，指向几？", ["一大格 30°", "90÷30=3"], "90÷30", options=["3", "6", "9", "12"], ci=0),
+        q("fill_blank", "指针从 12 顺时针转到 6，转了（　）度。", ["每格 30°", "6×30=180"], "6×30", "180"),
+        q("true_false", "指针从 12 顺时针旋转 90° 后指向 3。", ["90° 是 3 大格", "12 往后 3 格是 3"], options=["正确", "错误"], ci=0),
+        q("calculation", "指针从 3 顺时针转到 9，转了多少度？", ["相差 6 格", "6×30"], "6×30", "120"),          # wrong answer
+        q("short_answer", "指针从 12 逆时针转 90°，指向几？", ["只有一步"], "12-3", "9"),                       # one step only
+        q("fill_blank", "指针从 12 顺时针转到 9，转了（　）度。", ["数格子", "乘 30"], "", "270"),            # nothing to check it with
+    ]}, ensure_ascii=False))
+    replies.append(json.dumps({"questions": []}))      # the generator's own follow-up for the remainder
+    r = client.post(url, headers=th, json={"level": "medium", "count": 4, "questionType": "mixed"})
+    assert r.status_code == 200, r.text
+    r = r.json()
+    assert len(r["items"]) == 3 and r["short"] == 1 and r["verified"] == 2
+    assert {x["question_type"] for x in r["items"]} == {"single_choice", "fill_blank", "true_false"}
+    assert r["dropped"] == {"验算不对": 1, "步骤太少（中等至少 2 步、提高至少 3 步）": 1, "数学答案没有可验算的算式": 1}
+    first = prompts[-2]
+    for t in ("旋转的三要素", "题干不能依赖图片", "图形的运动", '"steps"', '"expression"', "题型要多样", "中等"):
+        assert t in first, t
 
-    # The teacher keeps both; the page forces the node's bank name so they match the node, then levels them.
-    keep = [{**q, "knowledge": node["bankKeys"][0], "question_type": "single_choice"} for q in items]
+    # The teacher keeps them; each type is saved as itself, then levelled.
+    keep = []
+    for it in r["items"]:
+        row = {**it, "knowledge": node["bankKeys"][0]}
+        for k in ("steps", "expression", "verified"):
+            row.pop(k, None)
+        keep.append(row)
     saved = client.post("/ai/questions/save", headers=th, json={"questions": keep}).json()["items"]
-    assert {q["knowledge"] for q in saved} == {"旋转"}
+    assert {x["questionType"] for x in saved} == {"single_choice", "fill_blank", "true_false"}
+    assert next(x for x in saved if x["questionType"] == "fill_blank")["answer"] == "180"
     d = client.put(f"/teacher/knowledge-maps/{mid}/nodes/4-3/levels", headers=th,
-                   json={"levels": {str(q["id"]): "medium" for q in saved}, "revision": rev}).json()
+                   json={"levels": {str(x["id"]): "medium" for x in saved}, "revision": rev}).json()
     n = next(x for x in d["map"]["nodes"] if x["key"] == "4-3")
-    assert n["bankCount"] == 2 and n["coverage"]["counts"] == {"basic": 0, "medium": 2, "hard": 0}
-    listed = client.get(f"/teacher/knowledge-maps/{mid}/nodes/4-3/questions", headers=th).json()["items"]
-    assert [x["level"] for x in listed] == ["medium", "medium"]
+    assert n["coverage"]["counts"] == {"basic": 0, "medium": 3, "hard": 0}
 
     page = client.get("/v1/knowledge-map").text
-    for t in ("kmAIGen(", "/ai/questions/generate", "/ai/questions/save", "存入题库并分为", "题干不能依赖图片"):
+    for t in ("kmAIGen(", "/ai',{json:{level:", "/ai/questions/save", "存入题库并分为", "混合题型（推荐）", "已验算", "答案待核对"):
         assert t in page, t
 print("OK")
 '''
@@ -323,3 +338,22 @@ print("OK")
 
 def test_teacher_restores_a_deleted_unit_from_the_template(tmp_path):
     helpers.run_isolated(tmp_path, helpers.COMMON + RESTORE_FLOW, {"KNOWLEDGE_MAP": "1"})
+
+
+def test_ai_drafts_are_checked_and_mixed():
+    from changying.services import knowledge_maps as km
+    calc = {"question_type": "calculation", "text": "2.5×4+1.2=?", "answer": "11.2", "expression": "2.5×4+1.2", "steps": ["a", "b", "c"],
+            "options": [], "correct_index": -1}
+    assert km.check_ai_question(calc, "hard", "数学")[0]["verified"]
+    assert km.check_ai_question({**calc, "steps": ["a", "b"]}, "hard", "数学")[1].startswith("步骤太少")
+    assert km.check_ai_question({**calc, "answer": "12"}, "medium", "数学")[1] == "验算不对"
+    # 基础 keeps a draft it cannot check, marked as unchecked; 语文 answers are not computed.
+    basic = km.check_ai_question({**calc, "expression": "", "steps": ["a"]}, "basic", "数学")[0]
+    assert basic and basic["verified"] is False
+    assert km.check_ai_question({**calc, "answer": "春天", "expression": ""}, "medium", "语文")[0]["verified"] is False
+    choice = {"question_type": "single_choice", "text": "0.3×0.2=?", "options": ["0.06", "0.6", "0.6", "6"], "correct_index": 0, "steps": ["a"]}
+    assert km.check_ai_question(choice, "basic", "数学")[1] == "选项有重复"
+    # Types are taken in turn: four choices cannot crowd out the other types.
+    items = [{"question_type": "single_choice", "verified": True}] * 4 + [{"question_type": "fill_blank", "verified": False},
+                                                                          {"question_type": "true_false", "verified": False}]
+    assert [x["question_type"] for x in km.pick_ai_drafts(items, 4)] == ["single_choice", "fill_blank", "true_false", "single_choice"]

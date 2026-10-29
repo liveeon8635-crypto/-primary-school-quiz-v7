@@ -142,7 +142,7 @@ function kmBankList(n,d,out){
 function kmAIGen(n,holder){
   var level=el('select',{'aria-label':'难度档'}),count=el('select',{'aria-label':'题数'});
   Object.keys(KM.levels).forEach(function(k){level.appendChild(el('option',{value:k,text:KM.levels[k]}))});
-  [2,3,4,6].forEach(function(c){count.appendChild(el('option',{value:String(c),text:c+' 题'}))});
+  [4,6,8,10].forEach(function(c){var o=el('option',{value:String(c),text:c+' 题'});if(c===6)o.selected=true;count.appendChild(o)});
   var drafts=el('div'),note=el('p',{class:'muted'});
   var refIds=[],refBox=el('div',{class:'muted',text:'正在读取本校教学资源…'});
   // 参考资料是可选项：读不到资源也不影响出题。
@@ -162,39 +162,55 @@ function kmAIGen(n,holder){
       });
     })
     .catch(function(){refBox.textContent='参考资料读取失败，不影响出题。'});
-  holder.appendChild(el('div',{class:'card'},el('h4',{text:'AI 出题（选择题，需老师审核）'}),
-    el('div',{class:'row'},el('label',{},'难度 ',level),el('label',{},'数量 ',count),
+  var qtype=el('select',{'aria-label':'题型'});
+  [['mixed','混合题型（推荐）'],['single_choice','选择'],['true_false','判断'],['fill_blank','填空']].concat(KM.subject==='数学'?[['calculation','计算'],['short_answer','解决问题']]:[])
+    .forEach(function(t){qtype.appendChild(el('option',{value:t[0],text:t[1]}))});
+  holder.appendChild(el('div',{class:'card'},el('h4',{text:'AI 出题（多题型，需老师审核）'}),
+    el('p',{class:'muted',text:'系统会检查：中等至少 2 步、提高至少 3 步；数学答案按 AI 给的算式重新计算，算错的题直接丢掉。'}),
+    el('div',{class:'row'},el('label',{},'难度 ',level),el('label',{},'题型 ',qtype),el('label',{},'数量 ',count),
       el('button',{class:'btn',text:'生成草稿',onclick:function(e){
-        var btn=e.target,unit=KM.map.units.filter(function(u){return u.key===n.unit})[0];
-        btn.disabled=true;note.textContent='AI 正在出题，大约需要半分钟…';drafts.textContent='';
-        api('/ai/questions/generate',{json:{grade:KM.grade,subject:KM.subject,textbook:'人教版',semester:KM.term,unit:unit?unit.name:'',
-          knowledge:n.name,difficulty:KM.levels[level.value],count:+count.value,question_type:'choice',resource_ids:refIds,
-          notes:'知识点说明：'+(n.detail||n.name)+'。难度档：'+KM.levels[level.value]+'。题目只考这一个知识点；题干不能依赖图片，涉及图形、方向、方格位置时用文字说清楚。'}})
-          .then(function(r){btn.disabled=false;note.textContent=r.notice||'';kmDrafts(n,level.value,r.items||[],drafts)})
+        var btn=e.target;
+        btn.disabled=true;note.textContent='AI 正在出题并逐题检查，大约需要一分钟…';drafts.textContent='';
+        api('/teacher/knowledge-maps/'+KM.id+'/nodes/'+encodeURIComponent(n.key)+'/ai',{json:{level:level.value,count:+count.value,questionType:qtype.value,resourceIds:refIds}})
+          .then(function(r){btn.disabled=false;
+            var drop=Object.keys(r.dropped||{}).map(function(k){return k+' '+r.dropped[k]+' 道'});
+            note.textContent='出了 '+r.items.length+' 道'+(r.verified?'，其中 '+r.verified+' 道数学答案已由系统验算':'')+'。'+(r.short?'还差 '+r.short+' 道，可以再点一次。':'')+(drop.length?'没通过检查已丢弃：'+drop.join('、')+'。':'');
+            kmDrafts(n,level.value,r.items||[],drafts)})
           .catch(function(err){btn.disabled=false;note.textContent=err.message})}})),
     el('details',{},el('summary',{text:'参考资料（可选）'}),refBox),note,drafts));
 }
+var KM_TYPE_NAMES={single_choice:'选择',true_false:'判断',fill_blank:'填空',calculation:'计算',short_answer:'解决问题'};
 function kmDrafts(n,lv,items,box){
   box.textContent='';var rows=[];
   items.forEach(function(q,i){
     var text=el('textarea',{class:'s','aria-label':'题干'});text.value=q.text;
-    var opts=(q.options||[]).map(function(o,k){return el('input',{value:o,'aria-label':'选项 '+String.fromCharCode(65+k)})});
+    var choice=q.question_type==='single_choice'||q.question_type==='true_false';
+    var opts=choice?(q.options||[]).map(function(o,k){return el('input',{value:o,'aria-label':'选项 '+String.fromCharCode(65+k),readonly:q.question_type==='true_false'})}):[];
     var right=el('select',{'aria-label':'正确答案'});opts.forEach(function(_,k){var o=el('option',{value:String(k),text:String.fromCharCode(65+k)});if(k===q.correct_index)o.selected=true;right.appendChild(o)});
-    var exp=el('textarea',{class:'s','aria-label':'解析'});exp.value=q.explanation||'';
+    var answer=el('input',{value:q.answer||'','aria-label':'答案'});
+    var exp=el('textarea',{class:'s','aria-label':'解析'});
+    exp.value=(q.verified&&q.expression?'列式：'+q.expression+'（系统已验算）\n':'')+(q.steps&&q.steps.length?'步骤：'+q.steps.join('；')+'\n':'')+(q.explanation||'');
     var keep=el('input',{type:'checkbox',checked:true});
-    var card=el('div',{class:'card','data-draft':String(i)},el('label',{},keep,' 保留这道题'),el('label',{},'题干 ',text));
-    opts.forEach(function(o,k){card.appendChild(el('label',{},String.fromCharCode(65+k)+' ',o))});
-    card.appendChild(el('label',{},'正确答案 ',right));card.appendChild(el('label',{},'解析 ',exp));
+    var tags=el('div',{class:'row'},kmTag(KM_TYPE_NAMES[q.question_type]||q.question_type),
+      q.verified?kmTag('已验算','ok'):(KM.subject==='数学'&&q.question_type!=='true_false'?kmTag('答案待核对','warn'):null));
+    var card=el('div',{class:'card','data-draft':String(i)},tags,el('label',{},keep,' 保留这道题'),el('label',{},'题干 ',text));
+    if(choice){opts.forEach(function(o,k){card.appendChild(el('label',{},String.fromCharCode(65+k)+' ',o))});card.appendChild(el('label',{},'正确答案 ',right))}
+    else card.appendChild(el('label',{},'答案 ',answer));
+    card.appendChild(el('label',{},'解析 ',exp));
     box.appendChild(card);
     rows.push(function(){if(!keep.checked)return null;var unit=KM.map.units.filter(function(u){return u.key===n.unit})[0];
-      return {grade:KM.grade,subject:KM.subject,textbook:'人教版',semester:KM.term,unit:unit?unit.name:'',knowledge:n.bankKeys[0]||n.name,
-        text:text.value.trim(),options:opts.map(function(o){return o.value.trim()}),correct_index:+right.value,explanation:exp.value,question_type:'single_choice'}});
+      var base={grade:KM.grade,subject:KM.subject,textbook:'人教版',semester:KM.term,unit:unit?unit.name:'',knowledge:n.bankKeys[0]||n.name,
+        text:text.value.trim(),explanation:exp.value,question_type:q.question_type};
+      if(choice){base.options=opts.map(function(o){return o.value.trim()});base.correct_index=+right.value}
+      else{base.options=[];base.correct_index=-1;base.answer=answer.value.trim();base.accepted_answers=q.accepted_answers||[]}
+      return base});
   });
   if(!items.length)return;
   var msgBox=el('p',{class:'muted'});
   box.appendChild(el('button',{class:'btn primary',text:'审核无误，存入题库并分为“'+KM.levels[lv]+'”',onclick:function(e){
     var qs=rows.map(function(f){return f()}).filter(function(x){return x});
     if(!qs.length){msgBox.textContent='没有勾选要保留的题';return}
+    if(qs.some(function(x){return !x.options.length&&!x.answer})){msgBox.textContent='有题没填答案';return}
     e.target.disabled=true;msgBox.textContent='正在保存…';
     api('/ai/questions/save',{json:{questions:qs}}).then(function(r){
       var levels={};r.items.forEach(function(q){levels[q.id]=lv});

@@ -105,7 +105,8 @@ def _number_text(text: Any) -> str:
     return re.sub(r"[^\d.\-]+$", "", re.sub(r"^[^\d\-]+", "", s))        # 约 3.5 米 -> 3.5
 
 
-def _num(text: Any) -> Fraction | None:
+def number(text: Any) -> Fraction | None:
+    """The numeric value of an answer such as "约 3.5 米", or None when it is not a number."""
     s = _number_text(text)
     return Fraction(s) if _NUMBER.match(s) else None
 
@@ -201,7 +202,7 @@ def check(row: Any, subject: str) -> tuple[dict[str, Any] | None, str]:
         return None, "没有答案"
     out["answer"] = answer[:400]
     if subject == "数学" and t != "composition":
-        target = _num(answer)
+        target = number(answer)
         if target is not None:
             value = evaluate(row.get("expression"))
             if value is None:
@@ -251,5 +252,5 @@ def reference_text(q: dict[str, Any]) -> str:
     return "\n".join(lines)[:4000]
 
 
-__all__ = ["CODE_LEVEL", "COUNTS", "LEVELS", "LEVEL_CODE", "TYPES", "TYPE_NAMES", "agrees", "check", "evaluate", "missing",
+__all__ = ["CODE_LEVEL", "COUNTS", "LEVELS", "LEVEL_CODE", "TYPES", "TYPE_NAMES", "agrees", "check", "evaluate", "missing", "number",
            "prompt", "quotas", "reference_text", "select"]
