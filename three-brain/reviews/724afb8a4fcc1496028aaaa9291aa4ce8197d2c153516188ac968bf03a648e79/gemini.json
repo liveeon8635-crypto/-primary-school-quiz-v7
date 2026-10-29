@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:724afb8a4fcc1496028aaaa9291aa4ce8197d2c153516188ac968bf03a648e79",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "4dd139a64e3b407cea1b62b84a11023e18ae550b",
+  "headSha": "c53d5ca606d028a27038301cbeee21f956c4dda6",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：改进了周末黑板排版的文本解析与多列自适应布局逻辑，新增配套单元测试，且CI测试已全数通过。",
+      "evidenceRefs": [
+        "pr:#930",
+        "file:changying/web/weekend_pages.py#L261-L384",
+        "file:tests/test_weekend_board_layout.py#L71-L125"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:9447002cbbde7207142b0b0a9873321e4af1d58ca6c2b026d2c696c4dbb78452"
+}
