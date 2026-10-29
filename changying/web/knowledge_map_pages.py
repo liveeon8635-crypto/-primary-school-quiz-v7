@@ -191,7 +191,7 @@ function kmDrafts(n,lv,items,box){
     var exp=el('textarea',{class:'s','aria-label':'解析'});
     exp.value=(q.verified&&q.expression?'列式：'+q.expression+'（系统已验算）\n':'')+(q.steps&&q.steps.length?'步骤：'+q.steps.join('；')+'\n':'')+(q.explanation||'');
     var keep=el('input',{type:'checkbox',checked:true});
-    var tags=el('div',{class:'row'},kmTag(KM_TYPE_NAMES[q.question_type]||q.question_type),
+    var tags=el('div',{class:'row'},kmTag(KM_TYPE_NAMES[q.question_type]||q.question_type),q.angle?kmTag('考法：'+q.angle):null,
       q.verified?kmTag('已验算','ok'):(KM.subject==='数学'&&q.question_type!=='true_false'?kmTag('答案待核对','warn'):null));
     var card=el('div',{class:'card','data-draft':String(i)},tags,el('label',{},keep,' 保留这道题'),el('label',{},'题干 ',text));
     if(choice){opts.forEach(function(o,k){card.appendChild(el('label',{},String.fromCharCode(65+k)+' ',o))});card.appendChild(el('label',{},'正确答案 ',right))}

@@ -360,6 +360,54 @@ def pick_diagnosis(m: dict[str, Any], usable: set[int], attempted: set[int], see
 AI_MIN_STEPS = {"basic": 1, "medium": 2, "hard": 3}
 AI_TYPE_LABELS = {"single_choice": "选择", "true_false": "判断", "fill_blank": "填空", "calculation": "计算", "short_answer": "解决问题"}
 
+# 数学命题角度（考法）。Teachers found drafts repeating one way of asking ("列竖式算 a÷b" six times) and 提高 that
+# was 中等 with one more step. Each draft names its angle; the level only accepts its own angles (提高 has angles
+# 中等 does not, as in a workbook's 智慧加油站), and one batch uses an angle at most once.
+MATH_ANGLES: dict[str, list[tuple[str, str]]] = {
+    "basic": [
+        ("直接求结果", "口算、列竖式，或直接读出、数出结果"),
+        ("意义填空", "填出算理或概念的意义（如几个十分之一、小数点为什么对齐、旋转的三要素）"),
+        ("概念判断", "判断一个说法或一步算法对不对"),
+        ("一步解决问题", "生活情境，一步算出结果"),
+    ],
+    "medium": [
+        ("计算并验算", "列竖式或按步骤求出结果，再用另一种方法（如乘法验算除法）检验"),
+        ("两步解决问题", "生活情境，两步算出结果"),
+        ("不计算比较", "用规律直接比较或判断（如乘数是否大于 1、被除数与除数的大小），不用算出结果"),
+        ("找错并改正", "给出一个有错的计算过程或结论，找出错在哪里并改正"),
+        ("选择有用信息", "给出多条信息（含多余信息），选出解题需要的再计算"),
+        ("推断未知", "根据结果的特点（如商的整数部分是 0、商是两位小数）推断□里的数或缺少的条件"),
+        ("看表计算", "从表格或几组数据中取数计算"),
+        ("模型识别", "几个情境里，判断哪个能（或不能）用同一个算式解决"),
+    ],
+    "hard": [
+        ("等量代换", "两组搭配给出两个总量（如 3 大 3 小共多少、1 大 3 小共多少），求其中一个的量"),
+        ("和差倍关系", "已知两数的和或差，以及倍数关系（含小数点移动引起的 10 倍、100 倍关系），求两个数"),
+        ("逆向推理", "已知结果和部分过程，倒推原来的数或条件"),
+        ("方案比较", "两三种方案或包装，分别算出单价或总价再比较，并说明理由"),
+        ("多步综合", "三步及以上、要综合表格或多组数据，含易错的单位或近似数"),
+        ("规律探究", "从几组算式发现规律，再用规律解决新问题"),
+        ("取值范围", "□里能填哪些数，要找全所有可能，并说明理由"),
+    ],
+}
+
+
+def angle_cap(level: str, count: int) -> int:
+    """How often one angle may appear in a batch of ``count``: once, unless the level has fewer angles than drafts."""
+    return max(1, -(-count // max(1, len(MATH_ANGLES.get(level, [])))))
+
+
+def angle_brief(level: str, count: int) -> str:
+    """The angles a level accepts, for the request, and how often one may be used in this batch."""
+    names = MATH_ANGLES.get(level, [])
+    if not names:
+        return ""
+    lines = "\n".join(f"- {n}：{d}" for n, d in names)
+    cap = angle_cap(level, count)
+    rule = "每道题用不同的角度" if cap == 1 else f"同一个角度最多用 {cap} 次"
+    return (f"【命题角度】每道题必须从下面的角度里选一个，并在 \"angle\" 字段写出角度名称（原样照写）；"
+            f"这一批 {count} 道题{rule}，不要多道题都是同一种考法：\n{lines}")
+
 
 def check_ai_question(item: dict[str, Any], level: str, subject: str) -> tuple[dict[str, Any] | None, str]:
     """Keep an AI draft only when it is as hard as its level says and, in maths, its answer adds up.
@@ -373,6 +421,12 @@ def check_ai_question(item: dict[str, Any], level: str, subject: str) -> tuple[d
     out = dict(item)
     qtype = str(out.get("question_type") or "")
     steps = [s for s in out.get("steps") or [] if str(s).strip()]
+    if "数学" in str(subject or "") and level in MATH_ANGLES:
+        said = re.sub(r"\s+", "", str(out.get("angle") or ""))
+        angle = next((n for n, _ in MATH_ANGLES[level] if said and (n in said or said in n)), "")
+        if not angle:
+            return None, "命题角度不属于这一难度"
+        out["angle"] = angle                                     # the listed name, so the per-batch cap counts it
     if len(steps) < AI_MIN_STEPS.get(level, 1):
         return None, "步骤太少（中等至少 2 步、提高至少 3 步）"
     if qtype == "single_choice" and len({str(o).strip() for o in out.get("options") or []}) != 4:
@@ -395,18 +449,32 @@ def check_ai_question(item: dict[str, Any], level: str, subject: str) -> tuple[d
     return out, ""
 
 
-def pick_ai_drafts(items: list[dict[str, Any]], count: int) -> list[dict[str, Any]]:
-    """Up to ``count`` drafts, taking the question types in turn so one type cannot fill the set; checked ones first."""
+def pick_ai_drafts(items: list[dict[str, Any]], count: int, level: str = "", existing: list[str] = ()) -> list[dict[str, Any]]:
+    """Up to ``count`` drafts, taking the question types in turn so one type cannot fill the set; checked ones first.
+    An angle (way of asking) is used at most ``angle_cap`` times per batch, so a set does not repeat one kind of question;
+    a draft whose stem the point already has is skipped."""
+    cap = angle_cap(level, count)
+    known = {re.sub(r"\s+", "", t) for t in existing}
     by_type: dict[str, list[dict[str, Any]]] = {}
     for it in sorted(items, key=lambda x: not x.get("verified")):
         by_type.setdefault(str(it.get("question_type")), []).append(it)
     out: list[dict[str, Any]] = []
+    angles: dict[str, int] = {}
     while len(out) < count and any(by_type.values()):
         for t in list(by_type):
-            if by_type[t] and len(out) < count:
-                out.append(by_type[t].pop(0))
+            while by_type[t] and len(out) < count:
+                it = by_type[t].pop(0)
+                angle = str(it.get("angle") or "").strip()
+                stem = re.sub(r"\s+", "", str(it.get("text") or ""))
+                if (angle and angles.get(angle, 0) >= cap) or (stem and stem in known):
+                    continue                                   # same way of asking, or a repeat: try this type's next draft
+                if angle:
+                    angles[angle] = angles.get(angle, 0) + 1
+                known.add(stem)
+                out.append(it)
+                break
     return out
 
 
 __all__ = ["AGREEMENT_TARGET", "SHOWN_FIGURES", "CONFIDENCE_LABELS", "DIAGNOSIS_MIN", "LEVELS", "MASTERY_LABELS", "NODE_KINDS", "TEMPLATES", "UNIT_KINDS", "assessed", "clean_map", "coverage", "dependents", "first_attempts", "mastery_view", "node_mastery",
-           "pick_diagnosis", "restore_unit", "summary", "template", "AI_MIN_STEPS", "AI_TYPE_LABELS", "check_ai_question", "pick_ai_drafts"]
+           "pick_diagnosis", "restore_unit", "summary", "template", "AI_MIN_STEPS", "AI_TYPE_LABELS", "MATH_ANGLES", "angle_brief", "angle_cap", "check_ai_question", "pick_ai_drafts"]
