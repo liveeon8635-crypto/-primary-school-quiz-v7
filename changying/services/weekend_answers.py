@@ -11,7 +11,7 @@ from sqlalchemy import select
 _LABEL = re.compile(r'^\s*[A-Da-d]\s*[．.、:：)）]\s*')
 
 
-def _option(value):
+def option_text(value):
     """Imported options often carry their own letter ("A．8ab"); the screen adds the letter once."""
     return _LABEL.sub('', str(value), count=1)
 
@@ -26,9 +26,9 @@ def practice_items(implementation, db, session):
     for index, q in enumerate(db.scalars(select(question).where(question.school_id == session.school_id,
             question.lesson_id == session.lesson_id, question.active.is_(True)).order_by(question.id).limit(30)), 1):
         options = json.loads(q.options_json or '[]')
-        stem = f'选择题 {index}：{q.stem}\n' + '\n'.join(f'{chr(65+i)}. {_option(value)}' for i, value in enumerate(options))
+        stem = f'选择题 {index}：{q.stem}\n' + '\n'.join(f'{chr(65+i)}. {option_text(value)}' for i, value in enumerate(options))
         correct = int(q.correct_index)
-        answer = f'{chr(65+correct)}. {_option(options[correct])}' if 0 <= correct < len(options) else '请老师核对参考答案'
+        answer = f'{chr(65+correct)}. {option_text(options[correct])}' if 0 <= correct < len(options) else '请老师核对参考答案'
         items.append({'kind': 'choice', 'id': q.id, 'question': stem,
             'answer': stem + f'\n正确答案：{answer}\n解析：{q.explanation or "请听老师讲解"}'})
     written = register_written_tables(implementation)['questions']

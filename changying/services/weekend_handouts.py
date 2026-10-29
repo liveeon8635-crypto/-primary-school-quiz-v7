@@ -7,6 +7,8 @@ import zipfile
 from decimal import Decimal
 from xml.etree import ElementTree as ET
 
+from changying.services.weekend_answers import option_text
+
 
 def paper_points(question):
     """Use an explicit whole-question mark; defaults are paper marks, not ledger points."""
@@ -121,12 +123,12 @@ def question_document(material, audience):
         paragraph(body,'第'+str(number)+'题　'+paper_points(q)+'分','Heading1',keep=True,before=160)
         paragraph(body,stem,keep=bool(q.get('options')))
         for index, option in enumerate(q.get('options', [])):
-            paragraph(body,chr(65+index)+'. '+str(option),after=50)
+            paragraph(body,chr(65+index)+'. '+option_text(option),after=50)
         if teacher:
             reminder = q.get('knowledge') or material['lesson'].get('core_target') or '核对题意与作答要求'
             paragraph(body,'考点提醒：'+str(reminder),'TeacherNote',before=80)
             reference = q.get('reference') or '请教师补充参考答案'
-            if q['kind'] == 'choice': reference = chr(65+q['selected'])+'. '+reference
+            if q['kind'] == 'choice': reference = chr(65+q['selected'])+'. '+option_text(reference)
             paragraph(body,'答案：'+reference,'TeacherNote')
             if q.get('explanation'): paragraph(body,'解析：'+q['explanation'],'TeacherNote')
         elif q['kind'] != 'choice':

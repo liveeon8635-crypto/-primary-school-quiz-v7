@@ -177,6 +177,6 @@ def test_practice_questions_are_plain_and_released_answers_are_not_covered():
 
 
 def test_imported_option_letters_are_not_doubled():
-    from changying.services.weekend_answers import _option
+    from changying.services.weekend_answers import option_text as _option
     assert [_option(x) for x in ("A．8ab", "b. ab8", "C、8ba", "D) a8b", "8ab", "Apple")] == ["8ab", "ab8", "8ba", "a8b", "8ab", "Apple"]
     assert "BL_COVER=d.currentStage===2||d.currentStage===3" in BOARD_JS
