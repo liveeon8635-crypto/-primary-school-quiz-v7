@@ -274,12 +274,16 @@ function kmUnit(u){
   // 默认收起：一屏能看到全部单元，顺序也是 U1→U8，点开才列知识点。
   var caret=el('span',{class:'km-caret',text:'▸'});
   var body=el('div',{class:'km-unit-b'});
+  var card=null;
   var toggle=el('button',{class:'km-unit-t','aria-expanded':'false',onclick:function(){
     var open=body.hidden;body.hidden=!open;caret.textContent=open?'▾':'▸';
     toggle.setAttribute('aria-expanded',open?'true':'false');
-  }},caret,el('b',{text:u.key+'  '+u.name}));
+    // 展开的单元横跨两列，否则同一行的另一列会空出一大截。
+    if(card)card.classList.toggle('open',open);
+  }},caret,el('b',{text:u.key+'  '+u.name}),
+    u.kind==='unit'?null:kmTag(KM.unitKinds[u.kind]));
   body.hidden=true;
-  var card=el('section',{class:'card','data-unit':u.key,id:'unit-'+u.key},
+  card=el('section',{class:'card','data-unit':u.key,id:'unit-'+u.key},
     el('div',{class:'row km-unit-h'},toggle,
       el('span',{class:'muted',text:nodes.length+' 个知识点'}),
       editBtn),
@@ -335,6 +339,8 @@ function kmRender(){
     for(var i=0;i<bs.length;i++){bs[i].hidden=!open}
     var cs=KMBOX.querySelectorAll('.km-unit-t .km-caret');
     for(var j=0;j<cs.length;j++){cs[j].textContent=open?'▾':'▸'}
+    var ss=KMBOX.querySelectorAll('section[data-unit]');
+    for(var k=0;k<ss.length;k++){ss[k].classList.toggle('open',open)}
     this.setAttribute('data-open',open?'1':'0');
     this.textContent=open?'收起全部':'展开全部';
   }}));
@@ -630,7 +636,9 @@ section.card[data-unit] .km-node{padding:0}
 /* AI 草稿卡片：每个选项、答案、解析各占一行，不和下一个选项字母挤在一起。 */
 .km-draft>label{display:block;margin:8px 0}.km-draft>label>input:not([type=checkbox]){width:calc(100% - 2.5em);max-width:420px}
 /* 两列用 grid（行优先，顺序 U1→U2→…）；单元收起后高度接近，不会再有大幅空白。 */
-@media (min-width:900px){.km-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}.km-grid>.card{margin-bottom:0}}
+@media (min-width:900px){.km-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}.km-grid>.card{margin-bottom:0}
+  /* 展开的单元横跨两列：否则同行另一列会空出一大截。 */
+  section.card[data-unit].open{grid-column:1/-1}}
 /* 栅格子项默认 min-width:auto，长题干或图片会把整页撑出横向滚动条。 */
 .km-grid>.card{min-width:0}
 .km-grid img{max-width:100%;height:auto}
