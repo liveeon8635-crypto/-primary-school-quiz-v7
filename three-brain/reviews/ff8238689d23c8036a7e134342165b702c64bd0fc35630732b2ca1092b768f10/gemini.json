@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:ff8238689d23c8036a7e134342165b702c64bd0fc35630732b2ca1092b768f10",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "5c544ea46d206f1b7af594d900bc3e122194083b",
+  "headSha": "d56f84f201496759f62e8e64a5d0a3c39801c489",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：本次修改补充了“可能性”单元题目生成的提示词要求（丰富情境多样性与严谨表述），并添加了相应单元测试，代码清晰无副作用。",
+      "evidenceRefs": [
+        "file:changying/services/knowledge_maps.py#L474-L476",
+        "file:tests/test_knowledge_maps.py#L422",
+        "pr:#909"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "在“可能性”命题提示词中补充了情境多样性限制（同种情境不超过 2 道）及实验数据的合理推断界限，能够提升生成题目的质量。",
+      "evidenceRefs": [
+        "file:changying/services/knowledge_maps.py#L474-L476"
+      ]
+    },
+    {
+      "id": "GEMINI-003",
+      "text": "补充了对应的单元测试，确保提示词生成逻辑按预期生效，CI 自动化测试均已通过。",
+      "evidenceRefs": [
+        "file:tests/test_knowledge_maps.py#L422",
+        "run:123400527189"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:4ed1e1d2614467ab74b794dd6a307ef4241c07f583dfbec005b16a29e314d6cb"
+}
