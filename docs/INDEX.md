@@ -11,6 +11,12 @@
 | 2 | 本文件 `docs/INDEX.md` | 文档地图：哪类知识在哪 |
 | 3 | GitHub Issue #174 | 当前工程断点（main SHA / PR / 部署 / 验收状态） |
 
+## 0.5 产品维护者从这里开始
+
+| 文档 | 内容 |
+|---|---|
+| [`maintainer/README.md`](maintainer/README.md) | **产品全景与维护指南**：产品原则、各模块怎么连、改一处影响哪里、风险分级、怎么和 AI 合作、当前状态、学习路线。写给不写代码的产品维护者；agent 处理维护者需求前也先读（`AGENTS.md` §9） |
+
 ## 1. 产品与范围
 
 | 文档 | 内容 | 什么时候读 |
@@ -60,6 +66,7 @@
 | 产品范围变化 | 改 `docs/V1_SCOPE.md`，不新建平行文档 |
 | 架构决策 | 改 `docs/ARCHITECTURE.md`（`docs/adr/**` 属受保护路径，按 §7 处理） |
 | 单个功能的设计 | `docs/analysis/<feature>.md` |
+| 模块功能、入口、规则或现状有变化 | 同步更新 `docs/maintainer/README.md` 对应小节（`AGENTS.md` §9.7） |
 | 指标体系/口径 | 对应业务目录，如 `docs/weekend-course/3-口径文档.md` |
 | 临时笔记、草稿 | **不要进仓库**，留在本地；定稿后再 PR |
 
