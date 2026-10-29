@@ -250,6 +250,7 @@ BOARD_LAYOUT_JS = r"""
 var BL_HEAD=/^(考点|知识点|重点|难点|方法|规律|结论)[一二三四五六七八九十0-9]*\s*[：:、．.\s]/;
 var BL_EXAMPLE=/^(示例|例题|例\s*[0-9一二三四五六七八九十]|练一练|试一试|做一做|想一想)/;
 var BL_WARN=/^(易错|注意|提醒|易混|误区)[点：:\s]/;
+var BL_ANSWER=/^(参考答案|答案|解答|解析|答)\s*[：:]/,BL_SHOWN={};
 var BL_BLANK=/[（(][\s　_＿]*[）)]|_{2,}|＿{2,}/;
 function blMath(t){return /[=＝×÷+＋−\-<>＜＞]/.test(t)&&/[0-9a-zA-Z²³]/.test(t)}
 function blParse(texts){
@@ -309,6 +310,7 @@ function blLine(line,number){
   return row;
 }
 function blExampleLine(box,line){
+  if(BL_ANSWER.test(line)){box.appendChild(blAnswer(line,false));return}
   blParts(line).forEach(function(part){
     var it=blItems(part);
     if(BL_WARN.test(part)){box.appendChild(el('div',{style:'color:#b42318;font-weight:700;margin:.3em 0',text:'⚠ '+part}));return}
@@ -319,6 +321,14 @@ function blExampleLine(box,line){
     box.appendChild(grid);if(it.tail)box.appendChild(el('div',{style:'margin:.3em 0',text:it.tail}));
   });
 }
+function blAnswer(line,dark){
+  // Covered until the teacher clicks; stays open across the 3-second refresh (kept per answer text).
+  var box=el('div',{style:'margin:.4em 0'}),shown=!!BL_SHOWN[line];
+  var text=el('div',{style:'font-weight:700;color:'+(dark?'#86efac':'#15803d')+(shown?'':';display:none'),text:line});
+  var btn=el('button',{type:'button',style:'font:inherit;font-size:.8em;padding:.2em .8em;border-radius:.4em;border:1px solid '+(dark?'#86efac':'#15803d')+';background:transparent;color:'+(dark?'#86efac':'#15803d')+';cursor:pointer',
+    text:shown?'隐藏答案':'显示答案',onclick:function(){BL_SHOWN[line]=!BL_SHOWN[line];text.style.display=BL_SHOWN[line]?'':'none';btn.textContent=BL_SHOWN[line]?'隐藏答案':'显示答案';if(window.blRefit)window.blRefit()}});
+  box.appendChild(btn);box.appendChild(text);return box;
+}
 function boardLayout(body,texts,wide){
   var blocks=blParse(texts),know=[],examples=[],plain=[];
   blocks.forEach(function(b){
@@ -328,13 +338,14 @@ function boardLayout(body,texts,wide){
       // "加法交换律：a＋b＝b＋a；加法结合律：…；…" -> one numbered rule per law.
       b.lines.forEach(function(l){var parts=l.split(/[；;]/).map(function(x){return x.trim()}).filter(Boolean);
         if(parts.length>=2&&parts.every(function(x){var k=x.search(/[：:]/);return k>0&&k<=12&&blMath(x.slice(k+1))}))lines=lines.concat(parts);else lines.push(l)});
-      lines.forEach(function(l){var rule=!BL_WARN.test(l)&&l.search(/[：:]/)>0&&blMath(l.slice(l.search(/[：:]/)+1));card.appendChild(blLine(l,rule?++n:0))});
+      lines.forEach(function(l){if(BL_ANSWER.test(l)){card.appendChild(blAnswer(l,true));return}var rule=!BL_WARN.test(l)&&l.search(/[：:]/)>0&&blMath(l.slice(l.search(/[：:]/)+1));card.appendChild(blLine(l,rule?++n:0))});
       know.push(card);
     }else if(b.kind==='example'){
       var ex=el('div',{style:'background:#e0f2fe;color:#0f172a;border-radius:.5em;padding:.5em .8em;margin:0 0 .6em'},el('div',{style:'color:#0369a1;font-weight:800;font-size:1.05em;margin-bottom:.2em',text:b.title}));
       b.lines.forEach(function(l){blExampleLine(ex,l)});examples.push(ex);
     }else{var box=el('div',{style:'margin:0 0 .4em'});b.lines.forEach(function(l){
       // The lesson title is already in the header: keep it, quietly.
+      if(BL_ANSWER.test(l)){box.appendChild(blAnswer(l,true));return}
       box.appendChild(/^课题[：:]/.test(l)?el('div',{style:'opacity:.6;font-size:.7em;margin:.2em 0',text:l}):blLine(l,0))});plain.push(box)}
   });
   body.style.whiteSpace='normal';
@@ -380,6 +391,7 @@ function board(){
     }
     // Side by side when it fits; when the two columns would make the text smaller, stack them (the larger text wins).
     function laid(wide){body.textContent='';boardLayout(body,d.content,wide);fitText(body);return parseFloat(body.style.fontSize)||0}
+    window.blRefit=function(){fitText(body)};          // a shown answer makes the page longer: fit it again
     boardLayout(body,d.content,false);
     requestAnimationFrame(function(){if(window.innerWidth<1000){fitText(body);return}var two=laid(true),one=laid(false);if(two>=one)laid(true)});
   }

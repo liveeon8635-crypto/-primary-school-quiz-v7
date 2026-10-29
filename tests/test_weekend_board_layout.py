@@ -123,3 +123,31 @@ def test_law_lists_number_each_law_and_long_example_titles_are_cut():
 
 def test_board_picks_side_by_side_or_stacked_by_text_size():
     assert "var two=laid(true),one=laid(false);if(two>=one)laid(true)" in BOARD_JS
+    assert "window.blRefit=function(){fitText(body)}" in BOARD_JS and "window.blRefit()" in BOARD_LAYOUT_JS
+
+
+CASE4 = "例题1 | 省略乘号\n写出下面各式的结果：5×m＝（　　）　a×1＝（　　）　b×7.8＝（　　）\n参考答案：5m；a；7.8b"
+
+NODE4 = r'''
+var window={};
+function el(tag,attrs,...kids){const n={tag,attrs:attrs||{},children:[],style:{},appendChild(c){if(c)this.children.push(c);return c}};
+  if(attrs&&attrs.style)attrs.style.split(';').forEach(d=>{const [k,v]=d.split(':');if(k==='display')n.style.display=v});kids.forEach(k=>n.appendChild(k));return n}
+function all(n){return [n,...n.children.flatMap(all)]}
+''' + BOARD_LAYOUT_JS + r'''
+function paint(){const body=el('div');boardLayout(body,[TEXT],true);return all(body)}
+let nodes=paint();const answer=()=>nodes.find(n=>n.attrs.text&&n.attrs.text.startsWith('参考答案'));const btn=()=>nodes.find(n=>n.tag==='button');
+const before={hidden:answer().style.display==='none',label:btn().attrs.text};
+btn().attrs.onclick();const clicked={hidden:answer().style.display==='none'};
+nodes=paint();const repaint={hidden:answer().style.display==='none',label:btn().attrs.text};
+console.log(JSON.stringify({before,clicked,repaint}));
+'''
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_answers_stay_covered_until_the_teacher_shows_them():
+    out = subprocess.run(["node", "-e", f"const TEXT={json.dumps(CASE4, ensure_ascii=False)};" + NODE4], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    r = json.loads(out.stdout)
+    assert r["before"] == {"hidden": True, "label": "显示答案"}
+    assert r["clicked"] == {"hidden": False}
+    assert r["repaint"] == {"hidden": False, "label": "隐藏答案"}        # the 3-second refresh keeps it open
