@@ -267,7 +267,15 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             kind = str(data.get("template") or "") if isinstance(data, dict) else ""
             if kind not in cw.TEMPLATES[lesson.subject] or (kind == "reading" and not (lesson.reading_plan or "").strip()):
                 raise ValueError("没有选择可用的模板")
-            params = cw.clean(kind, data, lesson.reading_plan or "")
+            notice = ""
+            try:
+                params = cw.clean(kind, data, lesson.reading_plan or "")
+            except ValueError as e:
+                if kind != "steps" or not data.get("figure"):
+                    raise
+                # The worked example is usable; only its figure is not: keep the page, say so, let the teacher draw it.
+                params = cw.clean(kind, {**data, "figure": {}}, lesson.reading_plan or "")
+                notice = f"AI 画的图示没有通过校验（{e}），已去掉，可在预览里手动补上"
         except ValueError as e:
             raise HTTPException(502, f"第 {(page or 0) + 1} 页：AI 生成的课件未通过校验（{e}），已有课件未改动，可重试或手动填写")
         except HTTPException as e:
@@ -275,7 +283,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         upsert(db, u, lesson, b.stageNo, page, kind, params, None, page_text)
         implementation.audit(db, u, "weekend.courseware.generate", f"lesson={lid}:stage={b.stageNo}:page={page}:kind={kind}")
         db.commit()
-        return payload(db, lesson)
+        return {**payload(db, lesson), "notice": notice}
 
     @router.put("/teacher/weekend/lessons/{lid}/courseware")
     def save(lid: int, b: SaveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):

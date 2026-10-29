@@ -8,7 +8,9 @@ reading   语文·文本依据：an excerpt of the lesson's own reading text spl
           supplementary material and a written-explanation prompt; evidence sentences and the reference
           answer stay teacher-only.
 clock     数学·钟面指针旋转：start number, direction, angle (multiple of 30°) -> the number the hand points to
-steps     通用·分步讲解：the page's own worked example revealed step by step, then the answer; fits any example
+steps     通用·分步讲解：the page's own worked example revealed step by step, then the answer; fits any example.
+          It may carry one figure drawn by the page (never an image from AI): points on a segment, a program
+          flowchart (with up to two branches), a labelled shape, or a small table.
 
 A lesson may have one courseware per slide/example page; the AI picks the best fitting template per page.
 """
@@ -158,6 +160,76 @@ def clean_clock(raw: Any) -> dict[str, Any]:
             "question": _text(raw.get("question"), 200) or "指针旋转后指向数字几？写出你的想法。", "reference": _text(raw.get("reference"), 1000)}
 
 
+FIGURE_SHAPES = {"rectangle": "长方形", "square": "正方形", "triangle": "三角形", "parallelogram": "平行四边形", "trapezoid": "梯形"}
+SHAPE_SIDES = ("top", "bottom", "left", "right", "height")
+
+
+def _boxes(raw: Any, least: int) -> list[str]:
+    boxes = [_text(b, 14) for b in (raw if isinstance(raw, list) else []) if _text(b, 14)]
+    if not least <= len(boxes) <= 7:
+        raise ValueError(f"程序图每一行需要 {least}—7 个框")
+    return boxes
+
+
+def clean_figure(raw: Any) -> dict[str, Any]:
+    """One figure for a worked example, as data only; {} when there is none."""
+    if raw in (None, {}, ""):
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("图示格式不正确")
+    kind = str(raw.get("type") or "")
+    if kind == "segment":
+        points, seen = [], set()
+        for p in raw.get("points") if isinstance(raw.get("points"), list) else []:
+            if not isinstance(p, dict):
+                raise ValueError("线段上的点需要名称和位置")
+            name = _text(p.get("name"), 3)
+            try:
+                at = float(p.get("at"))
+            except (TypeError, ValueError):
+                raise ValueError(f"点 {name or '?'} 的位置必须是数")
+            if not name or name in seen or not 0 <= at <= 1000:
+                raise ValueError("线段上的点名称不能为空或重复，位置在 0—1000 之间")
+            seen.add(name)
+            points.append({"name": name, "at": at})
+        if not 2 <= len(points) <= 8:
+            raise ValueError("线段图需要 2—8 个点")
+        points.sort(key=lambda p: p["at"])
+        if points[0]["at"] == points[-1]["at"]:
+            raise ValueError("线段图的点不能都在同一位置")
+        marks = []
+        for m in (raw.get("marks") if isinstance(raw.get("marks"), list) else [])[:6]:
+            if not isinstance(m, dict):
+                continue
+            a, b, label = _text(m.get("from"), 3), _text(m.get("to"), 3), _text(m.get("label"), 12)
+            if a not in seen or b not in seen or a == b or not label:
+                raise ValueError("线段标注需要两个已有的点和文字")
+            marks.append({"from": a, "to": b, "label": label})
+        return {"type": "segment", "points": points, "marks": marks}
+    if kind == "flow":
+        branches = []
+        for br in (raw.get("branches") if isinstance(raw.get("branches"), list) else [])[:2]:
+            if not isinstance(br, dict) or not _text(br.get("when"), 16):
+                raise ValueError("程序图的分支需要写条件")
+            branches.append({"when": _text(br.get("when"), 16), "boxes": _boxes(br.get("boxes"), 1)})
+        if len(branches) == 1:
+            raise ValueError("分支程序需要两种情况")
+        return {"type": "flow", "boxes": _boxes(raw.get("boxes"), 1 if branches else 2), "branches": branches}
+    if kind == "shape":
+        shape = str(raw.get("shape") or "")
+        if shape not in FIGURE_SHAPES:
+            raise ValueError("图形只能是长方形、正方形、三角形、平行四边形或梯形")
+        labels = raw.get("labels") if isinstance(raw.get("labels"), dict) else {}
+        return {"type": "shape", "shape": shape, "labels": {k: _text(labels.get(k), 12) for k in SHAPE_SIDES if _text(labels.get(k), 12)}}
+    if kind == "table":
+        rows = [[_text(c, 10) for c in r[:8]] for r in (raw.get("rows") if isinstance(raw.get("rows"), list) else [])[:5]
+                if isinstance(r, list) and any(_text(c, 10) for c in r)]
+        if len(rows) < 2 or len({len(r) for r in rows}) != 1 or len(rows[0]) < 2:
+            raise ValueError("表格需要至少 2 行、2 列，并且每行格数相同")
+        return {"type": "table", "rows": rows}
+    raise ValueError("图示只能是线段图、程序图、图形或表格")
+
+
 def clean_steps(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("课件参数格式不正确")
@@ -169,6 +241,7 @@ def clean_steps(raw: Any) -> dict[str, Any]:
         raise ValueError("请填写例题答案")
     return {"title": _text(raw.get("title"), 40) or "分步讲解", "steps": steps, "answer": answer,
             "problem": _text(raw.get("problem"), 600),        # the example's own question, without its answer (pupils' task)
+            "figure": clean_figure(raw.get("figure")),
             "question": _text(raw.get("question"), 200) or "写出解题过程和答案。", "reference": _text(raw.get("reference"), 1000)}
 
 
@@ -262,7 +335,14 @@ def generation_prompt(subject: str, lesson: dict[str, Any]) -> str:
         "reading": '阅读找文本依据：{"template":"reading","title":"","passage":"从本课原文原样摘取的连续段落（40—600字）","question":"",'
                    '"evidence":[作为依据的句子序号，从0开始],"material":"不超过150字的确定常识，可留空","writingPrompt":"","reference":""}',
         "steps": '分步讲解（任何例题都可用）：{"template":"steps","title":"","problem":"这一页例题的题目原文，不含答案","steps":["第1步……","第2步……"],'
-                 '"answer":"本题答案","question":"学生书面作答的要求","reference":""}；2—6 步，每步不超过60字，严格按这一页的题目和数据讲解。',
+                 '"answer":"本题答案","figure":{},"question":"学生书面作答的要求","reference":""}；2—6 步，每步不超过60字，严格按这一页的题目和数据讲解。'
+                 '题目里有线段和点、计算程序、图形或数表时，必须用 figure 画出题目给出的条件（只画已知条件，不画答案）：'
+                 '线段图 {"type":"segment","points":[{"name":"A","at":0},{"name":"C","at":3},{"name":"B","at":6}],"marks":[{"from":"A","to":"B","label":"x"}]}'
+                 '（at 是点在线段上的位置，按题意取大致比例）；'
+                 '程序图 {"type":"flow","boxes":["输入 a","÷ 0.5","+ b","输出"]}，分两种情况的程序写 {"type":"flow","boxes":["输入 n"],'
+                 '"branches":[{"when":"n 是单数","boxes":["2n + 4"]},{"when":"n 是双数","boxes":["n² + 2"]}]}；'
+                 '图形 {"type":"shape","shape":"rectangle|square|triangle|parallelogram|trapezoid","labels":{"top":"a cm","left":"b cm","height":""}}；'
+                 '数表 {"type":"table","rows":[["n","1","2","3"],["结果","6","8","10"]]}。没有这类条件时 figure 写 {}。',
     }
     text = (f"你是小学{subject}教师，为大屏上的一页例题选择一个互动课件模板并填写参数。只输出 JSON，不要 HTML、代码或 Markdown。\n"
             f"课题：{lesson['title']}\n教学目标：{lesson['coreTarget']}\n"
