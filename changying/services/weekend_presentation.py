@@ -28,7 +28,12 @@ def presentation_pages(raw: Any, *, preserve_pages: bool = False, source: str = 
     pages=[]
     for item in raw:
         if isinstance(item,dict):
-            text='\n'.join(str(item.get(k) or '').strip() for k in ('title','question','stem','text','answer') if item.get(k))
+            parts=[str(item.get(k) or '').strip() for k in ('title','question','stem','text') if item.get(k)]
+            answer=str(item.get('answer') or '').strip()
+            if answer:
+                # Labelled, so the big screen can keep it covered until the teacher shows it.
+                parts.append(answer if re.match(r'^(参考答案|答案|解答|解析)[：:]',answer) else '答案：'+answer)
+            text='\n'.join(parts)
         else:text=str(item or '').strip()
         if text:pages.append(text)
     line_deck=not preserve_pages and len(pages)>=10 and sum(len(p)<120 and '\n' not in p for p in pages)>=len(pages)*.7

@@ -25,7 +25,8 @@ def test_presentation_keeps_full_text_and_groups_fragmented_word_decks():
     imported=['旧标题'+str(i) for i in range(12)]+['学生随堂试卷','阅读文章','第一题','教师参考答案与采分点','秘密答案']
     examples='\n'.join(presentation_pages(imported,example_mode=True))
     assert '阅读文章' in examples and '第一题' in examples and '秘密答案' not in examples and '旧标题' not in examples
-    assert presentation_pages([{'title':'例题','question':'问题','answer':'解法'}])==['例题\n问题\n解法']
+    assert presentation_pages([{'title':'例题','question':'问题','answer':'解法'}])==['例题\n问题\n答案：解法']
+    assert presentation_pages([{'title':'例题','question':'问题','answer':'参考答案：5m'}])==['例题\n问题\n参考答案：5m']
 
 
 def test_class_snapshot_limits_questions_progress_grading_and_awards(tmp_path):
