@@ -189,11 +189,11 @@ function kmDrafts(n,lv,items,box){
     var right=el('select',{'aria-label':'正确答案'});opts.forEach(function(_,k){var o=el('option',{value:String(k),text:String.fromCharCode(65+k)});if(k===q.correct_index)o.selected=true;right.appendChild(o)});
     var answer=el('input',{value:q.answer||'','aria-label':'答案'});
     var exp=el('textarea',{class:'s','aria-label':'解析'});
-    exp.value=(q.verified&&q.expression?'列式：'+q.expression+'（系统已验算）\n':'')+(q.steps&&q.steps.length?'步骤：'+q.steps.join('；')+'\n':'')+(q.explanation||'');
+    exp.value=(q.verified&&q.expression?'列式：'+q.expression+'（系统已验算）\n':'')+(q.explanation||(q.steps||[]).map(function(t){return String(t).replace(/[。；;，,\s]+$/,'')}).join('；'));
     var keep=el('input',{type:'checkbox',checked:true});
     var tags=el('div',{class:'row'},kmTag(KM_TYPE_NAMES[q.question_type]||q.question_type),q.angle?kmTag('考法：'+q.angle):null,
       q.verified?kmTag('已验算','ok'):(KM.subject==='数学'&&q.question_type!=='true_false'?kmTag('答案待核对','warn'):null));
-    var card=el('div',{class:'card','data-draft':String(i)},tags,el('label',{},keep,' 保留这道题'),el('label',{},'题干 ',text));
+    var card=el('div',{class:'card km-draft','data-draft':String(i)},tags,el('label',{},keep,' 保留这道题'),el('label',{},'题干 ',text));
     if(choice){opts.forEach(function(o,k){card.appendChild(el('label',{},String.fromCharCode(65+k)+' ',o))});card.appendChild(el('label',{},'正确答案 ',right))}
     else card.appendChild(el('label',{},'答案 ',answer));
     card.appendChild(el('label',{},'解析 ',exp));
@@ -530,6 +530,8 @@ KM_WIDE_CSS = """<style>
 @media (min-width:1100px){main{max-width:1440px;padding:20px 28px}}
 @media (min-width:1600px){main{max-width:1600px;padding:22px 32px}}
 .km-grid{display:block}
+/* AI 草稿卡片：每个选项、答案、解析各占一行，不和下一个选项字母挤在一起。 */
+.km-draft>label{display:block;margin:8px 0}.km-draft>label>input:not([type=checkbox]){width:calc(100% - 2.5em);max-width:420px}
 /* 平板横屏（≥900）两列，宽屏（≥1500）三列；手机与 iPad 竖屏（768）保持单列。 */
 @media (min-width:900px){.km-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}.km-grid>.card{margin-bottom:0}}
 @media (min-width:1500px){.km-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}

@@ -406,7 +406,8 @@ def angle_brief(level: str, count: int) -> str:
     cap = angle_cap(level, count)
     rule = "每道题用不同的角度" if cap == 1 else f"同一个角度最多用 {cap} 次"
     return (f"【命题角度】每道题必须从下面的角度里选一个，并在 \"angle\" 字段写出角度名称（原样照写）；"
-            f"这一批 {count} 道题{rule}，不要多道题都是同一种考法：\n{lines}")
+            f"这一批 {count} 道题{rule}，不要多道题都是同一种考法。数据要像练习册一样好算：中间结果和答案最多两位小数"
+            f"（题目要求保留的除外）；难度来自思路，不靠繁琐的数：\n{lines}")
 
 
 def check_ai_question(item: dict[str, Any], level: str, subject: str) -> tuple[dict[str, Any] | None, str]:

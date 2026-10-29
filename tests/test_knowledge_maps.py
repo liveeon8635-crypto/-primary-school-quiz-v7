@@ -209,7 +209,7 @@ with TestClient(app) as client:
     assert r["dropped"] == {"验算不对": 1, "步骤太少（中等至少 2 步、提高至少 3 步）": 1, "数学答案没有可验算的算式": 1, "命题角度不属于这一难度": 1}
     assert {x["angle"] for x in r["items"]} == {"推断未知", "找错并改正", "计算并验算"}
     first = prompts[-2]
-    for t in ("旋转的三要素", "题干不能依赖图片", "图形的运动", '"steps"', '"expression"', "题型要多样", "中等", "【命题角度】", "每道题用不同的角度", "不计算比较", '"angle"'):
+    for t in ("旋转的三要素", "题干不能依赖图片", "图形的运动", '"steps"', '"expression"', "题型要多样", "中等", "【命题角度】", "每道题用不同的角度", "不计算比较", '"angle"', "最多两位小数"):
         assert t in first, t
 
     # The teacher keeps them; each type is saved as itself, then levelled.
@@ -238,7 +238,7 @@ with TestClient(app) as client:
     assert "已有题目（不要重复这些题" in prompts[-2] and "指针从 12 顺时针转到 6" in prompts[-2]
 
     page = client.get("/v1/knowledge-map").text
-    for t in ("kmAIGen(", "/ai',{json:{level:", "/ai/questions/save", "存入题库并分为", "混合题型（推荐）", "已验算", "答案待核对", "考法："):
+    for t in ("kmAIGen(", "/ai',{json:{level:", "/ai/questions/save", "存入题库并分为", "混合题型（推荐）", "已验算", "答案待核对", "考法：", "km-draft", ".km-draft>label{display:block"):
         assert t in page, t
 print("OK")
 '''
