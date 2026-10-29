@@ -108,7 +108,7 @@ with TestClient(app) as client:
         q1 = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=l.id, stage="lesson", subject="数学", level="C", knowledge="通分",
                                      stem="1/2+1/4=?", options_json=json.dumps(["1/6", "3/4", "2/6"]), correct_index=1, explanation="通分再加")
         q2 = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=l.id, stage="lesson", subject="数学", level="C", knowledge="通分",
-                                     stem="1/3+1/3=?", options_json=json.dumps(["2/3", "2/6"]), correct_index=0, explanation="同分母")
+                                     stem="1/3+1/3=?", options_json=json.dumps(["A．2/3", "B．2/6"]), correct_index=0, explanation="同分母")
         db.add_all([q1, q2]); db.commit(); lid, a, b = l.id, q1.id, q2.id
         teacher_id = db.scalar(select(legacy.User.id).where(legacy.User.username == "teacher1"))
         cls = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id))

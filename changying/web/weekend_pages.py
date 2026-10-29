@@ -250,7 +250,8 @@ BOARD_LAYOUT_JS = r"""
 var BL_HEAD=/^(考点|知识点|重点|难点|方法|规律|结论)[一二三四五六七八九十0-9]*\s*[：:、．.\s]/;
 var BL_EXAMPLE=/^(示例|例题|例\s*[0-9一二三四五六七八九十]|练一练|试一试|做一做|想一想)/;
 var BL_WARN=/^(易错|注意|提醒|易混|误区)[点：:\s]/;
-var BL_ANSWER=/^(参考答案|答案|解答|解析|答)\s*[：:]/,BL_SHOWN={};
+var BL_ANSWER=/^((参考答案|答案|解答)([／\/][^：:]{1,6})?|答)\s*[：:]/,BL_SHOWN={},BL_COVER=true;     // cover answers only while explaining (stages 2-3)
+var BL_QUESTION=/^(选择题|判断题|填空题|计算题|文字／照片题|第\s*[0-9一二三四五六七八九十]+\s*题)/;
 var BL_BLANK=/[（(][\s　_＿]*[）)]|_{2,}|＿{2,}/;
 function blMath(t){return /[=＝×÷+＋−\-<>＜＞]/.test(t)&&/[0-9a-zA-Z²³]/.test(t)}
 function blParse(texts){
@@ -300,6 +301,7 @@ function blLine(line,number){
   var k=line.search(/[：:]/),row=el('div',{style:'display:flex;gap:.5em;align-items:baseline;margin:.3em 0'});
   if(number)row.appendChild(el('span',{style:'flex:none;background:#fbbf24;color:#0f172a;border-radius:50%;width:1.35em;height:1.35em;line-height:1.35em;text-align:center;font-weight:800;font-size:.8em',text:String(number)}));
   var body=el('span',{});row.appendChild(body);
+  if(BL_QUESTION.test(line))k=-1;                      // "选择题 1：…" is a question, not a rule with an example
   var eg=k>0?line.slice(k+1).trim():'',steps=eg.split(/[；;]/).map(function(x){return x.trim()}).filter(Boolean);
   if(k>0&&k<20&&eg.length>30&&steps.length>=3){
     // "四步走：写式子；把字母换成数…；…" -> the steps one under another, in white; only short examples are blue.
@@ -322,6 +324,7 @@ function blExampleLine(box,line){
   });
 }
 function blAnswer(line,dark){
+  if(!BL_COVER)return el('div',{style:'font-weight:700;margin:.4em 0;color:'+(dark?'#86efac':'#15803d'),text:line});
   // Covered until the teacher clicks; stays open across the 3-second refresh (kept per answer text).
   var box=el('div',{style:'margin:.4em 0'}),shown=!!BL_SHOWN[line];
   var text=el('div',{style:'font-weight:700;color:'+(dark?'#86efac':'#15803d')+(shown?'':';display:none'),text:line});
@@ -338,7 +341,7 @@ function boardLayout(body,texts,wide){
       // "加法交换律：a＋b＝b＋a；加法结合律：…；…" -> one numbered rule per law.
       b.lines.forEach(function(l){var parts=l.split(/[；;]/).map(function(x){return x.trim()}).filter(Boolean);
         if(parts.length>=2&&parts.every(function(x){var k=x.search(/[：:]/);return k>0&&k<=12&&blMath(x.slice(k+1))}))lines=lines.concat(parts);else lines.push(l)});
-      lines.forEach(function(l){if(BL_ANSWER.test(l)){card.appendChild(blAnswer(l,true));return}var rule=!BL_WARN.test(l)&&l.search(/[：:]/)>0&&blMath(l.slice(l.search(/[：:]/)+1));card.appendChild(blLine(l,rule?++n:0))});
+      lines.forEach(function(l){if(BL_ANSWER.test(l)){card.appendChild(blAnswer(l,true));return}var rule=!BL_WARN.test(l)&&!BL_QUESTION.test(l)&&l.search(/[：:]/)>0&&blMath(l.slice(l.search(/[：:]/)+1));card.appendChild(blLine(l,rule?++n:0))});
       know.push(card);
     }else if(b.kind==='example'){
       var ex=el('div',{style:'background:#e0f2fe;color:#0f172a;border-radius:.5em;padding:.5em .8em;margin:0 0 .6em'},el('div',{style:'color:#0369a1;font-weight:800;font-size:1.05em;margin-bottom:.2em',text:b.title}));
@@ -384,6 +387,7 @@ function board(){
     wrap.appendChild(el('div',{style:'font-size:3vh;opacity:.8;margin:1vh 0 3vh',text:d.goal}));
     if(d.deck)wrap.appendChild(el('div',{style:'opacity:.6;font-size:2.4vh',text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}));
     var body=el('div',{style:'flex:1;min-height:0;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45'});wrap.appendChild(body);
+    BL_COVER=d.currentStage===2||d.currentStage===3;   // practice answers appear only once the teacher has released them
     if(d.courseware){
       // The page's own content stays on screen; the courseware for this page is shown below it.
       body.style.overflow='auto';var top=el('div',{style:'font-size:2.6vh'});body.appendChild(top);boardLayout(top,d.content,false);
@@ -406,6 +410,7 @@ boot(board);
 
 PRACTICE_JS = r"""
 var LETTERS='ABCDEFGH',wait=null;
+function optText(i,o){return LETTERS[i]+'. '+String(o).replace(/^\s*[A-Da-d]\s*[．.、:：)）]\s*/,'')}   // imported options may carry their own letter
 function invitationCard(q){
   var card=el('div',{class:'card'}),stem=String(q.stem||''),cut=stem.lastIndexOf('\n\n');
   card.appendChild(el('h2',{text:'老师请你给大家讲这道题'}));
@@ -417,7 +422,7 @@ function invitationCard(q){
     card.appendChild(el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere',text:'你提交的答案：'+(q.answerText||'见答案照片')}));
     writtenPhoto(card,q.submission);
     if(q.reference)card.appendChild(folded('已公布参考答案与评分要点（展开查看）',q.reference));
-  }else card.appendChild(el('div',{class:'muted',text:'正确答案：'+LETTERS[q.correctIndex]+'. '+(q.options[q.correctIndex]||'')}));
+  }else card.appendChild(el('div',{class:'muted',text:'正确答案：'+optText(q.correctIndex,q.options[q.correctIndex]||'')}));
   if(q.explanation)card.appendChild(folded('解析（展开查看）',q.explanation));
   card.appendChild(el('p',{class:'muted',text:'用自己的话讲清思路、依据和容易出错的地方。'}));
   return card;
@@ -451,7 +456,7 @@ function practice(){
       card.appendChild(el('b',{text:(qi+1)+'. '+q.stem}));
       var selectionKey=d.sessionId+':'+q.id,chosen=selectedAnswers[selectionKey]==null?(q.answered?q.selected:-1):selectedAnswers[selectionKey],opts=el('div');
       q.options.forEach(function(o,i){
-        var b=el('button',{style:'display:block;width:100%;text-align:left;margin:6px 0',text:LETTERS[i]+'. '+o});
+        var b=el('button',{style:'display:block;width:100%;text-align:left;margin:6px 0',text:optText(i,o)});
         if(locked){
           if(i===q.selected)b.className='on';
           b.disabled=true;
@@ -498,7 +503,7 @@ function practice(){
       if(sid!==currentSession||(currentStage!==4&&currentStage!==5))return;fbox.textContent='';if(!f.active||f.sessionId!==sid)return;
       var card=el('div',{class:'card'}),chosen=-1,out=el('div'),opts=el('div');
       card.appendChild(el('h2',{text:'巩固小题：刚讲过的方法，再试一道'}));card.appendChild(el('b',{text:f.stem}));
-      f.options.forEach(function(o,i){opts.appendChild(el('button',{style:'display:block;width:100%;text-align:left;margin:6px 0',text:LETTERS[i]+'. '+o,onclick:function(){chosen=i;Array.prototype.forEach.call(opts.children,function(x,j){x.className=j===i?'on':''})}}))});
+      f.options.forEach(function(o,i){opts.appendChild(el('button',{style:'display:block;width:100%;text-align:left;margin:6px 0',text:optText(i,o),onclick:function(){chosen=i;Array.prototype.forEach.call(opts.children,function(x,j){x.className=j===i?'on':''})}}))});
       card.appendChild(opts);
       var sub=el('button',{class:'primary',text:'提交',onclick:function(){
         if(chosen<0){alert('先选一个答案');return}sub.disabled=true;
