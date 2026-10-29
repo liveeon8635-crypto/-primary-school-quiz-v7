@@ -356,5 +356,57 @@ def pick_diagnosis(m: dict[str, Any], usable: set[int], attempted: set[int], see
     return picked[:size]
 
 
+# ---------------------------------------------------------------- AI drafts for a point
+AI_MIN_STEPS = {"basic": 1, "medium": 2, "hard": 3}
+AI_TYPE_LABELS = {"single_choice": "选择", "true_false": "判断", "fill_blank": "填空", "calculation": "计算", "short_answer": "解决问题"}
+
+
+def check_ai_question(item: dict[str, Any], level: str, subject: str) -> tuple[dict[str, Any] | None, str]:
+    """Keep an AI draft only when it is as hard as its level says and, in maths, its answer adds up.
+
+    Steps: 中等 needs 2, 提高 3 (the prompt asks for them; a draft without them is a recall question in disguise).
+    A numeric maths answer is recomputed from the draft's expression; a wrong one is dropped. Fill-in, calculation and
+    problem-solving drafts above 基础 must carry an expression; the rest without one are kept, marked as unchecked.
+    """
+    from changying.services import weekend_question_gen as qg
+
+    out = dict(item)
+    qtype = str(out.get("question_type") or "")
+    steps = [s for s in out.get("steps") or [] if str(s).strip()]
+    if len(steps) < AI_MIN_STEPS.get(level, 1):
+        return None, "步骤太少（中等至少 2 步、提高至少 3 步）"
+    if qtype == "single_choice" and len({str(o).strip() for o in out.get("options") or []}) != 4:
+        return None, "选项有重复"
+    out["verified"] = False
+    if "数学" not in str(subject or "") or qtype == "true_false":
+        return out, ""
+    answer = out["options"][out["correct_index"]] if qtype == "single_choice" else out.get("answer", "")
+    target = qg.number(answer)
+    if target is None:
+        return out, ""
+    value = qg.evaluate(out.get("expression"))
+    if value is None:
+        if qtype != "single_choice" and level != "basic":
+            return None, "数学答案没有可验算的算式"
+        return out, ""
+    if not qg.agrees(value, target, str(out.get("text") or ""), str(answer)):
+        return None, "验算不对"
+    out["verified"] = True
+    return out, ""
+
+
+def pick_ai_drafts(items: list[dict[str, Any]], count: int) -> list[dict[str, Any]]:
+    """Up to ``count`` drafts, taking the question types in turn so one type cannot fill the set; checked ones first."""
+    by_type: dict[str, list[dict[str, Any]]] = {}
+    for it in sorted(items, key=lambda x: not x.get("verified")):
+        by_type.setdefault(str(it.get("question_type")), []).append(it)
+    out: list[dict[str, Any]] = []
+    while len(out) < count and any(by_type.values()):
+        for t in list(by_type):
+            if by_type[t] and len(out) < count:
+                out.append(by_type[t].pop(0))
+    return out
+
+
 __all__ = ["AGREEMENT_TARGET", "SHOWN_FIGURES", "CONFIDENCE_LABELS", "DIAGNOSIS_MIN", "LEVELS", "MASTERY_LABELS", "NODE_KINDS", "TEMPLATES", "UNIT_KINDS", "assessed", "clean_map", "coverage", "dependents", "first_attempts", "mastery_view", "node_mastery",
-           "pick_diagnosis", "restore_unit", "summary", "template"]
+           "pick_diagnosis", "restore_unit", "summary", "template", "AI_MIN_STEPS", "AI_TYPE_LABELS", "check_ai_question", "pick_ai_drafts"]

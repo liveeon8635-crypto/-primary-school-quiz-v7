@@ -207,6 +207,9 @@ def clean_rich_question_rows(
             "reference_answer": "",
             "scoring_points": [],
             "figure": {},
+            # Carried through for callers that check them (the knowledge map verifies maths answers and step counts).
+            "steps": _clean_list(raw.get("steps"), 8),
+            "expression": str(raw.get("expression") or "").strip()[:200],
         }
         figure = raw.get("figure") or {}
         if "数学" in subject and isinstance(figure, dict):
@@ -375,6 +378,10 @@ def _rich_generate_call(implementation: ModuleType):
                 f"每题至少体现 {operands} 个有效数量/条件，解题过程至少 {steps} 个有意义步骤；{detail}。"
                 "中等及以上必须给出具体数值并要求算出结果，不得只问概念、定义或“用什么方法”。"
                 "不得仅通过放大数字、增加小数位或更换人名来伪装难度。"
+            )
+            difficulty_lines.append(
+                '每题都要额外给 "steps"（解题步骤数组，每步一句）和 "expression"（只用数字和 + - × ÷ ( ) 写出算出答案的算式；'
+                '选择题写算出正确选项的算式；答案不是数时写空字符串），系统会用算式验算答案。'
             )
         difficulty_lines += [
             "「下列说法正确的是」「可以用……表示的是」「下面算法和结果都正确的是」这类只考记忆和辨认的题干，只有「基础」难度允许；中等及以上一律禁止，必须让学生动笔算或推理。",

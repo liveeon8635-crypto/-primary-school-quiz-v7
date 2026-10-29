@@ -21,7 +21,7 @@ with TestClient(app) as client:
     assert page.status_code == 200, page.status_code
     body = page.text
     assert "参考资料（可选）" in body
-    assert "resource_ids:refIds" in body
+    assert "resourceIds:refIds" in body
     assert "/teaching/resources?grade=" in body
     # 宽屏适配：共用 980px 容器在桌面上会挤成窄栏；平板横屏起两列、宽屏三列
     assert "max-width:1440px" in body

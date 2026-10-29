@@ -89,6 +89,16 @@ class VisualSaveBody(BaseModel):
     questions: list[dict[str, Any]] = Field(min_length=1, max_length=8)
 
 
+class AIDraftBody(BaseModel):
+    level: str = Field(max_length=10)
+    count: int = Field(default=6, ge=2, le=10)
+    questionType: str = Field(default="mixed", max_length=20)
+    resourceIds: list[int] = Field(default_factory=list, max_length=20)
+
+
+AI_REQUEST_TYPES = ("mixed", "single_choice", "true_false", "fill_blank", "calculation", "short_answer")
+
+
 class ReinforceBody(BaseModel):
     nodeKey: str = Field(max_length=12)
     studentIds: list[int] = Field(max_length=60)
@@ -299,6 +309,44 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         if node is None or key not in vq.NODE_KINDS:
             raise HTTPException(404, "这个知识点暂时没有系统画图题")
         return row, node
+
+    @router.post("/teacher/knowledge-maps/{mid}/nodes/{key}/ai")
+    def ai_drafts(mid: int, key: str, b: AIDraftBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """AI drafts for one point: mixed types by default, then checked here (steps for the level, maths answers
+        recomputed) so that only drafts as hard as their level, with answers that add up, reach the teacher."""
+        teacher(u)
+        row = my_map(db, u, mid)
+        m = json.loads(row.map_json)
+        node = next((n for n in m["nodes"] if n["key"] == key), None)
+        if node is None or node["kind"] == "display":
+            raise HTTPException(404, "这个知识点不出题")
+        if b.level not in km.LEVELS:
+            raise HTTPException(400, "难度档只能是基础、中等或提高")
+        if b.questionType not in AI_REQUEST_TYPES or (b.questionType in ("calculation", "short_answer") and "数学" not in row.subject):
+            raise HTTPException(400, "题型不对")
+        unit = next((x for x in m["units"] if x["key"] == node["unit"]), {"name": ""})
+        body = implementation.AIQuestionGenerateBody(
+            # The map says e.g. "人教版 2026"; the textbook registry knows the publisher line ("人教版").
+            grade=row.grade, subject=row.subject, textbook="人教版" if "人教" in row.textbook else row.textbook, semester=row.term, unit=unit["name"],
+            knowledge=(node["bankKeys"] or [node["name"]])[0], difficulty=km.LEVELS[b.level],
+            count=min(b.count + 3, 20),                                   # some will not pass the checks below
+            question_type=b.questionType, resource_ids=b.resourceIds,
+            notes=f"知识点：{node['name']}。说明：{node.get('detail') or node['name']}。题目只考这一个知识点；题干不能依赖图片，"
+                  "涉及图形、方向、方格位置时用文字说清楚。" + ("题型要多样，不要全是选择题。" if b.questionType == "mixed" else ""))
+        route = next(r for r in implementation.app.routes if getattr(r, "path", "") == "/ai/questions/generate" and "POST" in getattr(r, "methods", ()))
+        got = route.dependant.call(b=body, u=u, db=db)
+        kept, dropped = [], {}
+        for item in got.get("items") or []:
+            ok, why = km.check_ai_question(item, b.level, row.subject)
+            if ok is None:
+                dropped[why] = dropped.get(why, 0) + 1
+            else:
+                kept.append(ok)
+        items = km.pick_ai_drafts(kept, b.count)
+        if not items:
+            raise HTTPException(502, "AI 这次出的题都没通过检查（" + "、".join(f"{k} {v} 道" for k, v in dropped.items()) + "），请再试一次")
+        return {"items": items, "dropped": dropped, "short": b.count - len(items), "level": b.level,
+                "notice": got.get("notice", ""), "verified": sum(1 for x in items if x["verified"])}
 
     @router.post("/teacher/knowledge-maps/{mid}/nodes/{key}/visual")
     def visual_drafts(mid: int, key: str, b: VisualBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
