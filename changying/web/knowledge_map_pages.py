@@ -21,6 +21,8 @@ function kmTag(text,cls){return el('span',{class:'tag'+(cls?' '+cls:''),text:tex
 function kmCoverage(n){
   if(n.kind==='display')return kmTag('只展示，不出题');
   var c=n.coverage.counts,t=KM.levels;
+  // 一道题都没有时只显示一个灰标，不列三个 0（一屏几十条橙色太吵）。
+  if(!c.basic&&!c.medium&&!c.hard)return kmTag('未配题');
   return kmTag(t.basic+' '+c.basic+' · '+t.medium+' '+c.medium+' · '+t.hard+' '+c.hard+'（共 '+n.coverage.total+'）',n.coverage.ready?'ok':'warn');
 }
 function kmEditForm(n,box){
@@ -253,16 +255,29 @@ function kmLabel(key){var n=kmNode(KM.map,key);return n?key+' '+n.name:key}
 function kmUnit(u){
   var nodes=KM.map.nodes.filter(function(n){return n.unit===u.key});
   var name=el('input',{value:u.name,maxlength:'40','aria-label':'单元名称'});
-  var card=el('section',{class:'card','data-unit':u.key,id:'unit-'+u.key},
-    el('div',{class:'row'},el('h3',{text:u.key}),name,kmTag(KM.unitKinds[u.kind]),
+  var add=el('div');
+  // 单元默认只显示标题：编辑控件收起来，避免浏览时误改。
+  var editBox=el('div',{class:'km-unit-edit'},
+    el('div',{class:'row'},name,kmTag(KM.unitKinds[u.kind]),
       el('label',{},el('input',{type:'checkbox',checked:!!u.learned,onchange:function(e){var on=e.target.checked;kmSave(function(m){m.units.forEach(function(x){if(x.key===u.key)x.learned=on})})}}),' 已学'),
       el('button',{class:'btn',text:'保存名称',onclick:function(){kmSave(function(m){m.units.forEach(function(x){if(x.key===u.key)x.name=name.value})})}}),
-      el('button',{class:'btn',text:'添加知识点',onclick:function(){kmAddForm(u,nodes,add)}}),
+      el('button',{class:'btn',text:'添加知识点',onclick:function(){kmAddForm(u,nodes,add)}})),
+    el('div',{class:'row'},
       el('button',{class:'btn',text:'按模板恢复本单元知识点',onclick:function(){
         if(!confirm('把模板里这个单元缺少的知识点补回来（连同前置关系）。已有的知识点、修改和分档都不会动。继续？'))return;
         api('/teacher/knowledge-maps/'+KM.id+'/units/'+encodeURIComponent(u.key)+'/restore',{json:{revision:KM.revision}})
           .then(function(d){KM=d;kmSay('已恢复：'+d.restored.join('、'));kmRender()}).catch(function(e){kmSay(e.message,true)})}})));
-  var add=el('div');card.appendChild(add);
+  editBox.hidden=true;
+  var editBtn=el('button',{class:'btn',text:'编辑',onclick:function(){
+    var open=editBox.hidden;editBox.hidden=!open;editBtn.textContent=open?'收起':'编辑';
+  }});
+  var card=el('section',{class:'card','data-unit':u.key,id:'unit-'+u.key},
+    el('div',{class:'row km-unit-h'},
+      el('h3',{text:u.key+'  '+u.name}),
+      el('span',{class:'muted',text:nodes.length+' 个知识点'}),
+      editBtn),
+    editBox);
+  card.appendChild(add);
   nodes.forEach(function(n){card.appendChild(kmNodeRow(n,u))});
   if(!nodes.length)card.appendChild(el('p',{class:'muted',text:'这个单元还没有知识点：可以点“按模板恢复本单元知识点”，或“添加知识点”。'}));
   return card;
@@ -306,6 +321,18 @@ function kmRender(){
     nav.appendChild(el('a',{href:'#unit-'+u.key,title:u.name,text:u.key+' · '+u.name+'（'+count+'）'}));
   });
   KMBOX.appendChild(el('div',{class:'km-layout'},nav,grid));
+  // 滚动到哪个单元，左侧导航就高亮哪一项（Safari 12 没有 IntersectionObserver 时静默跳过）。
+  if(window.IntersectionObserver){
+    var links=[].slice.call(nav.querySelectorAll('a'));
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(!e.isIntersecting)return;
+        var target='#unit-'+e.target.getAttribute('data-unit');
+        links.forEach(function(a){a.classList.toggle('on',a.getAttribute('href')===target)});
+      });
+    },{rootMargin:'-45% 0px -50% 0px'});
+    KM.map.units.forEach(function(u){var s=document.getElementById('unit-'+u.key);if(s)io.observe(s)});
+  }
 }
 var KM_LEVEL_TAG={weak:'warn',pass:'',fluent:'ok'};
 function kmMasteryTag(x,labels){
@@ -549,6 +576,11 @@ KM_WIDE_CSS = """<style>
 section.card[data-unit] .card{border:0;border-top:1px solid #e3e8f2;border-radius:0;box-shadow:none;margin:0;padding:14px 0 12px}
 section.card[data-unit] .card:first-of-type{border-top:0;padding-top:6px}
 section.card[data-unit] .card h4{margin:0 0 4px;font-size:16px}
+/* 单元标题行：默认只读，编辑控件收进 .km-unit-edit。 */
+.km-unit-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.km-unit-h h3{margin:0;font-size:18px;flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.km-unit-edit{padding:8px 0 4px}
+.km-unit-edit[hidden]{display:none}
 /* 知识点默认只占一行，点开才展开详情与操作。 */
 section.card[data-unit] .km-node{padding:0}
 .km-node-h{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;padding:12px 2px;font:inherit;text-align:left;cursor:pointer}
@@ -573,6 +605,7 @@ section.card[data-unit] .km-node{padding:0}
   .km-nav-t{font-size:12.5px;font-weight:700;color:#667085;letter-spacing:.08em;padding:6px 10px}
   .km-nav a{display:block;padding:7px 10px;border-radius:8px;color:#1c2333;text-decoration:none;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .km-nav a:hover{background:#eef2fa}
+  .km-nav a.on{background:#e8f0ff;color:#1f6feb;font-weight:700}
 }
 </style>"""
 
