@@ -93,10 +93,11 @@ with TestClient(app) as client:
     assert client.get(base+'/written',headers=th).json()['questions'][0]['reference']=='教师专用评分秘密'
     # AI question generation uses actual imported reading material and accepts
     # written-only results without requiring any multiple choice.
-    replies.append(json.dumps({'writtenQuestions':[{'type':'short_answer','material':'新的阅读材料','stem':'概括文章','reference':'评分要点'}]},ensure_ascii=False))
+    replies.append(json.dumps({'items':[{'type':'short_answer','level':'中等','stem':'用自己的话概括这篇文章讲了什么。','answer':'评分要点','steps':['找人物','找事件']}]},ensure_ascii=False))
+    replies.append(json.dumps({'items':[]}))
     r=client.post('/teacher/weekend/lessons/draft',headers=th,json={'subject':'语文','lessonNo':17,'onlyQuestions':True})
     assert r.status_code==200,r.text
-    assert '神泉与金鹿' in prompts[-1] and '不能全部改成选择题' in prompts[-1]
+    assert '神泉与金鹿' in prompts[-2] and '写作／复述' in prompts[-2] and '提高' in prompts[-2]
     assert client.get(f'/teacher/weekend/lessons/{lid}',headers=th).json()==full
     assert len(client.get(url,headers=th).json()['items'])==9  # 8 approved originals + new draft
     # Approval/delete IDs cannot reach a different lesson or session snapshot.

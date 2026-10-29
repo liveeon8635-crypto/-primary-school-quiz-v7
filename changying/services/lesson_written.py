@@ -101,7 +101,7 @@ def replace_written_drafts(db: Any, table: Any, school_id: int, teacher_id: int,
         if q['stem'] in approved_stems:
             continue
         db.execute(insert(table).values(school_id=school_id, teacher_id=teacher_id, lesson_id=lesson_id, session_id=0,
-            stem=q['stem'], reference=q['reference'], hints_json=json.dumps({'approved': False, 'type': q['type'], 'hints': q['hints']}, ensure_ascii=False)))
+            stem=q['stem'], reference=q['reference'], hints_json=json.dumps({**q.get('extra', {}), 'approved': False, 'type': q['type'], 'hints': q['hints']}, ensure_ascii=False)))
 
 
 def snapshot_written_questions(db: Any, table: Any, school_id: int, teacher_id: int, lesson_id: int, session_id: int) -> None:

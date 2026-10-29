@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, UniqueConstraint, delete, func, insert, select, update
 
 from changying.services import lesson_markdown
+from changying.services import weekend_question_gen as qg
 from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUPPORTED, detect_lesson_no, extract
 from changying.web.weekend_pages import plan_page_html
 from changying.services.lesson_written import (literal_written_questions, valid_written_questions,
@@ -120,7 +121,11 @@ class DraftBody(BaseModel):
     subject: str
     lessonNo: int
     force: bool = False
-    onlyQuestions: bool = False      # keep the existing plan, only add draft questions
+    onlyQuestions: bool = False      # keep the existing plan, only (re)generate draft questions (12, by quota)
+
+
+class GenerateBody(BaseModel):
+    count: int = 12
 
 
 class LessonEditBody(BaseModel):
@@ -367,6 +372,90 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             out.append({"lessonNo": i, "schoolWeek": week if week and 1 <= week <= 30 else None, "schoolUnit": str(r.get("schoolUnit") or "")[:120]})
         return {"rows": out, "message": "这是 AI 的识别结果，请核对、修改后再保存。"}
 
+    def lesson_context(lesson: Any) -> dict[str, Any]:
+        content = [str(lesson.teacher_plan or "")[:800]] + _lines(lesson.ppt_json)[:9] + _lines(lesson.examples_json)[:4]
+        return {"title": lesson.title, "core_target": lesson.core_target, "content": "\n".join(x for x in content if x),
+                "material": (lesson.reading_plan or "") if lesson.subject == "语文" else ""}
+
+    def style_examples(db: Any, u: Any, lesson: Any) -> list[str]:
+        """The school's approved weekend questions of the same subject, hardest first: style and difficulty reference."""
+        rows = db.scalars(select(TQ).where(TQ.school_id == u.school_id, TQ.subject == lesson.subject, TQ.active.is_(True),
+                                          TQ.stage != REMOVED_STAGE, TQ.lesson_id != lesson.id).order_by(TQ.level, TQ.id.desc()).limit(4)).all()
+        out = []
+        for q in rows:
+            try:
+                opts = json.loads(q.options_json or "[]")
+                ans = opts[q.correct_index]
+            except Exception:  # noqa: BLE001
+                continue
+            out.append(f"（{qg.CODE_LEVEL.get(q.level, '中等')}）{q.stem[:120]}｜答案：{str(ans)[:30]}")
+        return out[:3]
+
+    def existing_stems(db: Any, u: Any, lesson: Any) -> list[str]:
+        """Approved questions of the lesson: new drafts must not repeat them."""
+        stems = [q.stem for q in db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(True)))]
+        stems += [q.stem.split("\n")[-1] for q in written_templates(db, written, u.school_id, u.id, lesson.id) if template_meta(q).get("approved")]
+        return stems
+
+    def generate_questions(db: Any, u: Any, lesson: Any, count: int) -> dict[str, Any]:
+        """Questions only, to type and difficulty quotas; maths answers verified; one follow-up asks for what is missing."""
+        if count not in qg.COUNTS:
+            raise HTTPException(400, "题量只能是 " + "、".join(str(c) for c in qg.COUNTS) + " 道")
+        p = program(db, int(u.school_id))
+        textbook = p.math_textbook if lesson.subject == "数学" else p.chinese_textbook
+        want = qg.quotas(lesson.subject, count)
+        ctx, examples, have = lesson_context(lesson), style_examples(db, u, lesson), existing_stems(db, u, lesson)
+        weak = [w["knowledge"] for w in weak_knowledge(db, u, lesson.subject)]
+        kept: list[dict[str, Any]] = []
+        dropped: dict[str, int] = {}
+        for attempt in range(2):
+            need_now = qg.missing(want, kept) if kept else want
+            if not sum(need_now["types"].values()):
+                break
+            text = qg.prompt(lesson.subject, p.grade, textbook, ctx, need_now, examples, weak, have + [q["stem"] for q in kept])
+            try:
+                data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, text, timeout=90 if attempt == 0 else 60))
+            except HTTPException:
+                if attempt == 0:
+                    raise
+                break                                   # the follow-up is a bonus: keep what the first round gave
+            rows = data.get("items") if isinstance(data, dict) else None
+            checked = []
+            for row in rows if isinstance(rows, list) else []:
+                q, why = qg.check(row, lesson.subject)
+                if q is None:
+                    dropped[why] = dropped.get(why, 0) + 1
+                else:
+                    checked.append(q)
+            kept += qg.select(checked, need_now, have + [q["stem"] for q in kept])
+        if not kept:
+            raise HTTPException(502, "AI 这次出的题都没通过检查（" + "、".join(f"{k} {v} 道" for k, v in dropped.items()) + "），请再试一次")
+        db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False)))
+        for q in kept:
+            if q["type"] == "choice":
+                note = f"验算：{q['expression']}。" if q.get("expression") else ""
+                db.add(TQ(school_id=u.school_id, program_id=lesson.program_id, lesson_id=lesson.id, stage="lesson", subject=lesson.subject,
+                          level=qg.LEVEL_CODE[q["level"]], knowledge=q["knowledge"], stem=q["stem"][:300],
+                          options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["correctIndex"],
+                          explanation=(note + q["explanation"])[:600], active=False))
+        replace_written_drafts(db, written, u.school_id, u.id, lesson.id,
+                               [{"stem": q["stem"], "reference": qg.reference_text(q), "hints": q["hints"], "type": q["type"],
+                                 "extra": {"level": q["level"], "verified": q["verified"]}} for q in kept if q["type"] != "choice"])
+        db.commit()
+        left = qg.missing(want, kept)
+        count_of = lambda key, part: {k: sum(1 for q in kept if q[key] == k) for k in want[part]}  # noqa: E731
+        return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "count": len(kept), "wanted": count,
+                "byType": count_of("type", "types"), "byLevel": count_of("level", "levels"),
+                "verified": sum(1 for q in kept if q["verified"]), "dropped": dropped, "short": sum(left["types"].values())}
+
+    @router.post("/teacher/weekend/lessons/{lid}/questions/generate")
+    def generate(lid: int, b: GenerateBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        lesson = my_lesson(db, u, lid)
+        if not has_real_plan(lesson):
+            raise HTTPException(409, "这节课还没有教案，请先导入教案或用 AI 写教案")
+        return generate_questions(db, u, lesson, b.count)
+
     @router.post("/teacher/weekend/lessons/draft")
     def draft(b: DraftBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
@@ -377,7 +466,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == b.subject, Lesson.lesson_no == b.lessonNo))
         if b.onlyQuestions and lesson is None:
             raise HTTPException(404, "这节课还没有教案，请先用 AI 备课草稿")
-        if lesson is not None and not b.onlyQuestions and not b.force and has_real_plan(lesson):
+        if b.onlyQuestions:
+            return generate_questions(db, u, lesson, 12)
+        if lesson is not None and not b.force and has_real_plan(lesson):
             raise HTTPException(409, "这节课已经有教案了。要让 AI 重写请选择覆盖。")
         row = db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == b.subject, sched.c.lesson_no == b.lessonNo)).first()
         weak = weak_knowledge(db, u, b.subject)
@@ -386,31 +477,22 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             f"你是小学{p.grade}年级{b.subject}周末补课老师（{textbook}），一次课 2 小时、约 3 名学生、基础参差不齐。请为第 {b.lessonNo} 次课写备课草稿。\n"
             f"学校本周进度：{(row.school_unit if row and row.school_unit else '未提供')}（学校第 {row.school_week if row and row.school_week else '?'} 周）。\n"
             f"班里近期错得最多的知识点：{'、'.join(w['knowledge'] for w in weak) or '暂无'}。\n"
-            + (f"这节课已有教案：课题《{lesson.title}》，目标：{lesson.core_target}。\n原教案与阅读材料：{lesson.reading_plan or lesson.teacher_plan}\n请只出习题，其余字段可留空。\n" if b.onlyQuestions and lesson is not None else "") +
-            "要求：知识点讲解由浅入深，例题 2-3 道，随堂习题按教学内容选择题型：选择、填最终答案、阅读简答、扩写/缩写与作文。语文阅读必须有基于所给文章的简答或写作题，不能全部改成选择题；数学应含计算或过程题。选择题放questions，非选择题放writtenQuestions，合计4-6道，内容不超纲。"
+            "要求：知识点讲解由浅入深，例题 2-3 道，内容不超纲。随堂习题不在这里出：教案保存后会单独按题型和难度出一整套。"
             '只输出 JSON：{"title":"课题","coreTarget":"本节目标","teacherPlan":"教学流程(200字内)","ppt":["完整讲解页：标题＋方法步骤＋示例，每页用\\n换行，6-9页，不能只有标题"],'
-            '"examples":["例题和解答，2-3 条"],"closureTraining":"课后练习安排",'
-            '"questions":[{"stem":"题目","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}],"writtenQuestions":[{"type":"short_answer或final_answer或composition","material":"本题所需完整阅读材料，不含答案","stem":"题目","reference":"参考答案和评分要点，仅老师可见","hints":["方向","第一步","完整思路"]}]}'
+            '"examples":["例题和解答，2-3 条"],"closureTraining":"课后练习安排"}'
         )
         data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=90))
-        if not isinstance(data, dict) or (not b.onlyQuestions and (not str(data.get("title") or "").strip() or not _lines(data.get("ppt")))):
+        if not isinstance(data, dict) or not str(data.get("title") or "").strip() or not _lines(data.get("ppt")):
             raise HTTPException(502, "AI 这次没有给出可用的备课草稿，请再试一次")
+        # Questions come from generate_questions; any the model still adds here are kept as drafts.
         qs = _valid_questions(data.get("questions"))
         wqs = valid_written_questions(data.get("writtenQuestions"))
-        if b.subject == "语文" and not wqs:
-            wqs = valid_written_questions(literal_written_questions(lesson.reading_plan or "")) if b.onlyQuestions and lesson is not None else []
-            if not wqs:
-                raise HTTPException(502, "AI 只返回了选择题，未满足简答／写作要求；原教案和已有习题未改变，请重试")
-        if not qs and not wqs:
-            raise HTTPException(502, "AI 没有给出合格的习题，请再试一次")
         now = datetime.utcnow()
         fields = dict(title=str(data.get("title") or "").strip()[:180], core_target=str(data.get("coreTarget") or "")[:1000], teacher_plan=str(data.get("teacherPlan") or "")[:3000],
                       ppt_json=json.dumps(_content_lines(data.get("ppt")), ensure_ascii=False), examples_json=json.dumps(_lines(data.get("examples")), ensure_ascii=False),
                       closure_training=str(data.get("closureTraining") or "")[:1000], unit=(row.school_unit if row and row.school_unit else "")[:120] or "待配置单元",
                       published=False, updated_at=now)
-        if b.onlyQuestions:
-            db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False)))
-        elif lesson is None:
+        if lesson is None:
             lesson = Lesson(school_id=u.school_id, program_id=p.id, subject=b.subject, lesson_no=b.lessonNo, duration_min=120, **fields)
             db.add(lesson)
             db.flush()
@@ -421,7 +503,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         for i, q in enumerate(qs[:6]):
             db.add(TQ(school_id=u.school_id, program_id=p.id, lesson_id=lesson.id, stage="lesson", subject=b.subject, level=LEVELS[i], knowledge=q["kp"], stem=q["stem"],
                       options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False))
-        replace_written_drafts(db, written, u.school_id, u.id, lesson.id, wqs)
+        if wqs:
+            replace_written_drafts(db, written, u.school_id, u.id, lesson.id, wqs)
         db.commit()
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "weakKnowledge": weak}
 
@@ -841,7 +924,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 opts = json.loads(q.options_json or "[]")
             except Exception:  # noqa: BLE001
                 opts = []
-            out.append({"id": q.id, "stem": q.stem, "options": opts, "correctIndex": q.correct_index, "explanation": q.explanation, "knowledge": q.knowledge, "active": bool(q.active)})
+            out.append({"id": q.id, "stem": q.stem, "options": opts, "correctIndex": q.correct_index, "explanation": q.explanation, "knowledge": q.knowledge,
+                        "active": bool(q.active), "level": qg.CODE_LEVEL.get(q.level, ""), "verified": str(q.explanation or "").startswith("验算：")})
         return {"items": out}
 
     @router.post("/teacher/weekend/lessons/{lid}/questions")
@@ -876,7 +960,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         # Editing a previously approved template requires another approval;
         # snapshots in existing classrooms remain unchanged.
         db.execute(update(written).where(written.c.id == qid).values(stem=v["stem"], reference=v["reference"],
-            hints_json=json.dumps({"approved": False, "type": v["type"], "hints": v["hints"]}, ensure_ascii=False)))
+            hints_json=json.dumps({**template_meta(q), "approved": False, "type": v["type"], "hints": v["hints"]}, ensure_ascii=False)))
         db.commit()
         return lesson_status(db, u, my_lesson(db, u, lid))
 
