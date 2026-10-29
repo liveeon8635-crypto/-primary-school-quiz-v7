@@ -27,6 +27,7 @@ with TestClient(app) as client:
     assert "max-width:1440px" in body
     assert "km-grid" in body
     assert "km-nav" in body
+    assert "km-node-h" in body
     assert "@media (min-width:900px)" in body
 
     # The picker reads the existing school resource endpoint.
