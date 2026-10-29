@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:ae81e655e050e63fe11fd5995d28045ccb4345eda8dcbee691a9ccf6099378ec",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "2418d4d8e3c4597a0a16777dd20f023863d75826",
+  "headSha": "3caf441a37bb853a4bc7a69f043e36c367a79c75",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：改动规范了小学数学“可能性”单元的 AI 命题逻辑，限制生成用分数、小数或百分数表示数值概率的题目，符合小学课标要求且包含相应测试。",
+      "evidenceRefs": [
+        "file:changying/services/knowledge_maps.py#L421-L500",
+        "file:tests/test_knowledge_maps.py#L411-L423",
+        "run:123372219711",
+        "run:123372218689"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:54fb5a950aae3abdc3fdbb0de263e06d4d724fce44d32119cb602f06f7df049a"
+}

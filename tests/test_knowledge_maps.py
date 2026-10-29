@@ -407,3 +407,16 @@ def test_ai_angles_follow_the_unit():
     assert "描述运动过程" in km.angle_brief("medium", 6, "图形的运动") and "计算并验算" not in km.angle_brief("medium", 6, "图形的运动")
     # A grid point is not the number 51; 1,000 still is 1000.
     assert qg.number("(5,1)") is None and qg.number("1,000") == 1000
+
+
+def test_ai_chance_questions_stay_qualitative():
+    from changying.services import knowledge_maps as km
+    draft = {"question_type": "fill_blank", "angle": "比较可能性大小", "steps": ["数一数", "比较"], "options": [], "correct_index": -1,
+             "text": "袋里有 4 个红球、6 个蓝球，摸到哪种球的可能性大？", "answer": "蓝球", "expression": "", "explanation": "蓝球多，可能性大。"}
+    assert km.check_ai_question(draft, "medium", "数学", "可能性")[0]
+    for change in ({"text": "摸到蓝球的可能性比红球大多少？（用小数表示）", "answer": "0.1"},
+                   {"explanation": "甲袋摸到红球的可能性是5÷10=0.5，乙袋是0.35。"},
+                   {"text": "要使摸到红球的可能性为 0.35，应放几个红球？", "answer": "7"}):
+        assert km.check_ai_question({**draft, **change}, "medium", "数学", "可能性")[1] == "可能性用数表示（小学只比较大小）"
+    assert "不要用分数、小数、百分数表示可能性" in km.angle_brief("medium", 6, "可能性")
+    assert "不要用分数" not in km.angle_brief("medium", 6, "小数除法")

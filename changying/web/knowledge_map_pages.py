@@ -244,7 +244,7 @@ function kmLabel(key){var n=kmNode(KM.map,key);return n?key+' '+n.name:key}
 function kmUnit(u){
   var nodes=KM.map.nodes.filter(function(n){return n.unit===u.key});
   var name=el('input',{value:u.name,maxlength:'40','aria-label':'单元名称'});
-  var card=el('section',{class:'card','data-unit':u.key,id:'unit-'+u.key},
+  var card=el('section',{class:'card','data-unit':u.key},
     el('div',{class:'row'},el('h3',{text:u.key}),name,kmTag(KM.unitKinds[u.kind]),
       el('label',{},el('input',{type:'checkbox',checked:!!u.learned,onchange:function(e){var on=e.target.checked;kmSave(function(m){m.units.forEach(function(x){if(x.key===u.key)x.learned=on})})}}),' 已学'),
       el('button',{class:'btn',text:'保存名称',onclick:function(){kmSave(function(m){m.units.forEach(function(x){if(x.key===u.key)x.name=name.value})})}}),
@@ -290,13 +290,7 @@ function kmRender(){
     p?el('button',{class:'btn',text:'查看全班掌握情况',onclick:function(){kmClassView(cv)}}):el('p',{class:'muted',text:'发布知识地图后可以查看。'}),cv));
   var grid=el('div',{class:'km-grid'});
   KM.map.units.forEach(function(u){grid.appendChild(kmUnit(u))});
-  // 左侧单元导航：点击跳到该单元（原生锚点，不依赖 JS 滚动）。
-  var nav=el('nav',{class:'km-nav','aria-label':'单元导航'},el('div',{class:'km-nav-t',text:'单元'}));
-  KM.map.units.forEach(function(u){
-    var count=KM.map.nodes.filter(function(n){return n.unit===u.key}).length;
-    nav.appendChild(el('a',{href:'#unit-'+u.key,title:u.name,text:u.key+' · '+u.name+'（'+count+'）'}));
-  });
-  KMBOX.appendChild(el('div',{class:'km-layout'},nav,grid));
+  KMBOX.appendChild(grid);
 }
 var KM_LEVEL_TAG={weak:'warn',pass:'',fluent:'ok'};
 function kmMasteryTag(x,labels){
@@ -538,21 +532,9 @@ KM_WIDE_CSS = """<style>
 .km-grid{display:block}
 /* AI 草稿卡片：每个选项、答案、解析各占一行，不和下一个选项字母挤在一起。 */
 .km-draft>label{display:block;margin:8px 0}.km-draft>label>input:not([type=checkbox]){width:calc(100% - 2.5em);max-width:420px}
-/* 平板横屏（≥900）起两列，同行等高；不做三列——出题面板带图形，三列会被压到 ~250px。 */
-@media (min-width:900px){.km-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.km-grid>.card{margin-bottom:0}}
-/* 栅格子项默认 min-width:auto，长题干或图片会把整页撑出横向滚动条。 */
-.km-grid>.card{min-width:0}
-.km-grid img{max-width:100%;height:auto}
-.km-grid>.card{scroll-margin-top:84px}
-/* 宽屏：左侧单元导航 + 右侧内容。 */
-.km-nav{display:none}
-@media (min-width:1100px){
-  .km-layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:18px;align-items:start}
-  .km-nav{display:block;position:sticky;top:76px;max-height:calc(100vh - 100px);overflow:auto;background:#fff;border:1px solid #d9deea;border-radius:14px;padding:8px}
-  .km-nav-t{font-size:12.5px;font-weight:700;color:#667085;letter-spacing:.08em;padding:6px 10px}
-  .km-nav a{display:block;padding:7px 10px;border-radius:8px;color:#1c2333;text-decoration:none;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .km-nav a:hover{background:#eef2fa}
-}
+/* 平板横屏（≥900）两列，宽屏（≥1500）三列；手机与 iPad 竖屏（768）保持单列。 */
+@media (min-width:900px){.km-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}.km-grid>.card{margin-bottom:0}}
+@media (min-width:1500px){.km-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 </style>"""
 
 

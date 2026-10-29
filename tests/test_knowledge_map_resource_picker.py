@@ -23,10 +23,9 @@ with TestClient(app) as client:
     assert "参考资料（可选）" in body
     assert "resourceIds:refIds" in body
     assert "/teaching/resources?grade=" in body
-    # 宽屏适配：共用 980px 容器在桌面上会挤成窄栏；平板横屏起两列，宽屏加左侧单元导航
+    # 宽屏适配：共用 980px 容器在桌面上会挤成窄栏；平板横屏起两列、宽屏三列
     assert "max-width:1440px" in body
     assert "km-grid" in body
-    assert "km-nav" in body
     assert "@media (min-width:900px)" in body
 
     # The picker reads the existing school resource endpoint.
