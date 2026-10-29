@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-pro",
+  "evidencePacketHash": "sha256:1e7a689e2eba0f58c22e15ad8b9608dd501df9ab54fc99d6ef6862dc62c3e06b",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "62f8ff851885cf23e502bd3da3ff4cdc5fb8f824",
+  "headSha": "a8b67c6fb16648b0a7963a4f7ac53cd93af45504",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：新增了黑板模式下参考答案默认隐藏和点击切换显隐的功能，提升了教学展示效果。",
+      "evidenceRefs": [
+        "file:changying/web/weekend_pages.py#L253-L330"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "新增的单元测试覆盖了答案显隐逻辑及刷新保持逻辑，且 CI 检查已全部通过。",
+      "evidenceRefs": [
+        "file:tests/test_weekend_board_layout.py#L126-L153",
+        "pr:#934"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:534a8e6d32a1200b499541514f7d8db384bfaca723cb5bf8a22c0fc9c377d9a2"
+}
