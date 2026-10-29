@@ -244,6 +244,83 @@ function picker(){
 boot(control);
 """
 
+# 大屏排版：不改教案文字和分页，只按每行开头自动分层——考点/知识点（黄色标题的知识卡）、规则行冒号后的例子（浅蓝）、
+# 示例/例题（浅色例题卡，带空括号的题排成整齐的格子）、易错/注意（红色提醒）。宽屏时知识卡在左、例题卡在右。
+BOARD_LAYOUT_JS = r"""
+var BL_HEAD=/^(考点|知识点|重点|难点|方法|规律|结论)[一二三四五六七八九十0-9]*\s*[：:、．.\s]/;
+var BL_EXAMPLE=/^(示例|例题|例\s*[0-9一二三四五六七八九十]|练一练|试一试|做一做|想一想)/;
+var BL_WARN=/^(易错|注意|提醒|易混|误区)[点：:\s]/;
+var BL_BLANK=/[（(][\s　_＿]*[）)]|_{2,}|＿{2,}/;
+function blMath(t){return /[=＝×÷+＋−\-<>＜＞]/.test(t)&&/[0-9a-zA-Z²³]/.test(t)}
+function blParse(texts){
+  var blocks=[],cur=null;
+  function open(kind,title){cur={kind:kind,title:title,lines:[]};blocks.push(cur);return cur}
+  texts.forEach(function(text){String(text||'').split('\n').forEach(function(raw){
+    var line=raw.replace(/\s+$/,'').replace(/^\s+/,'');if(!line)return;
+    if(BL_HEAD.test(line)){var k=line.search(/[：:]/);open('know',k>0&&k<16?line.slice(0,k)+'　'+line.slice(k+1).trim():line);return}
+    if(BL_EXAMPLE.test(line)){
+      var rest=line.replace(/^示例\s*[：:]\s*/,''),cut=-1,re=/[：:]/g,m;
+      while((m=re.exec(rest))){if(BL_BLANK.test(rest.slice(m.index+1))||blMath(rest.slice(m.index+1))){cut=m.index;break}}
+      var b=open('example',cut>0?rest.slice(0,cut).replace(/\s*[|｜]\s*/,'　'):rest.replace(/\s*[|｜]\s*/,'　'));
+      if(cut>0)b.lines.push(rest.slice(cut+1).trim());
+      return;
+    }
+    if(!cur)cur=open('plain','');
+    cur.lines.push(line);
+  })});
+  return blocks;
+}
+function blItems(line){
+  // "5×m＝（  ）  a×1＝（  ）…" -> one item per blank, so a question never breaks in the middle.
+  if(!BL_BLANK.test(line))return null;
+  var out=[],re=/[（(][\s　_＿]*[）)]|_{2,}|＿{2,}/g,last=0,m;
+  while((m=re.exec(line))){var stem=line.slice(last,m.index).trim();if(!stem&&!out.length)return null;out.push(stem);last=m.index+m[0].length}
+  var tail=line.slice(last).trim();
+  return out.length>=2?{items:out,tail:tail}:null;
+}
+function blLine(line,number){
+  if(BL_WARN.test(line))return el('div',{style:'color:#fca5a5;font-weight:700;margin:.35em 0',text:'⚠ '+line});
+  var k=line.search(/[：:]/),row=el('div',{style:'display:flex;gap:.5em;align-items:baseline;margin:.3em 0'});
+  if(number)row.appendChild(el('span',{style:'flex:none;background:#fbbf24;color:#0f172a;border-radius:50%;width:1.35em;height:1.35em;line-height:1.35em;text-align:center;font-weight:800;font-size:.8em',text:String(number)}));
+  var body=el('span',{});row.appendChild(body);
+  if(k>0&&blMath(line.slice(k+1))){body.appendChild(el('span',{text:line.slice(0,k)+'　'}));var eg=line.slice(k+1).trim();body.appendChild(el('span',{style:'color:#7dd3fc'+(eg.length<=24?';white-space:nowrap':''),text:eg}))}
+  else body.appendChild(el('span',{text:line}));
+  return row;
+}
+function blExampleLine(box,line){
+  var it=blItems(line);
+  if(!it){box.appendChild(BL_WARN.test(line)?el('div',{style:'color:#b42318;font-weight:700;margin:.3em 0',text:'⚠ '+line}):el('div',{style:'margin:.3em 0',text:line}));return}
+  var grid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(9em,1fr));gap:.4em 1.2em;margin:.3em 0'});
+  it.items.forEach(function(q){grid.appendChild(el('div',{style:'white-space:nowrap'},el('span',{text:q}),el('span',{style:'display:inline-block;width:3.2em;border-bottom:.12em solid #0369a1;margin-left:.2em'})))});
+  box.appendChild(grid);if(it.tail)box.appendChild(el('div',{style:'margin:.3em 0',text:it.tail}));
+}
+function boardLayout(body,texts,wide){
+  var blocks=blParse(texts),know=[],examples=[],plain=[];
+  blocks.forEach(function(b){
+    if(b.kind==='know'){
+      var card=el('div',{style:'background:#13284a;border-left:.3em solid #fbbf24;border-radius:.5em;padding:.5em .8em;margin:0 0 .6em'},el('div',{style:'color:#fbbf24;font-weight:800;font-size:1.15em;margin-bottom:.2em',text:b.title}));
+      var n=0;b.lines.forEach(function(l){var rule=!BL_WARN.test(l)&&l.search(/[：:]/)>0&&blMath(l.slice(l.search(/[：:]/)+1));card.appendChild(blLine(l,rule?++n:0))});
+      know.push(card);
+    }else if(b.kind==='example'){
+      var ex=el('div',{style:'background:#e0f2fe;color:#0f172a;border-radius:.5em;padding:.5em .8em;margin:0 0 .6em'},el('div',{style:'color:#0369a1;font-weight:800;font-size:1.05em;margin-bottom:.2em',text:b.title}));
+      b.lines.forEach(function(l){blExampleLine(ex,l)});examples.push(ex);
+    }else{var box=el('div',{style:'margin:0 0 .4em'});b.lines.forEach(function(l){
+      // The lesson title is already in the header: keep it, quietly.
+      box.appendChild(/^课题[：:]/.test(l)?el('div',{style:'opacity:.6;font-size:.7em;margin:.2em 0',text:l}):blLine(l,0))});plain.push(box)}
+  });
+  body.style.whiteSpace='normal';
+  plain.forEach(function(x){body.appendChild(x)});
+  if(wide&&know.length&&examples.length){
+    var cols=el('div',{style:'display:grid;grid-template-columns:1fr 1fr;gap:1.2em;align-items:start'}),left=el('div'),right=el('div');
+    know.forEach(function(x){left.appendChild(x)});examples.forEach(function(x){right.appendChild(x)});cols.appendChild(left);cols.appendChild(right);body.appendChild(cols);
+  }else{
+    var ki=0,ei=0;            // narrow screen, or only one kind: the teacher's order
+    blocks.forEach(function(b){if(b.kind==='know')body.appendChild(know[ki++]);else if(b.kind==='example')body.appendChild(examples[ei++])});
+  }
+  return {know:know.length,examples:examples.length};
+}
+"""
+
 BOARD_JS = r"""
 var SID=+(new URLSearchParams(location.search).get('s')||0);
 function board(){
@@ -269,10 +346,10 @@ function board(){
     var body=el('div',{style:'flex:1;min-height:0;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45'});wrap.appendChild(body);
     if(d.courseware){
       // The page's own content stays on screen; the courseware for this page is shown below it.
-      body.style.overflow='auto';d.content.forEach(function(x){body.appendChild(el('p',{style:'margin:.3em 0;font-size:2.6vh',text:x}))});
+      body.style.overflow='auto';var top=el('div',{style:'font-size:2.6vh'});body.appendChild(top);boardLayout(top,d.content,false);
       var cwBox=el('div');body.appendChild(cwBox);cwRender(cwBox,d.courseware,d.courseware.view,true,false);return;
     }
-    d.content.forEach(function(x){body.appendChild(el('p',{style:'margin:.5em 0',text:x}))});
+    boardLayout(body,d.content,window.innerWidth>=1000);
     requestAnimationFrame(function(){fitText(body)});
   }
   var last=null,requestNo=0;
@@ -721,7 +798,7 @@ def control_page_html() -> str:
 
 
 def board_page_html() -> str:
-    return _page("课堂大屏", COURSEWARE_JS + BOARD_JS, False)
+    return _page("课堂大屏", COURSEWARE_JS + BOARD_LAYOUT_JS + BOARD_JS, False)
 
 
 __all__ = ["board_page_html", "brief_page_html", "control_page_html", "plan_page_html", "practice_page_html", "report_page_html"]
