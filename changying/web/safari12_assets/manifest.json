@@ -324,7 +324,7 @@
       "34300ee35f2f3a42f04328134a86648c95800c3525758e3f0089a2310f7ca9c3"
     ],
     "/v1/knowledge-map": [
-      "5f85db99266808930e34294f9d817fe6f8f0798b5e8204f1508aa437e3920b7b"
+      "17d5e625241a11027a6d15657b0a783cc8f68a2fc06bc4060ad1bb908fc13ed4"
     ],
     "/v1/my-knowledge-map": [
       "b7f79e28a176de3f73e584c68d8feb1a6187af2c6510ce3e5ab9b4d92dc17b41"
@@ -681,10 +681,10 @@
       "sourceBytes": 13253,
       "compiledBytes": 13253
     },
-    "5f85db99266808930e34294f9d817fe6f8f0798b5e8204f1508aa437e3920b7b": {
+    "17d5e625241a11027a6d15657b0a783cc8f68a2fc06bc4060ad1bb908fc13ed4": {
       "unchanged": true,
-      "sourceBytes": 53146,
-      "compiledBytes": 53146
+      "sourceBytes": 53186,
+      "compiledBytes": 53186
     },
     "b7f79e28a176de3f73e584c68d8feb1a6187af2c6510ce3e5ab9b4d92dc17b41": {
       "unchanged": true,

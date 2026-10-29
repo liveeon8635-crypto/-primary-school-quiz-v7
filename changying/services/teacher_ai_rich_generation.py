@@ -210,6 +210,7 @@ def clean_rich_question_rows(
             # Carried through for callers that check them (the knowledge map verifies maths answers and step counts).
             "steps": _clean_list(raw.get("steps"), 8),
             "expression": str(raw.get("expression") or "").strip()[:200],
+            "angle": str(raw.get("angle") or "").strip()[:20],
         }
         figure = raw.get("figure") or {}
         if "数学" in subject and isinstance(figure, dict):
