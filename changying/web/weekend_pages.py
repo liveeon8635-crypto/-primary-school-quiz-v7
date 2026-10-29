@@ -261,6 +261,7 @@ function blParse(texts){
     if(BL_EXAMPLE.test(line)){
       var rest=line.replace(/^示例\s*[：:]\s*/,''),cut=-1,re=/[：:]/g,m;
       while((m=re.exec(rest))){if(BL_BLANK.test(rest.slice(m.index+1))||blMath(rest.slice(m.index+1))){cut=m.index;break}}
+      if(cut<0){var k2=rest.search(/[：:]/);if(k2>0&&k2<=20)cut=k2}      // "例题13 中点问题：点B是…" -> short title, problem as text
       var b=open('example',cut>0?rest.slice(0,cut).replace(/\s*[|｜]\s*/,'　'):rest.replace(/\s*[|｜]\s*/,'　'));
       if(cut>0)b.lines.push(rest.slice(cut+1).trim());
       return;
@@ -323,7 +324,11 @@ function boardLayout(body,texts,wide){
   blocks.forEach(function(b){
     if(b.kind==='know'){
       var card=el('div',{style:'background:#13284a;border-left:.3em solid #fbbf24;border-radius:.5em;padding:.5em .8em;margin:0 0 .6em'},el('div',{style:'color:#fbbf24;font-weight:800;font-size:1.15em;margin-bottom:.2em',text:b.title}));
-      var n=0;b.lines.forEach(function(l){var rule=!BL_WARN.test(l)&&l.search(/[：:]/)>0&&blMath(l.slice(l.search(/[：:]/)+1));card.appendChild(blLine(l,rule?++n:0))});
+      var n=0,lines=[];
+      // "加法交换律：a＋b＝b＋a；加法结合律：…；…" -> one numbered rule per law.
+      b.lines.forEach(function(l){var parts=l.split(/[；;]/).map(function(x){return x.trim()}).filter(Boolean);
+        if(parts.length>=2&&parts.every(function(x){var k=x.search(/[：:]/);return k>0&&k<=12&&blMath(x.slice(k+1))}))lines=lines.concat(parts);else lines.push(l)});
+      lines.forEach(function(l){var rule=!BL_WARN.test(l)&&l.search(/[：:]/)>0&&blMath(l.slice(l.search(/[：:]/)+1));card.appendChild(blLine(l,rule?++n:0))});
       know.push(card);
     }else if(b.kind==='example'){
       var ex=el('div',{style:'background:#e0f2fe;color:#0f172a;border-radius:.5em;padding:.5em .8em;margin:0 0 .6em'},el('div',{style:'color:#0369a1;font-weight:800;font-size:1.05em;margin-bottom:.2em',text:b.title}));
@@ -373,8 +378,10 @@ function board(){
       body.style.overflow='auto';var top=el('div',{style:'font-size:2.6vh'});body.appendChild(top);boardLayout(top,d.content,false);
       var cwBox=el('div');body.appendChild(cwBox);cwRender(cwBox,d.courseware,d.courseware.view,true,false);return;
     }
-    boardLayout(body,d.content,window.innerWidth>=1000);
-    requestAnimationFrame(function(){fitText(body)});
+    // Side by side when it fits; when the two columns would make the text smaller, stack them (the larger text wins).
+    function laid(wide){body.textContent='';boardLayout(body,d.content,wide);fitText(body);return parseFloat(body.style.fontSize)||0}
+    boardLayout(body,d.content,false);
+    requestAnimationFrame(function(){if(window.innerWidth<1000){fitText(body);return}var two=laid(true),one=laid(false);if(two>=one)laid(true)});
   }
   var last=null,requestNo=0;
   function load(){var request=++requestNo;api('/teacher/weekend/sessions/'+SID+'/board').then(function(d){if(request!==requestNo)return;last=d;remain=d.remainingSeconds;paint(d)}).catch(function(e){if(request===requestNo&&!last)msg(e.message)})}

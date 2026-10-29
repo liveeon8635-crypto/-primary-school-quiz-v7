@@ -97,3 +97,29 @@ def test_sub_questions_and_long_rules_do_not_overlap():
     assert r["nowrapLong"] == []
     assert r["steps"] == ["· 写式子（或抄原式）", "· 把字母换成数，并把省略的乘号补回来：a＝2.5时，1.2a就是1.2×2.5",
                           "· 按先乘除后加减的顺序算出结果", "· 结果带单位：长度用cm"]
+
+
+CASE3 = ("考点三：用字母表示运算定律和公式\n加法交换律：a＋b＝b＋a；加法结合律：（a＋b）＋c＝a＋（b＋c）；乘法交换律：a×b＝b×a。\n"
+         "示例：例题13 | 中点问题（整体思想）：点B是线段AD上的一个动点，可以在AD上任意移动。")
+
+NODE3 = r'''
+function el(tag,attrs,...kids){const n={tag,attrs:attrs||{},children:[],style:{},appendChild(c){if(c)this.children.push(c);return c}};kids.forEach(k=>n.appendChild(k));return n}
+function all(n){return [n,...n.children.flatMap(all)]}
+''' + BOARD_LAYOUT_JS + r'''
+const body=el('div');boardLayout(body,[TEXT],true);const texts=all(body).map(n=>n.attrs.text).filter(Boolean);
+const b=blParse([TEXT]);
+console.log(JSON.stringify({numbers:texts.filter(t=>/^[0-9]$/.test(t)),title:b[1].title,line:b[1].lines[0]}));
+'''
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_law_lists_number_each_law_and_long_example_titles_are_cut():
+    out = subprocess.run(["node", "-e", f"const TEXT={json.dumps(CASE3, ensure_ascii=False)};" + NODE3], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    r = json.loads(out.stdout)
+    assert r["numbers"] == ["1", "2", "3"]                                # one numbered rule per law
+    assert r["title"] == "例题13　中点问题（整体思想）" and r["line"].startswith("点B是线段AD上")
+
+
+def test_board_picks_side_by_side_or_stacked_by_text_size():
+    assert "var two=laid(true),one=laid(false);if(two>=one)laid(true)" in BOARD_JS
