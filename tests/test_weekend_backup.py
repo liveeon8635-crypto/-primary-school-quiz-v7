@@ -278,3 +278,16 @@ async function settle(){for(let i=0;i<20;i++)await Promise.resolve()}
     result = subprocess.run(['node','-e',harness],text=True,capture_output=True,timeout=30)
     assert result.returncode==0,result.stdout+result.stderr
     assert 'OK' in result.stdout
+
+
+def test_printed_options_carry_one_letter_each():
+    import io as _io
+    import zipfile as _zip
+    from changying.services.weekend_handouts import question_document
+    material = {"title": "第2课", "sessionId": 1, "version": "0" * 16, "lesson": {"core_target": "省略乘号"},
+                "questions": [{"kind": "choice", "id": 1, "stem": "a×8×b 应写成（ ）", "options": ["A．8ab", "B．ab8"], "selected": 0,
+                               "reference": "A．8ab", "explanation": "", "level": "A", "knowledge": "省略乘号"}]}
+    for audience in ("teacher", "student"):
+        xml = _zip.ZipFile(_io.BytesIO(question_document(material, audience))).read("word/document.xml").decode()
+        assert "A. 8ab" in xml and "B. ab8" in xml and "A．" not in xml and "B．" not in xml, audience
+    assert "答案：A. 8ab" in _zip.ZipFile(_io.BytesIO(question_document(material, "teacher"))).read("word/document.xml").decode()
