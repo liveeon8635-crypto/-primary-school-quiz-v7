@@ -101,7 +101,7 @@ _NUMBER = re.compile(r"^-?\d+(?:\.\d+)?$")
 
 
 def _number_text(text: Any) -> str:
-    s = str(text or "").strip().replace("，", "").replace(",", "")
+    s = re.sub(r"(?<=\d)[,，](?=\d{3}(?!\d))", "", str(text or "").strip())   # 1,000 -> 1000; a point (5,1) stays two numbers
     return re.sub(r"[^\d.\-]+$", "", re.sub(r"^[^\d\-]+", "", s))        # 约 3.5 米 -> 3.5
 
 

@@ -185,31 +185,31 @@ with TestClient(app) as client:
     assert client.post(url, headers=th, json={"level": "很难"}).status_code == 400
     assert client.post(url, headers=sh, json={"level": "medium"}).status_code == 403
 
-    def q(kind, text, steps, expression="", answer="", options=None, ci=-1, angle="两步解决问题"):
+    def q(kind, text, steps, expression="", answer="", options=None, ci=-1, angle="两步求解"):
         return {"question_type": kind, "text": text, "steps": steps, "expression": expression, "answer": answer,
                 "options": options or [], "correct_index": ci, "explanation": "解析", "knowledge": "旋转", "angle": angle}
 
     # Mixed types for 中等: the drafts are checked here, not just passed on.
     replies.append(json.dumps({"questions": [
-        q("single_choice", "钟面上的指针从 12 绕中心顺时针旋转 90°，指向几？", ["一大格 30°", "90÷30=3"], "90÷30", options=["3", "6", "9", "12"], ci=0, angle="推断未知"),
-        q("fill_blank", "指针从 12 顺时针转到 6，转了（　）度。", ["每格 30°", "6×30=180"], "6×30", "180", angle=" 计算并验算 "),
+        q("single_choice", "钟面上的指针从 12 绕中心顺时针旋转 90°，指向几？", ["一大格 30°", "90÷30=3"], "90÷30", options=["3", "6", "9", "12"], ci=0, angle="确定运动后位置"),
+        q("fill_blank", "指针从 12 顺时针转到 6，转了（　）度。", ["每格 30°", "6×30=180"], "6×30", "180", angle=" 两步求解 "),
         q("true_false", "指针从 12 顺时针旋转 90° 后指向 3。", ["90° 是 3 大格", "12 往后 3 格是 3"], options=["正确", "错误"], ci=0, angle="找错并改正"),
-        q("fill_blank", "指针从 12 顺时针转到 4，转了（　）度。", ["每格 30°", "4×30=120"], "4×30", "120", angle="计算并验算"),  # same angle again
-        q("fill_blank", "指针从 12 顺时针转到 2，转了（　）度。", ["每格 30°", "2×30=60"], "2×30", "60", angle="直接求结果"),   # a 基础 angle
+        q("fill_blank", "指针从 12 顺时针转到 4，转了（　）度。", ["每格 30°", "4×30=120"], "4×30", "120", angle="两步求解"),  # same angle again
+        q("fill_blank", "指针从 12 顺时针转到 2，转了（　）度。", ["每格 30°", "2×30=60"], "2×30", "60", angle="数格读位置"),   # a 基础 angle
         q("calculation", "指针从 3 顺时针转到 9，转了多少度？", ["相差 6 格", "6×30"], "6×30", "120"),          # wrong answer
         q("short_answer", "指针从 12 逆时针转 90°，指向几？", ["只有一步"], "12-3", "9"),                       # one step only
-        q("fill_blank", "指针从 12 顺时针转到 9，转了（　）度。", ["数格子", "乘 30"], "", "270"),            # nothing to check it with
+        q("fill_blank", "指针从 12 顺时针转到 9，转了（　）度。", ["数格子", "乘 30"], "", "270", angle="描述运动过程"),  # shapes: kept unchecked
     ]}, ensure_ascii=False))
     replies.append(json.dumps({"questions": []}))      # the generator's own follow-up for the remainder
     r = client.post(url, headers=th, json={"level": "medium", "count": 5, "questionType": "mixed"})
     assert r.status_code == 200, r.text
     r = r.json()
-    assert len(r["items"]) == 3 and r["short"] == 2 and r["verified"] == 2
+    assert len(r["items"]) == 4 and r["short"] == 1 and r["verified"] == 2
     assert {x["question_type"] for x in r["items"]} == {"single_choice", "fill_blank", "true_false"}
-    assert r["dropped"] == {"验算不对": 1, "步骤太少（中等至少 2 步、提高至少 3 步）": 1, "数学答案没有可验算的算式": 1, "命题角度不属于这一难度": 1}
-    assert {x["angle"] for x in r["items"]} == {"推断未知", "找错并改正", "计算并验算"}
+    assert r["dropped"] == {"验算不对": 1, "步骤太少（中等至少 2 步、提高至少 3 步）": 1, "命题角度不属于这一难度": 1}
+    assert {x["angle"] for x in r["items"]} == {"确定运动后位置", "找错并改正", "两步求解", "描述运动过程"}
     first = prompts[-2]
-    for t in ("旋转的三要素", "题干不能依赖图片", "图形的运动", '"steps"', '"expression"', "题型要多样", "中等", "【命题角度】", "每道题用不同的角度", "不计算比较", '"angle"', "最多两位小数"):
+    for t in ("旋转的三要素", "题干不能依赖图片", "图形的运动", '"steps"', '"expression"', "题型要多样", "中等", "【命题角度】", "每道题用不同的角度", "确定运动后位置", "真正用到这个知识点本身", '"angle"', "最多两位小数"):
         assert t in first, t
 
     # The teacher keeps them; each type is saved as itself, then levelled.
@@ -225,12 +225,12 @@ with TestClient(app) as client:
     d = client.put(f"/teacher/knowledge-maps/{mid}/nodes/4-3/levels", headers=th,
                    json={"levels": {str(x["id"]): "medium" for x in saved}, "revision": rev}).json()
     n = next(x for x in d["map"]["nodes"] if x["key"] == "4-3")
-    assert n["coverage"]["counts"] == {"basic": 0, "medium": 3, "hard": 0}
+    assert n["coverage"]["counts"] == {"basic": 0, "medium": 4, "hard": 0}
 
     # The next request lists what the point already has; a draft repeating one of them is skipped.
     replies.append(json.dumps({"questions": [
-        q("fill_blank", "指针从 12 顺时针转到 6，转了（　）度。", ["每格 30°", "6×30=180"], "6×30", "180", angle="计算并验算"),
-        q("fill_blank", "指针从 3 顺时针转到 5，转了（　）度。", ["相差 2 格", "2×30=60"], "2×30", "60", angle="计算并验算"),
+        q("fill_blank", "指针从 12 顺时针转到 6，转了（　）度。", ["每格 30°", "6×30=180"], "6×30", "180", angle="两步求解"),
+        q("fill_blank", "指针从 3 顺时针转到 5，转了（　）度。", ["相差 2 格", "2×30=60"], "2×30", "60", angle="两步求解"),
     ]}, ensure_ascii=False))
     replies.append(json.dumps({"questions": []}))
     r = client.post(url, headers=th, json={"level": "medium", "count": 2}).json()
@@ -390,3 +390,20 @@ def test_ai_angles_follow_the_level_and_do_not_repeat():
     assert km.angle_cap("basic", 10) == 3 and km.angle_cap("medium", 6) == 1
     assert "同一个角度最多用 3 次" in km.angle_brief("basic", 10) and "每道题用不同的角度" in km.angle_brief("hard", 6)
     assert km.angle_brief("hard", 6).count("\n- ") == len(km.MATH_ANGLES["hard"])
+
+
+def test_ai_angles_follow_the_unit():
+    from changying.services import knowledge_maps as km
+    from changying.services import weekend_question_gen as qg
+    assert km.math_angles("图形的运动") is km.SHAPE_ANGLES and km.math_angles("多边形的面积") is km.SHAPE_ANGLES
+    assert km.math_angles("可能性") is km.CHANCE_ANGLES and km.math_angles("小数除法") is km.MATH_ANGLES
+    # A shapes point does not take calculation angles, and a shapes answer such as 90° needs no expression.
+    turn = {"question_type": "fill_blank", "text": "指针从 12 顺时针转到 3，转了（　）度。", "answer": "90°", "expression": "",
+            "steps": ["一大格 30°", "3 大格"], "options": [], "correct_index": -1}
+    assert km.check_ai_question({**turn, "angle": "两步解决问题"}, "medium", "数学", "图形的运动")[1] == "命题角度不属于这一难度"
+    kept = km.check_ai_question({**turn, "angle": "确定运动后位置"}, "medium", "数学", "图形的运动")[0]
+    assert kept and kept["verified"] is False
+    assert km.check_ai_question({**turn, "angle": "两步解决问题"}, "medium", "数学", "小数除法")[1] == "数学答案没有可验算的算式"
+    assert "描述运动过程" in km.angle_brief("medium", 6, "图形的运动") and "计算并验算" not in km.angle_brief("medium", 6, "图形的运动")
+    # A grid point is not the number 51; 1,000 still is 1000.
+    assert qg.number("(5,1)") is None and qg.number("1,000") == 1000
