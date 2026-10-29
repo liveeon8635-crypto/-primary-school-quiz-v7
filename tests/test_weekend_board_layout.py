@@ -151,3 +151,32 @@ def test_answers_stay_covered_until_the_teacher_shows_them():
     assert r["before"] == {"hidden": True, "label": "显示答案"}
     assert r["clicked"] == {"hidden": False}
     assert r["repaint"] == {"hidden": False, "label": "隐藏答案"}        # the 3-second refresh keeps it open
+
+
+CASE5 = "选择题 1：诊断题 3 | 选择（1）省略乘号，a×8×b 应写成（　　）\nA. 8ab\nB. ab8\n参考答案／评分要点：8ab"
+
+NODE5 = r'''
+var window={};
+function el(tag,attrs,...kids){const n={tag,attrs:attrs||{},children:[],style:{},appendChild(c){if(c)this.children.push(c);return c}};kids.forEach(k=>n.appendChild(k));return n}
+function all(n){return [n,...n.children.flatMap(all)]}
+''' + BOARD_LAYOUT_JS + r'''
+function nodes(){const body=el('div');boardLayout(body,[TEXT],true);return all(body)}
+BL_COVER=false;const released=nodes();BL_COVER=true;const explaining=nodes();
+console.log(JSON.stringify({cyan:released.filter(n=>(n.attrs.style||'').includes('#7dd3fc')).length,
+  releasedButtons:released.filter(n=>n.tag==='button').length,explainingButtons:explaining.filter(n=>n.tag==='button').length}));
+'''
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_practice_questions_are_plain_and_released_answers_are_not_covered():
+    out = subprocess.run(["node", "-e", f"const TEXT={json.dumps(CASE5, ensure_ascii=False)};" + NODE5], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    r = json.loads(out.stdout)
+    assert r["cyan"] == 0                                   # "选择题 1：…" is not a rule with an example
+    assert r["releasedButtons"] == 0 and r["explainingButtons"] == 1
+
+
+def test_imported_option_letters_are_not_doubled():
+    from changying.services.weekend_answers import _option
+    assert [_option(x) for x in ("A．8ab", "b. ab8", "C、8ba", "D) a8b", "8ab", "Apple")] == ["8ab", "ab8", "8ba", "a8b", "8ab", "Apple"]
+    assert "BL_COVER=d.currentStage===2||d.currentStage===3" in BOARD_JS
