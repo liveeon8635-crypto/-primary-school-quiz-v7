@@ -499,7 +499,22 @@ function smInfo(n){
   var before=n.prereqs.map(function(k){var x=SM.nodes.filter(function(y){return y.key===k})[0];return x?k+' '+x.name:k});
   SMINFO.textContent='';
   SMINFO.appendChild(el('div',{class:'card'},el('h3',{text:n.key+'  '+n.name}),n.detail?el('p',{class:'muted',text:n.detail}):null,
-    el('p',{text:smStateText(n)}),smUnitText(n),el('p',{class:'muted',text:'先学：'+(before.length?before.join('、'):'无')}),el('p',{class:'muted',text:'接着学：'+(after.length?after.join('、'):'无')})));
+    el('p',{text:smStateText(n)}),smUnitText(n),el('p',{class:'muted',text:'先学：'+(before.length?before.join('、'):'无')}),el('p',{class:'muted',text:'接着学：'+(after.length?after.join('、'):'无')}),smQuizEntry(n)));
+}
+function smQuizEntry(n){
+  if(!n.assessed)return null;
+  if(!n.quiz)return el('p',{class:'muted',text:'这个知识点暂时没有新题可以小测，等老师补题后再来。'});
+  return el('button',{class:'btn primary',text:'做 3～5 题小测',onclick:function(){
+    smSay('正在准备题目…');
+    api('/student/knowledge-map/nodes/'+encodeURIComponent(n.key)+'/quiz',{method:'POST'}).then(function(d){smSay('');
+      smQuiz(d.questions,'小测：'+n.key+' '+n.name,'/student/knowledge-map/nodes/'+encodeURIComponent(n.key)+'/quiz/submit',function(r){
+        var m=r.mastery,head=m&&m.level?'现在：'+SM.masteryLabels[m.level]:'现在：证据不足（已有 '+(m?m.evidence:0)+' 道题的第一次作答）';
+        SMDIAG.appendChild(el('div',{class:'card'},el('h3',{text:'小测结果：答对 '+r.correct+' / '+r.total+' 题'}),el('p',{text:r.key+' '+r.name+'，'+head})));
+        var x=SM.nodes.filter(function(y){return y.key===r.key})[0];if(x){SMSEL=x.key;smInfo(x);smDraw()}
+      });
+      if(SMDIAG.scrollIntoView)SMDIAG.scrollIntoView();
+    }).catch(function(e){smSay(e.message,true)});
+  }});
 }
 function smLegend(){
   var row=el('div',{class:'row'});
@@ -516,11 +531,15 @@ function smDiagCard(){
 }
 function smStartDiag(){
   smSay('正在准备题目…');
-  api('/student/knowledge-map/diagnosis',{method:'POST'}).then(function(d){smSay('');smQuiz(d.questions)}).catch(function(e){smSay(e.message,true)});
+  api('/student/knowledge-map/diagnosis',{method:'POST'}).then(function(d){smSay('');
+    smQuiz(d.questions,'入门诊断','/student/knowledge-map/diagnosis/submit',function(r){
+      var ul=el('ul');r.nodes.forEach(function(x){ul.appendChild(el('li',{text:x.key+' '+x.name+'：答对 '+x.right+' / '+x.total}))});
+      SMDIAG.appendChild(el('div',{class:'card'},el('h3',{text:'诊断结果：答对 '+r.correct+' / '+r.total+' 题'}),ul));
+    })}).catch(function(e){smSay(e.message,true)});
 }
-function smQuiz(qs){
+function smQuiz(qs,title,url,done){
   var answers={},form=el('div');
-  SMDIAG.textContent='';SMDIAG.appendChild(el('div',{class:'card'},el('h3',{text:'入门诊断（共 '+qs.length+' 题）'}),form));
+  SMDIAG.textContent='';SMDIAG.appendChild(el('div',{class:'card'},el('h3',{text:title+'（共 '+qs.length+' 题，只算第一次作答）'}),form));
   qs.forEach(function(q,i){
     var box=el('div',{class:'card','data-q':String(q.id)},el('p',{text:(i+1)+'. '+q.text}));
     if(q.figure&&q.figure.type==='uploaded_image')box.appendChild(el('img',{src:q.figure.data_url,alt:q.figure.alt||'题目图片',style:'max-width:100%;max-height:260px'}));
@@ -539,10 +558,8 @@ function smQuiz(qs){
     var miss=qs.filter(function(q){return !answers[q.id]}).map(function(q){return qs.indexOf(q)+1});
     if(miss.length){smSay('还有第 '+miss.join('、')+' 题没有作答',true);return}
     send.disabled=true;smSay('正在判分…');
-    api('/student/knowledge-map/diagnosis/submit',{json:{answers:qs.map(function(q){return answers[q.id]})}}).then(function(r){
-      SM=r.map;smSay('');smDraw();smDiagCard();
-      var ul=el('ul');r.nodes.forEach(function(x){ul.appendChild(el('li',{text:x.key+' '+x.name+'：答对 '+x.right+' / '+x.total}))});
-      SMDIAG.appendChild(el('div',{class:'card'},el('h3',{text:'诊断结果：答对 '+r.correct+' / '+r.total+' 题'}),ul));
+    api(url,{json:{answers:qs.map(function(q){return answers[q.id]})}}).then(function(r){
+      SM=r.map;smSay('');smDraw();smDiagCard();done(r);
     }).catch(function(e){send.disabled=false;smSay(e.message,true)});
   }});
   form.appendChild(send);
@@ -553,7 +570,7 @@ function smLoad(){
   api('/student/knowledge-map').then(function(d){
     SM=d;root.appendChild(el('h2',{text:d.title}));root.appendChild(SMMSG);root.appendChild(SMDIAG);root.appendChild(smLegend());root.appendChild(SMBOX);root.appendChild(SMINFO);
     smDiagCard();smDraw();
-    SMINFO.appendChild(el('p',{class:'muted',text:'点一个知识点，看看它的掌握情况和前后关系。'}));
+    SMINFO.appendChild(el('p',{class:'muted',text:'点一个知识点，看看它的掌握情况和前后关系；学过的知识点可以做 3～5 题小测。'}));
     window.addEventListener('resize',function(){smDraw()});
   }).catch(function(e){msg(e.message)});
 }

@@ -303,6 +303,27 @@ def first_attempts(answer_lists: Iterable[list[Any]]) -> dict[int, bool]:
     return out
 
 
+QUIZ_MIN, QUIZ_MAX = 3, 5      # 点知识点做的小测：3—5 题，只算第一次作答
+
+
+def pick_node_quiz(node: dict[str, Any], usable: set[int], attempted: set[int]) -> list[int]:
+    """Up to QUIZ_MAX questions of one node the pupil has never answered, levels in turn (基础, 中等, 提高).
+
+    Deterministic for the same state, so the submit can check the pupil answered exactly this set; an empty list
+    when fewer than QUIZ_MIN are left (a smaller quiz says too little)."""
+    by_level: dict[str, list[int]] = {lv: [] for lv in LEVELS}
+    for q, lv in node["levels"].items():
+        if int(q) in usable and int(q) not in attempted and lv in by_level:
+            by_level[lv].append(int(q))
+    lists = [sorted(by_level[lv]) for lv in LEVELS]
+    out: list[int] = []
+    while len(out) < QUIZ_MAX and any(lists):
+        for x in lists:
+            if x and len(out) < QUIZ_MAX:
+                out.append(x.pop(0))
+    return out if len(out) >= QUIZ_MIN else []
+
+
 def _spread(seed: int, qid: int) -> int:
     return (qid * 2654435761 + seed * 40503) % 4294967296
 
@@ -549,5 +570,5 @@ def pick_ai_drafts(items: list[dict[str, Any]], count: int, level: str = "", exi
     return out
 
 
-__all__ = ["AGREEMENT_TARGET", "SHOWN_FIGURES", "CONFIDENCE_LABELS", "DIAGNOSIS_MIN", "LEVELS", "MASTERY_LABELS", "NODE_KINDS", "TEMPLATES", "UNIT_KINDS", "assessed", "clean_map", "coverage", "dependents", "first_attempts", "mastery_view", "node_mastery",
+__all__ = ["QUIZ_MAX", "QUIZ_MIN", "pick_node_quiz", "AGREEMENT_TARGET", "SHOWN_FIGURES", "CONFIDENCE_LABELS", "DIAGNOSIS_MIN", "LEVELS", "MASTERY_LABELS", "NODE_KINDS", "TEMPLATES", "UNIT_KINDS", "assessed", "clean_map", "coverage", "dependents", "first_attempts", "mastery_view", "node_mastery",
            "pick_diagnosis", "restore_unit", "summary", "template", "AI_MIN_STEPS", "AI_TYPE_LABELS", "MATH_ANGLES", "SHAPE_ANGLES", "CHANCE_ANGLES", "math_angles", "angle_brief", "angle_cap", "check_ai_question", "pick_ai_drafts"]

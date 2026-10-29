@@ -154,6 +154,7 @@ function writtenStudent(){}function writtenPhoto(){}function boot_student(f){f()
 function api(path,opts){
  if(path==='/student/weekend/current')return Promise.resolve({active:true,practice:true,sessionId:1,stage:4,title:'本课堂',questions:[{...q}]});
  if(path.startsWith('/student/weekend/explain'))return Promise.resolve({sessionId:1,items:[]});
+ if(path==='/student/knowledge-map')return Promise.reject(Error('知识地图未开启'));
  if(path==='/student/weekend/followup')return Promise.resolve({active:false});
  posts.push(opts.json);q.selected=opts.json.selected;q.answered=true;q.attempts++;return Promise.resolve({submitted:true,attempts:q.attempts});
 }

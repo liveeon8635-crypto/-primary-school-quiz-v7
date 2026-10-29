@@ -255,3 +255,76 @@ print("OK")
 
 def test_student_side_is_off_without_the_flag(tmp_path):
     helpers.run_isolated(tmp_path, helpers.COMMON + OFF)
+
+
+def test_node_quiz_takes_new_questions_levels_in_turn():
+    node = {"levels": {"1": "basic", "2": "basic", "3": "medium", "4": "medium", "5": "hard", "6": "hard", "7": "basic"}}
+    assert km.pick_node_quiz(node, set(range(1, 8)), set()) == [1, 3, 5, 2, 4]
+    assert km.pick_node_quiz(node, set(range(1, 8)), {1, 3}) == [2, 4, 5, 7, 6]
+    assert km.pick_node_quiz(node, {1, 2, 3}, {3}) == []                     # fewer than 3 new questions: no quiz
+    assert km.pick_node_quiz(node, {1, 2, 3, 9}, set()) == [1, 3, 2]          # only the node's usable questions
+
+
+QUIZ_FLOW = r'''
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        db.get(legacy.User, sid).grade = 5
+        db.commit()
+    d = client.post("/teacher/knowledge-maps", headers=th, json={"template": "rj2026-g5-math-up"}).json()
+    mid, rev = d["id"], d["revision"]
+    made = {}
+    with legacy.SessionLocal() as db:
+        for key, levels in (("2-2", ("basic", "basic", "medium", "medium", "hard", "hard")), ("2-3", ("basic", "medium"))):
+            for i, level in enumerate(levels):
+                q = legacy.Question(school_id=school_id, grade=5, subject="数学", unit="U2", knowledge=key, text=f"{key} 第{i + 1}题",
+                                    options_json=json.dumps(["6", "7", "8"]), correct_index=1, question_type="single_choice")
+                db.add(q); db.flush(); made.setdefault(key, []).append((q.id, level))
+        db.commit()
+    for key, qs in made.items():
+        rev = client.put(f"/teacher/knowledge-maps/{mid}/nodes/{key}/levels", headers=th,
+                         json={"levels": {str(q): lv for q, lv in qs}, "revision": rev}).json()["revision"]
+    client.post(f"/teacher/knowledge-maps/{mid}/publish", headers=th, json={"revision": rev})
+
+    m = client.get("/student/knowledge-map", headers=sh).json()
+    node = {n["key"]: n for n in m["nodes"]}
+    assert node["2-2"]["quiz"] is True and node["2-3"]["quiz"] is False and node["5-1"]["quiz"] is False
+    base = "/student/knowledge-map/nodes/{}/quiz"
+    r = client.post(base.format("2-3"), headers=sh)
+    assert r.status_code == 409 and "没有新题" in r.json()["detail"]
+    assert client.post(base.format("5-1"), headers=sh).status_code == 409          # unit not learned yet
+    assert client.post(base.format("9-9"), headers=sh).status_code == 404
+    assert client.post(base.format("2-2"), headers=th).status_code == 403
+
+    # Five new questions, levels in turn, no answers shown; asking again gives the same set.
+    q = client.post(base.format("2-2"), headers=sh).json()
+    ids = [x["id"] for x in q["questions"]]
+    by = dict(made["2-2"])
+    assert q["count"] == 5 and q["name"] == "小数乘小数" and [by[i] for i in ids] == ["basic", "medium", "hard", "basic", "medium"]
+    assert all(set(x) == {"id", "text", "options", "questionType", "figure"} for x in q["questions"])
+    assert [x["id"] for x in client.post(base.format("2-2"), headers=sh).json()["questions"]] == ids
+
+    submit = base.format("2-2") + "/submit"
+    answers = [{"question_id": i, "selected_index": 1 if k else 0} for k, i in enumerate(ids)]
+    assert client.post(submit, headers=sh, json={"answers": answers[:4]}).status_code == 409          # not the whole set
+    res = client.post(submit, headers=sh, json={"answers": answers}).json()
+    assert res["correct"] == 4 and res["total"] == 5
+    assert res["mastery"]["evidence"] == 5 and res["mastery"]["confidence"] == "reliable"
+    assert next(n for n in res["map"]["nodes"] if n["key"] == "2-2")["quiz"] is False                 # one new question left
+    assert client.post(submit, headers=sh, json={"answers": answers}).status_code == 409               # first answers only
+    with legacy.SessionLocal() as db:
+        sub = db.scalars(select(legacy.Submission).where(legacy.Submission.student_id == sid)).one()
+        assert sub.title == "知识地图小测：2-2 小数乘小数" and sub.assignment_id is None and sub.correct == 4
+
+    page = client.get("/v1/my-knowledge-map").text
+    for t in ("做 3～5 题小测", "/quiz/submit", "只算第一次作答", "smQuizEntry"):
+        assert t in page, t
+    practice = client.get("/v1/weekend-practice").text
+    for t in ("practiceMapEntry", "课前诊断", "课后补测", "/v1/my-knowledge-map"):
+        assert t in practice, t
+print("OK")
+'''
+
+
+def test_pupil_takes_a_quick_check_on_one_point(tmp_path):
+    helpers.run_isolated(tmp_path, helpers.COMMON + QUIZ_FLOW, {"KNOWLEDGE_MAP": "1"})

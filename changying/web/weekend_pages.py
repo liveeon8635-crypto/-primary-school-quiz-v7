@@ -302,9 +302,18 @@ function invitationCard(q){
   card.appendChild(el('p',{class:'muted',text:'用自己的话讲清思路、依据和容易出错的地方。'}));
   return card;
 }
+function practiceMapEntry(holder){
+  // 知识地图（开关打开且老师已发布时）：课前先做入门诊断，课后在地图上点知识点做 3～5 题小测。
+  api('/student/knowledge-map').then(function(m){
+    if(!m||!m.diagnosis)return;var before=m.diagnosis.status!=='submitted';
+    holder.appendChild(el('div',{class:'card'},el('h3',{text:before?'课前诊断':'课后补测'}),
+      el('p',{text:before?'上课前先做 12 道题的入门诊断，看看学过的单元掌握得怎么样。':'下课后打开知识地图，点今天学的知识点，做 3～5 题小测，看看掌握了没有。'}),
+      el('a',{class:'btn primary',style:'text-decoration:none;display:inline-block',href:'/v1/my-knowledge-map',text:before?'去做入门诊断':'打开知识地图做小测'})));
+  }).catch(function(){});
+}
 function practice(){
   root.textContent='';
-  var box=el('div'),lastPracticeSignature='',selectedAnswers={},currentSession=null,currentStage=null,loadNo=0,explainNo=0;root.appendChild(box);
+  var box=el('div'),mapEntry=el('div'),lastPracticeSignature='',selectedAnswers={},currentSession=null,currentStage=null,loadNo=0,explainNo=0;root.appendChild(mapEntry);root.appendChild(box);practiceMapEntry(mapEntry);
   function load(){
     var request=++loadNo;api('/student/weekend/current').then(function(d){if(request!==loadNo)return;var sid=d.active?d.sessionId:null;if(sid!==currentSession){ebox.textContent='';fbox.textContent='';explainNo++}currentSession=sid;currentStage=d.stage;if(currentStage!==4&&currentStage!==5)fbox.textContent='';paint(d);explain();if(!fbox.firstChild)followup()}).catch(function(e){if(request!==loadNo)return;currentSession=null;explainNo++;ebox.textContent='';fbox.textContent='';lastPracticeSignature='';box.textContent='';box.appendChild(el('div',{class:'card'},el('div',{class:'notice error',text:e.message})))});
   }
