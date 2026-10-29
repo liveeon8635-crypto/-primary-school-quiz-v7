@@ -222,7 +222,7 @@ function kmDrafts(n,lv,items,box){
 }
 function kmNodeRow(n,unit){
   var after=KM.dependents[n.key]||[],edit=el('div'),qs=el('div');
-  var tags=el('div',{class:'row'},kmTag(KM.nodeKinds[n.kind]),n.assessed?kmTag('参加诊断','ok'):kmTag(unit.learned?'不参加诊断':'未学'),kmCoverage(n),
+  var tags=el('div',{class:'row'},kmTag(KM.nodeKinds[n.kind]),n.assessed?kmTag('参加诊断','ok'):kmTag(unit.learned?'不参加诊断':'未学'),
     n.kind==='display'?null:kmTag('题库匹配 '+n.bankCount+' 题'));
   var actions=el('div',{class:'row'},
     el('button',{class:'btn',text:'编辑',onclick:function(){kmEditForm(n,edit)}}),
@@ -233,11 +233,20 @@ function kmNodeRow(n,unit){
       var msgText='删除知识点 '+n.key+' '+n.name+'？'+(after.length?'它是 '+after.join('、')+' 的前置，删除后这些前置关系一并去掉。':'')+'已分档的题目不会从题库删除。';
       if(!confirm(msgText))return;
       kmSave(function(m){m.nodes=m.nodes.filter(function(x){return x.key!==n.key});m.nodes.forEach(function(x){x.prereqs=x.prereqs.filter(function(p){return p!==n.key})})})}}));
-  var row=el('div',{class:'card','data-node':n.key},
-    el('h4',{text:n.key+'  '+n.name}),n.detail?el('p',{class:'muted',text:n.detail}):null,tags,
-    el('p',{text:'前置：'+(n.prereqs.length?n.prereqs.map(kmLabel).join('、'):'无')+'；后续：'+(after.length?after.map(kmLabel).join('、'):'无')}),
+  // 默认只占一行：编号 + 名称 + 题目覆盖；点开才看说明、前后置和操作按钮。
+  var caret=el('span',{class:'km-caret',text:'▸'});
+  var body=el('div',{class:'km-node-b'},n.detail?el('p',{class:'muted',text:n.detail}):null,tags,
+    el('p',{class:'muted',text:'前置：'+(n.prereqs.length?n.prereqs.map(kmLabel).join('、'):'无')+'；后续：'+(after.length?after.map(kmLabel).join('、'):'无')}),
     actions,edit,qs);
-  if(QPANEL[n.key])kmQuestions(n,qs);
+  body.hidden=true;
+  var head=el('button',{class:'km-node-h',type:'button','aria-expanded':'false',
+    onclick:function(){
+      var open=body.hidden;body.hidden=!open;caret.textContent=open?'▾':'▸';
+      head.setAttribute('aria-expanded',open?'true':'false');
+    }},
+    el('span',{class:'km-node-t',text:n.key+'  '+n.name}),kmCoverage(n),caret);
+  var row=el('div',{class:'card km-node','data-node':n.key},head,body);
+  if(QPANEL[n.key]){body.hidden=false;caret.textContent='▾';head.setAttribute('aria-expanded','true');kmQuestions(n,qs)}
   return row;
 }
 function kmLabel(key){var n=kmNode(KM.map,key);return n?key+' '+n.name:key}
@@ -540,6 +549,14 @@ KM_WIDE_CSS = """<style>
 section.card[data-unit] .card{border:0;border-top:1px solid #e3e8f2;border-radius:0;box-shadow:none;margin:0;padding:14px 0 12px}
 section.card[data-unit] .card:first-of-type{border-top:0;padding-top:6px}
 section.card[data-unit] .card h4{margin:0 0 4px;font-size:16px}
+/* 知识点默认只占一行，点开才展开详情与操作。 */
+section.card[data-unit] .km-node{padding:0}
+.km-node-h{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;padding:12px 2px;font:inherit;text-align:left;cursor:pointer}
+.km-node-h:hover .km-node-t{color:#1f6feb}
+.km-node-t{flex:1 1 auto;min-width:0;font-weight:700;font-size:16px;color:#1c2333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.km-caret{color:#667085;font-size:13px;width:1em;text-align:center;flex:0 0 auto}
+.km-node-b{padding:0 2px 14px}
+.km-node-b[hidden]{display:none}
 /* AI 草稿卡片：每个选项、答案、解析各占一行，不和下一个选项字母挤在一起。 */
 .km-draft>label{display:block;margin:8px 0}.km-draft>label>input:not([type=checkbox]){width:calc(100% - 2.5em);max-width:420px}
 /* 平板横屏（≥900）起两列，同行等高；不做三列——出题面板带图形，三列会被压到 ~250px。 */
