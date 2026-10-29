@@ -54,6 +54,13 @@ ROLE_FLOW: dict[str, list[dict[str, str]]] = {
         {"id": "history", "page": "/v1/history", "title": "往期教学"},
         {"id": "transition", "page": "/v1/transition", "title": "升年级与衔接"},
         {"id": "teacher_homework", "page": "/v1/homework", "title": "晚托作业助手：导入作业通知"},
+        {"id": "teacher_weekend_plan", "page": "/v1/weekend-plan", "title": "周末课备课：教案、习题、互动课件"},
+        {"id": "teacher_weekend_class", "page": "/v1/weekend", "title": "周末课上课：控制页、大屏、学生练习"},
+        {"id": "teacher_weekend_report", "page": "/v1/weekend", "title": "周末课课后：学情反馈与纸质备用"},
+        {"id": "teacher_knowledge_map", "page": "/v1/knowledge-map", "title": "知识地图：建图、配题、发布"},
+        {"id": "teacher_knowledge_class", "page": "/v1/knowledge-map", "title": "知识地图：全班掌握与巩固"},
+        {"id": "teacher_exam_prep", "page": "/v1/exam-prep", "title": "应试专项：模拟卷、失分点、再测"},
+        {"id": "teacher_kp_cards", "page": "/v1/knowledge", "title": "知识点讲解卡片"},
         {"id": "hub", "page": "/v1/tool", "title": "全部功能与关系"},
     ],
     "student": [
@@ -68,6 +75,9 @@ ROLE_FLOW: dict[str, list[dict[str, str]]] = {
         {"id": "wrongbook", "page": "/v1/tool?page=wrongbook", "title": "我的错题"},
         {"id": "student_leaderboard", "page": "/v1/tool?page=leaderboard", "title": "班级排行"},
         {"id": "student_homework", "page": "/v1/homework", "title": "晚托作业助手：家庭作业与拍题求助"},
+        {"id": "student_weekend", "page": "/v1/weekend-practice", "title": "周末课课堂练习"},
+        {"id": "student_knowledge_map", "page": "/v1/my-knowledge-map", "title": "我的知识地图：诊断与小测"},
+        {"id": "student_exam_paper", "page": "/v1/exam-paper", "title": "限时模拟卷"},
         {"id": "account", "page": "/v1/tool?page=account", "title": "我的账号与更多"},
     ],
     "parent": [
@@ -77,6 +87,8 @@ ROLE_FLOW: dict[str, list[dict[str, str]]] = {
         {"id": "progress", "page": "/v1/tool?page=childProgress", "title": "孩子学情"},
         {"id": "rewards", "page": "/v1/tool?page=childRewards", "title": "课堂表现与积分"},
         {"id": "history", "page": "/v1/history", "title": "连续档案与历史"},
+        {"id": "parent_weekend_brief", "page": "/v1/weekend-brief", "title": "周末课学情反馈"},
+        {"id": "parent_exam_report", "page": "/v1/exam-report", "title": "考试提分报告"},
         {"id": "account", "page": "/v1/tool?page=account", "title": "我的账号与关联孩子"},
     ],
     "admin": [
@@ -97,6 +109,19 @@ ROLE_FLOW: dict[str, list[dict[str, str]]] = {
 }
 
 STEP_RELATIONSHIPS: dict[str, dict[str, str]] = {
+    # 周末课、知识地图、应试专项：沙盒不模拟，只做导览（谁操作、产生什么、谁能看到、下一步去哪）。
+    "teacher_weekend_plan": {"who": "教师", "creates": "每次课的教案、习题草稿、互动课件草稿", "visible_to": "教师；习题审核通过、课件审核通过后才进入课堂", "other_role_sees": "学生和家长此时什么都看不到", "communication_tip": "导入或 AI 写教案后，习题要在“习题审核”里逐题通过；至少通过 1 道才能开课，灰色按钮旁会写还差什么。删题只影响课堂和打印，不改教案文字", "next": "开课"},
+    "teacher_weekend_class": {"who": "教师", "creates": "一节课堂记录、学生作答、提示使用、强带弱讲题、积分", "visible_to": "教师控制页和大屏；学生只在自己平板上看到当前环节允许的内容", "other_role_sees": "学生在“课堂练习”作答；随堂练习的答案要老师逐题公布后学生才看到", "communication_tip": "按 7 个环节推进；大屏讲解环节答案默认遮住，点“显示答案”才出现；大屏和控制页每 3 秒同步", "next": "课后总结与学情反馈"},
+    "teacher_weekend_report": {"who": "教师", "creates": "学情反馈草稿与已发布版本；纸质教师版/学生版 Word", "visible_to": "教师；发布后关联家长可见", "other_role_sees": "家长在“孩子学情”顶部的“周末课学情反馈”里只看到已发布的版本，看不到排名和其他孩子", "communication_tip": "AI 只写草稿，老师核对、修改后再发布；改了没发布，家长仍看到上一版", "next": "家长查看学情反馈"},
+    "teacher_knowledge_map": {"who": "教师", "creates": "知识地图草稿（单元、知识点、先学关系、各题难度档）与发布版本", "visible_to": "教师；发布后同年级学生可见", "other_role_sees": "学生只看到已发布、且是自己年级的地图", "communication_tip": "给知识点配题有三种方式：从题库挑、AI 出题、系统画图题；AI 出的题按考法检查、数学答案会验算，仍需老师审核后入库分档。改了不发布，学生端不变", "next": "学生诊断与小测"},
+    "teacher_knowledge_class": {"who": "教师", "creates": "巩固作业（只给勾选的学生）；老师自己对每个学生的判断", "visible_to": "教师；巩固作业学生在“作业”里看到", "other_role_sees": "学生看到自己的地图颜色和巩固作业，看不到全班情况", "communication_tip": "掌握度只算第一次作答，题太少显示“证据不足”；记录自己的判断后能看到与系统的一致率（目标 80%）", "next": "布置巩固后再看地图变化"},
+    "teacher_exam_prep": {"who": "教师", "creates": "考试目标、模拟卷、专项练习、再测卷、家长提分报告", "visible_to": "教师；学生看到模拟卷和专项练习；家长看到已发布的提分报告", "other_role_sees": "学生只和自己比，没有排名；家长只看到自己孩子", "communication_tip": "流程是摸底→失分点（每人最多 3 个）→专项练习→再测对比→报告；题来自知识地图和题库，题少组不出卷", "next": "学生限时作答"},
+    "teacher_kp_cards": {"who": "教师", "creates": "知识点讲解卡片（AI 草稿，老师审核）", "visible_to": "审核通过后同年级学生可搜索", "other_role_sees": "学生做错题时也会看到对应知识点的卡片", "communication_tip": "AI 写的卡片只是草稿，一定要审核后再给学生", "next": "学生搜索与错题讲解"},
+    "student_weekend": {"who": "学生", "creates": "课堂作答、提示使用记录", "visible_to": "学生本人；教师实时看到完成情况", "other_role_sees": "教师在控制页看到谁做完、谁用了提示；家长课后看到老师发布的学情反馈", "communication_tip": "先自己做，卡住再用提示；答案要等老师公布", "next": "课后学情反馈"},
+    "student_knowledge_map": {"who": "学生", "creates": "入门诊断（12 题，每人一次）和知识点小测（3～5 题）的作答", "visible_to": "学生本人；教师在班级视图看到", "other_role_sees": "教师看全班颜色表并可布置巩固；家长暂时看不到地图", "communication_tip": "每道题只算第一次作答，认真做；做完马上看到地图颜色变化", "next": "老师布置巩固"},
+    "student_exam_paper": {"who": "学生", "creates": "限时作答记录（开始时间、用时、得分）", "visible_to": "学生本人；教师看失分点", "other_role_sees": "教师据此布置专项练习；家长看到老师发布的提分报告", "communication_tip": "倒计时到了不会强制收卷，但用时会被记录；没写完的题交卷前会提醒", "next": "专项练习与再测"},
+    "parent_weekend_brief": {"who": "家长", "creates": "无新增业务写入", "visible_to": "已关联的家长", "other_role_sees": "老师写草稿并发布；学生看不到这份反馈", "communication_tip": "反馈只说孩子自己的情况和下一步怎么做，没有排名", "next": "考试提分报告"},
+    "parent_exam_report": {"who": "家长", "creates": "无新增业务写入", "visible_to": "已关联的家长", "other_role_sees": "老师生成并发布；看不到答案和其他孩子", "communication_tip": "报告写的是系统记录的结果和老师的话，不是凭空评价", "next": "关联孩子与账号"},
     "teacher_dashboard": {"who": "教师", "creates": "无新增业务写入", "visible_to": "教师", "other_role_sees": "学生、家长只看到与自己有关的结果，不看到教师工作台", "communication_tip": "先从工作台确认今天要处理的班级、作业和课堂，再进入具体功能", "next": "班级学生"},
     "teacher_resources": {"who": "教师", "creates": "教材/教案资料引用关系", "visible_to": "教师；标记学生可见的资料按权限给学生", "other_role_sees": "学生只看到被允许的资料，不看到教师私有备课文件", "communication_tip": "上传资料前确认版权和学生可见范围", "next": "教材题库或 AI 助手"},
     "teacher_catalog": {"who": "教师", "creates": "题目筛选/选题上下文", "visible_to": "教师", "other_role_sees": "学生只看到最终被布置的题目", "communication_tip": "题库浏览不等于布置，发布前仍需教师审核；新导入的题目按导入时填写的单元归类；题库里已有完全相同的题（带插图的题除外）会沿用原来的位置。找不到时先核对单元和学科", "next": "组卷作业"},

@@ -166,7 +166,31 @@ function pageIntro(step,subtitle=''){
 function pageCard(title,subtitle,body,actions=''){
   return '<section class="card page-card"><div class="page-head"><div><h2>'+esc(title)+'</h2><p>'+esc(subtitle)+'</p></div><span class="tag warn">实操沙盒</span></div>'+body+(actions?'<div class="action-row">'+actions+'</div>':'')+'</section>';
 }
+// 周末课、知识地图、应试专项：沙盒不模拟这些模块，只按顺序讲清流程；真正操作在真实页面上。
+const TOURS={
+  teacher_weekend_plan:['在“18 次课进度表与备课”里，每次课点“导入我的教案”（Word/PPT/PDF）或“没教案？AI 帮我写”。','点“AI 出习题”：AI 按题型和难度出一整套草稿，数学答案会逐题验算。','点“审改”分四块处理：教案编辑、习题审核（逐题通过才给学生）、原文核对（导入时的原文，只存档）、互动课件（给例题配分步讲解和图示）。','至少通过 1 道习题才能开课；灰色“开课”旁边会写还差什么。','删掉的题，课堂、大屏、打印 Word 会自动跟着少；教案文字不会变。'],
+  teacher_weekend_class:['开课后进入控制页，按 7 个环节推进：到课与热身、知识点介绍、例题讲解、随堂练习、练习复盘、课堂互动、布置课后。','打开大屏：知识点卡和例题卡自动分开排版，放不下就上下排；讲解环节的答案默认遮住，点“显示答案”才出现。','随堂练习：学生在平板“课堂练习”作答，可用阶梯提示；答案要老师逐题公布。','练习复盘时系统建议请谁讲题（强带弱），课后结算进步分和团队分。'],
+  teacher_weekend_report:['下课后在上课页打开“课后总结与家长反馈”：AI 按课堂记录写每个孩子的学情反馈草稿。','老师逐份核对、修改，再“发布给家长”；改了没发布，家长仍看到上一版；也可下载 Word。','“纸质备用与课后补录”：下载教师版/学生版 Word 打印；断网时纸上作答，课后补录回系统。'],
+  teacher_knowledge_map:['按模板建地图（现有人教版五年级上册数学）：单元 → 知识点 → 先学什么。','给每个知识点配题：从题库挑、AI 出题（按单元选考法，数学答案验算）、系统画图题。','把题分到基础、中等、提高三档；每个知识点至少 6 道、每档至少 2 道才能用于诊断。','点“发布”：同年级学生马上能看到；以后改了要再发布一次。'],
+  teacher_knowledge_class:['学生做 12 题入门诊断，以后可在任意学过的知识点做 3～5 题小测。','老师在“查看全班掌握情况”看颜色表：熟练、达标、薄弱、证据不足。','勾选薄弱学生，一键布置巩固练习（只出他们没做过的题）。','记录自己对每个学生的判断，看与系统结论的一致率（目标 80%）。'],
+  teacher_exam_prep:['建考试目标：日期、范围（勾选知识地图单元）、班级。','发模拟卷：学生限时作答，系统记录用时。','看失分点：每个学生最多 3 个，按卷面分值排序。','一键布置专项练习 → 发再测卷 → 对比前后。','生成家长提分报告，写“老师的话”后发布。'],
+  teacher_kp_cards:['每个知识点一张讲解卡：AI 写草稿，老师修改、审核。','审核后学生可以搜索；学生做错题时会看到对应知识点的卡片。'],
+  student_weekend:['老师开课后，在学习首页点“查看本节课堂”进入课堂练习。','到“随堂练习”环节才出现题目；先自己做，卡住再点提示（三级，前两级不给答案）。','页面顶部还有“课前诊断／课后补测”入口，连到我的知识地图。'],
+  student_knowledge_map:['打开“我的知识地图”：按单元排列的知识点，颜色表示掌握情况。','先做 12 题入门诊断（每人一次），每道题只算第一次作答。','点任意学过的知识点可以做 3～5 题小测，做完地图马上更新。'],
+  student_exam_paper:['首页出现“限时模拟卷”卡片时，点“开始限时作答”。','顶部倒计时；中途刷新不会丢答案，倒计时接着走。','交卷前会提醒还有哪题没写；时间到了不会强制收卷，但用时会被记录。'],
+  parent_weekend_brief:['在“孩子学情”页顶部点“周末课学情反馈”。','看到老师发布的每节课反馈：这节课学了什么、孩子表现、接下来怎么做。','没有排名，也看不到其他孩子。'],
+  parent_exam_report:['在“孩子学情”页顶部点“考试提分报告”。','看到得分变化、失分点、专项练习和再测对比，以及老师的话。','看不到答案和其他孩子的信息。']
+};
+function tourPage(step,roleLabel,doneId='auxDone'){
+  const rel=relation(step),lines=TOURS[step.id]||[];
+  const open=roleLabel==='教师'?'<a class="btn" href="'+esc(step.page)+'" target="_blank" rel="noopener">打开真实页面（新窗口，会影响真实数据）</a>':'';
+  const body='<div class="notice warn">这是导览：沙盒不模拟这个模块，下面按顺序讲清它怎么运转。真正操作要到真实页面上，真实页面上的操作会立刻影响真实的老师、学生和家长。</div>'+
+    '<ol class="list">'+lines.map(x=>'<li class="item">'+esc(x)+'</li>').join('')+'</ol>'+roleRelationBlock(rel);
+  const intro=roleLabel==='教师'?'教师导览：先看懂流程和各角色的关系，再跟着真实备课、上课去做。':roleLabel+'导览：看懂'+roleLabel+'在这一步看到什么、能做什么，以及和老师的关系。';
+  return pageIntro(step,intro)+pageCard(step.title,'真实页面：'+step.page,body,open+'<button class="btn primary" id="'+doneId+'">看懂了，下一步</button>');
+}
 function auxiliaryPage(step,roleLabel,details=''){
+  if(TOURS[step.id])return tourPage(step,roleLabel);
   const rel=relation(step);
   const body='<div class="notice">'+esc(details||'这个页面属于 '+roleLabel+' 的完整功能地图。请先理解它的上游来源、可见范围和下游去向，再继续。')+'</div>'+roleRelationBlock(rel);
   return pageIntro(step,'这一页不是孤立功能；训练重点是理解它和其他角色、上下游页面之间的关系。')+pageCard(step.title,'页面：'+step.page,body,'<button class="btn primary" id="auxDone">完成本页实操</button>');
@@ -262,6 +286,8 @@ function renderStudentRole(step,d,rel){
     stage.innerHTML=pageIntro(step,'学习首页只负责汇总今天要做什么；看到任务不等于已经完成。')+pageCard('学习首页',s?esc(s.name)+' · '+esc(s.className):'学生首页','<div class="metric-grid"><div class="metric"><strong>'+d.assignments.length+'</strong><small>作业</small></div><div class="metric"><strong>'+d.targeted_practices.length+'</strong><small>针对练习</small></div><div class="metric"><strong>'+d.wrong_questions.length+'</strong><small>错题</small></div><div class="metric"><strong>'+d.points.reduce((n,x)=>n+Number(x.points||0),0)+'</strong><small>积分</small></div></div>'+roleRelationBlock(rel),done);
   }else if(step.id==='student_homework'){
     stage.innerHTML=pageIntro(step,'老师发来的家庭作业清单，和拍题求助，都在“晚托作业助手”里。')+pageCard('晚托作业助手','在底栏“作业”页顶部看到家庭作业；不会的题可以拍下来问 AI。','<div class="item"><b>今天的家庭作业</b><small>老师发布后，作业页顶部会出现清单；点进助手，做完一项就在前面打勾。</small></div><div class="item"><b>这道题我不会</b><small>只拍这一道题，拖动白框框住题目，确认识别出的文字，再让 AI 分步讲解。AI 可能出错，请自己判断。</small></div><div class="item"><b>还是不会</b><small>点“求助老师”，老师会看到你的题目和 AI 讲解，再来帮你。</small></div>'+roleRelationBlock(rel),done);
+  }else if(TOURS[step.id]){
+    stage.innerHTML=tourPage(step,'学生','roleDone');
   }else if(step.id==='student_leaderboard'){
     stage.innerHTML=pageIntro(step,'班级排行用于激励，不代表学习能力排名。')+pageCard('班级排行','只理解展示规则和边界。','<div class="notice">你的练习积分会影响允许展示的班级排行，但教师仍应使用学情、错题和课堂证据判断下一步教学。</div>'+roleRelationBlock(rel),done);
   }else{
@@ -276,6 +302,7 @@ function bindStudentRole(){
   const practice=document.getElementById('completeStudentPractice');if(practice)practice.onclick=()=>act('complete_student_practice',{});
 }
 function renderParentRole(step,d,rel){
+  if(TOURS[step.id]){stage.innerHTML=tourPage(step,'家长','parentDone');document.getElementById('parentDone').onclick=()=>markStep();return}
   const child=d.students?.at(-1),cls=d.classes?.at(-1),assignment=d.assignments?.at(-1),sub=d.submissions?.at(-1);
   let body='';
   if(step.id==='parent_home')body='<div class="metric-grid"><div class="metric"><strong>'+esc(child?.name||'小禾')+'</strong><small>当前孩子</small></div><div class="metric"><strong>'+d.assignments.length+'</strong><small>作业</small></div><div class="metric"><strong>'+esc(sub?.score??'—')+'</strong><small>最近结果</small></div><div class="metric"><strong>'+d.points.reduce((n,x)=>n+Number(x.points||0),0)+'</strong><small>积分</small></div></div>';
