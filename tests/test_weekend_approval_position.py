@@ -35,7 +35,11 @@ function api(path,opts){
 async function settle(){for(let i=0;i<15;i++)await Promise.resolve()}
 ''' + PLAN_JS + r'''
 (async()=>{
- plan();await settle();all(root,'button').find(n=>n.textContent==='审改').attrs.onclick();await settle();
+ plan();await settle();
+ // 开课 is grey with its reason written beside it (tooltips are invisible on tablets).
+ const reasons=all(root,'span').filter(n=>n.attrs['data-start-reason']).map(n=>n.textContent);
+ assert.deepEqual(reasons,['还差：在“习题审核”里至少通过 1 道习题（现有 10 道草稿待审）','还差：先导入教案或让 AI 写教案，才能开课']);
+ all(root,'button').find(n=>n.textContent==='审改').attrs.onclick();await settle();
  all(root,'button').filter(n=>n.attrs.role==='tab')[1].attrs.onclick();
  const originalGets=gets,originalAreas=all(root,'textarea'),material=all(root,'details').find(n=>n.children[0].textContent==='展开阅读材料／题目全文');
  material.open=true;const draft=originalAreas.find(n=>n.value==='教师参考8');draft.value='第九题未保存的评分要点';
@@ -48,6 +52,7 @@ async function settle(){for(let i=0;i<15;i++)await Promise.resolve()}
  assert.deepEqual(all(root,'textarea'),originalAreas);assert.equal(draft.value,'第九题未保存的评分要点');assert(material.open);
  assert.equal(approve[1].textContent,'已通过');assert(approve[1].disabled);
  assert(!all(root,'button').find(n=>n.textContent==='开课').disabled);
+ assert.equal(all(root,'span').find(n=>n.attrs['data-start-reason']).textContent,'');
  // The selection-question path has the same position guarantee.
  approve[0].attrs.onclick();finish();await settle();assert.equal(gets,originalGets);assert.equal(approve[0].textContent,'已通过');
  // Failure stays beside the current question, re-enables retry, and retains edits.
