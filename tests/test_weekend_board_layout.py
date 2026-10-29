@@ -51,6 +51,8 @@ ROUTE = r'''
 with TestClient(app) as client:
     page = client.get("/v1/weekend-board")
     assert page.status_code == 200 and "function boardLayout(" in page.text and "boardLayout(body,d.content" in page.text
+    plan = client.get("/v1/weekend-plan").text
+    assert "function startReason(" in plan and "data-start-reason" in plan
 print("OK")
 '''
 
