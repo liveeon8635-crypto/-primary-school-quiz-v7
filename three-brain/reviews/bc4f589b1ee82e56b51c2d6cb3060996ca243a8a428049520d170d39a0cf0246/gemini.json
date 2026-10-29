@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "brainId": "gemini",
+  "provider": "google-jules",
+  "model": "gemini-2.5-flash",
+  "evidencePacketHash": "sha256:bc4f589b1ee82e56b51c2d6cb3060996ca243a8a428049520d170d39a0cf0246",
+  "repository": "liveeon8635-crypto/-primary-school-quiz-v7",
+  "baseSha": "903a16c48d66b4d809f24bdfa6b890e801155dc6",
+  "headSha": "c227783ce0df15f33ab460abecc7485e44cc9f22",
+  "decision": "accept",
+  "risk": "low",
+  "claims": [
+    {
+      "id": "GEMINI-001",
+      "text": "建议合并：补齐了知识地图在页面交互、诊断与小测题来源、掌握度计算口径方面的文档，符合预期且 CI 检查全部通过。",
+      "evidenceRefs": [
+        "file:docs/analysis/knowledge-map.md#L98-L134",
+        "run:123459230844",
+        "run:123459230120"
+      ]
+    },
+    {
+      "id": "GEMINI-002",
+      "text": "文档新增了第 9 至 11 节，详细说明了教师端与学生端的页面交互流程、诊断题与小测题的筛选及出题规则、以及掌握度指标（加权正确率及三档划分）的计算口径。",
+      "evidenceRefs": [
+        "file:docs/analysis/knowledge-map.md#L98-L134"
+      ]
+    },
+    {
+      "id": "GEMINI-003",
+      "text": "自动化测试（smoke 和 guard）均已成功通过，无代码质量或功能回归风险。",
+      "evidenceRefs": [
+        "run:123459230844",
+        "run:123459230120"
+      ]
+    }
+  ],
+  "unresolved": [],
+  "authority": "read_only",
+  "writesPerformed": false,
+  "protectedActions": false,
+  "declaredReviewerId": "gemini-jules-reviewer",
+  "transport": "jules-github-issue-label",
+  "recordHash": "sha256:5d0e7e1dfafeaa57d4aeb7f983fa81c4c74420a3a69b58ef8df8739a8598325c"
+}
