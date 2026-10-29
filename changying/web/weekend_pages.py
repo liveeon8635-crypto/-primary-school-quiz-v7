@@ -409,6 +409,14 @@ def _page(title: str, js: str, with_header: bool, back: tuple[str, str] = ("/v1"
 
 PLAN_JS = r"""
 var SUBJ='数学';
+function genSummary(g){
+  var names={choice:'选择',final_answer:'填空／计算',short_answer:'解决问题／简答',composition:'写作'},parts=[],lv=[];
+  Object.keys(g.byType||{}).forEach(function(k){if(g.byType[k])parts.push(names[k]+' '+g.byType[k])});
+  Object.keys(g.byLevel||{}).forEach(function(k){if(g.byLevel[k])lv.push(k+' '+g.byLevel[k])});
+  var drop=Object.keys(g.dropped||{}).map(function(k){return k+' '+g.dropped[k]});
+  return '共 '+g.count+' 题（'+parts.join('、')+'；'+lv.join('、')+'）'+(g.verified?'，其中 '+g.verified+' 题数学答案已由系统验算':'')+'。'
+    +(g.short?'还差 '+g.short+' 题没出够，可以再点一次。':'')+(drop.length?'不合格已丢弃：'+drop.join('、')+'。':'');
+}
 function batchItemTag(it){
   if(!it.ok)return {cls:'warn',text:'读不出文字：'+(it.error||'')};
   if(!it.lessonNo)return {cls:'warn',text:'文件名里看不出课次'};
@@ -552,12 +560,16 @@ function plan(){
       var draftBtn=el('button',{text:r.hasPlan?'AI 重写':'没教案？AI 帮我写',onclick:function(){
         if(r.hasPlan&&!confirm('这节课已有教案，AI 重写会覆盖教案文字和未审核的草稿题，确定吗？'))return;
         draftBtn.disabled=true;note('ok','AI 正在备课，大约半分钟…');
-        api('/teacher/weekend/lessons/draft',{json:{subject:SUBJ,lessonNo:r.lessonNo,force:r.hasPlan}}).then(function(){note('ok','草稿已生成，请展开“审改”核对后再用。');load()})
-          .catch(function(e){note('error',e.message);draftBtn.disabled=false});
+        api('/teacher/weekend/lessons/draft',{json:{subject:SUBJ,lessonNo:r.lessonNo,force:r.hasPlan}}).then(function(d){
+            note('ok','教案草稿已生成，正在按题型和难度出一整套习题（约一分钟）…');
+            return api('/teacher/weekend/lessons/'+d.lessonId+'/questions/generate',{json:{count:12}}).then(function(g){note('ok','教案和习题草稿都已生成：'+genSummary(g)+' 请展开“审改”核对。')},
+              function(e){note('error','教案已生成，但出题没成功：'+e.message+' 可以再点“AI 出习题”。')});
+          }).then(load).catch(function(e){note('error',e.message);draftBtn.disabled=false});
       }});
-      var qBtn=r.hasPlan?el('button',{text:'AI 出习题（含简答／写作）',onclick:function(){
-        qBtn.disabled=true;note('ok','AI 正在出题…');
-        api('/teacher/weekend/lessons/draft',{json:{subject:SUBJ,lessonNo:r.lessonNo,onlyQuestions:true}}).then(function(){note('ok','习题草稿已生成，展开“审改”逐题通过后才会给学生。');load()}).catch(function(e){note('error',e.message);qBtn.disabled=false});
+      var qCount=r.hasPlan&&r.lessonId?el('select',{'aria-label':'题量'},el('option',{value:'8',text:'8 题'}),el('option',{value:'12',text:'12 题',selected:true}),el('option',{value:'16',text:'16 题'})):null;
+      var qBtn=r.hasPlan&&r.lessonId?el('button',{text:'AI 出习题（多题型、分难度）',onclick:function(){
+        qBtn.disabled=true;note('ok','AI 正在按题型和难度出题，数学答案会逐题验算，约一分钟…');
+        api('/teacher/weekend/lessons/'+r.lessonId+'/questions/generate',{json:{count:+qCount.value}}).then(function(g){note('ok','习题草稿已生成：'+genSummary(g)+' 展开“审改”逐题通过后才会给学生。');load()}).catch(function(e){note('error',e.message);qBtn.disabled=false});
       }}):null;
       function refreshRow(st){Object.assign(r,st);go.disabled=!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0);tag.textContent='有教案 · 已通过 '+r.approvedQuestions+' 题 · 草稿 '+r.draftQuestions+' 题'}
       var open=el('button',{text:'审改',disabled:!r.lessonId,onclick:function(){detail.hidden=!detail.hidden;if(!detail.hidden)lessonDetail(r,detail,refreshRow)}});
@@ -575,7 +587,7 @@ function plan(){
         }).catch(function(e){deleteFeedback.textContent=e.message;deleteBtn.disabled=false});
       }});
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
-        el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),impBtn,fileIn,draftBtn,qBtn,open,cwBtn,go,deleteBtn),deleteFeedback,detail));
+        el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),impBtn,fileIn,draftBtn,qCount,qBtn,open,cwBtn,go,deleteBtn),deleteFeedback,detail));
     });
     list.appendChild(el('button',{class:'primary',text:'保存进度表',onclick:function(){
       api('/teacher/weekend/schedule',{method:'PUT',json:{subject:SUBJ,rows:state.map(function(r){return {lessonNo:r.lessonNo,schoolWeek:r.schoolWeek,schoolUnit:r.schoolUnit||'',plannedDate:r.plannedDate||'',note:r.note||''}})}}).then(function(){note('ok','已保存');load()}).catch(function(e){note('error',e.message)})}}));
@@ -617,7 +629,9 @@ function plan(){
           if(!d.items.length){qbox.appendChild(el('div',{class:'muted',text:'暂无选择题，请查看下方简答／写作题。'}));return}
           d.items.forEach(function(q){
             var opts=q.options.map(function(o,i){return 'ABCD'[i]+'. '+o+(i===q.correctIndex?' ✓':'')}).join('　');
-            var row=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:q.stem}),el('div',{class:'muted',text:opts}),el('div',{class:'muted',text:q.explanation||''})));
+            var levelTag=q.level?el('span',{class:'tag'+(q.level==='提高'?' warn':''),text:q.level}):null,
+                checkTag=q.verified?el('span',{class:'tag ok',text:'已验算'}):(q.level&&SUBJ==='数学'?el('span',{class:'tag warn',text:'答案待核对'}):null);
+            var row=el('div',{class:'item'},el('span',{class:'t'},levelTag,checkTag,el('b',{text:q.stem}),el('div',{class:'muted',text:opts}),el('div',{class:'muted',text:q.explanation||''})));
             var badge=el('span',{class:'tag '+(q.active?'ok':'warn'),text:q.active?'已通过':'草稿'}),act=el('div',{class:'row'},badge),feedback=el('div',{role:'status','aria-live':'polite'});
             if(!q.active){
               var approve=el('button',{text:'通过',onclick:function(){approveQuestionInPlace('/teacher/weekend/lessons/'+r.lessonId+'/questions',q,approve,act,badge,feedback,refreshStatus)}});
@@ -636,7 +650,7 @@ function plan(){
           d.items.forEach(function(q){
             var labels={short_answer:'阅读简答／过程题',final_answer:'填最终答案',composition:'写作／复述'},card=el('div',{class:'card'});
             var badge=el('span',{class:'tag '+(q.approved?'ok':'warn'),text:q.approved?'已通过':'草稿'});
-            card.appendChild(el('div',{class:'row'},el('b',{text:labels[q.type]||'简答题'}),badge));
+            card.appendChild(el('div',{class:'row'},el('b',{text:labels[q.type]||'简答题'}),q.level?el('span',{class:'tag'+(q.level==='提高'?' warn':''),text:q.level}):null,q.verified?el('span',{class:'tag ok',text:'已验算'}):(SUBJ==='数学'&&q.level&&q.type!=='composition'?el('span',{class:'tag warn',text:'答案待核对'}):null),badge));
             var parts=q.stem.split('\n'),questionLine=parts.pop();
             card.appendChild(el('p',{style:'white-space:pre-wrap;font-weight:600',text:questionLine}));
             if(parts.length)card.appendChild(el('details',{},el('summary',{text:'展开阅读材料／题目全文'}),el('pre',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7',text:parts.join('\n')})));
