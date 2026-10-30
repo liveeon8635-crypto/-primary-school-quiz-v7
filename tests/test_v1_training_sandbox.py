@@ -428,3 +428,52 @@ def test_training_covers_the_homework_assistant_for_teachers_and_students():
     # The page the step points to is the real one, and parents are not told they can see it.
     assert {s["page"] for s in ROLE_FLOW["teacher"] + ROLE_FLOW["student"] if s["id"].endswith("_homework")} == {"/v1/homework"}
     assert "家长暂时看不到" in STEP_RELATIONSHIPS["student_homework"]["other_role_sees"]
+
+
+TOUR_STEPS = {
+    "teacher": ["teacher_weekend_plan", "teacher_weekend_class", "teacher_weekend_report", "teacher_knowledge_map",
+                "teacher_knowledge_class", "teacher_exam_prep", "teacher_kp_cards"],
+    "student": ["student_weekend", "student_knowledge_map", "student_exam_paper"],
+    "parent": ["parent_weekend_brief", "parent_exam_report"],
+}
+
+
+def test_training_tours_cover_weekend_knowledge_map_and_exam_prep_for_every_role():
+    for role, ids in TOUR_STEPS.items():
+        flow = [step["id"] for step in ROLE_FLOW[role]]
+        last = "hub" if role == "teacher" else "account"
+        for step_id in ids:
+            assert step_id in flow and flow.index(step_id) < flow.index(last), (role, step_id)
+            rel = STEP_RELATIONSHIPS[step_id]
+            assert all(rel[k] for k in ("who", "creates", "visible_to", "other_role_sees", "communication_tip", "next")), step_id
+    # A tour step may be visited and completed like any other step.
+    s = teacher_session()
+    apply_training_action(s, "visit_step", {"step": "teacher_weekend_plan", "status": "done"})
+    assert s.progress["teacher_weekend_plan"] == "done"
+
+
+TOUR_ROUTES = r'''
+with TestClient(app) as client:
+    from changying.web.v1_training_sandbox import ROLE_FLOW
+    pages = {s["page"] for role in ROLE_FLOW for s in ROLE_FLOW[role] if s["id"] in TOURS}
+    assert len(pages) == 10
+    bad = {p: client.get(p).status_code for p in sorted(pages)}
+    assert all(code == 200 for code in bad.values()), bad
+    html = client.get("/v1/training").text
+    for t in ("const TOURS=", "function tourPage(", "这是导览：沙盒不模拟这个模块", "teacher_knowledge_map:", "parent_exam_report:"):
+        assert t in html, t
+print("OK")
+'''
+
+
+def test_tour_steps_point_to_pages_the_app_really_serves(tmp_path):
+    import importlib.util
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("training_tour_helpers", root / "tests" / "test_homework_solve.py")
+    helpers = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = helpers
+    spec.loader.exec_module(helpers)
+    tours = sorted(i for ids in TOUR_STEPS.values() for i in ids)
+    helpers.run_isolated(tmp_path, helpers.COMMON + f"TOURS = {tours!r}\n" + TOUR_ROUTES, {"KNOWLEDGE_MAP": "1"})
