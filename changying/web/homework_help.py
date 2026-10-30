@@ -2,11 +2,16 @@
 
 Photo -> recognised text -> the student confirms or edits the text -> a ``help_requests`` row.
 The photo only ever exists in memory while it is recognised; nothing in this module stores it.
+
+The answer is a guide the pupil works through himself (see ``services/homework_guidance``): it starts from what his
+published knowledge map says he already knows, and how far he got on his own is kept with the request for the
+teacher (``/progress``; the first report wins, like every first answer in the product).
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 from datetime import datetime, timedelta
@@ -14,8 +19,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, insert, select, update
+
+from changying.services import knowledge_maps as km
+from changying.services.homework_guidance import check_steps, exam_line, guide_layer, map_lines, pick_node
 
 from changying.services.homework_limits import (
     ai_slot,
@@ -25,14 +33,17 @@ from changying.services.homework_limits import (
 )
 from changying.services.homework_knowledge import record_ai_help
 from changying.services.homework_math_check import MISMATCH, OK, check_solution
-from changying.services.homework_prompts import AI_WARNING, build_solve_prompt, clean_solution
+from changying.services.homework_prompts import AI_WARNING, MAX_STEPS, build_solve_prompt, clean_solution
 from changying.services.homework_vision import QUESTION_PROMPT, read_image_body, recognize_image
+from changying.web.exam_prep_views import register_exam_prep_tables
 from changying.web.homework_assistant import require_enabled
+from changying.web.knowledge_map_views import knowledge_map_enabled, register_knowledge_map_table
 
+LOGGER = logging.getLogger(__name__)
 MAX_QUESTION_CHARS = 1000
 VISION_FEATURE = "homework_help_vision"
 SOLVE_FEATURE = "homework_help_solve"
-SOLVE_TIMEOUT_SECONDS = 30
+SOLVE_TIMEOUT_SECONDS = 45  # a guide (a question, a hint and an explanation per step) is longer than a plain answer
 SOLVE_CLAIM_TTL_SECONDS = 120
 _CLAIM_LOCK = threading.Lock()
 _CLAIMS: dict[int, float] = {}
@@ -51,6 +62,14 @@ class EscalateBody(BaseModel):
 
 class ResolveBody(BaseModel):
     note: str = ""
+
+
+class ProgressBody(BaseModel):
+    selfSolved: bool = False
+    revealed: bool = False
+    finalChecked: bool = False
+    wrongTries: int = Field(default=0, ge=0, le=99)
+    stepsAnswered: int = Field(default=0, ge=0, le=MAX_STEPS)
 
 
 class HelpBody(BaseModel):
@@ -108,9 +127,13 @@ def install_homework_help(implementation: Any) -> APIRouter:
         if row["state"] in ("answered", "resolved") and data.get("steps") and not data.get("hidden"):
             solution = {
                 "method": data.get("method", ""),
-                "steps": data["steps"],
+                "steps": [{k: v for k, v in step.items() if k != "expression"} for step in data["steps"]],
                 "answer": data.get("answer", ""),
                 "knowledgePoint": data.get("knowledgePoint", ""),
+                "start": data.get("start", ""),
+                "life": data.get("life", ""),
+                "finalCheck": data.get("finalCheck"),
+                "layer": data.get("layer"),
                 "warning": AI_WARNING,
             }
         elif row["state"] == "escalated":
@@ -127,6 +150,67 @@ def install_homework_help(implementation: Any) -> APIRouter:
             "message": message,
             "warning": AI_WARNING,
         }
+
+    User = implementation.User
+    SchoolClass = implementation.SchoolClass
+    ClassStudent = implementation.ClassStudent
+    maps = register_knowledge_map_table(implementation)
+    goals = register_exam_prep_tables(implementation)["exam_goals"]
+
+    def map_context(db: Any, u: Any, grade: int) -> dict[str, Any] | None:
+        """The published knowledge map of this grade with the pupil's first-answer mastery, if the school has one."""
+        if not knowledge_map_enabled():
+            return None
+        row = db.execute(
+            select(maps).where(maps.c.school_id == u.school_id, maps.c.grade == int(grade), maps.c.published_json.is_not(None))
+            .order_by(maps.c.published_at.desc(), maps.c.id.desc())
+        ).first()
+        if row is None:
+            return None
+        lists = []
+        for raw in db.scalars(select(implementation.Submission.answers_json).where(
+                implementation.Submission.school_id == u.school_id, implementation.Submission.student_id == u.id)
+                .order_by(implementation.Submission.submitted_at, implementation.Submission.id)):
+            try:
+                lists.append(json.loads(raw or "[]"))
+            except ValueError:
+                continue
+        m = json.loads(row.published_json)
+        first = km.first_attempts(lists)
+        return {"id": row.id, "map": m, "first": first, "mastery": km.mastery_view(m, first)[0]}
+
+    def optional(db: Any, work: Any) -> Any:
+        """The map only enriches the guide: a problem reading it must never cost the pupil his answer."""
+        try:
+            return work()
+        except Exception:  # noqa: BLE001
+            db.rollback()       # only reads happened; the claimed request is already committed
+            LOGGER.exception("homework_help_map_context_failed")
+            return None
+
+    def layer_of(db: Any, u: Any, ctx: dict[str, Any], solution: dict[str, Any]) -> dict[str, Any] | None:
+        m = ctx["map"]
+        node = pick_node(m, solution.get("nodeKey", ""), solution.get("knowledgePoint", ""))
+        if node is None:
+            return None
+        names = {n["key"]: n for n in m["nodes"]}
+        right = [int(q) for key in [node["key"], *node["prereqs"]] if key in names for q in names[key]["levels"]
+                 if ctx["first"].get(int(q)) is True]
+        texts = {}
+        if right:
+            for q in db.scalars(select(implementation.Question).where(
+                    implementation.Question.school_id == u.school_id, implementation.Question.id.in_(right))):
+                if not implementation.question_figure(q):      # a question that needs its figure says little as text
+                    texts[q.id] = str(implementation.qj_public(q)["text"] or "")
+        exam = ""
+        classes = select(ClassStudent.class_id).where(ClassStudent.student_id == u.id)
+        today = datetime.now(implementation.SCHOOL_TZ).date()
+        for g in db.execute(select(goals).where(goals.c.school_id == u.school_id, goals.c.map_id == ctx["id"],
+                                                goals.c.class_id.in_(classes)).order_by(goals.c.exam_date)):
+            if node["unit"] in json.loads(g.unit_keys_json or "[]") and g.exam_date >= today.isoformat():
+                exam = exam_line(g.title, g.exam_date, today)
+                break
+        return guide_layer(m, node, ctx["mastery"], ctx["first"], texts, exam)
 
     # The body is the raw picture (see ``read_image_body``): it is only ever held in memory. Waiting for
     # the recognition service (up to 20 s) happens in the worker thread pool, never on the event loop.
@@ -227,8 +311,11 @@ def install_homework_help(implementation: Any) -> APIRouter:
         def student_rate_check(_db: Any, _school_id: int) -> None:
             check_student_call(implementation, _db, u)
 
+        ctx = optional(db, lambda: map_context(db, u, row["grade"]))
+        known_map = map_lines(ctx["map"], ctx["mastery"]) if ctx else ""
+
         def attempt(recheck: bool) -> dict[str, Any]:
-            prompt = build_solve_prompt(row["grade"], row["question_text"], recheck=recheck)
+            prompt = build_solve_prompt(row["grade"], row["question_text"], recheck=recheck, known_map=known_map)
             with ai_slot():
                 raw = implementation._ai_call(
                     db, u, SOLVE_FEATURE, prompt, timeout=SOLVE_TIMEOUT_SECONDS, rate_check=student_rate_check
@@ -267,7 +354,8 @@ def install_homework_help(implementation: Any) -> APIRouter:
                     "ai_json": json.dumps({"hidden": True, "attempts": attempts}, ensure_ascii=False),
                 }
             else:
-                data = dict(final["solution"], verify=final["verify"], hidden=False)
+                data = dict(check_steps(final["solution"], final["verify"]["status"] == OK), verify=final["verify"], hidden=False)
+                data["layer"] = optional(db, lambda: layer_of(db, u, ctx, data)) if ctx else None
                 if len(attempts) > 1:
                     data["recheck"] = True
                 values = {
@@ -305,6 +393,20 @@ def install_homework_help(implementation: Any) -> APIRouter:
         need(u, "student")
         return student_help_json(own_help(db, u, help_id))
 
+    @router.post("/student/homework/help/{help_id}/progress")
+    def progress(help_id: int, b: ProgressBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """How far the pupil got through the guide on his own; only the first time counts."""
+        need(u, "student")
+        row = own_help(db, u, help_id)
+        data = _json_obj(row["ai_json"])
+        if not data.get("steps") or data.get("hidden"):
+            raise HTTPException(409, "这道题还没有讲解")
+        if not data.get("progress"):
+            data["progress"] = {**b.model_dump(), "at": _iso(datetime.utcnow())}
+            db.execute(update(helps).where(helps.c.id == help_id).values(ai_json=json.dumps(data, ensure_ascii=False)))
+            db.commit()
+        return {"progress": data["progress"]}
+
     # ---------------------------------------------------------------- escalate (student)
     @router.post("/student/homework/help/{help_id}/escalate")
     def escalate(help_id: int, b: EscalateBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -326,10 +428,6 @@ def install_homework_help(implementation: Any) -> APIRouter:
         return student_help_json(own_help(db, u, help_id))
 
     # ---------------------------------------------------------------- teacher side
-    User = implementation.User
-    SchoolClass = implementation.SchoolClass
-    ClassStudent = implementation.ClassStudent
-
     def teacher_student_ids(db: Any, teacher: Any) -> set[int]:
         rows = db.scalars(
             select(ClassStudent.student_id)
@@ -383,9 +481,23 @@ def install_homework_help(implementation: Any) -> APIRouter:
         }
 
     def solution_text(solution: dict[str, Any]) -> str:
-        steps = "\n".join(f"{x.get('n')}. {x.get('text')}" for x in solution.get("steps", []))
+        steps = "\n".join(f"{x.get('n')}. " + (f"问：{x['ask']} 讲：" if x.get("ask") and x.get("kind") != "read" else "") + str(x.get("text"))
+                          for x in solution.get("steps", []))
         head = f"解法：{solution.get('method')}\n" if solution.get("method") else ""
+        if solution.get("start"):
+            head += f"开头：{solution['start']}\n"
         return f"{head}{steps}\n答案：{solution.get('answer', '')}"
+
+    def progress_text(p: dict[str, Any]) -> str:
+        if p.get("selfSolved"):
+            head = "自己算出了答案"
+        elif p.get("revealed") and p.get("finalChecked"):
+            head = "没有算对，看了答案"
+        elif p.get("revealed"):
+            head = "写好后对了答案（这道题程序没法核对）"
+        else:
+            head = "没有做完引导"
+        return f"（引导结果）{head}；回答了 {p.get('stepsAnswered', 0)} 个小问题，答错 {p.get('wrongTries', 0)} 次"
 
     def conversation(data: dict[str, Any]) -> list[dict[str, str]]:
         ai = _json_obj(data["ai_json"])
@@ -399,6 +511,8 @@ def install_homework_help(implementation: Any) -> APIRouter:
             verify = ai.get("verify") or {}
             note = {"ok": "（程序核对：通过）", "skipped": "（程序未能核对）"}.get(verify.get("status"), "")
             talk.append({"role": "ai", "text": solution_text(ai) + "\n" + note})
+            if ai.get("progress"):
+                talk.append({"role": "student", "text": progress_text(ai["progress"])})
         if data["student_note"]:
             talk.append({"role": "student", "text": data["student_note"]})
         if data["teacher_note"]:

@@ -124,7 +124,7 @@ with TestClient(app) as client:
 
     # Exactly one model call, student feature name, short timeout, with the student limit hook.
     assert len(calls) == 1
-    assert calls[0]["feature"] == "homework_help_solve" and calls[0]["timeout"] == 30 and calls[0]["rate_check"] is not None
+    assert calls[0]["feature"] == "homework_help_solve" and calls[0]["timeout"] == 45 and calls[0]["rate_check"] is not None
 
     # Only grade + question reached the model: no names, accounts, school, class, ids, phone.
     prompt = prompts[0]
@@ -316,7 +316,7 @@ with TestClient(app) as client:
     r = client.post(f"/student/homework/help/{hid}/solve", headers=sh)
     assert r.status_code == 200, r.text
     assert r.json()["state"] == "answered" and r.json()["solution"]["answer"] == "7"
-    assert len(posts) == 1 and posts[0][0] == "https://api.deepseek.com/chat/completions" and posts[0][2] == 30
+    assert len(posts) == 1 and posts[0][0] == "https://api.deepseek.com/chat/completions" and posts[0][2] == 45
     sent = posts[0][1]["messages"][0]["content"]
     assert "三年级" in sent and "student1" not in sent
     with legacy.SessionLocal() as db:

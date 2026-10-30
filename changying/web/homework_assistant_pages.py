@@ -34,6 +34,9 @@ select{font:inherit;min-height:46px;padding:6px 10px;border-radius:10px;border:1
 .tag{display:inline-block;padding:2px 10px;border-radius:999px;background:#eef2ff;color:#3538cd;font-size:14px}
 .bar{height:10px;background:#e4e7ec;border-radius:99px;overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:var(--brand)}
 hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+.step{padding:12px 0;border-top:1px solid var(--line)}.step b{display:block}
+.guide{background:#f2f6ff;border-radius:12px;padding:10px 14px;margin:10px 0}.guide b{display:block;color:#1849a9}
+a.btn{display:inline-flex;align-items:center;text-decoration:none;margin-top:8px}
 """
 
 PAGE_JS = r"""
@@ -349,21 +352,104 @@ function escalateBox(box,h){
   }});
   var wrap=el('div',{class:'row'},note,btn);box.appendChild(wrap);
 }
+// The guide: each step asks first; a hint after a wrong try, the explanation after the answer (or a second miss).
+// Only numbers the program checked are compared; the final answer is the pupil's own work before it is shown.
+function hwNum(t){
+  t=String(t||'').replace(/[０-９]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-65248)})
+    .replace(/／/g,'/').replace(/[．。]/g,'.').replace(/％/g,'%').replace(/[－—]/g,'-').replace(/[\s,，]/g,'');
+  var mixed=t.match(/(\d+)又(\d+)\/(\d+)/);
+  if(mixed)return +mixed[3]?(+mixed[1])+(+mixed[2])/(+mixed[3]):null;
+  var all=t.match(/-?\d+(\.\d+)?(\/\d+)?%?/g);
+  if(!all||all.length!==1)return null;
+  var x=all[0],pct=x.charAt(x.length-1)==='%',v;
+  if(pct)x=x.slice(0,-1);
+  if(x.indexOf('/')>=0){var p=x.split('/');if(!+p[1])return null;v=(+p[0])/(+p[1])}else v=+x;
+  return pct?v/100:v;
+}
+function hwSame(text,c){var v=hwNum(text);return v!==null&&Math.abs(v-c.value)<=c.tol}
+function layerBox(L){
+  var b=el('div',{class:'guide'},el('b',{text:'这道题在你的知识地图上'}),
+    el('div',{text:L.node.key+' '+L.node.name+'（你现在：'+L.node.stateText+'）'}));
+  if(L.known.length)b.appendChild(el('div',{text:'你已经会：'+L.known.join('、')+'。这道题就是在'+(L.known.length>1?'它们':'它')+'的基础上再往前走一步。'}));
+  if(L.weak.length)b.appendChild(el('div',{text:'要用到：'+L.weak.join('、')+'，你这里还薄弱，下面的步骤会先带你回忆。'}));
+  if(L.solved)b.appendChild(el('div',{text:'你以前做对过一道相关的题（'+L.solved.from+'）：'+L.solved.text+' 想想当时是怎么做的。'}));
+  if(L.exam)b.appendChild(el('div',{text:L.exam}));
+  return b;
+}
 function showSolution(box,h){
   box.textContent='';
   var warn=h.warning||'AI 可能出错，请自己判断';
   box.appendChild(notice('warn',warn));
   if(!h.solution){box.appendChild(notice('error',h.message||'这道题没有得到解答'));escalateBox(box,h);return}
-  var s=h.solution,list=el('div'),shown=0,next=el('button',{text:'看下一步'});
+  var s=h.solution,L=s.layer,list=el('div'),tail=el('div'),i=0,wrong=0,answered=0;
   var head=[s.method?'解法：'+s.method:'',s.knowledgePoint?'知识点：'+s.knowledgePoint:''].filter(Boolean).join(' · ');
   if(head)box.appendChild(el('div',{class:'muted',text:head}));
-  box.appendChild(list);
-  function more(){
-    if(shown<s.steps.length){list.appendChild(el('div',{class:'item'},el('b',{text:'第'+s.steps[shown].n+'步'}),el('span',{text:s.steps[shown].text})));shown++}
-    if(shown>=s.steps.length){next.remove();list.appendChild(notice('ok','答案：'+s.answer))}
+  if(L)box.appendChild(layerBox(L));
+  if(s.start)box.appendChild(el('div',{class:'guide'},el('b',{text:'从你会的想起'}),el('div',{text:s.start})));
+  if(s.life)box.appendChild(el('div',{class:'guide'},el('b',{text:'生活里的例子'}),el('div',{text:s.life})));
+  box.appendChild(list);box.appendChild(tail);
+  function next(){if(i<s.steps.length)step(s.steps[i++]);else last()}
+  function step(st){
+    var item=el('div',{class:'step'},el('b',{text:'第'+st.n+'步'}));list.appendChild(item);
+    if(st.kind!=='choice'&&!st.check){
+      item.appendChild(el('div',{text:st.text}));
+      var go=el('button',{text:'看下一步',onclick:function(){go.remove();next()}});item.appendChild(go);return;
+    }
+    item.appendChild(el('div',{text:st.ask}));
+    var tries=0,area=el('div',{class:'row'}),tip=el('div');item.appendChild(area);item.appendChild(tip);
+    function settle(ok){
+      area.remove();tip.textContent='';answered++;
+      item.appendChild(notice(ok?'ok':'warn',ok?'对了！':'没关系，看看这一步怎么想：'));
+      var right=st.kind==='choice'?'正确的是 '+String.fromCharCode(65+st.correct)+'. '+st.options[st.correct]:'这一步的结果是 '+st.answer;
+      item.appendChild(el('div',{text:(ok?'':right+'。')+st.text}));
+      next();
+    }
+    function miss(){
+      tries++;wrong++;
+      if(tries>=2){settle(false);return}
+      tip.textContent='';tip.appendChild(notice('warn','再想想：'+(st.hint||'回到题目里，再读一遍条件。')));
+    }
+    if(st.kind==='choice'){
+      st.options.forEach(function(o,k){area.appendChild(el('button',{text:String.fromCharCode(65+k)+'. '+o,onclick:function(){if(k===st.correct)settle(true);else miss()}}))});
+    }else{
+      var inp=el('input',{type:'text',placeholder:'写下你算出的数',maxlength:40,'aria-label':'第'+st.n+'步的答案'});
+      area.appendChild(inp);
+      area.appendChild(el('button',{class:'primary',text:'确定',onclick:function(){if(!inp.value.trim())return;if(hwSame(inp.value,st.check))settle(true);else miss()}}));
+    }
+    area.appendChild(el('button',{text:'这一步不会',onclick:function(){wrong++;settle(false)}}));
   }
-  next.addEventListener('click',more);box.appendChild(next);more();
-  box.appendChild(notice('warn',warn+'。看不懂，或者觉得不对，就请老师帮忙。'));
+  function last(){
+    var item=el('div',{class:'step'},el('b',{text:'最后：自己写出这道题的答案'}));list.appendChild(item);
+    var c=s.finalCheck,tries=0,area=el('div',{class:'row'}),tip=el('div');item.appendChild(area);item.appendChild(tip);
+    function show(self){
+      area.remove();tip.textContent='';
+      item.appendChild(notice(self?'ok':'warn',(self?'你自己做出来了！':'')+'答案：'+s.answer));
+      api('/student/homework/help/'+h.id+'/progress',{json:{selfSolved:!!self,revealed:!self,finalChecked:!!c,wrongTries:wrong,stepsAnswered:answered}}).catch(function(){});
+      after();
+    }
+    if(c){
+      var inp=el('input',{type:'text',placeholder:'你算出的答案',maxlength:40,'aria-label':'这道题的答案'});
+      area.appendChild(inp);
+      area.appendChild(el('button',{class:'primary',text:'确定',onclick:function(){
+        if(!inp.value.trim())return;
+        if(hwSame(inp.value,c)){show(true);return}
+        tries++;wrong++;
+        if(tries>=2){show(false);return}
+        tip.textContent='';tip.appendChild(notice('warn','还不对，对照上面的步骤再算一遍。'));
+      }}));
+      area.appendChild(el('button',{text:'还是不会，看答案',onclick:function(){show(false)}}));
+    }else{
+      item.appendChild(el('div',{class:'muted',text:'先把答案写在作业本上，写好了再对答案。'}));
+      area.appendChild(el('button',{class:'primary',text:'写好了，对答案',onclick:function(){show(false)}}));
+    }
+  }
+  function after(){
+    if(L&&L.quiz)tail.appendChild(el('div',{class:'guide'},el('b',{text:'真的会了吗？'}),
+      el('div',{text:'去知识地图做 3～5 道“'+L.node.name+'”的新题。只算第一次作答，做对了，地图上这个知识点会变绿。'}),
+      el('a',{class:'btn',href:'/v1/my-knowledge-map#node='+encodeURIComponent(L.node.key),text:'去做同类题'})));
+    tail.appendChild(notice('warn',warn+'。看不懂，或者觉得不对，就请老师帮忙。'));
+  }
+  next();
   escalateBox(box,h);
 }
 function helpCard(){
