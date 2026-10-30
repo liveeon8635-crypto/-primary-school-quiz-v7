@@ -594,6 +594,9 @@ function smLoad(){
     SM=d;root.appendChild(el('h2',{text:d.title}));root.appendChild(SMMSG);root.appendChild(SMDIAG);root.appendChild(smLegend());root.appendChild(SMBOX);root.appendChild(SMINFO);
     smDiagCard();smDraw();
     SMINFO.appendChild(el('p',{class:'muted',text:'点一个知识点，看看它的掌握情况和前后关系；学过的知识点可以做 3～5 题小测。'}));
+    // #node=KEY (from the after-school helper): open that point straight away, with its quick check.
+    var want=/[#&]node=([^&]+)/.exec(location.hash),hit=want&&SM.nodes.filter(function(n){return n.key===decodeURIComponent(want[1])})[0];
+    if(hit){SMSEL=hit.key;smInfo(hit);smDraw();if(SMINFO.scrollIntoView)SMINFO.scrollIntoView()}
     window.addEventListener('resize',function(){smDraw()});
   }).catch(function(e){msg(e.message)});
 }
