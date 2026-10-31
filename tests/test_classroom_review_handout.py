@@ -338,6 +338,32 @@ def test_v1_exposes_classroom_review_entry_and_teacher_decision_language():
     assert "互动课堂过程摘要（系统记录）" in html
 
 
+def test_classroom_review_does_not_default_to_first_assignment():
+    """P0 #826：复盘页不得默认选中第一条作业，否则会把别堂课的数据当成本堂课。"""
+    html = patch_v1_classroom_review_html(v1_html())
+
+    # 不再有"没有指定就取第一条"的兜底
+    assert "assignments[0]?.id" not in html
+    assert "let current=0,summary=null" in html
+
+    # 未选定前必须显式提示，不展示任何学情数据
+    assert "请选择本堂课的练习" in html
+    assert "未选定前不显示任何学情数据" in html
+
+    # 选项必须能区分同学科不同日期的作业
+    assert "optLabel" in html
+    assert "布置日期" in html
+    assert "' · '+(a.subject||'—')" in html
+
+    # 支持从课堂执行页带 session 反查绑定练习；没有绑定时给出明确说明
+    assert "sessionId" in html
+    assert "/teacher/classroom-sessions/" in html
+    assert "本堂课没有绑定练习，无法按作业复盘" in html
+
+    # 链接里的 assignment 不在教师列表时，不静默回退
+    assert "链接里的练习不在你的列表中" in html
+
+
 def test_runtime_classroom_review_full_loop(tmp_path):
     db_path = tmp_path / "classroom-review.sqlite3"
     script = r"""
