@@ -22,9 +22,14 @@
 | 事实 | 证据 |
 |---|---|
 | 产品范围同时包含培训机构教学与学校教学 | `AGENTS.md:10` |
-| 数据以学校为单位，每个用户只有一个 `school_id` | 模型 `School` / `User.school_id` |
+| 数据以学校为单位，每个用户只有一个 `school_id` | 模型 `User`：`school_id` + `role`，**没有**机构/学校类型字段 |
 | 学校教学入口对教师/管理员开放 | `/v1/teaching-cycles` → `v1_teaching_cycle.py:20` `need(user,"teacher","admin")` |
 | 历史课堂、历史学生同样对教师开放 | `/v1/teacher/history/classrooms`、`/v1/teacher/history/students` |
+| “学校 / 机构”只是前端工作模式，后端授权不看它 | `v1.py:179` `isSchool` 只改标题与任务清单；后端接口无对应分支 |
+| 两种模式看到的功能入口并不完全相同 | `v1.py:181` 仅在机构模式下拉取 `/v1/teaching-cycles` 的行 |
+
+> 注意区分两件事：**后端授权路径相同**（只看角色 + `school_id`，可证）；**前端呈现不同**（学校模式不显示教学周期行）。
+> 因此不能据此推断"两种场景权限完全一致"——本次只核到"后端没有区分两种场景的授权分支"。
 
 ### 修正后的表述
 
