@@ -52,7 +52,7 @@ with TestClient(app) as client:
         mq = []
         for i, k in enumerate(["旋转的意义", "旋转作图"]):
             q = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, level="C", lesson_id=math.id, subject="数学", stem=f"数学选择{i}",
-                                        options_json=json.dumps(["对", "错"], ensure_ascii=False), correct_index=0, active=True, knowledge=k)
+                                        options_json=json.dumps(["A．对", "B．错"], ensure_ascii=False), correct_index=0, active=True, knowledge=k)
             db.add(q); db.flush(); mq.append(q.id)
         cq = legacy.TeachingQuestion(school_id=school_id, program_id=p.id, level="C", lesson_id=chin.id, subject="语文", stem="语文选择",
                                      options_json=json.dumps(["甲", "乙"], ensure_ascii=False), correct_index=1, active=True, knowledge="词语理解")
@@ -111,6 +111,7 @@ def test_weekend_reports_use_real_records_without_touching_them(tmp_path):
     a_items = {i["no"]: i for i in A["items"]}
     assert a_items[1]["attempts"] == 2 and a_items[1]["status"] == "correct"          # resubmitted, counted once
     assert a_items[1]["reference"].startswith("A.")                                     # teacher-only reference
+    assert "A. A" not in json.dumps(a_items, ensure_ascii=False)                        # imported "A．" letters are shown once
     b_photo = next(i for i in B["items"] if i["kind"] == "written")
     assert b_photo["status"] == "pending" and b_photo["photoUrl"].endswith("/photo")
     assert s["summary"]["counts"]["total"] == 9 and s["summary"]["pendingReview"] == 1 and s["summary"]["participated"] == 2
