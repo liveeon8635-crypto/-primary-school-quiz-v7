@@ -23,13 +23,16 @@
 |---|---|
 | 产品范围同时包含培训机构教学与学校教学 | `AGENTS.md:10` |
 | 数据以学校为单位，每个用户只有一个 `school_id` | 模型 `User`：`school_id` + `role`，**没有**机构/学校类型字段 |
-| 学校教学入口对教师/管理员开放 | `/v1/teaching-cycles` → `v1_teaching_cycle.py:20` `need(user,"teacher","admin")` |
+| 教学周期接口对教师/管理员开放 | `/v1/teaching-cycles` → `v1_teaching_cycle.py:20` `need(user,"teacher","admin")` |
 | 历史课堂、历史学生同样对教师开放 | `/v1/teacher/history/classrooms`、`/v1/teacher/history/students` |
-| “学校 / 机构”只是前端工作模式，后端授权不看它 | `v1.py:179` `isSchool` 只改标题与任务清单；后端接口无对应分支 |
-| 两种模式看到的功能入口并不完全相同 | `v1.py:181` 仅在机构模式下拉取 `/v1/teaching-cycles` 的行 |
+| 已核对的接口中，未见按工作模式区分授权的分支 | `v1.py:179` 的 `isSchool` 只改标题与任务清单；`v1_teaching_cycle.py:20` 按角色 + `school_id` 授权 |
+| 两种模式看到的功能入口并不完全相同 | `v1.py:181` 仅在机构模式、且非“正常学期”时才拉取 `/v1/teaching-cycles` 的行 |
 
-> 注意区分两件事：**后端授权路径相同**（只看角色 + `school_id`，可证）；**前端呈现不同**（学校模式不显示教学周期行）。
-> 因此不能据此推断"两种场景权限完全一致"——本次只核到"后端没有区分两种场景的授权分支"。
+> 两条边界：
+> 1. **只对已核对接口成立**——不代表全部接口都逐条查过，各接口仍有自己的数据归属规则。
+> 2. **接口可调用 ≠ 页面有入口**：教学周期接口教师可调，但学校工作台默认不显示该入口。
+>
+> 因此不能据此推断"两种场景权限完全一致"。
 
 ### 修正后的表述
 
@@ -47,11 +50,11 @@
 
 | 交接包引用 | 现状 | 现行落点 |
 |---|---|---|
-| `GOVERNANCE.md` | ❌ 不存在 | [`AGENTS.md`](../AGENTS.md) §3–§8（执行协议、并行规则、反空壳、完成定义） |
+| `GOVERNANCE.md` | ❌ 不存在 | [`AGENTS.md`](../../AGENTS.md) §3–§8（执行协议、并行规则、反空壳、完成定义） |
 | `docs/PROJECT_STATE.md` | ❌ 不存在 | GitHub Issue #174（当前工程断点：main SHA / PR / 部署 / 验收）＋ `AGENTS.md` §2（生产事实与验收口径） |
 | `docs/adr/ADR-001-governance-bootstrap.md` | ❌ 不存在（`docs/adr/` 目录也没有） | `AGENTS.md` §7.5（受保护路径与高风险动作） |
 
-文档总入口：[`docs/INDEX.md`](INDEX.md)。
+文档总入口：[`docs/INDEX.md`](../INDEX.md)。
 
 ### 需要知道的遗留
 
