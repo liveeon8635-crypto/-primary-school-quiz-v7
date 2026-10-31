@@ -23,6 +23,8 @@ from typing import Any
 
 from sqlalchemy import func, select
 
+from changying.services.weekend_answers import option_text
+
 STATUS_LABEL = {"unsubmitted": "未提交", "pending": "待批", "correct": "正确", "partial": "部分正确", "revise": "需订正"}
 # Sections the system writes; "observation" and the report comment are the teacher's own words.
 AUTO_SECTIONS = ("content", "completion", "mastery", "issues", "consolidation", "homework", "followup")
@@ -97,7 +99,7 @@ def session_facts(impl: Any, db: Any, row: Any) -> dict[str, Any]:
                                               TQ.active.is_(True)).order_by(TQ.id)).all()
     for q in choice_rows:
         try:
-            options = [str(x) for x in json.loads(q.options_json or "[]")]
+            options = [option_text(x) for x in json.loads(q.options_json or "[]")]
         except Exception:  # noqa: BLE001
             options = []
         ci = int(q.correct_index)
