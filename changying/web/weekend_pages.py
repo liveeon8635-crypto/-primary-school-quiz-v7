@@ -6,7 +6,7 @@ from changying.web.classroom_window_handoff import OPEN_WINDOW_JS, PAGE_AUTH_JS
 from changying.web.homework_assistant_pages import PAGE_CSS
 from changying.web.weekend_written_pages import WRITTEN_JS
 from changying.web.weekend_backup_pages import BACKUP_JS
-from changying.web.weekend_report_pages import PARENT_JS, REPORT_JS
+from changying.web.weekend_report_pages import MARK_JS, PARENT_JS, REPORT_JS
 from changying.web.weekend_courseware_pages import COURSEWARE_JS, COURSEWARE_PLAN_JS
 
 COMMON_JS = r"""
@@ -541,7 +541,7 @@ def _page(title: str, js: str, with_header: bool, back: tuple[str, str] = ("/v1"
     return html.replace("__JS__", (COMMON_JS + js).replace("__PAGE_AUTH__", PAGE_AUTH_JS))
 
 
-PLAN_JS = r"""
+PLAN_JS = MARK_JS + r"""
 var SUBJ='数学';
 function genSummary(g){
   var names={choice:'选择',final_answer:'填空／计算',short_answer:'解决问题／简答',composition:'写作'},parts=[],lv=[];
@@ -787,6 +787,13 @@ function plan(){
         wbox.textContent='';
         api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions').then(function(d){
           wbox.appendChild(el('h2',{text:'填答案、阅读简答与写作（'+d.items.length+' 题）'}));
+          var todo=d.items.filter(function(q){return !q.knowledge&&q.suggestedKnowledge});
+          if(d.items.length)wbox.appendChild(el('p',{class:'muted',text:'每道题标一个考点（标一次，这节课的所有班级通用），课后总结和家长报告会按考点写；课后才做的题勾“课后题”，没交不算课堂未提交。'}));
+          if(todo.length){var all=el('button',{text:'采用全部考点建议（'+todo.length+' 题）',onclick:function(){
+            all.disabled=true;var chain=Promise.resolve();
+            todo.forEach(function(q){chain=chain.then(function(){return api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions/'+q.id+'/marks',{method:'PUT',json:{knowledge:q.suggestedKnowledge,afterClass:!!q.afterClass}})})});
+            chain.then(loadWritten).catch(function(e){alert(e.message);all.disabled=false});
+          }});wbox.appendChild(all)}
           if(!d.items.length)wbox.appendChild(el('p',{class:'muted',text:'还没有此类题目。重新导入原教案可提取原有简答／写作题，或使用 AI 出习题。'}));
           d.items.forEach(function(q){
             var labels={short_answer:'阅读简答／过程题',final_answer:'填最终答案',composition:'写作／复述'},card=el('div',{class:'card'});
@@ -811,6 +818,7 @@ function plan(){
               b.disabled=true;
               api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',{json:{remove:[q.id]}}).then(function(st){refreshStatus(st);loadWritten()}).catch(function(e){feedback.textContent=e.message;b.disabled=false});
             }});actions.appendChild(b)})}
+            card.appendChild(markBox(r.lessonId,{templateId:q.id,knowledge:q.knowledge,afterClass:q.afterClass,suggestedKnowledge:q.suggestedKnowledge},d.goals));
             card.appendChild(actions);card.appendChild(feedback);wbox.appendChild(card);
           });
         }).catch(function(e){wbox.appendChild(el('div',{class:'notice error',text:e.message}))});

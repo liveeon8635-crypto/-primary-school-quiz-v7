@@ -3,7 +3,22 @@
 # One rendering of a report for the teacher preview and the parent page, so both show the same thing.
 REPORT_VIEW_JS = r"""
 var REPORT_KEYS=['content','completion','mastery','issues','consolidation','observation','homework','followup'];
-function factsLine(f){var c=f.counts;return '应做 '+c.total+' 题 · 已提交 '+c.submitted+' · 未提交 '+c.unsubmitted+' · 正确 '+c.correct+' · 部分正确 '+c.partial+' · 需订正 '+c.revise+' · 待批 '+c.pending}
+function factsLine(f){var c=f.counts;return '应做 '+c.total+' 题 · 已提交 '+c.submitted+' · 未提交 '+c.unsubmitted+' · 正确 '+c.correct+' · 部分正确 '+c.partial+' · 需订正 '+c.revise+' · 待批 '+c.pending+(c.later?' · 课后题未交 '+c.later:'')}
+// 一眼看懂：放在每节课最上面，家长不用读完全文也知道重点。只用已确认的考点和老师写好的课后任务。
+function chipRow(label,list,color){
+  var row=el('div',{class:'row'},el('b',{text:label}));
+  list.forEach(function(t){row.appendChild(el('span',{class:'tag',style:'background:'+color.bg+';color:'+color.fg,text:t}))});
+  return row;
+}
+function glanceBox(g,s){
+  var box=el('div',{style:'border:2px solid #c7d7fe;border-radius:12px;padding:10px 14px;margin:10px 0;background:#f8faff'},el('b',{text:'一眼看懂'}));
+  if(g.good&&g.good.length)box.appendChild(chipRow('掌握得好：',g.good,{bg:'#e7f6ec',fg:'#067647'}));
+  if(g.weak&&g.weak.length)box.appendChild(chipRow('需要加强：',g.weak,{bg:'#fff4e5',fg:'#b54708'}));
+  var todo=String(s.homework||'').split('\n').filter(function(x){return x.trim()})[0];
+  if(todo)box.appendChild(el('div',{},el('b',{text:'回家做一件事：'}),todo));
+  if(g.compare)box.appendChild(el('div',{class:'muted',text:g.compare}));
+  return box;
+}
 function reportView(r){
   var box=el('div');
   (r.facts||[]).forEach(function(f,i){
@@ -11,6 +26,7 @@ function reportView(r){
     card.appendChild(el('h2',{text:f.subject+' · 《'+f.lessonTitle+'》'}));
     card.appendChild(el('div',{class:'muted',text:f.date+(f.unit?' · '+f.unit:'')}));
     card.appendChild(el('div',{class:'notice',text:factsLine(f)+(f.points!=null?' · 课堂积分 '+f.points+' 分（积分不是学业成绩）':'')}));
+    var g=(r.glance||[])[i];if(g)card.appendChild(glanceBox(g,s));
     REPORT_KEYS.forEach(function(k){if(!s[k])return;card.appendChild(el('b',{text:r.titles[k]}));card.appendChild(el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0 10px',text:s[k]}))});
     box.appendChild(card);
   });
@@ -39,7 +55,29 @@ function saveDocx(path,name,status){
 }
 """
 
-REPORT_JS = REPORT_VIEW_JS + r"""
+MARK_JS = r"""
+// 考点 / 课后题 of one written question: stored once on the lesson's template, used by every class of the lesson.
+function markBox(lid,m,goals,done){
+  var box=el('div',{class:'row'}),inp=el('input',{maxlength:40,placeholder:'考点，如：省略乘号','aria-label':'考点'});
+  inp.value=m.knowledge||m.suggestedKnowledge||'';
+  var pick=null;
+  if(goals&&goals.length){pick=el('select',{'aria-label':'从训练目标选考点'});pick.appendChild(el('option',{value:'',text:'从训练目标选'}));
+    goals.forEach(function(g){pick.appendChild(el('option',{value:g,text:g}))});pick.onchange=function(){if(pick.value)inp.value=pick.value}}
+  var after=el('input',{type:'checkbox'});after.checked=!!m.afterClass;
+  var note=el('span',{class:'muted',text:m.knowledge?'已标注':(m.suggestedKnowledge?'系统按题目小标题建议，保存后生效':'未标注')});
+  var save=el('button',{text:'保存考点',onclick:function(){
+    save.disabled=true;
+    api('/teacher/weekend/lessons/'+lid+'/written/questions/'+m.templateId+'/marks',{method:'PUT',json:{knowledge:inp.value.trim(),afterClass:after.checked}})
+      .then(function(r){m.knowledge=r.knowledge;m.afterClass=r.afterClass;note.textContent=r.knowledge?'已标注（所有班级通用）':'未标注';if(done)done(r)})
+      .catch(function(e){note.textContent=e.message}).then(function(){save.disabled=false});
+  }});
+  box.appendChild(el('b',{text:'考点'}));box.appendChild(inp);if(pick)box.appendChild(pick);
+  box.appendChild(el('label',{},after,' 课后题（没交不算课堂未提交）'));box.appendChild(save);box.appendChild(note);
+  return box;
+}
+"""
+
+REPORT_JS = REPORT_VIEW_JS + MARK_JS + r"""
 var SID=+(new URLSearchParams(location.search).get('s')||0),FILTER='all',SUMMARY=null,EDITOR=null;
 var STATE_CLASS={none:'',draft:'warn',published:'ok',stale:'warn'};
 function reportPage(){
@@ -66,19 +104,23 @@ function reportPage(){
   }
   function tags(c){
     return [el('span',{class:'tag',text:'已提交 '+c.submitted+'/应做 '+c.total}),el('span',{class:'tag ok',text:'正确 '+c.correct}),el('span',{class:'tag',text:'部分正确 '+c.partial}),
-      el('span',{class:'tag '+(c.revise?'warn':''),text:'需订正 '+c.revise}),el('span',{class:'tag '+(c.pending?'warn':''),text:'待批 '+c.pending}),el('span',{class:'tag',text:'未提交 '+c.unsubmitted})];
+      el('span',{class:'tag '+(c.revise?'warn':''),text:'需订正 '+c.revise}),el('span',{class:'tag '+(c.pending?'warn':''),text:'待批 '+c.pending}),el('span',{class:'tag',text:'未提交 '+c.unsubmitted}),c.later?el('span',{class:'tag',text:'课后题未交 '+c.later}):null].filter(Boolean);
   }
   function paintClass(d){
     var s=d.summary,c=s.counts;classBox.textContent='';
     classBox.appendChild(el('h2',{text:'全班汇总（'+s.participated+' / '+s.pupils+' 人有作答记录）'}));
     var row=el('div',{class:'row'});tags(c).forEach(function(t){row.appendChild(t)});classBox.appendChild(row);
-    classBox.appendChild(el('div',{class:'muted',text:'分母：本节 '+d.summary.questions.length+' 题 × 名单 '+s.pupils+' 人 = '+c.total+' 题次；完成与正确分开统计，部分正确不折算分数；同一题多次提交只算一题。'}));
+    classBox.appendChild(el('div',{class:'muted',text:'分母：本节 '+d.summary.questions.length+' 题 × 名单 '+s.pupils+' 人'+(c.later?'，减去课后题未交 '+c.later+' 题次':'')+' = '+c.total+' 题次；完成与正确分开统计，部分正确不折算分数；同一题多次提交只算一题。'}));
     classBox.appendChild(el('div',{class:'muted',text:'提示使用 '+s.hintUses+' 题次 · 学生讲解 '+s.explained+' 次 · 巩固题 已完成 '+s.followups.done+'（做对 '+s.followups.correct+'），未完成 '+s.followups.open}));
     var kd=el('details',{},el('summary',{text:'考点表现与对应题目'}));
     s.knowledge.forEach(function(k){kd.appendChild(el('div',{class:'row'},el('b',{text:k.knowledge}),el('span',{class:'muted',text:'第'+k.questions.join('、')+'题 · 正确 '+k.correct+' · 部分正确 '+k.partial+' · 需订正 '+k.revise+' · 待批 '+k.pending+' · 未提交 '+k.unsubmitted})))});
     classBox.appendChild(kd);
-    var qd=el('details',{},el('summary',{text:'逐题统计'}));
-    s.questions.forEach(function(q){qd.appendChild(el('div',{class:'row'},el('b',{text:'第'+q.no+'题（'+(q.kind==='choice'?'选择':'文字／照片')+'）'}),el('span',{text:q.stem}),el('span',{class:'muted',text:q.knowledge+' · 正确 '+q.correct+' · 部分正确 '+q.partial+' · 需订正 '+q.revise+' · 待批 '+q.pending+' · 未提交 '+q.unsubmitted})))});
+    var qd=el('details',{},el('summary',{text:'逐题统计（文字题可在这里标考点）'})),marks={},unmarked=0;
+    (d.marks||[]).forEach(function(m){marks[m.no]=m;if(!m.knowledge)unmarked++});
+    if(unmarked)classBox.appendChild(el('div',{class:'notice warn',text:'有 '+unmarked+' 道文字题还没标考点。展开“逐题统计”，确认系统建议或从训练目标里选，标一次所有班级通用；标完点“刷新数据”。'}));
+    s.questions.forEach(function(q){qd.appendChild(el('div',{class:'row'},el('b',{text:'第'+q.no+'题（'+(q.kind==='choice'?'选择':'文字／照片')+'）'}),el('span',{text:q.stem}),el('span',{class:'muted',text:q.knowledge+' · 正确 '+q.correct+' · 部分正确 '+q.partial+' · 需订正 '+q.revise+' · 待批 '+q.pending+' · 未提交 '+q.unsubmitted+(q.later?' · 课后题未交 '+q.later:'')})));
+      if(marks[q.no])qd.appendChild(markBox(d.lessonId,marks[q.no],d.goals));});
+    if(unmarked)qd.open=true;
     classBox.appendChild(qd);
   }
   function paintList(d){
@@ -86,9 +128,35 @@ function reportPage(){
     var filters=el('div',{class:'tabs'});
     [['all','全部'],['pending','有待批'],['unsubmitted','有未提交'],['revise','需订正']].forEach(function(f){filters.appendChild(el('button',{class:FILTER===f[0]?'on':'',text:f[1],onclick:function(){FILTER=f[0];paintList(d)}}))});
     listBox.appendChild(filters);
+    listBox.appendChild(classActions(d));
     var shown=d.students.filter(function(p){return FILTER==='all'||p.counts[FILTER]>0});
     if(!shown.length)listBox.appendChild(el('div',{class:'muted',text:'没有符合条件的学生。'}));
     shown.forEach(function(p){listBox.appendChild(studentCard(d,p))});
+  }
+  // 全班：一次为还没有反馈的学生生成草稿（只用事实模板，不发布）；草稿逐个检查后，可一次发布全部草稿。
+  function classActions(d){
+    var box=el('div',{class:'card'}),msg=el('div',{class:'muted',role:'status'});
+    var fresh=d.students.filter(function(p){return p.participated&&p.report.state==='none'});
+    var drafts=d.students.filter(function(p){return p.participated&&p.report.state==='draft'});
+    var done=d.students.filter(function(p){return p.report.state==='published'}).length;
+    box.appendChild(el('b',{text:'全班反馈进度：已发布 '+done+' · 草稿 '+drafts.length+' · 未生成 '+fresh.length}));
+    function run(list,step,label){
+      var chain=Promise.resolve(),n=0;
+      list.forEach(function(p){chain=chain.then(function(){msg.textContent=label+'（'+(++n)+'/'+list.length+'）'+p.name+'…';return step(p)})});
+      return chain.then(function(){msg.textContent=label+'完成 '+list.length+' 份。';load()}).catch(function(e){msg.textContent=e.message;load()});
+    }
+    if(fresh.length)box.appendChild(el('button',{class:'primary',text:'为全班生成草稿（'+fresh.length+' 人，不会发布）',onclick:function(e){
+      e.target.disabled=true;
+      run(fresh,function(p){return api('/teacher/weekend/reports',{json:{studentId:p.studentId,sessionIds:[SID],useAi:false}})},'正在生成草稿');
+    }}));
+    if(drafts.length)box.appendChild(el('button',{text:'发布全部草稿（'+drafts.length+' 人）',onclick:function(e){
+      if(!confirm('以下 '+drafts.length+' 位学生的草稿会发给家长：'+drafts.map(function(p){return p.name}).join('、')+'。\n请确认每份都已检查过。'))return;
+      e.target.disabled=true;
+      run(drafts,function(p){return api('/teacher/weekend/reports/'+p.report.reportId).then(function(r){
+        return api('/teacher/weekend/reports/'+r.id+'/publish',{json:{revision:r.draft.revision}})})},'正在发布');
+    }}));
+    box.appendChild(msg);
+    return box;
   }
   function studentCard(d,p){
     var card=el('div',{class:'card'}),row=el('div',{class:'row'},el('b',{text:p.name}));
@@ -175,7 +243,7 @@ function reportPage(){
     var preview=el('div');
     var buttons=el('div',{class:'row'});
     buttons.appendChild(el('button',{class:'primary',text:'保存草稿',onclick:function(){status.textContent='正在保存…';save().then(function(n){showReport(n,{});load()}).catch(function(e){status.textContent=e.message})}}));
-    buttons.appendChild(el('button',{text:'预览家长看到的内容',onclick:function(){var v=values();preview.textContent='';preview.appendChild(el('div',{class:'notice',text:'预览（与家长页面相同的排版；不含答案、参考答案、照片和其他学生信息）'}));preview.appendChild(reportView({facts:r.parentFacts,sections:v.sections,comment:v.comment,titles:r.titles,practice:r.parentPractice}))}}));
+    buttons.appendChild(el('button',{text:'预览家长看到的内容',onclick:function(){var v=values();preview.textContent='';preview.appendChild(el('div',{class:'notice',text:'预览（与家长页面相同的排版；不含答案、参考答案、照片和其他学生信息）'}));preview.appendChild(reportView({facts:r.parentFacts,sections:v.sections,comment:v.comment,titles:r.titles,practice:r.parentPractice,glance:r.glance}))}}));
     buttons.appendChild(el('button',{text:r.published?'发布更新给家长':'发布给家长',onclick:function(){
       if(!confirm('发布后，'+r.studentName+' 已关联的家长可以看到这份反馈'+(r.published?'（替换第 '+r.published.version+' 版）':'')+'。确定发布吗？'))return;
       status.textContent='正在发布…';
@@ -344,7 +412,7 @@ function paintChildren(list){
           out.appendChild(el('div',{class:'row'},el('b',{text:r.date+' · '+keep.map(function(i){return r.facts[i].subject}).join('、')}),el('span',{class:'muted',text:'发布于 '+r.publishedAt+(r.version>1?' · 已更新为第 '+r.version+' 版（最新）':'')})));
           var pr=r.practice&&Object.assign({},r.practice);
           if(pr&&subject.value){if(pr.groups)pr.groups=pr.groups.filter(function(g){return g.subject===subject.value});if(pr.assignments)pr.assignments=pr.assignments.filter(function(a){return a.subject===subject.value})}
-          out.appendChild(reportView({facts:keep.map(function(i){return r.facts[i]}),sections:keep.map(function(i){return r.sections[i]}),comment:r.comment,titles:r.titles,practice:pr}));
+          out.appendChild(reportView({facts:keep.map(function(i){return r.facts[i]}),sections:keep.map(function(i){return r.sections[i]}),glance:keep.map(function(i){return (r.glance||[])[i]}),comment:r.comment,titles:r.titles,practice:pr}));
         });
         if(!shown&&reports.length)out.appendChild(el('div',{class:'muted',text:'所选日期或科目还没有已发布的反馈。'}));
       }

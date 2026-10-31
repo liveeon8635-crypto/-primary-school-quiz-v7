@@ -26,6 +26,7 @@ from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueCon
 from sqlalchemy.exc import IntegrityError
 
 from changying.services import weekend_reports as wr
+from changying.services.lesson_written import lesson_goals, suggest_knowledge
 
 AI_FEATURE = "weekend_report"
 PRACTICE_FEATURE = "weekend_practice"
@@ -120,7 +121,7 @@ def published_reports(implementation: Any, db: Any, school_id: int, student_id: 
         body = json.loads(r.published_json)
         facts = json.loads(r.published_facts_json or "[]")
         out.append({"id": r.id, "date": r.report_date, "subjects": [f["subject"] for f in facts], "facts": facts,
-                    "sections": body["sections"], "comment": body.get("comment", ""), "titles": wr.SECTION_TITLES,
+                    "sections": body["sections"], "comment": body.get("comment", ""), "titles": wr.SECTION_TITLES, "glance": body.get("glance", []),
                     "version": int(r.published_version), "publishedAt": wr.local_dt(implementation, r.published_at).strftime("%Y-%m-%d %H:%M"),
                     "sessionIds": [int(x) for x in r.session_key.split(",")],
                     "practice": wr.practice_view(live_practice(implementation, db, json.loads(r.draft_json).get("practice"), student_id), "parent")})
@@ -177,6 +178,23 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
             return "draft"
         return "stale" if r.published_hash != live_hash else "published"
 
+    def with_compare(db: Any, u: Any, r: Any, parts: list[dict[str, Any]], evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The report's glance, each lesson compared with the pupil's own previous published lesson of that subject."""
+        out = wr.glance(parts, evidence)
+        ids = {p["sessionId"] for p in parts}
+        earlier = db.execute(select(reports.c.published_facts_json).where(
+            reports.c.school_id == u.school_id, reports.c.student_id == r.student_id, reports.c.id != r.id,
+            reports.c.published_json.isnot(None), reports.c.report_date <= r.report_date)
+            .order_by(reports.c.report_date.desc(), reports.c.id.desc()).limit(20)).all()
+        for g, part in zip(out, parts):
+            for row in earlier:
+                before = next((f for f in json.loads(row.published_facts_json or "[]")
+                               if f.get("subject") == part["subject"] and f.get("sessionId") not in ids), None)
+                if before is not None:
+                    g["compare"] = wr.compare_text(before, wr.parent_facts(part))
+                    break
+        return out
+
     def describe(db: Any, u: Any, r: Any) -> dict[str, Any]:
         ids = [int(x) for x in r.session_key.split(",")]
         parts, _ = report_parts(db, u, int(r.student_id), ids)
@@ -198,6 +216,7 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
                 "draft": {**draft, "revision": int(r.draft_revision), "savedAt": wr.local_dt(implementation, r.draft_saved_at).strftime("%Y-%m-%d %H:%M"),
                           "factsChanged": r.draft_hash != live,
                           "unpublishedEdits": r.published_revision is None or int(r.published_revision) != int(r.draft_revision)},
+                "glance": with_compare(db, u, r, parts, draft["evidence"]),
                 "published": published, "titles": wr.SECTION_TITLES, "sectionKeys": list(wr.SECTION_KEYS), "autoSections": list(wr.AUTO_SECTIONS)}
 
     @router.get("/v1/weekend-report", include_in_schema=False)
@@ -235,8 +254,12 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
                 items.append(item)
             students.append({**{k: pupil[k] for k in ("studentId", "name", "participated", "counts", "explained", "followups", "points")},
                              "items": items, "report": states.get(pupil["studentId"], {"state": "none", "stateLabel": STATE_LABEL["none"]})})
+        # 考点 / 课后题 marks of the written questions, editable here; they live on the lesson template (习题审核).
+        marks = [{"no": q["no"], "templateId": q["templateId"], "knowledge": q["knowledge"], "afterClass": q["afterClass"],
+                  "suggestedKnowledge": suggest_knowledge(q["full"])} for q in facts["questions"] if q["kind"] == "written" and q.get("templateId")]
         return {**{k: facts[k] for k in ("sessionId", "title", "status", "date", "subject", "lessonTitle", "unit", "coreTarget", "className", "settled", "cutoff")},
-                "summary": wr.class_summary(facts), "students": students, "statusLabels": wr.STATUS_LABEL}
+                "summary": wr.class_summary(facts), "students": students, "statusLabels": wr.STATUS_LABEL,
+                "lessonId": int(row.lesson_id), "goals": lesson_goals(facts["coreTarget"]), "marks": marks}
 
     @router.get("/teacher/weekend/report-sessions")
     def report_sessions(date: str = "", u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -263,6 +286,40 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
         cfg = implementation.ai_config_for(db, u.school_id, False)
         return bool(cfg and cfg.enabled and cfg.allow_student_data)
 
+    def study_hints(db: Any, u: Any, student_id: int, groups: list[dict[str, Any]]) -> list[str]:
+        """Where else the product can help with this lesson's weak points: the pupil's published knowledge map
+        (a 3—5 question quick check of the same point) and his after-school AI help record. Never raises."""
+        from changying.services import knowledge_maps as km
+        from changying.services.homework_knowledge import match_knowledge
+        from changying.services.homework_knowledge_flags import knowledge_flags
+        from changying.web.knowledge_map_views import knowledge_map_enabled, register_knowledge_map_table
+        topics = [g["knowledge"] for g in groups if g.get("knowledge")]
+        if not topics:
+            return []
+        lines: list[str] = []
+        try:
+            pupil = db.get(implementation.User, student_id)
+            maps = register_knowledge_map_table(implementation)
+            row = None
+            if knowledge_map_enabled() and pupil is not None and pupil.grade is not None:
+                row = db.execute(select(maps).where(maps.c.school_id == u.school_id, maps.c.grade == int(pupil.grade),
+                                                    maps.c.published_json.isnot(None)).order_by(maps.c.published_at.desc())).first()
+            if row is not None:
+                m = json.loads(row.published_json)
+                nodes = [n for n in m["nodes"] if km.assessed(m, n)]
+                for t in topics:
+                    hit = match_knowledge(t, [(n["key"], n["name"]) for n in nodes])
+                    if hit:
+                        lines.append(f"订正后，在“我的知识地图”里做「{hit[0]} {hit[1]}」的 3～5 题小测，看看是不是真的会了（只算第一次作答）。")
+            open_flags = [f["knowledge"] for f in knowledge_flags(implementation, db, int(u.school_id), int(student_id))["flags"] if f["state"] == "open"]
+            for t in topics:
+                if open_flags and match_knowledge(t, [("", k) for k in open_flags]):
+                    lines.append(f"「{t}」孩子晚托写作业时也请 AI 讲过，还没巩固，这周请重点练。")
+        except Exception:  # noqa: BLE001 - extra hints must never stop a report
+            db.rollback()
+            return []
+        return list(dict.fromkeys(lines))[:4]
+
     def generated(db: Any, u: Any, parts: list[dict[str, Any]], use_ai: bool,
                   previous: list[dict[str, Any]] | None = None) -> tuple[list[dict[str, str]], list[dict[str, Any]], str]:
         evidence = wr.evidence_items(parts, previous)
@@ -278,7 +335,15 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
                     source = "ai"
             except Exception:  # noqa: BLE001 - the factual template is always usable without AI
                 evidence, source = wr.evidence_items(parts, previous), "ai_failed"
-        return [wr.draft_section(p, evidence) for p in parts], evidence, source
+        sections = []
+        for p in parts:
+            sec = wr.draft_section(p, evidence)
+            extra = study_hints(db, u, int(p["studentId"]), wr.weak_groups([e for e in evidence if e["sessionId"] == p["sessionId"]]))
+            if extra:
+                lines = sec["homework"].split("\n")
+                sec["homework"] = "\n".join(lines[:-1] + extra + lines[-1:])      # before the closing line for parents
+            sections.append(sec)
+        return sections, evidence, source
 
     @router.post("/teacher/weekend/reports")
     def create_report(b: ReportBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -396,7 +461,8 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
         parts, _ = report_parts(db, u, int(r.student_id), [int(x) for x in r.session_key.split(",")])
         draft = json.loads(r.draft_json)
         changed = db.execute(update(reports).where(reports.c.id == rid, reports.c.draft_revision == b.revision).values(
-            published_json=json.dumps({"sections": draft["sections"], "comment": draft.get("comment", "")}, ensure_ascii=False),
+            published_json=json.dumps({"sections": draft["sections"], "comment": draft.get("comment", ""),
+                                       "glance": with_compare(db, u, r, parts, draft.get("evidence") or wr.evidence_items(parts))}, ensure_ascii=False),
             published_facts_json=json.dumps([wr.parent_facts(p) for p in parts], ensure_ascii=False),
             published_hash=wr.fingerprint(parts), published_revision=b.revision, published_version=int(r.published_version) + 1,
             published_at=datetime.utcnow()))

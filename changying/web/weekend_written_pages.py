@@ -39,6 +39,11 @@ function writtenTeacher(box){
       d.questions.forEach(function(q,i){var cut=q.stem.lastIndexOf('\n\n'),reading=cut>=0?q.stem.slice(0,cut):'',question=cut>=0?q.stem.slice(cut+2):q.stem;if(reading&&!materials[reading]){materials[reading]=true;out.appendChild(el('details',{class:'card'},el('summary',{text:'阅读材料（展开查看）'}),el('div',{style:'white-space:pre-wrap',text:reading})))}var heading=el('h3'),card=el('section',{class:'card'},heading,el('div',{style:'white-space:pre-wrap;overflow-wrap:anywhere',text:question}),el('p',{class:'muted',text:'评分要点：'+q.reference}));out.appendChild(card);
         var answers=d.items.filter(function(a){return a.questionId===q.id});heading.textContent='第 '+(i+1)+' 题 · 已批改 '+answers.filter(function(a){return a.result!=='pending'}).length+'/'+answers.length;
         (d.students||[]).filter(function(p){return !answers.some(function(a){return a.studentId===p.id})}).forEach(function(p){card.appendChild(el('p',{class:'muted',text:p.name+' · 未提交'}))});
+        var waiting=answers.filter(function(a){return a.result==='pending'});
+        if(waiting.length>1)card.appendChild(el('button',{text:'本题待批 '+waiting.length+' 份全部标为正确',onclick:function(){
+          if(!confirm('把本题待批的 '+waiting.length+' 份答案都标为“正确”？做错的那几份请随后单独改成“部分正确”或“需订正”。'))return;
+          save(waiting.map(function(a){return {id:a.id,revision:a.revision,result:'correct',comment:a.comment||''}}));
+        }}));
         answers.forEach(function(a){var badge=el('b'),row=el('div',{class:'card'},badge,el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere',text:a.text})),pick=el('select'),comment=el('textarea',{placeholder:'给学生的评语',maxlength:1000,style:'min-height:60px'});
           pick.appendChild(el('option',{value:'',text:'请选择批改结果'}));['correct','partial','revise'].forEach(function(v){pick.appendChild(el('option',{value:v,text:WRITTEN_RESULT[v]}))});
           var draft=drafts[a.id];pick.value=draft&&draft.revision===a.revision?draft.result:(a.result==='pending'?'':a.result);comment.value=draft?draft.comment:a.comment;if(draft&&draft.revision!==a.revision){pick.value='';row.appendChild(el('p',{class:'notice',text:'学生已更新答案，请重新核对；原评语已保留。'}))}
