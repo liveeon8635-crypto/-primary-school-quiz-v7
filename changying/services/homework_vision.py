@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import base64
 import os
-import re
 import time
 from typing import Any
 
@@ -28,6 +27,34 @@ from starlette.requests import Request
 MAX_IMAGE_BYTES = 6 * 1024 * 1024
 VISION_TIMEOUT_SECONDS = 25
 VISION_PROVIDERS = ("openai_compatible", "openai_responses")
+
+# Only these fixed categories may cross into classroom messages or runtime logs.
+VISION_FAILURE_MESSAGES = {
+    "upstream_auth": "识别服务验证失败（401），请管理员检查识别授权；仍可手工批改",
+    "upstream_billing": "识别服务返回计费限制（402），请管理员核查额度；仍可手工批改",
+    "upstream_forbidden": "识别服务拒绝访问（403），请管理员核查服务权限；仍可手工批改",
+    "upstream_not_found": "识别接口或模型未找到（404），请管理员核查设置；仍可手工批改",
+    "upstream_request": "识别请求被服务商拒绝，请管理员核查接口与模型设置；仍可手工批改",
+    "upstream_busy": "识别服务商限流（429），请稍后重试；仍可手工批改",
+    "upstream_server": "识别服务商返回服务器错误，请稍后重试；仍可手工批改",
+    "upstream_error": "识别服务返回异常状态，请稍后重试；仍可手工批改",
+    "network": "无法连接识别服务，请稍后重试；仍可手工批改",
+    "timeout": "本次识别超时，请重试；仍可手工批改",
+    "empty_response": "识别服务未返回内容，请稍后重试；仍可手工批改",
+    "unreadable_response": "识别结果没有可读取的文字，请核对照片或手工批改",
+    "invalid_transcription": "识别结果格式不符合预批要求，请重试或手工批改",
+}
+
+
+class VisionFailure(HTTPException):
+    """HTTP-compatible failure with fixed, safe diagnostic categories."""
+
+    def __init__(self, status_code: int, detail: str, reason: str, upstream_status: int | None = None):
+        if reason not in VISION_FAILURE_MESSAGES:
+            raise ValueError("Unknown recognition failure category")
+        super().__init__(status_code, detail)
+        self.reason = reason
+        self.upstream_status = upstream_status if isinstance(upstream_status, int) and 100 <= upstream_status <= 599 else None
 
 RECOGNIZE_PROMPT = (
     "请识别图片中的文字，只输出一个 JSON 对象，不要任何解释，格式："
@@ -165,15 +192,15 @@ def recognize_image(
         except Exception:
             data = {}
         if not response.ok:
-            code = ""
-            err = data.get("error") if isinstance(data, dict) else None
-            if isinstance(err, dict):
-                raw_code = str(err.get("code") or err.get("type") or "")
-                code = raw_code if re.fullmatch(r"[A-Za-z0-9_.-]{1,60}", raw_code) else ""
-            raise HTTPException(502, f"识别服务暂时不可用（{response.status_code}{' ' + code if code else ''}），请直接输入文字")
+            upstream = response.status_code
+            reason = {401: "upstream_auth", 402: "upstream_billing", 403: "upstream_forbidden",
+                      404: "upstream_not_found", 400: "upstream_request", 422: "upstream_request",
+                      429: "upstream_busy"}.get(upstream, "upstream_server" if 500 <= upstream <= 599 else "upstream_error")
+            # Never expose provider error strings, even if they resemble short codes.
+            raise VisionFailure(502, f"识别服务暂时不可用（{upstream}），请直接输入文字", reason, upstream)
         out = implementation._ai_extract_text(data)
         if not out:
-            raise HTTPException(502, "识别服务没有返回内容，请重拍或直接输入文字")
+            raise VisionFailure(502, "识别服务没有返回内容，请重拍或直接输入文字", "empty_response")
         try:
             parsed = implementation._ai_json(out)
         except HTTPException:
@@ -182,7 +209,7 @@ def recognize_image(
             parsed = {"text": out, "confidence": None}
         text = str(parsed.get("text") or "").strip()
         if not text:
-            raise HTTPException(422, "没有识别出文字，请重拍或直接输入")
+            raise VisionFailure(422, "没有识别出文字，请重拍或直接输入", "unreadable_response")
         try:
             confidence = float(parsed.get("confidence")) if parsed.get("confidence") is not None else None
         except (TypeError, ValueError):
@@ -197,10 +224,10 @@ def recognize_image(
         raise
     except requests.Timeout:
         status, error = "error", "timeout"
-        raise HTTPException(504, "识别服务响应超时，请稍后重试或直接输入文字")
+        raise VisionFailure(504, "识别服务响应超时，请稍后重试或直接输入文字", "timeout")
     except requests.RequestException:
         status, error = "error", "network"
-        raise HTTPException(502, "无法连接识别服务，请稍后重试或直接输入文字")
+        raise VisionFailure(502, "无法连接识别服务，请稍后重试或直接输入文字", "network")
     finally:
         in_tokens, out_tokens = _usage(provider, data)
         db.add(
@@ -225,4 +252,5 @@ def recognize_image(
             db.rollback()
 
 
-__all__ = ["MAX_IMAGE_BYTES", "read_image_body", "recognize_image", "vision_config", "vision_enabled"]
+__all__ = ["MAX_IMAGE_BYTES", "VISION_FAILURE_MESSAGES", "VisionFailure", "read_image_body", "recognize_image", "vision_config", "vision_enabled"]
+

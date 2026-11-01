@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import hashlib
 import json
+import logging
 from typing import Any
 from types import SimpleNamespace
 
@@ -14,7 +15,9 @@ from sqlalchemy.exc import IntegrityError
 
 from changying.services import written_precheck as rules
 from changying.services.homework_limits import ai_slot, check_student_call, require_student_ai
-from changying.services.homework_vision import recognize_image, vision_enabled
+from changying.services.homework_vision import VISION_FAILURE_MESSAGES, VisionFailure, recognize_image, vision_enabled
+
+logger = logging.getLogger(__name__)
 
 
 class PrecheckRequest(BaseModel):
@@ -123,9 +126,13 @@ class WrittenPrechecks:
                         db.rollback()
                         read = recognize_image(impl, db, actor, answer.photo,
                             feature="homework_help_written_precheck_ocr", prompt=rules.transcription_prompt())
-                    parsed = impl._ai_json(read["text"])
+                    try:
+                        parsed = impl._ai_json(read["text"])
+                    except HTTPException:
+                        raise VisionFailure(502, "invalid transcription", "invalid_transcription") from None
                     observed = parsed.get("items") if isinstance(parsed, dict) else None
-                    if not isinstance(observed, list): raise ValueError("invalid transcription")
+                    if not isinstance(observed, list):
+                        raise VisionFailure(502, "invalid transcription", "invalid_transcription")
                     # Overall image uncertainty must also veto per-item comparisons.
                     if not isinstance(read.get("confidence"), (float, int)) or not .9 <= read["confidence"] <= 1:
                         observed = [{**i, "confidence": 0} for i in observed if isinstance(i, dict)]
@@ -137,7 +144,13 @@ class WrittenPrechecks:
             except HTTPException as exc:
                 db.rollback()
                 status = "disabled" if exc.status_code in (403, 503) else "failed"
-                if exc.status_code == 429:
+                if isinstance(exc, VisionFailure):
+                    # Provider 403/503 remains an upstream failure, not a school permission denial.
+                    status = "failed"
+                    payload.update(code=exc.reason, message=VISION_FAILURE_MESSAGES[exc.reason])
+                    if exc.upstream_status is not None:
+                        payload["upstreamStatus"] = exc.upstream_status
+                elif exc.status_code == 429:
                     payload.update(code="busy_or_limited", message="识别繁忙或调用次数已达限制，请稍后重试；仍可手工批改")
                 elif exc.status_code == 504:
                     payload.update(code="timeout", message="本次识别超时，请重试；仍可手工批改")
@@ -145,9 +158,13 @@ class WrittenPrechecks:
                     payload.update(code="not_enabled", message="识别未开启或未获学校授权，仍可手工批改")
                 else:
                     payload.update(code="service_error", message="识别服务暂时不可用，请稍后重试；仍可手工批改")
+                logger.warning("written_precheck_failed code=%s http_status=%s upstream_status=%s",
+                               payload["code"], exc.status_code, payload.get("upstreamStatus", "none"))
             except Exception:
                 db.rollback()
                 status, payload["message"] = "failed", "无法可靠读取答案，可重试或手工批改"
+                payload["code"] = "processing_error"
+                logger.warning("written_precheck_failed code=processing_error")
             # The student or teacher may have changed the answer while recognition ran.
             db.expire_all()
             latest = db.execute(select(self.submissions).where(self.submissions.c.id == aid)).first()
