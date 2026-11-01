@@ -42,6 +42,7 @@ VISION_FAILURE_MESSAGES = {
     "timeout": "本次识别超时，请重试；仍可手工批改",
     "empty_response": "识别服务未返回内容，请稍后重试；仍可手工批改",
     "unreadable_response": "识别结果没有可读取的文字，请核对照片或手工批改",
+    "invalid_transcription": "识别结果格式不符合预批要求，请重试或手工批改",
 }
 
 

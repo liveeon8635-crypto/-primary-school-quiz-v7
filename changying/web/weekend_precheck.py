@@ -126,9 +126,13 @@ class WrittenPrechecks:
                         db.rollback()
                         read = recognize_image(impl, db, actor, answer.photo,
                             feature="homework_help_written_precheck_ocr", prompt=rules.transcription_prompt())
-                    parsed = impl._ai_json(read["text"])
+                    try:
+                        parsed = impl._ai_json(read["text"])
+                    except HTTPException:
+                        raise VisionFailure(502, "invalid transcription", "invalid_transcription") from None
                     observed = parsed.get("items") if isinstance(parsed, dict) else None
-                    if not isinstance(observed, list): raise ValueError("invalid transcription")
+                    if not isinstance(observed, list):
+                        raise VisionFailure(502, "invalid transcription", "invalid_transcription")
                     # Overall image uncertainty must also veto per-item comparisons.
                     if not isinstance(read.get("confidence"), (float, int)) or not .9 <= read["confidence"] <= 1:
                         observed = [{**i, "confidence": 0} for i in observed if isinstance(i, dict)]

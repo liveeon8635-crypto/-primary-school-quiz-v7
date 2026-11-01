@@ -138,7 +138,7 @@ with TestClient(app) as client:
     assert typed.status_code==200
     assert next(i for i in client.get(base,headers=th).json()['items'] if i['questionId']==q2)['precheck']['suggestedResult']=='correct'
     # Wrong worksheet, low confidence, provider errors, no permission: save the answer, keep formal pending.
-    for mode in ('mismatch','low','error','disabled','upstream_auth','upstream_request','network','empty_response'):
+    for mode in ('mismatch','low','error','disabled','upstream_auth','upstream_request','network','empty_response','bad_format','malformed'):
         with legacy.SessionLocal() as db:
             st=legacy.Base.metadata.tables['weekend_written_submissions']
             db.execute(update(st).where(st.c.id==aid).values(revision=20+len(ocr_calls),result='pending'));db.commit()
@@ -149,6 +149,8 @@ with TestClient(app) as client:
             if mode=='disabled': raise HTTPException(403,'private configuration')
             if mode in ('upstream_auth','upstream_request','network','empty_response'):
                 raise wp.VisionFailure(502,'secret provider details',mode,401 if mode=='upstream_auth' else 400 if mode=='upstream_request' else None)
+            if mode in ('bad_format','malformed'):
+                return {'text':'{}' if mode=='bad_format' else 'private provider details', 'confidence':.98}
             items=[dict(key='1',question='6×p简写成（）。' if mode=='mismatch' else observed[0]['question'],answers=['1.5a'],confidence=.98)]
             return {'text':json.dumps({'items':items}), 'confidence':.2 if mode=='low' else .98}
         wp.recognize_image=response
@@ -158,6 +160,7 @@ with TestClient(app) as client:
         assert record['result']=='pending' and record['precheck']['suggestedResult'] is None
         if mode=='error': assert record['precheck']['code']=='timeout' and '超时' in record['precheck']['message']
         if mode=='disabled': assert record['precheck']['code']=='not_enabled'
+        if mode in ('bad_format','malformed'): assert record['precheck']['code']=='invalid_transcription'
         if mode in ('upstream_auth','upstream_request','network','empty_response'):
             assert record['precheck']['code']==mode
             if mode=='upstream_auth': assert record['precheck']['upstreamStatus']==401 and '401' in record['precheck']['message']
