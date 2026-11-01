@@ -41,6 +41,7 @@ from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueCon
 
 from changying.services import visual_questions as vq
 from changying.services import g3_question_drafts
+from changying.services import g6_question_drafts
 from changying.services import knowledge_maps as km
 
 KNOWLEDGE_MAP_FLAG = "KNOWLEDGE_MAP"
@@ -433,7 +434,8 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         node = next((n for n in m["nodes"] if n["key"] == key), None)
         if node is None or node["kind"] == "display":
             raise HTTPException(404, "没有找到这个知识点")
-        drafts = g3_question_drafts.build_drafts().get(node["name"])
+        drafts_by_grade = {3: g3_question_drafts.build_drafts(), 6: g6_question_drafts.build_drafts()}
+        drafts = drafts_by_grade.get(row.grade, {}).get(node["name"])
         if not drafts:
             raise HTTPException(400, "这个知识点没有预置的题目草稿")
         unit_name = next((x["name"] for x in m["units"] if x["key"] == node["unit"]), "")
