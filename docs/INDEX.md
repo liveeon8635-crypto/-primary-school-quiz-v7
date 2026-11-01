@@ -23,6 +23,7 @@
 |---|---|---|
 | [`V1_SCOPE.md`](V1_SCOPE.md) | V1 产品范围、角色、数据衔接、家长—学生关联 | 写需求、判断"这个功能属于 V1 吗"之前 |
 | [`V1_FREEZE.md`](V1_FREEZE.md) | V1 冻结基线：哪些结构不再扩张、后续只做缺陷/安全/已验证能力 | 想新增结构或"顺便做全"之前 |
+| [`analysis/claude-handoff-review-2026-11.md`](analysis/claude-handoff-review-2026-11.md) | 外部交接包的核对结论：学校教学场景与权限、失效引用的现行落点、三脑评审的适用范围 | 引用历史交接资料、或看到"GOVERNANCE.md / PROJECT_STATE / 三脑必须"这类说法时 |
 | [`README.md`](../README.md) | 项目定位、生产入口、代码结构速览 | 第一次接触项目 |
 
 ## 2. 架构与生产运行
