@@ -35,7 +35,7 @@ function writtenTeacher(box){
     if(a.result!=='pending')return;
     var p=a.precheck,area=existingArea||el('div',{class:'notice'});if(!existingArea)row.appendChild(area);area.textContent='';r.precheckArea=area;
     area.appendChild(el('b',{text:'系统预批 · 待老师核验'}));
-    if(!p||p.status==='failed'||p.status==='disabled'||p.status==='working'||p.status==='stale'){
+    if(!p||p.status==='failed'||p.status==='disabled'||p.status==='working'||p.status==='queued'||p.status==='stale'){
       var note=el('p',{role:'status','aria-live':'polite',text:p&&p.status==='working'?'正在识别并核对，完成后会自动显示结果。':p&&p.message?p.message:'此份答案尚无预批建议，可补充生成。'});area.appendChild(note);
       var key=a.id+':'+a.revision,revision=a.revision;
       var request=function(retryRequest,watchOnly,priority){
@@ -46,7 +46,7 @@ function writtenTeacher(box){
           function poll(){
             var current=rows[a.id];if(!current||current.answer.revision!==revision||current.answer.result!=='pending'){finish(null,'答案或批改状态已更新，请刷新核对');return}
             api('/teacher/weekend/sessions/'+SID+'/written/'+a.id+'/precheck?revision='+revision).then(function(d){
-              if(d.precheck&&d.precheck.status!=='working'){finish(d.precheck);return}
+              if(d.precheck&&d.precheck.status!=='working'&&d.precheck.status!=='queued'){finish(d.precheck);return}
               count++;note.textContent='正在识别并核对（已检查 '+count+' 次），完成后会自动显示结果。';
               if(count>=40){finish(null,'识别仍未完成，请稍后重试或手工批改。');return}setTimeout(poll,2000);
             }).catch(function(e){finish(null,e.message||'读取预批结果失败，请重试')});
@@ -57,7 +57,7 @@ function writtenTeacher(box){
       };
       var retry=el('button',{text:'生成／重试预批',onclick:function(){request(true,false,true)}});area.appendChild(retry);
       if(pendingPrechecks[key]){retry.disabled=true;retry.textContent='识别处理中…';note.textContent='正在处理，完成后会自动显示结果。'}
-      if((!p||p.status==='working')&&!checkedPreviews[key]){checkedPreviews[key]=true;request(false,!!p,false)}
+      if((!p||p.status==='working'||p.status==='queued')&&!checkedPreviews[key]){checkedPreviews[key]=true;request(false,!!p,false)}
       return;
     }
     area.appendChild(el('p',{text:p.message||'请逐项核验'}));

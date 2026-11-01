@@ -153,6 +153,15 @@ with TestClient(app) as client:
         if mode=='error': assert record['precheck']['code']=='timeout' and '超时' in record['precheck']['message']
         if mode=='disabled': assert record['precheck']['code']=='not_enabled'
         assert 'private configuration' not in json.dumps(record) and 'provider details' not in json.dumps(record)
+    # A retry response must not leave the old failure visible while its task waits.
+    real_run=wp.WrittenPrechecks.run
+    wp.WrittenPrechecks.run=lambda *args,**kwargs: None
+    try:
+        assert client.post(base+f'/{aid}/precheck',headers=th,json={'revision':revision,'retry':True}).status_code==200
+        queued=client.get(base+f'/{aid}/precheck?revision={revision}',headers=th).json()['precheck']
+        assert queued['status']=='queued' and '已排队' in queued['message']
+    finally:
+        wp.WrittenPrechecks.run=real_run
     # The actual classroom page contains the new controls, not merely unused helper definitions.
     html=client.get('/v1/weekend').text
     for text in ('系统预批','precheck/transcription','我已逐项核验，采用预批并保存','学生答案识别内容'):
@@ -210,13 +219,13 @@ function text(e){return all(e).map(x=>x.textContent).join(' ')}
 const timers=[];function setTimeout(f){timers.push(f)}
 const window={addEventListener(){}},document={hidden:false},SID=1,TOKEN='test';function confirm(){return true}
 async function flush(){for(let i=0;i<80;i++)await Promise.resolve()}
-let mode='working',posts=[],reads=0,wholeReads=0;
+let mode='queued',posts=[],reads=0,wholeReads=0;
 const original={status:'running',total:2,submitted:2,students:[],questions:[{id:2,stem:'12-5=（）',reference:'7'}],items:[3,4].map(id=>({id,questionId:2,studentId:id,name:'测试'+id,revision:1,result:'pending',comment:'',text:'7',hasPhoto:false,precheck:{status:'failed',message:'旧的失败提示'}}))};
 let data=original;
 function api(url,opts){
  if(url.endsWith('/written')){wholeReads++;return Promise.resolve(JSON.parse(JSON.stringify(data)))}
  if(url.endsWith('/precheck')&&opts){posts.push(url);return Promise.resolve({queued:true})}
- if(url.includes('/precheck?')){reads++;return Promise.resolve({revision:1,precheck:mode==='working'?{status:'working',message:'旧失败信息不得覆盖进度'}:mode==='ready'?{id:5,revision:1,token:'new',status:'ready',suggestedResult:'correct',items:[],message:'预批完成'}:{status:'failed',message:'本次识别超时，请重试；仍可手工批改'}})}
+ if(url.includes('/precheck?')){reads++;return Promise.resolve({revision:1,precheck:mode==='working'||mode==='queued'?{status:mode,message:'旧失败信息不得覆盖进度'}:mode==='ready'?{id:5,revision:1,token:'new',status:'ready',suggestedResult:'correct',items:[],message:'预批完成'}:{status:'failed',message:'本次识别超时，请重试；仍可手工批改'}})}
  throw Error('unexpected '+url);
 }
 ''' + WRITTEN_JS + r'''
@@ -230,6 +239,7 @@ function api(url,opts){
  assert(button.disabled);assert(text(row).includes('正在识别'),'progress must be in the clicked row immediately');
  await flush();assert.equal(reads,1);assert.equal(timers.length,1);assert(button.disabled);
  assert(!text(row).includes('旧失败信息不得覆盖进度'));
+ mode='working';timers.shift()();await flush();assert(button.disabled);assert.equal(timers.length,1);
  mode='ready';timers.shift()();await flush();
  assert(all(row).some(n=>n.attrs.text==='我已逐项核验，采用预批并保存'));
  assert.equal(comment.value,'老师未保存的评语');assert.equal(pick.value,'partial');assert.equal(wholeReads,1,'do not rebuild the class or lose drafts');

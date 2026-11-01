@@ -175,7 +175,16 @@ class WrittenPrechecks:
         @router.post("/teacher/weekend/sessions/{sid}/written/{aid}/precheck")
         def request_precheck(sid: int, aid: int, b: PrecheckRequest, tasks: BackgroundTasks,
                              u: Any = Depends(impl.current_user), db: Any = Depends(impl.get_db)):
-            context(db, u, sid, aid, b.revision)
+            answer = context(db, u, sid, aid, b.revision)
+            # Publish the queued state before returning the response. Otherwise the
+            # first poll can still see the previous failure before the task starts.
+            question = self.current(db, answer)
+            if question is not None and b.retry:
+                db.execute(update(self.table).where(*self.key(answer, question),
+                    self.table.c.status.in_(("failed", "disabled", "stale"))).values(
+                    status="queued", payload_json='{"message":"已排队，正在等待识别","requiresTeacher":true}',
+                    updated_at=datetime.utcnow()))
+                db.commit()
             # Yield dependencies stay alive until BackgroundTasks finish. Do not keep
             # the authentication/context connection checked out for that whole time.
             db.rollback()
