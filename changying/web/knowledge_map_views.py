@@ -361,7 +361,7 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         visual_node(db, u, mid, key)
         if b.level not in km.LEVELS:
             raise HTTPException(400, "难度档只能是基础、中等或提高")
-        items = vq.generate(key, b.level, b.count, secrets.randbelow(10 ** 9), getattr(row, "template_key", None))
+        items = vq.generate(key, b.level, b.count, secrets.randbelow(10 ** 9), getattr(my_map(db, u, mid), "template_key", None))
         if not items:
             raise HTTPException(502, "这次没有生成合适的题，请再点一次")
         return {"kind": vq.NODE_LABELS[key], "level": b.level, "items": items}
