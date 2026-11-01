@@ -7,7 +7,9 @@ from changying.web.weekend_pages import _page
 
 KNOWLEDGE_MAP_JS = r"""
 var KM=null,KMLIST=null,KMBOX=null,KMMSG=null,QPANEL={},KNOTE={};
+var KM_OPEN_SEQ=0,KSEQ={};
 function kmNoteKey(n){return String(KM.id)+'|'+n.key}
+function kmImportLive(mapId,batch,noteKey,seq){return batch===KM_OPEN_SEQ&&String(KM.id)===String(mapId)&&KSEQ[noteKey]===seq}
 function kmSay(text,bad){KMMSG.textContent=text||'';KMMSG.className=bad?'card warn':'muted'}
 function kmKeys(text){return String(text||'').split(/[、,，;；\s]+/).filter(function(x){return x})}
 function kmCopy(){return JSON.parse(JSON.stringify(KM.map))}
@@ -246,15 +248,16 @@ function kmNodeRow(n,unit){
     // 预置草稿题：导入本校题库并按草稿分档；没有草稿的知识点会明确提示
     n.kind==='display'?null:el('button',{class:'btn',text:'导入预置题目草稿',onclick:function(){
       if(!confirm('把这个知识点的预置草稿题导入本校题库并自动分档？导入后请逐题审核，确认后再发布地图。'))return;
-      var mapId=KM.id,noteKey=kmNoteKey(n);
+      var mapId=KM.id,batch=KM_OPEN_SEQ,noteKey=kmNoteKey(n);
+      var seq=KSEQ[noteKey]=(KSEQ[noteKey]||0)+1;
       KNOTE[noteKey]='正在导入预置草稿…';kmRender();kmRevealNode(n.key);
       api('/teacher/knowledge-maps/'+KM.id+'/nodes/'+encodeURIComponent(n.key)+'/drafts',{method:'POST'})
         .then(function(d){
-          if(String(KM.id)!==String(mapId))return;
+          if(!kmImportLive(mapId,batch,noteKey,seq))return;
           KM=d;var x=d.imported||{};KNOTE[noteKey]='已导入 '+(x.added||0)+' 题，跳过已有的 '+(x.reused||0)+' 题';kmRender();kmRevealNode(n.key)
         })
         .catch(function(e){
-          if(String(KM.id)!==String(mapId))return;
+          if(!kmImportLive(mapId,batch,noteKey,seq))return;
           KNOTE[noteKey]='导入失败：'+e.message;kmRender();kmRevealNode(n.key)
         })}}),
     n.kind==='optional'?el('label',{},el('input',{type:'checkbox',checked:!!n.enabled,onchange:function(e){var on=e.target.checked;
@@ -262,7 +265,9 @@ function kmNodeRow(n,unit){
     el('button',{class:'btn',text:'删除',onclick:function(){
       var msgText='删除知识点 '+n.key+' '+n.name+'？'+(after.length?'它是 '+after.join('、')+' 的前置，删除后这些前置关系一并去掉。':'')+'已分档的题目不会从题库删除。';
       if(!confirm(msgText))return;
-      delete KNOTE[kmNoteKey(n)];
+      var noteKey=kmNoteKey(n);
+      delete KNOTE[noteKey];
+      KSEQ[noteKey]=(KSEQ[noteKey]||0)+1;
       kmSave(function(m){m.nodes=m.nodes.filter(function(x){return x.key!==n.key});m.nodes.forEach(function(x){x.prereqs=x.prereqs.filter(function(p){return p!==n.key})})})}}));
   // 默认只占一行：编号 + 名称 + 题目覆盖；点开才看说明、前后置和操作按钮。
   var caret=el('span',{class:'km-caret',text:'▸'});
@@ -499,7 +504,7 @@ function kmNodeStudents(d,n,box){
     el('p',{class:'muted',text:'薄弱的学生已默认勾选。巩固题从这个知识点已分档的题里选学生没做过的，先基础后中等；学生按普通作业完成，做完后掌握情况自动更新。'}),
     ul,el('div',{class:'row'},count,go),res));
 }
-function kmOpen(id){api('/teacher/knowledge-maps/'+id).then(function(d){KM=d;QPANEL={};KNOTE={};kmRender()}).catch(function(e){kmSay(e.message,true)})}
+function kmOpen(id){KM_OPEN_SEQ++;KNOTE={};KSEQ={};api('/teacher/knowledge-maps/'+id).then(function(d){KM=d;QPANEL={};kmRender()}).catch(function(e){kmSay(e.message,true)})}
 function kmStart(){
   root.textContent='';KMMSG=el('div',{class:'muted',role:'status'});KMBOX=el('div');root.appendChild(KMMSG);root.appendChild(KMBOX);
   api('/teacher/knowledge-maps').then(function(d){

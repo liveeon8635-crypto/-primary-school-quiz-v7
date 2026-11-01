@@ -151,7 +151,7 @@ with TestClient(app) as client:
     # Page and workspace entry are wired.
     page = client.get("/v1/knowledge-map").text
     for text in ("知识地图", "kmStart", "/teacher/knowledge-maps", "题目分档", "发布知识地图", "开启这个选学内容",
-                 "正在导入预置草稿", "导入失败：", "kmRevealNode"):
+                 "正在导入预置草稿", "导入失败：", "kmRevealNode", "kmImportLive"):
         assert text in page, text
     ws = client.get("/v1/workspace").text
     assert "/v1/knowledge-map" in ws and "/knowledge-map/config" in ws

@@ -113,6 +113,8 @@ def test_draft_import_result_is_visible_and_scoped_to_the_current_map():
     assert "kmRevealNode(n.key)" in KNOWLEDGE_MAP_JS
     # 提示按“地图 ID + 节点编号”隔离。
     assert "String(KM.id)+'|'+n.key" in KNOWLEDGE_MAP_JS
-    # 切换地图时清空，删除节点时清掉该节点的提示。
-    assert "QPANEL={};KNOTE={}" in KNOWLEDGE_MAP_JS
-    assert "delete KNOTE[kmNoteKey(n)]" in KNOWLEDGE_MAP_JS
+    # 切换地图、删除节点、重新导入都会让旧请求失效。
+    assert "KM_OPEN_SEQ++;KNOTE={};KSEQ={}" in KNOWLEDGE_MAP_JS
+    assert "kmImportLive(mapId,batch,noteKey,seq)" in KNOWLEDGE_MAP_JS
+    assert "KSEQ[noteKey]=(KSEQ[noteKey]||0)+1" in KNOWLEDGE_MAP_JS
+    assert "delete KNOTE[noteKey]" in KNOWLEDGE_MAP_JS
