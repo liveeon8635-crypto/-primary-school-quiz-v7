@@ -439,7 +439,8 @@ with TestClient(app) as client:
     allow_ai(school_of(sid))
     homework_vision.requests.post = lambda *a, **k: Bad()
     r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
-    assert r.status_code == 502 and "secret-key-xyz" not in r.text and "rate_limit" in r.text
+    assert r.status_code == 502 and "secret-key-xyz" not in r.text and "429" in r.text
+    assert "rate_limit" not in r.text  # provider-controlled strings are no longer exposed
     homework_vision.requests.post = boom
     r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
     assert r.status_code == 504 and "secret-key-xyz" not in r.text
