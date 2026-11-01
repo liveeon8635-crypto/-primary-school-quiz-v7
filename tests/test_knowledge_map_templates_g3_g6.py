@@ -4,11 +4,15 @@ from __future__ import annotations
 from changying.services import knowledge_maps as km
 
 
-def test_grade3_template_exists_and_grade6_waits_for_catalog():
+def test_grade3_and_grade6_templates_exist():
     grades = {v["grade"] for v in km.TEMPLATES.values()}
-    assert 3 in grades and 5 in grades
-    # 六年级目录尚未核对，暂不放进系统，避免建出错的图
-    assert 6 not in grades
+    assert grades == {3, 5, 6}
+
+
+def test_grade6_units_match_the_textbook_contents():
+    names = [u["name"] for u in km.TEMPLATES["rj2026-g6-math-up"]["map"]["units"]]
+    assert names == ["确定位置", "分数乘法", "分数除法", "生活中的负数", "圆",
+                   "体育中的数学", "百分数", "水是生命之源", "复习与关联"]
 
 
 def test_grade3_units_match_the_textbook_contents():

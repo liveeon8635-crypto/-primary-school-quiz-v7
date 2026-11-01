@@ -71,7 +71,7 @@ with TestClient(app) as client:
     lst = client.get("/teacher/knowledge-maps", headers=th).json()
     # 本校还没有任何地图时，应列出全部可用模板（三、五、六年级数学上册）
     assert lst["items"] == []
-    assert {x["key"] for x in lst["templates"]} == {"rj2026-g3-math-up", "rj2026-g5-math-up"}
+    assert {x["key"] for x in lst["templates"]} == {"rj2026-g3-math-up", "rj2026-g5-math-up", "rj2026-g6-math-up"}
     assert client.post("/teacher/knowledge-maps", headers=th, json={"template": "nope"}).status_code == 400
 
     # Bank questions named after nodes, one in another school (never listed or accepted).
