@@ -308,7 +308,7 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
     def visual_node(db: Any, u: Any, mid: int, key: str, lock: bool = False) -> tuple[Any, dict[str, Any]]:
         row = my_map(db, u, mid, lock=lock)
         node = next((n for n in json.loads(row.map_json)["nodes"] if n["key"] == key), None)
-        if node is None or key not in vq.NODE_KINDS:
+        if node is None or not vq.supports(getattr(row, "template_key", None), key):
             raise HTTPException(404, "这个知识点暂时没有系统画图题")
         return row, node
 
@@ -361,7 +361,7 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         visual_node(db, u, mid, key)
         if b.level not in km.LEVELS:
             raise HTTPException(400, "难度档只能是基础、中等或提高")
-        items = vq.generate(key, b.level, b.count, secrets.randbelow(10 ** 9))
+        items = vq.generate(key, b.level, b.count, secrets.randbelow(10 ** 9), getattr(row, "template_key", None))
         if not items:
             raise HTTPException(502, "这次没有生成合适的题，请再点一次")
         return {"kind": vq.NODE_LABELS[key], "level": b.level, "items": items}

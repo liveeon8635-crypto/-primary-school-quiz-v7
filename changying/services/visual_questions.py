@@ -24,6 +24,21 @@ NODE_LABELS = {**{key: fam.KIND_LABELS[kind] for fam in _GENERATORS for key, kin
                "8-4": "复习：图形的运动和面积混合", "8-5": "复习：可能性综合（摸球、转盘、推测）"}
 
 
+# 跨年级：同一个键在不同年级含义不同，不能只按键分派。
+# 这里给三年级地图里语义与现有图形族完全一致的节点显式补上路由。
+TEMPLATE_ROUTES = {
+    "rj2026-g3-math-up": {"1-1": (cf, "view")},   # 从不同方向观察物体 == 看组合体选视图
+}
+
+
+def _route_for(template_key: str | None, node_key: str):
+    if template_key:
+        hit = TEMPLATE_ROUTES.get(template_key, {}).get(node_key)
+        if hit:
+            return hit
+    return None
+
+
 def _review(node_key: str, level: str, n: int, seed: int) -> list[dict[str, Any]]:
     mix = REVIEW[node_key]
     out, tries = [], 0
@@ -36,7 +51,26 @@ def _review(node_key: str, level: str, n: int, seed: int) -> list[dict[str, Any]
     return out
 
 
-def generate(node_key: str, level: str, n: int, seed: int) -> list[dict[str, Any]]:
+def supports(template_key: str | None, node_key: str) -> bool:
+    """这张地图的该知识点能不能出系统画图题。有专属路由表的年级以路由表为准。"""
+    if template_key and node_key in TEMPLATE_ROUTES.get(template_key, {}):
+        return True
+    if template_key in TEMPLATE_ROUTES:
+        return False
+    return node_key in NODE_KINDS
+
+
+def generate(node_key: str, level: str, n: int, seed: int, template_key: str | None = None) -> list[dict[str, Any]]:
+    route = _route_for(template_key, node_key)
+    if route:
+        fam, kind = route
+        out, tries = [], 0
+        while len(out) < n and tries < n * 40:
+            q = fam.make_question(kind, level, seed * 1000 + tries)
+            tries += 1
+            if q is not None and all(q["text"] != o["text"] or q["figure"] != o["figure"] for o in out):
+                out.append(q)
+        return out
     if node_key in REVIEW:
         return _review(node_key, level, n, seed)
     for fam in _GENERATORS:
@@ -53,4 +87,4 @@ def sanitize(value: Any) -> dict[str, Any]:
     return {}
 
 
-__all__ = ["FIGURE_TYPES", "NODE_KINDS", "NODE_LABELS", "generate", "sanitize"]
+__all__ = ["FIGURE_TYPES", "NODE_KINDS", "NODE_LABELS", "TEMPLATE_ROUTES", "generate", "sanitize", "supports"]
