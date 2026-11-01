@@ -69,7 +69,9 @@ with TestClient(app) as client:
     assert client.get("/knowledge-map/config").json() == {"enabled": True}
     assert client.get("/teacher/knowledge-maps", headers=sh).status_code == 403
     lst = client.get("/teacher/knowledge-maps", headers=th).json()
-    assert lst["items"] == [] and [x["key"] for x in lst["templates"]] == ["rj2026-g5-math-up"]
+    # 本校还没有任何地图时，应列出全部可用模板（三、五、六年级数学上册）
+    assert lst["items"] == []
+    assert {x["key"] for x in lst["templates"]} == {"rj2026-g3-math-up", "rj2026-g5-math-up", "rj2026-g6-math-up"}
     assert client.post("/teacher/knowledge-maps", headers=th, json={"template": "nope"}).status_code == 400
 
     # Bank questions named after nodes, one in another school (never listed or accepted).
@@ -422,3 +424,40 @@ def test_ai_chance_questions_stay_qualitative():
     assert "同一种情境不超过 2 道" in km.angle_brief("hard", 6, "可能性") and "不能据此断定" in km.angle_brief("hard", 6, "可能性")
     assert "不要用分数" not in km.angle_brief("medium", 6, "小数除法")
 
+
+
+DRAFT_FLOW = r"""
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    d = client.post("/teacher/knowledge-maps", headers=th, json={"template": "rj2026-g3-math-up"}).json()
+    mid = d["id"]
+    base = "/teacher/knowledge-maps/%d" % mid
+    key = "2-1"
+
+    r = client.post(base + "/nodes/" + key + "/drafts", headers=th)
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["imported"] == {"added": 6, "reused": 0, "node": "无括号的同级混合运算"}, out["imported"]
+    node = next(n for n in out["map"]["nodes"] if n["key"] == key)
+    assert node["bankCount"] == 6
+    assert node["coverage"] == {"counts": {"basic": 2, "medium": 2, "hard": 2}, "total": 6, "ready": True}
+
+    # 再导一次：全部跳过，题库不重复
+    out2 = client.post(base + "/nodes/" + key + "/drafts", headers=th).json()
+    assert out2["imported"] == {"added": 0, "reused": 6, "node": "无括号的同级混合运算"}, out2["imported"]
+    node2 = next(n for n in out2["map"]["nodes"] if n["key"] == key)
+    assert node2["bankCount"] == 6 and node2["coverage"]["ready"] is True
+
+    # 没有草稿的知识点：明确 400
+    r3 = client.post(base + "/nodes/1-1/drafts", headers=th)
+    assert r3.status_code == 400
+    # 只展示的知识点：404
+    assert client.post(base + "/nodes/C-2/drafts", headers=th).status_code == 404
+    # 学生无权
+    assert client.post(base + "/nodes/" + key + "/drafts", headers=sh).status_code == 403
+print("OK")
+"""
+
+
+def test_grade3_draft_import_is_idempotent(tmp_path):
+    helpers.run_isolated(tmp_path, helpers.COMMON + DRAFT_FLOW, {"KNOWLEDGE_MAP": "1"})
