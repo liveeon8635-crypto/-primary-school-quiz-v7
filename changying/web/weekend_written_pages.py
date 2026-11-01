@@ -18,7 +18,7 @@ function writtenPhoto(box,a,auto){
 var WRITTEN_RESULT={pending:'已提交，待老师批改',correct:'正确',partial:'部分正确',revise:'需订正'};
 function writtenTeacher(box){
   box.appendChild(el('h2',{text:'学生作答与批改'}));
-  box.appendChild(el('p',{class:'muted',text:'同题全班答案直接展开。可逐份快捷批改，也可先选各份结果再统一保存；批改后保留当前位置。'}));
+  box.appendChild(el('p',{class:'muted',text:'上传后系统先预批，建议仅老师可见，不计入学情。请逐项核对照片、识别内容与参考答案，再确认保存；无法核对时仍可手工批改。'}));
   var lastClass=null,loadRevision=0,currentStatus='',data=null,rows={},grading=false,drafts={};
   var status=el('div',{role:'status'}),stats=el('div',{class:'notice'}),out=el('div'),filter=el('select');
   [['all','全部答案'],['pending','只看待批改'],['reviewed','只看已批改']].forEach(function(x){filter.appendChild(el('option',{value:x[0],text:x[1]}))});
@@ -27,7 +27,43 @@ function writtenTeacher(box){
   var form=el('details',{},el('summary',{text:'临时补充一道题（仅开课前）'})),stem=el('textarea',{placeholder:'题目（开课前添加）',maxlength:4000}),ref=el('textarea',{placeholder:'参考答案／评分要点，仅老师可见',maxlength:4000}),hs=[];
   form.appendChild(stem);form.appendChild(ref);['方向提示（不含答案）','第一步提示（不含答案）','完整思路'].forEach(function(t){var h=el('input',{placeholder:t+'，选填'});hs.push(h);form.appendChild(h)});
   var add=el('button',{text:'添加简答题',onclick:function(){add.disabled=true;var levels=hs.map(function(h){return h.value.trim()});api('/teacher/weekend/sessions/'+SID+'/written/questions',{json:{stem:stem.value,reference:ref.value,hints:levels.some(Boolean)?levels:[]}}).then(function(){stem.value='';ref.value='';hs.forEach(function(h){h.value=''});load()}).catch(function(e){status.textContent=e.message}).then(function(){add.disabled=false})}});form.appendChild(add);box.appendChild(form);
-  function payload(r){return {id:r.answer.id,revision:r.answer.revision,result:r.pick.value,comment:r.comment.value}}
+  function payload(r){var b={id:r.answer.id,revision:r.answer.revision,result:r.pick.value,comment:r.comment.value};if(r.usePrecheck&&r.answer.precheck&&r.pick.value===r.answer.precheck.suggestedResult){b.precheckId=r.answer.precheck.id;b.precheckToken=r.answer.precheck.token}return b}
+  var checkedPreviews={};
+  function precheckPanel(row,a,r){
+    if(a.result!=='pending')return;
+    var p=a.precheck,area=el('div',{class:'notice'});row.appendChild(area);
+    area.appendChild(el('b',{text:'系统预批 · 待老师核验'}));
+    var request=function(retry,button){button.disabled=true;api('/teacher/weekend/sessions/'+SID+'/written/'+a.id+'/precheck',{json:{revision:a.revision,retry:retry}}).then(function(){status.textContent='预批已安排，稍后点“刷新提交与批改进度”查看；手工批改仍可用。'}).catch(function(e){status.textContent=e.message}).then(function(){button.disabled=false})};
+    if(!p||p.status==='failed'||p.status==='disabled'||p.status==='working'||p.status==='stale'){
+      area.appendChild(el('p',{text:p&&p.message?p.message:p&&p.status==='working'?'正在预批，请稍后刷新':'此份答案尚无预批建议，可补充生成。'}));
+      var retry=el('button',{text:p&&p.status==='working'?'重新检查预批状态':'生成／重试预批',onclick:function(){request(true,retry)}});area.appendChild(retry);
+      if(!p&&!checkedPreviews[a.id+':'+a.revision]){checkedPreviews[a.id+':'+a.revision]=true;request(false,retry)}
+      return;
+    }
+    area.appendChild(el('p',{text:p.message||'请逐项核验'}));
+    var edits=[];
+    (p.items||[]).forEach(function(item){
+      var part=el('div',{class:'card'});part.appendChild(el('b',{text:'第 '+item.key+' 小题 · '+(item.result?WRITTEN_RESULT[item.result]:'需人工核验')}));
+      part.appendChild(el('p',{text:'本题：'+item.question}));part.appendChild(el('p',{text:'照片识别题目：'+(item.observedQuestion||'未识别')}));
+      part.appendChild(el('p',{text:'参考答案：'+(item.reference||[]).join('；')}));part.appendChild(el('p',{text:item.reason}));
+      var observed=el('textarea',{maxlength:4000,placeholder:'核对照片中的印刷小题；识别错误时可修正'});observed.value=item.observedQuestion||'';
+      part.appendChild(el('label',{text:'识别题目（老师核验后可修改）'}));part.appendChild(observed);
+      var answer=el('textarea',{maxlength:4000,placeholder:'每个空的学生答案用分号分隔'});answer.value=(item.answers||[]).join('；');
+      part.appendChild(el('label',{text:'学生答案识别内容（老师核验后可修改）'}));part.appendChild(answer);
+      edits.push({key:item.key,question:observed,answers:answer});area.appendChild(part);
+    });
+    if(edits.length){var recalc=el('button',{text:'已核对／修正识别内容，重新预批',onclick:function(){
+      if(!confirm('确认逐项对照原图核验了题目和学生答案？这一步只更新预批建议，不保存正式批改。'))return;
+      recalc.disabled=true;api('/teacher/weekend/sessions/'+SID+'/written/'+a.id+'/precheck/transcription',{json:{revision:a.revision,token:p.token,items:edits.map(function(e){return {key:e.key,question:e.question.value,answers:e.answers.value.split(/[;；、\n]/).map(function(s){return s.trim()}),confidence:1}})}}).then(function(){load()}).catch(function(e){status.textContent=e.message;recalc.disabled=false});
+    }});area.appendChild(recalc)}
+    if(p.status==='ready'&&p.suggestedResult){
+      area.appendChild(el('p',{text:'整题建议：'+WRITTEN_RESULT[p.suggestedResult]+'。确认前仍为待批；如不同意，可在下方手工选择结果。'}));
+      area.appendChild(el('button',{text:'我已逐项核验，采用预批并保存',onclick:function(){
+        if(!confirm('确认已核对本份答案的所有小题，并按“'+WRITTEN_RESULT[p.suggestedResult]+'”保存正式批改？'))return;
+        r.pick.value=p.suggestedResult;r.usePrecheck=true;save([payload(r)]);
+      }}));
+    }
+  }
   function showStatus(){if(!data)return;var pending=data.items.filter(function(a){return a.result==='pending'}).length;stats.textContent='已提交 '+data.submitted+'/'+data.total+' · 待批改 '+pending+' · 已批改 '+(data.items.length-pending);Object.keys(rows).forEach(function(id){var r=rows[id],a=r.answer;r.badge.textContent=a.name+' · '+WRITTEN_RESULT[a.result];r.node.hidden=filter.value==='pending'?a.result!=='pending':filter.value==='reviewed'?a.result==='pending':false;r.node.className='card'+(a.result==='pending'?'':' reviewed');r.heading.textContent='第 '+r.number+' 题 · 已批改 '+data.items.filter(function(x){return x.questionId===a.questionId&&x.result!=='pending'}).length+'/'+data.items.filter(function(x){return x.questionId===a.questionId}).length});}
   filter.onchange=showStatus;
   function save(items){if(grading)return;grading=true;batch.disabled=true;status.textContent='正在保存批改…';
@@ -47,9 +83,9 @@ function writtenTeacher(box){
         answers.forEach(function(a){var badge=el('b'),row=el('div',{class:'card'},badge,el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere',text:a.text})),pick=el('select'),comment=el('textarea',{placeholder:'给学生的评语',maxlength:1000,style:'min-height:60px'});
           pick.appendChild(el('option',{value:'',text:'请选择批改结果'}));['correct','partial','revise'].forEach(function(v){pick.appendChild(el('option',{value:v,text:WRITTEN_RESULT[v]}))});
           var draft=drafts[a.id];pick.value=draft&&draft.revision===a.revision?draft.result:(a.result==='pending'?'':a.result);comment.value=draft?draft.comment:a.comment;if(draft&&draft.revision!==a.revision){pick.value='';row.appendChild(el('p',{class:'notice',text:'学生已更新答案，请重新核对；原评语已保留。'}))}
-          function remember(){drafts[a.id]={revision:a.revision,result:pick.value,comment:comment.value}}pick.onchange=comment.oninput=remember;
+          function remember(){if(rows[a.id])rows[a.id].usePrecheck=false;drafts[a.id]={revision:a.revision,result:pick.value,comment:comment.value}}pick.onchange=comment.oninput=remember;
           var r={answer:a,node:row,badge:badge,pick:pick,comment:comment,heading:heading,number:i+1};rows[a.id]=r;
-          writtenPhoto(row,a,true);row.appendChild(pick);row.appendChild(comment);
+          writtenPhoto(row,a,true);precheckPanel(row,a,r);row.appendChild(pick);row.appendChild(comment);
           ['correct','partial','revise'].forEach(function(v){row.appendChild(el('button',{text:WRITTEN_RESULT[v],onclick:function(){pick.value=v;remember();save([payload(r)])}}))});card.appendChild(row);
         });
       });showStatus();

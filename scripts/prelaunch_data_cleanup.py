@@ -27,6 +27,7 @@ from sqlalchemy import MetaData, create_engine, text
 
 # Operation data created by using the accounts. Safe to remove; nothing here is needed to log in or to teach.
 DELETE_TABLES = (
+    "weekend_written_prechecks",  # provisional suggestions, never formal marks
     # homework and answers
     "submissions", "assignment_recipients", "assignment_submission_settings", "ai_grading_reviews",
     "reinforcement_links", "assignments", "homework_media", "homework_media_submits", "wrong_question_records",
