@@ -1,18 +1,38 @@
-"""三、六年级数学知识地图模板：结构完整、前置不成环、能被 clean_map 接受。"""
+"""三年级数学知识地图模板：按老师提供的教材目录核对，结构完整、前置不成环。"""
 from __future__ import annotations
 
 from changying.services import knowledge_maps as km
 
 
-def _templates_of_grade(grade: int):
-    return {k: v for k, v in km.TEMPLATES.items() if v["grade"] == grade and v["subject"] == "数学"}
+def test_grade3_template_exists_and_grade6_waits_for_catalog():
+    grades = {v["grade"] for v in km.TEMPLATES.values()}
+    assert 3 in grades and 5 in grades
+    # 六年级目录尚未核对，暂不放进系统，避免建出错的图
+    assert 6 not in grades
 
 
-def test_grade3_and_grade6_templates_exist():
-    assert set(_templates_of_grade(3)) == {"rj2026-g3-math-up"}
-    assert set(_templates_of_grade(6)) == {"rj2026-g6-math-up"}
-    # 五年级地图及其模板不受影响
-    assert set(_templates_of_grade(5)) == {"rj2026-g5-math-up"}
+def test_grade3_units_match_the_textbook_contents():
+    """单元名与顺序来自老师提供的教材目录页；改这里之前先对教材。"""
+    names = [u["name"] for u in km.TEMPLATES["rj2026-g3-math-up"]["map"]["units"]]
+    assert names == [
+        "观察物体",
+        "混合运算",
+        "毫米、分米和千米",
+        "曹冲称象的故事",
+        "多位数乘一位数",
+        "数字编码",
+        "线和角",
+        "分数的初步认识",
+        "复习与关联",
+    ]
+
+
+def test_grade3_has_two_activity_units_and_one_review_unit():
+    units = km.TEMPLATES["rj2026-g3-math-up"]["map"]["units"]
+    kinds = {u["key"]: u["kind"] for u in units}
+    assert kinds["UC"] == "activity"   # 曹冲称象的故事
+    assert kinds["UD"] == "activity"   # 数字编码
+    assert kinds["U7"] == "review"     # 复习与关联
 
 
 def _maps():
@@ -64,8 +84,7 @@ def test_every_unit_has_a_node_and_templates_pass_clean_map():
         assert cleaned["nodes"], key
 
 
-def test_new_templates_start_unpublished_and_unlearned():
+def test_new_template_starts_unpublished_and_unlearned():
     """模板是草稿：所有单元默认未学，发布要靠老师手动发布。"""
-    for key in ("rj2026-g3-math-up", "rj2026-g6-math-up"):
-        for unit in km.TEMPLATES[key]["map"]["units"]:
-            assert unit["learned"] is False, f"{key} 的 {unit['key']} 不应预置为已学"
+    for unit in km.TEMPLATES["rj2026-g3-math-up"]["map"]["units"]:
+        assert unit["learned"] is False, f"{unit['key']} 不应预置为已学"
