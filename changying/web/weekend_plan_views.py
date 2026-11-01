@@ -31,8 +31,8 @@ from changying.services import lesson_markdown
 from changying.services import weekend_question_gen as qg
 from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUPPORTED, detect_lesson_no, extract
 from changying.web.weekend_pages import plan_page_html
-from changying.services.lesson_written import (literal_written_questions, valid_written_questions,
-    replace_written_drafts, written_templates, template_meta)
+from changying.services.lesson_written import (MAX_KNOWLEDGE, lesson_goals, literal_written_questions, suggest_knowledge,
+    valid_written_questions, replace_written_drafts, written_templates, template_meta)
 
 AI_FEATURE = "weekend_lesson_draft"
 SUBJECTS = ("语文", "数学")
@@ -136,6 +136,11 @@ class LessonEditBody(BaseModel):
     closureTraining: str = Field(default="", max_length=MAX_TEXT_CHARS)
     examples: list[str] = []
     ppt: list[str] = []
+
+
+class WrittenMarkBody(BaseModel):
+    knowledge: str = Field(default="", max_length=MAX_KNOWLEDGE)
+    afterClass: bool = False
 
 
 class WrittenDraftBody(BaseModel):
@@ -942,9 +947,23 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     @router.get("/teacher/weekend/lessons/{lid}/written/questions")
     def lesson_written(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
-        my_lesson(db, u, lid)
-        return {"items": [{"id": q.id, "stem": q.stem, "reference": q.reference,
+        lesson = my_lesson(db, u, lid)
+        return {"goals": lesson_goals(lesson.core_target or ""),
+                "items": [{"id": q.id, "stem": q.stem, "reference": q.reference, "suggestedKnowledge": suggest_knowledge(q.stem),
                  **template_meta(q)} for q in written_templates(db, written, u.school_id, u.id, lid)]}
+
+    @router.put("/teacher/weekend/lessons/{lid}/written/questions/{qid}/marks")
+    def mark_written(lid: int, qid: int, b: WrittenMarkBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """考点 and 课后题: report labels only, so an approved question stays approved; every class of this lesson uses them."""
+        need(u, "teacher")
+        my_lesson(db, u, lid)
+        q = next((q for q in written_templates(db, written, u.school_id, u.id, lid) if q.id == qid), None)
+        if q is None:
+            raise HTTPException(404, "没有找到这道备课题")
+        meta = {**template_meta(q), "knowledge": b.knowledge.strip(), "afterClass": b.afterClass}
+        db.execute(update(written).where(written.c.id == qid).values(hints_json=json.dumps(meta, ensure_ascii=False)))
+        db.commit()
+        return {"id": qid, "knowledge": meta["knowledge"], "afterClass": meta["afterClass"]}
 
     @router.put("/teacher/weekend/lessons/{lid}/written/questions/{qid}")
     def edit_written(lid: int, qid: int, b: WrittenDraftBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):

@@ -8,6 +8,7 @@ version the teacher published. Counting rules (see the teacher page):
 - an unanswered question is "未提交", a submitted but unreviewed one "待批" and
   neither is counted as wrong; "部分正确" stays separate and is never converted
   into a score;
+- a question the teacher marked 课后题 and nobody has handed in yet is "课后题未交", outside the denominator;
 - one question counts once however often it was resubmitted; the original rows
   keep only the final answer, so first and revised answers are not distinguished;
 - hints and submission times are reported as recorded, never as "不独立" or time spent;
@@ -25,7 +26,8 @@ from sqlalchemy import func, select
 
 from changying.services.weekend_answers import option_text
 
-STATUS_LABEL = {"unsubmitted": "未提交", "pending": "待批", "correct": "正确", "partial": "部分正确", "revise": "需订正"}
+STATUS_LABEL = {"unsubmitted": "未提交", "pending": "待批", "correct": "正确", "partial": "部分正确", "revise": "需订正",
+                "later": "课后题未交"}
 # Sections the system writes; "observation" and the report comment are the teacher's own words.
 AUTO_SECTIONS = ("content", "completion", "mastery", "issues", "consolidation", "homework", "followup")
 SECTION_TITLES = {
@@ -85,6 +87,7 @@ def _attempts(impl: Any, db: Any, row: Any) -> dict[tuple[int, str, int], int]:
 
 def session_facts(impl: Any, db: Any, row: Any) -> dict[str, Any]:
     """Everything the class summary and the reports need for one weekend lesson; read-only."""
+    from changying.services.lesson_written import template_marks
     from changying.services.weekend_roster import session_class, session_roster
     md = impl.Base.metadata
     answers_t, written_q, written_s = md.tables["weekend_answers"], md.tables["weekend_written_questions"], md.tables["weekend_written_submissions"]
@@ -107,13 +110,17 @@ def session_facts(impl: Any, db: Any, row: Any) -> dict[str, Any]:
                           "knowledge": str(q.knowledge or "").strip(), "options": options, "correctIndex": ci,
                           "task": _short(q.stem, 80), "material": "", "full": str(q.stem or ""),
                           "reference": options[ci] if 0 <= ci < len(options) else "", "explanation": str(q.explanation or "")})
+    # Written questions take the 考点 / 课后题 marks the teacher set once on the lesson's template (习题审改);
+    # the lesson goal is never substituted for a missing one.
+    marks = template_marks(db, written_q, row.school_id, row.teacher_id, row.lesson_id)
     for q in db.execute(select(written_q).where(written_q.c.session_id == row.id, written_q.c.school_id == row.school_id,
                                                 written_q.c.teacher_id == row.teacher_id).order_by(written_q.c.id)):
-        # Written questions carry no per-question knowledge point; the lesson goal is not substituted for it.
         material, _, line = str(q.stem or "").rpartition("\n\n")
-        questions.append({"key": f"w{q.id}", "kind": "written", "id": int(q.id), "stem": _short(q.stem), "knowledge": "",
+        mark = marks.get(str(q.stem or ""), {})
+        questions.append({"key": f"w{q.id}", "kind": "written", "id": int(q.id), "stem": _short(q.stem), "knowledge": mark.get("knowledge", ""),
                           "task": _short(line, 80), "material": material_title(material), "full": str(q.stem or ""),
-                          "reference": str(q.reference or ""), "explanation": ""})
+                          "reference": str(q.reference or ""), "explanation": "", "afterClass": bool(mark.get("afterClass")),
+                          "templateId": mark.get("id")})
     for no, q in enumerate(questions, 1):
         q["no"] = no
 
@@ -158,7 +165,7 @@ def session_facts(impl: Any, db: Any, row: Any) -> dict[str, Any]:
                 a = written.get((sid, q["id"]))
                 item["hint"] = hints.get((sid, q["id"]), 0)
                 if a is None:
-                    item["status"] = "unsubmitted"
+                    item["status"] = "later" if q.get("afterClass") else "unsubmitted"
                 else:
                     item.update(status=a.result if a.result in ("pending", "correct", "partial", "revise") else "pending",
                                 attempts=attempts.get((sid, "written", q["id"]), 1), answer=str(a.answer_text or ""),
@@ -166,7 +173,7 @@ def session_facts(impl: Any, db: Any, row: Any) -> dict[str, Any]:
                                 revision=int(a.revision), submittedAt=a.submitted_at, reviewedAt=a.reviewed_at)
             items.append(item)
         counts = {k: sum(1 for i in items if i["status"] == k) for k in STATUS_LABEL}
-        counts["total"] = len(items)
+        counts["total"] = len(items) - counts["later"]
         counts["submitted"] = counts["total"] - counts["unsubmitted"]
         explained, followups = [], []
         for p in peers:
@@ -317,6 +324,31 @@ def weak_groups(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(groups.values())
 
 
+def glance(parts: list[dict[str, Any]], evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Per lesson, the confirmed points the pupil got right and the points to work on, for the top of the report."""
+    out = []
+    for part in parts:
+        mine = [e for e in evidence if e["sessionId"] == part["sessionId"]]
+        weak = [g["topic"] for g in weak_groups(mine)]
+        good: list[str] = []
+        for e in mine:
+            k = e.get("knowledge")
+            if e["status"] == "correct" and k and e.get("knowledgeSource") in ("question", "teacher") and k not in good and k not in weak:
+                good.append(k)
+        out.append({"subject": part["subject"], "good": good[:6], "weak": weak[:4], "compare": ""})
+    return out
+
+
+def compare_text(before: dict[str, Any], now: dict[str, Any]) -> str:
+    """The pupil against his own previous published lesson of the subject; never against other pupils."""
+    b, n = before.get("counts") or {}, now.get("counts") or {}
+    if not b.get("submitted") or not n.get("submitted"):
+        return ""
+    fix_b, fix_n = b.get("revise", 0) + b.get("partial", 0), n.get("revise", 0) + n.get("partial", 0)
+    return (f"和孩子自己上次（{before.get('date', '')}《{before.get('lessonTitle', '')}》）比：完全正确 {b.get('correct', 0)}/{b['submitted']} 题 → "
+            f"{n.get('correct', 0)}/{n['submitted']} 题；需要订正或补全 {fix_b} 题 → {fix_n} 题。")
+
+
 def draft_section(part: dict[str, Any], evidence: list[dict[str, Any]] | None = None) -> dict[str, str]:
     """Deterministic draft for one lesson; only states what the records show."""
     c, items = part["counts"], part["items"]
@@ -326,6 +358,8 @@ def draft_section(part: dict[str, Any], evidence: list[dict[str, Any]] | None = 
     completion = (f"本节应做 {c['total']} 题，已提交 {c['submitted']} 题，未提交 {c['unsubmitted']} 题。"
                   f"已批改结果：正确 {c['correct']} 题，部分正确 {c['partial']} 题，需订正 {c['revise']} 题；"
                   f"待老师批改 {c['pending']} 题（待批改不算错误）。")
+    if c.get("later"):
+        completion += f"另有 {c['later']} 道课后题还没交，不算在本节应做题里，交了以后再更新。"
     right = [e for e in mine if e["status"] == "correct"]
     mastery = "\n".join(describe(e) for e in right[:6]) if right else "本节已批改的题目中暂时没有完全正确的作答，掌握情况需要后续练习确认。"
     if c["pending"]:
@@ -346,10 +380,13 @@ def draft_section(part: dict[str, Any], evidence: list[dict[str, Any]] | None = 
     homework = [f"订正{g['topic']}：对照老师批注重新完成原题，写出依据或过程。" for g in groups]
     if groups:
         homework.append("针对性练习：老师会按上面的薄弱点出新题，审核后布置到孩子的“作业”里，完成情况见下方“针对性练习”。")
+    tasks = {q["key"]: q.get("task") or q["stem"] for q in part["questions"]}
     unsubmitted = [i for i in items if i["status"] == "unsubmitted"]
     if unsubmitted:
-        tasks = {q["key"]: q.get("task") or q["stem"] for q in part["questions"]}
         homework.append("补做未提交的题目：" + "；".join(f"「{tasks[i['key']]}」（第{i['no']}题）" for i in unsubmitted) + "。")
+    later = [i for i in items if i["status"] == "later"]
+    if later:
+        homework.append("完成课后题并交给老师：" + "；".join(f"「{tasks[i['key']]}」（第{i['no']}题）" for i in later) + "。")
     if not homework:
         homework.append(f"回顾《{part['lessonTitle']}》课堂例题的方法，下节课前讲给家长听。")
     homework.append("家长配合：请孩子讲一讲订正或解题思路，家长只听和提问，不代写答案。")

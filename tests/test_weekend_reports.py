@@ -105,8 +105,8 @@ def test_weekend_reports_use_real_records_without_touching_them(tmp_path):
     assert s["subject"] == "数学" and s["className"] == "周末五年级" and s["date"] and s["settled"] is False
     pupils = {p["studentId"]: p for p in s["students"]}
     A, B, C = pupils[a_id], pupils[b_id], pupils[c_id]
-    assert A["counts"] == {"total": 3, "submitted": 2, "unsubmitted": 1, "correct": 1, "partial": 1, "revise": 0, "pending": 0}
-    assert B["counts"] == {"total": 3, "submitted": 3, "unsubmitted": 0, "correct": 1, "partial": 0, "revise": 1, "pending": 1}
+    assert A["counts"] == {"total": 3, "submitted": 2, "unsubmitted": 1, "correct": 1, "partial": 1, "revise": 0, "pending": 0, "later": 0}
+    assert B["counts"] == {"total": 3, "submitted": 3, "unsubmitted": 0, "correct": 1, "partial": 0, "revise": 1, "pending": 1, "later": 0}
     assert C["participated"] is False and C["counts"]["submitted"] == 0
     a_items = {i["no"]: i for i in A["items"]}
     assert a_items[1]["attempts"] == 2 and a_items[1]["status"] == "correct"          # resubmitted, counted once

@@ -104,6 +104,39 @@ def replace_written_drafts(db: Any, table: Any, school_id: int, teacher_id: int,
             stem=q['stem'], reference=q['reference'], hints_json=json.dumps({**q.get('extra', {}), 'approved': False, 'type': q['type'], 'hints': q['hints']}, ensure_ascii=False)))
 
 
+# 考点：题目小标题（“例题 1 | 省略乘号 …”）里竖线后的第一个词就是教案写好的考点；只写题型的不算。
+_HEADING = re.compile(r"^[^\n|｜]{1,16}[|｜]\s*([^\s（(:：|｜]{2,20})")
+_TYPE_WORDS = ("填空", "判断", "选择", "计算", "口算", "简答", "解答", "解决问题", "应用题", "连线", "作图", "画图", "写作", "阅读")
+_GOAL = re.compile(r"[（(]\s*\d+\s*[)）]")
+MAX_KNOWLEDGE = 40
+
+
+def suggest_knowledge(stem: str) -> str:
+    """The knowledge point the lesson plan already names in the question heading, or ''."""
+    line = str(stem or "").strip().split("\n\n")[-1].strip()
+    m = _HEADING.match(line)
+    if not m:
+        return ""
+    word = m.group(1).strip("。，,.")
+    return "" if any(word.startswith(t) for t in _TYPE_WORDS) or word.startswith("第") else word[:MAX_KNOWLEDGE]
+
+
+def lesson_goals(core_target: str) -> list[str]:
+    """The numbered training goals of a lesson (“（1）… （2）…”), for picking a knowledge point."""
+    parts = [p.strip(" 。；;") for p in _GOAL.split(str(core_target or "")) if p.strip(" 。；;")]
+    return [re.split(r"[，,]", p)[0][:MAX_KNOWLEDGE] for p in parts] if len(parts) > 1 else []
+
+
+def template_marks(db: Any, table: Any, school_id: int, teacher_id: int, lesson_id: int) -> dict[str, dict[str, Any]]:
+    """The teacher's 考点 and 课后题 marks by question text, for classroom copies of the lesson's templates."""
+    out = {}
+    for row in written_templates(db, table, school_id, teacher_id, lesson_id):
+        meta = template_meta(row)
+        out[str(row.stem)] = {"id": int(row.id), "knowledge": str(meta.get("knowledge") or "")[:MAX_KNOWLEDGE],
+                              "afterClass": bool(meta.get("afterClass"))}
+    return out
+
+
 def snapshot_written_questions(db: Any, table: Any, school_id: int, teacher_id: int, lesson_id: int, session_id: int) -> None:
     for row in written_templates(db, table, school_id, teacher_id, lesson_id):
         meta = template_meta(row)
