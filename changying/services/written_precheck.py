@@ -14,7 +14,7 @@ from sympy import Poly, Rational, Symbol, expand
 
 
 def fingerprint(stem: str, reference: str) -> str:
-    return hashlib.sha256(json.dumps([stem, reference], ensure_ascii=False).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(["written-precheck-v1", stem, reference], ensure_ascii=False).encode()).hexdigest()
 
 
 def numbered(text: str) -> dict[str, str]:
