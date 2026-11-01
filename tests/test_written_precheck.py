@@ -52,6 +52,10 @@ def test_real_upload_teacher_correction_confirmation_and_stale_versions(tmp_path
 import base64
 from sqlalchemy import update
 from changying.web import weekend_precheck as wp
+import io, logging
+diagnostic_output=io.StringIO()
+diagnostic_handler=logging.StreamHandler(diagnostic_output)
+wp.logger.addHandler(diagnostic_handler)
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5WQAAAAASUVORK5CYII=")
 observed = [dict(key="1", question="a×1.5简写成（）。", answers=["1.5a"], confidence=.98),
             dict(key="2", question="m×m简写成（）。", answers=["2m"], confidence=.98)]
@@ -134,7 +138,7 @@ with TestClient(app) as client:
     assert typed.status_code==200
     assert next(i for i in client.get(base,headers=th).json()['items'] if i['questionId']==q2)['precheck']['suggestedResult']=='correct'
     # Wrong worksheet, low confidence, provider errors, no permission: save the answer, keep formal pending.
-    for mode in ('mismatch','low','error','disabled'):
+    for mode in ('mismatch','low','error','disabled','upstream_auth','upstream_request','network','empty_response'):
         with legacy.SessionLocal() as db:
             st=legacy.Base.metadata.tables['weekend_written_submissions']
             db.execute(update(st).where(st.c.id==aid).values(revision=20+len(ocr_calls),result='pending'));db.commit()
@@ -143,6 +147,8 @@ with TestClient(app) as client:
             ocr_calls.append(kw)
             if mode=='error': raise HTTPException(504,'do not leak provider details')
             if mode=='disabled': raise HTTPException(403,'private configuration')
+            if mode in ('upstream_auth','upstream_request','network','empty_response'):
+                raise wp.VisionFailure(502,'secret provider details',mode,401 if mode=='upstream_auth' else 400 if mode=='upstream_request' else None)
             items=[dict(key='1',question='6×p简写成（）。' if mode=='mismatch' else observed[0]['question'],answers=['1.5a'],confidence=.98)]
             return {'text':json.dumps({'items':items}), 'confidence':.2 if mode=='low' else .98}
         wp.recognize_image=response
@@ -152,7 +158,13 @@ with TestClient(app) as client:
         assert record['result']=='pending' and record['precheck']['suggestedResult'] is None
         if mode=='error': assert record['precheck']['code']=='timeout' and '超时' in record['precheck']['message']
         if mode=='disabled': assert record['precheck']['code']=='not_enabled'
+        if mode in ('upstream_auth','upstream_request','network','empty_response'):
+            assert record['precheck']['code']==mode
+            if mode=='upstream_auth': assert record['precheck']['upstreamStatus']==401 and '401' in record['precheck']['message']
         assert 'private configuration' not in json.dumps(record) and 'provider details' not in json.dumps(record)
+    diagnostics=diagnostic_output.getvalue()
+    assert 'code=upstream_auth http_status=502 upstream_status=401' in diagnostics
+    assert 'provider details' not in diagnostics and 'private configuration' not in diagnostics
     # A retry response must not leave the old failure visible while its task waits.
     real_run=wp.WrittenPrechecks.run
     wp.WrittenPrechecks.run=lambda *args,**kwargs: None
