@@ -5,6 +5,7 @@ from typing import Any
 
 from changying.services import area_figures as af
 from changying.services import chance_figures as ch
+from changying.services import bearing_figures as bear
 from changying.services import coord_figures as coord
 from changying.services import cube_figures as cf
 from changying.services import grid_figures as gf
@@ -29,7 +30,9 @@ NODE_LABELS = {**{key: fam.KIND_LABELS[kind] for fam in _GENERATORS for key, kin
 # 这里给三年级地图里语义与现有图形族完全一致的节点显式补上路由。
 TEMPLATE_ROUTES = {
     "rj2026-g3-math-up": {"1-1": (cf, "view")},      # 从不同方向观察物体 == 看组合体选视图
-    "rj2026-g6-math-up": {"1-1": (coord, "pair")},  # 用有序数对确定位置
+    "rj2026-g6-math-up": {"1-1": (coord, "pair"),
+                             "1-2": (bear, "direction"),   # 用方向和距离确定位置（1）
+                             "1-3": (bear, "direction")},  # 用方向和距离确定位置（2）
 }
 
 
@@ -67,8 +70,9 @@ def generate(node_key: str, level: str, n: int, seed: int, template_key: str | N
     if route:
         fam, kind = route
         out, tries = [], 0
+        custom = (coord, bear)
         while len(out) < n and tries < n * 40:
-            q = fam.make_question(kind, level, seed * 1000 + tries) if fam is not coord else fam.make_question(level, seed * 1000 + tries)
+            q = fam.make_question(level, seed * 1000 + tries) if fam in custom else fam.make_question(kind, level, seed * 1000 + tries)
             tries += 1
             if q is not None and all(q["text"] != o["text"] or q["figure"] != o["figure"] for o in out):
                 out.append(q)
