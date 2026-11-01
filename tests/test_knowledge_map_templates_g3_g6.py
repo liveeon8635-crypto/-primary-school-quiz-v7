@@ -101,3 +101,18 @@ def test_page_exposes_the_draft_import_button():
     assert "/nodes/'+encodeURIComponent(n.key)+'/drafts" in KNOWLEDGE_MAP_JS
     assert "逐题审核" in KNOWLEDGE_MAP_JS
     assert "已导入 " in KNOWLEDGE_MAP_JS
+
+
+def test_draft_import_result_is_visible_and_scoped_to_the_current_map():
+    """导入结果要放在折叠体之外，并在导入后展开所属单元；提示不能串到别的地图。"""
+    from changying.web.knowledge_map_pages import KNOWLEDGE_MAP_JS
+
+    # 提示是节点标题之后、km-node-b 之外的独立元素。
+    assert "head,note,body" in KNOWLEDGE_MAP_JS
+    # 导入成功/失败后自动展开所属单元，保证提示可见。
+    assert "kmRevealNode(n.key)" in KNOWLEDGE_MAP_JS
+    # 提示按“地图 ID + 节点编号”隔离。
+    assert "String(KM.id)+'|'+n.key" in KNOWLEDGE_MAP_JS
+    # 切换地图时清空，删除节点时清掉该节点的提示。
+    assert "QPANEL={};KNOTE={}" in KNOWLEDGE_MAP_JS
+    assert "delete KNOTE[kmNoteKey(n)]" in KNOWLEDGE_MAP_JS
