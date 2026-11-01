@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import hashlib
 import json
 from typing import Any
+from types import SimpleNamespace
 
 from fastapi import BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -94,7 +95,7 @@ class WrittenPrechecks:
                 if old.status == "working" and old.updated_at > datetime.utcnow() - timedelta(minutes=2): return
                 if not retry and old.status in ("failed", "disabled"): return
                 claim = db.execute(update(t).where(t.c.id == old.id, t.c.updated_at == old.updated_at)
-                    .values(status="working", updated_at=datetime.utcnow()))
+                    .values(status="working", payload_json='{"message":"正在识别并核对，请稍候","requiresTeacher":true}', updated_at=datetime.utcnow()))
                 if claim.rowcount != 1: db.rollback(); return
                 job_id = old.id
             else:
@@ -116,7 +117,11 @@ class WrittenPrechecks:
                         raise HTTPException(503, "unconfigured")
                     with ai_slot():
                         check_student_call(impl, db, user)
-                        read = recognize_image(impl, db, user, answer.photo,
+                        # Release the pooled connection while the external recognizer runs.
+                        # The recognizer opens a short transaction only to record usage later.
+                        actor = SimpleNamespace(id=user.id, school_id=user.school_id)
+                        db.rollback()
+                        read = recognize_image(impl, db, actor, answer.photo,
                             feature="homework_help_written_precheck_ocr", prompt=rules.transcription_prompt())
                     parsed = impl._ai_json(read["text"])
                     observed = parsed.get("items") if isinstance(parsed, dict) else None
@@ -132,7 +137,14 @@ class WrittenPrechecks:
             except HTTPException as exc:
                 db.rollback()
                 status = "disabled" if exc.status_code in (403, 503) else "failed"
-                payload["message"] = "识别未开启或未获学校授权，仍可手工批改" if status == "disabled" else "识别暂未完成，可重试或手工批改"
+                if exc.status_code == 429:
+                    payload.update(code="busy_or_limited", message="识别繁忙或调用次数已达限制，请稍后重试；仍可手工批改")
+                elif exc.status_code == 504:
+                    payload.update(code="timeout", message="本次识别超时，请重试；仍可手工批改")
+                elif status == "disabled":
+                    payload.update(code="not_enabled", message="识别未开启或未获学校授权，仍可手工批改")
+                else:
+                    payload.update(code="service_error", message="识别服务暂时不可用，请稍后重试；仍可手工批改")
             except Exception:
                 db.rollback()
                 status, payload["message"] = "failed", "无法可靠读取答案，可重试或手工批改"
@@ -164,8 +176,17 @@ class WrittenPrechecks:
         def request_precheck(sid: int, aid: int, b: PrecheckRequest, tasks: BackgroundTasks,
                              u: Any = Depends(impl.current_user), db: Any = Depends(impl.get_db)):
             context(db, u, sid, aid, b.revision)
+            # Yield dependencies stay alive until BackgroundTasks finish. Do not keep
+            # the authentication/context connection checked out for that whole time.
+            db.rollback()
             tasks.add_task(self.run, aid, b.revision, b.retry)
             return {"queued": True, "revision": b.revision}
+
+        @router.get("/teacher/weekend/sessions/{sid}/written/{aid}/precheck")
+        def precheck_status(sid: int, aid: int, revision: int,
+                            u: Any = Depends(impl.current_user), db: Any = Depends(impl.get_db)):
+            answer = context(db, u, sid, aid, revision)
+            return {"revision": answer.revision, "precheck": self.view(db, answer)}
 
         @router.post("/teacher/weekend/sessions/{sid}/written/{aid}/precheck/transcription")
         def correct_transcription(sid: int, aid: int, b: CorrectTranscription,
