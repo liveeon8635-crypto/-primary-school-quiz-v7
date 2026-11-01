@@ -58,6 +58,7 @@ observed = [dict(key="1", question="a×1.5简写成（）。", answers=["1.5a"],
 ocr_calls = []
 def fake_ocr(impl, db, user, image, **kw):
     assert image == PNG
+    assert db.get_bind().pool.checkedout()==0, 'OCR must not retain a pooled DB connection'
     assert "1.5a" not in kw['prompt'] and 'student1' not in kw['prompt']
     ocr_calls.append(kw)
     return {'text':json.dumps({'items':observed}), 'confidence':.98}
@@ -81,6 +82,11 @@ with TestClient(app) as client:
     q2=client.post(base+'/questions',headers=th,json={'stem':'12-5=（）','reference':'7'}).json()['id']
     client.post(f'/teacher/weekend/sessions/{s}/start',headers=th)
     client.post(f'/teacher/weekend/sessions/{s}/goto',headers=th,json={'stage':4})
+    # A single-connection pool reproduces the production pressure deterministically.
+    # Upload + teacher retry + OCR must release their read transactions before waiting.
+    from sqlalchemy import create_engine
+    limited_engine=create_engine(legacy.engine.url,pool_size=1,max_overflow=0,pool_timeout=.2,connect_args={'check_same_thread':False})
+    legacy.SessionLocal.configure(bind=limited_engine)
     url=f'/student/weekend/sessions/{s}/written/{qid}'
     saved=client.post(url,headers=sh,files={'photo':('answer.png',PNG,'image/png')})
     assert saved.status_code==200,saved.text
@@ -94,6 +100,9 @@ with TestClient(app) as client:
     # Repeating the generation request is idempotent; no second paid OCR call.
     assert client.post(base+f'/{aid}/precheck',headers=th,json={'revision':1}).status_code==200
     assert len(ocr_calls)==1
+    status_read=client.get(base+f'/{aid}/precheck?revision=1',headers=th)
+    assert status_read.status_code==200 and status_read.json()['precheck']['suggestedResult']=='partial'
+    assert client.get(base+f'/{aid}/precheck?revision=1',headers=sh).status_code==403
     review=base+f'/{aid}/review'
     old={'revision':1,'result':'partial','precheckId':job['id'],'precheckToken':job['token']}
     assert client.post(review,headers=th,json={**old,'precheckToken':'wrong'}).status_code==409
@@ -141,7 +150,18 @@ with TestClient(app) as client:
         assert r.status_code==200
         record=next(i for i in client.get(base,headers=th).json()['items'] if i['id']==aid)
         assert record['result']=='pending' and record['precheck']['suggestedResult'] is None
+        if mode=='error': assert record['precheck']['code']=='timeout' and '超时' in record['precheck']['message']
+        if mode=='disabled': assert record['precheck']['code']=='not_enabled'
         assert 'private configuration' not in json.dumps(record) and 'provider details' not in json.dumps(record)
+    # A retry response must not leave the old failure visible while its task waits.
+    real_run=wp.WrittenPrechecks.run
+    wp.WrittenPrechecks.run=lambda *args,**kwargs: None
+    try:
+        assert client.post(base+f'/{aid}/precheck',headers=th,json={'revision':revision,'retry':True}).status_code==200
+        queued=client.get(base+f'/{aid}/precheck?revision={revision}',headers=th).json()['precheck']
+        assert queued['status']=='queued' and '已排队' in queued['message']
+    finally:
+        wp.WrittenPrechecks.run=real_run
     # The actual classroom page contains the new controls, not merely unused helper definitions.
     html=client.get('/v1/weekend').text
     for text in ('系统预批','precheck/transcription','我已逐项核验，采用预批并保存','学生答案识别内容'):
@@ -182,5 +202,56 @@ function all(n){return [n,...(n.children||[]).filter(x=>x&&typeof x==='object').
 })().catch(e=>{console.error(e);process.exit(1)});
 '''
     result = subprocess.run(['node', '-e', WRITTEN_JS + script], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'OK' in result.stdout
+
+
+def test_retry_updates_its_own_row_polls_and_limits_automatic_requests():
+    from changying.web.weekend_written_pages import WRITTEN_JS
+    script = r'''
+const assert=require('node:assert/strict');
+class E{constructor(tag,attrs){this.tag=tag;this.attrs=attrs||{};this.children=[];this.value='';this.disabled=false;this.style={}}
+appendChild(c){this.children.push(c);return c}remove(){}addEventListener(){}
+set textContent(v){this._text=v;this.children=[]}get textContent(){return this._text||this.attrs.text||''}}
+function el(tag,attrs,...cs){const e=new E(tag,attrs);cs.forEach(c=>e.appendChild(c));return e}
+function all(e){return [e,...e.children.filter(c=>c instanceof E).flatMap(all)]}
+function text(e){return all(e).map(x=>x.textContent).join(' ')}
+const timers=[];function setTimeout(f){timers.push(f)}
+const window={addEventListener(){}},document={hidden:false},SID=1,TOKEN='test';function confirm(){return true}
+async function flush(){for(let i=0;i<80;i++)await Promise.resolve()}
+let mode='queued',posts=[],reads=0,wholeReads=0;
+const original={status:'running',total:2,submitted:2,students:[],questions:[{id:2,stem:'12-5=（）',reference:'7'}],items:[3,4].map(id=>({id,questionId:2,studentId:id,name:'测试'+id,revision:1,result:'pending',comment:'',text:'7',hasPhoto:false,precheck:{status:'failed',message:'旧的失败提示'}}))};
+let data=original;
+function api(url,opts){
+ if(url.endsWith('/written')){wholeReads++;return Promise.resolve(JSON.parse(JSON.stringify(data)))}
+ if(url.endsWith('/precheck')&&opts){posts.push(url);return Promise.resolve({queued:true})}
+ if(url.includes('/precheck?')){reads++;return Promise.resolve({revision:1,precheck:mode==='working'||mode==='queued'?{status:mode,message:'旧失败信息不得覆盖进度'}:mode==='ready'?{id:5,revision:1,token:'new',status:'ready',suggestedResult:'correct',items:[],message:'预批完成'}:{status:'failed',message:'本次识别超时，请重试；仍可手工批改'}})}
+ throw Error('unexpected '+url);
+}
+''' + WRITTEN_JS + r'''
+(async()=>{
+ const box=new E('div');writtenTeacher(box);await flush();
+ const rows=all(box).filter(n=>n.tag==='div'&&n.children.some(c=>c instanceof E&&c.tag==='b'&&c.textContent.includes('测试')));
+ assert.equal(rows.length,2);const row=rows[0],other=rows[1];
+ const comment=all(row).find(n=>n.tag==='textarea');comment.value='老师未保存的评语';comment.oninput();
+ const pick=all(row).find(n=>n.tag==='select');pick.value='partial';pick.onchange();
+ const button=all(row).find(n=>n.tag==='button'&&n.attrs.text==='生成／重试预批');button.attrs.onclick();
+ assert(button.disabled);assert(text(row).includes('正在识别'),'progress must be in the clicked row immediately');
+ await flush();assert.equal(reads,1);assert.equal(timers.length,1);assert(button.disabled);
+ assert(!text(row).includes('旧失败信息不得覆盖进度'));
+ mode='working';timers.shift()();await flush();assert(button.disabled);assert.equal(timers.length,1);
+ mode='ready';timers.shift()();await flush();
+ assert(all(row).some(n=>n.attrs.text==='我已逐项核验，采用预批并保存'));
+ assert.equal(comment.value,'老师未保存的评语');assert.equal(pick.value,'partial');assert.equal(wholeReads,1,'do not rebuild the class or lose drafts');
+ assert(text(other).includes('旧的失败提示'),'other rows stay unchanged');
+ mode='failed';all(other).find(n=>n.attrs.text==='生成／重试预批').attrs.onclick();await flush();
+ assert(text(other).includes('本次识别超时'));assert(!all(other).find(n=>n.attrs.text==='生成／重试预批').disabled);
+ // Four old submissions do not launch four recognition requests at once.
+ posts=[];mode='working';data={...original,total:4,submitted:4,items:[7,8,9,10].map(id=>({...original.items[0],id,precheck:null}))};
+ const queued=new E('div');writtenTeacher(queued);await flush();assert.equal(posts.length,2);
+ assert(text(queued).includes('已排队'));console.log('OK');
+})().catch(e=>{console.error(e);process.exit(1)});
+'''
+    result = subprocess.run(['node'], input=script, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'OK' in result.stdout

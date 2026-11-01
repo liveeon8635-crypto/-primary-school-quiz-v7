@@ -28,16 +28,36 @@ function writtenTeacher(box){
   form.appendChild(stem);form.appendChild(ref);['方向提示（不含答案）','第一步提示（不含答案）','完整思路'].forEach(function(t){var h=el('input',{placeholder:t+'，选填'});hs.push(h);form.appendChild(h)});
   var add=el('button',{text:'添加简答题',onclick:function(){add.disabled=true;var levels=hs.map(function(h){return h.value.trim()});api('/teacher/weekend/sessions/'+SID+'/written/questions',{json:{stem:stem.value,reference:ref.value,hints:levels.some(Boolean)?levels:[]}}).then(function(){stem.value='';ref.value='';hs.forEach(function(h){h.value=''});load()}).catch(function(e){status.textContent=e.message}).then(function(){add.disabled=false})}});form.appendChild(add);box.appendChild(form);
   function payload(r){var b={id:r.answer.id,revision:r.answer.revision,result:r.pick.value,comment:r.comment.value};if(r.usePrecheck&&r.answer.precheck&&r.pick.value===r.answer.precheck.suggestedResult){b.precheckId=r.answer.precheck.id;b.precheckToken=r.answer.precheck.token}return b}
-  var checkedPreviews={};
-  function precheckPanel(row,a,r){
+  var checkedPreviews={},pendingPrechecks={},precheckQueue=[],activePrechecks=0;
+  function pumpPrechecks(){while(activePrechecks<2&&precheckQueue.length){var job=precheckQueue.shift();activePrechecks++;job.start(function(){delete pendingPrechecks[job.key];activePrechecks--;pumpPrechecks()})}}
+  function enqueuePrecheck(key,start,priority){if(pendingPrechecks[key])return;pendingPrechecks[key]=true;var job={key:key,start:start};if(priority)precheckQueue.unshift(job);else precheckQueue.push(job);pumpPrechecks()}
+  function precheckPanel(row,a,r,existingArea){
     if(a.result!=='pending')return;
-    var p=a.precheck,area=el('div',{class:'notice'});row.appendChild(area);
+    var p=a.precheck,area=existingArea||el('div',{class:'notice'});if(!existingArea)row.appendChild(area);area.textContent='';r.precheckArea=area;
     area.appendChild(el('b',{text:'系统预批 · 待老师核验'}));
-    var request=function(retry,button){button.disabled=true;api('/teacher/weekend/sessions/'+SID+'/written/'+a.id+'/precheck',{json:{revision:a.revision,retry:retry}}).then(function(){status.textContent='预批已安排，稍后点“刷新提交与批改进度”查看；手工批改仍可用。'}).catch(function(e){status.textContent=e.message}).then(function(){button.disabled=false})};
-    if(!p||p.status==='failed'||p.status==='disabled'||p.status==='working'||p.status==='stale'){
-      area.appendChild(el('p',{text:p&&p.message?p.message:p&&p.status==='working'?'正在预批，请稍后刷新':'此份答案尚无预批建议，可补充生成。'}));
-      var retry=el('button',{text:p&&p.status==='working'?'重新检查预批状态':'生成／重试预批',onclick:function(){request(true,retry)}});area.appendChild(retry);
-      if(!p&&!checkedPreviews[a.id+':'+a.revision]){checkedPreviews[a.id+':'+a.revision]=true;request(false,retry)}
+    if(!p||p.status==='failed'||p.status==='disabled'||p.status==='working'||p.status==='queued'||p.status==='stale'){
+      var note=el('p',{role:'status','aria-live':'polite',text:p&&p.status==='working'?'正在识别并核对，完成后会自动显示结果。':p&&p.message?p.message:'此份答案尚无预批建议，可补充生成。'});area.appendChild(note);
+      var key=a.id+':'+a.revision,revision=a.revision;
+      var request=function(retryRequest,watchOnly,priority){
+        retry.disabled=true;retry.textContent='排队中…';note.textContent='已排队，正在等待识别；无需反复点击，完成后会自动显示结果。';
+        enqueuePrecheck(key,function(done){
+          var count=0,ended=false;
+          function finish(view,error){if(ended)return;ended=true;done();var current=rows[a.id];if(view&&current&&current.answer.revision===revision&&current.answer.result==='pending'){current.answer.precheck=view;precheckPanel(current.node,current.answer,current,current.precheckArea)}else{note.textContent=error||'答案或批改状态已更新，请刷新核对';retry.disabled=false;retry.textContent='生成／重试预批'}}
+          function poll(){
+            var current=rows[a.id];if(!current||current.answer.revision!==revision||current.answer.result!=='pending'){finish(null,'答案或批改状态已更新，请刷新核对');return}
+            api('/teacher/weekend/sessions/'+SID+'/written/'+a.id+'/precheck?revision='+revision).then(function(d){
+              if(d.precheck&&d.precheck.status!=='working'&&d.precheck.status!=='queued'){finish(d.precheck);return}
+              count++;note.textContent='正在识别并核对（已检查 '+count+' 次），完成后会自动显示结果。';
+              if(count>=40){finish(null,'识别仍未完成，请稍后重试或手工批改。');return}setTimeout(poll,2000);
+            }).catch(function(e){finish(null,e.message||'读取预批结果失败，请重试')});
+          }
+          retry.textContent='正在识别…';note.textContent='正在识别并核对，完成后会自动显示结果。';
+          if(watchOnly)poll();else api('/teacher/weekend/sessions/'+SID+'/written/'+a.id+'/precheck',{json:{revision:revision,retry:retryRequest}}).then(function(d){if(!d.queued)throw Error('未收到预批安排回执，请重试');poll()}).catch(function(e){finish(null,e.message)});
+        },priority);
+      };
+      var retry=el('button',{text:'生成／重试预批',onclick:function(){request(true,false,true)}});area.appendChild(retry);
+      if(pendingPrechecks[key]){retry.disabled=true;retry.textContent='识别处理中…';note.textContent='正在处理，完成后会自动显示结果。'}
+      if((!p||p.status==='working'||p.status==='queued')&&!checkedPreviews[key]){checkedPreviews[key]=true;request(false,!!p,false)}
       return;
     }
     area.appendChild(el('p',{text:p.message||'请逐项核验'}));
@@ -67,7 +87,7 @@ function writtenTeacher(box){
   function showStatus(){if(!data)return;var pending=data.items.filter(function(a){return a.result==='pending'}).length;stats.textContent='已提交 '+data.submitted+'/'+data.total+' · 待批改 '+pending+' · 已批改 '+(data.items.length-pending);Object.keys(rows).forEach(function(id){var r=rows[id],a=r.answer;r.badge.textContent=a.name+' · '+WRITTEN_RESULT[a.result];r.node.hidden=filter.value==='pending'?a.result!=='pending':filter.value==='reviewed'?a.result==='pending':false;r.node.className='card'+(a.result==='pending'?'':' reviewed');r.heading.textContent='第 '+r.number+' 题 · 已批改 '+data.items.filter(function(x){return x.questionId===a.questionId&&x.result!=='pending'}).length+'/'+data.items.filter(function(x){return x.questionId===a.questionId}).length});}
   filter.onchange=showStatus;
   function save(items){if(grading)return;grading=true;batch.disabled=true;status.textContent='正在保存批改…';
-    api('/teacher/weekend/sessions/'+SID+'/written/review-batch',{json:{items:items}}).then(function(d){if(!d.reviewed||!Array.isArray(d.items))throw Error('未收到批改保存回执，请刷新核对');d.items.forEach(function(a){var r=rows[a.id];if(!r)return;Object.assign(r.answer,a);r.pick.value=a.result;r.comment.value=a.comment;delete drafts[a.id]});showStatus();status.textContent='已保存 '+d.items.length+' 份批改，当前位置已保留。'}).catch(function(e){status.textContent=e.message}).then(function(){grading=false;batch.disabled=false});
+    api('/teacher/weekend/sessions/'+SID+'/written/review-batch',{json:{items:items}}).then(function(d){if(!d.reviewed||!Array.isArray(d.items))throw Error('未收到批改保存回执，请刷新核对');d.items.forEach(function(a){var r=rows[a.id];if(!r)return;Object.assign(r.answer,a);r.pick.value=a.result;r.comment.value=a.comment;if(r.precheckArea)r.precheckArea.hidden=true;delete drafts[a.id]});showStatus();status.textContent='已保存 '+d.items.length+' 份批改，当前位置已保留。'}).catch(function(e){status.textContent=e.message}).then(function(){grading=false;batch.disabled=false});
   }
   function load(){if(grading)return;var revision=++loadRevision;
     api('/teacher/weekend/sessions/'+SID+'/written').then(function(d){if(revision!==loadRevision)return;data=d;var materials={};form.hidden=(currentStatus||d.status)!=='planned';rows={};out.textContent='';

@@ -222,8 +222,10 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         if not text and not data: raise HTTPException(400,'请填写答案或拍照提交')
         attempts = submission_attempts(implementation, db, u, sid, 'written', qid, old is not None)
         if old and old.answer_text == text and old.photo == data:
+            response = {"submitted":True,"revision":old.revision,"attempts":attempts,"submission":{**submission_dict(old),"result":"pending","comment":""}}
+            db.rollback()
             if old.result == "pending": tasks.add_task(prechecks.run, old.id, old.revision)
-            return {"submitted":True,"revision":old.revision,"attempts":attempts,"submission":{**submission_dict(old),"result":"pending","comment":""}}
+            return response
         if attempts >= 3: raise HTTPException(409, '本题已提交3次，不能继续修改')
         values = dict(answer_text=text, photo=data, photo_type=mime, result="pending", comment="",
                       revision=revision + 1, submitted_at=datetime.utcnow(), reviewed_at=None)
@@ -250,8 +252,10 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             db.rollback()
             raise HTTPException(409, "答案已经提交，请刷新查看")
         saved = db.execute(select(submissions).where(submissions.c.session_id==sid,submissions.c.question_id==qid,submissions.c.student_id==u.id)).first()
+        response = {"submitted": True, "revision":saved.revision, "attempts":attempts+1, "submission":{**submission_dict(saved),"result":"pending","comment":""}, "result": "pending"}
+        db.rollback()
         tasks.add_task(prechecks.run, saved.id, saved.revision)
-        return {"submitted": True, "revision":saved.revision, "attempts":attempts+1, "submission":{**submission_dict(saved),"result":"pending","comment":""}, "result": "pending"}
+        return response
 
     def apply_reviews(sid, items, u, db):
         teacher_session(db, u, sid)
