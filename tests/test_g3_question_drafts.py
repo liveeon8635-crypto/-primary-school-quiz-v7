@@ -25,6 +25,10 @@ def _recompute(item: dict) -> str:
         return str(v["value"] * table[v["src"]] // table[v["dst"]])
     if op == "int":
         return str(v["value"])
+    if op == "int":
+        return str(v["value"])
+    if op == "gender":
+        return "1" if v["digit"] % 2 else "0"
     raise AssertionError(f"未知的验算类型：{op}")
 
 
@@ -66,5 +70,4 @@ def test_pilot_covers_arithmetic_units_only():
     """U1 观察物体、UC 曹冲称象需要配图或情境，暂不自动出题。"""
     names = set(build_drafts())
     assert "从不同方向观察物体" not in names
-    assert "认识曹冲称象与质量单位" not in names
-    assert len(names) == 17
+    assert len(names) == 19

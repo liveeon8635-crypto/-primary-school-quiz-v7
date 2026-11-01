@@ -92,6 +92,16 @@ def _recompute(item) -> str:
         text = re.sub(r"(\d+)/(\d+)", repl, text)
         value = eval(text, {"__builtins__": {}}, {"Fraction": Fraction})
         return str(Fraction(value).limit_denominator())
+    if op == "int":
+        return str(v["value"])
+    if op == "temp_diff":
+        return str(v["high"] - v["low"])
+    if op == "litre_to_m3":
+        return f"{v['litres'] / 1000:g}"
+    if op == "save_percent":
+        return f"{(v['上'] - v['今']) / v['上'] * 100:g}%"
+    if op == "save_m3":
+        return f"{v['people'] * v['litres'] * v['days'] / 1000:g}"
     raise AssertionError(f"未知的验算类型：{op}")
 
 
@@ -119,6 +129,6 @@ def test_every_answer_recomputes():
 
 def test_pilot_skips_nodes_that_need_figures_or_context():
     names = set(build_drafts())
-    for skipped in ("用有序数对确定位置", "生活中的负数", "体育中的数学", "水是生命之源"):
+    for skipped in ("用有序数对确定位置",):
         assert skipped not in names
-    assert len(names) == 14
+    assert len(names) == 17

@@ -177,7 +177,23 @@ def build_drafts() -> dict[str, list[dict[str, Any]]]:
             _word("每台 406 元，3 台一共多少元？", 1218, "hard", {"op": "int", "value": 406 * 3}),
             _word("每箱 250 瓶，4 箱一共多少瓶？", 1000, "hard", {"op": "int", "value": 250 * 4}),
         ],
-        "整理和复习（多位数乘一位数）": [
+        "认识曹冲称象与质量单位": [
+            _conv(2, "吨", "千克", "basic", _MASS),
+            _conv(5000, "千克", "吨", "basic", _MASS),
+            _conv(3, "千克", "克", "medium", _MASS),
+            _conv(8000, "克", "千克", "medium", _MASS),
+            _word("一头大象重 4 吨，合多少千克？", 4000, "hard", {"op": "int", "value": 4000}),
+            _word("一袋大米重 25 千克，40 袋共重多少吨？", 1, "hard", {"op": "int", "value": 25 * 40 // 1000}),
+        ],
+        "数字编码": [
+            _word("邮政编码由几位数字组成？", 6, "basic", {"op": "int", "value": 6}),
+            _word("我国居民身份证号码有几位数字？", 18, "basic", {"op": "int", "value": 18}),
+            _word("身份证号第 17 位是单数表示性别为？", 1, "medium", {"op": "gender", "digit": 3, "expect": 1}),
+            _word("身份证号第 17 位是双数表示性别为？", 0, "medium", {"op": "gender", "digit": 8, "expect": 0}),
+            _word("某班学号规则是「年级(1 位)+班级(2 位)+序号(2 位)」，三年级 2 班 7 号应编成？", 30207,
+                  "hard", {"op": "int", "value": 30207}),
+            _word("上面的学号编码一共用了几位数字？", 5, "hard", {"op": "int", "value": 5}),
+        ],        "整理和复习（多位数乘一位数）": [
             _mul(213, 3, "basic"),
             _mul(45, 2, "basic"),
             _mul(306, 4, "medium"),
