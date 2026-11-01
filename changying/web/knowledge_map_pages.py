@@ -229,6 +229,12 @@ function kmNodeRow(n,unit){
   var actions=el('div',{class:'row'},
     el('button',{class:'btn',text:'编辑',onclick:function(){kmEditForm(n,edit)}}),
     n.kind==='display'?null:el('button',{class:'btn',text:'题目分档',onclick:function(){QPANEL[n.key]=1;kmQuestions(n,qs)}}),
+    // 预置草稿题：导入本校题库并按草稿分档；没有草稿的知识点会明确提示
+    n.kind==='display'?null:el('button',{class:'btn',text:'导入预置题目草稿',onclick:function(){
+      if(!confirm('把这个知识点的预置草稿题导入本校题库并自动分档？导入后请逐题审核，确认后再发布地图。'))return;
+      api('/teacher/knowledge-maps/'+KM.id+'/nodes/'+encodeURIComponent(n.key)+'/drafts',{method:'POST'})
+        .then(function(d){KM=d;var x=d.imported||{};kmSay('已导入 '+(x.added||0)+' 题，跳过已有的 '+(x.reused||0)+' 题');kmRender()})
+        .catch(function(e){kmSay(e.message,true)})}}),
     n.kind==='optional'?el('label',{},el('input',{type:'checkbox',checked:!!n.enabled,onchange:function(e){var on=e.target.checked;
       kmSave(function(m){kmNode(m,n.key).enabled=on})}}),' 开启这个选学内容'):null,
     el('button',{class:'btn',text:'删除',onclick:function(){

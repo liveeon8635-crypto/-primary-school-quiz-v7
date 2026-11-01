@@ -88,3 +88,12 @@ def test_new_template_starts_unpublished_and_unlearned():
     """模板是草稿：所有单元默认未学，发布要靠老师手动发布。"""
     for unit in km.TEMPLATES["rj2026-g3-math-up"]["map"]["units"]:
         assert unit["learned"] is False, f"{unit['key']} 不应预置为已学"
+
+def test_page_exposes_the_draft_import_button():
+    """地图页要能一键导入预置草稿题，并提示"导入后仍需审核"。"""
+    from changying.web.knowledge_map_pages import KNOWLEDGE_MAP_JS
+
+    assert "导入预置题目草稿" in KNOWLEDGE_MAP_JS
+    assert "/nodes/'+encodeURIComponent(n.key)+'/drafts" in KNOWLEDGE_MAP_JS
+    assert "逐题审核" in KNOWLEDGE_MAP_JS
+    assert "已导入 " in KNOWLEDGE_MAP_JS

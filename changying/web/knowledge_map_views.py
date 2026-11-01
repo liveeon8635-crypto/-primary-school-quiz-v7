@@ -40,6 +40,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, delete, func, insert, select, update
 
 from changying.services import visual_questions as vq
+from changying.services import g3_question_drafts
 from changying.services import knowledge_maps as km
 
 KNOWLEDGE_MAP_FLAG = "KNOWLEDGE_MAP"
@@ -418,6 +419,59 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         items = [{"id": x.id, "text": x.text, "type": x.question_type or "single_choice", "knowledge": x.knowledge, "unit": x.unit,
                   "note": diagnosis_note(x), "placed": placed.get(x.id)} for x in db.scalars(base.order_by(Question.id).limit(80))]
         return {"units": units, "items": items, "total": int(total or 0)}
+
+    @router.post("/teacher/knowledge-maps/{mid}/nodes/{key}/drafts")
+    def import_drafts(mid: int, key: str, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """把这个知识点的预置题目草稿导入本校题库，并按草稿标注的分档挂到节点上。
+
+        只导入本校没有的（同年级、同知识点、同题干视为同一题）；题目仍是普通题库题，
+        老师可以逐题审核、改题干或换档，确认后再发布地图。
+        """
+        teacher(u)
+        row = my_map(db, u, mid, lock=True)
+        m = json.loads(row.map_json)
+        node = next((n for n in m["nodes"] if n["key"] == key), None)
+        if node is None or node["kind"] == "display":
+            raise HTTPException(404, "没有找到这个知识点")
+        drafts = g3_question_drafts.build_drafts().get(node["name"])
+        if not drafts:
+            raise HTTPException(400, "这个知识点没有预置的题目草稿")
+        unit_name = next((x["name"] for x in m["units"] if x["key"] == node["unit"]), "")
+
+        existing = {t: i for t, i in db.execute(
+            select(Question.text, Question.id).where(
+                Question.school_id == row.school_id,
+                Question.grade == row.grade,
+                Question.subject == row.subject,
+                Question.knowledge == node["name"],
+            )
+        ).all()}
+        added, reused = [], 0
+        for draft in drafts:
+            qid = existing.get(draft["text"])
+            if qid:
+                reused += 1
+            else:
+                q = Question(
+                    school_id=row.school_id, grade=row.grade, subject=row.subject,
+                    textbook=row.textbook, semester=row.term, unit=unit_name,
+                    knowledge=node["name"], text=draft["text"], options_json="[]",
+                    correct_index=0, explanation="", question_type="fill_blank",
+                    answer_json=json.dumps({"answer": draft["answer"]}, ensure_ascii=False),
+                    creator_id=u.id,
+                )
+                db.add(q)
+                db.flush()
+                qid = q.id
+                added.append(qid)
+            node["levels"][str(qid)] = draft["level"]
+
+        save(db, u, row, cleaned(m))
+        implementation.audit(db, u, "km.drafts.import", f"map={mid};node={key};added={len(added)};reused={reused}")
+        db.commit()
+        out = detail(db, my_map(db, u, mid))
+        out["imported"] = {"added": len(added), "reused": reused, "node": node["name"]}
+        return out
 
     @router.put("/teacher/knowledge-maps/{mid}/nodes/{key}/levels")
     def put_levels(mid: int, key: str, b: LevelsBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
