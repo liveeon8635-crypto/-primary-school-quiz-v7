@@ -6,7 +6,7 @@ from changying.web.cube_figures_js import CUBES_JS
 from changying.web.weekend_pages import _page
 
 KNOWLEDGE_MAP_JS = r"""
-var KM=null,KMBOX=null,KMMSG=null,QPANEL={};
+var KM=null,KMLIST=null,KMBOX=null,KMMSG=null,QPANEL={};
 function kmSay(text,bad){KMMSG.textContent=text||'';KMMSG.className=bad?'card warn':'muted'}
 function kmKeys(text){return String(text||'').split(/[、,，;；\s]+/).filter(function(x){return x})}
 function kmCopy(){return JSON.parse(JSON.stringify(KM.map))}
@@ -318,6 +318,30 @@ function kmAddForm(u,nodes,box){
 }
 function kmRender(){
   var s=KM.summary,p=KM.published;KMBOX.textContent='';
+  if(KMLIST&&KMLIST.items&&KMLIST.items.length){
+    var pick=el('select',{'aria-label':'选择知识地图'});
+    KMLIST.items.forEach(function(it){
+      var o=el('option',{value:String(it.id),text:it.title});
+      if(Number(it.id)===Number(KM.id))o.selected=true;
+      pick.appendChild(o);
+    });
+    pick.onchange=function(){kmOpen(Number(pick.value))};
+    var bar=el('div',{class:'card km-switch'},el('div',{class:'row'},
+      el('span',{class:'muted',text:'当前地图：'}),pick,
+      (KMLIST.templates&&KMLIST.templates.length)?el('button',{class:'btn',text:'新建地图',onclick:function(){
+        var box=el('div',{class:'card'},el('h3',{text:'用教材模板新建地图'}));
+        KMLIST.templates.forEach(function(tp){
+          box.appendChild(el('button',{class:'btn',text:'用「'+tp.label+'」创建',onclick:function(){
+            kmSay('正在创建…');
+            api('/teacher/knowledge-maps',{json:{template:tp.key}})
+              .then(function(r){KM=r;kmSay('已创建：'+r.title);api('/teacher/knowledge-maps').then(function(d){KMLIST=d;kmRender()})})
+              .catch(function(e){kmSay(e.message,true)});
+          }}));
+        });
+        KMBOX.insertBefore(box,KMBOX.firstChild);
+      }}):null));
+    KMBOX.appendChild(bar);
+  }
   KMBOX.appendChild(el('div',{class:'card'},
     el('h2',{text:KM.title}),
     el('p',{text:'共 '+s.units+' 个部分、'+s.nodes+' 个知识点；已学 '+s.learnedUnits+' 个部分。现在参加诊断的知识点 '+s.assessed+' 个，其中题目已备齐 '+s.assessedReady+' 个（每个至少 '+KM.minPerNode+' 题，基础、中等、提高每档至少 '+KM.minPerLevel+' 题）。'}),
@@ -454,6 +478,7 @@ function kmOpen(id){api('/teacher/knowledge-maps/'+id).then(function(d){KM=d;QPA
 function kmStart(){
   root.textContent='';KMMSG=el('div',{class:'muted',role:'status'});KMBOX=el('div');root.appendChild(KMMSG);root.appendChild(KMBOX);
   api('/teacher/knowledge-maps').then(function(d){
+    KMLIST=d;
     if(d.items.length){kmOpen(d.items[0].id);return}
     KMBOX.appendChild(el('div',{class:'card'},el('h2',{text:'还没有知识地图'}),el('p',{text:'选择教材模板创建，创建后可以逐项修改、标记已学单元，再给每个知识点的题目分档。'})));
     d.templates.forEach(function(tp){KMBOX.appendChild(el('button',{class:'btn primary',text:'用“'+tp.label+'”创建',onclick:function(){
