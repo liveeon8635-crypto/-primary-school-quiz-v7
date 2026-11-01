@@ -9,11 +9,12 @@ import json
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, LargeBinary, String, Table, Text, UniqueConstraint, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
+from changying.web.weekend_precheck import WrittenPrechecks, register_precheck_table
 
 
 class WrittenQuestionBody(BaseModel):
@@ -26,6 +27,8 @@ class WrittenReviewBody(BaseModel):
     revision: int = Field(ge=1)
     result: str
     comment: str = Field(default="", max_length=1000)
+    precheckId: int | None = None
+    precheckToken: str = Field(default="", max_length=64)
 
 
 class ReviewItem(WrittenReviewBody):
@@ -67,6 +70,7 @@ def register_written_tables(implementation: Any) -> dict[str, Table]:
               Column("student_id", Integer, nullable=False), Column("question_id", Integer, nullable=False),
               Column("level", Integer, nullable=False), Column("created_at", DateTime, nullable=False),
               UniqueConstraint("session_id", "question_id", "student_id", "level", name="uq_weekend_written_hint"))
+    register_precheck_table(implementation)
     return {"questions": md.tables["weekend_written_questions"], "submissions": md.tables["weekend_written_submissions"],
             "hint_log": md.tables["weekend_written_hint_log"]}
 
@@ -82,6 +86,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
     User, CS, SC = implementation.User, implementation.ClassStudent, implementation.SchoolClass
     current_user, get_db, need = implementation.current_user, implementation.get_db, implementation.need
     router = APIRouter()
+    prechecks = WrittenPrechecks(implementation, t)
 
     def teacher_session(db: Any, u: Any, sid: int) -> Any:
         need(u, "teacher")
@@ -135,7 +140,8 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         total = len(qs) * len(roster | {a.student_id for a in ans})
         return {"status": row.status, "students": [{"id":i,"name":n} for i,n in names.items()], "total": total, "submissionRate": round(100 * len(ans) / total) if total else 0,
                 "questions": [{"id": q.id, "stem": q.stem, "reference": q.reference} for q in qs],
-                "items": [{**submission_dict(a), "name": names.get(a.student_id, "学生")} for a in ans],
+                "items": [{**submission_dict(a), "name": names.get(a.student_id, "学生"),
+                           "precheck": prechecks.view(db, a) if a.result == "pending" else None} for a in ans],
                 "submitted": len(ans), "reviewed": sum(a.result != "pending" for a in ans),
                 "correct": sum(a.result == "correct" for a in ans),
                 "partial": sum(a.result == "partial" for a in ans),
@@ -187,7 +193,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         return {"level": level, "text": levels[level - 1]}
 
     @router.post("/student/weekend/sessions/{sid}/written/{qid}")
-    async def submit(sid: int, qid: int, text: str = Form(""), revision: int = Form(0),
+    async def submit(sid: int, qid: int, tasks: BackgroundTasks, text: str = Form(""), revision: int = Form(0),
                      photo: UploadFile | None = File(None), removePhoto: bool = Form(False), u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
         if row.status != "running" or row.current_stage != 4 or answers_published(implementation, db, row, qid, "written"):
@@ -216,6 +222,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         if not text and not data: raise HTTPException(400,'请填写答案或拍照提交')
         attempts = submission_attempts(implementation, db, u, sid, 'written', qid, old is not None)
         if old and old.answer_text == text and old.photo == data:
+            if old.result == "pending": tasks.add_task(prechecks.run, old.id, old.revision)
             return {"submitted":True,"revision":old.revision,"attempts":attempts,"submission":{**submission_dict(old),"result":"pending","comment":""}}
         if attempts >= 3: raise HTTPException(409, '本题已提交3次，不能继续修改')
         values = dict(answer_text=text, photo=data, photo_type=mime, result="pending", comment="",
@@ -243,6 +250,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             db.rollback()
             raise HTTPException(409, "答案已经提交，请刷新查看")
         saved = db.execute(select(submissions).where(submissions.c.session_id==sid,submissions.c.question_id==qid,submissions.c.student_id==u.id)).first()
+        tasks.add_task(prechecks.run, saved.id, saved.revision)
         return {"submitted": True, "revision":saved.revision, "attempts":attempts+1, "submission":{**submission_dict(saved),"result":"pending","comment":""}, "result": "pending"}
 
     def apply_reviews(sid, items, u, db):
@@ -253,6 +261,15 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         if any(item.result not in ('correct','partial','revise') for item in items): raise HTTPException(400,'请选择批改结果')
         saved=[]
         for item in items:
+            if item.precheckId is not None:
+                answer = db.execute(select(submissions).where(submissions.c.id == item.id,
+                    submissions.c.session_id == sid, submissions.c.school_id == u.school_id)).first()
+                if answer is None or answer.revision != item.revision or answer.result != "pending":
+                    db.rollback()
+                    raise HTTPException(409, "答案已更新，请重新核验预批")
+                view = prechecks.validate(db, answer, item.precheckId, item.precheckToken)
+                if item.result != view["suggestedResult"]:
+                    raise HTTPException(400, "修改预批结果后请使用手工批改保存")
             changed=db.execute(update(submissions).where(submissions.c.id==item.id,submissions.c.session_id==sid,
                 submissions.c.school_id==u.school_id,submissions.c.revision==item.revision).values(result=item.result,
                 comment=item.comment.strip(),reviewed_at=datetime.utcnow(),revision=item.revision+1))
@@ -284,6 +301,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         return Response(content=a.photo, media_type=a.photo_type,
                         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
+    prechecks.install(router, teacher_session)
     app.include_router(router)
     app.state.weekend_written_installed = True
     app.state.weekend_written_router = router

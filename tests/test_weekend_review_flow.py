@@ -104,7 +104,7 @@ def test_teacher_reviews_preserve_rows_and_other_pupils_comments():
     run_js(DOM+r'''
 var gets=0,posts=[];
 var data={status:'running',total:2,submitted:2,questions:[{id:1,stem:'原题',reference:'参考答案'}],items:[{id:11,questionId:1,name:'甲',text:'甲答案',revision:1,result:'pending',comment:''},{id:12,questionId:1,name:'乙',text:'乙答案',revision:1,result:'pending',comment:''}]};
-function api(path,opts){if(!opts){gets++;return Promise.resolve(JSON.parse(JSON.stringify(data)))}posts.push(opts.json.items);return Promise.resolve({reviewed:true,items:opts.json.items.map(a=>({...a,revision:a.revision+1}))})}
+function api(path,opts){if(!opts){gets++;return Promise.resolve(JSON.parse(JSON.stringify(data)))}if(path.endsWith('/precheck'))return Promise.resolve({queued:true});posts.push(opts.json.items);return Promise.resolve({reviewed:true,items:opts.json.items.map(a=>({...a,revision:a.revision+1}))})}
 ''' + WRITTEN_JS+r'''
 (async()=>{const box=new E('div');writtenTeacher(box);await flush();
  const section=all(box,'section')[0],comments=all(section,'textarea');comments[1].value='乙尚未保存的评语';comments[1].oninput();

@@ -64,6 +64,7 @@ WITH d AS (DELETE FROM knowledge_map_ratings RETURNING 1) INSERT INTO _deleted S
 WITH d AS (DELETE FROM homework_notices RETURNING 1) INSERT INTO _deleted SELECT 'homework_notices', COUNT(*) FROM d;
 WITH d AS (DELETE FROM ai_usage_logs RETURNING 1) INSERT INTO _deleted SELECT 'ai_usage_logs', COUNT(*) FROM d;
 WITH d AS (DELETE FROM account_deletion_requests RETURNING 1) INSERT INTO _deleted SELECT 'account_deletion_requests', COUNT(*) FROM d;
+WITH d AS (DELETE FROM weekend_written_prechecks RETURNING 1) INSERT INTO _deleted SELECT 'weekend_written_prechecks', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_written_submissions RETURNING 1) INSERT INTO _deleted SELECT 'weekend_written_submissions', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_written_hint_log RETURNING 1) INSERT INTO _deleted SELECT 'weekend_written_hint_log', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_stage_log RETURNING 1) INSERT INTO _deleted SELECT 'weekend_stage_log', COUNT(*) FROM d;

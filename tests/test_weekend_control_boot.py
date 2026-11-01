@@ -62,7 +62,7 @@ with TestClient(app) as client:
  assert.equal(back.href,'/v1/weekend');
 })().catch(e=>{console.error(e);process.exitCode=1});
 """
-    result=subprocess.run(['node','-e',harness+'\n'+scripts+'\n'+check],text=True,capture_output=True,timeout=20)
+    result=subprocess.run(['node'],input=harness+'\n'+scripts+'\n'+check,text=True,capture_output=True,timeout=20)
     assert result.returncode==0,result.stdout+result.stderr
 print("OK")
 ''')
@@ -135,7 +135,7 @@ async function scenario(blocked){
 (async()=>{await scenario(false);await scenario(true)})().catch(e=>{console.error(e);process.exitCode=1});
 """
     script='const HARNESS='+json.dumps(harness)+';const SCRIPTS='+json.dumps(scripts)+';\n'+check
-    result=subprocess.run(['node','-e',script],text=True,capture_output=True,timeout=20)
+    result=subprocess.run(['node'],input=script,text=True,capture_output=True,timeout=20)
     assert result.returncode==0,result.stdout+result.stderr
 print('OK')
 ''')
@@ -162,7 +162,7 @@ fetch=(path,opts)=>{
  assert.equal(location.href,'/v1/weekend?s=77');
 })().catch(e=>{console.error(e);process.exitCode=1});
 """
-    result=subprocess.run(['node','-e',harness+network+scripts+check],text=True,capture_output=True,timeout=20)
+    result=subprocess.run(['node'],input=harness+network+scripts+check,text=True,capture_output=True,timeout=20)
     assert result.returncode==0,result.stdout+result.stderr
 print('OK')
 ''')
@@ -196,7 +196,7 @@ fetch=(path,opts)=>Promise.resolve({ok:true,json:()=>Promise.resolve(path==='/se
  assert.equal(intervals.length,2);
 })().catch(e=>{console.error(e);process.exitCode=1});
 """
-    result=subprocess.run(['node','-e',harness+geometry+scripts+check],text=True,capture_output=True,timeout=20)
+    result=subprocess.run(['node'],input=harness+geometry+scripts+check,text=True,capture_output=True,timeout=20)
     assert result.returncode==0,result.stdout+result.stderr
 print('OK')
 ''')
