@@ -6,7 +6,7 @@ from changying.web.cube_figures_js import CUBES_JS
 from changying.web.weekend_pages import _page
 
 KNOWLEDGE_MAP_JS = r"""
-var KM=null,KMLIST=null,KMBOX=null,KMMSG=null,QPANEL={};
+var KM=null,KMLIST=null,KMBOX=null,KMMSG=null,QPANEL={},KNOTE={};
 function kmSay(text,bad){KMMSG.textContent=text||'';KMMSG.className=bad?'card warn':'muted'}
 function kmKeys(text){return String(text||'').split(/[、,，;；\s]+/).filter(function(x){return x})}
 function kmCopy(){return JSON.parse(JSON.stringify(KM.map))}
@@ -233,8 +233,8 @@ function kmNodeRow(n,unit){
     n.kind==='display'?null:el('button',{class:'btn',text:'导入预置题目草稿',onclick:function(){
       if(!confirm('把这个知识点的预置草稿题导入本校题库并自动分档？导入后请逐题审核，确认后再发布地图。'))return;
       api('/teacher/knowledge-maps/'+KM.id+'/nodes/'+encodeURIComponent(n.key)+'/drafts',{method:'POST'})
-        .then(function(d){KM=d;var x=d.imported||{};kmSay('已导入 '+(x.added||0)+' 题，跳过已有的 '+(x.reused||0)+' 题');kmRender()})
-        .catch(function(e){kmSay(e.message,true)})}}),
+        .then(function(d){KM=d;var x=d.imported||{};KNOTE[n.key]='已导入 '+(x.added||0)+' 题，跳过已有的 '+(x.reused||0)+' 题';kmRender()})
+        .catch(function(e){KNOTE[n.key]='导入失败：'+e.message;kmRender()})}}),
     n.kind==='optional'?el('label',{},el('input',{type:'checkbox',checked:!!n.enabled,onchange:function(e){var on=e.target.checked;
       kmSave(function(m){kmNode(m,n.key).enabled=on})}}),' 开启这个选学内容'):null,
     el('button',{class:'btn',text:'删除',onclick:function(){
@@ -243,7 +243,8 @@ function kmNodeRow(n,unit){
       kmSave(function(m){m.nodes=m.nodes.filter(function(x){return x.key!==n.key});m.nodes.forEach(function(x){x.prereqs=x.prereqs.filter(function(p){return p!==n.key})})})}}));
   // 默认只占一行：编号 + 名称 + 题目覆盖；点开才看说明、前后置和操作按钮。
   var caret=el('span',{class:'km-caret',text:'▸'});
-  var body=el('div',{class:'km-node-b'},n.detail?el('p',{class:'muted',text:n.detail}):null,tags,
+  var note=KNOTE[n.key]?el('p',{class:'muted','data-note':n.key,text:KNOTE[n.key]}):null;
+  var body=el('div',{class:'km-node-b'},note,n.detail?el('p',{class:'muted',text:n.detail}):null,tags,
     el('p',{class:'muted',text:'前置：'+(n.prereqs.length?n.prereqs.map(kmLabel).join('、'):'无')+'；后续：'+(after.length?after.map(kmLabel).join('、'):'无')}),
     actions,edit,qs);
   body.hidden=true;
