@@ -84,7 +84,7 @@ def scrub_question(text: str) -> str:
     return value.strip()
 
 
-def build_solve_prompt(grade: int, question: str, *, recheck: bool = False, known_map: str = "") -> str:
+def build_solve_prompt(grade: int, question: str, *, recheck: bool = False, known_map: str = "", learning_context: str = "") -> str:
     """The only text sent to the model when a student asks for help: the grade, the question and, when the school
     has published a knowledge map for this grade, the map with the pupil's own mastery (``known_map``, no names)."""
     grade_name = GRADE_NAMES[int(grade) - 1] + "年级"
@@ -103,6 +103,8 @@ def build_solve_prompt(grade: int, question: str, *, recheck: bool = False, know
         "   每一步再写一句 hint，学生答错时给他看，hint 不能直接说出这一步的答案。\n"
         "5. 步骤里不要直接说出整道题的最终答案，留给学生自己算出来。语气亲切，每句话短，学生能看懂。\n"
     )
+    if learning_context:
+        prompt += learning_context[:500] + "\n"
     if known_map:
         prompt += (
             "下面是这个学生所用教材的知识点（编号 名称｜要先学的知识点｜他的掌握情况：已会、薄弱、未测）。"
@@ -183,3 +185,4 @@ __all__ = [
     "clean_parse_result",
     "scrub_notice_text",
 ]
+

@@ -6,6 +6,7 @@ student 作业 page (v1_classic_unified_top)."""
 from __future__ import annotations
 
 from changying.web.classroom_window_handoff import PAGE_AUTH_JS
+from changying.web.homework_circle_support_pages import CIRCLE_SUPPORT_JS
 
 PAGE_CSS = r"""
 :root{--bg:#f4f6fb;--card:#fff;--ink:#1c2333;--muted:#667085;--line:#d9deea;--brand:#1f6feb;--warn:#b54708;--warnbg:#fff4e5;--ok:#067647;--bad:#b42318}
@@ -37,6 +38,7 @@ hr{border:0;border-top:1px solid var(--line);margin:14px 0}
 .step{padding:12px 0;border-top:1px solid var(--line)}.step b{display:block}
 .guide{background:#f2f6ff;border-radius:12px;padding:10px 14px;margin:10px 0}.guide b{display:block;color:#1849a9}
 a.btn{display:inline-flex;align-items:center;text-decoration:none;margin-top:8px}
+.circle-support button{margin:5px 6px 5px 0}.circle-support h3{font-size:19px;margin:10px 0}.circle-figure{max-width:480px;margin:12px 0}.circle-support input{max-width:340px}
 """
 
 PAGE_JS = r"""
@@ -331,15 +333,31 @@ function cropPhoto(file){
 }
 """
 
-STUDENT_HELP_JS = PHOTO_CROP_JS + r"""
+STUDENT_HELP_JS = PHOTO_CROP_JS + CIRCLE_SUPPORT_JS + r"""
 var HELP_TIP='只拍这一道题，让题目占满画面；避开人脸、姓名、学号；光线要亮，别有阴影。';
 function afterConfirm(box,help){
   box.textContent='';box.appendChild(notice('ok','AI 正在想，请稍等…'));
-  return api('/student/homework/help/'+help.id+'/solve',{method:'POST'}).then(function(h){showSolution(box,h)}).catch(function(e){
+  return api('/student/homework/help/'+help.id+'/solve',{method:'POST'}).then(function(h){Object.assign(help,h);showSolution(box,h)}).catch(function(e){
     box.textContent='';box.appendChild(notice('error',e.message));
     if(e.status!==429)box.appendChild(el('button',{text:'再试一次',onclick:function(){afterConfirm(box,help)}}));
     escalateBox(box,help);
+    circleSupportButton(box,help);
   });
+}
+function circleSupportOpen(box,h,before,stillCurrent){
+  return hwCircleSupport(box,{before:!!before,record:h.circleSupport,onFinish:function(record,teacher){
+    if(stillCurrent&&!stillCurrent())return Promise.reject(new Error('题目或年级已改变，请重新确认题目；这次补救不会用于新题。'));
+    return api('/student/homework/help/'+h.id+'/circle-support',{json:record}).then(function(saved){
+      h.circleSupport=saved.circleSupport;
+      if(teacher)return api('/student/homework/help/'+h.id+'/escalate',{json:{note:h.studentNote||'圆面积辅导中仍有疑问，请老师一起看。'}}).then(function(next){Object.assign(h,next);showSolution(box,h)});
+      if(before&&!h.solution&&h.state!=='escalated')return afterConfirm(box,h);
+      showSolution(box,h);
+    });
+  }});
+}
+function circleSupportButton(box,h){
+  if(h.state==='resolved'||!hwCircleEligible(h.questionText,h.grade))return;
+  box.appendChild(el('button',{text:h.circleSupport?'查看圆面积补救记录':'还是不懂，补一补圆面积基础',onclick:function(){circleSupportOpen(box,h,false)}}));
 }
 function escalateBox(box,h){
   if(h.state==='escalated'){box.appendChild(notice('ok','已请老师帮忙，请先做别的题，老师会来找你。'));return}
@@ -380,7 +398,7 @@ function showSolution(box,h){
   box.textContent='';
   var warn=h.warning||'AI 可能出错，请自己判断';
   box.appendChild(notice('warn',warn));
-  if(!h.solution){box.appendChild(notice('error',h.message||'这道题没有得到解答'));escalateBox(box,h);return}
+  if(!h.solution){box.appendChild(notice('error',h.message||'这道题没有得到解答'));escalateBox(box,h);circleSupportButton(box,h);return}
   var s=h.solution,L=s.layer,list=el('div'),tail=el('div'),i=0,wrong=0,answered=0;
   var head=[s.method?'解法：'+s.method:'',s.knowledgePoint?'知识点：'+s.knowledgePoint:''].filter(Boolean).join(' · ');
   if(head)box.appendChild(el('div',{class:'muted',text:head}));
@@ -414,7 +432,7 @@ function showSolution(box,h){
     }else{
       var inp=el('input',{type:'text',placeholder:'写下你算出的数',maxlength:40,'aria-label':'第'+st.n+'步的答案'});
       area.appendChild(inp);
-      area.appendChild(el('button',{class:'primary',text:'确定',onclick:function(){if(!inp.value.trim())return;if(hwSame(inp.value,st.check))settle(true);else miss()}}));
+      area.appendChild(el('button',{class:'primary',text:'确定',onclick:function(){if(!inp.value.trim())return;if(hwCircleEligible(h.questionText,h.grade)&&hwCircleSymbolic(inp.value)){tip.textContent='含π的式子不算答错。请按原题要求处理π；需要保留π或取值不明确时，请老师核对，不强行换成3.14。';return}if(hwSame(inp.value,st.check))settle(true);else miss()}}));
     }
     area.appendChild(el('button',{text:'这一步不会',onclick:function(){wrong++;settle(false)}}));
   }
@@ -423,7 +441,8 @@ function showSolution(box,h){
     var c=s.finalCheck,tries=0,area=el('div',{class:'row'}),tip=el('div');item.appendChild(area);item.appendChild(tip);
     function show(self){
       area.remove();tip.textContent='';
-      item.appendChild(notice(self?'ok':'warn',(self?'你自己做出来了！':'')+'答案：'+s.answer));
+      item.appendChild(notice(self?'ok':'warn',(self?(h.circleSupport?'借助辅导完成了，尚需独立验证。':'你自己做出来了！'):'')+'答案：'+s.answer));
+      if(hwCircleEligible(h.questionText,h.grade))item.appendChild(el('div',{class:'muted',text:'这里只核对可验算的数值，单位请按原题补齐并核对；不据此认定已掌握圆的面积。'}));
       api('/student/homework/help/'+h.id+'/progress',{json:{selfSolved:!!self,revealed:!self,finalChecked:!!c,wrongTries:wrong,stepsAnswered:answered}}).catch(function(){});
       after();
     }
@@ -432,6 +451,7 @@ function showSolution(box,h){
       area.appendChild(inp);
       area.appendChild(el('button',{class:'primary',text:'确定',onclick:function(){
         if(!inp.value.trim())return;
+        if(hwCircleEligible(h.questionText,h.grade)&&hwCircleSymbolic(inp.value)){tip.textContent='含π的写法暂不判错。请按原题给定的π取值计算；题目要求保留π或取值不明确时，请老师核对。';return}
         if(hwSame(inp.value,c)){show(true);return}
         tries++;wrong++;
         if(tries>=2){show(false);return}
@@ -448,6 +468,8 @@ function showSolution(box,h){
       el('div',{text:'去知识地图做 3～5 道“'+L.node.name+'”的新题。只算第一次作答，做对了，地图上这个知识点会变绿。'}),
       el('a',{class:'btn',href:'/v1/my-knowledge-map#node='+encodeURIComponent(L.node.key),text:'去做同类题'})));
     tail.appendChild(notice('warn',warn+'。看不懂，或者觉得不对，就请老师帮忙。'));
+    if(hwCircleEligible(h.questionText,h.grade)&&!(L&&L.quiz))tail.appendChild(el('p',{class:'muted',text:'暂时没有可用的老师审核小测入口，请老师安排独立验证题。'}));
+    circleSupportButton(tail,h);
   }
   next();
   escalateBox(box,h);
@@ -459,32 +481,37 @@ function helpCard(){
   if(ME&&ME.grade>=1&&ME.grade<=6)grade.value=String(ME.grade);
   var snap=el('button',{text:'拍题',onclick:function(){file.click()}});
   if(!CONFIG.visionEnabled)snap.style.display='none';
-  var confirmBtn=el('button',{class:'primary',text:'确认题目，请 AI 讲解'});
+  var confirmBtn=el('button',{class:'primary',text:'确认题目，请 AI 讲解'}),basicsBtn=el('button',{text:'圆面积刚学，先回忆基础',hidden:true});
   root.appendChild(el('div',{class:'card'},el('h2',{text:'这道题我不会'}),el('div',{class:'muted',text:HELP_TIP}),
-    el('div',{class:'row'},snap,file,grade),text,msg,el('div',{class:'row'},confirmBtn),out));
+    el('div',{class:'row'},snap,file,grade),text,msg,el('div',{class:'row'},confirmBtn,basicsBtn),out));
+  function offerBasics(){basicsBtn.hidden=!hwCircleEligible(text.value,grade.value)}
+  text.addEventListener('input',offerBasics);grade.addEventListener('change',offerBasics);
   file.addEventListener('change',function(){
     var f=file.files&&file.files[0];if(!f)return;
     msg.textContent='';snap.disabled=true;
     cropPhoto(f).then(function(blob){msg.appendChild(notice('ok','正在识别…'));return api('/student/homework/recognize',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}})})
       .then(function(d){
         text.value=d.text;msg.textContent='';
+        offerBasics();
         msg.appendChild(notice('ok','请检查识别出的文字，不对就直接修改，然后点“确认题目”。'));
         if(d.hasFigure)msg.appendChild(notice('warn','题目里有图形，AI 看不到图。请用文字补充说明，或者直接请老师帮忙。'));
       })
       .catch(function(e){msg.textContent='';if(!e.cancelled)msg.appendChild(notice('error',e.message))})
       .then(function(){snap.disabled=false;file.value=''});
   });
-  confirmBtn.addEventListener('click',function(){
+  function begin(withBasics){
     msg.textContent='';out.textContent='';
     if(!text.value.trim()){msg.appendChild(notice('error','请先拍下或写下题目'));return}
-    confirmBtn.disabled=true;
+    confirmBtn.disabled=true;basicsBtn.disabled=true;
+    var requestText=text.value,requestGrade=Number(grade.value);
     var same=last&&last.text===text.value&&last.grade===Number(grade.value);
     // Same question again (e.g. after an error): reuse its request instead of opening a second one.
     (same?Promise.resolve(last.help):api('/student/homework/help',{json:{questionText:text.value,grade:Number(grade.value)}}))
-      .then(function(h){last={text:text.value,grade:Number(grade.value),help:h};return afterConfirm(out,h)})
+      .then(function(h){if(text.value!==requestText||Number(grade.value)!==requestGrade)throw new Error('题目或年级已改变，请重新确认题目');last={text:requestText,grade:requestGrade,help:h};if(withBasics)return circleSupportOpen(out,h,!h.solution,function(){return text.value===requestText&&Number(grade.value)===requestGrade});return afterConfirm(out,h)})
       .catch(function(e){msg.appendChild(notice('error',e.message))})
-      .then(function(){confirmBtn.disabled=false});
-  });
+      .then(function(){confirmBtn.disabled=false;basicsBtn.disabled=false});
+  }
+  confirmBtn.addEventListener('click',function(){begin(false)});basicsBtn.addEventListener('click',function(){begin(true)});
 }
 """
 

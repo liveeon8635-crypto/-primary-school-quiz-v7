@@ -240,7 +240,7 @@ function teacherAuxDetail(id){
     teacher_catalog:'这里浏览教材题库并为组卷/AI出题提供上游资源；浏览题库不等于给学生布置任务。导入或拍照上传的题目也在这里：按学科、教材和单元查找，单元就是导入时填写的单元；题库里已有完全相同的题（带插图的题除外）会直接沿用、不重复保存，仍在它原来的单元下；勾选题目后可批量修改单元或教材（老师只能改自己导入或创建的题目，管理员可改本校所有题目）。',
     teacher_audit:'这里回看教师自己的操作记录，帮助确认谁在什么时间做了什么。',
     teacher_leaderboard:'这里查看班级激励排行；它用于激励，不替代学情诊断。',
-    teacher_homework:'在“全部功能”里点“晚托作业助手”：把家长转发的作业通知粘贴进来（或上传截图），AI 整理成清单，你逐条核对、选好学生再发布。学生在“作业”页顶部看到清单；学生拍题问 AI 后点“求助老师”，会出现在这里的“求助列表”，能看到 AI 的引导和学生自己做到了哪一步。AI 可能整理错，发布前一定要核对。',
+    teacher_homework:'在“全部功能”里点“晚托作业助手”：把家长转发的作业通知粘贴进来（或上传截图），AI 整理成清单，你逐条核对、选好学生再发布。学生点“求助老师”后，在“求助列表”查看AI引导、学生做到哪一步；圆面积辅导另附卡点、图示轮次和当前状态的短摘要。补救确认不进入正式提交或掌握度，由你另安排审核后的独立题验证。AI可能整理错，发布前一定要核对。',
     account:'这里管理当前账号、设备和登录相关设置，不改变学生学习事实。'
   })[id]||'请理解这一页在教师完整工作流中的位置。';
 }
@@ -285,7 +285,7 @@ function renderStudentRole(step,d,rel){
   }else if(step.id==='student_home'){
     stage.innerHTML=pageIntro(step,'学习首页只负责汇总今天要做什么；看到任务不等于已经完成。')+pageCard('学习首页',s?esc(s.name)+' · '+esc(s.className):'学生首页','<div class="metric-grid"><div class="metric"><strong>'+d.assignments.length+'</strong><small>作业</small></div><div class="metric"><strong>'+d.targeted_practices.length+'</strong><small>针对练习</small></div><div class="metric"><strong>'+d.wrong_questions.length+'</strong><small>错题</small></div><div class="metric"><strong>'+d.points.reduce((n,x)=>n+Number(x.points||0),0)+'</strong><small>积分</small></div></div>'+roleRelationBlock(rel),done);
   }else if(step.id==='student_homework'){
-    stage.innerHTML=pageIntro(step,'老师发来的家庭作业清单，和拍题求助，都在“晚托作业助手”里。')+pageCard('晚托作业助手','在底栏“作业”页顶部看到家庭作业；不会的题可以拍下来问 AI。','<div class="item"><b>今天的家庭作业</b><small>老师发布后，作业页顶部会出现清单；点进助手，做完一项就在前面打勾。</small></div><div class="item"><b>这道题我不会</b><small>只拍这一道题，拖动白框框住题目，确认识别出的文字，再让 AI 一步一步引导你：先从你知识地图上已经会的知识想起，每一步先回答一个小问题，答错了有提示；最后的答案要自己算出来。AI 可能出错，请自己判断。</small></div><div class="item"><b>真的会了吗</b><small>讲完点“去做同类题”，在知识地图上做 3～5 道这个知识点的新题。只算第一次作答，做对了地图上的颜色会变。</small></div><div class="item"><b>还是不会</b><small>点“求助老师”，老师会看到你的题目、AI 的引导，和你自己做到了哪一步，再来帮你。</small></div>'+roleRelationBlock(rel),done);
+    stage.innerHTML=pageIntro(step,'老师发来的家庭作业清单，和拍题求助，都在“晚托作业助手”里。')+pageCard('晚托作业助手','在底栏“作业”页顶部看到家庭作业；不会的题可以拍下来问 AI。','<div class="item"><b>今天的家庭作业</b><small>老师发布后，作业页顶部会出现清单；点进助手，做完一项就在前面打勾。</small></div><div class="item"><b>这道题我不会</b><small>只拍这一道题，拖动白框框住题目，确认识别出的文字，再让 AI 一步一步引导你：先从你知识地图上已经会的知识想起，每一步先回答一个小问题，答错了有提示；最后的答案要自己算出来。AI 可能出错，请自己判断。</small></div><div class="item"><b>真的会了吗</b><small>讲完点“去做同类题”，在知识地图上做 3～5 道这个知识点的新题。只算第一次作答，做对了地图上的颜色会变。</small></div><div class="item"><b>圆的面积刚学不懂</b><small>六年级圆面积题可选先回忆基础，普通求助不用多选一步。固定图示区分半径/直径、平方和圆周长，按题目给定的π取值回到原题；同一卡点两轮未过就请老师。这里的确认题只记辅导过程，不改变掌握度；没有可用审核新题时请老师安排验证。</small></div><div class="item"><b>还是不会</b><small>点“求助老师”，老师会看到你的题目、AI 的引导，和你自己做到了哪一步，再来帮你。</small></div>'+roleRelationBlock(rel),done);
   }else if(TOURS[step.id]){
     stage.innerHTML=tourPage(step,'学生','roleDone');
   }else if(step.id==='student_leaderboard'){
