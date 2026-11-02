@@ -24,6 +24,7 @@ from sqlalchemy import delete, func, insert, select, update
 
 from changying.services import knowledge_maps as km
 from changying.services.homework_guidance import check_steps, exam_line, guide_layer, map_lines, pick_node
+from changying.services.homework_circle_support import CircleSupportBody, circle_area_question, circle_prompt_context, circle_support_record, circle_support_summary
 
 from changying.services.homework_limits import (
     ai_slot,
@@ -110,12 +111,11 @@ def install_homework_help(implementation: Any) -> APIRouter:
     need = implementation.need
     router = APIRouter(dependencies=[Depends(require_enabled)])
 
-    def own_help(db: Any, user: Any, help_id: int) -> dict[str, Any]:
-        row = db.execute(
-            select(helps).where(
+    def own_help(db: Any, user: Any, help_id: int, *, lock: bool = False) -> dict[str, Any]:
+        query = select(helps).where(
                 helps.c.id == help_id, helps.c.student_id == user.id, helps.c.school_id == user.school_id
             )
-        ).first()
+        row = db.execute(query.with_for_update() if lock else query).first()
         if row is None:
             raise HTTPException(404, "没有这条求助")
         return _mapping(row)
@@ -149,6 +149,8 @@ def install_homework_help(implementation: Any) -> APIRouter:
             "solution": solution,
             "message": message,
             "warning": AI_WARNING,
+            "circleEligible": circle_area_question(row["question_text"], row["grade"]),
+            "circleSupport": circle_support_record(data.get("circleSupport")),
         }
 
     User = implementation.User
@@ -177,7 +179,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
                 continue
         m = json.loads(row.published_json)
         first = km.first_attempts(lists)
-        return {"id": row.id, "map": m, "first": first, "mastery": km.mastery_view(m, first)[0]}
+        return {"id": row.id, "grade": int(grade), "map": m, "first": first, "mastery": km.mastery_view(m, first)[0]}
 
     def optional(db: Any, work: Any) -> Any:
         """The map only enriches the guide: a problem reading it must never cost the pupil his answer."""
@@ -210,7 +212,14 @@ def install_homework_help(implementation: Any) -> APIRouter:
             if node["unit"] in json.loads(g.unit_keys_json or "[]") and g.exam_date >= today.isoformat():
                 exam = exam_line(g.title, g.exam_date, today)
                 break
-        return guide_layer(m, node, ctx["mastery"], ctx["first"], texts, exam)
+        layer = guide_layer(m, node, ctx["mastery"], ctx["first"], texts, exam)
+        # A published point alone does not guarantee a usable set of fresh quiz questions.
+        node_ids = [int(qid) for qid in node["levels"]]
+        available = set(db.scalars(select(implementation.Question.id).where(
+            implementation.Question.school_id == u.school_id, implementation.Question.grade == ctx["grade"],
+            implementation.Question.id.in_(node_ids))).all()) if node_ids else set()
+        layer["quiz"] = bool(layer["quiz"] and km.pick_node_quiz(node, available, set(ctx["first"])))
+        return layer
 
     # The body is the raw picture (see ``read_image_body``): it is only ever held in memory. Waiting for
     # the recognition service (up to 20 s) happens in the worker thread pool, never on the event loop.
@@ -313,9 +322,11 @@ def install_homework_help(implementation: Any) -> APIRouter:
 
         ctx = optional(db, lambda: map_context(db, u, row["grade"]))
         known_map = map_lines(ctx["map"], ctx["mastery"]) if ctx else ""
+        support = circle_support_record(_json_obj(row["ai_json"]).get("circleSupport"))
+        learning_context = circle_prompt_context(row["question_text"], row["grade"], support)
 
         def attempt(recheck: bool) -> dict[str, Any]:
-            prompt = build_solve_prompt(row["grade"], row["question_text"], recheck=recheck, known_map=known_map)
+            prompt = build_solve_prompt(row["grade"], row["question_text"], recheck=recheck, known_map=known_map, learning_context=learning_context)
             with ai_slot():
                 raw = implementation._ai_call(
                     db, u, SOLVE_FEATURE, prompt, timeout=SOLVE_TIMEOUT_SECONDS, rate_check=student_rate_check
@@ -363,6 +374,10 @@ def install_homework_help(implementation: Any) -> APIRouter:
                     "verify_status": final["verify"]["status"],
                     "ai_json": json.dumps(data, ensure_ascii=False),
                 }
+            if support:
+                annotated = _json_obj(values["ai_json"])
+                annotated["circleSupport"] = support
+                values["ai_json"] = json.dumps(annotated, ensure_ascii=False)
             return values
 
         try:
@@ -397,7 +412,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
     def progress(help_id: int, b: ProgressBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """How far the pupil got through the guide on his own; only the first time counts."""
         need(u, "student")
-        row = own_help(db, u, help_id)
+        row = own_help(db, u, help_id, lock=True)
         data = _json_obj(row["ai_json"])
         if not data.get("steps") or data.get("hidden"):
             raise HTTPException(409, "这道题还没有讲解")
@@ -406,6 +421,21 @@ def install_homework_help(implementation: Any) -> APIRouter:
             db.execute(update(helps).where(helps.c.id == help_id).values(ai_json=json.dumps(data, ensure_ascii=False)))
             db.commit()
         return {"progress": data["progress"]}
+
+    @router.post("/student/homework/help/{help_id}/circle-support")
+    def circle_support(help_id: int, b: CircleSupportBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Conversation annotation only: never writes a Submission or mastery evidence."""
+        need(u, "student")
+        row = own_help(db, u, help_id, lock=True)
+        if not circle_area_question(row["question_text"], row["grade"]):
+            raise HTTPException(409, "这条求助不属于本次圆面积辅导试点")
+        if row["state"] not in ("confirmed", "answered", "escalated"):
+            raise HTTPException(409, "求助状态已更新，请刷新后继续")
+        data = _json_obj(row["ai_json"])
+        data["circleSupport"] = circle_support_record(b.model_dump())
+        db.execute(update(helps).where(helps.c.id == help_id).values(ai_json=json.dumps(data, ensure_ascii=False)))
+        db.commit()
+        return {"circleSupport": data["circleSupport"]}
 
     # ---------------------------------------------------------------- escalate (student)
     @router.post("/student/homework/help/{help_id}/escalate")
@@ -488,9 +518,9 @@ def install_homework_help(implementation: Any) -> APIRouter:
             head += f"开头：{solution['start']}\n"
         return f"{head}{steps}\n答案：{solution.get('answer', '')}"
 
-    def progress_text(p: dict[str, Any]) -> str:
+    def progress_text(p: dict[str, Any], assisted: bool = False) -> str:
         if p.get("selfSolved"):
-            head = "自己算出了答案"
+            head = "借助圆面积图示辅导算出了答案" if assisted else "自己算出了答案"
         elif p.get("revealed") and p.get("finalChecked"):
             head = "没有算对，看了答案"
         elif p.get("revealed"):
@@ -512,7 +542,10 @@ def install_homework_help(implementation: Any) -> APIRouter:
             note = {"ok": "（程序核对：通过）", "skipped": "（程序未能核对）"}.get(verify.get("status"), "")
             talk.append({"role": "ai", "text": solution_text(ai) + "\n" + note})
             if ai.get("progress"):
-                talk.append({"role": "student", "text": progress_text(ai["progress"])})
+                talk.append({"role": "student", "text": progress_text(ai["progress"], bool(circle_support_record(ai.get("circleSupport"))))})
+        support_summary = circle_support_summary(ai.get("circleSupport"))
+        if support_summary:
+            talk.append({"role": "student", "text": "（本次圆面积辅导，不计分）" + support_summary})
         if data["student_note"]:
             talk.append({"role": "student", "text": data["student_note"]})
         if data["teacher_note"]:
