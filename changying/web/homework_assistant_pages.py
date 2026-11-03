@@ -230,7 +230,13 @@ function noticesView(body){
       if(n.status==='published')card.appendChild(el('button',{text:'查看每个学生的完成情况',onclick:function(){
         detail.textContent='';
         api('/teacher/homework/notices/'+n.id).then(function(d){
-          d.recipients.forEach(function(r){detail.appendChild(el('div',{class:'row'},el('b',{text:r.name||'学生'}),el('span',{class:'muted',text:'完成 '+r.done.length+'/'+d.items.length})))});
+          d.recipients.forEach(function(r){
+            var bits=['完成 '+r.done.length+'/'+d.items.length];
+            if(r.usedMinutes!==null&&r.usedMinutes!==undefined)bits.push('用时 '+r.usedMinutes+' 分钟');
+            if(r.overtime)bits.push('超时');
+            detail.appendChild(el('div',{class:'row'},el('b',{text:r.name||'学生'}),
+              el('span',{class:'muted',text:bits.join(' · ')})));
+          });
         }).catch(function(e){detail.appendChild(notice('error',e.message))});
       }}));
       list.appendChild(card);

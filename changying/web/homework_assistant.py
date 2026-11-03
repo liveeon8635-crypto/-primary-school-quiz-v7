@@ -174,6 +174,7 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
             "items": _json_list(row["items_json"]),
             "createdAt": _iso(row["created_at"]),
             "publishedAt": _iso(row["published_at"]),
+            "timeLimitMinutes": row["time_limit_minutes"],
         }
 
     def purge_old_draft_text(db: Any, teacher: Any) -> None:
@@ -368,7 +369,38 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
             .where(recipients.c.notice_id == notice_id, recipients.c.school_id == u.school_id)
             .order_by(recipients.c.student_id)
         ).all()
-        data["recipients"] = [{"studentID": sid, "name": name, "done": _ints(done)} for sid, done, name in people]
+        stamps = dict(
+            (sid, (begun, done_at))
+            for sid, begun, done_at in db.execute(
+                select(recipients.c.student_id, recipients.c.started_at, recipients.c.completed_at)
+                .where(recipients.c.notice_id == notice_id, recipients.c.school_id == u.school_id)
+            ).all()
+        )
+        limit = data.get("timeLimitMinutes")
+
+        def _spent(sid):
+            begun, done_at = stamps.get(sid, (None, None))
+            if begun is None:
+                return None
+            minutes = int(((done_at or datetime.utcnow()) - begun).total_seconds() // 60)
+            return minutes
+
+        def _late(sid):
+            begun, done_at = stamps.get(sid, (None, None))
+            if not limit or begun is None:
+                return False
+            return (done_at or datetime.utcnow()) > begun + timedelta(minutes=int(limit))
+
+        data["recipients"] = [
+            {
+                "studentID": sid,
+                "name": name,
+                "done": _ints(done),
+                "usedMinutes": _spent(sid),
+                "overtime": _late(sid),
+            }
+            for sid, done, name in people
+        ]
         return data
 
     # ---------------------------------------------------------------- student
