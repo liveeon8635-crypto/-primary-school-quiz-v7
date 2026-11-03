@@ -80,3 +80,33 @@ def test_correct_answer_keeps_the_teacher_flag_once_raised():
 def test_teacher_note_names_the_rank_and_count():
     note = ladder.teacher_note(2, 5)
     assert "第 2 级" in note and "累计错 5 次" in note and "尚未独立通过" in note
+def test_ping_pong_between_two_ranks_is_stopped():
+    """降阶答对、升阶又错，不能无限上下弹：同一级第 3 次就换讲法。"""
+    visits: dict[str, int] = {}
+    # L2 答对（第 1 次进入）
+    step = ladder.advance(2, True, 0, 0, visits)
+    visits = step["visits"]
+    assert step["action"] == "up" and step["rank"] == 3
+    # L3 答错（第 1 次进入）→ 退到 L2
+    step = ladder.advance(3, False, 0, 0, visits)
+    visits = step["visits"]
+    assert step["action"] == "down" and step["rank"] == 2
+    # L2 答对（第 2 次）→ 又到 L3
+    step = ladder.advance(2, True, 0, 0, visits)
+    visits = step["visits"]
+    assert step["action"] == "up"
+    # L3 又错（第 2 次）→ 仍先退一级
+    step = ladder.advance(3, False, 0, 1, visits)
+    visits = step["visits"]
+    assert step["action"] == "down"
+    # L2 第 3 次答对 → 再上 L3（第 3 次进入）
+    step = ladder.advance(2, True, 0, 1, visits)
+    visits = step["visits"]
+    # L3 第 3 次进入后再错 → 不再退回，直接换讲法
+    step = ladder.advance(3, False, 0, 2, visits)
+    assert step["action"] == "fallback" and step["rank"] == 3
+
+
+def test_visits_are_reported_so_the_caller_can_carry_them():
+    step = ladder.advance(1, True, 0, 0)
+    assert step["visits"] == {"1": 1}

@@ -35,7 +35,7 @@ function hwCircleFigure(kind,parts){
 }
 function hwCircleSupport(box,opts){
   var mount=el('div',{class:'circle-support'});box.textContent='';box.appendChild(mount);box=mount;
-  var old=opts.record||{},state={entry:opts.before?'before':'after',focus:old.focus||'concept',gaps:(old.gaps||[]).slice(),rounds:Object.assign({radius:0,square:0,circumference:0,unit:0,application:0},old.rounds||{}),outcome:'in_progress',unitChecked:!!old.unitChecked,level:old.level||0,totalMisses:old.totalMisses||0,seenAnswer:!!old.seenAnswer,nodeKey:old.nodeKey||''};
+  var old=opts.record||{},state={entry:opts.before?'before':'after',focus:old.focus||'concept',gaps:(old.gaps||[]).slice(),rounds:Object.assign({radius:0,square:0,circumference:0,unit:0,application:0},old.rounds||{}),outcome:'in_progress',unitChecked:!!old.unitChecked,level:old.level||0,totalMisses:old.totalMisses||0,seenAnswer:!!old.seenAnswer,nodeKey:old.nodeKey||'',visits:Object.assign({},old.visits||{})};
   var index=0,busy=false,status=null,serial=0;
   var names={radius:'半径与直径',square:'平方与面积',circumference:'圆周长',unit:'面积单位',application:'套用面积公式'};
   function gap(key){if(state.gaps.indexOf(key)<0)state.gaps.push(key)}
@@ -101,14 +101,18 @@ function hwCircleSupport(box,opts){
     if(state.teacherAlert)return;state.teacherAlert=true;
     box.appendChild(el('p',{class:'muted',text:'这一次你错得比较多，已经记下来给老师看了；也可以现在就点「请老师一起看」。'}));
   }
+  var MAX_VISITS_PER_RANK=3;
   function ladderFrame(rank){
+    state.visits=state.visits||{};
+    state.visits[rank]=(state.visits[rank]||0)+1;
+    if(state.visits[rank]>MAX_VISITS_PER_RANK){ladderFallback(rank);return}
     var item=ladderItem(rank);
     frame('第 '+rank+' 步'+(item?'':'：回到原题'));
     if(rank>=5){box.appendChild(el('p',{text:'前四步都通过了。现在回到原题，用题目自己的条件重新做一遍。'}));
       box.appendChild(el('button',{class:'primary',text:'回原题',onclick:function(){example(0)}}));return}
     box.appendChild(el('p',{class:'muted',text:'一次只加一个条件；答错会退一步，不是扣分。'}));
     function answered(ok){
-      if(ok){state.level=Math.min(5,rank+1);state.rounds.application=0;
+      if(ok){state.missCount=0;state.level=Math.min(5,rank+1);state.rounds.application=0;
         if(state.level>=5){ladderFrame(5)}else{ladderFrame(state.level)}return}
       state.totalMisses+=1;state.missCount=(state.missCount||0)+1;
       if(state.totalMisses>=MISS_LIMIT_TEACHER)alertTeacher();
@@ -127,14 +131,14 @@ function hwCircleSupport(box,opts){
       frame('微课：拼成接近长方形');
       box.appendChild(el('p',{text:'圆被分成很多小扇形、交错拼起来。切得越多，越接近长方形；它不是长方形本身。'}));
       box.appendChild(hwCircleFigure('rearrange',8));
-      box.appendChild(el('button',{class:'primary',text:'看完了，再试一次',onclick:function(){state.missCount=0;ladderFrame(rank)}}));
+      box.appendChild(el('button',{class:'primary',text:'看完了，再试一次',onclick:function(){state.missCount=0;state.visits[rank]=0;ladderFrame(rank)}}));
     }}));
     box.appendChild(el('button',{text:'看答案拆解',onclick:function(){
       state.seenAnswer=true;state.missCount=0;
       frame('看答案拆解');
       box.appendChild(el('p',{text:'这道题是：先算 4×4=16，再算 3.14×16=50.24，面积是 50.24 平方厘米。'}));
       box.appendChild(el('p',{class:'muted',text:'这次是看答案学会的，不算你已经掌握；下次自己再做对才算。'}));
-      box.appendChild(el('button',{class:'primary',text:'我明白了，回去试试',onclick:function(){ladderFrame(rank)}}));
+      box.appendChild(el('button',{class:'primary',text:'我明白了，回去试试',onclick:function(){state.visits[rank]=0;ladderFrame(rank)}}));
     }}));
     box.appendChild(el('button',{text:'请老师一起看',onclick:function(){finish('teacher_requested',true)}}));
   }

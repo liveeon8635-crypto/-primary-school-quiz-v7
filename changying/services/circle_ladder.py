@@ -27,6 +27,7 @@ LEVELS: list[dict[str, Any]] = [
 MAX_RANK = len(LEVELS)
 MAX_MISSES = 2  # 同一级连续错两次 → 兜底
 MISS_LIMIT_TEACHER = 4  # 整条阶梯累计错够这么多次 → 提醒老师
+MAX_VISITS_PER_RANK = 3  # 同一级进入 3 次还没过 → 换讲法，不再上下打转
 
 
 def level_of(rank: int) -> dict[str, Any] | None:
@@ -36,7 +37,8 @@ def level_of(rank: int) -> dict[str, Any] | None:
     return None
 
 
-def advance(rank: int, correct: bool, misses: int, total_misses: int = 0) -> dict[str, Any]:
+def advance(rank: int, correct: bool, misses: int, total_misses: int = 0,
+            visits: dict[str, int] | None = None) -> dict[str, Any]:
     """返回下一步：{action, rank, misses}。
 
     action:
@@ -49,9 +51,13 @@ def advance(rank: int, correct: bool, misses: int, total_misses: int = 0) -> dic
     misses = max(0, int(misses))
     total_misses = max(0, int(total_misses))
 
+    visits = dict(visits or {})
+    key = str(rank)
+    visits[key] = int(visits.get(key, 0)) + 1
+
     def out(action: str, r: int, m: int, notify: bool) -> dict[str, Any]:
         return {"action": action, "rank": r, "misses": m,
-                "totalMisses": total_misses, "notifyTeacher": notify}
+                "totalMisses": total_misses, "notifyTeacher": notify, "visits": visits}
 
     if correct:
         notify = total_misses >= MISS_LIMIT_TEACHER
@@ -64,6 +70,9 @@ def advance(rank: int, correct: bool, misses: int, total_misses: int = 0) -> dic
     # 累计错太多：即使还要继续，也要让老师知道这个学生卡在这一块
     notify = total_misses >= MISS_LIMIT_TEACHER
     if misses >= MAX_MISSES:
+        return out("fallback", rank, misses, notify)
+    # 这一级来过太多次，讲法该换了——而不是继续上下弹
+    if visits[key] >= MAX_VISITS_PER_RANK:
         return out("fallback", rank, misses, notify)
     if rank <= 1:
         # 已经在最简单的一级，没得再退：再来一次同一级
