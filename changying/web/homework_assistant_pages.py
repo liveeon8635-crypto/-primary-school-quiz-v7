@@ -173,21 +173,25 @@ function importView(body){
       });
       chips.__all=function(on){chips.querySelectorAll('input').forEach(function(c){c.checked=on;c.dispatchEvent(new Event('change'))})};
     });
+    var limit=el('input',{type:'number',min:'1',max:'600',placeholder:'如 90','aria-label':'本次作业总时长（分钟）'});
+    limit.style.maxWidth='110px';
     var publish=el('button',{class:'primary',text:'确认并发布给选中的学生',onclick:function(){
       msg2.textContent='';
       var ids=Object.keys(picked).map(Number);
       if(!ids.length){msg2.appendChild(notice('error','请先选择学生'));return}
       publish.disabled=true;
+      var limitMinutes=limit.value.trim()?Number(limit.value.trim()):null;
+      if(limitMinutes!==null&&(!isFinite(limitMinutes)||limitMinutes<1||limitMinutes>600)){msg2.appendChild(notice('error','总时长请填 1 到 600 分钟，或者留空表示不限时'));publish.disabled=false;return}
       var save=state.id?api('/teacher/homework/notices/'+state.id,{method:'PUT',json:{groupLabel:label.value,items:state.items}})
                        :api('/teacher/homework/notices',{json:{groupLabel:label.value,items:state.items}});
-      save.then(function(saved){state.id=saved.id;return api('/teacher/homework/notices/'+saved.id+'/publish',{json:{studentIDs:ids}})})
+      save.then(function(saved){state.id=saved.id;return api('/teacher/homework/notices/'+saved.id+'/publish',{json:{studentIDs:ids,timeLimitMinutes:limitMinutes}})})
         .then(function(r){editor.textContent='';text.value='';msg.textContent='';msg.appendChild(notice('ok','已发布给 '+r.recipients+' 名学生。学生打开“晚托作业助手”就能看到。'))})
         .catch(function(e){msg2.appendChild(notice('error',e.message));publish.disabled=false});
     }});
     editor.appendChild(el('div',{class:'card'},el('h2',{text:'2. 检查并修改清单'}),el('div',{class:'muted',text:'AI 可能整理错，请逐条核对；确认前学生看不到。'}),label,rows,
       el('button',{text:'＋ 增加一条',onclick:function(){state.items.push({seq:state.items.length+1,subject:'',content:'',page:'',requirement:''});paintRows()}}),
       el('hr'),el('h2',{text:'3. 分配给学生'}),el('div',{class:'row'},el('button',{text:'全选',onclick:function(){chips.__all&&chips.__all(true)}}),el('button',{text:'全不选',onclick:function(){chips.__all&&chips.__all(false)}})),chips,
-      el('div',{class:'row'},publish),msg2));
+      el('div',{class:'row'},el('span',{class:'muted',text:'本次作业总时长（全部科目共用，可留空）：'}),limit),el('div',{class:'row'},publish),msg2));
   }
 }
 function noticesView(body){
