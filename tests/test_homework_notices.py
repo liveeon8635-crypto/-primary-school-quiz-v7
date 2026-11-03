@@ -620,3 +620,51 @@ def test_entry_points_live_in_existing_screens_not_a_floating_button():
     band = classic.split("cy-hw-band", 1)[1].split("setInterval(ensure,1200)", 1)[0]
     assert "innerHTML" not in band and "POST" not in band  # read-only: ticking items happens on /v1/homework
     assert "cy-homework-entry" not in shell and "cy-homework-entry" not in classic
+
+
+def test_time_limit_starts_with_the_pupil_and_flags_overtime(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+from datetime import datetime, timedelta
+from sqlalchemy import text
+
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    made = client.post("/teacher/homework/notices", headers=th, json=json.loads(NOTICE_JSON))
+    assert made.status_code == 200, made.text
+    nid = made.json()["id"]
+    pub = client.post(f"/teacher/homework/notices/{nid}/publish", headers=th,
+                      json={"studentIDs": [sid], "timeLimitMinutes": 90})
+    assert pub.status_code == 200, pub.text
+
+    today = client.get("/student/homework/today", headers=sh).json()[0]
+    assert today["timeLimitMinutes"] == 90
+    # 未开始时 startedAt 是空字符串（_iso(None)），剩余时间才是 None
+    assert not today["startedAt"] and today["remainingSeconds"] is None
+
+    tick = client.post(f"/student/homework/items/{nid}/1/done", headers=sh, json={"done": True})
+    assert tick.status_code == 200, tick.text
+    after = client.get("/student/homework/today", headers=sh).json()[0]
+    assert after["startedAt"] is not None
+    assert 0 < after["remainingSeconds"] <= 90 * 60
+
+    board = client.get(f"/teacher/homework/notices/{nid}", headers=th).json()
+    assert board["recipients"][0]["usedMinutes"] == 0
+    assert board["recipients"][0]["overtime"] is False
+
+    with legacy.SessionLocal() as db:
+        db.execute(text("UPDATE homework_recipients SET started_at = :s WHERE notice_id = :n"),
+                   {"s": datetime.utcnow() - timedelta(minutes=120), "n": nid})
+        db.commit()
+
+    late = client.get("/student/homework/today", headers=sh).json()[0]
+    assert late["remainingSeconds"] < 0
+    late_board = client.get(f"/teacher/homework/notices/{nid}", headers=th).json()
+    assert late_board["recipients"][0]["overtime"] is True
+    assert late_board["recipients"][0]["usedMinutes"] >= 119
+print("OK")
+''',
+        {"HOMEWORK_ASSISTANT": "1"},
+    )
