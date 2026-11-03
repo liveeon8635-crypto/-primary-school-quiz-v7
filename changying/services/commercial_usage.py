@@ -193,6 +193,25 @@ class CommercialUsageMeteringService:
         )
         input_tokens = self._sum(db, self.AIUsageLog.input_tokens, *conditions)
         output_tokens = self._sum(db, self.AIUsageLog.output_tokens, *conditions)
+        # 失败按类别分组：运营侧据此判断是超时、网络、还是模型真的读不出来。
+        # 只统计失败记录；error 为空的历史记录归入 unknown，不猜原因。
+        rows = db.execute(
+            select(
+                self.AIUsageLog.feature,
+                self.AIUsageLog.status,
+                self.AIUsageLog.error,
+                func.count(),
+            )
+            .where(*conditions, self.AIUsageLog.status != "ok")
+            .group_by(self.AIUsageLog.feature, self.AIUsageLog.status, self.AIUsageLog.error)
+        ).all()
+        breakdown: dict[str, dict[str, int]] = {}
+        for feature, _status, error, count in rows:
+            key = str(feature or "unknown")
+            reason = str(error or "unknown")[:60]
+            bucket = breakdown.setdefault(key, {})
+            bucket[reason] = bucket.get(reason, 0) + int(count)
+
         return {
             "calls": calls,
             "successCalls": success,
@@ -200,6 +219,7 @@ class CommercialUsageMeteringService:
             "inputTokens": input_tokens,
             "outputTokens": output_tokens,
             "totalTokens": input_tokens + output_tokens,
+            "failureBreakdown": breakdown,
         }
 
     def _storage(self, db, school_id: int, start_utc, end_utc) -> dict[str, int]:

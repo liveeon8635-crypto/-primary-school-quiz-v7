@@ -89,6 +89,8 @@ with TestClient(app) as client:
     assert row["ai"]["calls"] == 1
     assert row["ai"]["successCalls"] == 1
     assert row["ai"]["failedCalls"] == 0
+    # 只有成功记录时，失败分组为空
+    assert row["ai"]["failureBreakdown"] == {}
     assert row["ai"]["inputTokens"] == 123
     assert row["ai"]["outputTokens"] == 45
     assert row["ai"]["totalTokens"] == 168
@@ -172,3 +174,51 @@ with TestClient(app) as client:
         f"stdout:\n{result.stdout}\n"
         f"stderr:\n{result.stderr}"
     )
+
+def test_failure_breakdown_groups_failed_calls_by_feature_and_error(tmp_path):
+    """运营要用它区分：是超时、是网络，还是模型真的读不出来。"""
+    from changying.services.commercial_usage import CommercialUsageMeteringService
+    from datetime import datetime as _dt
+
+    import app_v924 as legacy
+    from sqlalchemy import select, func
+
+    service = CommercialUsageMeteringService(
+        school_model=legacy.School, user_model=legacy.User, school_class_model=legacy.SchoolClass,
+        assignment_model=legacy.Assignment, submission_model=legacy.Submission,
+        teaching_attempt_model=legacy.TeachingAttempt, learning_evidence_event_model=legacy.LearningEvidenceEvent,
+        ai_usage_log_model=legacy.AIUsageLog, homework_media_model=legacy.HomeworkMedia,
+        teaching_resource_model=legacy.TeachingResource, school_subscription_model=legacy.SchoolSubscription,
+    )
+    legacy.Base.metadata.create_all(legacy.engine)
+    with legacy.SessionLocal() as db:
+        school = db.scalar(select(legacy.School).limit(1))
+        if school is None:
+            school = legacy.School(name="测试学校", code="T-BREAKDOWN")
+            db.add(school)
+            db.flush()
+        user = db.scalar(select(legacy.User).where(legacy.User.school_id == school.id).limit(1))
+        if user is None:
+            user = legacy.User(school_id=school.id, username="breakdown-user", password_hash="x",
+                               name="测试老师", role="teacher", active=True)
+            db.add(user)
+            db.flush()
+        for feature, status, error in (
+            ("homework_vision", "ok", ""),
+            ("homework_vision", "error", "timeout"),
+            ("homework_vision", "error", "timeout"),
+            ("homework_vision", "error", "unreadable_response"),
+            ("solve", "error", "network"),
+        ):
+            db.add(legacy.AIUsageLog(
+                school_id=school.id, user_id=user.id, feature=feature, provider="p", model="m",
+                status=status, prompt_chars=1, output_chars=1, input_tokens=0, output_tokens=0,
+                latency_ms=1, error=error, created_at=_dt(2035, 3, 5, 4, 0, 0),
+            ))
+        db.commit()
+        data = service.school_month(db, school_id=school.id, month="2035-03")
+
+    ai = data["ai"]
+    assert ai["calls"] == 5 and ai["successCalls"] == 1 and ai["failedCalls"] == 4
+    assert ai["failureBreakdown"]["homework_vision"] == {"timeout": 2, "unreadable_response": 1}
+    assert ai["failureBreakdown"]["solve"] == {"network": 1}
