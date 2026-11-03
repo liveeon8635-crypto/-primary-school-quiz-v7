@@ -229,8 +229,8 @@ function kmNodeRow(n,unit){
   var actions=el('div',{class:'row'},
     el('button',{class:'btn',text:'编辑',onclick:function(){kmEditForm(n,edit)}}),
     n.kind==='display'?null:el('button',{class:'btn',text:'题目分档',onclick:function(){QPANEL[n.key]=1;kmQuestions(n,qs)}}),
-    // 预置草稿题：导入本校题库并按草稿分档；没有草稿的知识点会明确提示
-    n.kind==='display'?null:el('button',{class:'btn',text:'导入预置题目草稿',onclick:function(){
+    // 预置草稿题：只在本校确实有草稿的知识点上出现
+    (n.kind==='display'||!(KM.draftNodes||[]).includes(n.name))?null:el('button',{class:'btn',text:'导入预置题目草稿',onclick:function(){
       if(!confirm('把这个知识点的预置草稿题导入本校题库并自动分档？导入后请逐题审核，确认后再发布地图。'))return;
       api('/teacher/knowledge-maps/'+KM.id+'/nodes/'+encodeURIComponent(n.key)+'/drafts',{method:'POST'})
         .then(function(d){KM=d;var x=d.imported||{};KNOTE[n.key]='已导入 '+(x.added||0)+' 题，跳过已有的 '+(x.reused||0)+' 题';kmRender()})
