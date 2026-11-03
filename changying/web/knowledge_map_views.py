@@ -147,6 +147,14 @@ def register_knowledge_map_rating_table(implementation: Any) -> Table:
     return md.tables["knowledge_map_ratings"]
 
 
+def _drafts_for_grade(grade: int) -> set[str]:
+    """该年级有预置草稿的知识点名；没有草稿的年级返回空集。"""
+    from changying.services import g3_question_drafts, g6_question_drafts
+
+    table = {3: g3_question_drafts.build_drafts(), 6: g6_question_drafts.build_drafts()}.get(grade)
+    return set(table or {})
+
+
 def install_knowledge_map_views(implementation: Any) -> APIRouter:
     app = implementation.app
     if getattr(app.state, "knowledge_map_installed", False):
@@ -212,6 +220,8 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
                 "summary": km.summary(m, ready), "unitKinds": km.UNIT_KINDS, "nodeKinds": km.NODE_KINDS, "levels": km.LEVELS,
                 "minPerLevel": km.MIN_PER_LEVEL, "minPerNode": km.MIN_PER_NODE,
                 "visualNodes": vq.NODE_LABELS,
+                # 哪些知识点有预置题目草稿：页面据此决定显不显示「导入预置题目草稿」按钮
+                "draftNodes": sorted(set(_drafts_for_grade(row.grade)) & {n["name"] for n in m["nodes"]}),
                 "published": None if row.published_revision is None else {
                     "revision": int(row.published_revision), "upToDate": int(row.published_revision) == int(row.revision),
                     "at": row.published_at.replace(tzinfo=None).isoformat(timespec="minutes") if row.published_at else None},
