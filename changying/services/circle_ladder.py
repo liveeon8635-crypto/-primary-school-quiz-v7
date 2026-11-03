@@ -26,6 +26,7 @@ LEVELS: list[dict[str, Any]] = [
 
 MAX_RANK = len(LEVELS)
 MAX_MISSES = 2  # 同一级连续错两次 → 兜底
+MISS_LIMIT_TEACHER = 4  # 整条阶梯累计错够这么多次 → 提醒老师
 
 
 def level_of(rank: int) -> dict[str, Any] | None:
@@ -35,7 +36,7 @@ def level_of(rank: int) -> dict[str, Any] | None:
     return None
 
 
-def advance(rank: int, correct: bool, misses: int) -> dict[str, Any]:
+def advance(rank: int, correct: bool, misses: int, total_misses: int = 0) -> dict[str, Any]:
     """返回下一步：{action, rank, misses}。
 
     action:
@@ -46,19 +47,37 @@ def advance(rank: int, correct: bool, misses: int) -> dict[str, Any]:
     """
     rank = max(1, min(int(rank), MAX_RANK))
     misses = max(0, int(misses))
+    total_misses = max(0, int(total_misses))
+
+    def out(action: str, r: int, m: int, notify: bool) -> dict[str, Any]:
+        return {"action": action, "rank": r, "misses": m,
+                "totalMisses": total_misses, "notifyTeacher": notify}
 
     if correct:
+        notify = total_misses >= MISS_LIMIT_TEACHER
         if rank >= MAX_RANK:
-            return {"action": "finished", "rank": MAX_RANK, "misses": 0}
-        return {"action": "up", "rank": rank + 1, "misses": 0}
+            return out("finished", MAX_RANK, 0, notify)
+        return out("up", rank + 1, 0, notify)
 
     misses += 1
+    total_misses += 1
+    # 累计错太多：即使还要继续，也要让老师知道这个学生卡在这一块
+    notify = total_misses >= MISS_LIMIT_TEACHER
     if misses >= MAX_MISSES:
-        return {"action": "fallback", "rank": rank, "misses": misses}
+        return out("fallback", rank, misses, notify)
     if rank <= 1:
         # 已经在最简单的一级，没得再退：再来一次同一级
-        return {"action": "remains", "rank": 1, "misses": misses}
-    return {"action": "down", "rank": rank - 1, "misses": 0}
+        return out("remains", 1, misses, notify)
+    return out("down", rank - 1, 0, notify)
+
+
+def teacher_note(rank: int, total_misses: int) -> str:
+    """给老师看的一行摘要：卡在哪一级、错了多少次。"""
+    item = level_of(rank)
+    gap = item["gap"] if item else "application"
+    label = {"square": "平方与面积", "circumference": "圆周长",
+             "application": "套用面积公式", "unit": "面积单位", "radius": "半径与直径"}.get(gap, gap)
+    return f"圆面积退阶练习：停在第 {rank} 级（{label}），累计错 {total_misses} 次，尚未独立通过原题"
 
 
 def fallback_actions() -> list[dict[str, str]]:

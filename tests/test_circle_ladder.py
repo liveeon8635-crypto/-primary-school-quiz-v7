@@ -17,7 +17,7 @@ def test_five_ordered_levels_each_adds_one_condition():
 
 def test_correct_answer_climbs_one_rank():
     step = ladder.advance(1, True, 0)
-    assert step == {"action": "up", "rank": 2, "misses": 0}
+    assert step["action"] == "up" and step["rank"] == 2 and step["misses"] == 0
     assert ladder.advance(4, True, 0)["rank"] == 5
 
 
@@ -27,7 +27,7 @@ def test_top_rank_correct_finishes():
 
 def test_wrong_answer_steps_down_one_rank():
     step = ladder.advance(3, False, 0)
-    assert step == {"action": "down", "rank": 2, "misses": 0}
+    assert step["action"] == "down" and step["rank"] == 2 and step["misses"] == 0
 
 
 def test_lowest_rank_cannot_go_lower():
@@ -61,3 +61,22 @@ def test_fallback_offers_a_real_alternative_not_just_teacher():
 def test_out_of_range_rank_is_clamped():
     assert ladder.advance(0, True, 0)["rank"] == 2      # 先夹到 1，再升一级
     assert ladder.advance(99, True, 0)["action"] == "finished"
+
+def test_too_many_mistakes_prompts_the_teacher():
+    """跨级累计错误也要提醒老师，不能只在原地打转。"""
+    step = ladder.advance(2, False, 0, total_misses=3)
+    assert step["totalMisses"] == 4
+    assert step["notifyTeacher"] is True
+    # 还没到阈值时不打扰
+    early = ladder.advance(2, False, 0, total_misses=1)
+    assert early["totalMisses"] == 2 and early["notifyTeacher"] is False
+
+
+def test_correct_answer_keeps_the_teacher_flag_once_raised():
+    step = ladder.advance(3, True, 0, total_misses=4)
+    assert step["action"] == "up" and step["notifyTeacher"] is True
+
+
+def test_teacher_note_names_the_rank_and_count():
+    note = ladder.teacher_note(2, 5)
+    assert "第 2 级" in note and "累计错 5 次" in note and "尚未独立通过" in note
