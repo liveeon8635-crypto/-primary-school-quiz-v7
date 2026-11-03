@@ -85,6 +85,15 @@ def _ints(raw: Any) -> list[int]:
     return [int(x) for x in _json_list(raw) if isinstance(x, int) and not isinstance(x, bool)]
 
 
+def _remaining(limit_minutes: Any, started_at: Any, completed_at: Any) -> int | None:
+    """剩余秒数：没设时长或还没开始返回 None；负数表示已超时。"""
+    if not limit_minutes or started_at is None:
+        return None
+    end = completed_at or datetime.utcnow()
+    left = int(limit_minutes) * 60 - int((end - started_at).total_seconds())
+    return left
+
+
 def install_homework_assistant(implementation: Any) -> APIRouter:
     app = implementation.app
     if getattr(app.state, "homework_assistant_installed", False):
@@ -368,7 +377,7 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
         need(u, "student")
         since = datetime.utcnow() - timedelta(days=TODAY_WINDOW_DAYS)
         rows = db.execute(
-            select(notices, recipients.c.done_json)
+            select(notices, recipients.c.done_json, recipients.c.started_at, recipients.c.completed_at)
             .join(recipients, recipients.c.notice_id == notices.c.id)
             .where(
                 recipients.c.student_id == u.id,
@@ -389,6 +398,13 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
                     "groupLabel": row["group_label"],
                     "publishedAt": _iso(row["published_at"]),
                     "items": items,
+                    # 计时：老师设的总时长、学生自己的开始时间、剩余秒数（负数表示已超时）。
+                    # 超时只用于提示，不阻断继续完成。
+                    "timeLimitMinutes": row["time_limit_minutes"],
+                    "startedAt": _iso(row["started_at"]),
+                    "completedAt": _iso(row["completed_at"]),
+                    "remainingSeconds": _remaining(row["time_limit_minutes"], row["started_at"],
+                                                   row["completed_at"]),
                 }
             )
         return out

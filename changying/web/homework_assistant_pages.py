@@ -88,6 +88,24 @@ function frame(title,sub){
   root.appendChild(el('div',{class:'card'},el('h2',{text:title}),sub?el('div',{class:'muted',text:sub}):null));
 }
 
+/* 倒计时：只提示，不阻断。到时后仍然可以继续做完，只是记为超时。 */
+function paintClock(box,n){
+  function tick(){
+    var left=n.remainingSeconds;
+    if(left===null||left===undefined){box.textContent='本次作业总时长 '+n.timeLimitMinutes+' 分钟，勾选第一项后开始计时。';return}
+    if(n.completedAt){box.textContent='本次作业已完成（总时长 '+n.timeLimitMinutes+' 分钟）。';return}
+    box.textContent=left>0?('还剩 '+Math.floor(left/60)+' 分钟'):'时间到了，可以继续做完，老师会看到实际用时。';
+  }
+  tick();
+  if(!n.completedAt&&n.remainingSeconds!==null&&n.remainingSeconds>0){
+    var t=setInterval(function(){
+      n.remainingSeconds-=1;
+      if(n.remainingSeconds<=0){clearInterval(t)}
+      tick();
+    },1000);
+  }
+}
+
 /* ---------------------------------------------------------------- student */
 function studentView(){
   root.textContent='';
@@ -99,6 +117,11 @@ function studentView(){
     if(!rows.length){list.appendChild(el('div',{class:'muted',text:'老师还没有布置今天的作业。'}));return}
     rows.forEach(function(n){
       list.appendChild(el('div',{class:'muted',text:(n.groupLabel?n.groupLabel+' · ':'')+'发布于 '+n.publishedAt}));
+      if(n.timeLimitMinutes){
+        var clock=el('div',{class:'muted','aria-live':'polite'});
+        list.appendChild(clock);
+        paintClock(clock,n);
+      }
       n.items.forEach(function(it){
         var box=el('input',{type:'checkbox',checked:it.done});
         var row=el('label',{class:'item'+(it.done?' done':'')},box,el('span',{class:'t'},
