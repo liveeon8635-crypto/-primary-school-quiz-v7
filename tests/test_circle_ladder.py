@@ -116,3 +116,19 @@ def test_steps_are_reported_and_capped_by_handoff():
     # 走到上限就交给老师，不再继续铺题
     end = ladder.advance(2, True, 0, 0, {}, ladder.MAX_STEPS)
     assert end["action"] == "handoff" and end["notifyTeacher"] is True
+def test_ladder_is_chosen_by_node_key_with_a_default():
+    assert ladder.ladder_for("4-3") is ladder.LEVELS
+    # 未知节点退回默认那条，不能报错（地图缺失或识别不出节点时也要能用）
+    assert ladder.ladder_for("9-9") == ladder.LEVELS
+    assert ladder.ladder_for("") == ladder.LEVELS
+
+
+def test_start_rank_follows_mastery_but_never_skips_to_the_original_question():
+    assert ladder.start_rank("untested") == 1
+    assert ladder.start_rank("weak") == 1
+    assert ladder.start_rank("pass") == 3
+    assert ladder.start_rank("fluent") == 4
+    # 关键：历史熟练也不能直接跳到第 5 级（原题）
+    assert ladder.start_rank("fluent") < 5
+    assert ladder.start_rank(None) == 1
+    assert ladder.start_rank("") == 1

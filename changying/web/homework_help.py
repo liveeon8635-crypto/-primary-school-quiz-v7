@@ -24,6 +24,7 @@ from sqlalchemy import delete, func, insert, select, update
 
 from changying.services import knowledge_maps as km
 from changying.services.homework_guidance import check_steps, exam_line, guide_layer, map_lines, pick_node
+from changying.services import circle_ladder
 from changying.services.homework_circle_support import CircleSupportBody, circle_area_question, circle_prompt_context, circle_support_record, circle_support_summary
 
 from changying.services.homework_limits import (
@@ -151,6 +152,10 @@ def install_homework_help(implementation: Any) -> APIRouter:
             "warning": AI_WARNING,
             "circleEligible": circle_area_question(row["question_text"], row["grade"]),
             "circleSupport": circle_support_record(data.get("circleSupport")),
+            # 地图已发布且定位到节点时，按掌握度决定从第几级开始；没地图就从第 1 级起
+            "circleNodeKey": (((data.get("layer") or {}).get("node") or {}).get("key") or ""),
+            "circleStartRank": circle_ladder.start_rank(
+                ((data.get("layer") or {}).get("node") or {}).get("state")),
         }
 
     User = implementation.User

@@ -186,7 +186,7 @@ function hwCircleSupport(box,opts){
     frame('本次补救确认已完成','rearrange');box.appendChild(el('p',{text:'这份求助的补救确认已经完成，但不代表独立掌握。仍然不理解时，请老师接着讲；不要重复刷确认题。'}));
   }else{
     frame('圆的面积，想先回忆哪一块？');
-    [['公式还没懂，先检查基础','concept'],['基础我会，想看公式来历','formula'],['公式知道，练一下计算','calculation'],['从最简单的开始，一步一步来','ladder']].forEach(function(item){box.appendChild(el('button',{text:item[0],onclick:function(){if(busy)return;state.focus=item[1];if(item[1]==='calculation')example(0);else if(item[1]==='ladder'){state.level=state.level||1;state.missCount=0;ladderFrame(state.level)}else{index=item[1]==='formula'?2:0;diagnose()}}}))});
+    [['公式还没懂，先检查基础','concept'],['基础我会，想看公式来历','formula'],['公式知道，练一下计算','calculation'],['从最简单的开始，一步一步来','ladder']].forEach(function(item){box.appendChild(el('button',{text:item[0],onclick:function(){if(busy)return;state.focus=item[1];if(item[1]==='calculation')example(0);else if(item[1]==='ladder'){state.level=state.level||Math.max(1,Math.min(4,opts.startRank||1));state.missCount=0;ladderFrame(state.level)}else{index=item[1]==='formula'?2:0;diagnose()}}}))});
   }
 }
 """

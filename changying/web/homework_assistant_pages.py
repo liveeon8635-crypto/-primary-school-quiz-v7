@@ -345,7 +345,7 @@ function afterConfirm(box,help){
   });
 }
 function circleSupportOpen(box,h,before,stillCurrent){
-  return hwCircleSupport(box,{before:!!before,record:h.circleSupport,onFinish:function(record,teacher){
+  return hwCircleSupport(box,{before:!!before,nodeKey:h.circleNodeKey||'',startRank:h.circleStartRank||1,record:h.circleSupport,onFinish:function(record,teacher){
     if(stillCurrent&&!stillCurrent())return Promise.reject(new Error('题目或年级已改变，请重新确认题目；这次补救不会用于新题。'));
     return api('/student/homework/help/'+h.id+'/circle-support',{json:record}).then(function(saved){
       h.circleSupport=saved.circleSupport;

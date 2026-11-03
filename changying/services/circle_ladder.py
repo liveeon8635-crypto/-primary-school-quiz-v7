@@ -31,6 +31,30 @@ MAX_VISITS_PER_RANK = 3  # 同一级进入 3 次还没过 → 换讲法，不再
 MAX_STEPS = 12  # 整条阶梯总步数上限；到顶直接转老师，不无限铺题
 
 
+# 按知识点 key 取阶梯。圆面积（六上 4-3/4-4）先做一条；
+# 其它知识点复用同一条内容前，必须先过老师审核，不能默默共享。
+LADDERS: dict[str, list[dict[str, Any]]] = {
+    "4-3": LEVELS,
+    "4-4": LEVELS,
+}
+DEFAULT_LADDER_KEY = "4-3"
+
+
+def ladder_for(node_key: str | None) -> list[dict[str, Any]]:
+    """有专属阶梯就用；没有就退回默认那条（地图缺失/识别不出节点时也能用）。"""
+    return LADDERS.get(str(node_key or "").strip(), LADDERS[DEFAULT_LADDER_KEY])
+
+
+# 掌握度状态 → 起始级别。最高只跳到第 4 级：历史做对不等于今天不需要确认。
+MAX_AUTO_START = 4
+_START_BY_STATE = {"pass": 3, "fluent": 4, "weak": 1, "untested": 1}
+
+
+def start_rank(node_state: str | None) -> int:
+    rank = _START_BY_STATE.get(str(node_state or "").strip(), 1)
+    return max(1, min(rank, MAX_AUTO_START))
+
+
 def level_of(rank: int) -> dict[str, Any] | None:
     for item in LEVELS:
         if item["rank"] == rank:
