@@ -94,7 +94,8 @@ def test_v1_execution_patch_contains_teacher_and_student_consent_pages():
     assert "你可以自主选择接受或婉拒" in html
     assert "不是公开排名，也不会自动指定学生" in html
     assert "婉拒不会扣分" in html
-    assert "navigate('/v1/classroom-review?assignment='+s.sourceAssignmentID)" in html
+    # 复盘入口带课堂 session 号，由复盘页反查绑定练习；不再直接拼 sourceAssignmentID
+    assert "navigate('/v1/classroom-review?session='+sid)" in html
     assert "status:'completed'" in html
     assert "完成本堂课并进入课堂复盘" in html
     assert "cy-session-complete-bottom" in html

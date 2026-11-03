@@ -145,16 +145,29 @@ def patch_v1_classroom_review_html(html: str) -> str:
       if(session.role!=='teacher'){toast('课堂复盘仅教师可用');navigate('/v1/workspace');return}
       let assignments=[];
       try{assignments=await api('/teacher/classroom-reviews/assignments')}catch(err){screen.innerHTML=shell(heading('课堂练习复盘','读取失败')+'<div class="notice error">'+esc(err.message)+'</div>','workspace');bindNav();return}
-      const query=new URLSearchParams(location.search),requested=Number(query.get('assignment')||0);
-      let current=requested||Number(assignments[0]?.id||0),summary=null;
+      const query=new URLSearchParams(location.search),requested=Number(query.get('assignment')||0),sessionId=Number(query.get('session')||0);
+      // 不默认选第一条：选错会把别堂课的数据当成本堂课展示
+      let current=0,summary=null,notice='';
       const load=async(aid)=>{current=Number(aid);summary=await api('/teacher/assignments/'+current+'/class-review');renderReview()};
-      const selector=()=>'<select id="cy-review-assignment" style="min-width:min(100%,420px)">'+assignments.map(a=>'<option value="'+a.id+'" '+(Number(a.id)===current?'selected':'')+'>'+esc(a.className+' · '+a.title+' · '+a.completedCount+'/'+a.recipientCount)+'</option>').join('')+'</select>';
+      const optLabel=a=>a.className+' · '+(a.subject||'—')+' · '+a.title+' · '+String(a.createdAt||'').slice(0,10)+' · '+a.completedCount+'/'+a.recipientCount;
+      const selector=()=>'<select id="cy-review-assignment" style="min-width:min(100%,520px)">'+(current?'':'<option value="">请选择本堂课的练习</option>')+assignments.map(a=>'<option value="'+a.id+'" '+(Number(a.id)===current?'selected':'')+'>'+esc(optLabel(a))+'</option>').join('')+'</select>';
+      const pickTarget=async()=>{
+        if(requested&&assignments.some(a=>Number(a.id)===requested)){current=requested;return}
+        if(requested)notice='链接里的练习不在你的列表中（可能已删除或无权限），请重新选择。';
+        if(!sessionId)return;
+        try{
+          const s=await api('/teacher/classroom-sessions/'+sessionId);
+          const aid=Number(s.sourceAssignmentID||0);
+          if(aid&&assignments.some(a=>Number(a.id)===aid)){current=aid;return}
+          notice='本堂课没有绑定练习，无法按作业复盘；课堂过程数据请回到课堂执行页查看。';
+        }catch(err){notice='读取本堂课信息失败：'+esc(err.message)}
+      };
       const draftEditor=(draft)=>{
         if(!draft)return '<div class="notice">尚未生成讲义。请先选择需要讲解的知识点或典型错题，再由教师决定是否生成。</div>';
         return '<div class="field"><label>讲义标题</label><input id="cy-handout-title" value="'+esc(draft.title||'')+'"></div><div class="field"><label>讲义正文（教师可直接修改）</label><textarea id="cy-handout-content" rows="18">'+esc(draft.content||'')+'</textarea></div><button class="btn primary" id="cy-handout-save">保存教师修改</button><span class="muted" style="margin-left:10px">最近保存：'+esc(draft.updatedAt||'')+'</span>';
       };
       const renderReview=()=>{
-        if(!summary){screen.innerHTML=shell(heading('课堂练习复盘','把同一堂课的练习结果汇总成教师可判断的数据。')+'<section class="card">'+selector()+'</section>','workspace');bindNav();document.getElementById('cy-review-assignment').onchange=e=>load(e.target.value);return}
+        if(!summary){screen.innerHTML=shell(heading('课堂练习复盘','先选定本堂课的练习，再查看数据；未选定前不显示任何学情数据。')+'<section class="card"><div class="field"><label>选择本堂课的练习</label>'+selector()+'</div>'+(notice?'<div class="notice error">'+esc(notice)+'</div>':'')+'<p class="muted">下拉项依次为：班级 · 学科 · 作业标题 · 布置日期 · 完成人数。选错会把别堂课的结果当成本堂课。</p></section>','workspace');bindNav();const sel=document.getElementById('cy-review-assignment');if(sel)sel.onchange=e=>{if(e.target.value)load(e.target.value)};return}
         const k=summary.knowledgeStats||[],errors=summary.commonErrors||[],students=summary.students||[],draft=summary.handoutDraft,interaction=summary.classroomInteraction||null,openSession=summary.openClassroomSession||null;
         const completedAt=interaction?.session?.completedAt||'',draftUpdatedAt=draft?.updatedAt||'',draftStale=!!(draft&&completedAt&&draftUpdatedAt&&draftUpdatedAt<completedAt);
         const summaryMissing=!!(draft&&interaction?.session?.status==='completed'&&(interaction.quickCheckRoundCount||0)>0&&!String(draft.content||'').includes('互动课堂过程摘要（系统记录）'));
@@ -189,7 +202,8 @@ def patch_v1_classroom_review_html(html: str) -> str:
         document.getElementById('cy-handout-generate').onclick=async e=>{const btn=e.currentTarget,selectedKnowledge=[...document.querySelectorAll('.cy-review-k:checked')].map(x=>x.value),selectedQuestions=[...document.querySelectorAll('.cy-review-q:checked')].map(x=>Number(x.value));if(!selectedKnowledge.length&&!selectedQuestions.length){toast('请先选择至少一个知识点或典型错题');return}btn.disabled=true;btn.textContent='正在生成讲义草稿…';try{const r=await api('/teacher/assignments/'+current+'/class-review/handout-generate',{method:'POST',timeoutMs:90000,body:JSON.stringify({selected_knowledge:selectedKnowledge,selected_question_ids:selectedQuestions,teacher_notes:document.getElementById('cy-review-notes').value})});summary.handoutDraft=r.handoutDraft;toast('讲义草稿已生成，请教师审核修改');renderReview()}catch(err){toast(err.message);btn.disabled=false;btn.textContent=generateLabel}};
       };
       if(!assignments.length){screen.innerHTML=shell(heading('课堂练习复盘','暂无可复盘的课堂练习')+'<div class="empty">先布置一份班级练习，学生提交后这里会自动汇总。</div>','workspace');bindNav();return}
-      await load(current);
+      await pickTarget();
+      if(current)await load(current);else renderReview();
     }
 
 '''

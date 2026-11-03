@@ -294,9 +294,9 @@ def patch_v1_classroom_execution_html(html: str) -> str:
         if(by('cy-session-cancel'))by('cy-session-cancel').onclick=async()=>{const btn=by('cy-session-cancel');btn.disabled=true;try{await api('/teacher/classroom-sessions/'+sid+'/state',{method:'POST',body:JSON.stringify({status:'cancelled'})});navigate('/v1/classroom-review?assignment='+s.sourceAssignmentID)}catch(e){toast(e.message);btn.disabled=false}};
         if(by('cy-session-pause'))by('cy-session-pause').onclick=()=>call('/teacher/classroom-sessions/'+sid+'/state',{status:'paused'});
         if(by('cy-session-resume'))by('cy-session-resume').onclick=()=>call('/teacher/classroom-sessions/'+sid+'/state',{status:'active'});
-        const finishSession=async btn=>{btn.disabled=true;try{await api('/teacher/classroom-sessions/'+sid+'/state',{method:'POST',body:JSON.stringify({status:'completed'})});navigate('/v1/classroom-review?assignment='+s.sourceAssignmentID)}catch(e){toast(e.message);btn.disabled=false}};
+        const finishSession=async btn=>{btn.disabled=true;try{await api('/teacher/classroom-sessions/'+sid+'/state',{method:'POST',body:JSON.stringify({status:'completed'})});navigate('/v1/classroom-review?session='+sid)}catch(e){toast(e.message);btn.disabled=false}};
         [by('cy-session-complete'),by('cy-session-complete-bottom')].filter(Boolean).forEach(btn=>btn.onclick=()=>finishSession(btn));
-        by('cy-session-back').onclick=()=>navigate('/v1/classroom-review?assignment='+s.sourceAssignmentID);
+        by('cy-session-back').onclick=()=>navigate('/v1/classroom-review?session='+sid);
         document.querySelectorAll('.cy-seg-mode').forEach(el=>el.onchange=()=>call('/teacher/classroom-sessions/'+sid+'/segments/'+el.dataset.id+'/mode',{mode:el.value}).catch(e=>toast(e.message)));
         document.querySelectorAll('.cy-seg-start').forEach(el=>el.onclick=()=>call('/teacher/classroom-sessions/'+sid+'/segments/'+el.dataset.id+'/start',{}).catch(e=>toast(e.message)));
         document.querySelectorAll('.cy-seg-complete').forEach(el=>el.onclick=()=>call('/teacher/classroom-sessions/'+sid+'/segments/'+el.dataset.id+'/complete',{}).catch(e=>toast(e.message)));
