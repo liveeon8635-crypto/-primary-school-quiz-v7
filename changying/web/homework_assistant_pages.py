@@ -197,7 +197,7 @@ function importView(body){
       chips.__all=function(on){chips.querySelectorAll('input').forEach(function(c){c.checked=on;c.dispatchEvent(new Event('change'))})};
     });
     var limit=el('input',{type:'number',min:'1',max:'600',placeholder:'如 90','aria-label':'本次作业总时长（分钟）'});
-    limit.style.maxWidth='110px';
+    limit.style.maxWidth='110px';limit.style.padding='6px 8px';limit.style.border='1px solid #c9d1d9';limit.style.borderRadius='6px';limit.style.fontSize='16px';
     var publish=el('button',{class:'primary',text:'确认并发布给选中的学生',onclick:function(){
       msg2.textContent='';
       var ids=Object.keys(picked).map(Number);
@@ -214,7 +214,7 @@ function importView(body){
     editor.appendChild(el('div',{class:'card'},el('h2',{text:'2. 检查并修改清单'}),el('div',{class:'muted',text:'AI 可能整理错，请逐条核对；确认前学生看不到。'}),label,rows,
       el('button',{text:'＋ 增加一条',onclick:function(){state.items.push({seq:state.items.length+1,subject:'',content:'',page:'',requirement:''});paintRows()}}),
       el('hr'),el('h2',{text:'3. 分配给学生'}),el('div',{class:'row'},el('button',{text:'全选',onclick:function(){chips.__all&&chips.__all(true)}}),el('button',{text:'全不选',onclick:function(){chips.__all&&chips.__all(false)}})),chips,
-      el('div',{class:'row'},el('span',{class:'muted',text:'本次作业总时长（全部科目共用，可留空）：'}),limit),el('div',{class:'row'},publish),msg2));
+      el('div',{class:'row'},el('span',{text:'本次作业时限（分钟，全部科目共用）：'}),limit,el('span',{class:'muted',text:'留空=不限时'}),el('div',{class:'row'},publish),msg2));
   }
 }
 function noticesView(body){
