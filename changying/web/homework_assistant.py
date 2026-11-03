@@ -15,10 +15,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import insert, select, update
 
-from changying.services.homework_assistant_tables import register_homework_assistant_tables
+from changying.services.homework_assistant_tables import register_homework_assistant_tables, ensure_time_columns
 from changying.services.homework_prompts import (
     MAX_NOTICE_CHARS,
     build_parse_prompt,
@@ -55,6 +55,8 @@ class NoticeBody(BaseModel):
 
 class PublishBody(BaseModel):
     studentIDs: list[int]
+    # 本次全部科目共用的总时长（分钟）；不传表示不启用计时
+    timeLimitMinutes: int | None = Field(default=None, ge=1, le=600)
 
 
 class DoneBody(BaseModel):
@@ -83,12 +85,27 @@ def _ints(raw: Any) -> list[int]:
     return [int(x) for x in _json_list(raw) if isinstance(x, int) and not isinstance(x, bool)]
 
 
+def _remaining(limit_minutes: Any, started_at: Any, completed_at: Any) -> int | None:
+    """剩余秒数：没设时长或还没开始返回 None；负数表示已超时。"""
+    if not limit_minutes or started_at is None:
+        return None
+    end = completed_at or datetime.utcnow()
+    left = int(limit_minutes) * 60 - int((end - started_at).total_seconds())
+    return left
+
+
 def install_homework_assistant(implementation: Any) -> APIRouter:
     app = implementation.app
     if getattr(app.state, "homework_assistant_installed", False):
         return app.state.homework_router
 
     tables = register_homework_assistant_tables(implementation)
+    # 生产库已有这两张表，create_all 不会补列：启动时把计时列补齐。
+    # 补列失败不能拦住整个晚托入口；没补上就按"未启用计时"运行。
+    try:
+        ensure_time_columns(implementation.engine)
+    except Exception:
+        pass
     notices, recipients = tables["homework_notices"], tables["homework_recipients"]
 
     User = implementation.User
@@ -286,6 +303,9 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
         wanted = list(dict.fromkeys(int(x) for x in b.studentIDs))
         if not wanted:
             raise HTTPException(400, "请至少选择一名学生")
+        if b.timeLimitMinutes is not None:
+            db.execute(update(notices).where(notices.c.id == notice_id).values(
+                time_limit_minutes=int(b.timeLimitMinutes)))
         allowed = {item["id"] for item in teacher_students(db, u)}
         if not set(wanted) <= allowed:
             raise HTTPException(403, "只能分配给自己班级的学生")
@@ -357,7 +377,7 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
         need(u, "student")
         since = datetime.utcnow() - timedelta(days=TODAY_WINDOW_DAYS)
         rows = db.execute(
-            select(notices, recipients.c.done_json)
+            select(notices, recipients.c.done_json, recipients.c.started_at, recipients.c.completed_at)
             .join(recipients, recipients.c.notice_id == notices.c.id)
             .where(
                 recipients.c.student_id == u.id,
@@ -378,6 +398,13 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
                     "groupLabel": row["group_label"],
                     "publishedAt": _iso(row["published_at"]),
                     "items": items,
+                    # 计时：老师设的总时长、学生自己的开始时间、剩余秒数（负数表示已超时）。
+                    # 超时只用于提示，不阻断继续完成。
+                    "timeLimitMinutes": row["time_limit_minutes"],
+                    "startedAt": _iso(row["started_at"]),
+                    "completedAt": _iso(row["completed_at"]),
+                    "remainingSeconds": _remaining(row["time_limit_minutes"], row["started_at"],
+                                                   row["completed_at"]),
                 }
             )
         return out
@@ -407,7 +434,19 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
             done.add(seq)
         else:
             done.discard(seq)
-        db.execute(update(recipients).where(recipients.c.id == row.id).values(done_json=json.dumps(sorted(done))))
+        now = datetime.utcnow()
+        values = {"done_json": json.dumps(sorted(done))}
+        # 第一次勾选就是这次作业的开始时间；之后刷新、换设备都不重置。
+        current = db.execute(select(recipients.c.started_at, recipients.c.completed_at)
+                             .where(recipients.c.id == row.id)).first()
+        if current is not None and current.started_at is None:
+            values["started_at"] = now
+        everything = {int(item.get("seq", 0)) for item in _json_list(row.items_json)}
+        if everything and done >= everything:
+            values["completed_at"] = now
+        else:
+            values["completed_at"] = None
+        db.execute(update(recipients).where(recipients.c.id == row.id).values(**values))
         db.commit()
         return {"noticeID": notice_id, "seq": seq, "done": bool(b.done)}
 
