@@ -1,0 +1,63 @@
+"""圆面积退阶阶梯：状态机行为。答案是内容，不是判分规则。"""
+from __future__ import annotations
+
+from changying.services import circle_ladder as ladder
+
+
+def test_five_ordered_levels_each_adds_one_condition():
+    ranks = [x["rank"] for x in ladder.LEVELS]
+    assert ranks == [1, 2, 3, 4, 5]
+    # 前四级同一套数字（r=4），最后一级换回原题
+    assert ladder.LEVELS[0]["answer"] == 2
+    assert ladder.LEVELS[1]["answer_value"] == 16
+    assert ladder.LEVELS[2]["answer_value"] == 50.24
+    assert ladder.LEVELS[3]["answer_value"] == 50.24
+    assert ladder.LEVELS[4]["answer_value"] is None
+
+
+def test_correct_answer_climbs_one_rank():
+    step = ladder.advance(1, True, 0)
+    assert step == {"action": "up", "rank": 2, "misses": 0}
+    assert ladder.advance(4, True, 0)["rank"] == 5
+
+
+def test_top_rank_correct_finishes():
+    assert ladder.advance(5, True, 0)["action"] == "finished"
+
+
+def test_wrong_answer_steps_down_one_rank():
+    step = ladder.advance(3, False, 0)
+    assert step == {"action": "down", "rank": 2, "misses": 0}
+
+
+def test_lowest_rank_cannot_go_lower():
+    step = ladder.advance(1, False, 0)
+    assert step["action"] == "remains" and step["rank"] == 1
+
+
+def test_two_misses_on_same_rank_fall_back_instead_of_drilling():
+    """连续错两次就进兜底，不继续往下罚站。"""
+    first = ladder.advance(2, False, 0)
+    assert first["action"] == "down"
+    second = ladder.advance(2, False, 1)
+    assert second["action"] == "fallback" and second["rank"] == 2
+
+
+def test_correct_answer_resets_misses():
+    assert ladder.advance(3, True, 1)["misses"] == 0
+
+
+def test_fallback_offers_a_real_alternative_not_just_teacher():
+    actions = ladder.fallback_actions()
+    keys = {a["key"] for a in actions}
+    assert keys == {"micro_lesson", "see_answer"}
+    seen = next(a for a in actions if a["key"] == "see_answer")
+    # 看答案必须明说"不算掌握"
+    assert "不算你已经掌握" in seen["note"]
+    micro = next(a for a in actions if a["key"] == "micro_lesson")
+    assert "近似" in micro["text"] or "接近长方形" in micro["note"]
+
+
+def test_out_of_range_rank_is_clamped():
+    assert ladder.advance(0, True, 0)["rank"] == 2      # 先夹到 1，再升一级
+    assert ladder.advance(99, True, 0)["action"] == "finished"

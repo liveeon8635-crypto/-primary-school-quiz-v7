@@ -1,0 +1,71 @@
+"""圆面积「退阶阶梯」：有序，不是平行选项。
+
+学生卡在圆的面积时，从最简单的一级开始；答对上一级、答错退一级；
+同一级连续错两次进兜底（微课 + 看答案拆解），看答案要打标，不计分。
+
+这里是纯状态机 + 题目内容，不碰页面、不碰数据库；页面按它渲染即可。
+"""
+from __future__ import annotations
+
+from typing import Any, Literal
+
+# 每一级只比上一级多一个条件，数字统一用 r=4（L5 换回原题自己的数字）
+LEVELS: list[dict[str, Any]] = [
+    {"rank": 1, "gap": "square", "text": "边长 4 厘米的正方形，面积是多少？",
+     "options": ["8 平方厘米", "12 平方厘米", "16 平方厘米"], "answer": 2,
+     "why": "面积是边长乘边长，4×4=16"},
+    {"rank": 2, "gap": "square", "text": "r = 4 厘米，r × r 是多少？",
+     "answer_value": 16, "why": "r×r 就是 4×4；平方不是乘 2"},
+    {"rank": 3, "gap": "circumference", "text": "3.14 × 16 是多少？",
+     "answer_value": 50.24, "why": "先算 3.14×16；也可以拆成 3.14×10 + 3.14×6"},
+    {"rank": 4, "gap": "application", "text": "r = 4 厘米的圆，面积是多少平方厘米？（π 取 3.14）",
+     "answer_value": 50.24, "why": "S = πr² = 3.14 × 16 = 50.24 平方厘米"},
+    {"rank": 5, "gap": "application", "text": "原题", "answer_value": None,
+     "why": "用原题自己的数字与 π 取值"},
+]
+
+MAX_RANK = len(LEVELS)
+MAX_MISSES = 2  # 同一级连续错两次 → 兜底
+
+
+def level_of(rank: int) -> dict[str, Any] | None:
+    for item in LEVELS:
+        if item["rank"] == rank:
+            return item
+    return None
+
+
+def advance(rank: int, correct: bool, misses: int) -> dict[str, Any]:
+    """返回下一步：{action, rank, misses}。
+
+    action:
+      - "up"       答对，升一级（已到顶则 finished）
+      - "down"     答错，退一级（已到底则 remains）
+      - "finished" 到顶且答对
+      - "fallback" 同一级连续错够次数，转兜底
+    """
+    rank = max(1, min(int(rank), MAX_RANK))
+    misses = max(0, int(misses))
+
+    if correct:
+        if rank >= MAX_RANK:
+            return {"action": "finished", "rank": MAX_RANK, "misses": 0}
+        return {"action": "up", "rank": rank + 1, "misses": 0}
+
+    misses += 1
+    if misses >= MAX_MISSES:
+        return {"action": "fallback", "rank": rank, "misses": misses}
+    if rank <= 1:
+        # 已经在最简单的一级，没得再退：再来一次同一级
+        return {"action": "remains", "rank": 1, "misses": misses}
+    return {"action": "down", "rank": rank - 1, "misses": 0}
+
+
+def fallback_actions() -> list[dict[str, str]]:
+    """到底时给两个真实选项，不是一句"请老师"。"""
+    return [
+        {"key": "micro_lesson", "text": "看 15 秒微课：圆怎么拼成近似长方形",
+         "note": "拼出来的是接近长方形，不是长方形本身"},
+        {"key": "see_answer", "text": "看答案拆解",
+         "note": "这次是看答案学会的，不算你已经掌握；下次自己再做对才算"},
+    ]
