@@ -24,6 +24,14 @@ class CircleSupportBody(BaseModel):
     rounds: CircleRounds = Field(default_factory=CircleRounds)
     outcome: Literal["in_progress", "practice_passed", "needs_teacher", "teacher_requested", "stopped"] = "in_progress"
     unitChecked: bool = False
+    # 退阶阶梯状态：level 是当前级别（0=未进入），missCount 是当前级连续失误，
+    # totalMisses 是整条阶梯累计失误（达到阈值提醒老师），seenAnswer 表示看过答案拆解。
+    level: int = Field(default=0, ge=0, le=5)
+    missCount: int = Field(default=0, ge=0, le=2)
+    totalMisses: int = Field(default=0, ge=0, le=99)
+    seenAnswer: bool = False
+    teacherAlert: bool = False
+    nodeKey: str = Field(default="", max_length=32)
 
 
 def circle_area_question(question: str, grade: int | None) -> bool:

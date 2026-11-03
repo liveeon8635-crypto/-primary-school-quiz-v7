@@ -35,7 +35,7 @@ function hwCircleFigure(kind,parts){
 }
 function hwCircleSupport(box,opts){
   var mount=el('div',{class:'circle-support'});box.textContent='';box.appendChild(mount);box=mount;
-  var old=opts.record||{},state={entry:opts.before?'before':'after',focus:old.focus||'concept',gaps:(old.gaps||[]).slice(),rounds:Object.assign({radius:0,square:0,circumference:0,unit:0,application:0},old.rounds||{}),outcome:'in_progress',unitChecked:!!old.unitChecked};
+  var old=opts.record||{},state={entry:opts.before?'before':'after',focus:old.focus||'concept',gaps:(old.gaps||[]).slice(),rounds:Object.assign({radius:0,square:0,circumference:0,unit:0,application:0},old.rounds||{}),outcome:'in_progress',unitChecked:!!old.unitChecked,level:old.level||0,totalMisses:old.totalMisses||0,seenAnswer:!!old.seenAnswer,nodeKey:old.nodeKey||''};
   var index=0,busy=false,status=null,serial=0;
   var names={radius:'半径与直径',square:'平方与面积',circumference:'圆周长',unit:'面积单位',application:'套用面积公式'};
   function gap(key){if(state.gaps.indexOf(key)<0)state.gaps.push(key)}
@@ -90,6 +90,54 @@ function hwCircleSupport(box,opts){
     if(key==='unit')choice(round===1?'铺满一个圆形纸片，面积的单位应该是哪一个？':'题目长度用米，求出的面积用哪一个单位？',round===1?['厘米','平方厘米']:['平方米','米'],round===1?1:0,checked);
   }
   function startRemedy(key,next){if(state.rounds[key]>=2)needTeacher();else remedy(key,state.rounds[key]+1,next)}
+  // ---- 退阶阶梯：从最简单一级开始，答对升一级、答错退一级、错够两次进兜底 ----
+  var LADDER=[{rank:1,ask:'边长 4 厘米的正方形，面积是多少？',options:['8 平方厘米','12 平方厘米','16 平方厘米'],correct:2},
+    {rank:2,ask:'r = 4 厘米，r × r 是多少？',value:16},
+    {rank:3,ask:'3.14 × 16 是多少？',value:50.24},
+    {rank:4,ask:'r = 4 厘米的圆，面积是多少平方厘米？（π 取 3.14）',value:50.24}];
+  var MISS_LIMIT_TEACHER=4;
+  function ladderItem(rank){for(var i=0;i<LADDER.length;i++){if(LADDER[i].rank===rank)return LADDER[i]}return null}
+  function alertTeacher(){
+    if(state.teacherAlert)return;state.teacherAlert=true;
+    box.appendChild(el('p',{class:'muted',text:'这一次你错得比较多，已经记下来给老师看了；也可以现在就点「请老师一起看」。'}));
+  }
+  function ladderFrame(rank){
+    var item=ladderItem(rank);
+    frame('第 '+rank+' 步'+(item?'':'：回到原题'));
+    if(rank>=5){box.appendChild(el('p',{text:'前四步都通过了。现在回到原题，用题目自己的条件重新做一遍。'}));
+      box.appendChild(el('button',{class:'primary',text:'回原题',onclick:function(){example(0)}}));return}
+    box.appendChild(el('p',{class:'muted',text:'一次只加一个条件；答错会退一步，不是扣分。'}));
+    function answered(ok){
+      if(ok){state.level=Math.min(5,rank+1);state.rounds.application=0;
+        if(state.level>=5){ladderFrame(5)}else{ladderFrame(state.level)}return}
+      state.totalMisses+=1;state.missCount=(state.missCount||0)+1;
+      if(state.totalMisses>=MISS_LIMIT_TEACHER)alertTeacher();
+      if(state.missCount>=2){state.missCount=0;ladderFallback(rank);return}
+      var next=rank>1?rank-1:1;state.level=next;
+      frame('退一步：第 '+next+' 步');box.appendChild(el('p',{text:'这一步没过去，我们退一级再看一次同样的意思，不算错。'}));
+      box.appendChild(el('button',{class:'primary',text:'继续',onclick:function(){ladderFrame(next)}}));
+    }
+    if(item.options)choice(item.ask,item.options,item.correct,answered);
+    else numeric(item.ask,item.value,answered);
+  }
+  function ladderFallback(rank){
+    frame('换一种方式看懂它');
+    box.appendChild(el('p',{text:'连着两次没过去，我们不再往下退，换两个更有用的办法：'}));
+    box.appendChild(el('button',{text:'看 15 秒微课：圆怎么拼成近似长方形',onclick:function(){
+      frame('微课：拼成接近长方形');
+      box.appendChild(el('p',{text:'圆被分成很多小扇形、交错拼起来。切得越多，越接近长方形；它不是长方形本身。'}));
+      box.appendChild(hwCircleFigure('rearrange',8));
+      box.appendChild(el('button',{class:'primary',text:'看完了，再试一次',onclick:function(){state.missCount=0;ladderFrame(rank)}}));
+    }}));
+    box.appendChild(el('button',{text:'看答案拆解',onclick:function(){
+      state.seenAnswer=true;state.missCount=0;
+      frame('看答案拆解');
+      box.appendChild(el('p',{text:'这道题是：先算 4×4=16，再算 3.14×16=50.24，面积是 50.24 平方厘米。'}));
+      box.appendChild(el('p',{class:'muted',text:'这次是看答案学会的，不算你已经掌握；下次自己再做对才算。'}));
+      box.appendChild(el('button',{class:'primary',text:'我明白了，回去试试',onclick:function(){ladderFrame(rank)}}));
+    }}));
+    box.appendChild(el('button',{text:'请老师一起看',onclick:function(){finish('teacher_requested',true)}}));
+  }
   function diagnose(){
     var keys=['radius','square','circumference'];if(index>=keys.length){formula();return}var key=keys[index++];
     frame('先看看：'+names[key],key);
@@ -132,7 +180,7 @@ function hwCircleSupport(box,opts){
     frame('本次补救确认已完成','rearrange');box.appendChild(el('p',{text:'这份求助的补救确认已经完成，但不代表独立掌握。仍然不理解时，请老师接着讲；不要重复刷确认题。'}));
   }else{
     frame('圆的面积，想先回忆哪一块？');
-    [['公式还没懂，先检查基础','concept'],['基础我会，想看公式来历','formula'],['公式知道，练一下计算','calculation']].forEach(function(item){box.appendChild(el('button',{text:item[0],onclick:function(){if(busy)return;state.focus=item[1];if(item[1]==='calculation')example(0);else{index=item[1]==='formula'?2:0;diagnose()}}}))});
+    [['公式还没懂，先检查基础','concept'],['基础我会，想看公式来历','formula'],['公式知道，练一下计算','calculation'],['从最简单的开始，一步一步来','ladder']].forEach(function(item){box.appendChild(el('button',{text:item[0],onclick:function(){if(busy)return;state.focus=item[1];if(item[1]==='calculation')example(0);else if(item[1]==='ladder'){state.level=state.level||1;state.missCount=0;ladderFrame(state.level)}else{index=item[1]==='formula'?2:0;diagnose()}}}))});
   }
 }
 """
