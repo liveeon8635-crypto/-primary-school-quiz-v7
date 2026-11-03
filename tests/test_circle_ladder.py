@@ -110,3 +110,9 @@ def test_ping_pong_between_two_ranks_is_stopped():
 def test_visits_are_reported_so_the_caller_can_carry_them():
     step = ladder.advance(1, True, 0, 0)
     assert step["visits"] == {"1": 1}
+def test_steps_are_reported_and_capped_by_handoff():
+    step = ladder.advance(1, True, 0, 0, {}, 0)
+    assert step["steps"] == 1
+    # 走到上限就交给老师，不再继续铺题
+    end = ladder.advance(2, True, 0, 0, {}, ladder.MAX_STEPS)
+    assert end["action"] == "handoff" and end["notifyTeacher"] is True

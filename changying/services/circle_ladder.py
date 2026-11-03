@@ -28,6 +28,7 @@ MAX_RANK = len(LEVELS)
 MAX_MISSES = 2  # 同一级连续错两次 → 兜底
 MISS_LIMIT_TEACHER = 4  # 整条阶梯累计错够这么多次 → 提醒老师
 MAX_VISITS_PER_RANK = 3  # 同一级进入 3 次还没过 → 换讲法，不再上下打转
+MAX_STEPS = 12  # 整条阶梯总步数上限；到顶直接转老师，不无限铺题
 
 
 def level_of(rank: int) -> dict[str, Any] | None:
@@ -38,7 +39,7 @@ def level_of(rank: int) -> dict[str, Any] | None:
 
 
 def advance(rank: int, correct: bool, misses: int, total_misses: int = 0,
-            visits: dict[str, int] | None = None) -> dict[str, Any]:
+            visits: dict[str, int] | None = None, steps: int = 0) -> dict[str, Any]:
     """返回下一步：{action, rank, misses}。
 
     action:
@@ -50,6 +51,11 @@ def advance(rank: int, correct: bool, misses: int, total_misses: int = 0,
     rank = max(1, min(int(rank), MAX_RANK))
     misses = max(0, int(misses))
     total_misses = max(0, int(total_misses))
+    steps = max(0, int(steps))
+    if steps >= MAX_STEPS:
+        return {"action": "handoff", "rank": max(1, min(int(rank), MAX_RANK)),
+                "misses": max(0, int(misses)), "totalMisses": total_misses,
+                "notifyTeacher": True, "visits": dict(visits or {})}
 
     visits = dict(visits or {})
     key = str(rank)
@@ -57,7 +63,8 @@ def advance(rank: int, correct: bool, misses: int, total_misses: int = 0,
 
     def out(action: str, r: int, m: int, notify: bool) -> dict[str, Any]:
         return {"action": action, "rank": r, "misses": m,
-                "totalMisses": total_misses, "notifyTeacher": notify, "visits": visits}
+                "totalMisses": total_misses, "notifyTeacher": notify, "visits": visits,
+                "steps": steps + 1}
 
     if correct:
         notify = total_misses >= MISS_LIMIT_TEACHER

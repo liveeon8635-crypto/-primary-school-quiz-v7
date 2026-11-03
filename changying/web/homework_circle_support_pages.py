@@ -35,7 +35,7 @@ function hwCircleFigure(kind,parts){
 }
 function hwCircleSupport(box,opts){
   var mount=el('div',{class:'circle-support'});box.textContent='';box.appendChild(mount);box=mount;
-  var old=opts.record||{},state={entry:opts.before?'before':'after',focus:old.focus||'concept',gaps:(old.gaps||[]).slice(),rounds:Object.assign({radius:0,square:0,circumference:0,unit:0,application:0},old.rounds||{}),outcome:'in_progress',unitChecked:!!old.unitChecked,level:old.level||0,totalMisses:old.totalMisses||0,seenAnswer:!!old.seenAnswer,nodeKey:old.nodeKey||'',visits:Object.assign({},old.visits||{})};
+  var old=opts.record||{},state={entry:opts.before?'before':'after',focus:old.focus||'concept',gaps:(old.gaps||[]).slice(),rounds:Object.assign({radius:0,square:0,circumference:0,unit:0,application:0},old.rounds||{}),outcome:'in_progress',unitChecked:!!old.unitChecked,level:old.level||0,totalMisses:old.totalMisses||0,seenAnswer:!!old.seenAnswer,nodeKey:old.nodeKey||'',visits:Object.assign({},old.visits||{}),steps:old.steps||0};
   var index=0,busy=false,status=null,serial=0;
   var names={radius:'半径与直径',square:'平方与面积',circumference:'圆周长',unit:'面积单位',application:'套用面积公式'};
   function gap(key){if(state.gaps.indexOf(key)<0)state.gaps.push(key)}
@@ -105,6 +105,8 @@ function hwCircleSupport(box,opts){
   function ladderFrame(rank){
     state.visits=state.visits||{};
     state.visits[rank]=(state.visits[rank]||0)+1;
+    state.steps=(state.steps||0)+1;
+    if(state.steps>12){state.teacherAlert=true;needTeacher();return}
     if(state.visits[rank]>MAX_VISITS_PER_RANK){ladderFallback(rank);return}
     var item=ladderItem(rank);
     frame('第 '+rank+' 步'+(item?'':'：回到原题'));
