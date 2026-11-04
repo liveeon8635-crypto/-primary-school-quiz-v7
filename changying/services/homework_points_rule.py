@@ -23,9 +23,7 @@ ACCURACY_LADDER: list[tuple[int, int]] = [
     (0, -3),
 ]
 
-MIDPOINT = 60
 MAX_ADJUST = 3
-FLOOR_AT_ZERO = True  # 业务方定：扣分扣到 0 为止，余额不为负
 DEFAULT_ON_TIME_POINTS = 3  # 业务方定：按时完成 3 分
 LATE_CARE_PRACTICE_MARKER = "晚托提问巩固练习"
 
