@@ -54,8 +54,14 @@ def pick_node(m: dict[str, Any], node_key: str, knowledge_point: str) -> dict[st
     return found
 
 
+PI_MARKS = ("π", "Π", "pi", "PI")
+
+
 def _check(answer: str) -> dict[str, float] | None:
     """What the page compares the pupil's number with: the value and the rounding the answer allows."""
+    # 含 π 的答案不能被读成纯数字（否则 4π 会被当成 4）；交回只读讲解，由老师核验。
+    if any(mark in str(answer) for mark in PI_MARKS):
+        return None
     try:
         value, decimals = parse_answer(answer)
     except Exception:  # noqa: BLE001 - an answer the program cannot read is simply not asked
