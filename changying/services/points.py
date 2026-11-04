@@ -7,9 +7,9 @@ from typing import Any
 from sqlalchemy import func, select
 
 
-POINT_EARNING_SOURCES = ("classroom", "adjustment", "learning_submission", "learning_grading")
+POINT_EARNING_SOURCES = ("classroom", "adjustment", "learning_submission", "learning_grading", "homework_practice")
 POINT_NET_SOURCES = POINT_EARNING_SOURCES + ("reversal",)
-LEARNING_POINT_SOURCES = ("learning_submission", "learning_grading")
+LEARNING_POINT_SOURCES = ("learning_submission", "learning_grading", "homework_practice")
 
 
 class PointService:
