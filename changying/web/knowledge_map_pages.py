@@ -7,6 +7,9 @@ from changying.web.weekend_pages import _page
 
 KNOWLEDGE_MAP_JS = r"""
 var KM=null,KMLIST=null,KMBOX=null,KMMSG=null,QPANEL={},KNOTE={};
+var KM_OPEN_SEQ=0,KSEQ={};
+function kmNoteKey(n){return String(KM.id)+'|'+n.key}
+function kmImportLive(mapId,batch,noteKey,seq){return batch===KM_OPEN_SEQ&&String(KM.id)===String(mapId)&&KSEQ[noteKey]===seq}
 function kmSay(text,bad){KMMSG.textContent=text||'';KMMSG.className=bad?'card warn':'muted'}
 function kmKeys(text){return String(text||'').split(/[、,，;；\s]+/).filter(function(x){return x})}
 function kmCopy(){return JSON.parse(JSON.stringify(KM.map))}
@@ -17,6 +20,19 @@ function kmSave(change,done){
     .catch(function(e){kmSay(e.message,true)});
 }
 function kmNode(m,key){for(var i=0;i<m.nodes.length;i++)if(m.nodes[i].key===key)return m.nodes[i];return null}
+function kmRevealNode(key){
+  var n=kmNode(KM.map,key);if(!n)return;
+  var unit=document.getElementById('unit-'+n.unit);
+  if(unit){
+    var b=unit.querySelector('.km-unit-b');
+    if(b)b.hidden=false;
+    unit.classList.add('open');
+    var t=unit.querySelector('.km-unit-t');
+    if(t)t.setAttribute('aria-expanded','true');
+    var c=t?t.querySelector('.km-caret'):null;
+    if(c)c.textContent='▾';
+  }
+}
 function kmTag(text,cls){return el('span',{class:'tag'+(cls?' '+cls:''),text:text})}
 function kmCoverage(n){
   if(n.kind==='display')return kmTag('只展示，不出题');
@@ -232,19 +248,32 @@ function kmNodeRow(n,unit){
     // 预置草稿题：只在本校确实有草稿的知识点上出现
     (n.kind==='display'||!(KM.draftNodes||[]).includes(n.name))?null:el('button',{class:'btn',text:'导入预置题目草稿',onclick:function(){
       if(!confirm('把这个知识点的预置草稿题导入本校题库并自动分档？导入后请逐题审核，确认后再发布地图。'))return;
+      var mapId=KM.id,batch=KM_OPEN_SEQ,noteKey=kmNoteKey(n);
+      var seq=KSEQ[noteKey]=(KSEQ[noteKey]||0)+1;
+      KNOTE[noteKey]='正在导入预置草稿…';kmRender();kmRevealNode(n.key);
       api('/teacher/knowledge-maps/'+KM.id+'/nodes/'+encodeURIComponent(n.key)+'/drafts',{method:'POST'})
-        .then(function(d){KM=d;var x=d.imported||{};KNOTE[n.key]='已导入 '+(x.added||0)+' 题，跳过已有的 '+(x.reused||0)+' 题';kmRender()})
-        .catch(function(e){KNOTE[n.key]='导入失败：'+e.message;kmRender()})}}),
+        .then(function(d){
+          if(!kmImportLive(mapId,batch,noteKey,seq))return;
+          KM=d;var x=d.imported||{};KNOTE[noteKey]='已导入 '+(x.added||0)+' 题，跳过已有的 '+(x.reused||0)+' 题';kmRender();kmRevealNode(n.key)
+        })
+        .catch(function(e){
+          if(!kmImportLive(mapId,batch,noteKey,seq))return;
+          KNOTE[noteKey]='导入失败：'+e.message;kmRender();kmRevealNode(n.key)
+        })}}),
     n.kind==='optional'?el('label',{},el('input',{type:'checkbox',checked:!!n.enabled,onchange:function(e){var on=e.target.checked;
       kmSave(function(m){kmNode(m,n.key).enabled=on})}}),' 开启这个选学内容'):null,
     el('button',{class:'btn',text:'删除',onclick:function(){
       var msgText='删除知识点 '+n.key+' '+n.name+'？'+(after.length?'它是 '+after.join('、')+' 的前置，删除后这些前置关系一并去掉。':'')+'已分档的题目不会从题库删除。';
       if(!confirm(msgText))return;
+      var noteKey=kmNoteKey(n);
+      delete KNOTE[noteKey];
+      KSEQ[noteKey]=(KSEQ[noteKey]||0)+1;
       kmSave(function(m){m.nodes=m.nodes.filter(function(x){return x.key!==n.key});m.nodes.forEach(function(x){x.prereqs=x.prereqs.filter(function(p){return p!==n.key})})})}}));
   // 默认只占一行：编号 + 名称 + 题目覆盖；点开才看说明、前后置和操作按钮。
   var caret=el('span',{class:'km-caret',text:'▸'});
-  var note=KNOTE[n.key]?el('p',{class:'muted','data-note':n.key,text:KNOTE[n.key]}):null;
-  var body=el('div',{class:'km-node-b'},note,n.detail?el('p',{class:'muted',text:n.detail}):null,tags,
+  var noteText=KNOTE[kmNoteKey(n)];
+  var note=noteText?el('p',{class:'muted','data-note':n.key,text:noteText}):null;
+  var body=el('div',{class:'km-node-b'},n.detail?el('p',{class:'muted',text:n.detail}):null,tags,
     el('p',{class:'muted',text:'前置：'+(n.prereqs.length?n.prereqs.map(kmLabel).join('、'):'无')+'；后续：'+(after.length?after.map(kmLabel).join('、'):'无')}),
     actions,edit,qs);
   body.hidden=true;
@@ -254,7 +283,7 @@ function kmNodeRow(n,unit){
       head.setAttribute('aria-expanded',open?'true':'false');
     }},
     el('span',{class:'km-node-t',text:n.key+'  '+n.name}),kmCoverage(n),caret);
-  var row=el('div',{class:'card km-node','data-node':n.key},head,body);
+  var row=el('div',{class:'card km-node','data-node':n.key},head,note,body);
   if(QPANEL[n.key]){body.hidden=false;caret.textContent='▾';head.setAttribute('aria-expanded','true');kmQuestions(n,qs)}
   return row;
 }
@@ -475,7 +504,7 @@ function kmNodeStudents(d,n,box){
     el('p',{class:'muted',text:'薄弱的学生已默认勾选。巩固题从这个知识点已分档的题里选学生没做过的，先基础后中等；学生按普通作业完成，做完后掌握情况自动更新。'}),
     ul,el('div',{class:'row'},count,go),res));
 }
-function kmOpen(id){api('/teacher/knowledge-maps/'+id).then(function(d){KM=d;QPANEL={};kmRender()}).catch(function(e){kmSay(e.message,true)})}
+function kmOpen(id){KM_OPEN_SEQ++;KNOTE={};KSEQ={};api('/teacher/knowledge-maps/'+id).then(function(d){KM=d;QPANEL={};kmRender()}).catch(function(e){kmSay(e.message,true)})}
 function kmStart(){
   root.textContent='';KMMSG=el('div',{class:'muted',role:'status'});KMBOX=el('div');root.appendChild(KMMSG);root.appendChild(KMBOX);
   api('/teacher/knowledge-maps').then(function(d){
