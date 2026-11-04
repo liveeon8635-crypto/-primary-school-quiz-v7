@@ -35,8 +35,8 @@ def patch_student_quiz_navigation(html: str) -> str:
    try{
      const answers=orderedAnswers();
      const r=aid?await api("/student/assignments/"+aid+"/submit",{method:"POST",body:JSON.stringify({answers})}):await api("/student/practice-submit",{method:"POST",body:JSON.stringify({title,answers})});
-     const learning=Number(r.learningPointsAwarded||0),learningMax=Number(r.learningPointMax||r.total||0);
-     $("#page").innerHTML=head(aid?"作业已提交":"练习完成",title)+'<div class="card empty"><div style="font-size:62px">🏆</div><h1 style="color:var(--primary)">'+r.score+'分</h1><p>答对 '+r.correct+' 题，答错 '+(r.total-r.correct)+' 题</p><p><span class="badge green">本次获得 +'+learning+' 学习积分</span></p><p class="muted">本卷最高 '+learningMax+' 学习积分 · 每答对1题获得1积分</p>'+(aid?'<p class="muted">成绩已回传教师端。</p>':"")+'<button id="backQuiz" class="btn primary">返回</button></div>';
+     const learning=Number(r.learningPointsAwarded||0),learningMax=Number(r.learningPointMax||r.total||0),homework=Number(r.homeworkPointsAwarded||0),isHomework=!!r.homeworkPointsDetail;
+     $("#page").innerHTML=head(aid?"作业已提交":"练习完成",title)+'<div class="card empty"><div style="font-size:62px">🏆</div><h1 style="color:var(--primary)">'+r.score+'分</h1><p>答对 '+r.correct+' 题，答错 '+(r.total-r.correct)+' 题</p><p><span class="badge green">'+(isHomework?'本次获得 '+(homework>=0?'+':'')+homework+' 晚托作业积分':'本次获得 +'+learning+' 学习积分')+'</span></p><p class="muted">'+(isHomework?'按时完成 +3；正确率按 60% 中点上下调整，扣到 0 为止':'本卷最高 '+learningMax+' 学习积分 · 每答对1题获得1积分')+'</p>'+(aid?'<p class="muted">成绩已回传教师端。</p>':"")+'<button id="backQuiz" class="btn primary">返回</button></div>';
      $("#backQuiz").onclick=()=>go(aid?"assignments":"practice");
    }catch(e){submitting=false;render();toast(e.message)}
  };
