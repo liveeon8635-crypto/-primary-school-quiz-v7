@@ -48,7 +48,7 @@
 |---|---|---|
 | [`analysis/knowledge-map.md`](analysis/knowledge-map.md) | 知识地图：单元/知识点/前置关系 + 题目分档 + 学生诊断 | **已上线**（`KNOWLEDGE_MAP=1`） |
 | [`analysis/courseware-reuse.md`](analysis/courseware-reuse.md) | 课程资料复用：批量导入 / 课程模板 / 跨校复制 | A、B 已上线；C 待权限模型 |
-| [`analysis/after-school-homework-assistant.md`](analysis/after-school-homework-assistant.md) | 晚托作业助手 MVP 设计 | 设计，未写代码 |
+| [`analysis/after-school-homework-assistant.md`](analysis/after-school-homework-assistant.md) | 晚托作业助手 MVP 设计 | **已接入代码，待真实业务验收**（开关、题库和师生流程需现场核对） |
 | [`training-sandbox-plan.md`](training-sandbox-plan.md) | 角色实操沙盒实施方案 | 方案 |
 | [`weekend-course/1-现状核对.md`](weekend-course/1-现状核对.md) | 周末课：可复用能力盘点 | 设计稿 |
 | [`weekend-course/2-数据设计稿.md`](weekend-course/2-数据设计稿.md) | 周末课：新增表设计（均带 school_id） | 设计稿 |
@@ -59,6 +59,7 @@
 | 文档 | 内容 |
 |---|---|
 | [`freeman-v071-agent-green-acceptance.md`](freeman-v071-agent-green-acceptance.md) | Freeman Agent V0.7.1 自主工程闭环验收说明 |
+| [`analysis/product-inventory-2026-11-04.md`](analysis/product-inventory-2026-11-04.md) | 2026-11-04 全站功能盘点快照（基线 `3809ca0`；区分“已接入”和“已验收”，并列出文档滞后项） |
 
 ## 6. 新增文档放哪里
 
