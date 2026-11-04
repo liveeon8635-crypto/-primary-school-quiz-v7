@@ -21,6 +21,11 @@ import json
 from types import ModuleType
 from typing import Any
 
+from changying.services.homework_learning_points import (
+    award_homework_practice_points,
+    is_late_care_practice,
+)
+
 
 LEARNING_SUBMISSION_SOURCE = "learning_submission"
 LEARNING_GRADING_SOURCE = "learning_grading"
@@ -70,6 +75,14 @@ def award_submission_learning_points(
 ) -> dict[str, int]:
     if submission is None or actor is None:
         return {"awarded": 0, "maximum": 0}
+
+    if is_late_care_practice(implementation, db, submission):
+        return award_homework_practice_points(
+            implementation,
+            db,
+            submission=submission,
+            actor=actor,
+        )
 
     maximum = max(0, int(getattr(submission, "total", 0) or 0)) * POINTS_PER_QUESTION
     awarded = max(0, int(getattr(submission, "correct", 0) or 0)) * POINTS_PER_QUESTION
@@ -334,20 +347,29 @@ def install_learning_points(implementation: ModuleType) -> None:
                 submission=submission,
                 actor=actor,
             )
+            is_homework = points.get("source") == "homework_practice"
             implementation.audit(
                 db,
                 actor,
-                "points.learning.submission",
+                "points.homework.submission" if is_homework else "points.learning.submission",
                 (
-                    f"submission={submission_id}:awarded={points['awarded']}:"
+                    f"submission={submission_id}:points={points.get('points', points.get('awarded'))}:"
                     f"maximum={points['maximum']}"
                 ),
             )
             db.commit()
             payload = dict(result)
-            payload["learningPointsAwarded"] = points["awarded"]
-            payload["learningPointMax"] = points["maximum"]
-            payload["learningPointRule"] = f"每题{POINTS_PER_QUESTION}积分，答对后获得"
+            if is_homework:
+                payload["learningPointsAwarded"] = 0
+                payload["learningPointMax"] = 0
+                payload["homeworkPointsAwarded"] = points["points"]
+                payload["homeworkPointMax"] = points["maximum"]
+                payload["homeworkPointsDetail"] = points
+                payload["homeworkPointsRule"] = "晚托巩固练习：按时 +3，正确率 60% 中点上下各 3 分，扣到 0 为止"
+            else:
+                payload["learningPointsAwarded"] = points["awarded"]
+                payload["learningPointMax"] = points["maximum"]
+                payload["learningPointRule"] = f"每题{POINTS_PER_QUESTION}积分，答对后获得"
             return payload
 
         route.dependant.call = scored_submission
