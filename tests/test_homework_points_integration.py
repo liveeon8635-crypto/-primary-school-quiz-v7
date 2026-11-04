@@ -103,6 +103,11 @@ with TestClient(app) as client:
     assert homework[0]["points"] == 2 and homework[0]["category"] == "learning"
     assert learning == [], rows
 
+    page = client.get("/v1", headers=sh)
+    assert page.status_code == 200, page.text
+    assert "homeworkPointsDetail" in page.text
+    assert "晚托作业积分" in page.text
+
 print("OK")
 '''
 
