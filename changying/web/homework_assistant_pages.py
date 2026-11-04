@@ -167,7 +167,7 @@ function importView(body){
     var f=file.files&&file.files[0];if(!f)return;
     msg.textContent='';msg.appendChild(notice('ok','正在识别截图…'));shot.disabled=true;
     shrink(f,1800).then(function(blob){return api('/teacher/homework/parse-image',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}})})
-      .then(function(d){text.value=d.text;msg.textContent='';msg.appendChild(notice('ok','已识别，请检查文字，需要的话直接修改，再点“AI 解析”。'))})
+      .then(function(d){text.value=d.text;msg.textContent='';msg.appendChild(notice('ok','已识别，请检查文字，需要的话直接修改，再点“AI 解析”。'));if(d.truncated)msg.appendChild(notice('error','识别内容较长，可能未完整显示。请核对最后一条作业是否齐全，缺了就手动补上。'))})
       .catch(function(e){msg.textContent='';msg.appendChild(notice('error',e.message))}).then(function(){shot.disabled=false;file.value=''});
   });
   parseBtn.addEventListener('click',function(){
@@ -227,6 +227,19 @@ function noticesView(body){
         el('div',{class:'row'},el('b',{text:(n.groupLabel||'作业清单')+' · '+(n.publishedAt||n.createdAt)}),el('span',{class:'tag',text:n.status==='published'?'已发布':'草稿'})),
         el('div',{class:'muted',text:n.itemCount+' 条作业 · '+n.recipientCount+' 名学生 · 已完成 '+n.doneCount+'/'+n.totalCount}),
         el('div',{class:'bar'},el('i',{style:'width:'+pct+'%'})),detail);
+      if(n.status==='published')card.appendChild(el('button',{text:'设置作业时限',onclick:function(){
+        api('/teacher/homework/notices/'+n.id).then(function(d){
+          var ids=(d.recipients||[]).map(function(r){return r.studentID});
+          if(!ids.length){alert('这份作业还没有分配学生，先在发布区选择学生');return}
+          var v=prompt('本次作业时限（分钟，1-600）：', d.timeLimitMinutes||'');
+          if(v===null)return;
+          var m=Number(String(v).trim());
+          if(!isFinite(m)||m<1||m>600){alert('请填 1 到 600 之间的整数');return}
+          api('/teacher/homework/notices/'+n.id+'/publish',{json:{studentIDs:ids,timeLimitMinutes:m}})
+            .then(function(){alert('已设为 '+m+' 分钟。学生端会显示倒计时。');n.timeLimitMinutes=m})
+            .catch(function(e){alert(e.message)});
+        }).catch(function(e){alert(e.message)});
+      }}));
       if(n.status==='published')card.appendChild(el('button',{text:'查看每个学生的完成情况',onclick:function(){
         detail.textContent='';
         api('/teacher/homework/notices/'+n.id).then(function(d){

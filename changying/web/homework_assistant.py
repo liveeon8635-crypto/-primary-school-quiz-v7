@@ -26,7 +26,7 @@ from changying.services.homework_prompts import (
     clean_parse_result,
     scrub_notice_text,
 )
-from changying.services.homework_vision import read_image_body, recognize_image, vision_enabled
+from changying.services.homework_vision import RECOGNIZED_CHAR_LIMIT, read_image_body, recognize_image, vision_enabled
 from changying.web.homework_assistant_pages import homework_page_html
 
 HOMEWORK_ASSISTANT_FLAG = "HOMEWORK_ASSISTANT"
@@ -224,7 +224,10 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
             return recognize_image(implementation, db, u, data, feature="homework_parse_vision")
 
         result = await run_in_threadpool(work)
-        return {"text": scrub_notice_text(result["text"]), "confidence": result["confidence"]}
+        text = scrub_notice_text(result["text"])
+        # 识别返回在服务层被截到 4000 字；到顶就提醒老师核对最后一条，避免静默少题。
+        return {"text": text, "confidence": result["confidence"],
+                "truncated": len(result["text"]) >= RECOGNIZED_CHAR_LIMIT}
 
     @router.post("/teacher/homework/parse")
     def parse(b: ParseBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
