@@ -668,7 +668,8 @@ def install_homework_help(implementation: Any) -> APIRouter:
                 "next": {
                     "label": "查看求助并接着讲" if row["state"] == "escalated" else "查看并布置巩固",
                     "route": "/v1/homework",
-                    "params": {"helpID": row["id"]},
+                    # 带上定位参数：已讲解的还要带学生 ID，布置巩固时才能直接定位到这个学生。
+                    "params": {"helpID": row["id"], "studentID": row["student_id"]},
                 },
                 # 排序权重：数字越小越靠前
                 "rank": 0 if reason == "学生主动求助" else 1 if reason == "两轮补救后仍卡住" else 2,
