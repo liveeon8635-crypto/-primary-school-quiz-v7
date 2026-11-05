@@ -574,6 +574,61 @@ def install_homework_help(implementation: Any) -> APIRouter:
         )
         return {"items": [summary(_mapping(r)) for r in rows], "open": int(open_count or 0)}
 
+    @router.get("/teacher/homework/follow-ups")
+    def teacher_follow_ups(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """P0-B 第一步：只读候选。不存状态、不设每日上限、不调用模型。
+
+        三句固定格式：卡点 / 依据 / 下一步。排序：主动求助 → 两轮未过 → 待独立验证。
+        """
+        need(u, "teacher")
+        mine = teacher_student_ids(db, u)
+        if not mine:
+            return {"items": [], "note": "还没有可见学生"}
+        rows = db.execute(
+            select(helps, User.name.label("student_name"))
+            .join(User, User.id == helps.c.student_id)
+            .where(
+                helps.c.school_id == u.school_id,
+                helps.c.student_id.in_(mine),
+                helps.c.state.in_(("escalated", "resolved")),
+            )
+            .order_by(helps.c.escalated_at.asc(), helps.c.id.asc())
+            .limit(200)
+        ).all()
+
+        def _reason(row):
+            if row["state"] == "resolved":
+                return "已讲解，尚无独立巩固结果"
+            if row["escalate_reason"] == "verify_mismatch":
+                return "两轮补救后仍卡住"
+            return "学生主动求助"
+
+        items = []
+        for raw in rows:
+            row = _mapping(raw)
+            reason = _reason(row)
+            items.append({
+                "helpID": row["id"],
+                "studentName": row["student_name"],
+                "reason": reason,
+                "evidence": {
+                    "helpID": row["id"],
+                    "state": row["state"],
+                    "escalatedAt": _iso(row["escalated_at"]),
+                    "resolvedAt": _iso(row["resolved_at"]),
+                    "question": (row["question_text"] or "")[:80],
+                },
+                "next": {
+                    "label": "查看求助并接着讲" if row["state"] == "escalated" else "查看并布置巩固",
+                    "route": "/v1/homework",
+                    "params": {"helpID": row["id"]},
+                },
+                # 排序权重：数字越小越靠前
+                "rank": 0 if reason == "学生主动求助" else 1 if reason == "两轮补救后仍卡住" else 2,
+            })
+        items.sort(key=lambda x: (x["rank"], x["evidence"]["escalatedAt"] or "", x["helpID"]))
+        return {"items": items[:50], "note": "只读候选；每日上限与去重尚未实现"}
+
     @router.get("/teacher/homework/help/{help_id}")
     def teacher_detail(help_id: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
