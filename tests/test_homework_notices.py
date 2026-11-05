@@ -668,3 +668,45 @@ print("OK")
 ''',
         {"HOMEWORK_ASSISTANT": "1"},
     )
+
+
+def test_truncated_flag_is_set_when_recognition_hits_the_limit(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r"""
+import os
+from changying.services import homework_vision
+import app_v924 as legacy
+
+LONG = "x" * 4001
+
+class FakeResp:
+    status_code = 200
+    ok = True
+    def json(self):
+        return {"choices": [{"message": {"content": json.dumps({"text": LONG, "hasFigure": False, "confidence": 0.9})}}], "usage": {}}
+
+homework_vision.requests.post = lambda url, headers=None, json=None, timeout=None: FakeResp()
+legacy._ai_rate_check = lambda db, school_id: None
+legacy._validate_ai_base_url = lambda base, runtime=False: base
+
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    allow_ai(school_of(sid))
+    os.environ.update({
+        "HOMEWORK_VISION_PROVIDER": "openai_compatible",
+        "HOMEWORK_VISION_BASE_URL": "https://api.deepseek.com",
+        "HOMEWORK_VISION_MODEL": "vision-test-model",
+        "HOMEWORK_VISION_API_KEY": "test-key-not-real",
+    })
+    r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"},
+                    content=b"\xff\xd8\xff\xe0" + b"y" * 200)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["text"]) == 4000, len(body["text"])
+    assert body["truncated"] is True, "到 4000 字上限必须标记 truncated"
+print("OK")
+""",
+        {"HOMEWORK_ASSISTANT": "1"},
+    )
