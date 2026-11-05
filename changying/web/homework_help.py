@@ -711,6 +711,75 @@ def install_homework_help(implementation: Any) -> APIRouter:
             "note": "已展示过的今天继续可见；新的按每天每班 %d 条补入" % FOLLOW_UP_DAILY_LIMIT,
         }
 
+    @router.get("/teacher/homework/follow-ups/stats")
+    def follow_ups_stats(days: int = 10, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """试点的耗时基线：从"建议首次出现"到"老师处理/暂缓"用了多久。
+
+        只统计本人，按天聚合；不记录、不返回学生姓名。
+        """
+        need(u, "teacher")
+        from app_v924 import AuditLog
+
+        window = max(1, min(int(days), 60))
+        since = datetime.utcnow() - timedelta(days=window)
+        rows = db.execute(
+            select(AuditLog.action, AuditLog.detail, AuditLog.created_at).where(
+                AuditLog.school_id == u.school_id,
+                AuditLog.user_id == u.id,
+                AuditLog.action.in_(("follow_up_shown", "follow_up_dismissed", "follow_up_snoozed")),
+                AuditLog.created_at >= since,
+            ).order_by(AuditLog.created_at.asc())
+        ).all()
+
+        shown_at: dict[int, datetime] = {}
+        per_day: dict[str, dict[str, Any]] = {}
+
+        def bucket(day: str) -> dict[str, Any]:
+            return per_day.setdefault(day, {"day": day, "shown": 0, "handled": 0,
+                                            "minutes": []})
+
+        for action, detail, created in rows:
+            try:
+                data = json.loads(detail or "{}")
+            except ValueError:
+                continue
+            hid = data.get("helpID")
+            day = data.get("day") or (created + timedelta(hours=8)).strftime("%Y-%m-%d")
+            if not isinstance(hid, int):
+                continue
+            if action == "follow_up_shown":
+                bucket(day)["shown"] += 1
+                shown_at.setdefault(hid, created)
+            else:
+                slot = bucket(day)
+                slot["handled"] += 1
+                first = shown_at.get(hid)
+                if first is not None and created >= first:
+                    slot["minutes"].append(int((created - first).total_seconds() // 60))
+
+        out = []
+        for day in sorted(per_day):
+            slot = per_day[day]
+            minutes = sorted(slot["minutes"])
+            out.append({
+                "day": day,
+                "shown": slot["shown"],
+                "handled": slot["handled"],
+                "handledWithTiming": len(minutes),
+                "medianMinutes": minutes[len(minutes) // 2] if minutes else None,
+                "maxMinutes": minutes[-1] if minutes else None,
+            })
+        all_minutes = sorted(m for slot in per_day.values() for m in slot["minutes"])
+        return {
+            "days": window,
+            "perDay": out,
+            "overall": {
+                "handledWithTiming": len(all_minutes),
+                "medianMinutes": all_minutes[len(all_minutes) // 2] if all_minutes else None,
+            },
+            "note": "只统计本人在本页处理过的建议；直接去求助列表处理的不会计入",
+        }
+
     @router.post("/teacher/homework/follow-ups/shown")
     def follow_ups_shown(b: FollowUpShownBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """老师确实看到这些建议时调用；同一学生同一天只计一次预算。"""
