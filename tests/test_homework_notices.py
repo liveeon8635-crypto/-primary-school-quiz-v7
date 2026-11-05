@@ -745,3 +745,53 @@ print("OK")
 """,
         {"HOMEWORK_ASSISTANT": "1"},
     )
+
+
+def test_follow_ups_budget_and_dismiss(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r"""
+from datetime import datetime
+from sqlalchemy import insert
+
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    tbl = legacy.Base.metadata.tables["help_requests"]
+    school_id = school_of(sid)
+    ids = []
+    with legacy.SessionLocal() as db:
+        for n in range(7):
+            r = db.execute(insert(tbl).values(
+                school_id=school_id, student_id=sid, grade=3, question_text="题%d" % n,
+                state="escalated", escalate_reason="student_request", escalated_at=datetime.utcnow(),
+            ))
+            ids.append(r.inserted_primary_key[0])
+        db.commit()
+
+    body = client.get("/teacher/homework/follow-ups", headers=th).json()
+    assert body["dailyLimit"] == 5
+    assert len(body["items"]) == 5, "每天每班最多 5 条"
+
+    first = body["items"][0]["helpID"]
+    shown = client.post("/teacher/homework/follow-ups/shown", headers=th, json={"helpIDs": [first]})
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["recorded"] == [first]
+
+    dismissed = client.post("/teacher/homework/follow-ups/%d/dismiss" % first, headers=th)
+    assert dismissed.status_code == 200
+    assert dismissed.json()["helpStateUnchanged"] is True, "不能改求助结论"
+
+    after = client.get("/teacher/homework/follow-ups", headers=th).json()
+    assert first not in [x["helpID"] for x in after["items"]], "已处理的建议不再出现"
+
+    snoozed = client.post("/teacher/homework/follow-ups/%d/snooze" % body["items"][1]["helpID"], headers=th)
+    assert snoozed.status_code == 200
+    after2 = client.get("/teacher/homework/follow-ups", headers=th).json()
+    assert body["items"][1]["helpID"] not in [x["helpID"] for x in after2["items"]]
+
+    assert client.get("/teacher/homework/follow-ups", headers=sh).status_code == 403
+print("OK")
+""",
+        {"HOMEWORK_ASSISTANT": "1"},
+    )
