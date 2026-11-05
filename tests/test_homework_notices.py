@@ -816,10 +816,11 @@ with TestClient(app) as client:
             school_id=school_id, student_id=sid, grade=3, question_text="a",
             state="escalated", escalate_reason="student_request", escalated_at=datetime.utcnow()))
         hid = r.inserted_primary_key[0]
-        # 三天前"已处理"过这条求助
+        # 三天前"已处理"过这条求助：created_at 也挪到三天前，才能证明旧的 24 小时窗口问题已修
         db.add(legacy.AuditLog(
             school_id=school_id, user_id=client.get("/session", headers=th).json()["userID"],
             action="follow_up_dismissed",
+            created_at=datetime.utcnow() - timedelta(days=3),
             detail=_json.dumps({"helpID": hid, "studentID": sid, "day": (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%d")}),
         ))
         db.commit()
@@ -867,3 +868,211 @@ print("OK")
 """,
         {"HOMEWORK_ASSISTANT": "1"},
     )
+
+
+def test_follow_ups_verification_comes_from_real_submissions(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r"""
+import json
+from datetime import datetime, timedelta
+from sqlalchemy import func, insert, select
+
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    teacher_id = client.get("/session", headers=th).json()["userID"]
+    school_id = school_of(sid)
+    helps_tbl = legacy.Base.metadata.tables["help_requests"]
+    know_tbl = legacy.Base.metadata.tables["homework_ai_knowledge"]
+    subs_tbl = legacy.Base.metadata.tables["submissions"]
+
+    # 造 3 道同知识点的题：独立验证门槛是"后续提交 3 题、80% 正确"。
+    knowledge = "独立验证测试点"
+    with legacy.SessionLocal() as db:
+        qids = []
+        for n in range(3):
+            r = db.execute(insert(legacy.Base.metadata.tables["questions"]).values(
+                school_id=school_id, grade=3, subject="数学", knowledge=knowledge,
+                text="第%d题" % n, options_json="{}", correct_index=0))
+            qids.append(int(r.inserted_primary_key[0]))
+        db.commit()
+    with legacy.SessionLocal() as db:
+        class_id = db.scalar(
+            select(legacy.ClassStudent.class_id).where(legacy.ClassStudent.student_id == sid).limit(1)
+        )
+
+    def add_student(name):
+        with legacy.SessionLocal() as db:
+            pupil = legacy.User(school_id=school_id, username=name, password_hash=legacy.hash_password("x"),
+                                name=name, role="student", grade=3)
+            db.add(pupil); db.flush()
+            db.add(legacy.ClassStudent(class_id=class_id, student_id=pupil.id))
+            db.commit()
+            return int(pupil.id)
+
+    def add_help(student_id, question="题"):
+        with legacy.SessionLocal() as db:
+            r = db.execute(insert(helps_tbl).values(
+                school_id=school_id, student_id=student_id, grade=3, question_text=question,
+                state="escalated", escalate_reason="student_request", escalated_at=datetime.utcnow()))
+            db.commit()
+            return int(r.inserted_primary_key[0])
+
+    def add_knowledge(student_id, help_id, matched=True, key=None):
+        with legacy.SessionLocal() as db:
+            db.execute(insert(know_tbl).values(
+                school_id=school_id, student_id=student_id, help_id=help_id, grade=3,
+                subject="数学" if matched else "",
+                knowledge_key=(key if key is not None else knowledge), raw_knowledge=(key if key is not None else knowledge),
+                matched=matched, question_excerpt="题", verify_status="skipped",
+                created_at=datetime.utcnow() - timedelta(hours=2)))
+            db.commit()
+
+    def add_submission(student_id, correct):
+        with legacy.SessionLocal() as db:
+            db.execute(insert(subs_tbl).values(
+                school_id=school_id, student_id=student_id, title="巩固",
+                score=0, correct=0, total=len(qids),
+                answers_json=json.dumps([{"question_id": q, "correct": correct} for q in qids]),
+                submitted_at=datetime.utcnow()))
+            db.commit()
+
+    # 1) 匹配到知识点，后续巩固 3 题全对 → 已独立验证
+    passed = add_help(sid)
+    add_knowledge(sid, passed)
+    add_submission(sid, True)
+
+    # 2) 匹配到知识点，后续巩固 3 题全错 → 练习尚未通过
+    failed_sid = add_student("pupil_failed")
+    failed = add_help(failed_sid)
+    add_knowledge(failed_sid, failed)
+    add_submission(failed_sid, False)
+
+    # 3) 没有任何知识点记录 → 无法判定
+    unknown_sid = add_student("pupil_unknown")
+    unknown = add_help(unknown_sid)
+
+    # 4) 有记录但匹配不上学校知识点 → 无法判定
+    unmatched_sid = add_student("pupil_unmatched")
+    unmatched = add_help(unmatched_sid)
+    add_knowledge(unmatched_sid, unmatched, matched=False, key="完全无关的奇怪说法")
+
+    body = client.get("/teacher/homework/follow-ups", headers=th).json()
+    labels = {x["helpID"]: x["verification"] for x in body["items"]}
+    # 已独立验证 = 不需要再跟进，这条会从当天列表移出；其余三条保留并给出明确标签
+    assert passed not in labels, ("已验证的求助应移出列表", labels)
+    assert set(labels) == {failed, unknown, unmatched}, labels
+    assert labels.get(failed) == "练习尚未通过", labels
+    assert labels.get(unknown) == "无法判定是否已验证", labels
+    assert labels.get(unmatched) == "无法判定是否已验证", labels
+
+    # 5) 判定依赖出错时只退回"无法判定"，不能吞成"尚无独立验证"或 500
+    import changying.services.homework_knowledge_flags as flags_mod
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("knowledge flags down")
+
+    flags_mod.knowledge_flags = boom
+    after = client.get("/teacher/homework/follow-ups", headers=th).json()
+    assert after["items"], after
+    assert all(x["verification"] == "无法判定是否已验证" for x in after["items"]), after
+print("OK")
+""",
+        {"HOMEWORK_ASSISTANT": "1"},
+    )
+
+
+def test_follow_ups_budget_is_per_class_and_never_refunded(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r"""
+from datetime import datetime, timedelta
+from sqlalchemy import insert, select
+
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    teacher_id = client.get("/session", headers=th).json()["userID"]
+    school_id = school_of(sid)
+    helps_tbl = legacy.Base.metadata.tables["help_requests"]
+
+    with legacy.SessionLocal() as db:
+        class_a = db.scalar(select(legacy.ClassStudent.class_id).where(legacy.ClassStudent.student_id == sid).limit(1))
+        class_b = legacy.SchoolClass(school_id=school_id, name="晚托B班", grade=3, teacher_id=teacher_id)
+        db.add(class_b); db.flush(); class_b_id = class_b.id; db.commit()
+
+    def add_student(name, class_id):
+        with legacy.SessionLocal() as db:
+            pupil = legacy.User(school_id=school_id, username=name, password_hash=legacy.hash_password("x"),
+                                name=name, role="student", grade=3)
+            db.add(pupil); db.flush()
+            db.add(legacy.ClassStudent(class_id=class_id, student_id=pupil.id))
+            db.commit()
+            return int(pupil.id)
+
+    base_time = datetime.utcnow()
+
+    def add_help(student_id, minutes):
+        with legacy.SessionLocal() as db:
+            r = db.execute(insert(helps_tbl).values(
+                school_id=school_id, student_id=student_id, grade=3, question_text="题",
+                state="escalated", escalate_reason="student_request",
+                escalated_at=base_time + timedelta(minutes=minutes)))
+            db.commit()
+            return int(r.inserted_primary_key[0])
+
+    # A 班 6 人（sid + 新增 5 人），B 班 2 人
+    a_students = [sid] + [add_student("a_pupil_%d" % n, class_a) for n in range(5)]
+    b_students = [add_student("b_pupil_%d" % n, class_b_id) for n in range(2)]
+
+    a_helps = []
+    for index, student_id in enumerate(a_students):
+        a_helps.append(add_help(student_id, index * 10))
+    b_helps = [add_help(student_id, 100 + index) for index, student_id in enumerate(b_students)]
+
+    # 第 6 个 A 班学生还有一条更晚的求助：名额满了以后也不能靠"再来一条"补进
+    a6_extra = add_help(a_students[5], 500)
+
+    body = client.get("/teacher/homework/follow-ups", headers=th).json()
+    shown_ids = [x["helpID"] for x in body["items"]]
+    shown_students = {x["studentID"] for x in body["items"]}
+    assert len(shown_ids) == 7, (len(shown_ids), shown_ids)
+    assert set(a_helps[:5]) <= set(shown_ids), shown_ids
+    assert a_students[5] not in shown_students, "A 班第 6 人不能出现：这个班的名额已满"
+    assert a6_extra not in shown_ids, "同一学生的第二条求助也不能顶进来"
+    assert set(b_helps) <= set(shown_ids), shown_ids
+
+    # 确认展示：每个学生记 1 条，7 条都进预算
+    recorded = client.post("/teacher/homework/follow-ups/shown", headers=th, json={"helpIDs": shown_ids}).json()
+    assert sorted(recorded["recorded"]) == sorted(shown_ids), recorded
+    # 重复确认是幂等的
+    again = client.post("/teacher/homework/follow-ups/shown", headers=th, json={"helpIDs": shown_ids}).json()
+    assert again["recorded"] == [], again
+    # 同一学生的多条 helpID 只记第一条
+    dup = client.post("/teacher/homework/follow-ups/shown", headers=th,
+                      json={"helpIDs": [a6_extra, add_help(a_students[5], -10)]}).json()
+    assert dup["recorded"] == [], dup
+
+    # 处理掉一个已经展示过的 A 班学生：名额不返还，第 6 人仍然不能出现
+    client.post("/teacher/homework/follow-ups/%d/dismiss" % a_helps[0], headers=th)
+    after = client.get("/teacher/homework/follow-ups", headers=th).json()
+    after_ids = [x["helpID"] for x in after["items"]]
+    after_students = {x["studentID"] for x in after["items"]}
+    assert len(after_ids) == 6, after_ids
+    assert a_helps[0] not in after_ids, "已处理的建议当天收起"
+    assert a_students[5] not in after_students, "处理掉一条不能把名额还给第 6 人"
+    assert a6_extra not in after_ids
+    assert set(b_helps) <= set(after_ids), "B 班有自己的预算，不受 A 班影响"
+
+    # 已展示但未处理的学生，刷新后仍是同一条求助，不会换成同学生的另一条
+    second_help = add_help(a_students[1], 300)
+    refreshed = client.get("/teacher/homework/follow-ups", headers=th).json()
+    refreshed_ids = [x["helpID"] for x in refreshed["items"]]
+    assert a_helps[1] in refreshed_ids, refreshed_ids
+    assert second_help not in refreshed_ids, "同一学生当天只保留最早那条已展示的求助"
+print("OK")
+""",
+        {"HOMEWORK_ASSISTANT": "1"},
+    )
+

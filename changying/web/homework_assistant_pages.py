@@ -142,12 +142,12 @@ function studentView(){
 /* ---------------------------------------------------------------- teacher */
 function followUpsView(box){
   box.textContent='';
-  var card=el('div',{class:'card'},el('h2',{text:'待跟进'}),el('div',{class:'muted',text:'这些是今天最需要你留意的，每天最多 5 条。建议只在这里展示，点「已处理」只是收起建议，不会改变求助本身的状态。'}),box);
+  var card=el('div',{class:'card'},el('h2',{text:'待跟进'}),el('div',{class:'muted',text:'这些是今天最需要你留意的，每个班每天最多 5 条。建议只在这里展示，点「已处理」只是收起建议，不会改变求助本身的状态。'}),box);
   card.appendChild(el('div',{class:'muted',text:'正在加载…'}));
   api('/teacher/homework/follow-ups').then(function(d){
     card.textContent='';
     card.appendChild(el('h2',{text:'待跟进'}));
-    card.appendChild(el('div',{class:'muted',text:'每天最多 '+(d.dailyLimit||5)+' 条；点「已处理」只收起建议，求助本身仍需你在求助列表确认。'}));
+    card.appendChild(el('div',{class:'muted',text:'每个班每天最多 '+(d.dailyLimit||5)+' 条；点「已处理」只收起建议，求助本身仍需你在求助列表确认。'}));
     if(!(d.items||[]).length){card.appendChild(el('div',{class:'muted',text:'今天没有需要跟进的建议。'}));return}
     var shown=[];
     d.items.forEach(function(it){

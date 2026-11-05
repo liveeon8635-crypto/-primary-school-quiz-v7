@@ -539,6 +539,26 @@ def install_homework_help(implementation: Any) -> APIRouter:
         ).all()
         return {int(x) for x in rows}
 
+    def teacher_student_classes(db: Any, teacher: Any) -> dict[int, set[int]]:
+        """每个学生属于这位老师的哪些班：班级维度的每日预算按这份关系扣。"""
+        rows = db.execute(
+            select(ClassStudent.student_id, ClassStudent.class_id)
+            .join(SchoolClass, SchoolClass.id == ClassStudent.class_id)
+            .where(SchoolClass.teacher_id == teacher.id, SchoolClass.school_id == teacher.school_id)
+        ).all()
+        out: dict[int, set[int]] = {}
+        for student_id, class_id in rows:
+            out.setdefault(int(student_id), set()).add(int(class_id))
+        return out
+
+    def _shown_by_class(class_members: dict[int, set[int]], shown_students: set[int]) -> dict[int, set[int]]:
+        """当天已展示的学生按班归集；已处理/暂缓/已验证移出列表的学生仍然占名额。"""
+        out: dict[int, set[int]] = {}
+        for student_id in shown_students:
+            for class_id in class_members.get(student_id, ()):
+                out.setdefault(class_id, set()).add(student_id)
+        return out
+
     def _annotate_verification(implementation: Any, db: Any, teacher: Any, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """按真实提交判断"已讲解"之后有没有独立通过；匹配不上就说无法判定（宁可多提醒）。"""
         from changying.services.homework_knowledge import register_homework_knowledge_table
@@ -546,18 +566,30 @@ def install_homework_help(implementation: Any) -> APIRouter:
 
         table = register_homework_knowledge_table(implementation)
         states: dict[int, dict[str, str]] = {}
+        undecided: set[int] = set()
         for item in items:
             student_id = item.get("studentID")
             if student_id is None:
                 item["verification"] = "无法判定是否已验证"
                 continue
-            if student_id not in states:
-                    try:
-                        result = knowledge_flags(implementation, db, teacher.school_id, student_id)
-                    except Exception:  # noqa: BLE001
-                        result = {}
-                        raw_flags = result.get("flags", []) if isinstance(result, dict) else []
-                        states[student_id] = {f["knowledge"]: f["state"] for f in raw_flags}
+            if student_id not in states and student_id not in undecided:
+                try:
+                    result = knowledge_flags(implementation, db, teacher.school_id, student_id)
+                except Exception:  # noqa: BLE001 - 这名学生的判定失败，只影响他本人
+                    undecided.add(student_id)
+                else:
+                    if not isinstance(result, dict):
+                        undecided.add(student_id)
+                    else:
+                        raw_flags = result.get("flags", [])
+                        states[student_id] = {
+                            f["knowledge"]: f["state"]
+                            for f in raw_flags
+                            if isinstance(f, dict) and f.get("knowledge")
+                        }
+            if student_id in undecided:
+                item["verification"] = "无法判定是否已验证"
+                continue
             row = db.execute(
                 select(table.c.knowledge_key, table.c.matched).where(
                     table.c.school_id == teacher.school_id,
@@ -753,6 +785,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
             items = [x for x in items if x["verification"] != "已独立验证"]
 
         # 每天每班最多 5 条：已展示过的继续显示，新的只补到预算内。
+        # 预算按当天完整展示历史扣（每班各自 5 条），已处理、暂缓或已验证移出列表都不返还名额。
         state = follow_up_state(db, u)
         shown_today = state["shown"]
         blocked_students = state["dismissedStudents"] | state["snoozedStudents"]
@@ -765,23 +798,34 @@ def install_homework_help(implementation: Any) -> APIRouter:
                 continue  # 该学生今天已处理/暂缓过，当天不再推它的其它求助
             eligible.append(item)
 
+        class_members = teacher_student_classes(db, u)
+        shown_students = state["shownStudents"]
+        shown_by_class = _shown_by_class(class_members, shown_students)
         keep: list[dict[str, Any]] = []
-        seen: set[int] = set()
-        # 今天已经展示过的先放回，且占用当天的 5 个名额
+        kept_students: set[int] = set()
+        # 今天已经展示过的先放回；同一学生只保留一条，并占用当天的名额
         for item in eligible:
-            if item["helpID"] in shown_today:
-                keep.append(item)
-                seen.add(item["studentID"])
-        budget = FOLLOW_UP_DAILY_LIMIT - len(seen)
+            if item["helpID"] not in shown_today:
+                continue
+            student_id = item["studentID"]
+            if student_id in kept_students:
+                continue
+            kept_students.add(student_id)
+            keep.append(item)
         for item in eligible:
             if item["helpID"] in shown_today:
                 continue
-            if item["studentID"] in seen:
+            student_id = item["studentID"]
+            if student_id is None or student_id in kept_students or student_id in shown_students:
                 continue  # 同一学生当天最多 1 条
-            if budget <= 0:
+            classes = class_members.get(student_id, set())
+            if not classes:
                 continue
-            budget -= 1
-            seen.add(item["studentID"])
+            if any(len(shown_by_class.get(class_id, ())) >= FOLLOW_UP_DAILY_LIMIT for class_id in classes):
+                continue  # 所在班当天的 5 条已经用完
+            for class_id in classes:
+                shown_by_class.setdefault(class_id, set()).add(student_id)
+            kept_students.add(student_id)
             keep.append(item)
         return {
             "items": keep[:50],
@@ -875,9 +919,12 @@ def install_homework_help(implementation: Any) -> APIRouter:
             .with_for_update()
         ).first()
         state = follow_up_state(db, u)
+        class_members = teacher_student_classes(db, u)
+        counted_students = set(state["shownStudents"])
+        shown_by_class = _shown_by_class(class_members, counted_students)
         recorded = []
         for hid in ids:
-            if hid in state["shown"] or len(state["shown"]) >= FOLLOW_UP_DAILY_LIMIT:
+            if hid in state["shown"]:
                 continue
             owned = db.execute(
                 select(helps.c.id, helps.c.student_id).where(
@@ -887,12 +934,23 @@ def install_homework_help(implementation: Any) -> APIRouter:
             ).first()
             if owned is None:
                 continue
+            student_id = int(owned.student_id)
+            if student_id in counted_students:
+                continue  # 同一学生当天只记 1 条，和列表的展示规则一致
+            classes = class_members.get(student_id, set())
+            if not classes:
+                continue
+            if any(len(shown_by_class.get(class_id, ())) >= FOLLOW_UP_DAILY_LIMIT for class_id in classes):
+                continue  # 该学生所在班的每日名额已经用完
             db.add(implementation.AuditLog(
                 school_id=u.school_id, user_id=u.id, action="follow_up_shown",
                 detail=json.dumps({"helpID": hid, "studentID": owned.student_id,
                                    "teacherID": u.id, "day": _local_day()}, ensure_ascii=False)[:1000],
             ))
             state["shown"].add(hid)
+            counted_students.add(student_id)
+            for class_id in classes:
+                shown_by_class.setdefault(class_id, set()).add(student_id)
             recorded.append(hid)
         db.commit()
         return {"recorded": recorded, "shownToday": sorted(state["shown"]),
