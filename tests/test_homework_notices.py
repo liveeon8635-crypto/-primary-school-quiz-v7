@@ -795,3 +795,40 @@ print("OK")
 """,
         {"HOMEWORK_ASSISTANT": "1"},
     )
+
+
+def test_follow_ups_stats_measure_time_from_shown_to_handled(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r"""
+from datetime import datetime, timedelta
+from sqlalchemy import insert
+
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    tbl = legacy.Base.metadata.tables["help_requests"]
+    with legacy.SessionLocal() as db:
+        r = db.execute(insert(tbl).values(
+            school_id=school_of(sid), student_id=sid, grade=3, question_text="a",
+            state="escalated", escalate_reason="student_request", escalated_at=datetime.utcnow()))
+        hid = r.inserted_primary_key[0]
+        db.commit()
+
+    client.post("/teacher/homework/follow-ups/shown", headers=th, json={"helpIDs": [hid]})
+    # 把展示时间挪到 30 分钟前，模拟老师过了一会儿才处理
+    audit = legacy.AuditLog
+    with legacy.SessionLocal() as db:
+        db.query(audit).filter(audit.action == "follow_up_shown").update(
+            {audit.created_at: datetime.utcnow() - timedelta(minutes=30)})
+        db.commit()
+    client.post("/teacher/homework/follow-ups/%d/dismiss" % hid, headers=th)
+
+    stats = client.get("/teacher/homework/follow-ups/stats?days=10", headers=th).json()
+    assert stats["overall"]["handledWithTiming"] == 1, stats
+    assert stats["overall"]["medianMinutes"] >= 29, stats
+    assert client.get("/teacher/homework/follow-ups/stats", headers=sh).status_code == 403
+print("OK")
+""",
+        {"HOMEWORK_ASSISTANT": "1"},
+    )
