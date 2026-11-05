@@ -167,7 +167,7 @@ function importView(body){
     var f=file.files&&file.files[0];if(!f)return;
     msg.textContent='';msg.appendChild(notice('ok','正在识别截图…'));shot.disabled=true;
     shrink(f,1800).then(function(blob){return api('/teacher/homework/parse-image',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}})})
-      .then(function(d){text.value=d.text;msg.textContent='';msg.appendChild(notice('ok','已识别，请检查文字，需要的话直接修改，再点“AI 解析”。'))})
+      .then(function(d){text.value=d.text;msg.textContent='';msg.appendChild(notice('ok','已识别，请检查文字，需要的话直接修改，再点“AI 解析”。'));if(d.truncated)msg.appendChild(notice('error','识别内容较长，可能未完整显示。请核对最后一条作业是否齐全，缺了就手动补上。'))})
       .catch(function(e){msg.textContent='';msg.appendChild(notice('error',e.message))}).then(function(){shot.disabled=false;file.value=''});
   });
   parseBtn.addEventListener('click',function(){
@@ -227,6 +227,19 @@ function noticesView(body){
         el('div',{class:'row'},el('b',{text:(n.groupLabel||'作业清单')+' · '+(n.publishedAt||n.createdAt)}),el('span',{class:'tag',text:n.status==='published'?'已发布':'草稿'})),
         el('div',{class:'muted',text:n.itemCount+' 条作业 · '+n.recipientCount+' 名学生 · 已完成 '+n.doneCount+'/'+n.totalCount}),
         el('div',{class:'bar'},el('i',{style:'width:'+pct+'%'})),detail);
+      if(n.status==='published')card.appendChild(el('button',{text:'设置作业时限',onclick:function(){
+        api('/teacher/homework/notices/'+n.id).then(function(d){
+          var ids=(d.recipients||[]).map(function(r){return r.studentID});
+          if(!ids.length){alert('这份作业还没有分配学生，先在发布区选择学生');return}
+          var v=prompt('本次作业时限（分钟，1-600）：', d.timeLimitMinutes||'');
+          if(v===null)return;
+          var m=Number(String(v).trim());
+          if(!isFinite(m)||m<1||m>600){alert('请填 1 到 600 之间的整数');return}
+          api('/teacher/homework/notices/'+n.id+'/publish',{json:{studentIDs:ids,timeLimitMinutes:m}})
+            .then(function(){alert('已设为 '+m+' 分钟。学生端会显示倒计时。');n.timeLimitMinutes=m})
+            .catch(function(e){alert(e.message)});
+        }).catch(function(e){alert(e.message)});
+      }}));
       if(n.status==='published')card.appendChild(el('button',{text:'查看每个学生的完成情况',onclick:function(){
         detail.textContent='';
         api('/teacher/homework/notices/'+n.id).then(function(d){
@@ -405,7 +418,9 @@ function escalateBox(box,h){
 }
 // The guide: each step asks first; a hint after a wrong try, the explanation after the answer (or a second miss).
 // Only numbers the program checked are compared; the final answer is the pupil's own work before it is shown.
+function hwHasPi(t){return /[πΠ]|\bpi\b/i.test(String(t||''))}
 function hwNum(t){
+  if(hwHasPi(t))return null;
   t=String(t||'').replace(/[０-９]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-65248)})
     .replace(/／/g,'/').replace(/[．。]/g,'.').replace(/％/g,'%').replace(/[－—]/g,'-').replace(/[\s,，]/g,'');
   var mixed=t.match(/(\d+)又(\d+)\/(\d+)/);
@@ -465,7 +480,7 @@ function showSolution(box,h){
     }else{
       var inp=el('input',{type:'text',placeholder:'写下你算出的数',maxlength:40,'aria-label':'第'+st.n+'步的答案'});
       area.appendChild(inp);
-      area.appendChild(el('button',{class:'primary',text:'确定',onclick:function(){if(!inp.value.trim())return;if(hwCircleEligible(h.questionText,h.grade)&&hwCircleSymbolic(inp.value)){tip.textContent='含π的式子不算答错。请按原题要求处理π；需要保留π或取值不明确时，请老师核对，不强行换成3.14。';return}if(hwSame(inp.value,st.check))settle(true);else miss()}}));
+      area.appendChild(el('button',{class:'primary',text:'确定',onclick:function(){if(!inp.value.trim())return;if(hwCircleEligible(h.questionText,h.grade)&&hwCircleSymbolic(inp.value)){tip.textContent='含π的式子不算答错。请按原题要求处理π；需要保留π或取值不明确时，请老师核对，不强行换成3.14。';return}if(hwHasPi(inp.value)){tip.textContent='这一步的答案含π，程序暂时核对不了，先不算你错；请老师看一下。';return}if(hwSame(inp.value,st.check))settle(true);else miss()}}));
     }
     area.appendChild(el('button',{text:'这一步不会',onclick:function(){wrong++;settle(false)}}));
   }
@@ -486,6 +501,7 @@ function showSolution(box,h){
         if(!inp.value.trim())return;
         if(hwCircleEligible(h.questionText,h.grade)&&hwCircleSymbolic(inp.value)){tip.textContent='含π的写法暂不判错。请按原题给定的π取值计算；题目要求保留π或取值不明确时，请老师核对。';return}
         if(hwSame(inp.value,c)){show(true);return}
+        if(hwHasPi(inp.value)){tip.textContent='这道题的答案含π，程序暂时核对不了，先不算你错；请老师看一下。';return}
         tries++;wrong++;
         if(tries>=2){show(false);return}
         tip.textContent='';tip.appendChild(notice('warn','还不对，对照上面的步骤再算一遍。'));
