@@ -57,6 +57,8 @@ class PublishBody(BaseModel):
     studentIDs: list[int]
     # 本次全部科目共用的总时长（分钟）；不传表示不启用计时
     timeLimitMinutes: int | None = Field(default=None, ge=1, le=600)
+    # 明确要求清除时限（留空不代表清除，避免误操作把已有设置抹掉）
+    clearTimeLimit: bool = False
 
 
 class DoneBody(BaseModel):
@@ -225,7 +227,7 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
 
         result = await run_in_threadpool(work)
         text = scrub_notice_text(result["text"])
-        # 识别返回在服务层被截到 RECOGNIZED_CHAR_LIMIT；到顶就提醒老师核对最后一条。
+        # 识别返回在服务层被截到 4000 字；到顶就提醒老师核对最后一条，避免静默少题。
         return {"text": text, "confidence": result["confidence"],
                 "truncated": len(result["text"]) >= RECOGNIZED_CHAR_LIMIT}
 
@@ -307,7 +309,9 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
         wanted = list(dict.fromkeys(int(x) for x in b.studentIDs))
         if not wanted:
             raise HTTPException(400, "请至少选择一名学生")
-        if b.timeLimitMinutes is not None:
+        if b.clearTimeLimit:
+            db.execute(update(notices).where(notices.c.id == notice_id).values(time_limit_minutes=None))
+        elif b.timeLimitMinutes is not None:
             db.execute(update(notices).where(notices.c.id == notice_id).values(
                 time_limit_minutes=int(b.timeLimitMinutes)))
         allowed = {item["id"] for item in teacher_students(db, u)}
