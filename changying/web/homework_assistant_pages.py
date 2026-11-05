@@ -144,14 +144,13 @@ function followUpsView(box){
   box.textContent='';
   var card=el('div',{class:'card'},el('h2',{text:'待跟进'}),el('div',{class:'muted',text:'这些是今天最需要你留意的，每个班每天最多 5 条。建议只在这里展示，点「已处理」只是收起建议，不会改变求助本身的状态。'}),box);
   card.appendChild(el('div',{class:'muted',text:'正在加载…'}));
-  api('/teacher/homework/follow-ups').then(function(d){
+  // 先让服务端确认名额，再渲染返回的条目：两台设备同时打开也不会展示超过当天名额。
+  api('/teacher/homework/follow-ups/claim',{method:'POST'}).then(function(d){
     card.textContent='';
     card.appendChild(el('h2',{text:'待跟进'}));
     card.appendChild(el('div',{class:'muted',text:'每个班每天最多 '+(d.dailyLimit||5)+' 条；点「已处理」只收起建议，求助本身仍需你在求助列表确认。'}));
     if(!(d.items||[]).length){card.appendChild(el('div',{class:'muted',text:'今天没有需要跟进的建议。'}));return}
-    var shown=[];
     d.items.forEach(function(it){
-      shown.push(it.helpID);
       var row=el('div',{class:'row'},el('div',{class:'row-main'},
         el('b',{text:it.studentName+'：'+it.reason}),
         el('div',{class:'muted',text:'依据：求助 #'+it.helpID+' · '+(it.evidence.escalatedAt||'')+' · '+(it.evidence.question||'')}),
@@ -174,8 +173,6 @@ function followUpsView(box){
       row.appendChild(acts);
       card.appendChild(row);
     });
-    // 老师确实看到了，才记预算；刷新不会重复计。
-    api('/teacher/homework/follow-ups/shown',{method:'POST',json:{helpIDs:shown}}).catch(function(){});
   }).catch(function(e){card.appendChild(notice('error',e.message))});
 }
 

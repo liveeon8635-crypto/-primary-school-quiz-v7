@@ -452,7 +452,7 @@
       "cd7c1d37c3ccd484e5fe56615f4969d32a1ba4724f220c160eb9caf014ab2677"
     ],
     "/v1/homework": [
-      "3be34073f81f78008e7bf0521634faa3f5bfc3d4da6d1907d65ca5485782e1f2"
+      "f8a720708e025c54e71cc734c2cc4c9a230c9d1c0966296c7457551dd6a516bd"
     ]
   },
   "scripts": {
@@ -751,10 +751,10 @@
       "sourceBytes": 60337,
       "compiledBytes": 60337
     },
-    "3be34073f81f78008e7bf0521634faa3f5bfc3d4da6d1907d65ca5485782e1f2": {
+    "f8a720708e025c54e71cc734c2cc4c9a230c9d1c0966296c7457551dd6a516bd": {
       "unchanged": true,
-      "sourceBytes": 65856,
-      "compiledBytes": 65856
+      "sourceBytes": 65779,
+      "compiledBytes": 65779
     }
   }
 }

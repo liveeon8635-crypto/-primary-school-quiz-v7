@@ -720,19 +720,74 @@ def install_homework_help(implementation: Any) -> APIRouter:
 
     @router.get("/teacher/homework/follow-ups")
     def teacher_follow_ups(u: Any = Depends(current_user), db: Any = Depends(get_db)):
-        """P0-B 第一步：只读候选。不存状态、不设每日上限、不调用模型。
+        """只读预览：按同样规则算一遍候选，但不记展示、不占当天名额。
 
-        三句固定格式：卡点 / 依据 / 下一步。排序：主动求助 → 两轮未过 → 待独立验证。
+        页面不再直接展示这里的结果；正式展示走 POST /claim，先确认名额再渲染。
         """
         need(u, "teacher")
         mine = teacher_student_ids(db, u)
         if not mine:
             return {"items": [], "note": "还没有可见学生"}
+        items = _follow_up_candidates(db, u, mine)
+        keep, state = _admit_follow_ups(db, u, items)
+        return {
+            "items": keep[:50],
+            "shownToday": sorted(state["shown"]),
+            "dismissedToday": sorted(state["dismissed"]),
+            "snoozedToday": sorted(state["snoozed"]),
+            "dailyLimit": FOLLOW_UP_DAILY_LIMIT,
+            "note": "已展示过的今天继续可见；新的按每天每班 %d 条补入" % FOLLOW_UP_DAILY_LIMIT,
+        }
+
+    @router.post("/teacher/homework/follow-ups/claim")
+    def follow_ups_claim(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """老师打开待跟进列表时调用：先原子确认当天名额，再把获准的建议交给页面展示。
+
+        两台设备同时打开也只按同一份当天展示历史记账，页面只渲染这里返回的条目，
+        所以"先展示、后记账"的超额展示不会再出现。
+        """
+        need(u, "teacher")
+        mine = teacher_student_ids(db, u)
+        if not mine:
+            return {"items": [], "shownToday": [], "recorded": [], "dailyLimit": FOLLOW_UP_DAILY_LIMIT,
+                    "note": "还没有可见学生"}
+        # 先锁老师这一行，再读预算：两个设备同时来确认也会排队，后来者能看到前者刚记下的名额。
+        db.execute(
+            select(implementation.User.id)
+            .where(implementation.User.id == u.id)
+            .with_for_update()
+        ).first()
+        items = _follow_up_candidates(db, u, mine)
+        keep, state = _admit_follow_ups(db, u, items)
+        day = _local_day()
+        recorded = []
+        for item in keep:
+            hid = item["helpID"]
+            if hid in state["shown"]:
+                continue
+            db.add(implementation.AuditLog(
+                school_id=u.school_id, user_id=u.id, action="follow_up_shown",
+                detail=json.dumps({"helpID": hid, "studentID": item["studentID"],
+                                   "teacherID": u.id, "day": day}, ensure_ascii=False)[:1000],
+            ))
+            state["shown"].add(hid)
+            recorded.append(hid)
+        db.commit()
+        return {
+            "items": keep[:50],
+            "shownToday": sorted(state["shown"]),
+            "recorded": recorded,
+            "dailyLimit": FOLLOW_UP_DAILY_LIMIT,
+            "note": "每个班每天最多 %d 条；这里返回的就是已经记账、可以展示的建议" % FOLLOW_UP_DAILY_LIMIT,
+        }
+
+    def _follow_up_candidates(db: Any, teacher: Any, mine: set[int]) -> list[dict[str, Any]]:
+        """列出可见学生的待跟进候选，并标注独立验证状态（不涉及名额）。"""
         rows = db.execute(
             select(helps, User.name.label("student_name"))
             .join(User, User.id == helps.c.student_id)
             .where(
-                helps.c.school_id == u.school_id,
+                helps.c.school_id == teacher.school_id,
                 helps.c.student_id.in_(mine),
                 helps.c.state.in_(("escalated", "resolved")),
             )
@@ -777,16 +832,19 @@ def install_homework_help(implementation: Any) -> APIRouter:
         # P1-A：已讲解的求助要看后续有没有独立验证。匹配不上就写"无法判定"，
         # 绝不因为算不出来就把学生藏起来（漏报比误报代价大）。
         try:
-            items = _annotate_verification(implementation, db, u, items)
+            items = _annotate_verification(implementation, db, teacher, items)
         except Exception:  # noqa: BLE001 - 判定失败不能影响列表本身
             for item in items:
                 item["verification"] = "无法判定是否已验证"
         else:
             items = [x for x in items if x["verification"] != "已独立验证"]
+        return items
 
+    def _admit_follow_ups(db: Any, teacher: Any, items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """按当天展示历史和每班名额挑出这一次能展示的建议（不写库）。"""
         # 每天每班最多 5 条：已展示过的继续显示，新的只补到预算内。
         # 预算按当天完整展示历史扣（每班各自 5 条），已处理、暂缓或已验证移出列表都不返还名额。
-        state = follow_up_state(db, u)
+        state = follow_up_state(db, teacher)
         shown_today = state["shown"]
         blocked_students = state["dismissedStudents"] | state["snoozedStudents"]
         eligible = []
@@ -798,7 +856,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
                 continue  # 该学生今天已处理/暂缓过，当天不再推它的其它求助
             eligible.append(item)
 
-        class_members = teacher_student_classes(db, u)
+        class_members = teacher_student_classes(db, teacher)
         shown_students = state["shownStudents"]
         shown_by_class = _shown_by_class(class_members, shown_students)
         keep: list[dict[str, Any]] = []
@@ -827,14 +885,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
                 shown_by_class.setdefault(class_id, set()).add(student_id)
             kept_students.add(student_id)
             keep.append(item)
-        return {
-            "items": keep[:50],
-            "shownToday": sorted(shown_today),
-            "dismissedToday": sorted(state["dismissed"]),
-            "snoozedToday": sorted(state["snoozed"]),
-            "dailyLimit": FOLLOW_UP_DAILY_LIMIT,
-            "note": "已展示过的今天继续可见；新的按每天每班 %d 条补入" % FOLLOW_UP_DAILY_LIMIT,
-        }
+        return keep, state
 
     @router.get("/teacher/homework/follow-ups/stats")
     def follow_ups_stats(days: int = 10, u: Any = Depends(current_user), db: Any = Depends(get_db)):

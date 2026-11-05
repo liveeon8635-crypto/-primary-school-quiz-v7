@@ -769,13 +769,24 @@ with TestClient(app) as client:
             ids.append(r.inserted_primary_key[0])
         db.commit()
 
-    body = client.get("/teacher/homework/follow-ups", headers=th).json()
-    assert body["dailyLimit"] == 5
-    assert len(body["items"]) == 1, ("同一学生 7 条求助当天只推 1 条，实际 %d" % len(body["items"]))
+    # 预览不占名额；正式展示先 claim，返回的就是已经记账、可以渲染的条目
+    preview = client.get("/teacher/homework/follow-ups", headers=th).json()
+    assert preview["dailyLimit"] == 5
+    assert len(preview["items"]) == 1, ("同一学生 7 条求助当天只推 1 条，实际 %d" % len(preview["items"]))
 
+    body = client.post("/teacher/homework/follow-ups/claim", headers=th).json()
+    assert len(body["items"]) == 1
     first = body["items"][0]["helpID"]
-    shown = client.post("/teacher/homework/follow-ups/shown", headers=th, json={"helpIDs": [first]})
-    assert shown.status_code == 200 and shown.json()["recorded"] == [first]
+    assert body["recorded"] == [first], body
+    # 再确认一次不会再记一遍，也不会多出条目
+    again = client.post("/teacher/homework/follow-ups/claim", headers=th).json()
+    assert again["recorded"] == [] and [x["helpID"] for x in again["items"]] == [first], again
+
+    # 暂缓 → 该学生当天整体不再出现
+    snoozed = client.post("/teacher/homework/follow-ups/%d/snooze" % first, headers=th)
+    assert snoozed.status_code == 200
+    assert client.get("/teacher/homework/follow-ups", headers=th).json()["items"] == []
+    assert client.post("/teacher/homework/follow-ups/claim", headers=th).json()["items"] == []
 
     # 暂缓 → 该学生当天整体不再出现
     snoozed = client.post("/teacher/homework/follow-ups/%d/snooze" % first, headers=th)
@@ -1034,29 +1045,37 @@ with TestClient(app) as client:
     # 第 6 个 A 班学生还有一条更晚的求助：名额满了以后也不能靠"再来一条"补进
     a6_extra = add_help(a_students[5], 500)
 
-    body = client.get("/teacher/homework/follow-ups", headers=th).json()
+    # 预览不算名额
+    preview = client.get("/teacher/homework/follow-ups", headers=th).json()
+    assert len(preview["items"]) == 7, preview["items"]
+
+    # 正式展示：先 claim 确认名额，返回的就是可以渲染的条目
+    body = client.post("/teacher/homework/follow-ups/claim", headers=th).json()
     shown_ids = [x["helpID"] for x in body["items"]]
     shown_students = {x["studentID"] for x in body["items"]}
     assert len(shown_ids) == 7, (len(shown_ids), shown_ids)
+    assert sorted(body["recorded"]) == sorted(shown_ids), body
     assert set(a_helps[:5]) <= set(shown_ids), shown_ids
     assert a_students[5] not in shown_students, "A 班第 6 人不能出现：这个班的名额已满"
     assert a6_extra not in shown_ids, "同一学生的第二条求助也不能顶进来"
     assert set(b_helps) <= set(shown_ids), shown_ids
 
-    # 确认展示：每个学生记 1 条，7 条都进预算
-    recorded = client.post("/teacher/homework/follow-ups/shown", headers=th, json={"helpIDs": shown_ids}).json()
-    assert sorted(recorded["recorded"]) == sorted(shown_ids), recorded
-    # 重复确认是幂等的
-    again = client.post("/teacher/homework/follow-ups/shown", headers=th, json={"helpIDs": shown_ids}).json()
-    assert again["recorded"] == [], again
-    # 同一学生的多条 helpID 只记第一条
+    # 两台设备分别确认：第二台只会看到第一台已经记下的那 5 个 A 班名额，不会又放出第 6 人
+    second_token = client.post("/login", json={"username": "teacher1", "password": "Teacher1234", "remember": False}).json()["token"]
+    th2 = {"Authorization": "Bearer " + second_token}
+    device2 = client.post("/teacher/homework/follow-ups/claim", headers=th2).json()
+    assert device2["recorded"] == [], device2
+    assert {x["studentID"] for x in device2["items"]} == shown_students, device2["items"]
+    assert a_students[5] not in {x["studentID"] for x in device2["items"]}
+
+    # 同一学生的多条 helpID 不会被后来者补记
     dup = client.post("/teacher/homework/follow-ups/shown", headers=th,
                       json={"helpIDs": [a6_extra, add_help(a_students[5], -10)]}).json()
     assert dup["recorded"] == [], dup
 
     # 处理掉一个已经展示过的 A 班学生：名额不返还，第 6 人仍然不能出现
     client.post("/teacher/homework/follow-ups/%d/dismiss" % a_helps[0], headers=th)
-    after = client.get("/teacher/homework/follow-ups", headers=th).json()
+    after = client.post("/teacher/homework/follow-ups/claim", headers=th).json()
     after_ids = [x["helpID"] for x in after["items"]]
     after_students = {x["studentID"] for x in after["items"]}
     assert len(after_ids) == 6, after_ids
@@ -1067,10 +1086,11 @@ with TestClient(app) as client:
 
     # 已展示但未处理的学生，刷新后仍是同一条求助，不会换成同学生的另一条
     second_help = add_help(a_students[1], 300)
-    refreshed = client.get("/teacher/homework/follow-ups", headers=th).json()
+    refreshed = client.post("/teacher/homework/follow-ups/claim", headers=th).json()
     refreshed_ids = [x["helpID"] for x in refreshed["items"]]
     assert a_helps[1] in refreshed_ids, refreshed_ids
     assert second_help not in refreshed_ids, "同一学生当天只保留最早那条已展示的求助"
+    assert refreshed["recorded"] == []
 print("OK")
 """,
         {"HOMEWORK_ASSISTANT": "1"},
