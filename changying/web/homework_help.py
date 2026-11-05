@@ -743,8 +743,9 @@ def install_homework_help(implementation: Any) -> APIRouter:
     def follow_ups_claim(u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """老师打开待跟进列表时调用：先原子确认当天名额，再把获准的建议交给页面展示。
 
-        两台设备同时打开也只按同一份当天展示历史记账，页面只渲染这里返回的条目，
-        所以"先展示、后记账"的超额展示不会再出现。
+        提交后名额即被占用（页面随后关闭或断网也不返还），所以这个口径叫"服务端已确认/预留的
+        展示名额"，不等于老师实际看见。两台设备同时打开也只按同一份当天展示历史记账，
+        页面只渲染这里返回的条目，所以"先展示、后记账"的超额展示不会再出现。
         """
         need(u, "teacher")
         mine = teacher_student_ids(db, u)
@@ -778,7 +779,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
             "shownToday": sorted(state["shown"]),
             "recorded": recorded,
             "dailyLimit": FOLLOW_UP_DAILY_LIMIT,
-            "note": "每个班每天最多 %d 条；这里返回的就是已经记账、可以展示的建议" % FOLLOW_UP_DAILY_LIMIT,
+            "note": "每个班每天最多 %d 条；返回的条目已占用当天的「已确认展示名额」，关闭页面也不返还" % FOLLOW_UP_DAILY_LIMIT,
         }
 
     def _follow_up_candidates(db: Any, teacher: Any, mine: set[int]) -> list[dict[str, Any]]:

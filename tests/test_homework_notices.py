@@ -1060,13 +1060,17 @@ with TestClient(app) as client:
     assert a6_extra not in shown_ids, "同一学生的第二条求助也不能顶进来"
     assert set(b_helps) <= set(shown_ids), shown_ids
 
-    # 两台设备分别确认：第二台只会看到第一台已经记下的那 5 个 A 班名额，不会又放出第 6 人
+    # 两台设备分别确认：允许两台看到同一批 5 人；验收看当天同班"获准学生去重后的并集"不超过 5
     second_token = client.post("/login", json={"username": "teacher1", "password": "Teacher1234", "remember": False}).json()["token"]
     th2 = {"Authorization": "Bearer " + second_token}
     device2 = client.post("/teacher/homework/follow-ups/claim", headers=th2).json()
     assert device2["recorded"] == [], device2
     assert {x["studentID"] for x in device2["items"]} == shown_students, device2["items"]
-    assert a_students[5] not in {x["studentID"] for x in device2["items"]}
+    class_a_set = set(a_students)
+    union_a = {x["studentID"] for x in body["items"] if x["studentID"] in class_a_set} | \
+              {x["studentID"] for x in device2["items"] if x["studentID"] in class_a_set}
+    assert len(union_a) == 5, union_a
+    assert a_students[5] not in union_a
 
     # 同一学生的多条 helpID 不会被后来者补记
     dup = client.post("/teacher/homework/follow-ups/shown", headers=th,
