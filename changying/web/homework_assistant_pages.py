@@ -140,12 +140,46 @@ function studentView(){
 }
 
 /* ---------------------------------------------------------------- teacher */
+function followUpsView(box){
+  box.textContent='';
+  var card=el('div',{class:'card'},el('h2',{text:'待跟进'}),el('div',{class:'muted',text:'这些是今天最需要你留意的，每天最多 5 条。建议只在这里展示，点「已处理」只是收起建议，不会改变求助本身的状态。'}),box);
+  card.appendChild(el('div',{class:'muted',text:'正在加载…'}));
+  api('/teacher/homework/follow-ups').then(function(d){
+    card.textContent='';
+    card.appendChild(el('h2',{text:'待跟进'}));
+    card.appendChild(el('div',{class:'muted',text:'每天最多 '+(d.dailyLimit||5)+' 条；点「已处理」只收起建议，求助本身仍需你在求助列表确认。'}));
+    if(!(d.items||[]).length){card.appendChild(el('div',{class:'muted',text:'今天没有需要跟进的建议。'}));return}
+    var shown=[];
+    d.items.forEach(function(it){
+      shown.push(it.helpID);
+      var row=el('div',{class:'row'},el('div',{class:'row-main'},
+        el('b',{text:it.studentName+'：'+it.reason}),
+        el('div',{class:'muted',text:'依据：求助 #'+it.helpID+' · '+(it.evidence.escalatedAt||'')+' · '+(it.evidence.question||'')})));
+      var acts=el('div',{class:'row',style:'gap:6px'});
+      acts.appendChild(el('button',{class:'primary',text:it.next.label,onclick:function(){navigate(it.next.route)}}));
+      acts.appendChild(el('button',{text:'已处理',onclick:function(){
+        api('/teacher/homework/follow-ups/'+it.helpID+'/dismiss',{method:'POST'}).then(function(){
+          row.remove();
+          alert('这条建议已收起。注意：求助本身还没有处理，需要你到求助列表里确认。');
+        }).catch(function(e){alert(e.message)});
+      }}));
+      acts.appendChild(el('button',{text:'今天先不提醒',onclick:function(){
+        api('/teacher/homework/follow-ups/'+it.helpID+'/snooze',{method:'POST'}).then(function(){row.remove()}).catch(function(e){alert(e.message)});
+      }}));
+      row.appendChild(acts);
+      card.appendChild(row);
+    });
+    // 老师确实看到了，才记预算；刷新不会重复计。
+    api('/teacher/homework/follow-ups/shown',{method:'POST',json:{helpIDs:shown}}).catch(function(){});
+  }).catch(function(e){card.appendChild(notice('error',e.message))});
+}
+
 function teacherView(){
   root.textContent='';
   var tabs=el('div',{class:'tabs'}),body=el('div');
   root.appendChild(tabs);root.appendChild(body);
-  var views={import:importView,notices:noticesView__TEACHER_VIEWS__};
-  var names={import:'导入作业通知',notices:'已发布的清单'__TEACHER_NAMES__};
+  var views={followups:followUpsView,import:importView,notices:noticesView__TEACHER_VIEWS__};
+  var names={followups:'待跟进',import:'导入作业通知',notices:'已发布的清单'__TEACHER_NAMES__};
   function show(key){
     Object.keys(names).forEach(function(k){tabs.querySelector('[data-k="'+k+'"]').className=k===key?'on':''});
     body.textContent='';views[key](body);
