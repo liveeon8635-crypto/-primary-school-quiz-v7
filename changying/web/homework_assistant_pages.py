@@ -266,10 +266,17 @@ function noticesView(body){
         api('/teacher/homework/notices/'+n.id).then(function(d){
           var ids=(d.recipients||[]).map(function(r){return r.studentID});
           if(!ids.length){alert('这份作业还没有分配学生，先在发布区选择学生');return}
-          var v=prompt('本次作业时限（分钟，1-600）：', d.timeLimitMinutes||'');
+          var v=prompt('本次作业时限（分钟，1-600；留空表示不限时）：', d.timeLimitMinutes||'');
           if(v===null)return;
-          var m=Number(String(v).trim());
-          if(!isFinite(m)||m<1||m>600){alert('请填 1 到 600 之间的整数');return}
+          var raw=String(v).trim();
+          if(!raw){
+            api('/teacher/homework/notices/'+n.id+'/publish',{json:{studentIDs:ids,clearTimeLimit:true}})
+              .then(function(){alert('已取消时限，学生端不再显示倒计时。');n.timeLimitMinutes=null})
+              .catch(function(e){alert(e.message)});
+            return;
+          }
+          var m=Number(raw);
+          if(!isFinite(m)||m<1||m>600){alert('请填 1 到 600 之间的整数，或留空取消时限');return}
           api('/teacher/homework/notices/'+n.id+'/publish',{json:{studentIDs:ids,timeLimitMinutes:m}})
             .then(function(){alert('已设为 '+m+' 分钟。学生端会显示倒计时。');n.timeLimitMinutes=m})
             .catch(function(e){alert(e.message)});
