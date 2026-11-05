@@ -705,6 +705,13 @@ def install_homework_help(implementation: Any) -> APIRouter:
         need(u, "teacher")
         mine = teacher_student_ids(db, u)
         ids = [int(x) for x in (b.helpIDs or [])]
+        # 先锁老师这一行，再读预算：两台设备同时确认也不会超过每天上限。
+        # （与积分兑换用的是同一把锁；SQLite 忽略 FOR UPDATE，PostgreSQL 生效。）
+        db.execute(
+            select(implementation.User.id)
+            .where(implementation.User.id == u.id)
+            .with_for_update()
+        ).first()
         state = follow_up_state(db, u)
         recorded = []
         for hid in ids:
