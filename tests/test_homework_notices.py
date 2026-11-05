@@ -668,3 +668,130 @@ print("OK")
 ''',
         {"HOMEWORK_ASSISTANT": "1"},
     )
+
+
+def test_truncated_flag_is_set_when_recognition_hits_the_limit(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r"""
+import os
+from changying.services import homework_vision
+import app_v924 as legacy
+
+LONG = "x" * 4001
+
+class FakeResp:
+    status_code = 200
+    ok = True
+    def json(self):
+        return {"choices": [{"message": {"content": json.dumps({"text": LONG, "hasFigure": False, "confidence": 0.9})}}], "usage": {}}
+
+homework_vision.requests.post = lambda url, headers=None, json=None, timeout=None: FakeResp()
+legacy._ai_rate_check = lambda db, school_id: None
+legacy._validate_ai_base_url = lambda base, runtime=False: base
+
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    allow_ai(school_of(sid))
+    os.environ.update({
+        "HOMEWORK_VISION_PROVIDER": "openai_compatible",
+        "HOMEWORK_VISION_BASE_URL": "https://api.deepseek.com",
+        "HOMEWORK_VISION_MODEL": "vision-test-model",
+        "HOMEWORK_VISION_API_KEY": "test-key-not-real",
+    })
+    r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"},
+                    content=b"\xff\xd8\xff\xe0" + b"y" * 200)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["text"]) == 4000, len(body["text"])
+    assert body["truncated"] is True, "到 4000 字上限必须标记 truncated"
+print("OK")
+""",
+        {"HOMEWORK_ASSISTANT": "1"},
+    )
+
+
+def test_follow_ups_lists_own_students_only(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r"""
+from datetime import datetime
+from sqlalchemy import insert
+
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    tbl = legacy.Base.metadata.tables["help_requests"]
+    school_id = school_of(sid)
+    with legacy.SessionLocal() as db:
+        db.execute(insert(tbl).values(
+            school_id=school_id, student_id=sid, grade=3, question_text="半径2厘米求面积",
+            state="escalated", escalate_reason="student_request", escalated_at=datetime.utcnow(),
+        ))
+        db.commit()
+
+    r = client.get("/teacher/homework/follow-ups", headers=th)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["items"], "有求助时应该给出候选"
+    first = body["items"][0]
+    assert first["helpID"] and first["reason"] and first["evidence"]["helpID"] == first["helpID"]
+    assert first["next"]["params"]["helpID"] == first["helpID"], "下一步必须带定位参数"
+    assert body["dailyLimit"] == 5 and "每天每班" in body["note"]
+
+    assert client.get("/teacher/homework/follow-ups", headers=sh).status_code == 403
+print("OK")
+""",
+        {"HOMEWORK_ASSISTANT": "1"},
+    )
+
+
+def test_follow_ups_budget_and_dismiss(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r"""
+from datetime import datetime
+from sqlalchemy import insert
+
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    tbl = legacy.Base.metadata.tables["help_requests"]
+    school_id = school_of(sid)
+    ids = []
+    with legacy.SessionLocal() as db:
+        for n in range(7):
+            r = db.execute(insert(tbl).values(
+                school_id=school_id, student_id=sid, grade=3, question_text="题%d" % n,
+                state="escalated", escalate_reason="student_request", escalated_at=datetime.utcnow(),
+            ))
+            ids.append(r.inserted_primary_key[0])
+        db.commit()
+
+    body = client.get("/teacher/homework/follow-ups", headers=th).json()
+    assert body["dailyLimit"] == 5
+    assert len(body["items"]) == 5, "每天每班最多 5 条"
+
+    first = body["items"][0]["helpID"]
+    shown = client.post("/teacher/homework/follow-ups/shown", headers=th, json={"helpIDs": [first]})
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["recorded"] == [first]
+
+    dismissed = client.post("/teacher/homework/follow-ups/%d/dismiss" % first, headers=th)
+    assert dismissed.status_code == 200
+    assert dismissed.json()["helpStateUnchanged"] is True, "不能改求助结论"
+
+    after = client.get("/teacher/homework/follow-ups", headers=th).json()
+    assert first not in [x["helpID"] for x in after["items"]], "已处理的建议不再出现"
+
+    snoozed = client.post("/teacher/homework/follow-ups/%d/snooze" % body["items"][1]["helpID"], headers=th)
+    assert snoozed.status_code == 200
+    after2 = client.get("/teacher/homework/follow-ups", headers=th).json()
+    assert body["items"][1]["helpID"] not in [x["helpID"] for x in after2["items"]]
+
+    assert client.get("/teacher/homework/follow-ups", headers=sh).status_code == 403
+print("OK")
+""",
+        {"HOMEWORK_ASSISTANT": "1"},
+    )

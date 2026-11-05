@@ -98,6 +98,52 @@ def _json_obj(raw: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+class FollowUpShownBody(BaseModel):
+    """老师确实看到这些建议时回传的 helpID 列表。"""
+    helpIDs: list[int] = []
+
+
+FOLLOW_UP_DAILY_LIMIT = 5
+
+
+def _local_day() -> str:
+    """按学校时区（UTC+8）取日期，预算按天重置。"""
+    return (datetime.utcnow() + timedelta(hours=8)).strftime("%Y-%m-%d")
+
+
+def follow_up_state(db: Any, teacher: Any) -> dict[str, set[int]]:
+    """从审计日志读出这位老师今天的展示/处理/暂缓记录。只读，不写。"""
+    from app_v924 import AuditLog  # 延迟导入：本模块由 app_v924 装载
+
+    day = _local_day()
+    rows = db.execute(
+        select(AuditLog.action, AuditLog.detail).where(
+            AuditLog.school_id == teacher.school_id,
+            AuditLog.user_id == teacher.id,
+            AuditLog.action.in_(("follow_up_shown", "follow_up_dismissed", "follow_up_snoozed")),
+            AuditLog.created_at >= datetime.utcnow() - timedelta(days=1),
+        )
+    ).all()
+    out = {"shown": set(), "dismissed": set(), "snoozed": set()}
+    for action, detail in rows:
+        try:
+            data = json.loads(detail or "{}")
+        except ValueError:
+            continue
+        if data.get("day") != day:
+            continue
+        hid = data.get("helpID")
+        if not isinstance(hid, int):
+            continue
+        if action == "follow_up_shown":
+            out["shown"].add(hid)
+        elif action == "follow_up_dismissed":
+            out["dismissed"].add(hid)
+        else:
+            out["snoozed"].add(hid)
+    return out
+
+
 def install_homework_help(implementation: Any) -> APIRouter:
     app = implementation.app
     if getattr(app.state, "homework_help_installed", False):
@@ -573,6 +619,147 @@ def install_homework_help(implementation: Any) -> APIRouter:
             )
         )
         return {"items": [summary(_mapping(r)) for r in rows], "open": int(open_count or 0)}
+
+    @router.get("/teacher/homework/follow-ups")
+    def teacher_follow_ups(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """P0-B 第一步：只读候选。不存状态、不设每日上限、不调用模型。
+
+        三句固定格式：卡点 / 依据 / 下一步。排序：主动求助 → 两轮未过 → 待独立验证。
+        """
+        need(u, "teacher")
+        mine = teacher_student_ids(db, u)
+        if not mine:
+            return {"items": [], "note": "还没有可见学生"}
+        rows = db.execute(
+            select(helps, User.name.label("student_name"))
+            .join(User, User.id == helps.c.student_id)
+            .where(
+                helps.c.school_id == u.school_id,
+                helps.c.student_id.in_(mine),
+                helps.c.state.in_(("escalated", "resolved")),
+            )
+            .order_by(helps.c.escalated_at.asc(), helps.c.id.asc())
+            .limit(200)
+        ).all()
+
+        def _reason(row):
+            if row["state"] == "resolved":
+                return "已讲解，尚无独立巩固结果"
+            if row["escalate_reason"] == "verify_mismatch":
+                return "两轮补救后仍卡住"
+            return "学生主动求助"
+
+        items = []
+        for raw in rows:
+            row = _mapping(raw)
+            reason = _reason(row)
+            items.append({
+                "helpID": row["id"],
+                "studentName": row["student_name"],
+                "reason": reason,
+                "evidence": {
+                    "helpID": row["id"],
+                    "state": row["state"],
+                    "escalatedAt": _iso(row["escalated_at"]),
+                    "resolvedAt": _iso(row["resolved_at"]),
+                    "question": (row["question_text"] or "")[:80],
+                },
+                "next": {
+                    "label": "查看求助并接着讲" if row["state"] == "escalated" else "查看并布置巩固",
+                    "route": "/v1/homework",
+                    "params": {"helpID": row["id"]},
+                },
+                # 排序权重：数字越小越靠前
+                "rank": 0 if reason == "学生主动求助" else 1 if reason == "两轮补救后仍卡住" else 2,
+            })
+        items.sort(key=lambda x: (x["rank"], x["evidence"]["escalatedAt"] or "", x["helpID"]))
+
+        # 每天每班最多 5 条：已展示过的继续显示，新的只补到预算内。
+        state = follow_up_state(db, u)
+        shown_today = state["shown"]
+        keep = []
+        budget = FOLLOW_UP_DAILY_LIMIT
+        for item in items:
+            hid = item["helpID"]
+            if hid in state["dismissed"] or hid in state["snoozed"]:
+                continue
+            if hid in shown_today:
+                keep.append(item)
+                continue
+            if budget <= 0:
+                continue
+            budget -= 1
+            keep.append(item)
+        return {
+            "items": keep[:50],
+            "shownToday": sorted(shown_today),
+            "dismissedToday": sorted(state["dismissed"]),
+            "snoozedToday": sorted(state["snoozed"]),
+            "dailyLimit": FOLLOW_UP_DAILY_LIMIT,
+            "note": "已展示过的今天继续可见；新的按每天每班 %d 条补入" % FOLLOW_UP_DAILY_LIMIT,
+        }
+
+    @router.post("/teacher/homework/follow-ups/shown")
+    def follow_ups_shown(b: FollowUpShownBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """老师确实看到这些建议时调用；同一学生同一天只计一次预算。"""
+        need(u, "teacher")
+        mine = teacher_student_ids(db, u)
+        ids = [int(x) for x in (b.helpIDs or [])]
+        # 先锁老师这一行，再读预算：两台设备同时确认也不会超过每天上限。
+        # （与积分兑换用的是同一把锁；SQLite 忽略 FOR UPDATE，PostgreSQL 生效。）
+        db.execute(
+            select(implementation.User.id)
+            .where(implementation.User.id == u.id)
+            .with_for_update()
+        ).first()
+        state = follow_up_state(db, u)
+        recorded = []
+        for hid in ids:
+            if hid in state["shown"] or len(state["shown"]) >= FOLLOW_UP_DAILY_LIMIT:
+                continue
+            owned = db.execute(
+                select(helps.c.id, helps.c.student_id).where(
+                    helps.c.id == hid, helps.c.school_id == u.school_id,
+                    helps.c.student_id.in_(mine) if mine else False,
+                )
+            ).first()
+            if owned is None:
+                continue
+            db.add(implementation.AuditLog(
+                school_id=u.school_id, user_id=u.id, action="follow_up_shown",
+                detail=json.dumps({"helpID": hid, "studentID": owned.student_id,
+                                   "teacherID": u.id, "day": _local_day()}, ensure_ascii=False)[:1000],
+            ))
+            state["shown"].add(hid)
+            recorded.append(hid)
+        db.commit()
+        return {"recorded": recorded, "shownToday": sorted(state["shown"]),
+                "dailyLimit": FOLLOW_UP_DAILY_LIMIT}
+
+    @router.post("/teacher/homework/follow-ups/{help_id}/{action}")
+    def follow_ups_mark(help_id: int, action: str, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """dismiss=建议已处理（不改求助结论）；snooze=当天暂缓。"""
+        need(u, "teacher")
+        if action not in ("dismiss", "snooze"):
+            raise HTTPException(404, "没有这个操作")
+        mine = teacher_student_ids(db, u)
+        owned = db.execute(
+            select(helps.c.id, helps.c.student_id).where(
+                helps.c.id == help_id, helps.c.school_id == u.school_id,
+                helps.c.student_id.in_(mine) if mine else False,
+            )
+        ).first()
+        if owned is None:
+            raise HTTPException(404, "没有这条求助")
+        db.add(implementation.AuditLog(
+            school_id=u.school_id, user_id=u.id,
+            action="follow_up_" + ("dismissed" if action == "dismiss" else "snoozed"),
+            detail=json.dumps({"helpID": help_id, "studentID": owned.student_id,
+                               "teacherID": u.id, "day": _local_day()}, ensure_ascii=False)[:1000],
+        ))
+        db.commit()
+        # 明确：只关闭/暂缓这条建议，求助本身的状态没有改变。
+        return {"helpID": help_id, "action": action, "helpStateUnchanged": True}
 
     @router.get("/teacher/homework/help/{help_id}")
     def teacher_detail(help_id: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
