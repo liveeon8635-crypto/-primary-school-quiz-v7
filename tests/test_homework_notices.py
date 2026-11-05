@@ -738,7 +738,7 @@ with TestClient(app) as client:
     first = body["items"][0]
     assert first["helpID"] and first["reason"] and first["evidence"]["helpID"] == first["helpID"]
     assert first["next"]["params"]["helpID"] == first["helpID"], "下一步必须带定位参数"
-    assert "尚未实现" in body["note"]
+    assert body["dailyLimit"] == 5 and "每天每班" in body["note"]
 
     assert client.get("/teacher/homework/follow-ups", headers=sh).status_code == 403
 print("OK")
