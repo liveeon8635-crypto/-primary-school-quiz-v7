@@ -26,6 +26,8 @@ from starlette.requests import Request
 
 MAX_IMAGE_BYTES = 6 * 1024 * 1024
 VISION_TIMEOUT_SECONDS = 25
+# 识别文本上限：超过会被截断，调用方据此提示老师核对
+RECOGNIZED_CHAR_LIMIT = 4000
 VISION_PROVIDERS = ("openai_compatible", "openai_responses")
 
 # Only these fixed categories may cross into classroom messages or runtime logs.
@@ -215,7 +217,7 @@ def recognize_image(
         except (TypeError, ValueError):
             confidence = None
         return {
-            "text": text[:4000],
+            "text": text[:RECOGNIZED_CHAR_LIMIT],
             "hasFigure": bool(parsed.get("hasFigure")),
             "confidence": confidence,
         }
@@ -252,5 +254,5 @@ def recognize_image(
             db.rollback()
 
 
-__all__ = ["MAX_IMAGE_BYTES", "VISION_FAILURE_MESSAGES", "VisionFailure", "read_image_body", "recognize_image", "vision_config", "vision_enabled"]
+__all__ = ["MAX_IMAGE_BYTES", "RECOGNIZED_CHAR_LIMIT", "VISION_FAILURE_MESSAGES", "VisionFailure", "read_image_body", "recognize_image", "vision_config", "vision_enabled"]
 
