@@ -655,6 +655,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
             reason = _reason(row)
             items.append({
                 "helpID": row["id"],
+                "studentID": row["student_id"],
                 "studentName": row["student_name"],
                 "reason": reason,
                 "evidence": {
@@ -673,6 +674,16 @@ def install_homework_help(implementation: Any) -> APIRouter:
                 "rank": 0 if reason == "学生主动求助" else 1 if reason == "两轮补救后仍卡住" else 2,
             })
         items.sort(key=lambda x: (x["rank"], x["evidence"]["escalatedAt"] or "", x["helpID"]))
+
+        # P1-A：已讲解的求助要看后续有没有独立验证。匹配不上就写"无法判定"，
+        # 绝不因为算不出来就把学生藏起来（漏报比误报代价大）。
+        try:
+            items = _annotate_verification(implementation, db, u, items)
+        except Exception:  # noqa: BLE001 - 判定失败不能影响列表本身
+            for item in items:
+                item["verification"] = "无法判定是否已验证"
+        else:
+            items = [x for x in items if x["verification"] != "已独立验证"]
 
         # 每天每班最多 5 条：已展示过的继续显示，新的只补到预算内。
         state = follow_up_state(db, u)
