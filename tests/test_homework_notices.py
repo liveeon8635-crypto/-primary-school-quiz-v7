@@ -771,26 +771,61 @@ with TestClient(app) as client:
 
     body = client.get("/teacher/homework/follow-ups", headers=th).json()
     assert body["dailyLimit"] == 5
-    assert len(body["items"]) == 5, "每天每班最多 5 条"
+    assert len(body["items"]) == 1, ("同一学生 7 条求助当天只推 1 条，实际 %d" % len(body["items"]))
 
     first = body["items"][0]["helpID"]
     shown = client.post("/teacher/homework/follow-ups/shown", headers=th, json={"helpIDs": [first]})
-    assert shown.status_code == 200, shown.text
-    assert shown.json()["recorded"] == [first]
+    assert shown.status_code == 200 and shown.json()["recorded"] == [first]
 
-    dismissed = client.post("/teacher/homework/follow-ups/%d/dismiss" % first, headers=th)
-    assert dismissed.status_code == 200
-    assert dismissed.json()["helpStateUnchanged"] is True, "不能改求助结论"
-
-    after = client.get("/teacher/homework/follow-ups", headers=th).json()
-    assert first not in [x["helpID"] for x in after["items"]], "已处理的建议不再出现"
-
-    snoozed = client.post("/teacher/homework/follow-ups/%d/snooze" % body["items"][1]["helpID"], headers=th)
+    # 暂缓 → 该学生当天整体不再出现
+    snoozed = client.post("/teacher/homework/follow-ups/%d/snooze" % first, headers=th)
     assert snoozed.status_code == 200
+    assert client.get("/teacher/homework/follow-ups", headers=th).json()["items"] == []
+
+    # 新求助也不行：当天已经给这个学生推过一条
+    with legacy.SessionLocal() as db:
+        db.execute(insert(tbl).values(
+            school_id=school_id, student_id=sid, grade=3, question_text="新题",
+            state="escalated", escalate_reason="student_request", escalated_at=datetime.utcnow()))
+        db.commit()
     after2 = client.get("/teacher/homework/follow-ups", headers=th).json()
-    assert body["items"][1]["helpID"] not in [x["helpID"] for x in after2["items"]]
+    assert after2["items"] == [], "该学生当天已处理过，新求助也不再推"
 
     assert client.get("/teacher/homework/follow-ups", headers=sh).status_code == 403
+print("OK")
+""",
+        {"HOMEWORK_ASSISTANT": "1"},
+    )
+
+
+def test_dismissed_follow_ups_stay_hidden_across_days(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r"""
+from datetime import datetime, timedelta
+import json as _json
+from sqlalchemy import insert
+
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    tbl = legacy.Base.metadata.tables["help_requests"]
+    school_id = school_of(sid)
+    with legacy.SessionLocal() as db:
+        r = db.execute(insert(tbl).values(
+            school_id=school_id, student_id=sid, grade=3, question_text="a",
+            state="escalated", escalate_reason="student_request", escalated_at=datetime.utcnow()))
+        hid = r.inserted_primary_key[0]
+        # 三天前"已处理"过这条求助
+        db.add(legacy.AuditLog(
+            school_id=school_id, user_id=client.get("/session", headers=th).json()["userID"],
+            action="follow_up_dismissed",
+            detail=_json.dumps({"helpID": hid, "studentID": sid, "day": (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%d")}),
+        ))
+        db.commit()
+
+    body = client.get("/teacher/homework/follow-ups", headers=th).json()
+    assert hid not in [x["helpID"] for x in body["items"]], "三天前已处理的求助不能再次出现"
 print("OK")
 """,
         {"HOMEWORK_ASSISTANT": "1"},

@@ -112,35 +112,62 @@ def _local_day() -> str:
 
 
 def follow_up_state(db: Any, teacher: Any) -> dict[str, set[int]]:
-    """从审计日志读出这位老师今天的展示/处理/暂缓记录。只读，不写。"""
+    """读这位老师的展示/处理/暂缓记录。
+
+    dismissed 永久生效（不限窗口）；shown/snoozed 只看当天。
+    dismissedStudents 只含"今天"处理过的学生（当天不再推该学生的其它求助）。
+    """
     from app_v924 import AuditLog  # 延迟导入：本模块由 app_v924 装载
 
     day = _local_day()
-    rows = db.execute(
+    out = {"shown": set(), "dismissed": set(), "snoozed": set(),
+           "shownStudents": set(), "dismissedStudents": set(), "snoozedStudents": set()}
+
+    def load(detail: Any) -> dict[str, Any]:
+        try:
+            return json.loads(detail or "{}")
+        except ValueError:
+            return {}
+
+    # 永久：dismissed 不分窗口
+    for (detail,) in db.execute(
+        select(AuditLog.detail).where(
+            AuditLog.school_id == teacher.school_id,
+            AuditLog.user_id == teacher.id,
+            AuditLog.action == "follow_up_dismissed",
+        )
+    ).all():
+        d = load(detail)
+        hid = d.get("helpID")
+        if isinstance(hid, int):
+            out["dismissed"].add(hid)
+            if d.get("day") == day and isinstance(d.get("studentID"), int):
+                out["dismissedStudents"].add(d["studentID"])
+
+    # 当天：shown / snoozed
+    for action, detail in db.execute(
         select(AuditLog.action, AuditLog.detail).where(
             AuditLog.school_id == teacher.school_id,
             AuditLog.user_id == teacher.id,
-            AuditLog.action.in_(("follow_up_shown", "follow_up_dismissed", "follow_up_snoozed")),
+            AuditLog.action.in_(("follow_up_shown", "follow_up_snoozed")),
             AuditLog.created_at >= datetime.utcnow() - timedelta(days=1),
         )
-    ).all()
-    out = {"shown": set(), "dismissed": set(), "snoozed": set()}
-    for action, detail in rows:
-        try:
-            data = json.loads(detail or "{}")
-        except ValueError:
+    ).all():
+        d = load(detail)
+        if d.get("day") != day:
             continue
-        if data.get("day") != day:
-            continue
-        hid = data.get("helpID")
+        hid = d.get("helpID")
+        sid = d.get("studentID")
         if not isinstance(hid, int):
             continue
         if action == "follow_up_shown":
             out["shown"].add(hid)
-        elif action == "follow_up_dismissed":
-            out["dismissed"].add(hid)
+            if isinstance(sid, int):
+                out["shownStudents"].add(sid)
         else:
             out["snoozed"].add(hid)
+            if isinstance(sid, int):
+                out["snoozedStudents"].add(sid)
     return out
 
 
@@ -512,6 +539,45 @@ def install_homework_help(implementation: Any) -> APIRouter:
         ).all()
         return {int(x) for x in rows}
 
+    def _annotate_verification(implementation: Any, db: Any, teacher: Any, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """按真实提交判断"已讲解"之后有没有独立通过；匹配不上就说无法判定（宁可多提醒）。"""
+        from changying.services.homework_knowledge import register_homework_knowledge_table
+        from changying.services.homework_knowledge_flags import knowledge_flags
+
+        table = register_homework_knowledge_table(implementation)
+        states: dict[int, dict[str, str]] = {}
+        for item in items:
+            student_id = item.get("studentID")
+            if student_id is None:
+                item["verification"] = "无法判定是否已验证"
+                continue
+            if student_id not in states:
+                    try:
+                        result = knowledge_flags(implementation, db, teacher.school_id, student_id)
+                    except Exception:  # noqa: BLE001
+                        result = {}
+                        raw_flags = result.get("flags", []) if isinstance(result, dict) else []
+                        states[student_id] = {f["knowledge"]: f["state"] for f in raw_flags}
+            row = db.execute(
+                select(table.c.knowledge_key, table.c.matched).where(
+                    table.c.school_id == teacher.school_id,
+                    table.c.student_id == student_id,
+                    table.c.help_id == item["helpID"],
+                )
+            ).first()
+            if row is None or not row.matched:
+                item["verification"] = "无法判定是否已验证"
+                continue
+            state = states[student_id].get(row.knowledge_key)
+            if state == "cleared":
+                item["verification"] = "已独立验证"
+            elif state == "open":
+                item["verification"] = "练习尚未通过"
+            else:
+                item["verification"] = "尚无独立验证"
+        return items
+
+
     def purge_expired(db: Any, teacher: Any) -> None:
         """Lazy 90-day retention of the conversations: opening the list clears expired help requests of the school."""
         cutoff = datetime.utcnow() - timedelta(days=HELP_RETENTION_DAYS)
@@ -646,7 +712,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
             if row["state"] == "resolved":
                 return "已讲解，尚无独立巩固结果"
             if row["escalate_reason"] == "verify_mismatch":
-                return "两轮补救后仍卡住"
+                return "AI 解答验算未通过，已转给老师"
             return "学生主动求助"
 
         items = []
@@ -689,18 +755,33 @@ def install_homework_help(implementation: Any) -> APIRouter:
         # 每天每班最多 5 条：已展示过的继续显示，新的只补到预算内。
         state = follow_up_state(db, u)
         shown_today = state["shown"]
-        keep = []
-        budget = FOLLOW_UP_DAILY_LIMIT
+        blocked_students = state["dismissedStudents"] | state["snoozedStudents"]
+        eligible = []
         for item in items:
-            hid = item["helpID"]
+            hid, sid = item["helpID"], item["studentID"]
             if hid in state["dismissed"] or hid in state["snoozed"]:
                 continue
-            if hid in shown_today:
+            if sid in blocked_students:
+                continue  # 该学生今天已处理/暂缓过，当天不再推它的其它求助
+            eligible.append(item)
+
+        keep: list[dict[str, Any]] = []
+        seen: set[int] = set()
+        # 今天已经展示过的先放回，且占用当天的 5 个名额
+        for item in eligible:
+            if item["helpID"] in shown_today:
                 keep.append(item)
+                seen.add(item["studentID"])
+        budget = FOLLOW_UP_DAILY_LIMIT - len(seen)
+        for item in eligible:
+            if item["helpID"] in shown_today:
                 continue
+            if item["studentID"] in seen:
+                continue  # 同一学生当天最多 1 条
             if budget <= 0:
                 continue
             budget -= 1
+            seen.add(item["studentID"])
             keep.append(item)
         return {
             "items": keep[:50],
