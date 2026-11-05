@@ -246,10 +246,10 @@ function importView(body){
         .then(function(r){editor.textContent='';text.value='';msg.textContent='';msg.appendChild(notice('ok','已发布给 '+r.recipients+' 名学生。学生打开“晚托作业助手”就能看到。'))})
         .catch(function(e){msg2.appendChild(notice('error',e.message));publish.disabled=false});
     }});
-    editor.appendChild(el('div',{class:'card'},el('h2',{text:'2. 检查并修改清单'}),el('div',{class:'muted',text:'AI 可能整理错，请逐条核对；确认前学生看不到。'}),label,rows,
+    editor.appendChild(el('div',{class:'card'},el('h2',{text:'2. 检查并修改清单'}),el('div',{class:'muted',text:'AI 可能整理错，请逐条核对；确认前学生看不到。'}),el('div',{class:'row'},el('span',{text:'本次作业时限（分钟，全部科目共用）：'}),limit,el('span',{class:'muted',text:'留空=不限时'})),label,rows,
       el('button',{text:'＋ 增加一条',onclick:function(){state.items.push({seq:state.items.length+1,subject:'',content:'',page:'',requirement:''});paintRows()}}),
       el('hr'),el('h2',{text:'3. 分配给学生'}),el('div',{class:'row'},el('button',{text:'全选',onclick:function(){chips.__all&&chips.__all(true)}}),el('button',{text:'全不选',onclick:function(){chips.__all&&chips.__all(false)}})),chips,
-      el('div',{class:'row'},el('span',{text:'本次作业时限（分钟，全部科目共用）：'}),limit,el('span',{class:'muted',text:'留空=不限时'}),el('div',{class:'row'},publish),msg2));
+      el('div',{class:'row'},publish),msg2));
   }
 }
 function noticesView(body){
