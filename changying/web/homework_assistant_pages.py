@@ -154,7 +154,8 @@ function followUpsView(box){
       shown.push(it.helpID);
       var row=el('div',{class:'row'},el('div',{class:'row-main'},
         el('b',{text:it.studentName+'：'+it.reason}),
-        el('div',{class:'muted',text:'依据：求助 #'+it.helpID+' · '+(it.evidence.escalatedAt||'')+' · '+(it.evidence.question||'')})));
+        el('div',{class:'muted',text:'依据：求助 #'+it.helpID+' · '+(it.evidence.escalatedAt||'')+' · '+(it.evidence.question||'')}),
+        it.verification?el('div',{class:'tag'+(it.verification==='已独立验证'?' ok':''),text:it.verification}):null));
       var acts=el('div',{class:'row',style:'gap:6px'});
       acts.appendChild(el('button',{class:'primary',text:it.next.label,onclick:function(){navigate(it.next.route)}}));
       acts.appendChild(el('button',{text:'已处理',onclick:function(){
