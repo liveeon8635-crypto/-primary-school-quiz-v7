@@ -713,6 +713,19 @@ function plan(){
       // Say why 开课 is grey right next to it: a tooltip is invisible on tablets and phones.
       var why=el('span',{class:'muted','data-start-reason':'1',style:'color:#b54708',text:startReason(r)});
       var deleteFeedback=el('div',{role:'status','aria-live':'polite'});
+      var cancelDebugBtn=el('button',{text:'撤销调试课堂',disabled:!r.lessonId,onclick:function(){
+        var subject=SUBJ,lid=r.lessonId;
+        cancelDebugBtn.disabled=true;deleteFeedback.textContent='正在检查课堂是否有实际教学记录…';
+        api('/teacher/weekend/lessons/'+lid+'/debug-classrooms').then(function(d){
+          var items=d.items||[];
+          if(!items.length){deleteFeedback.textContent='没有需要撤销的调试课堂；可以直接删除教案';return}
+          var names=items.map(function(x){return '#'+x.id+' '+x.title}).join('\n');
+          if(!confirm('确认以下 '+items.length+' 个课堂只是调试，没有实际上课？\n'+names+'\n撤销会清除这些课堂的计时、翻页、班级绑定和课堂习题副本，保留教案、备课习题及操作留痕。之后可另点“删除教案”。已有学生作答、提示、积分或反馈时禁止撤销。')){deleteFeedback.textContent='未撤销';return}
+          return api('/teacher/weekend/lessons/'+lid+'/cancel-debug-classrooms',{method:'POST',json:{subject:subject,lessonNo:r.lessonNo,confirmed:true,sessionIds:items.map(function(x){return x.id})}}).then(function(result){
+            deleteFeedback.textContent=result.message;
+          });
+        }).catch(function(e){deleteFeedback.textContent=e.message}).then(function(){cancelDebugBtn.disabled=false});
+      }});
       var deleteBtn=el('button',{text:'删除教案',disabled:!r.lessonId,onclick:function(){
         var subject=SUBJ;
         if(impBtn.disabled||draftBtn.disabled||(qBtn&&qBtn.disabled)){deleteFeedback.textContent='请等待当前导入或生成完成后再删除';return}
@@ -723,7 +736,7 @@ function plan(){
         }).catch(function(e){deleteFeedback.textContent=e.message;deleteBtn.disabled=false});
       }});
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
-        el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),impBtn,fileIn,draftBtn,qCount,qBtn,open,cwBtn,go,why,deleteBtn),deleteFeedback,detail));
+        el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),impBtn,fileIn,draftBtn,qCount,qBtn,open,cwBtn,go,why,cancelDebugBtn,deleteBtn),deleteFeedback,detail));
     });
     list.appendChild(el('button',{class:'primary',text:'保存进度表',onclick:function(){
       api('/teacher/weekend/schedule',{method:'PUT',json:{subject:SUBJ,rows:state.map(function(r){return {lessonNo:r.lessonNo,schoolWeek:r.schoolWeek,schoolUnit:r.schoolUnit||'',plannedDate:r.plannedDate||'',note:r.note||''}})}}).then(function(){note('ok','已保存');load()}).catch(function(e){note('error',e.message)})}}));
@@ -865,4 +878,5 @@ def board_page_html() -> str:
 
 
 __all__ = ["board_page_html", "brief_page_html", "control_page_html", "plan_page_html", "practice_page_html", "report_page_html"]
+
 

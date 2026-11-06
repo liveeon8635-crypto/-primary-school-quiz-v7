@@ -91,7 +91,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
     def teacher_session(db: Any, u: Any, sid: int) -> Any:
         need(u, "teacher")
         row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id,
-                                               sessions.c.teacher_id == u.id)).first()
+                                               sessions.c.teacher_id == u.id).with_for_update()).first()
         if row is None:
             raise HTTPException(404, "没有找到这节课堂")
         return row
@@ -310,3 +310,4 @@ def install_weekend_written(implementation: Any) -> APIRouter:
     app.state.weekend_written_installed = True
     app.state.weekend_written_router = router
     return router
+

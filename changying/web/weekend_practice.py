@@ -121,7 +121,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
     router = APIRouter()
 
     def my_session(db: Any, u: Any, sid: int) -> Any:
-        row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id, sessions.c.teacher_id == u.id)).first()
+        row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id, sessions.c.teacher_id == u.id).with_for_update()).first()
         if row is None:
             raise HTTPException(404, "没有找到这节课堂")
         return row
@@ -239,7 +239,9 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         row = running_session_for(db, u)
         if row is None or int(row.id) != sid:
             raise HTTPException(404, "现在没有正在上的课")
-        db.execute(select(sessions.c.id).where(sessions.c.id == sid).with_for_update()).first()
+        row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id).with_for_update()).first()
+        if row is None or row.status != "running":
+            raise HTTPException(404, "现在没有正在上的课")
         from changying.services.weekend_roster import student_in_session
         if not student_in_session(implementation, db, row, u.id):
             raise HTTPException(404, "现在没有正在上的课")
@@ -306,6 +308,8 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
             db.commit()
             usable = hint_rows(db, int(u.school_id), q.id)
         level = int(used) + 1
+        # AI generation commits its usage log; recheck after reacquiring the lock.
+        student_session(db, u, b.sessionId)
         db.execute(insert(hlog).values(school_id=u.school_id, session_id=b.sessionId, student_id=u.id, question_id=q.id, level=level, created_at=datetime.utcnow()))
         db.commit()
         return {"level": level, "name": level_names(q.subject)[level - 1], "text": usable[level].text, "last": level >= 3}
@@ -345,4 +349,5 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_practice", "register_practice_tables"]
+
 

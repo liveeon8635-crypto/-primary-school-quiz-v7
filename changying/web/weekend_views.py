@@ -125,7 +125,7 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                                              "teacher_plan", "examples_json", "ppt_json", "closure_training", "reading_plan")}
 
     def mine(db: Any, u: Any, sid: int) -> Any:
-        row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id)).first()
+        row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id).with_for_update()).first()
         if row is None or int(row.teacher_id) != int(u.id):
             raise HTTPException(404, "没有找到这节课堂")
         return row
@@ -248,6 +248,7 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         if b.classId is not None:
             class_members(implementation, db, u, b.classId)
         lesson = lesson_dict(db, int(u.school_id), b.lessonId)
+        db.execute(select(Lesson.id).where(Lesson.id == b.lessonId).with_for_update()).first()
         sid = int(db.execute(insert(sessions).values(
             school_id=u.school_id, teacher_id=u.id, lesson_id=b.lessonId, status="planned", current_stage=0, covered=False,
             title=f"{lesson['subject']} 第{lesson['lesson_no']}课 {lesson['title']}"[:220], created_at=datetime.utcnow())).inserted_primary_key[0])
@@ -469,4 +470,5 @@ def install_weekend_views(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_views", "register_weekend_tables"]
+
 

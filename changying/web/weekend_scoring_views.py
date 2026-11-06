@@ -147,7 +147,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
     router = APIRouter()
 
     def my_session(db: Any, u: Any, sid: int) -> Any:
-        row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id, sessions.c.teacher_id == u.id)).first()
+        row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id, sessions.c.teacher_id == u.id).with_for_update()).first()
         if row is None:
             raise HTTPException(404, "没有找到这节课堂")
         return row
@@ -726,5 +726,6 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_scoring", "register_scoring_tables"]
+
 
 
