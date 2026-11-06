@@ -1064,6 +1064,14 @@ with TestClient(app) as client:
     assert passed_flag["verificationState"] == "passed", passed_flag
     assert passed_flag["hits"] == 3 and passed_flag["total"] == 3, passed_flag
 
+    # 达标之后再做错题：状态仍是“达到条件”，计数冻结在达标那一刻
+    add_submission(sid, False, submitted_at=base_now - timedelta(minutes=30))
+    with legacy.SessionLocal() as db:
+        frozen = [f for f in _knowledge_flags(legacy, db, school_id, sid)["flags"]
+                  if f["knowledge"] == knowledge][0]
+    assert frozen["verification"] == "后续练习达到条件", frozen
+    assert (frozen["hits"], frozen["total"]) == (3, 3), frozen
+
     # 验证新增详情字段结构与数值
     assert by_help[two_q]["verificationDetail"]["state"] == "insufficient_questions"
     assert by_help[two_q]["verificationDetail"]["total"] == 2

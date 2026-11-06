@@ -37,26 +37,29 @@ def _iso(value: Any) -> str:
     return value.strftime("%Y-%m-%d %H:%M") if hasattr(value, "strftime") else ""
 
 
-def _submission_stats_by_subject(
-    implementation: Any, db: Any, answers: list[Any], school_id: int
-) -> dict[tuple[str, str], tuple[int, int]]:
-    qids = [
-        item.get("question_id")
-        for item in answers
-        if isinstance(item, dict) and item.get("question_id") is not None
-    ]
-    if not qids:
+def _subject_map(implementation: Any, db: Any, school_id: int, question_ids: set[int]) -> dict[int, str]:
+    """一遍查出这些题目的学科；调用方在扫描提交之前把所有 question_id 收齐，避免逐条查库。"""
+    if not question_ids:
         return {}
     question_model = implementation.Question
-    subject_by_qid = {
+    return {
         int(qid): str(subj or "").strip()
         for qid, subj in db.execute(
             select(question_model.id, question_model.subject).where(
                 question_model.school_id == school_id,
-                question_model.id.in_(qids),
+                question_model.id.in_(sorted(question_ids)),
             )
         ).all()
     }
+
+
+def _submission_stats_by_subject(
+    implementation: Any,
+    db: Any,
+    answers: list[Any],
+    school_id: int,
+    subject_by_qid: dict[int, str],
+) -> dict[tuple[str, str], tuple[int, int]]:
     by_subject: dict[str, list[dict[str, Any]]] = {}
     for item in answers:
         if not isinstance(item, dict):
@@ -106,6 +109,8 @@ def knowledge_flags(implementation: Any, db: Any, school_id: int, student_id: in
             .order_by(implementation.Submission.submitted_at.asc(), implementation.Submission.id.asc())
             .limit(MAX_SUBMISSIONS_SCANNED)
         ).all()
+        parsed: list[tuple[Any, list[Any]]] = []
+        question_ids: set[int] = set()
         for sub in subs:
             try:
                 answers = json.loads(sub.answers_json or "[]")
@@ -113,7 +118,16 @@ def knowledge_flags(implementation: Any, db: Any, school_id: int, student_id: in
                 answers = []
             if not isinstance(answers, list):
                 answers = []
-            stats_by_subject = _submission_stats_by_subject(implementation, db, answers, school_id)
+            parsed.append((sub, answers))
+            for item in answers:
+                if isinstance(item, dict) and isinstance(item.get("question_id"), int):
+                    question_ids.add(int(item["question_id"]))
+        # 一次性查出所有题目的学科，避免“每个提交查一遍题表”。
+        subject_by_qid = _subject_map(implementation, db, school_id, question_ids)
+        for sub, answers in parsed:
+            stats_by_subject = _submission_stats_by_subject(
+                implementation, db, answers, school_id, subject_by_qid
+            )
             scans.append((int(sub.id), sub.submitted_at, stats_by_subject))
 
     flags = []
@@ -121,6 +135,8 @@ def knowledge_flags(implementation: Any, db: Any, school_id: int, student_id: in
         last = max(i["created_at"] for i in items)
         cleared_at = None
         cleared_sub_id: int | None = None
+        at_clear_hits = 0
+        at_clear_total = 0
         last_sub_id: int | None = None
         last_sub_when = None
         sub_count = 0
@@ -141,6 +157,9 @@ def knowledge_flags(implementation: Any, db: Any, school_id: int, student_id: in
                 if cleared_at is None and total >= limits["minQuestions"] and hit * 100 >= limits["passPercent"] * total:
                     cleared_at = when
                     cleared_sub_id = sub_id
+                    at_clear_hits, at_clear_total = cum_hits, cum_total
+        # 只有“从来没交过够题量的单次练习”时，才允许用多次小题量累计判定；
+        # 交过一次 3 题但没达标，就必须再交一次够题量的练习，不能靠累计蒙混。
         if (
             cleared_at is None
             and max_sub_total < limits["minQuestions"]
@@ -149,9 +168,12 @@ def knowledge_flags(implementation: Any, db: Any, school_id: int, student_id: in
         ):
             cleared_at = last_sub_when
             cleared_sub_id = last_sub_id
+            at_clear_hits, at_clear_total = cum_hits, cum_total
         if cleared_at is not None:
             verification = "后续练习达到条件"
             verification_state = "passed"
+            # 达标时冻结计数：之后再做错题不污染“当时为什么判过”的证据。
+            cum_hits, cum_total = at_clear_hits, at_clear_total
         elif cum_total == 0:
             verification = "尚无后续作答"
             verification_state = "no_submission"
