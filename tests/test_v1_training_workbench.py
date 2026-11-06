@@ -272,7 +272,7 @@ def test_training_explains_the_follow_up_pilot_quota_rules():
     tip = rel["communication_tip"]
     for text in ("每个班每天最多 5 条", "同一学生当天最多 1 条", "都不返还名额", "同时占两个班的名额",
                  "不改变求助本身的状态", "学生主动求助", "AI 解答验算未通过", "已讲解，尚无独立巩固结果",
-                 "尚无独立验证", "练习尚未通过", "无法判定是否已验证"):
+                 "无法匹配知识点", "尚无后续作答", "题量不足待补充", "已有结果尚未达标", "无法判定"):
         assert text in tip, text
     assert "看不到" in rel["other_role_sees"]
 
