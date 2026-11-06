@@ -174,6 +174,10 @@ def test_guidance_check_and_steps_boundary():
     for pi_ans in ("4π", "π×4", "4pi", "4PI", "4 pi"):
         assert _check(pi_ans) is None, f"{pi_ans} 应返回 None，不提供数值比对目标"
 
+    # A2. 普通单词里的 pi 不能把整步降级（与 parse_answer 用同一个 contains_pi）
+    for plain in ("6 pizzas", "3 pieces"):
+        assert _check(plain) is not None, f"{plain} 不应被当成含 π"
+
     # B. _check 对纯数字与单位
     c_pure = _check("12.56")
     assert c_pure is not None

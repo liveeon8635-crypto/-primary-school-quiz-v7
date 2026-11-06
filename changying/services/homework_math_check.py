@@ -172,10 +172,18 @@ _ANSWER_TOKEN = re.compile(r"(?<!\d)-?\d+(?:\.\d+)?(?:/\d+)?%?")
 _PI_ANSWER = re.compile(r"[πΠ]|(?<![A-Za-z])pi(?![A-Za-z])", re.IGNORECASE)
 
 
+def contains_pi(text: str) -> bool:
+    """答案里有没有圆周率写法：π/Π，或独立成词的 pi（pizzas/pink 不算）。
+
+    服务端解析与辅导链路共用这一处判断，避免一边认 π、一边不认。
+    """
+    return bool(_PI_ANSWER.search(str(text or "")))
+
+
 def parse_answer(answer: str) -> tuple[Fraction, int]:
     """The single numeric value in an answer like ``7个``, ``x=7``, ``5/6``, ``1又1/2`` -> (value, decimals)."""
     text = normalize(answer)
-    if _PI_ANSWER.search(text):
+    if contains_pi(text):
         raise _Skip("答案含π，需人工确认")
     text = re.sub(r"^[a-z]=", "", text)
     mixed = re.fullmatch(r"(\D*?)\((\d+)\+(\d+)/(\d+)\)\D*", text)
@@ -323,4 +331,4 @@ def check_solution(expression: Any, answer: Any) -> dict[str, str]:
         return _result(SKIPPED, "算式太复杂")
 
 
-__all__ = ["MISMATCH", "OK", "SKIPPED", "check_solution", "evaluate_arithmetic", "normalize", "parse_answer"]
+__all__ = ["MISMATCH", "OK", "SKIPPED", "check_solution", "contains_pi", "evaluate_arithmetic", "normalize", "parse_answer"]
