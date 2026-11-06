@@ -203,12 +203,20 @@ def recognize_image(
         out = implementation._ai_extract_text(data)
         if not out:
             raise VisionFailure(502, "识别服务没有返回内容，请重拍或直接输入文字", "empty_response")
+        # 只有“看起来是结构化输出却没解析成功”才判失败；纯文本响应仍按旧行为收下，
+        # 让老师/学生拿到可编辑的草稿，而不是一个 502。
+        stripped = out.strip()
+        structured = stripped.startswith("{") or stripped.startswith("[") or stripped.startswith("```")
         try:
             parsed = implementation._ai_json(out)
         except (HTTPException, ValueError):
-            raise VisionFailure(502, "识别结果格式异常或可能不完整，请核对重拍或直接输入文字", "invalid_transcription") from None
+            if structured:
+                raise VisionFailure(502, "识别结果格式异常或可能不完整，请核对重拍或直接输入文字", "invalid_transcription") from None
+            parsed = {"text": stripped, "confidence": None}
         if not isinstance(parsed, dict):
-            raise VisionFailure(502, "识别结果格式异常或可能不完整，请核对重拍或直接输入文字", "invalid_transcription")
+            if structured:
+                raise VisionFailure(502, "识别结果格式异常或可能不完整，请核对重拍或直接输入文字", "invalid_transcription")
+            parsed = {"text": stripped, "confidence": None}
         raw_text = str(parsed.get("text") or "").strip()
         if not raw_text:
             raise VisionFailure(422, "没有识别出文字，请重拍或直接输入", "unreadable_response")
