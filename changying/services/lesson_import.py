@@ -6,6 +6,7 @@ entity-expansion bomb has nothing to expand. The caller validates the zip contai
 
 from __future__ import annotations
 
+import base64
 import html
 import io
 import re
@@ -17,6 +18,12 @@ MAX_TEXT_CHARS = 200000
 MAX_PDF_PAGES = 60
 MAX_SLIDES = 60
 SUPPORTED = (".docx", ".pptx", ".pdf", ".txt", ".md")
+# Figures travel to the model and then into a question's figure field, which caps a
+# single data URL at 700k chars; keep a margin and a total budget per lesson.
+MAX_FIGURES = 12
+MAX_FIGURE_CHARS = 650_000
+MAX_TOTAL_FIGURE_CHARS = 3_000_000
+
 
 _RUN = re.compile(r"<(?:w|a):t(?:\s[^>]*)?>(.*?)</(?:w|a):t>", re.S)
 _SLIDE_NO = re.compile(r"ppt/slides/slide(\d+)\.xml$")
@@ -47,13 +54,72 @@ def _pptx(data: bytes) -> list[str]:
     return [t for _, t in sorted(slides)]
 
 
-def _pdf(data: bytes) -> str:
+def _pdf(data: bytes) -> tuple[str, list[dict[str, Any]]]:
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(data))
     if len(reader.pages) > MAX_PDF_PAGES:
         raise ValueError("PDF exceeds supported page count")
-    return "\n".join((page.extract_text() or "") for page in reader.pages)
+    texts, figures = [], []
+    for number, page in enumerate(reader.pages, start=1):
+        texts.append(page.extract_text() or "")
+        # The teacher's paper is exported with its question pictures as JPEG XObjects;
+        # read those streams directly (no imaging library on the server).
+        for url in _pdf_page_figures(page):
+            figures.append({"page": number, "data_url": url})
+    return "\n".join(texts), figures
+
+
+def _pdf_page_figures(page: Any) -> list[str]:
+    try:
+        xobjects = (page.get("/Resources") or {}).get("/XObject") or {}
+    except Exception:  # noqa: BLE001 - a malformed page must not fail the whole import
+        return []
+    out: list[str] = []
+    for _, ref in xobjects.items():
+        try:
+            obj = ref.get_object()
+        except Exception:  # noqa: BLE001
+            continue
+        if str(obj.get("/Subtype") or "") != "/Image":
+            continue
+        filt = obj.get("/Filter")
+        filters = [str(f) for f in (filt if isinstance(filt, list) else [filt])]
+        if "/DCTDecode" not in filters and "/JPXDecode" not in filters:
+            continue
+        try:
+            url = _data_url(obj.get_data())
+        except Exception:  # noqa: BLE001
+            continue
+        if url:
+            out.append(url)
+    return out
+
+
+def _docx_figures(data: bytes) -> list[str]:
+    out: list[str] = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            for name in sorted(z.namelist()):
+                if not name.startswith("word/media/") or not name.lower().endswith((".jpg", ".jpeg", ".png")):
+                    continue
+                try:
+                    url = _data_url(z.read(name))
+                except Exception:  # noqa: BLE001
+                    continue
+                if url:
+                    out.append(url)
+    except Exception:  # noqa: BLE001
+        return out
+    return out
+
+
+def _data_url(raw: bytes) -> str:
+    # JPEG only: the question figure field and its renderer accept data:image/jpeg.
+    if raw.startswith(b"\xff\xd8\xff"):
+        return "data:image/jpeg;base64," + base64.b64encode(raw).decode()
+    return ""
+
 
 
 def _plain(data: bytes) -> str:
@@ -66,16 +132,22 @@ def _plain(data: bytes) -> str:
 
 
 def extract(ext: str, data: bytes) -> dict[str, Any]:
-    """{"text": str, "slides": [str]} — slides only for .pptx (the teacher's own slides, in order)."""
+    """{"text": str, "slides": [str], "images": [{"page": int, "data_url": str}]}.
+
+    slides only for .pptx (the teacher's own slides, in order); images are the pictures
+    embedded in the original file, in document order, so imported questions can keep them.
+    """
     ext = ext.lower()
     slides: list[str] = []
+    figures: list[dict[str, Any]] = []
     if ext == ".docx":
         text = _docx(data)
+        figures = [{"page": 0, "data_url": url} for url in _docx_figures(data)]
     elif ext == ".pptx":
         slides = _pptx(data)
         text = "\n".join(f"第{i}页：{s}" for i, s in enumerate(slides, start=1))
     elif ext == ".pdf":
-        text = _pdf(data)
+        text, figures = _pdf(data)
     elif ext in (".txt", ".md"):
         text = _plain(data)
     else:
@@ -84,7 +156,23 @@ def extract(ext: str, data: bytes) -> dict[str, Any]:
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     if len(text) > MAX_TEXT_CHARS:
         raise ValueError("教案文字超过20万字，请拆分文件后导入；未截断或保存任何内容")
-    return {"text": text, "slides": slides}
+    return {"text": text, "slides": slides, "images": _budget_figures(figures)}
+
+
+def _budget_figures(figures: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep the first figures that fit the count and size budget; drop the rest silently."""
+    kept: list[dict[str, Any]] = []
+    total = 0
+    for item in figures:
+        url = str(item.get("data_url") or "")
+        if not url or len(url) > MAX_FIGURE_CHARS:
+            continue
+        if len(kept) >= MAX_FIGURES or total + len(url) > MAX_TOTAL_FIGURE_CHARS:
+            break
+        kept.append({"page": int(item.get("page") or 0), "data_url": url})
+        total += len(url)
+    return kept
+
 
 
 _LESSON_NO_PATTERNS = (

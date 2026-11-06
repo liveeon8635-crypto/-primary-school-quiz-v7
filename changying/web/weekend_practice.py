@@ -129,6 +129,16 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
     def lesson_questions(db: Any, school_id: int, lesson_id: int) -> list[Any]:
         return list(db.scalars(select(TQ).where(TQ.school_id == school_id, TQ.lesson_id == lesson_id, TQ.active.is_(True)).order_by(TQ.id).limit(30)).all())
 
+    def figure_of(q: Any) -> dict[str, Any]:
+        """The picture imported with this question, if any (validated when it was written)."""
+        try:
+            fig = json.loads(getattr(q, "figure_json", "") or "{}")
+        except (TypeError, ValueError):
+            return {}
+        if not isinstance(fig, dict) or fig.get("type") != "uploaded_image":
+            return {}
+        return fig if str(fig.get("data_url") or "").startswith("data:image/jpeg;base64,") else {}
+
     def level_names(subject: str) -> tuple[str, str, str]:
         return LEVEL_NAMES.get(subject, LEVEL_NAMES["default"])
 
@@ -277,7 +287,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         qs = []
         for q in lesson_questions(db, int(u.school_id), int(row.lesson_id)):
             a = mine.get(q.id)
-            item = {"id": q.id, "stem": q.stem, "options": options(q), "answersPublished": q.id in released_choices, "canSubmit": q.id not in released_choices, "hintUsed": used.get(q.id, 0), "levelNames": level_names(q.subject)}
+            item = {"id": q.id, "stem": q.stem, "options": options(q), "figure": figure_of(q), "answersPublished": q.id in released_choices, "canSubmit": q.id not in released_choices, "hintUsed": used.get(q.id, 0), "levelNames": level_names(q.subject)}
             if used.get(q.id):
                 hs = hint_rows(db, int(u.school_id), q.id)
                 item["hintTexts"] = [hs[i].text for i in range(1, used[q.id] + 1) if i in hs]

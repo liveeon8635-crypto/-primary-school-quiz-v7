@@ -12,6 +12,10 @@ from changying.web.weekend_courseware_pages import COURSEWARE_JS, COURSEWARE_PLA
 COMMON_JS = r"""
 __PAGE_AUTH__
 function growTextarea(n){if(!n||!n.isConnected)return;n.style.height='auto';n.style.height=Math.max(64,n.scrollHeight+2)+'px';n.style.overflowY='hidden'}
+function questionFigureImg(fig){
+  if(!fig||fig.type!=='uploaded_image'||!/^data:image\/jpeg;base64,/.test(String(fig.data_url||'')))return null;
+  return el('img',{src:fig.data_url,alt:fig.alt||'原卷插图',style:'display:block;max-width:100%;max-height:320px;object-fit:contain;margin:8px 0;border:1px solid #e5e8f0;border-radius:8px'});
+}
 var el=function(tag,attrs){
   var n=document.createElement(tag);
   Object.keys(attrs||{}).forEach(function(k){
@@ -454,6 +458,7 @@ function practice(){
     d.questions.forEach(function(q,qi){
       var locked=q.canSubmit===false||(q.attempts||0)>=3,card=el('div',{class:'card'}),out=el('div'),hintsOut=el('div');
       card.appendChild(el('b',{text:(qi+1)+'. '+q.stem}));
+      var qfig=questionFigureImg(q.figure);if(qfig)card.appendChild(qfig);
       var selectionKey=d.sessionId+':'+q.id,chosen=selectedAnswers[selectionKey]==null?(q.answered?q.selected:-1):selectedAnswers[selectionKey],opts=el('div');
       q.options.forEach(function(o,i){
         var b=el('button',{style:'display:block;width:100%;text-align:left;margin:6px 0',text:optText(i,o)});
@@ -796,7 +801,8 @@ function plan(){
             var opts=q.options.map(function(o,i){return 'ABCD'[i]+'. '+o+(i===q.correctIndex?' ✓':'')}).join('　');
             var levelTag=q.level?el('span',{class:'tag'+(q.level==='提高'?' warn':''),text:q.level}):null,
                 checkTag=q.verified?el('span',{class:'tag ok',text:'已验算'}):(q.level&&SUBJ==='数学'?el('span',{class:'tag warn',text:'答案待核对'}):null);
-            var row=el('div',{class:'item'},el('span',{class:'t'},levelTag,checkTag,el('b',{text:q.stem}),el('div',{class:'muted',text:opts}),el('div',{class:'muted',text:q.explanation||''})));
+            var fig=questionFigureImg(q.figure);
+            var row=el('div',{class:'item'},el('span',{class:'t'},levelTag,checkTag,el('b',{text:q.stem}),fig,el('div',{class:'muted',text:opts}),el('div',{class:'muted',text:q.explanation||''})));
             var badge=el('span',{class:'tag '+(q.active?'ok':'warn'),text:q.active?'已通过':'草稿'}),act=el('div',{class:'row'},badge),feedback=el('div',{role:'status','aria-live':'polite'});
             if(!q.active){
               var approve=el('button',{text:'通过',onclick:function(){approveQuestionInPlace('/teacher/weekend/lessons/'+r.lessonId+'/questions',q,approve,act,badge,feedback,refreshStatus)}});
