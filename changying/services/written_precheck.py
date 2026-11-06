@@ -112,10 +112,15 @@ def preview(stem: str, reference: str, observations: list[dict[str, Any]]) -> di
     for item in observations[:40]:
         if isinstance(item, dict): seen.setdefault(str(item.get("key", "")), []).append(item)
     items = []
+    any_truncated = False
     for key, question in questions.items():
         candidates = seen.get(key, [])
         item = candidates[0] if len(candidates) == 1 else {}
-        observed = str(item.get("question") or "")[:4000]
+        raw_observed = str(item.get("question") or "")
+        item_truncated = len(raw_observed) >= 4000
+        if item_truncated:
+            any_truncated = True
+        observed = raw_observed[:4000]
         answers = item.get("answers") if isinstance(item.get("answers"), list) else []
         answers = [str(x)[:200] for x in answers[:20]]
         expected = slots(references.get(key, ""))
@@ -125,6 +130,7 @@ def preview(stem: str, reference: str, observations: list[dict[str, Any]]) -> di
         comparisons: list[bool | None] = []
         reason = ""
         if len(candidates) != 1: reason = "未识别出对应小题或小题编号重复，请老师核验"
+        elif item_truncated: reason = "识别内容已达 4000 字上限，可能不完整，请老师核对"
         elif not matched: reason = "照片中的题目与本题不对应或识别不清，请老师核验"
         elif not confident: reason = "识别把握不足，请老师核对原图"
         elif not expected or len(answers) != len(expected): reason = "答案空数与参考答案不一致，请老师逐空核验"
@@ -137,12 +143,17 @@ def preview(stem: str, reference: str, observations: list[dict[str, Any]]) -> di
                       "reference": expected, "confidence": confidence if confident else None,
                       "matched": matched, "result": result, "reason": reason,
                       "comparisons": comparisons})
-    complete = bool(items) and set(questions) == set(references) == set(seen) and all(i["result"] for i in items)
+    complete = bool(items) and not any_truncated and set(questions) == set(references) == set(seen) and all(i["result"] for i in items)
     suggested = None
     if complete:
         suggested = "correct" if all(i["result"] == "correct" for i in items) else "revise" if all(i["result"] == "revise" for i in items) else "partial"
-    return {"items": items, "suggestedResult": suggested, "requiresTeacher": True,
-            "message": "仅为预批建议，老师核验保存后才生效" if complete else "有无法自动核对的内容，请老师逐项核验后手工批改"}
+    out = {"items": items, "suggestedResult": suggested, "requiresTeacher": True,
+           "message": "仅为预批建议，老师核验保存后才生效" if complete else (
+               "识别内容已达 4000 字上限，可能不完整，请老师核对后手工批改" if any_truncated else "有无法自动核对的内容，请老师逐项核验后手工批改"
+           )}
+    if any_truncated:
+        out["truncated"] = True
+    return out
 
 
 def transcription_prompt() -> str:

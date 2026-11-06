@@ -145,7 +145,7 @@ valid_notice = json.dumps({
 with TestClient(app) as client:
     th, sh, sid, school_id = setup(client)
 
-    # 1) /teacher/homework/parse-image 3999 / 4000 / 4001 boundary
+    # 1) /teacher/homework/parse-image 3999 / 4000 / 4001 boundary + explicit truncation warning + half-JSON rejection
     for n, exp_len, exp_trunc in [(3999, 3999, False), (4000, 4000, True), (4001, 4000, True)]:
         vision_out["content"] = json.dumps({"text": "甲" * n, "hasFigure": False, "confidence": 0.95}, ensure_ascii=False)
         r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=JPEG)
@@ -153,6 +153,14 @@ with TestClient(app) as client:
         body = r.json()
         assert len(body["text"]) == exp_len, (n, len(body["text"]))
         assert body["truncated"] is exp_trunc, (n, body)
+        if exp_trunc:
+            assert "可能不完整，请核对" in body["warning"], body
+        else:
+            assert body["warning"] == "", body
+
+    vision_out["content"] = '{"text": "半截JSON通知未闭合'
+    half_img = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=JPEG)
+    assert half_img.status_code == 502 and "半截JSON" not in half_img.text
 
     # 2) /teacher/homework/parse 3999 / 4000 / 4001 / 6000 / 6001 boundary
     notices_tbl = legacy.Base.metadata.tables["homework_notices"]
@@ -234,13 +242,18 @@ homework_vision.requests.post = lambda url, headers=None, json=None, timeout=Non
 with TestClient(app) as client:
     th, sh, sid, school_id = setup(client)
 
-    # 1) /student/homework/recognize at 3999 / 4000 / 4001 chars
-    for n, exp_len in [(3999, 3999), (4000, 4000), (4001, 4000)]:
+    # 1) /student/homework/recognize at 3999 / 4000 / 4001 chars + truncation flag/warning
+    for n, exp_len, exp_trunc in [(3999, 3999, False), (4000, 4000, True), (4001, 4000, True)]:
         vision_text["value"] = "题" * n
         r = client.post("/student/homework/recognize", headers={**sh, "Content-Type": "image/jpeg"}, content=JPEG)
         assert r.status_code == 200, (n, r.text)
         body = r.json()
         assert len(body["text"]) == exp_len, (n, len(body["text"]))
+        assert body["truncated"] is exp_trunc, (n, body)
+        if exp_trunc:
+            assert "可能不完整，请核对" in body["warning"], body
+        else:
+            assert body["warning"] == "", body
         # Downstream /student/homework/help enforces MAX_QUESTION_CHARS = 1000:
         # passing 3999 or 4000 chars from recognize into /student/homework/help is rejected with 400!
         downstream = client.post("/student/homework/help", headers=sh, json={"questionText": body["text"], "grade": 3})
@@ -346,12 +359,15 @@ def fake_ocr(impl, db, user, image, **kw):
     ocr_calls.append(kw)
     if isinstance(ocr_out["text"], Exception):
         raise ocr_out["text"]
-    # Simulate recognize_image's 4000-char slice on the returned text field
+    # Simulate recognize_image's 4000-char slice + truncated flag on the returned text field
     raw_text = str(ocr_out["text"] or "").strip()
+    truncated = len(raw_text) >= homework_vision.RECOGNIZED_CHAR_LIMIT
     return {
         "text": raw_text[:homework_vision.RECOGNIZED_CHAR_LIMIT],
         "hasFigure": False,
         "confidence": ocr_out["confidence"],
+        "truncated": truncated,
+        "warning": "识别内容已达 4000 字上限，可能不完整，请核对" if truncated else "",
     }
 
 
@@ -420,7 +436,7 @@ with TestClient(app) as client:
 
     subs_tbl = legacy.Base.metadata.tables["weekend_written_submissions"]
 
-    # 4000 chars inner JSON
+    # 4000 chars inner JSON -> reaches 4000-char ceiling, marked truncated=True and manual review
     with legacy.SessionLocal() as db:
         db.execute(update(subs_tbl).where(subs_tbl.c.id == aid).values(revision=10, result="pending"))
         db.commit()
@@ -428,8 +444,12 @@ with TestClient(app) as client:
     assert client.post(base + f"/{aid}/precheck", headers=th, json={"revision": 10, "retry": True}).status_code == 200
     item_4000 = next(i for i in client.get(base, headers=th).json()["items"] if i["id"] == aid)
     assert item_4000["result"] == "pending"
+    assert item_4000["precheck"]["status"] == "manual"
+    assert item_4000["precheck"]["truncated"] is True
+    assert item_4000["precheck"]["suggestedResult"] is None
+    assert "可能不完整，请老师核对" in item_4000["precheck"]["message"]
 
-    # 4001 chars inner JSON -> sliced at 4000 -> broken JSON -> invalid_transcription, formal answer stays pending
+    # 4001 chars inner JSON -> sliced at 4000 -> broken JSON -> invalid_transcription + truncated warning, formal answer stays pending
     with legacy.SessionLocal() as db:
         db.execute(update(subs_tbl).where(subs_tbl.c.id == aid).values(revision=11, result="pending"))
         db.commit()
@@ -441,6 +461,8 @@ with TestClient(app) as client:
     assert item_4001["result"] == "pending" and item_4001["hasPhoto"] is True
     assert item_4001["precheck"]["status"] == "failed"
     assert item_4001["precheck"]["code"] == "invalid_transcription"
+    assert item_4001["precheck"]["truncated"] is True
+    assert "可能不完整，请核对" in item_4001["precheck"]["message"]
     assert item_4001["precheck"]["suggestedResult"] is None
 
     # 3) Timeout / failure -> single call, status='failed', code='timeout', original submission untouched

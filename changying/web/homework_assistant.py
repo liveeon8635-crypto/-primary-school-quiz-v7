@@ -227,9 +227,14 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
 
         result = await run_in_threadpool(work)
         text = scrub_notice_text(result["text"])
+        truncated = bool(result.get("truncated") or len(result["text"]) >= RECOGNIZED_CHAR_LIMIT)
         # 识别返回在服务层被截到 4000 字；到顶就提醒老师核对最后一条，避免静默少题。
-        return {"text": text, "confidence": result["confidence"],
-                "truncated": len(result["text"]) >= RECOGNIZED_CHAR_LIMIT}
+        return {
+            "text": text,
+            "confidence": result["confidence"],
+            "truncated": truncated,
+            "warning": "识别内容已达 4000 字上限，可能不完整，请核对最后一条作业是否齐全" if truncated else "",
+        }
 
     @router.post("/teacher/homework/parse")
     def parse(b: ParseBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
