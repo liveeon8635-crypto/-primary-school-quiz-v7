@@ -159,7 +159,8 @@ function followUpsView(box){
       acts.appendChild(el('button',{class:'primary',text:it.next.label,onclick:function(){
       var q='?helpID='+encodeURIComponent(it.next.params.helpID);
       if(it.next.params.studentID)q+='&studentID='+encodeURIComponent(it.next.params.studentID);
-      navigate(it.next.route+q);
+      if(typeof navigate==='function')navigate(it.next.route+q);
+      else location.href=it.next.route+q;
     }}));
       acts.appendChild(el('button',{text:'已处理',onclick:function(){
         api('/teacher/homework/follow-ups/'+it.helpID+'/dismiss',{method:'POST'}).then(function(){
@@ -187,8 +188,30 @@ function teacherView(){
     body.textContent='';views[key](body);
   }
   Object.keys(names).forEach(function(k){tabs.appendChild(el('button',{'data-k':k,text:names[k],onclick:function(){show(k)}}))});
-  window.__hwShow=show;show('import');
+  window.__hwShow=show;
+  var target=hwTarget(location.search);
+  if(target&&typeof openHelpTarget==='function')openHelpTarget(target,tabs,body,show);else show('import');
   if(typeof helpBadge==='function')helpBadge(tabs);
+}
+/* 「待跟进」跳过来时带 ?helpID=..&studentID=..：两项都必须是正整数且各出现一次，否则视为无效。
+   没有这两个参数时返回 null，页面照常打开。URL 只用来定位，能不能看由服务端接口决定。 */
+function hwTarget(search){
+  var s=String(search||'').split('#')[0].replace(/^\?/,'');
+  if(!s)return null;
+  var got={},seen=false,bad=false;
+  s.split('&').forEach(function(pair){
+    if(!pair)return;
+    var i=pair.indexOf('='),k=i<0?pair:pair.slice(0,i),v=i<0?'':pair.slice(i+1);
+    try{k=decodeURIComponent(k);v=decodeURIComponent(v)}catch(e){return}
+    if(k!=='helpID'&&k!=='studentID')return;
+    seen=true;
+    if(Object.prototype.hasOwnProperty.call(got,k))bad=true;
+    got[k]=v;
+  });
+  if(!seen)return null;
+  function pos(v){return /^[1-9][0-9]{0,9}$/.test(v||'')&&Number(v)<=2147483647?Number(v):0}
+  var h=pos(got.helpID),s=pos(got.studentID);
+  return {valid:!bad&&h>0&&s>0&&Object.prototype.hasOwnProperty.call(got,'helpID')&&Object.prototype.hasOwnProperty.call(got,'studentID'),helpID:h,studentID:s};
 }
 function importView(body){
   var text=el('textarea',{placeholder:'把家长转发的作业通知文字粘贴到这里'}),msg=el('div'),editor=el('div');
@@ -311,7 +334,11 @@ function start(){
     }).then(function(c){
       CONFIG=c||CONFIG;
       if(ME.role==='teacher')teacherView();
-      else if(ME.role==='student')studentView();
+      else if(ME.role==='student'){
+        studentView();
+        // 定位链接只给老师用：学生打开时不请求任何老师接口，只提示一句，照常显示自己的作业。
+        if(hwTarget(location.search))root.insertBefore(notice('warn','这个链接是给老师查看求助用的，这里只显示你自己的作业。'),root.firstChild);
+      }
       else frame('这个功能只面向老师和学生','当前身份：'+(ME.role||'未知'));
     });
   }).catch(function(e){frame('打不开',e.message||'请稍后重试')});
@@ -658,6 +685,58 @@ function helpView(body){
     return card;
   }
   load();clearInterval(helpTimer);helpTimer=setInterval(function(){if(!document.hidden&&body.isConnected)load()},10000);
+}
+function openHelpTarget(target,tabs,body,show){
+  if(!target||!target.valid){
+    show('import');
+    body.insertBefore(notice('warn','这条求助已不存在或你没有权限'),body.firstChild);
+    return;
+  }
+  var tabButtons=tabs.querySelectorAll('button');
+  for(var i=0;i<tabButtons.length;i++){
+    tabButtons[i].className=tabButtons[i].getAttribute('data-k')==='help'?'on':'';
+  }
+  body.textContent='';
+  body.appendChild(el('div',{class:'muted',text:'正在加载求助详情…'}));
+  clearInterval(helpTimer);
+  api('/teacher/homework/help/'+target.helpID).then(function(d){
+    if(d.studentID!==target.studentID){
+      show('import');
+      body.insertBefore(notice('warn','这条求助已不存在或你没有权限'),body.firstChild);
+      return;
+    }
+    body.textContent='';
+    var head=el('div',{class:'row',style:'justify-content:space-between;margin-bottom:12px;'});
+    head.appendChild(el('h2',{text:'求助详情 · '+(d.studentName||'学生')}));
+    head.appendChild(el('button',{text:'← 全部求助列表',onclick:function(){show('help')}}));
+    var card=el('div',{class:'card'});
+    var meta=el('div',{class:'row'});
+    meta.appendChild(el('b',{text:(d.studentName||'学生')+' · '+(d.grade?d.grade+'年级':'')}));
+    meta.appendChild(el('span',{class:'tag',text:d.reasonLabel||'求助'}));
+    meta.appendChild(el('span',{class:'muted',text:d.state==='resolved'?'已处理 '+(d.resolvedAt||''):'已等 '+(d.waitMinutes||0)+' 分钟'}));
+    card.appendChild(meta);
+    card.appendChild(el('div',{style:'margin:8px 0;font-size:16px;',text:d.questionText||''}));
+    if(d.studentNote)card.appendChild(el('div',{class:'muted',text:'学生说：'+d.studentNote}));
+    if(d.teacherNote)card.appendChild(el('div',{class:'muted',text:'处理说明：'+d.teacherNote}));
+    var detail=el('div',{style:'margin-top:12px;'});
+    if(d.conversation&&d.conversation.length){
+      detail.appendChild(el('h3',{text:'AI 对话记录'}));
+      d.conversation.forEach(function(m){
+        var roleName=m.role==='student'?'学生':(m.role==='ai'?'AI':'老师');
+        detail.appendChild(el('div',{class:'notice '+(m.role==='ai'?'warn':'ok')},
+          el('b',{text:roleName+'：'}),
+          el('span',{style:'white-space:pre-wrap',text:m.text})));
+      });
+    }else{
+      detail.appendChild(el('div',{class:'muted',text:'暂无对话记录'}));
+    }
+    card.appendChild(detail);
+    body.appendChild(head);
+    body.appendChild(card);
+  }).catch(function(e){
+    show('import');
+    body.insertBefore(notice('warn','这条求助已不存在或你没有权限'),body.firstChild);
+  });
 }
 """
 
