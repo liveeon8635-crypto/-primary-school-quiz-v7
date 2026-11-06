@@ -560,17 +560,30 @@ def install_homework_help(implementation: Any) -> APIRouter:
         return out
 
     def _annotate_verification(implementation: Any, db: Any, teacher: Any, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """按真实提交判断"已讲解"之后有没有独立通过；匹配不上就说无法判定（宁可多提醒）。"""
+        """按真实提交标注后续练习状态（school + student + subject + knowledge）；匹配不上或依赖异常单独标注。"""
         from changying.services.homework_knowledge import register_homework_knowledge_table
-        from changying.services.homework_knowledge_flags import knowledge_flags
+        from changying.services.homework_knowledge_flags import knowledge_flags, thresholds
 
         table = register_homework_knowledge_table(implementation)
-        states: dict[int, dict[str, str]] = {}
+        default_rule = thresholds()
+        states: dict[int, dict[tuple[str, str], dict[str, Any]]] = {}
+        rules: dict[int, dict[str, int]] = {}
         undecided: set[int] = set()
         for item in items:
             student_id = item.get("studentID")
             if student_id is None:
-                item["verification"] = "无法判定是否已验证"
+                item["verification"] = "无法判定"
+                item["verificationDetail"] = {
+                    "state": "undecided",
+                    "label": "无法判定",
+                    "subject": "",
+                    "knowledge": "",
+                    "submissionID": None,
+                    "count": 0,
+                    "hits": 0,
+                    "total": 0,
+                    "threshold": dict(default_rule),
+                }
                 continue
             if student_id not in states and student_id not in undecided:
                 try:
@@ -582,31 +595,97 @@ def install_homework_help(implementation: Any) -> APIRouter:
                         undecided.add(student_id)
                     else:
                         raw_flags = result.get("flags", [])
-                        states[student_id] = {
-                            f["knowledge"]: f["state"]
-                            for f in raw_flags
-                            if isinstance(f, dict) and f.get("knowledge")
-                        }
+                        rule_obj = result.get("rule")
+                        rules[student_id] = dict(rule_obj) if isinstance(rule_obj, dict) else dict(default_rule)
+                        by_key: dict[tuple[str, str], dict[str, Any]] = {}
+                        for f in raw_flags:
+                            if not isinstance(f, dict):
+                                continue
+                            subj = str(f.get("subject") or "").strip()
+                            know = str(f.get("knowledge") or "").strip()
+                            if subj and know:
+                                by_key[(subj, know)] = f
+                        states[student_id] = by_key
+            rule = rules.get(student_id, default_rule)
             if student_id in undecided:
-                item["verification"] = "无法判定是否已验证"
+                item["verification"] = "无法判定"
+                item["verificationDetail"] = {
+                    "state": "undecided",
+                    "label": "无法判定",
+                    "subject": "",
+                    "knowledge": "",
+                    "submissionID": None,
+                    "count": 0,
+                    "hits": 0,
+                    "total": 0,
+                    "threshold": dict(rule),
+                }
                 continue
             row = db.execute(
-                select(table.c.knowledge_key, table.c.matched).where(
+                select(table.c.subject, table.c.knowledge_key, table.c.matched).where(
                     table.c.school_id == teacher.school_id,
                     table.c.student_id == student_id,
                     table.c.help_id == item["helpID"],
                 )
             ).first()
-            if row is None or not row.matched:
-                item["verification"] = "无法判定是否已验证"
+            subject = str(row.subject or "").strip() if row is not None else ""
+            knowledge_key = str(row.knowledge_key or "").strip() if row is not None else ""
+            if row is None or not row.matched or not subject or not knowledge_key:
+                item["verification"] = "无法匹配知识点"
+                item["verificationDetail"] = {
+                    "state": "unmatched",
+                    "label": "无法匹配知识点",
+                    "subject": subject,
+                    "knowledge": knowledge_key,
+                    "submissionID": None,
+                    "count": 0,
+                    "hits": 0,
+                    "total": 0,
+                    "threshold": dict(rule),
+                }
                 continue
-            state = states[student_id].get(row.knowledge_key)
-            if state == "cleared":
-                item["verification"] = "已独立验证"
-            elif state == "open":
-                item["verification"] = "练习尚未通过"
-            else:
-                item["verification"] = "尚无独立验证"
+            flag = states[student_id].get((subject, knowledge_key))
+            if flag is None:
+                item["verification"] = "无法匹配知识点"
+                item["verificationDetail"] = {
+                    "state": "unmatched",
+                    "label": "无法匹配知识点",
+                    "subject": subject,
+                    "knowledge": knowledge_key,
+                    "submissionID": None,
+                    "count": 0,
+                    "hits": 0,
+                    "total": 0,
+                    "threshold": dict(rule),
+                }
+                continue
+            label = str(flag.get("verification") or "")
+            v_state = str(flag.get("verificationState") or "")
+            hits = int(flag.get("hits") or 0)
+            total = int(flag.get("total") or 0)
+            sub_count = int(flag.get("submissionCount") or 0)
+            sub_id = flag.get("submissionID")
+            if not label:
+                if flag.get("state") == "cleared":
+                    label, v_state = "后续练习达到条件", "passed"
+                elif total == 0:
+                    label, v_state = "尚无后续作答", "no_submission"
+                elif total < int(rule.get("minQuestions", 3)):
+                    label, v_state = "题量不足待补充", "insufficient_questions"
+                else:
+                    label, v_state = "已有结果尚未达标", "below_threshold"
+            item["verification"] = label
+            item["verificationDetail"] = {
+                "state": v_state,
+                "label": label,
+                "subject": subject,
+                "knowledge": knowledge_key,
+                "submissionID": int(sub_id) if isinstance(sub_id, int) else None,
+                "count": sub_count,
+                "hits": hits,
+                "total": total,
+                "threshold": dict(rule),
+            }
         return items
 
 
@@ -830,15 +909,22 @@ def install_homework_help(implementation: Any) -> APIRouter:
             })
         items.sort(key=lambda x: (x["rank"], x["evidence"]["escalatedAt"] or "", x["helpID"]))
 
-        # P1-A：已讲解的求助要看后续有没有独立验证。匹配不上就写"无法判定"，
+        # P1-A：求助要看后续有没有达到练习条件。匹配不上写"无法匹配知识点"，依赖异常写"无法判定"，
         # 绝不因为算不出来就把学生藏起来（漏报比误报代价大）。
         try:
             items = _annotate_verification(implementation, db, teacher, items)
         except Exception:  # noqa: BLE001 - 判定失败不能影响列表本身
             for item in items:
-                item["verification"] = "无法判定是否已验证"
+                item["verification"] = "无法判定"
         else:
-            items = [x for x in items if x["verification"] != "已独立验证"]
+            items.sort(
+                key=lambda x: (
+                    x.get("verification") == "后续练习达到条件",
+                    x["rank"],
+                    x["evidence"]["escalatedAt"] or "",
+                    x["helpID"],
+                )
+            )
         return items
 
     def _admit_follow_ups(db: Any, teacher: Any, items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:

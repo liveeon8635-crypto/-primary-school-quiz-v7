@@ -971,14 +971,13 @@ with TestClient(app) as client:
 
     body = client.get("/teacher/homework/follow-ups", headers=th).json()
     labels = {x["helpID"]: x["verification"] for x in body["items"]}
-    # 已独立验证 = 不需要再跟进，这条会从当天列表移出；其余三条保留并给出明确标签
-    assert passed not in labels, ("已验证的求助应移出列表", labels)
-    assert set(labels) == {failed, unknown, unmatched}, labels
-    assert labels.get(failed) == "练习尚未通过", labels
-    assert labels.get(unknown) == "无法判定是否已验证", labels
-    assert labels.get(unmatched) == "无法判定是否已验证", labels
+    assert set(labels) == {passed, failed, unknown, unmatched}, labels
+    assert labels.get(passed) == "后续练习达到条件", labels
+    assert labels.get(failed) == "已有结果尚未达标", labels
+    assert labels.get(unknown) == "无法匹配知识点", labels
+    assert labels.get(unmatched) == "无法匹配知识点", labels
 
-    # 5) 判定依赖出错时只退回"无法判定"，不能吞成"尚无独立验证"或 500
+    # 5) 判定依赖出错时只退回"无法判定"，不能吞成"尚无后续作答"或 500
     import changying.services.homework_knowledge_flags as flags_mod
 
     def boom(*args, **kwargs):
@@ -987,7 +986,7 @@ with TestClient(app) as client:
     flags_mod.knowledge_flags = boom
     after = client.get("/teacher/homework/follow-ups", headers=th).json()
     assert after["items"], after
-    assert all(x["verification"] == "无法判定是否已验证" for x in after["items"]), after
+    assert all(x["verification"] == "无法判定" for x in after["items"]), after
 print("OK")
 """,
         {"HOMEWORK_ASSISTANT": "1"},
