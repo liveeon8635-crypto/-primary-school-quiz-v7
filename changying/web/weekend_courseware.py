@@ -165,8 +165,11 @@ def _normalize_text(text: Any) -> str:
 _FIGURE_URL = re.compile(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}")
 
 
-def lesson_figures(implementation: Any, db: Any, lesson: Any) -> list[tuple[str, dict[str, Any]]]:
-    """The pictures imported with this lesson's questions: (normalized stem prefix, figure)."""
+_QUESTION_NO = re.compile(r"第\s*(\d{1,2})\s*题")
+
+
+def lesson_figures(implementation: Any, db: Any, lesson: Any) -> list[dict[str, Any]]:
+    """The pictures imported with this lesson's questions, with their question number when known."""
     TQ = implementation.TeachingQuestion
     rows = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != "weekend_removed").order_by(TQ.id)).all()
     out = []
@@ -180,16 +183,30 @@ def lesson_figures(implementation: Any, db: Any, lesson: Any) -> list[tuple[str,
         url = str(fig.get("data_url") or "")
         if len(url) > 700000 or not _FIGURE_URL.fullmatch(url):
             continue
-        out.append((_normalize_text(q.stem)[:60], {"type": "uploaded_image", "data_url": url, "alt": "原卷插图"}))
+        stem = str(q.stem or "")
+        number = _QUESTION_NO.search(stem)
+        out.append({"number": int(number.group(1)) if number else None, "key": _normalize_text(stem)[:60],
+                    "figure": {"type": "uploaded_image", "data_url": url, "alt": "原卷插图"}})
     return out
 
 
-def match_figure(figures: list[tuple[str, dict[str, Any]]], page_text: Any) -> dict[str, Any]:
-    """The imported picture of the question this page is teaching; {} when it cannot be told."""
+def match_figure(figures: list[dict[str, Any]], page_text: Any) -> dict[str, Any]:
+    """The imported picture of the question this page is teaching; {} when it cannot be told.
+
+    The big screen labels each worked example “第N题”, so the number is the strongest signal;
+    text containment is the fallback when either side has no number.
+    """
     text = _normalize_text(page_text)
-    for key, figure in figures:
-        if key and key in text:
-            return figure
+    number = _QUESTION_NO.search(text)
+    if number:
+        wanted = int(number.group(1))
+        for item in figures:
+            if item.get("number") == wanted:
+                return item["figure"]
+    for item in figures:
+        key = str(item.get("key") or "")
+        if key and (key in text or text in key):
+            return item["figure"]
     return {}
 
 
@@ -303,7 +320,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             kind = str(data.get("template") or "") if isinstance(data, dict) else ""
             if kind not in cw.TEMPLATES[lesson.subject] or (kind == "reading" and not (lesson.reading_plan or "").strip()):
                 raise ValueError("没有选择可用的模板")
-            original = match_figure(lesson_figures(implementation, db, lesson), page_text)
+            figures = lesson_figures(implementation, db, lesson)
+            original = match_figure(figures, page_text)
             notice = ""
             try:
                 params = cw.clean(kind, data, lesson.reading_plan or "")
@@ -317,6 +335,10 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 # The lesson came in with its own picture: show that instead of a drawing made from the text.
                 params["figure"] = original
                 notice = "这页用的是原卷插图"
+            elif kind == "steps" and figures:
+                # This lesson has original pictures: a drawing made from the text is worse than none.
+                params = cw.clean(kind, {**data, "figure": {}}, lesson.reading_plan or "")
+                notice = "这页没有匹配到原卷插图，已留空；可在“预览/修改”里手动补"
         except ValueError as e:
             raise HTTPException(502, f"第 {(page or 0) + 1} 页：AI 生成的课件未通过校验（{e}），已有课件未改动，可重试或手动填写")
         except HTTPException as e:
