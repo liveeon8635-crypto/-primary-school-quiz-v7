@@ -831,6 +831,7 @@ function plan(){
             card.appendChild(el('div',{class:'row'},el('b',{text:labels[q.type]||'简答题'}),q.level?el('span',{class:'tag'+(q.level==='提高'?' warn':''),text:q.level}):null,q.verified?el('span',{class:'tag ok',text:'已验算'}):(SUBJ==='数学'&&q.level&&q.type!=='composition'?el('span',{class:'tag warn',text:'答案待核对'}):null),badge));
             var parts=q.stem.split('\n'),questionLine=parts.pop();
             card.appendChild(el('p',{style:'white-space:pre-wrap;font-weight:600',text:questionLine}));
+            var wfig=typeof questionFigureImg==='function'?questionFigureImg(q.figure):null;if(wfig)card.appendChild(wfig);
             if(parts.length)card.appendChild(el('details',{},el('summary',{text:'展开阅读材料／题目全文'}),el('pre',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7',text:parts.join('\n')})));
             var edit=el('details'),stem=el('textarea',{maxlength:20000}),ref=el('textarea',{maxlength:4000}),hs=[];
             edit.appendChild(el('summary',{text:'修改题目、评分要点与提示'}));stem.value=q.stem;ref.value=q.reference||'';
