@@ -18,7 +18,7 @@ from fractions import Fraction
 from typing import Any
 
 from changying.services.homework_knowledge import match_knowledge
-from changying.services.homework_math_check import OK, check_solution, parse_answer
+from changying.services.homework_math_check import OK, check_solution, contains_pi, parse_answer
 from changying.services.knowledge_maps import MASTERY_LABELS, assessed
 
 MAX_MAP_NODES = 80
@@ -54,13 +54,13 @@ def pick_node(m: dict[str, Any], node_key: str, knowledge_point: str) -> dict[st
     return found
 
 
-PI_MARKS = ("π", "Π", "pi", "PI")
+PI_MARKS = ("π", "Π", "pi", "PI")  # 旧名保留兼容；判断统一走 contains_pi（带字母边界）
 
 
 def _check(answer: str) -> dict[str, float] | None:
     """What the page compares the pupil's number with: the value and the rounding the answer allows."""
     # 含 π 的答案不能被读成纯数字（否则 4π 会被当成 4）；交回只读讲解，由老师核验。
-    if any(mark in str(answer) for mark in PI_MARKS):
+    if contains_pi(answer):
         return None
     try:
         value, decimals = parse_answer(answer)
