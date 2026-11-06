@@ -1,4 +1,4 @@
-"""T03 第一步：单位与 π 边界回放测试。
+"""T03 第一步：单位与 π 边界回放与最小修复测试。
 
 覆盖范围：
 1. 服务端 parse_answer 与 check_solution 对 4π、π×4、4pi、4PI、4 pi、纯数字、分数、百分数、带单位的解析与判定；
@@ -6,10 +6,11 @@
 3. 学生页面 hwHasPi 单词边界漏洞（4pi 漏网）只读回放；
 4. 正式提交判分（app_v924 的 grade_answers / normalized_answer_stats）只读回放，断言现状。
 
-注意：基线断言（当前 main）与修复后断言分开注释。
+说明：各测试中基线断言（修复前 main）与修复后断言分别注释记录。
 """
 from __future__ import annotations
 
+import json
 import re
 from fractions import Fraction
 from pathlib import Path
@@ -22,7 +23,6 @@ from sqlalchemy.orm import Session
 from app_v924 import (
     Base,
     Question,
-    SchoolClass,
     User,
     _text_answer_matches,
     grade_answers,
@@ -42,80 +42,93 @@ PAGE_FILE = Path(__file__).resolve().parents[1] / "changying" / "web" / "homewor
 
 
 # ==============================================================================
-# 1. parse_answer 回放
+# 1. parse_answer 回放与修复后断言
 # ==============================================================================
 
-def test_parse_answer_baseline():
-    """parse_answer 在当前 main 代码上的回放。
+def test_parse_answer_pi_and_unit_boundary():
+    """parse_answer 输入回放与修复断言。
 
-    【基线行为（当前 main）】：
+    【基线行为（修复前 main）】：
     - parse_answer 只按正则提取单个数字，对 π / pi 没有任何语义保护。
     - 4π、π×4、4pi、4PI、4 pi 中的 π/pi 被当作无害字符忽略，直接提取出数字 4！
+      即：
+        assert parse_answer("4π") == (Fraction(4, 1), 0)
+        assert parse_answer("π×4") == (Fraction(4, 1), 0)
+        assert parse_answer("4pi") == (Fraction(4, 1), 0)
+        assert parse_answer("4PI") == (Fraction(4, 1), 0)
+        assert parse_answer("4 pi") == (Fraction(4, 1), 0)
     - 纯数字、分数、百分数正常解析。
     - '12.56平方厘米'：单位被忽略，提取出 12.56 (314/25)。
     - '12.56 cm²'：NFKC 规范化将 ² 转为 2，使得字符串变为 '12.56cm2'，存在两个数字而抛出 _Skip("答案里不是单个数字")。
 
-    【修复后预期】：
-    - 含 π / pi 的答案（4π、π×4、4pi、4PI、4 pi）不可直接提取出纯数字 4，必须抛出 _Skip，转由人工确认。
+    【修复后行为】：
+    - 含 π / pi 的不可核验答案（4π、π×4、4pi、4PI、4 pi）不可直接提取出纯数字 4，
+      必须抛出 _Skip("答案含π，需人工确认")，转由人工确认。
+    - 纯数字、分数、百分数、可提取数值的中文单位维持原行为不变。
     """
     # --- A. 含 π / pi 的不可核验写法 ---
-    # 基线行为：当前 main 将其解析为 (Fraction(4, 1), 0)
-    # 修复后预期：应抛出 _Skip("答案含π，需人工确认")
-    assert parse_answer("4π") == (Fraction(4, 1), 0)
-    assert parse_answer("π×4") == (Fraction(4, 1), 0)
-    assert parse_answer("4pi") == (Fraction(4, 1), 0)
-    assert parse_answer("4PI") == (Fraction(4, 1), 0)
-    assert parse_answer("4 pi") == (Fraction(4, 1), 0)
+    # 【基线行为（main 提交 493e366）】：均返回 (Fraction(4, 1), 0)
+    # 【修复后断言】：必须抛出 _Skip 异常，明确提示需人工确认，不可提取出 4
+    for pi_ans in ("4π", "π×4", "4pi", "4PI", "4 pi"):
+        with pytest.raises(_Skip) as exc_info:
+            parse_answer(pi_ans)
+        assert "答案含π，需人工确认" in str(exc_info.value), f"{pi_ans} 需明确提示人工确认"
 
     # --- B. 纯数字 ---
+    # 【基线与修复后一致】：正常提取
     assert parse_answer("12") == (Fraction(12, 1), 0)
     assert parse_answer("12.56") == (Fraction(314, 25), 2)
 
     # --- C. 分数与带分数 ---
+    # 【基线与修复后一致】：正常提取
     assert parse_answer("3/4") == (Fraction(3, 4), 0)
     assert parse_answer("1又1/2") == (Fraction(3, 2), 0)
 
     # --- D. 百分数 ---
+    # 【基线与修复后一致】：正常提取
     assert parse_answer("25%") == (Fraction(1, 4), 0)
 
     # --- E. 带单位 ---
-    # 12.56平方厘米：单位被作为后缀丢弃，提取数字 12.56
+    # 【基线与修复后一致】：
+    # 12.56平方厘米：用于计算题提取可验算数值，提取 12.56（辅导层有“数值相符≠单位正确”的独立说明）
     assert parse_answer("12.56平方厘米") == (Fraction(314, 25), 2)
-    # 12.56 cm²：由于 NFKC 将 ² 转为 2，产生 '12.56' 与 '2' 两个数字，触发多数字 _Skip
+    # 12.56 cm²：由于 NFKC 将 ² 转为 2，产生 '12.56' 与 '2' 两个数字，触发多数字 _Skip，无法核对
     with pytest.raises(_Skip) as exc_info:
         parse_answer("12.56 cm²")
     assert "答案里不是单个数字" in str(exc_info.value)
 
 
 # ==============================================================================
-# 2. check_solution 回放
+# 2. check_solution 回放与修复后断言
 # ==============================================================================
 
-def test_check_solution_baseline():
-    """check_solution 在当前 main 代码上的回放。
+def test_check_solution_pi_and_unit_boundary():
+    """check_solution 回放与修复断言。
 
-    【基线行为（当前 main）】：
+    【基线行为（修复前 main）】：
     - 当算式为 "4"、答案为 "4π" 时，check_solution 判定为 OK ("算式结果与答案一致")！
-      这是由于 parse_answer("4π") 返回了 4，导致严重的误判判定。
+      即：assert check_solution("4", "4π")["status"] == OK
     - 当算式为 "4*3.14"、答案为 "4π" 时，check_solution 判定为 MISMATCH，且提示
-      "算式结果是 314/25（约 12.56），答案写的是 4"，把 4π 吞成了 4。
+      "算式结果是 314/25（约 12.56），答案写的是 4"，把 4π 吞成了 4，误判 AI 算式错误！
+      即：assert check_solution("4*3.14", "4π")["status"] == MISMATCH
     - 4pi、4PI、4 pi 同理。
 
-    【修复后预期】：
-    - 当答案含 π / pi 时，parse_answer 抛出 _Skip，check_solution 捕获后应返回 status="skipped"。
+    【修复后行为】：
+    - 当答案含 π / pi 时，parse_answer 抛出 _Skip，check_solution 捕获后返回 status="skipped"，
+      detail="答案含π，需人工确认"，不再发生 false ok 也不会将正解误报为 mismatch。
     """
-    # 基线行为：4 与 4π / 4pi 误判为一致
-    # 修复后预期：status 应为 "skipped"
-    assert check_solution("4", "4π")["status"] == OK
-    assert check_solution("4", "4pi")["status"] == OK
-    assert check_solution("4", "4PI")["status"] == OK
-    assert check_solution("4", "4 pi")["status"] == OK
+    # 【基线行为】：
+    # check_solution("4", "4π")["status"] == OK （误判一致）
+    # check_solution("4*3.14", "4π")["status"] == MISMATCH （误判不一致）
+    # 【修复后断言】：无论算式写 4 还是 4*3.14，含 π 答案一律 status="skipped"，转人工确认
+    for pi_ans in ("4π", "π×4", "4pi", "4PI", "4 pi"):
+        res_four = check_solution("4", pi_ans)
+        assert res_four["status"] == SKIPPED
+        assert "答案含π，需人工确认" in res_four["detail"]
 
-    # 基线行为：4*3.14 与 4π 误判为 mismatch（算式结果是 12.56，答案写的是 4）
-    # 修复后预期：status 应为 "skipped"
-    res_mismatch = check_solution("4*3.14", "4π")
-    assert res_mismatch["status"] == MISMATCH
-    assert "答案写的是 4" in res_mismatch["detail"]
+        res_calc = check_solution("4*3.14", pi_ans)
+        assert res_calc["status"] == SKIPPED
+        assert "答案含π，需人工确认" in res_calc["detail"]
 
     # 算式自身含 π（非合法符号）跳过核验
     assert check_solution("4*pi", "4π")["status"] == SKIPPED
@@ -138,15 +151,16 @@ def test_check_solution_baseline():
 # 3. 辅导与引导链路回放（homework_guidance）
 # ==============================================================================
 
-def test_guidance_check_and_steps_baseline():
-    """homework_guidance 的 _check 与 check_steps 在当前 main 代码上的回放。
+def test_guidance_check_and_steps_boundary():
+    """homework_guidance 的 _check 与 check_steps 回放与表现。
 
-    【基线行为（当前 main）】：
-    - homework_guidance 内部维护了 PI_MARKS = ("π", "Π", "pi", "PI")。
-      因此 _check("4π")、_check("4pi") 等直接返回 None。
-    - check_steps 在遇到 _check 返回 None 时，将步骤类型从 'number' 降级为 'read'（不向学生提问该数值，转为只读呈现）。
-    - 但注意：若 step expression="4*3.14", answer="4π"，check_solution 先返回了 MISMATCH，
-      导致 check_steps 中的 ok 为 False，target 直接为 None，同样降级为 read。
+    【行为判定】：
+    - homework_guidance 内部维护了 PI_MARKS = ("π", "Π", "pi", "PI")，
+      同时 parse_answer 在修复后对所有 π/pi 均抛出 _Skip。
+    - _check("4π")、_check("4pi") 等直接返回 None，无法比对。
+    - check_steps 在遇到 check_solution 为 skipped / _check 为 None 时，将步骤类型从 'number' 降级为 'read'，
+      不生成 numeric check 目标，页面不向学生提问该数值，转为只读呈现。
+    - 绝不计入学生答错，绝不让学生输入该数值记为“自己算出”。
     """
     # A. _check 对 π 写法的防护
     for pi_ans in ("4π", "π×4", "4pi", "4PI", "4 pi"):
@@ -164,7 +178,7 @@ def test_guidance_check_and_steps_baseline():
     # cm² 因 parse_answer 抛 _Skip 返回 None
     assert _check("12.56 cm²") is None
 
-    # C. check_steps 降级逻辑
+    # C. check_steps 降级逻辑：含 π 步骤绝不设 check 目标，降级为 read
     solution_pi = {
         "steps": [
             {"n": 1, "kind": "number", "ask": "算一下面积", "expression": "4*3.14", "answer": "4π", "text": "4π"},
@@ -175,7 +189,7 @@ def test_guidance_check_and_steps_baseline():
     # 步骤降级为 read，不计入学生答题检查，不让学生输入该数值
     assert processed["steps"][0]["kind"] == "read"
     assert "check" not in processed["steps"][0]
-    # finalCheck 也是 None，页面不让学生最终核对该数，转由人工或只读展示
+    # finalCheck 也是 None，页面不让学生最终核对该数，不会产生 selfSolved 记录
     assert "finalCheck" not in processed
 
 
@@ -256,7 +270,6 @@ def test_official_submission_grading_read_only_baseline():
     assert _text_answer_matches("12.56", "12.56平方厘米") is False
 
     # B. grade_answers 与 normalized_answer_stats 内存数据库行为回放
-    import json
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     with Session(engine) as db:

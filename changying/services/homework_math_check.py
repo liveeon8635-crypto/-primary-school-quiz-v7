@@ -169,11 +169,14 @@ def evaluate_arithmetic(text: str) -> Fraction:
 
 
 _ANSWER_TOKEN = re.compile(r"(?<!\d)-?\d+(?:\.\d+)?(?:/\d+)?%?")
+_PI_ANSWER = re.compile(r"[πΠ]|pi", re.IGNORECASE)
 
 
 def parse_answer(answer: str) -> tuple[Fraction, int]:
     """The single numeric value in an answer like ``7个``, ``x=7``, ``5/6``, ``1又1/2`` -> (value, decimals)."""
     text = normalize(answer)
+    if _PI_ANSWER.search(text):
+        raise _Skip("答案含π，需人工确认")
     text = re.sub(r"^[a-z]=", "", text)
     mixed = re.fullmatch(r"(\D*?)\((\d+)\+(\d+)/(\d+)\)\D*", text)
     if mixed:
