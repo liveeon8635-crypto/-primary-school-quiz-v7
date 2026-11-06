@@ -1238,3 +1238,396 @@ print("OK")
         {"HOMEWORK_ASSISTANT": "1"},
     )
 
+
+def test_follow_up_jump_target_positioning_and_permission_boundary(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+import json
+import os
+import re
+import subprocess
+from datetime import datetime
+from sqlalchemy import insert, select
+
+with TestClient(app) as client:
+    # 1. 准备测试用户和求助记录
+    th, sh, sid = teacher_student_headers(client)
+    school_id = school_of(sid)
+    helps_tbl = legacy.Base.metadata.tables["help_requests"]
+
+    # 获得 teacher1 的班级，并为 teacher1 添加第二个学生 sid2
+    teacher1_id = client.get("/session", headers=th).json()["userID"]
+    with legacy.SessionLocal() as db:
+        class_a_id = db.scalar(select(legacy.ClassStudent.class_id).where(legacy.ClassStudent.student_id == sid).limit(1))
+        class_a = db.get(legacy.SchoolClass, class_a_id)
+        if class_a:
+            class_a.teacher_id = teacher1_id
+        pupil2 = legacy.User(school_id=school_id, username="student2", password_hash=legacy.hash_password("x"),
+                             name="张小二", role="student", grade=3)
+        db.add(pupil2); db.flush()
+        sid2 = int(pupil2.id)
+        db.add(legacy.ClassStudent(class_id=class_a_id, student_id=sid2))
+
+        # 创建属于另一个老师 teacher2 的班级和学生 sid3（跨老师/未授课）
+        other_teacher = legacy.User(school_id=school_id, username="teacher2", password_hash=legacy.hash_password("x"),
+                                    name="李老师", role="teacher", grade=3)
+        db.add(other_teacher); db.flush()
+        other_teacher_id = int(other_teacher.id)
+        class_other = legacy.SchoolClass(school_id=school_id, name="其他班", grade=3, teacher_id=other_teacher_id)
+        db.add(class_other); db.flush()
+        pupil3 = legacy.User(school_id=school_id, username="student3", password_hash=legacy.hash_password("x"),
+                             name="王小三", role="student", grade=3)
+        db.add(pupil3); db.flush()
+        sid3 = int(pupil3.id)
+        db.add(legacy.ClassStudent(class_id=class_other.id, student_id=sid3))
+
+        # 为 student1 添加一条求助 h1
+        # 添加 AI 对话记录
+        sol_data = {
+            "method": "分步解析",
+            "steps": [{"n": 1, "ask": "第一步", "text": "先算括号里的"}, {"n": 2, "ask": "第二步", "text": "再算乘法"}],
+            "verify": {"status": "ok"},
+            "answer": "42"
+        }
+        r1 = db.execute(insert(helps_tbl).values(
+            school_id=school_id, student_id=sid, grade=3, question_text="求助测试题目内容：2+2=?",
+            ai_json=json.dumps(sol_data, ensure_ascii=False),
+            state="escalated", escalate_reason="student_request",
+            student_note="我卡在第二步了",
+            escalated_at=datetime.utcnow()
+        ))
+        h1 = int(r1.inserted_primary_key[0])
+
+        # 为 student3 添加一条求助 h3（属于 teacher2）
+        r3 = db.execute(insert(helps_tbl).values(
+            school_id=school_id, student_id=sid3, grade=3, question_text="其他班题目",
+            state="escalated", escalate_reason="student_request",
+            escalated_at=datetime.utcnow()
+        ))
+        h3 = int(r3.inserted_primary_key[0])
+        db.commit()
+
+    # 获得 teacher2 的 token
+    other_th = {"Authorization": "Bearer " + login_and_change(client, "teacher2", "x", "Teacher2Pass123")}
+
+    # 2. 验证受保护路由的权限边界（真实接口）
+    # teacher1 能查看 h1
+    resp1 = client.get(f"/teacher/homework/help/{h1}", headers=th)
+    assert resp1.status_code == 200, resp1.text
+    d1 = resp1.json()
+    assert d1["id"] == h1
+    assert d1["studentID"] == sid
+    assert d1["questionText"] == "求助测试题目内容：2+2=?"
+    assert d1["studentNote"] == "我卡在第二步了"
+    assert len(d1["conversation"]) >= 2
+
+    # student1 访问老师接口越权 -> 403
+    resp_student = client.get(f"/teacher/homework/help/{h1}", headers=sh)
+    assert resp_student.status_code == 403, (resp_student.status_code, resp_student.text)
+
+    # teacher2 访问 teacher1 学生的求助 h1 -> 404（不可见/无权限）
+    resp_other = client.get(f"/teacher/homework/help/{h1}", headers=other_th)
+    assert resp_other.status_code == 404, resp_other.text
+
+    # 不存在的求助 ID -> 404
+    resp_none = client.get("/teacher/homework/help/999999", headers=th)
+    assert resp_none.status_code == 404, resp_none.text
+
+    # 3. 获取目标页 /v1/homework 的真实 HTML 与内联脚本
+    page = client.get("/v1/homework")
+    assert page.status_code == 200
+    scripts = "\n".join(re.findall(r"<script[^>]*>(.*?)</script>", page.text, re.S))
+
+    # 4. 用 Node.js 执行页面脚本，全面验证定位与容错行为
+    runner = r"""
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+
+const pageScript = require('fs').readFileSync(0, 'utf8');
+const h1 = Number(process.env.TEST_H1);
+const sid1 = Number(process.env.TEST_SID1);
+const sid2 = Number(process.env.TEST_SID2);
+
+async function runScenario({ role, search, fetchOverride }) {
+  class Element {
+    constructor(tag, attrs){
+      this.tag = tag;
+      this.children = [];
+      this.style = {};
+      this._text = '';
+      this.disabled = false;
+      this.className = '';
+      this.value = '';
+      this.isConnected = true;
+      if (attrs) {
+        for (var k in attrs) {
+          if (k === 'class') this.className = attrs[k];
+          else if (k === 'text') this._text = attrs[k];
+          else if (k.startsWith('on')) this[k] = attrs[k];
+          else this[k] = attrs[k];
+        }
+      }
+    }
+    remove(){
+      this.removed = true;
+      this.isConnected = false;
+      if (this.parent) {
+        var idx = this.parent.children.indexOf(this);
+        if (idx >= 0) this.parent.children.splice(idx, 1);
+      }
+    }
+    appendChild(n){
+      if (typeof n === 'string') n = {textContent: n};
+      n.parent = this;
+      this.children.push(n);
+      return n;
+    }
+    insertBefore(n, ref){
+      if (typeof n === 'string') n = {textContent: n};
+      n.parent = this;
+      if (!ref) { this.children.push(n); return n; }
+      var idx = this.children.indexOf(ref);
+      if (idx < 0) this.children.push(n);
+      else this.children.splice(idx, 0, n);
+      return n;
+    }
+    setAttribute(k, v){
+      if (k === 'class') this.className = v;
+      else if (k === 'style') this.style.cssText = v;
+      else this[k] = v;
+    }
+    getAttribute(k){
+      if (k === 'class') return this.className;
+      return this[k] !== undefined ? this[k] : null;
+    }
+    addEventListener(k, fn){ this['on' + k] = fn; }
+    querySelector(sel){
+      var all = this.querySelectorAll(sel);
+      return all.length ? all[0] : null;
+    }
+    querySelectorAll(sel){
+      var res = [];
+      function match(node){
+        if (!node || !node.tag) return;
+        var hit = false;
+        if (sel === 'button' && node.tag === 'button') hit = true;
+        else if (sel.startsWith('[data-k="') && sel.endsWith('"]')) {
+          var key = sel.slice(9, -2);
+          if (node['data-k'] === key) hit = true;
+        }
+        if (hit) res.push(node);
+        (node.children || []).forEach(match);
+      }
+      (this.children || []).forEach(match);
+      return res;
+    }
+    get firstChild(){ return this.children.length ? this.children[0] : null; }
+    set textContent(t){ this._text = t || ''; this.children = []; }
+    get textContent(){
+      return (this._text || '') + (this.children || []).map(function(n){ return n.textContent || ''; }).join(' ');
+    }
+  }
+
+  const rootNode = new Element('div', {id: 'app'});
+  const calls = [];
+  const sandbox = {
+    console,
+    Element,
+    document: {
+      getElementById: (id) => id === 'app' ? rootNode : null,
+      createElement: (t, attrs) => new Element(t, attrs),
+      createTextNode: (t) => ({textContent: t}),
+      addEventListener: () => {},
+      hidden: false
+    },
+    window: {
+      addEventListener: () => {}
+    },
+    location: {
+      search: search || '',
+      href: ''
+    },
+    localStorage: {
+      getItem: (k) => k === 'v717Token' ? 'test-token' : null
+    },
+    sessionStorage: {
+      getItem: () => null
+    },
+    setInterval: () => 1,
+    clearInterval: () => {},
+    setTimeout: (fn) => fn(),
+    URL: { createObjectURL: () => '' },
+    alert: () => {},
+    confirm: () => true,
+    fetch: async (path, opts) => {
+      calls.push({ path, method: (opts && opts.method) || 'GET' });
+      if (fetchOverride) {
+        const custom = fetchOverride(path, opts);
+        if (custom !== undefined) return custom;
+      }
+      if (path === '/session') {
+        return { ok: true, json: async () => ({ role: role || 'teacher', name: '测试用户' }) };
+      }
+      if (path === '/homework/config') {
+        return { ok: true, json: async () => ({ visionEnabled: true }) };
+      }
+      if (path === '/teacher/homework/students') {
+        return { ok: true, json: async () => [] };
+      }
+      if (path === '/teacher/homework/notices') {
+        return { ok: true, json: async () => ({ items: [] }) };
+      }
+      if (path.startsWith('/teacher/homework/help?')) {
+        return { ok: true, json: async () => ({ items: [], open: 0 }) };
+      }
+      if (path === '/teacher/homework/help/' + h1) {
+        return {
+          ok: true,
+          json: async () => ({
+            id: h1,
+            studentID: sid1,
+            studentName: '张小一',
+            grade: 3,
+            questionText: '求助测试题目内容：2+2=?',
+            reasonLabel: '学生主动求助',
+            state: 'escalated',
+            studentNote: '我卡在第二步了',
+            waitMinutes: 5,
+            conversation: [
+              { role: 'student', text: '这道题怎么做？' },
+              { role: 'ai', text: '先算括号里的' }
+            ]
+          })
+        };
+      }
+      if (path === '/student/homework/today') {
+        return { ok: true, json: async () => ({ items: [] }) };
+      }
+      if (path === '/student/homework/knowledge') {
+        return { ok: true, json: async () => ({ flags: [], rule: {} }) };
+      }
+      if (path === '/student/homework/history') {
+        return { ok: true, json: async () => ({ items: [] }) };
+      }
+      return { ok: false, status: 404, json: async () => ({ detail: '没有找到' }) };
+    }
+  };
+  sandbox.window.__hwShow = null;
+  const context = vm.createContext(sandbox);
+  vm.runInContext(pageScript, context);
+  for (let i = 0; i < 25; i++) await Promise.resolve();
+  return { rootNode, calls, sandbox };
+}
+
+(async () => {
+  // 场景 A：合法 helpID + studentID
+  {
+    const { rootNode, calls } = await runScenario({
+      role: 'teacher',
+      search: '?helpID=' + h1 + '&studentID=' + sid1
+    });
+    assert(calls.some(c => c.path === '/teacher/homework/help/' + h1), '应当调用求助详情接口');
+    const text = rootNode.textContent;
+    assert(text.includes('求助详情 · 张小一'), '详情视图应当展示学生姓名');
+    assert(text.includes('求助测试题目内容：2+2=?'), '详情视图应当展示题目内容');
+    assert(text.includes('先算括号里的'), '详情视图应当展示 AI 对话');
+    assert(text.includes('我卡在第二步了'), '应当包含学生留言');
+    assert(!text.includes('这条求助已不存在或你没有权限'), '合法请求不应展示错误提示');
+  }
+
+  // 场景 B：无参数正常首页
+  {
+    const { rootNode, calls } = await runScenario({
+      role: 'teacher',
+      search: ''
+    });
+    assert(!calls.some(c => c.path.startsWith('/teacher/homework/help/')), '无参数时不应请求特定求助');
+    const text = rootNode.textContent;
+    assert(text.includes('粘贴通知'), '应当正常展示导入作业页面');
+    assert(!text.includes('这条求助已不存在或你没有权限'), '无参数时不应展示错误提示');
+  }
+
+  // 场景 C：非法参数（0、负数、非数字、只有其一、重复键）
+  const badSearches = [
+    '?helpID=0&studentID=' + sid1,
+    '?helpID=-1&studentID=' + sid1,
+    '?helpID=abc&studentID=' + sid1,
+    '?helpID=' + h1,
+    '?studentID=' + sid1,
+    '?helpID=' + h1 + '&studentID=0',
+    '?helpID=' + h1 + '&helpID=2&studentID=' + sid1,
+  ];
+  for (const s of badSearches) {
+    const { rootNode, calls } = await runScenario({ role: 'teacher', search: s });
+    assert(!calls.some(c => c.path === '/teacher/homework/help/' + h1), '非法参数时不应请求详情接口: ' + s);
+    const text = rootNode.textContent;
+    assert(text.includes('这条求助已不存在或你没有权限'), '非法参数应当提示错误: ' + s);
+    assert(text.includes('粘贴通知'), '原页面应当保持可用: ' + s);
+  }
+
+  // 场景 D：两者同时出现但不属于同一学生
+  {
+    const { rootNode, calls } = await runScenario({
+      role: 'teacher',
+      search: '?helpID=' + h1 + '&studentID=' + sid2 // h1 实际属于 sid1
+    });
+    assert(calls.some(c => c.path === '/teacher/homework/help/' + h1));
+    const text = rootNode.textContent;
+    assert(text.includes('这条求助已不存在或你没有权限'), '学生不匹配时应当拒绝');
+    assert(!text.includes('求助详情'), '不应进入详情视图');
+    assert(!text.includes('张小一'), '不得泄露实际学生信息');
+    assert(text.includes('粘贴通知'), '原页面应当保持可用');
+  }
+
+  // 场景 E：越权/接口返回 404
+  {
+    const { rootNode } = await runScenario({
+      role: 'teacher',
+      search: '?helpID=88888&studentID=99999',
+      fetchOverride: (path) => {
+        if (path === '/teacher/homework/help/88888') {
+          return { ok: false, status: 404, json: async () => ({ detail: '没有这条求助' }) };
+        }
+      }
+    });
+    const text = rootNode.textContent;
+    assert(text.includes('这条求助已不存在或你没有权限'), '接口 404 时应当提示错误');
+    assert(!text.includes('求助详情'), '不应进入详情视图');
+    assert(text.includes('粘贴通知'), '原页面应当保持可用');
+  }
+
+  // 场景 F：学生角色打开带参 URL
+  {
+    const { rootNode, calls } = await runScenario({
+      role: 'student',
+      search: '?helpID=' + h1 + '&studentID=' + sid1
+    });
+    assert(!calls.some(c => c.path.startsWith('/teacher/')), '学生端严禁调用老师接口');
+    const text = rootNode.textContent;
+    assert(text.includes('这个链接是给老师查看求助用的，这里只显示你自己的作业'), '学生打开应当有友好提示');
+    assert(!text.includes('求助详情 · 张小一'), '绝对不泄露求助详情');
+  }
+
+  console.log('ALL SCENARIOS PASSED');
+})();
+"""
+    res = subprocess.run(
+        ["node", "-e", runner],
+        input=scripts,
+        env=dict(os.environ, TEST_H1=str(h1), TEST_SID1=str(sid), TEST_SID2=str(sid2)),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+    )
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "ALL SCENARIOS PASSED" in res.stdout, res.stdout
+
+print("OK")
+''',
+        {"HOMEWORK_ASSISTANT": "1"},
+    )
+
+
