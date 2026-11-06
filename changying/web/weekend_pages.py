@@ -458,7 +458,7 @@ function practice(){
     d.questions.forEach(function(q,qi){
       var locked=q.canSubmit===false||(q.attempts||0)>=3,card=el('div',{class:'card'}),out=el('div'),hintsOut=el('div');
       card.appendChild(el('b',{text:(qi+1)+'. '+q.stem}));
-      var qfig=questionFigureImg(q.figure);if(qfig)card.appendChild(qfig);
+      var qfig=typeof questionFigureImg==='function'?questionFigureImg(q.figure):null;if(qfig)card.appendChild(qfig);
       var selectionKey=d.sessionId+':'+q.id,chosen=selectedAnswers[selectionKey]==null?(q.answered?q.selected:-1):selectedAnswers[selectionKey],opts=el('div');
       q.options.forEach(function(o,i){
         var b=el('button',{style:'display:block;width:100%;text-align:left;margin:6px 0',text:optText(i,o)});
@@ -801,7 +801,7 @@ function plan(){
             var opts=q.options.map(function(o,i){return 'ABCD'[i]+'. '+o+(i===q.correctIndex?' ✓':'')}).join('　');
             var levelTag=q.level?el('span',{class:'tag'+(q.level==='提高'?' warn':''),text:q.level}):null,
                 checkTag=q.verified?el('span',{class:'tag ok',text:'已验算'}):(q.level&&SUBJ==='数学'?el('span',{class:'tag warn',text:'答案待核对'}):null);
-            var fig=questionFigureImg(q.figure);
+            var fig=typeof questionFigureImg==='function'?questionFigureImg(q.figure):null;
             var row=el('div',{class:'item'},el('span',{class:'t'},levelTag,checkTag,el('b',{text:q.stem}),fig,el('div',{class:'muted',text:opts}),el('div',{class:'muted',text:q.explanation||''})));
             var badge=el('span',{class:'tag '+(q.active?'ok':'warn'),text:q.active?'已通过':'草稿'}),act=el('div',{class:'row'},badge),feedback=el('div',{role:'status','aria-live':'polite'});
             if(!q.active){
