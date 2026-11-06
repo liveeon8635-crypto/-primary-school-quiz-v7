@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import subprocess
-
 from changying.web.weekend_pages import PLAN_JS
+from test_node_script import run_node
 
 
 def test_batch_card_previews_then_imports_and_reports_each_file():
@@ -80,5 +79,5 @@ function settle(){return new Promise(function(r){setTimeout(r,0)})}
  console.log('OK');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
-    result = subprocess.run(["node", "-e", script], text=True, capture_output=True, timeout=30)
+    result = run_node(script)
     assert result.returncode == 0, result.stdout + result.stderr

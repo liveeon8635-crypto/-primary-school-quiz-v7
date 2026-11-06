@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from datetime import date, datetime, timedelta
 from typing import Any, Literal
@@ -40,6 +41,14 @@ LESSONS = 18
 MAX_BATCH_FILES = 18
 REMOVED_STAGE = "weekend_removed"
 LEVELS = ("C", "C", "B", "B", "A", "A")
+# Why a rejected upload was rejected: production only logs a status code otherwise, and a
+# teacher's "导入失败，没有提示" report cannot be traced back to a file or a rule.
+logger = logging.getLogger("changying.weekend_lesson_import")
+OFFICE_REPAIR_HINTS = {
+    ".docx": "请用 Word/WPS 打开原文件后「另存为」.docx 再导入（旧版 .doc 需要先另存）。",
+    ".pptx": "请用 PowerPoint/WPS 打开原文件后「另存为」.pptx 再导入（旧版 .ppt 需要先另存）。",
+    ".pdf": "请确认 PDF 未加密、未损坏（可在浏览器里打开试试），或改用 Word 导入。",
+}
 # The structured import maps these aliases and rejects anything else: a silent default
 # would turn a written question into a choice one (or the reverse) without anyone noticing.
 WRITTEN_TYPE_ALIASES = {
@@ -522,31 +531,45 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         extracted: dict[str, Any] = {"text": text.strip(), "slides": []}
         raw = b""
         ext = ""
+
+        def _reject(status: int, detail: str) -> None:
+            """Log why an upload was refused, then raise. The teacher only ever sees the detail."""
+            logger.warning(
+                "weekend.lesson_import.rejected file=%s ext=%s bytes=%d status=%d detail=%s",
+                (file.filename if file is not None else "") or "", ext, len(raw), status, detail,
+            )
+            raise HTTPException(status, detail)
+
         if file is not None and file.filename:
             ext = ("." + file.filename.rsplit(".", 1)[-1]).lower() if "." in file.filename else ""
+            if ext == ".doc":
+                _reject(400, "旧版 Word（.doc）暂不支持，请用 Word/WPS 打开后「另存为」.docx 再导入")
             if ext not in SUPPORTED:
-                raise HTTPException(400, "支持的文件：" + "、".join(SUPPORTED))
+                _reject(400, "支持的文件：" + "、".join(SUPPORTED) + "。旧版 Word（.doc）请先另存为 .docx")
             # This sync route runs extraction, database work and the blocking
             # model request in FastAPI's worker pool, leaving health checks free.
             raw = file.file.read(MAX_FILE_BYTES + 1)
             if len(raw) > MAX_FILE_BYTES:
-                raise HTTPException(413, "文件不能超过 10MB")
+                _reject(413, "文件不能超过 10MB，请拆分后导入")
             if ext in (".docx", ".pptx", ".pdf"):
-                implementation._validate_office_upload(ext, raw)
+                try:
+                    implementation._validate_office_upload(ext, raw)
+                except HTTPException as exc:
+                    _reject(exc.status_code, f"{exc.detail}。{OFFICE_REPAIR_HINTS.get(ext, '请检查文件后重试。')}")
             try:
                 extracted = extract(ext, raw)
             except HTTPException:
                 raise
             except ValueError as exc:
                 if "20万字" in str(exc):
-                    raise HTTPException(413, str(exc))
-                raise HTTPException(400, "文件内容超出支持范围或无法解析，请拆分后重新导入")
+                    _reject(413, str(exc))
+                _reject(400, "文件内容超出支持范围或无法解析，请拆分后重新导入")
             except Exception:  # noqa: BLE001
-                raise HTTPException(400, "没能读出这个文件的文字，请换一个文件，或把教案文字粘贴进来")
+                _reject(400, "没能读出这个文件的文字，请换一个文件，或把教案文字粘贴进来")
         if len(extracted["text"]) > MAX_TEXT_CHARS:
-            raise HTTPException(413, "教案文字超过20万字，请拆分后导入；未截断保存")
+            _reject(413, "教案文字超过20万字，请拆分后导入；未截断保存")
         if len(extracted["text"]) < 20:
-            raise HTTPException(400, "没有读到足够的文字（扫描版 PDF 和纯图片暂不支持），请换文件或直接粘贴文字")
+            _reject(400, "没有读到足够的文字（扫描版 PDF 和纯图片暂不支持），请换文件或直接粘贴文字")
         return extracted
 
     def _markdown_plan(extracted: dict[str, Any]) -> dict[str, Any] | None:
