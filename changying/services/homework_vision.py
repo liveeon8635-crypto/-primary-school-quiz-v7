@@ -205,8 +205,10 @@ def recognize_image(
             raise VisionFailure(502, "识别服务没有返回内容，请重拍或直接输入文字", "empty_response")
         # 只有“看起来是结构化输出却没解析成功”才判失败；纯文本响应仍按旧行为收下，
         # 让老师/学生拿到可编辑的草稿，而不是一个 502。
+        # 只认 `{` 开头的对象：三个入口的提示词都要求 JSON 对象；`[1] 计算题`、代码块这类
+        # 以 `[` 或 ``` 开头的正常文字不能被误判成破损的结构化输出。
         stripped = out.strip()
-        structured = stripped.startswith("{") or stripped.startswith("[") or stripped.startswith("```")
+        structured = stripped.startswith("{")
         try:
             parsed = implementation._ai_json(out)
         except (HTTPException, ValueError):

@@ -170,6 +170,12 @@ with TestClient(app) as client:
     assert "口算第 5 页" in plain_body["text"], plain_body
     assert plain_body["truncated"] is False and plain_body["warning"] == "", plain_body
 
+    # 以 [ 开头的普通文字也不能被当成“破损的 JSON”
+    vision_out["content"] = "[1] 计算题：3+4=？"
+    bracket = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=JPEG)
+    assert bracket.status_code == 200, bracket.text
+    assert "[1]" in bracket.json()["text"], bracket.json()
+
     # 2) /teacher/homework/parse 3999 / 4000 / 4001 / 6000 / 6001 boundary
     notices_tbl = legacy.Base.metadata.tables["homework_notices"]
     for n in (3999, 4000, 4001, 6000):
