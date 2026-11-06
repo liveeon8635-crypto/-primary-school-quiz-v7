@@ -49,6 +49,8 @@ OFFICE_REPAIR_HINTS = {
     ".pptx": "请用 PowerPoint/WPS 打开原文件后「另存为」.pptx 再导入（旧版 .ppt 需要先另存）。",
     ".pdf": "请确认 PDF 未加密、未损坏（可在浏览器里打开试试），或改用 Word 导入。",
 }
+# Word formats the server cannot read: python-docx only opens the .docx package.
+LEGACY_WORD_EXTENSIONS = {".doc", ".dot", ".docm", ".dotx", ".wps", ".wpt"}
 # The structured import maps these aliases and rejects anything else: a silent default
 # would turn a written question into a choice one (or the reverse) without anyone noticing.
 WRITTEN_TYPE_ALIASES = {
@@ -541,11 +543,18 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(status, detail)
 
         if file is not None and file.filename:
-            ext = ("." + file.filename.rsplit(".", 1)[-1]).lower() if "." in file.filename else ""
-            if ext == ".doc":
-                _reject(400, "旧版 Word（.doc）暂不支持，请用 Word/WPS 打开后「另存为」.docx 再导入")
+            name = file.filename.strip() or "这个文件"
+            # Downloads sometimes arrive as "教案.docx " (trailing space) or "教案" without
+            # any suffix; read the suffix off the trimmed name instead of trusting it raw.
+            ext = ("." + name.rsplit(".", 1)[-1]).strip().lower() if "." in name else ""
+            if ext == "":
+                _reject(400, f"《{name}》没有扩展名，看不出是什么格式。请用 Word/WPS 打开后「另存为」.docx，"
+                             "或另存为 .pdf / .txt 再导入")
+            if ext in LEGACY_WORD_EXTENSIONS:
+                _reject(400, f"《{name}》是 {ext} 格式，不能直接导入。请用 Word/WPS 打开后「另存为」.docx 再导入")
             if ext not in SUPPORTED:
-                _reject(400, "支持的文件：" + "、".join(SUPPORTED) + "。旧版 Word（.doc）请先另存为 .docx")
+                _reject(400, f"《{name}》是 {ext} 格式，暂不支持。支持：" + "、".join(SUPPORTED)
+                             + "；旧版 Word（.doc/.wps）请先用 Word/WPS 另存为 .docx")
             # This sync route runs extraction, database work and the blocking
             # model request in FastAPI's worker pool, leaving health checks free.
             raw = file.file.read(MAX_FILE_BYTES + 1)
