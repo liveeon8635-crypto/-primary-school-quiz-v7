@@ -79,6 +79,14 @@ def test_parse_answer_pi_and_unit_boundary():
     assert parse_answer("12") == (Fraction(12, 1), 0)
     assert parse_answer("12.56") == (Fraction(314, 25), 2)
 
+    # --- B2. 普通单词里出现 pi 不能被当成圆周率 ---
+    # 正则加了字母边界：只有 pi 两侧不是字母才算 π
+    for plain in ("6 pizzas", "pink", "3 pieces", "pinyin"):
+        try:
+            parse_answer(plain)
+        except _Skip as exc:  # noqa: PERF203 - 只为确认不是"含π"分支
+            assert "答案含π" not in str(exc), f"{plain} 不应被当成含π：{exc}"
+
     # --- C. 分数与带分数 ---
     # 【基线与修复后一致】：正常提取
     assert parse_answer("3/4") == (Fraction(3, 4), 0)

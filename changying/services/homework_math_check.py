@@ -169,7 +169,7 @@ def evaluate_arithmetic(text: str) -> Fraction:
 
 
 _ANSWER_TOKEN = re.compile(r"(?<!\d)-?\d+(?:\.\d+)?(?:/\d+)?%?")
-_PI_ANSWER = re.compile(r"[πΠ]|pi", re.IGNORECASE)
+_PI_ANSWER = re.compile(r"[πΠ]|(?<![A-Za-z])pi(?![A-Za-z])", re.IGNORECASE)
 
 
 def parse_answer(answer: str) -> tuple[Fraction, int]:
