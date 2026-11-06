@@ -16,6 +16,7 @@ through the existing written questions (text/photo, teacher review, question-by-
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from typing import Any
 
@@ -157,6 +158,41 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
             "params": cw.public_params(item["kind"], params), "view": view}, ""
 
 
+def _normalize_text(text: Any) -> str:
+    return "".join(str(text or "").split())
+
+
+_FIGURE_URL = re.compile(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}")
+
+
+def lesson_figures(implementation: Any, db: Any, lesson: Any) -> list[tuple[str, dict[str, Any]]]:
+    """The pictures imported with this lesson's questions: (normalized stem prefix, figure)."""
+    TQ = implementation.TeachingQuestion
+    rows = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != "weekend_removed").order_by(TQ.id)).all()
+    out = []
+    for q in rows:
+        try:
+            fig = json.loads(getattr(q, "figure_json", "") or "{}")
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(fig, dict) or fig.get("type") != "uploaded_image":
+            continue
+        url = str(fig.get("data_url") or "")
+        if len(url) > 700000 or not _FIGURE_URL.fullmatch(url):
+            continue
+        out.append((_normalize_text(q.stem)[:60], {"type": "uploaded_image", "data_url": url, "alt": "原卷插图"}))
+    return out
+
+
+def match_figure(figures: list[tuple[str, dict[str, Any]]], page_text: Any) -> dict[str, Any]:
+    """The imported picture of the question this page is teaching; {} when it cannot be told."""
+    text = _normalize_text(page_text)
+    for key, figure in figures:
+        if key and key in text:
+            return figure
+    return {}
+
+
 def install_weekend_courseware(implementation: Any) -> APIRouter:
     app = implementation.app
     if getattr(app.state, "weekend_courseware_installed", False):
@@ -267,6 +303,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             kind = str(data.get("template") or "") if isinstance(data, dict) else ""
             if kind not in cw.TEMPLATES[lesson.subject] or (kind == "reading" and not (lesson.reading_plan or "").strip()):
                 raise ValueError("没有选择可用的模板")
+            original = match_figure(lesson_figures(implementation, db, lesson), page_text)
             notice = ""
             try:
                 params = cw.clean(kind, data, lesson.reading_plan or "")
@@ -276,6 +313,10 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 # The worked example is usable; only its figure is not: keep the page, say so, let the teacher draw it.
                 params = cw.clean(kind, {**data, "figure": {}}, lesson.reading_plan or "")
                 notice = f"AI 画的图示没有通过校验（{e}），已去掉，可在预览里手动补上"
+            if original and kind == "steps":
+                # The lesson came in with its own picture: show that instead of a drawing made from the text.
+                params["figure"] = original
+                notice = "这页用的是原卷插图"
         except ValueError as e:
             raise HTTPException(502, f"第 {(page or 0) + 1} 页：AI 生成的课件未通过校验（{e}），已有课件未改动，可重试或手动填写")
         except HTTPException as e:

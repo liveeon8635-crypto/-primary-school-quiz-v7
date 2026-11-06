@@ -4,10 +4,13 @@ import io
 import zipfile
 
 from changying.services import lesson_import
+from changying.services.lesson_written import replace_written_drafts, template_meta, valid_written_questions
+from changying.web.weekend_courseware import match_figure
 from changying.web.weekend_plan_views import _attach_figures, _question_figure, _valid_questions
 
 # Smallest readable JPEG header/trailer pair; the extractor only needs the magic bytes.
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 32 + b"\xff\xd9"
+FIG_URL = "data:image/jpeg;base64," + "A" * 40
 
 
 def docx_with_picture() -> bytes:
@@ -57,3 +60,39 @@ def test_the_weekend_page_renders_the_imported_picture():
     for script in (COMMON_JS, PLAN_JS):
         assert "questionFigureImg" in script, "both the 审改 page and the student page must show it"
     assert "data:image\\/jpeg;base64," in COMMON_JS
+
+
+def test_a_written_question_keeps_its_picture_in_the_stored_metadata():
+    import json
+
+    from sqlalchemy import Column, Integer, MetaData, Table, Text, create_engine, select
+    from sqlalchemy.orm import Session
+
+    md = MetaData()
+    table = Table("written_probe", md,
+                  Column("id", Integer, primary_key=True), Column("school_id", Integer), Column("teacher_id", Integer),
+                  Column("lesson_id", Integer), Column("session_id", Integer), Column("stem", Text),
+                  Column("reference", Text), Column("hints_json", Text))
+    engine = create_engine("sqlite://")
+    md.create_all(engine)
+    figure = {"type": "uploaded_image", "data_url": FIG_URL, "alt": "原卷插图"}
+    with Session(engine) as db:
+        replace_written_drafts(db, table, 1, 2, 3, [
+            {"stem": "第7题：方桌人数规律", "reference": "答案", "hints": [], "type": "short_answer", "figure": figure}])
+        db.commit()
+        row = db.execute(select(table)).first()
+    assert json.loads(row.hints_json)["figure"]["data_url"] == FIG_URL
+
+
+def test_courseware_uses_the_imported_picture_instead_of_a_drawing():
+    figures = [("第7题方桌人数规律", {"type": "uploaded_image", "data_url": FIG_URL, "alt": "原卷插图"})]
+
+    assert match_figure(figures, "第 7 题 方桌人数规律 1 张方桌坐 4 人")["data_url"] == FIG_URL
+    assert match_figure(figures, "第 3 题 平方与乘 2") == {}
+
+
+def test_the_courseware_screen_can_show_an_imported_picture():
+    from changying.web.weekend_courseware_pages import COURSEWARE_JS
+
+    assert "uploaded_image" in COURSEWARE_JS
+

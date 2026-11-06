@@ -86,9 +86,22 @@ def valid_written_questions(raw: Any) -> list[dict[str, Any]]:
             continue
         if not isinstance(hints, list) or len(hints) != 3 or any(not isinstance(h, str) or not h.strip() or len(h) > 300 for h in hints):
             hints = []
-        out.append({'stem': stem, 'reference': reference, 'hints': hints,
+        out.append({'stem': stem, 'reference': reference, 'hints': hints, 'figure': _figure(q.get('figure')),
                     'type': q.get('type') if q.get('type') in ('short_answer', 'final_answer', 'composition') else 'short_answer'})
     return out[:30]
+
+
+_FIGURE_URL = re.compile(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}")
+
+
+def _figure(value: Any) -> dict[str, Any]:
+    """A written question may keep the picture that came with it; anything else is dropped."""
+    if not isinstance(value, dict) or value.get('type') != 'uploaded_image':
+        return {}
+    url = str(value.get('data_url') or '')
+    if len(url) > 700000 or not _FIGURE_URL.fullmatch(url):
+        return {}
+    return {'type': 'uploaded_image', 'data_url': url, 'alt': str(value.get('alt') or '原卷插图')[:80]}
 
 
 def replace_written_drafts(db: Any, table: Any, school_id: int, teacher_id: int, lesson_id: int, questions: list[dict[str, Any]]) -> None:
@@ -101,7 +114,7 @@ def replace_written_drafts(db: Any, table: Any, school_id: int, teacher_id: int,
         if q['stem'] in approved_stems:
             continue
         db.execute(insert(table).values(school_id=school_id, teacher_id=teacher_id, lesson_id=lesson_id, session_id=0,
-            stem=q['stem'], reference=q['reference'], hints_json=json.dumps({**q.get('extra', {}), 'approved': False, 'type': q['type'], 'hints': q['hints']}, ensure_ascii=False)))
+            stem=q['stem'], reference=q['reference'], hints_json=json.dumps({**q.get('extra', {}), 'approved': False, 'type': q['type'], 'hints': q['hints'], 'figure': q.get('figure') or {}}, ensure_ascii=False)))
 
 
 # 考点：题目小标题（“例题 1 | 省略乘号 …”）里竖线后的第一个词就是教案写好的考点；只写题型的不算。

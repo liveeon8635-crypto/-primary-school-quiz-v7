@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import subprocess
-
 from changying.web.weekend_pages import PLAN_JS
+from test_node_script import run_node
 
 
 def test_approvals_keep_question_nodes_open_material_and_unsaved_answers():
@@ -61,5 +60,5 @@ async function settle(){for(let i=0;i<15;i++)await Promise.resolve()}
  assert.equal(gets,originalGets);assert.equal(location.href,'');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
-    result=subprocess.run(['node','-e',script],text=True,capture_output=True,timeout=20)
+    result=run_node(script,timeout=20)
     assert result.returncode==0,result.stdout+result.stderr
