@@ -111,3 +111,37 @@ with TestClient(app) as client:
         assert '撤销调试课堂' in response.text
 print('OK')
 ''')
+
+
+def test_debug_cancel_button_preview_confirmation_and_errors():
+    import subprocess
+    from changying.web.weekend_pages import PLAN_JS
+    handler = PLAN_JS.split("      var cancelDebugBtn=", 1)[1].split("      var deleteBtn=", 1)[0]
+    script = r'''
+const assert=require('node:assert/strict');
+function el(tag,attrs){return {...attrs}}
+const r={lessonId:7,lessonNo:10},SUBJ='数学',deleteFeedback={};
+let allow=false,calls=[],prompt='',fail=false;
+function confirm(text){prompt=text;return allow}
+function api(path,opts){
+ calls.push({path,opts});
+ if(fail)return Promise.reject(new Error('已有学生作答，不能撤销'));
+ return Promise.resolve(opts?{message:'已撤销，教案保留'}:{items:[{id:12,title:'数学第10课'}]});
+}
+async function settle(){for(let i=0;i<12;i++)await Promise.resolve()}
+var cancelDebugBtn=''' + handler + r'''
+(async()=>{
+ cancelDebugBtn.onclick();await settle();
+ assert.equal(calls.length,1);assert.equal(calls[0].opts,undefined);
+ assert(prompt.includes('没有实际上课'));assert(!cancelDebugBtn.disabled);
+ allow=true;calls=[];cancelDebugBtn.onclick();await settle();
+ assert.equal(calls.length,2);assert(calls[1].path.endsWith('/cancel-debug-classrooms'));
+ assert.deepEqual(calls[1].opts.json,{subject:'数学',lessonNo:10,confirmed:true,sessionIds:[12]});
+ assert(deleteFeedback.textContent.includes('教案保留'));assert(!cancelDebugBtn.disabled);
+ fail=true;calls=[];cancelDebugBtn.onclick();await settle();
+ assert.equal(calls.length,1);assert(deleteFeedback.textContent.includes('已有学生作答'));
+ assert(!cancelDebugBtn.disabled);
+})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+    result = subprocess.run(['node','-e',script],text=True,capture_output=True,timeout=20)
+    assert result.returncode == 0, result.stdout + result.stderr
