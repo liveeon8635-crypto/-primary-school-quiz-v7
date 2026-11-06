@@ -140,7 +140,7 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
     router = APIRouter()
 
     def my_session(db: Any, u: Any, sid: int) -> Any:
-        row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id, sessions.c.teacher_id == u.id)).first()
+        row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id, sessions.c.teacher_id == u.id).with_for_update()).first()
         if row is None:
             raise HTTPException(404, "没有找到这节课堂")
         return row
@@ -357,6 +357,9 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
             return {"id": existing.id, "created": False, "source": "existing", "report": describe(db, u, existing)}
         old = json.loads(existing.draft_json) if existing is not None else {}
         sections, evidence, source = generated(db, u, parts, b.useAi, old.get("evidence"))
+        # The AI call may commit usage accounting and release the session locks.
+        for session_id in sorted(b.sessionIds):
+            my_session(db, u, session_id)
         now = datetime.utcnow()
         if existing is None:
             body = {"sections": [{**s, "sessionId": p["sessionId"]} for s, p in zip(sections, parts)], "comment": "", "evidence": evidence}
@@ -657,4 +660,5 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_reports", "published_reports", "register_report_table"]
+
 

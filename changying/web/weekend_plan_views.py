@@ -156,6 +156,10 @@ class DeleteLessonBody(BaseModel):
     confirmed: bool = False
 
 
+class CancelDebugBody(DeleteLessonBody):
+    sessionIds: list[int] = Field(default_factory=list, max_length=100)
+
+
 class ApproveBody(BaseModel):
     approve: list[int] = []
     remove: list[int] = []
@@ -865,10 +869,65 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 jobs.append({"filename": name, "lessonNo": None, "plan": None, "error": str(exc)})
         return _import_plans(db, u, subject, jobs, dry_run=dryRun == "1", on_conflict=onConflict)
 
+    def debug_classrooms(db: Any, u: Any, lid: int) -> list[Any]:
+        # Lock before checking evidence. Student submissions use the same session lock.
+        rows = db.execute(select(sessions).where(sessions.c.lesson_id == lid)
+                          .order_by(sessions.c.id).with_for_update()).all()
+        disposable = {"weekend_stage_log", "weekend_slide_state", "weekend_class_rosters", "weekend_written_questions"}
+        md = implementation.Base.metadata
+        for row in rows:
+            if row.school_id != u.school_id or row.teacher_id != u.id:
+                raise HTTPException(409, "其他老师也有这节课的课堂，不能代为撤销")
+            if row.status not in ("planned", "running"):
+                raise HTTPException(409, "已结束的课堂需要保留，请联系维护者核对，不能按调试课堂撤销")
+            for name, table in md.tables.items():
+                if name.startswith("weekend_") and "session_id" in table.c and name not in disposable:
+                    if db.execute(select(table).where(table.c.session_id == row.id).limit(1)).first():
+                        raise HTTPException(409, "课堂已有学生作答、提示、讲题、积分或反馈记录，不能按调试课堂撤销")
+            reports = md.tables.get("weekend_reports")
+            if reports is not None:
+                keys = db.scalars(select(reports.c.session_key).where(reports.c.school_id == u.school_id)).all()
+                if any(str(row.id) in str(key).split(",") for key in keys):
+                    raise HTTPException(409, "课堂已关联学情报告，不能按调试课堂撤销")
+        return rows
+
+    @router.get("/teacher/weekend/lessons/{lid}/debug-classrooms")
+    def preview_debug_classrooms(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        my_lesson(db, u, lid)
+        rows = debug_classrooms(db, u, lid)
+        return {"items": [{"id": r.id, "title": r.title, "status": r.status} for r in rows]}
+
+    @router.post("/teacher/weekend/lessons/{lid}/cancel-debug-classrooms")
+    def cancel_debug_classrooms(lid: int, b: CancelDebugBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        lesson = my_lesson(db, u, lid)
+        db.execute(select(Lesson.id).where(Lesson.id == lid).with_for_update()).first()
+        if not b.confirmed or b.subject != lesson.subject or b.lessonNo != lesson.lesson_no:
+            raise HTTPException(400, "请核对学科和课次，并确认没有实际上课，仅为调试")
+        rows = debug_classrooms(db, u, lid)
+        ids = [r.id for r in rows]
+        if sorted(set(b.sessionIds)) != ids:
+            raise HTTPException(409, "课堂列表已变化，请重新预览后确认撤销")
+        if not ids:
+            return {"message": "没有需要撤销的调试课堂；教案保持不变", "cancelled": 0}
+        # Keep a recovery snapshot in the audit log; do not delete lesson templates.
+        snapshot = {"lessonId": lid, "sessions": [dict(r._mapping) for r in rows], "related": {}}
+        for name in ("weekend_stage_log", "weekend_slide_state", "weekend_class_rosters", "weekend_written_questions"):
+            table = implementation.Base.metadata.tables.get(name)
+            if table is not None:
+                snapshot["related"][name] = [dict(r._mapping) for r in db.execute(select(table).where(table.c.session_id.in_(ids)))]
+                db.execute(delete(table).where(table.c.session_id.in_(ids)))
+        db.execute(delete(sessions).where(sessions.c.id.in_(ids)))
+        implementation.audit(db, u, "weekend.cancel_debug_classrooms", json.dumps(snapshot, ensure_ascii=False, default=str))
+        db.commit()
+        return {"message": f"已撤销 {len(ids)} 个调试课堂，教案和已审核习题保留；现在可以删除教案或重新开课", "cancelled": len(ids)}
+
     @router.delete("/teacher/weekend/lessons/{lid}")
     def delete_lesson(lid: int, b: DeleteLessonBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         lesson = my_lesson(db, u, lid)
+        db.execute(select(Lesson.id).where(Lesson.id == lid).with_for_update()).first()
         if not b.confirmed or b.subject != lesson.subject or b.lessonNo != lesson.lesson_no:
             raise HTTPException(400, "请核对学科和课次，并确认删除教案")
         if db.execute(select(sessions.c.id).where(sessions.c.lesson_id == lid).limit(1)).first():
@@ -1031,3 +1090,4 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_plan", "register_plan_tables"]
+

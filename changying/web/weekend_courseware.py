@@ -416,7 +416,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         """Teacher drags, turns or reveals during class: stores the screen state only (no AI)."""
         need(u, "teacher")
         row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id,
-                                                sessions.c.teacher_id == u.id)).first()
+                                                sessions.c.teacher_id == u.id).with_for_update()).first()
         if row is None:
             raise HTTPException(404, "没有找到这节课堂")
         if row.status != "running":
@@ -446,3 +446,4 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
 
 __all__ = ["courseware_for_session", "install_weekend_courseware", "items_of", "register_courseware_table",
            "register_courseware_template_table", "stage_pages"]
+
