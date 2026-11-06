@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from changying.web.weekend_pages import PLAN_JS
-from _node_script import run_node
+from test_node_script import run_node
 
 
 def test_lesson_row_shows_import_failure_next_to_its_own_button():

@@ -18,3 +18,9 @@ def run_node(script: str, *, timeout: int = 30) -> subprocess.CompletedProcess[s
         return subprocess.run(
             ["node", str(path)], text=True, capture_output=True, timeout=timeout, encoding="utf-8"
         )
+
+
+def test_run_node_executes_a_script_file():
+    result = run_node("console.log(JSON.stringify({ok:true}))")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == '{"ok":true}'
