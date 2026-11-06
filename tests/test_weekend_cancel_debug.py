@@ -43,6 +43,14 @@ with TestClient(app) as client:
     assert client.post(url+'/cancel-debug-classrooms', headers=th,
         json={'subject':'数学','lessonNo':10,'confirmed':False,'sessionIds':[first]}).status_code == 400
     second = new_class()
+    assert client.post(f'/teacher/weekend/sessions/{second}/finish', headers=th).status_code == 200
+    with legacy.SessionLocal() as db:
+        courseware = legacy.Base.metadata.tables['weekend_courseware']
+        owner = db.scalar(select(legacy.User.id).where(legacy.User.username=='teacher1'))
+        db.execute(insert(courseware).values(school_id=school_id,lesson_id=lid,teacher_id=owner,
+            kind='steps',stage_no=3,status='draft',params_json='{}',
+            live_json=json.dumps({f'{first}:3:1':{'step':2},'999999:3:1':{'step':1}}),updated_at=datetime.utcnow()))
+        db.commit()
     assert cancel([first]).status_code == 409  # A new classroom must not be silently included.
     r = cancel([first,second]); assert r.status_code == 200, r.text
     assert r.json()['cancelled'] == 2
@@ -54,6 +62,9 @@ with TestClient(app) as client:
         assert len(snapshot['sessions']) == 2
         assert snapshot['related']['weekend_stage_log']
         assert snapshot['related']['weekend_written_questions'][0]['stem'] == '仅供调试的课堂题'
+        assert snapshot['coursewareLive']['removed'] == {f'{first}:3:1':{'step':2}}
+        remaining = db.scalar(select(courseware.c.live_json).where(courseware.c.lesson_id==lid))
+        assert json.loads(remaining) == {'999999:3:1':{'step':1}}
     r = client.request('DELETE', url, headers=th, json={'subject':'数学','lessonNo':10,'confirmed':True})
     assert r.status_code == 200, r.text
     assert client.get(url, headers=th).json()['teacherPlan'] == ''
@@ -66,7 +77,7 @@ with TestClient(app) as client:
     assert cancel([third]).status_code == 409  # Cannot cancel another teacher's classroom.
     with legacy.SessionLocal() as db:
         db.execute(update(sessions).where(sessions.c.id == third).values(teacher_id=owner,status='finished')); db.commit()
-    assert cancel([third]).status_code == 409
+    assert client.get(url+'/debug-classrooms', headers=th).status_code == 200
     with legacy.SessionLocal() as db:
         db.execute(update(sessions).where(sessions.c.id == third).values(status='planned'))
         answers = legacy.Base.metadata.tables['weekend_answers']

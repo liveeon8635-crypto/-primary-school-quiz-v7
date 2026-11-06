@@ -878,8 +878,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         for row in rows:
             if row.school_id != u.school_id or row.teacher_id != u.id:
                 raise HTTPException(409, "其他老师也有这节课的课堂，不能代为撤销")
-            if row.status not in ("planned", "running"):
-                raise HTTPException(409, "已结束的课堂需要保留，请联系维护者核对，不能按调试课堂撤销")
+            if row.status not in ("planned", "running", "finished"):
+                raise HTTPException(409, "课堂状态无法核对，不能按调试课堂撤销")
             for name, table in md.tables.items():
                 if name.startswith("weekend_") and "session_id" in table.c and name not in disposable:
                     if db.execute(select(table).where(table.c.session_id == row.id).limit(1)).first():
@@ -913,6 +913,17 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             return {"message": "没有需要撤销的调试课堂；教案保持不变", "cancelled": 0}
         # Keep a recovery snapshot in the audit log; do not delete lesson templates.
         snapshot = {"lessonId": lid, "sessions": [dict(r._mapping) for r in rows], "related": {}}
+        courseware = implementation.Base.metadata.tables.get("weekend_courseware")
+        if courseware is not None:
+            cw = db.execute(select(courseware).where(courseware.c.school_id == u.school_id,
+                courseware.c.lesson_id == lid).with_for_update()).first()
+            if cw is not None:
+                live = json.loads(cw.live_json or "{}")
+                prefixes = {str(sid) for sid in ids}
+                removed = {key: value for key, value in live.items() if key.split(":", 1)[0] in prefixes}
+                snapshot["coursewareLive"] = {"id": cw.id, "removed": removed}
+                db.execute(update(courseware).where(courseware.c.id == cw.id).values(
+                    live_json=json.dumps({key: value for key, value in live.items() if key not in removed}, ensure_ascii=False)))
         for name in ("weekend_stage_log", "weekend_slide_state", "weekend_class_rosters", "weekend_written_questions"):
             table = implementation.Base.metadata.tables.get(name)
             if table is not None:
