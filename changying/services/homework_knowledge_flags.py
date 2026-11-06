@@ -37,6 +37,48 @@ def _iso(value: Any) -> str:
     return value.strftime("%Y-%m-%d %H:%M") if hasattr(value, "strftime") else ""
 
 
+def _subject_map(implementation: Any, db: Any, school_id: int, question_ids: set[int]) -> dict[int, str]:
+    """一遍查出这些题目的学科；调用方在扫描提交之前把所有 question_id 收齐，避免逐条查库。"""
+    if not question_ids:
+        return {}
+    question_model = implementation.Question
+    return {
+        int(qid): str(subj or "").strip()
+        for qid, subj in db.execute(
+            select(question_model.id, question_model.subject).where(
+                question_model.school_id == school_id,
+                question_model.id.in_(sorted(question_ids)),
+            )
+        ).all()
+    }
+
+
+def _submission_stats_by_subject(
+    implementation: Any,
+    db: Any,
+    answers: list[Any],
+    school_id: int,
+    subject_by_qid: dict[int, str],
+) -> dict[tuple[str, str], tuple[int, int]]:
+    by_subject: dict[str, list[dict[str, Any]]] = {}
+    for item in answers:
+        if not isinstance(item, dict):
+            continue
+        qid = item.get("question_id")
+        subj = subject_by_qid.get(int(qid), "") if isinstance(qid, int) else ""
+        if not subj:
+            continue
+        by_subject.setdefault(subj, []).append(item)
+    out: dict[tuple[str, str], tuple[int, int]] = {}
+    for subj, sub_answers in by_subject.items():
+        stats, _valid = implementation.normalized_answer_stats(db, sub_answers, school_id)
+        for know, pair in stats.items():
+            key = str(know or "").strip()
+            if key:
+                out[(subj, key)] = pair
+    return out
+
+
 def knowledge_flags(implementation: Any, db: Any, school_id: int, student_id: int) -> dict[str, Any]:
     table = register_homework_knowledge_table(implementation)
     rows = db.execute(
@@ -47,12 +89,14 @@ def knowledge_flags(implementation: Any, db: Any, school_id: int, student_id: in
     unmatched: list[dict[str, Any]] = []
     for row in rows:
         item = row._mapping
-        if item["matched"]:
-            groups.setdefault((item["subject"], item["knowledge_key"]), []).append(item)
+        subject = str(item["subject"] or "").strip()
+        knowledge_key = str(item["knowledge_key"] or "").strip()
+        if item["matched"] and subject and knowledge_key:
+            groups.setdefault((subject, knowledge_key), []).append(item)
         else:
             unmatched.append({"knowledge": item["raw_knowledge"], "at": _iso(item["created_at"]), "question": item["question_excerpt"]})
 
-    scans: list[tuple[Any, dict[str, tuple[int, int]]]] = []
+    scans: list[tuple[int, Any, dict[tuple[str, str], tuple[int, int]]]] = []
     if groups:
         earliest = min(g[0]["created_at"] for g in groups.values())
         subs = db.scalars(
@@ -62,27 +106,87 @@ def knowledge_flags(implementation: Any, db: Any, school_id: int, student_id: in
                 implementation.Submission.student_id == student_id,
                 implementation.Submission.submitted_at > earliest,
             )
-            .order_by(implementation.Submission.submitted_at.asc())
+            .order_by(implementation.Submission.submitted_at.asc(), implementation.Submission.id.asc())
             .limit(MAX_SUBMISSIONS_SCANNED)
         ).all()
+        parsed: list[tuple[Any, list[Any]]] = []
+        question_ids: set[int] = set()
         for sub in subs:
             try:
                 answers = json.loads(sub.answers_json or "[]")
             except Exception:  # noqa: BLE001 - a damaged old row must not break the page
                 answers = []
-            stats, _valid = implementation.normalized_answer_stats(db, answers, school_id)
-            scans.append((sub.submitted_at, stats))
+            if not isinstance(answers, list):
+                answers = []
+            parsed.append((sub, answers))
+            for item in answers:
+                if isinstance(item, dict) and isinstance(item.get("question_id"), int):
+                    question_ids.add(int(item["question_id"]))
+        # 一次性查出所有题目的学科，避免“每个提交查一遍题表”。
+        subject_by_qid = _subject_map(implementation, db, school_id, question_ids)
+        for sub, answers in parsed:
+            stats_by_subject = _submission_stats_by_subject(
+                implementation, db, answers, school_id, subject_by_qid
+            )
+            scans.append((int(sub.id), sub.submitted_at, stats_by_subject))
 
     flags = []
     for (subject, knowledge), items in groups.items():
         last = max(i["created_at"] for i in items)
         cleared_at = None
-        for when, stats in scans:
-            if when > last and knowledge in stats:
-                hit, total = stats[knowledge]
-                if total >= limits["minQuestions"] and hit * 100 >= limits["passPercent"] * total:
+        cleared_sub_id: int | None = None
+        at_clear_hits = 0
+        at_clear_total = 0
+        at_clear_count = 0
+        last_sub_id: int | None = None
+        last_sub_when = None
+        sub_count = 0
+        cum_hits = 0
+        cum_total = 0
+        max_sub_total = 0
+        for sub_id, when, stats in scans:
+            if when > last and (subject, knowledge) in stats:
+                hit, total = stats[(subject, knowledge)]
+                if total <= 0:
+                    continue
+                sub_count += 1
+                cum_hits += int(hit)
+                cum_total += int(total)
+                max_sub_total = max(max_sub_total, int(total))
+                last_sub_id = sub_id
+                last_sub_when = when
+                if cleared_at is None and total >= limits["minQuestions"] and hit * 100 >= limits["passPercent"] * total:
                     cleared_at = when
-                    break
+                    cleared_sub_id = sub_id
+                    # 单次达标就用这一次的证据，不要把之前做错的题算进来
+                    at_clear_hits, at_clear_total = int(hit), int(total)
+                    at_clear_count = sub_count
+        # 只有“从来没交过够题量的单次练习”时，才允许用多次小题量累计判定；
+        # 交过一次 3 题但没达标，就必须再交一次够题量的练习，不能靠累计蒙混。
+        if (
+            cleared_at is None
+            and max_sub_total < limits["minQuestions"]
+            and cum_total >= limits["minQuestions"]
+            and cum_hits * 100 >= limits["passPercent"] * cum_total
+        ):
+            cleared_at = last_sub_when
+            cleared_sub_id = last_sub_id
+            at_clear_hits, at_clear_total = cum_hits, cum_total
+            at_clear_count = sub_count
+        if cleared_at is not None:
+            verification = "后续练习达到条件"
+            verification_state = "passed"
+            # 达标时冻结计数：之后再做错题不污染“当时为什么判过”的证据。
+            cum_hits, cum_total, sub_count = at_clear_hits, at_clear_total, at_clear_count
+        elif cum_total == 0:
+            verification = "尚无后续作答"
+            verification_state = "no_submission"
+        elif cum_total < limits["minQuestions"]:
+            verification = "题量不足待补充"
+            verification_state = "insufficient_questions"
+        else:
+            verification = "已有结果尚未达标"
+            verification_state = "below_threshold"
         flags.append(
             {
                 "subject": subject,
@@ -92,6 +196,12 @@ def knowledge_flags(implementation: Any, db: Any, school_id: int, student_id: in
                 "lastAt": _iso(last),
                 "state": "cleared" if cleared_at else "open",
                 "clearedAt": _iso(cleared_at) if cleared_at else "",
+                "verification": verification,
+                "verificationState": verification_state,
+                "submissionID": cleared_sub_id if cleared_sub_id is not None else last_sub_id,
+                "submissionCount": sub_count,
+                "hits": cum_hits,
+                "total": cum_total,
                 "_sort": last,
             }
         )

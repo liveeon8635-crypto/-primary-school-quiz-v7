@@ -898,96 +898,234 @@ with TestClient(app) as client:
     know_tbl = legacy.Base.metadata.tables["homework_ai_knowledge"]
     subs_tbl = legacy.Base.metadata.tables["submissions"]
 
-    # 造 3 道同知识点的题：独立验证门槛是"后续提交 3 题、80% 正确"。
+    # 造 3 道数学题 + 3 道科学同名知识点题：默认门槛是"后续提交 3 题、80% 正确"。
     knowledge = "独立验证测试点"
+    shared_kp = "统计图表"
     with legacy.SessionLocal() as db:
         qids = []
+        math_shared_qids = []
+        sci_shared_qids = []
         for n in range(3):
             r = db.execute(insert(legacy.Base.metadata.tables["questions"]).values(
                 school_id=school_id, grade=3, subject="数学", knowledge=knowledge,
                 text="第%d题" % n, options_json="{}", correct_index=0))
             qids.append(int(r.inserted_primary_key[0]))
-        db.commit()
-    with legacy.SessionLocal() as db:
-        class_id = db.scalar(
+            rm = db.execute(insert(legacy.Base.metadata.tables["questions"]).values(
+                school_id=school_id, grade=3, subject="数学", knowledge=shared_kp,
+                text="数学统计第%d题" % n, options_json="{}", correct_index=0))
+            math_shared_qids.append(int(rm.inserted_primary_key[0]))
+            rs = db.execute(insert(legacy.Base.metadata.tables["questions"]).values(
+                school_id=school_id, grade=3, subject="科学", knowledge=shared_kp,
+                text="科学统计第%d题" % n, options_json="{}", correct_index=0))
+            sci_shared_qids.append(int(rs.inserted_primary_key[0]))
+        class_a = db.scalar(
             select(legacy.ClassStudent.class_id).where(legacy.ClassStudent.student_id == sid).limit(1)
         )
+        # 每班每天最多展示 5 人，额外建两个班让所有测试学生都能在同一次 GET 中看到
+        cls_b = legacy.SchoolClass(school_id=school_id, name="验证B班", grade=3, teacher_id=teacher_id)
+        cls_c = legacy.SchoolClass(school_id=school_id, name="验证C班", grade=3, teacher_id=teacher_id)
+        db.add_all([cls_b, cls_c]); db.flush()
+        class_b, class_c = int(cls_b.id), int(cls_c.id)
+        db.commit()
 
-    def add_student(name):
+    def add_student(name, target_class=class_a):
         with legacy.SessionLocal() as db:
             pupil = legacy.User(school_id=school_id, username=name, password_hash=legacy.hash_password("x"),
                                 name=name, role="student", grade=3)
             db.add(pupil); db.flush()
-            db.add(legacy.ClassStudent(class_id=class_id, student_id=pupil.id))
+            db.add(legacy.ClassStudent(class_id=target_class, student_id=pupil.id))
             db.commit()
             return int(pupil.id)
 
-    def add_help(student_id, question="题"):
+    def add_help(student_id, question="题", when=None, state="escalated"):
+        ts = when or datetime.utcnow()
         with legacy.SessionLocal() as db:
             r = db.execute(insert(helps_tbl).values(
                 school_id=school_id, student_id=student_id, grade=3, question_text=question,
-                state="escalated", escalate_reason="student_request", escalated_at=datetime.utcnow()))
+                state=state, escalate_reason="student_request", escalated_at=ts, created_at=ts))
             db.commit()
             return int(r.inserted_primary_key[0])
 
-    def add_knowledge(student_id, help_id, matched=True, key=None):
+    def add_knowledge(student_id, help_id, matched=True, key=None, subject=None, created_at=None):
+        subj = ("数学" if matched else "") if subject is None else subject
+        kp = key if key is not None else knowledge
         with legacy.SessionLocal() as db:
             db.execute(insert(know_tbl).values(
                 school_id=school_id, student_id=student_id, help_id=help_id, grade=3,
-                subject="数学" if matched else "",
-                knowledge_key=(key if key is not None else knowledge), raw_knowledge=(key if key is not None else knowledge),
+                subject=subj, knowledge_key=kp, raw_knowledge=kp,
                 matched=matched, question_excerpt="题", verify_status="skipped",
-                created_at=datetime.utcnow() - timedelta(hours=2)))
+                created_at=created_at or (datetime.utcnow() - timedelta(hours=2))))
             db.commit()
 
-    def add_submission(student_id, correct):
+    def add_submission(student_id, correct, question_ids=None, submitted_at=None):
+        used_qids = question_ids if question_ids is not None else qids
         with legacy.SessionLocal() as db:
             db.execute(insert(subs_tbl).values(
                 school_id=school_id, student_id=student_id, title="巩固",
-                score=0, correct=0, total=len(qids),
-                answers_json=json.dumps([{"question_id": q, "correct": correct} for q in qids]),
-                submitted_at=datetime.utcnow()))
+                score=0, correct=0, total=len(used_qids),
+                answers_json=json.dumps([{"question_id": q, "correct": correct} for q in used_qids]),
+                submitted_at=submitted_at or datetime.utcnow()))
             db.commit()
 
-    # 1) 匹配到知识点，后续巩固 3 题全对 → 已独立验证
-    passed = add_help(sid)
-    add_knowledge(sid, passed)
-    add_submission(sid, True)
+    base_now = datetime.utcnow()
 
-    # 2) 匹配到知识点，后续巩固 3 题全错 → 练习尚未通过
-    failed_sid = add_student("pupil_failed")
+    # 1) 匹配到知识点，后续巩固 3 题全对（刚好达标）→ 后续练习达到条件
+    passed = add_help(sid, when=base_now - timedelta(hours=2))
+    add_knowledge(sid, passed, created_at=base_now - timedelta(hours=2))
+    add_submission(sid, True, submitted_at=base_now - timedelta(hours=1))
+
+    # 2) 匹配到知识点，后续巩固 3 题全错 → 已有结果尚未达标
+    failed_sid = add_student("pupil_failed", class_a)
     failed = add_help(failed_sid)
-    add_knowledge(failed_sid, failed)
-    add_submission(failed_sid, False)
+    add_knowledge(failed_sid, failed, created_at=base_now - timedelta(hours=2))
+    add_submission(failed_sid, False, submitted_at=base_now - timedelta(hours=1))
 
-    # 3) 没有任何知识点记录 → 无法判定
-    unknown_sid = add_student("pupil_unknown")
+    # 3) 知识点匹配但零提交 → 尚无后续作答
+    no_sub_sid = add_student("pupil_no_sub", class_a)
+    no_sub = add_help(no_sub_sid)
+    add_knowledge(no_sub_sid, no_sub, created_at=base_now - timedelta(hours=2))
+
+    # 4) 只提交 2 题（即使全对，< 3 题）→ 题量不足待补充
+    two_q_sid = add_student("pupil_two_q", class_a)
+    two_q = add_help(two_q_sid)
+    add_knowledge(two_q_sid, two_q, created_at=base_now - timedelta(hours=2))
+    add_submission(two_q_sid, True, question_ids=qids[:2], submitted_at=base_now - timedelta(hours=1))
+
+    # 5a) 提交时间早于求助记录（之后无提交）→ 不采信，回到"尚无后续作答"
+    early_none_sid = add_student("pupil_early_none", class_a)
+    early_none = add_help(early_none_sid)
+    add_knowledge(early_none_sid, early_none, created_at=base_now - timedelta(hours=1))
+    add_submission(early_none_sid, True, submitted_at=base_now - timedelta(hours=3))
+
+    # 5b) 提交时间早于求助记录 3 题全对，求助后只交了 1 题 → 旧提交不采信，回到"题量不足待补充"
+    early_part_sid = add_student("pupil_early_part", class_b)
+    early_part = add_help(early_part_sid)
+    add_knowledge(early_part_sid, early_part, created_at=base_now - timedelta(hours=2))
+    add_submission(early_part_sid, True, submitted_at=base_now - timedelta(hours=3))
+    add_submission(early_part_sid, True, question_ids=qids[:1], submitted_at=base_now - timedelta(hours=1))
+
+    # 6a) 同名知识点不同学科：同一学生有"数学·统计图表"（3题全对）和"科学·统计图表"（0提交）两条知识记录，
+    # 当前待跟进求助是"科学·统计图表"，不能被数学达标结果覆盖 → 尚无后续作答
+    cross_sci_sid = add_student("pupil_cross_sci", class_b)
+    old_math_help = add_help(cross_sci_sid, state="answered", when=base_now - timedelta(hours=3))
+    add_knowledge(cross_sci_sid, old_math_help, key=shared_kp, subject="数学", created_at=base_now - timedelta(hours=3))
+    add_submission(cross_sci_sid, True, question_ids=math_shared_qids, submitted_at=base_now - timedelta(hours=2))
+    cross_sci_help = add_help(cross_sci_sid, when=base_now - timedelta(hours=2))
+    add_knowledge(cross_sci_sid, cross_sci_help, key=shared_kp, subject="科学", created_at=base_now - timedelta(hours=2))
+
+    # 6b) 反向验证同名知识点不同学科：同一学生有"科学·统计图表"（3题全错）和"数学·统计图表"（3题全对）两条知识记录，
+    # 当前待跟进求助是"数学·统计图表"，不能被科学未达标覆盖 → 后续练习达到条件
+    cross_math_sid = add_student("pupil_cross_math", class_b)
+    old_sci_help = add_help(cross_math_sid, state="answered", when=base_now - timedelta(hours=3))
+    add_knowledge(cross_math_sid, old_sci_help, key=shared_kp, subject="科学", created_at=base_now - timedelta(hours=3))
+    add_submission(cross_math_sid, False, question_ids=sci_shared_qids, submitted_at=base_now - timedelta(hours=2))
+    cross_math_help = add_help(cross_math_sid, when=base_now - timedelta(hours=2))
+    add_knowledge(cross_math_sid, cross_math_help, key=shared_kp, subject="数学", created_at=base_now - timedelta(hours=2))
+    add_submission(cross_math_sid, True, question_ids=math_shared_qids, submitted_at=base_now - timedelta(hours=1))
+
+    # 7a) 没有任何知识点记录 → 无法匹配知识点
+    unknown_sid = add_student("pupil_unknown", class_b)
     unknown = add_help(unknown_sid)
 
-    # 4) 有记录但匹配不上学校知识点 → 无法判定
-    unmatched_sid = add_student("pupil_unmatched")
+    # 7b) 有记录但 matched=False → 无法匹配知识点
+    unmatched_sid = add_student("pupil_unmatched", class_b)
     unmatched = add_help(unmatched_sid)
     add_knowledge(unmatched_sid, unmatched, matched=False, key="完全无关的奇怪说法")
 
+    # 7c) matched=True 但 subject 为空（即使提交了同名数学题也不得混用）→ 无法匹配知识点
+    empty_subj_sid = add_student("pupil_empty_subj", class_c)
+    empty_subj = add_help(empty_subj_sid)
+    add_knowledge(empty_subj_sid, empty_subj, matched=True, key=knowledge, subject="", created_at=base_now - timedelta(hours=2))
+    add_submission(empty_subj_sid, True, submitted_at=base_now - timedelta(hours=1))
+
     body = client.get("/teacher/homework/follow-ups", headers=th).json()
-    labels = {x["helpID"]: x["verification"] for x in body["items"]}
-    # 已独立验证 = 不需要再跟进，这条会从当天列表移出；其余三条保留并给出明确标签
-    assert passed not in labels, ("已验证的求助应移出列表", labels)
-    assert set(labels) == {failed, unknown, unmatched}, labels
-    assert labels.get(failed) == "练习尚未通过", labels
-    assert labels.get(unknown) == "无法判定是否已验证", labels
-    assert labels.get(unmatched) == "无法判定是否已验证", labels
+    by_help = {x["helpID"]: x for x in body["items"]}
+    labels = {hid: item["verification"] for hid, item in by_help.items()}
+    assert labels.get(failed) == "已有结果尚未达标", labels
+    assert labels.get(no_sub) == "尚无后续作答", labels
+    assert labels.get(two_q) == "题量不足待补充", labels
+    assert labels.get(early_none) == "尚无后续作答", labels
+    assert labels.get(early_part) == "题量不足待补充", labels
+    assert labels.get(cross_sci_help) == "尚无后续作答", labels
+    # 达到条件的求助不再需要跟进，会从当天列表移出（名额仍不返还）
+    assert passed not in labels, ("达到条件的求助应移出待跟进", labels)
+    assert cross_math_help not in labels, ("达到条件的求助应移出待跟进", labels)
+    assert labels.get(unknown) == "无法匹配知识点", labels
+    assert labels.get(unmatched) == "无法匹配知识点", labels
+    assert labels.get(empty_subj) == "无法匹配知识点", labels
+    assert all(v != "练习尚未通过" for v in labels.values()), labels
 
-    # 5) 判定依赖出错时只退回"无法判定"，不能吞成"尚无独立验证"或 500
+    # 移出列表的"达到条件"要用服务层 flag 断言（详情字段只在列表里暴露）
+    from changying.services.homework_knowledge_flags import knowledge_flags as _knowledge_flags
+    with legacy.SessionLocal() as db:
+        sid_flags = _knowledge_flags(legacy, db, school_id, sid)["flags"]
+    passed_flag = [f for f in sid_flags if f["knowledge"] == knowledge][0]
+    assert passed_flag["verification"] == "后续练习达到条件", passed_flag
+    assert passed_flag["verificationState"] == "passed", passed_flag
+    assert passed_flag["hits"] == 3 and passed_flag["total"] == 3, passed_flag
+
+    # 达标之后再做错题：状态仍是“达到条件”，计数冻结在达标那一刻
+    add_submission(sid, False, submitted_at=base_now - timedelta(minutes=30))
+    with legacy.SessionLocal() as db:
+        frozen = [f for f in _knowledge_flags(legacy, db, school_id, sid)["flags"]
+                  if f["knowledge"] == knowledge][0]
+    assert frozen["verification"] == "后续练习达到条件", frozen
+    assert (frozen["hits"], frozen["total"]) == (3, 3), frozen
+
+    # 单次达标只算那一次的证据：之前做错 1 题，不能把 3/3 显示成 3/4
+    batch_sid = add_student("pupil_batch", class_c)
+    batch = add_help(batch_sid)
+    add_knowledge(batch_sid, batch, created_at=base_now - timedelta(hours=2))
+    add_submission(batch_sid, False, question_ids=qids[:1], submitted_at=base_now - timedelta(hours=1, minutes=30))
+    add_submission(batch_sid, True, submitted_at=base_now - timedelta(hours=1))
+    with legacy.SessionLocal() as db:
+        batch_flag = [f for f in _knowledge_flags(legacy, db, school_id, batch_sid)["flags"]
+                      if f["knowledge"] == knowledge][0]
+    assert batch_flag["verification"] == "后续练习达到条件", batch_flag
+    assert (batch_flag["hits"], batch_flag["total"]) == (3, 3), batch_flag
+    assert batch_flag["submissionCount"] == 2, batch_flag
+
+    # 验证新增详情字段结构与数值
+    assert by_help[two_q]["verificationDetail"]["state"] == "insufficient_questions"
+    assert by_help[two_q]["verificationDetail"]["total"] == 2
+    assert by_help[failed]["verificationDetail"]["state"] == "below_threshold"
+    assert by_help[failed]["verificationDetail"]["hits"] == 0 and by_help[failed]["verificationDetail"]["total"] == 3
+
+    # 8) 同一学生再次求助后，旧提交不再算新问题已解决
+    reask_help = add_help(sid, question="同一知识点再次求助", when=base_now - timedelta(minutes=10))
+    add_knowledge(sid, reask_help, created_at=base_now - timedelta(minutes=10))
+    after_reask = client.get("/teacher/homework/follow-ups", headers=th).json()
+    sid_items = [x for x in after_reask["items"] if x["studentID"] == sid]
+    assert len(sid_items) == 1, sid_items
+    assert sid_items[0]["verification"] == "尚无后续作答", sid_items[0]
+    assert sid_items[0]["verificationDetail"]["total"] == 0, sid_items[0]
+
+    # 9) 判定依赖对单个学生抛异常 → 只把该学生记为"无法判定"，其他学生仍正常
     import changying.services.homework_knowledge_flags as flags_mod
+    real_knowledge_flags = flags_mod.knowledge_flags
 
-    def boom(*args, **kwargs):
+    def boom_one(implementation, db, s_id, stu_id):
+        if stu_id == failed_sid:
+            raise RuntimeError("single student flags failure")
+        return real_knowledge_flags(implementation, db, s_id, stu_id)
+
+    flags_mod.knowledge_flags = boom_one
+    partial = client.get("/teacher/homework/follow-ups", headers=th).json()
+    partial_labels = {x["helpID"]: x["verification"] for x in partial["items"]}
+    assert partial_labels.get(failed) == "无法判定", partial_labels
+    assert partial_labels.get(no_sub) == "尚无后续作答", partial_labels
+    assert partial_labels.get(two_q) == "题量不足待补充", partial_labels
+    assert partial_labels.get(cross_math_help) is None, ("达到条件的求助仍应移出", partial_labels)
+    assert partial_labels.get(unknown) == "无法匹配知识点", partial_labels
+
+    # 全部抛异常时整表退回"无法判定"，不 500
+    def boom_all(*args, **kwargs):
         raise RuntimeError("knowledge flags down")
 
-    flags_mod.knowledge_flags = boom
+    flags_mod.knowledge_flags = boom_all
     after = client.get("/teacher/homework/follow-ups", headers=th).json()
     assert after["items"], after
-    assert all(x["verification"] == "无法判定是否已验证" for x in after["items"]), after
+    assert all(x["verification"] == "无法判定" for x in after["items"]), after
 print("OK")
 """,
         {"HOMEWORK_ASSISTANT": "1"},
