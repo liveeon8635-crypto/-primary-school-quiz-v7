@@ -538,6 +538,7 @@ class TeachingQuestion(Base):
     options_json:Mapped[str]=mapped_column(Text)
     correct_index:Mapped[int]=mapped_column(Integer)
     explanation:Mapped[str]=mapped_column(Text,default="")
+    figure_json:Mapped[str]=mapped_column(Text,default="{}")
     active:Mapped[bool]=mapped_column(Boolean,default=True)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
 
@@ -3611,10 +3612,26 @@ def ensure_submission_completion_actor_column():
         conn.execute(sa_text("ALTER TABLE submissions ADD COLUMN completion_actor VARCHAR(30) NULL"))
         conn.execute(sa_text("CREATE INDEX IF NOT EXISTS ix_submissions_completion_actor ON submissions (completion_actor)"))
 
+def ensure_teaching_question_figure_column():
+    """Add the nullable figure column before any ORM query touches TeachingQuestion.
+
+    create_all() creates missing tables but intentionally does not ALTER an existing one.
+    Keep this migration narrow and idempotent; historical rows stay empty ('{}').
+    """
+    inspector=sa_inspect(engine)
+    if "teaching_questions" not in set(inspector.get_table_names()):
+        return
+    columns={col["name"] for col in inspector.get_columns("teaching_questions")}
+    if "figure_json" in columns:
+        return
+    with engine.begin() as conn:
+        conn.execute(sa_text("ALTER TABLE teaching_questions ADD COLUMN figure_json TEXT NOT NULL DEFAULT '{}'"))
+
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(engine)
     ensure_submission_completion_actor_column()
+    ensure_teaching_question_figure_column()
     # V7.3.0: keep the V7.2.0 production seeding behavior; never create public demo credentials automatically on PostgreSQL.
     # Existing production users are untouched. Set ENABLE_DEMO_SEED=1 only for an intentional demo.
     if raw_url.startswith("sqlite") or os.getenv("ENABLE_DEMO_SEED","0")=="1":

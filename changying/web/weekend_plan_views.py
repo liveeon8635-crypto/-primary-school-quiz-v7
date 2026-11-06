@@ -237,6 +237,41 @@ def has_real_plan(lesson: Any) -> bool:
         return False
 
 
+_FIGURE_URL = re.compile(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}")
+MAX_FIGURE_DATA_URL = 700_000
+
+
+def _question_figure(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or str(value.get("type") or "").lower() != "uploaded_image":
+        return {}
+    url = str(value.get("data_url") or "")
+    if len(url) > MAX_FIGURE_DATA_URL or not _FIGURE_URL.fullmatch(url):
+        return {}
+    return {"type": "uploaded_image", "data_url": url, "alt": str(value.get("alt") or "原卷插图")[:80]}
+
+
+def _stored_figure(q: Any) -> dict[str, Any]:
+    try:
+        return _question_figure(json.loads(getattr(q, "figure_json", "") or "{}"))
+    except (TypeError, ValueError):
+        return {}
+
+
+def _attach_figures(data: Any, figures: list[dict[str, Any]]) -> None:
+    """Turn the model's "figureImage": n into the real picture so the question keeps it."""
+    if not isinstance(data, dict) or not figures:
+        return
+    for q in data.get("questions") or []:
+        if not isinstance(q, dict):
+            continue
+        try:
+            index = int(q.pop("figureImage", 0) or 0)
+        except (TypeError, ValueError):
+            index = 0
+        if 1 <= index <= len(figures):
+            q["figure"] = {"type": "uploaded_image", "data_url": figures[index - 1]["data_url"], "alt": "原卷插图"}
+
+
 def _valid_questions(raw: Any) -> list[dict[str, Any]]:
     qs = []
     for q in raw if isinstance(raw, list) else []:
@@ -246,7 +281,8 @@ def _valid_questions(raw: Any) -> list[dict[str, Any]]:
         except (TypeError, ValueError, AttributeError):
             continue
         if str(q.get("stem") or "").strip() and len(opts) >= 2 and all(opts) and 0 <= ci < len(opts):
-            qs.append({"stem": str(q["stem"]).strip()[:300], "options": opts, "ci": ci, "exp": str(q.get("explanation") or "")[:300], "kp": str(q.get("knowledge") or "")[:160]})
+            qs.append({"stem": str(q["stem"]).strip()[:300], "options": opts, "ci": ci, "exp": str(q.get("explanation") or "")[:300], "kp": str(q.get("knowledge") or "")[:160],
+                       "fig": _question_figure(q.get("figure"))})
     return qs
 
 
@@ -636,7 +672,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         replace_written_drafts(db, written, u.school_id, u.id, lesson.id, wqs)
         for i, q in enumerate(qs[:12]):
             db.add(TQ(school_id=u.school_id, program_id=p.id, lesson_id=lesson.id, stage="lesson", subject=subject, level=LEVELS[min(i, len(LEVELS) - 1)], knowledge=q["kp"],
-                      stem=q["stem"], options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False))
+                      stem=q["stem"], options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False,
+                      figure_json=json.dumps(q["fig"], ensure_ascii=False)))
         db.commit()
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs) + len(wqs), "writtenQuestionsFound": len(wqs),
                 "sourceChars": len(source_text), "message": f"原文 {len(source_text)} 字已完整保留（含阅读材料及非选择题）。已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道选择题、{len(wqs)} 道简答/写作题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
@@ -652,15 +689,31 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             got = _apply_lesson_plan(db, u, subject, lessonNo, plan, extracted["text"], use_literal=False)
             got["engine"] = "markdown"
             return got
+        figures = extracted.get("images") or []
+        figure_note = ""
+        if figures:
+            pages = "、".join(str(f["page"]) for f in figures if f.get("page"))
+            figure_note = (
+                f"文档里另外带了 {len(figures)} 张图片（按文档顺序编号 1–{len(figures)}，以附图形式一并给你"
+                + (f"，分别在第 {pages} 页" if pages else "")
+                + "）。哪道题在原文档里配了图，就给那道题加 \"figureImage\": 编号；"
+                  "不要凭空引用不存在的编号，没有配图的题不要写这个字段。\n"
+            )
         prompt = (
             f"下面是一位小学{p.grade}年级{subject}老师自己写的周末课教案内容。请只整理、归类里面已有的内容，不要编造新内容；文档里没有的字段留空。\n"
             f"---教案内容开始---\n{extracted['text']}\n---教案内容结束---\n"
+            + figure_note +
             '只输出 JSON：{"title":"课题","coreTarget":"本节目标","teacherPlan":"教学流程(300字内)","ppt":["完整讲解页：标题＋原文中的方法步骤＋示例，每页用\\n换行，不得把每一行拆成一页；禁止放入教师参考答案或评分细则"],'
             '"examples":["文档里的例题和解答，原文照录"],"closureTraining":"课后练习",'
-            '"questions":[{"stem":"文档里已有的选择题","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}],"writtenQuestions":[{"type":"short_answer或final_answer或composition","material":"对应完整阅读文章，不含教师答案","stem":"原有题目，不得改题型或漏题","reference":"原文对应参考答案及评分要点","hints":[]}]}'
-            "（questions 只放原有选择题，writtenQuestions放全部原有简答、填空、复述、写作和挑战题，不要编造新题。阅读文章和非选择题不可省略；原文由系统完整保存。closureTraining 必须包含全部课后题，不能只列前几题。）"
+            '"questions":[{"stem":"文档里已有的选择题","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名","figureImage":1}],"writtenQuestions":[{"type":"short_answer或final_answer或composition","material":"对应完整阅读文章，不含教师答案","stem":"原有题目，不得改题型或漏题","reference":"原文对应参考答案及评分要点","hints":[]}]}'
+            "（questions 只放原有选择题，writtenQuestions放全部原有简答、填空、复述、写作和挑战题，不要编造新题。阅读文章和非选择题不可省略；原文由系统完整保存。closureTraining 必须包含全部课后题，不能只列前几题。"
+            "figureImage 只在原文档那道题确实配了图时才写，值是图片编号。）"
         )
-        data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=90))
+        data = implementation._ai_json(implementation._ai_call(
+            db, u, AI_FEATURE, prompt, images=[f["data_url"] for f in figures] or None,
+            timeout=150 if figures else 90,
+        ))
+        _attach_figures(data, figures)
         if not isinstance(data, dict) or not (str(data.get("title") or "").strip() or str(data.get("coreTarget") or "").strip() or _lines(data.get("examples"))):
             raise HTTPException(502, "AI 没能整理出教案，请再试一次，或在“审改”里手动填写")
         got = _apply_lesson_plan(db, u, subject, lessonNo, data, extracted["text"], slides_hint=extracted["slides"] or None)
@@ -1032,7 +1085,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             except Exception:  # noqa: BLE001
                 opts = []
             out.append({"id": q.id, "stem": q.stem, "options": opts, "correctIndex": q.correct_index, "explanation": q.explanation, "knowledge": q.knowledge,
-                        "active": bool(q.active), "level": qg.CODE_LEVEL.get(q.level, ""), "verified": str(q.explanation or "").startswith("验算：")})
+                        "figure": _stored_figure(q), "active": bool(q.active), "level": qg.CODE_LEVEL.get(q.level, ""), "verified": str(q.explanation or "").startswith("验算：")})
         return {"items": out}
 
     @router.post("/teacher/weekend/lessons/{lid}/questions")
