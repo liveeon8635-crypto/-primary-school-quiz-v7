@@ -914,8 +914,24 @@ def install_homework_help(implementation: Any) -> APIRouter:
         try:
             items = _annotate_verification(implementation, db, teacher, items)
         except Exception:  # noqa: BLE001 - 判定失败不能影响列表本身
+            try:
+                from changying.services.homework_knowledge_flags import thresholds as _thresholds
+                fallback_rule = _thresholds()
+            except Exception:  # noqa: BLE001 - 连阈值都读不到时给 default
+                fallback_rule = {"minQuestions": 3, "passPercent": 80}
             for item in items:
                 item["verification"] = "无法判定"
+                item["verificationDetail"] = {
+                    "state": "undecided",
+                    "label": "无法判定",
+                    "subject": "",
+                    "knowledge": "",
+                    "submissionID": None,
+                    "count": 0,
+                    "hits": 0,
+                    "total": 0,
+                    "threshold": dict(fallback_rule),
+                }
         else:
             # 后续练习已达到条件的求助不再需要跟进，从当天列表移出（名额仍不返还）。
             items = [x for x in items if x.get("verification") != "后续练习达到条件"]

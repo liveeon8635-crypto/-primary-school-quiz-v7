@@ -1072,6 +1072,19 @@ with TestClient(app) as client:
     assert frozen["verification"] == "后续练习达到条件", frozen
     assert (frozen["hits"], frozen["total"]) == (3, 3), frozen
 
+    # 单次达标只算那一次的证据：之前做错 1 题，不能把 3/3 显示成 3/4
+    batch_sid = add_student("pupil_batch", class_c)
+    batch = add_help(batch_sid)
+    add_knowledge(batch_sid, batch, created_at=base_now - timedelta(hours=2))
+    add_submission(batch_sid, False, question_ids=qids[:1], submitted_at=base_now - timedelta(hours=1, minutes=30))
+    add_submission(batch_sid, True, submitted_at=base_now - timedelta(hours=1))
+    with legacy.SessionLocal() as db:
+        batch_flag = [f for f in _knowledge_flags(legacy, db, school_id, batch_sid)["flags"]
+                      if f["knowledge"] == knowledge][0]
+    assert batch_flag["verification"] == "后续练习达到条件", batch_flag
+    assert (batch_flag["hits"], batch_flag["total"]) == (3, 3), batch_flag
+    assert batch_flag["submissionCount"] == 2, batch_flag
+
     # 验证新增详情字段结构与数值
     assert by_help[two_q]["verificationDetail"]["state"] == "insufficient_questions"
     assert by_help[two_q]["verificationDetail"]["total"] == 2
