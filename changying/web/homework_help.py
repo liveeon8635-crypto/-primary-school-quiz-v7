@@ -917,14 +917,8 @@ def install_homework_help(implementation: Any) -> APIRouter:
             for item in items:
                 item["verification"] = "无法判定"
         else:
-            items.sort(
-                key=lambda x: (
-                    x.get("verification") == "后续练习达到条件",
-                    x["rank"],
-                    x["evidence"]["escalatedAt"] or "",
-                    x["helpID"],
-                )
-            )
+            # 后续练习已达到条件的求助不再需要跟进，从当天列表移出（名额仍不返还）。
+            items = [x for x in items if x.get("verification") != "后续练习达到条件"]
         return items
 
     def _admit_follow_ups(db: Any, teacher: Any, items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:

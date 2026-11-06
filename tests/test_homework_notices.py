@@ -1041,22 +1041,30 @@ with TestClient(app) as client:
     body = client.get("/teacher/homework/follow-ups", headers=th).json()
     by_help = {x["helpID"]: x for x in body["items"]}
     labels = {hid: item["verification"] for hid, item in by_help.items()}
-    assert labels.get(passed) == "后续练习达到条件", labels
     assert labels.get(failed) == "已有结果尚未达标", labels
     assert labels.get(no_sub) == "尚无后续作答", labels
     assert labels.get(two_q) == "题量不足待补充", labels
     assert labels.get(early_none) == "尚无后续作答", labels
     assert labels.get(early_part) == "题量不足待补充", labels
     assert labels.get(cross_sci_help) == "尚无后续作答", labels
-    assert labels.get(cross_math_help) == "后续练习达到条件", labels
+    # 达到条件的求助不再需要跟进，会从当天列表移出（名额仍不返还）
+    assert passed not in labels, ("达到条件的求助应移出待跟进", labels)
+    assert cross_math_help not in labels, ("达到条件的求助应移出待跟进", labels)
     assert labels.get(unknown) == "无法匹配知识点", labels
     assert labels.get(unmatched) == "无法匹配知识点", labels
     assert labels.get(empty_subj) == "无法匹配知识点", labels
     assert all(v != "练习尚未通过" for v in labels.values()), labels
 
+    # 移出列表的"达到条件"要用服务层 flag 断言（详情字段只在列表里暴露）
+    from changying.services.homework_knowledge_flags import knowledge_flags as _knowledge_flags
+    with legacy.SessionLocal() as db:
+        sid_flags = _knowledge_flags(legacy, db, school_id, sid)["flags"]
+    passed_flag = [f for f in sid_flags if f["knowledge"] == knowledge][0]
+    assert passed_flag["verification"] == "后续练习达到条件", passed_flag
+    assert passed_flag["verificationState"] == "passed", passed_flag
+    assert passed_flag["hits"] == 3 and passed_flag["total"] == 3, passed_flag
+
     # 验证新增详情字段结构与数值
-    assert by_help[passed]["verificationDetail"]["state"] == "passed"
-    assert by_help[passed]["verificationDetail"]["hits"] == 3 and by_help[passed]["verificationDetail"]["total"] == 3
     assert by_help[two_q]["verificationDetail"]["state"] == "insufficient_questions"
     assert by_help[two_q]["verificationDetail"]["total"] == 2
     assert by_help[failed]["verificationDetail"]["state"] == "below_threshold"
@@ -1086,7 +1094,7 @@ with TestClient(app) as client:
     assert partial_labels.get(failed) == "无法判定", partial_labels
     assert partial_labels.get(no_sub) == "尚无后续作答", partial_labels
     assert partial_labels.get(two_q) == "题量不足待补充", partial_labels
-    assert partial_labels.get(cross_math_help) == "后续练习达到条件", partial_labels
+    assert partial_labels.get(cross_math_help) is None, ("达到条件的求助仍应移出", partial_labels)
     assert partial_labels.get(unknown) == "无法匹配知识点", partial_labels
 
     # 全部抛异常时整表退回"无法判定"，不 500
