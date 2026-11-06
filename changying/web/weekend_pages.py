@@ -684,12 +684,23 @@ function plan(){
       var detail=el('div',{hidden:true});
       var fileIn=el('input',{type:'file',accept:'.docx,.pptx,.pdf,.txt,.md',hidden:true});
       var impBtn=el('button',{class:r.hasPlan?'':'primary',text:'导入我的教案',title:'支持 Word(.docx)、PPT(.pptx)、PDF、txt',onclick:function(){fileIn.click()}});
+      // The page-level note sits above the list; a teacher scrolled to this row never sees it.
+      // Every import result is therefore shown right here, next to the button that produced it.
+      var importFeedback=el('div',{role:'status','aria-live':'polite','data-import-feedback':'1'});
       fileIn.addEventListener('change',function(){
         var f=fileIn.files&&fileIn.files[0];if(!f)return;
         if(r.hasPlan&&!confirm('这节课已有教案，导入会覆盖教案文字和未审核的草稿题（已通过的习题保留）。确定吗？')){fileIn.value='';return}
         var fd=new FormData();fd.append('subject',SUBJ);fd.append('lessonNo',String(r.lessonNo));fd.append('force',r.hasPlan?'1':'0');fd.append('file',f);
-        impBtn.disabled=true;note('ok','正在读取并整理你的教案，约半分钟…');
-        api('/teacher/weekend/lessons/import',{method:'POST',body:fd}).then(function(d){note('ok',d.message);load()}).catch(function(e){note('error',e.message);impBtn.disabled=false}).then(function(){fileIn.value=''});
+        impBtn.disabled=true;impBtn.textContent='正在导入…';
+        importFeedback.className='muted';importFeedback.textContent='正在读取并整理你的教案（约半分钟）…';
+        if(importFeedback.scrollIntoView)importFeedback.scrollIntoView({block:'nearest'});
+        api('/teacher/weekend/lessons/import',{method:'POST',body:fd}).then(function(d){note('ok',d.message);load()}).catch(function(e){
+          var status=e&&e.status?'（'+e.status+'）':'';
+          importFeedback.className='notice error';
+          importFeedback.textContent='导入失败'+status+'：'+(e&&e.message?e.message:'请重试')+'。你选的文件不会被改动，可以处理后再导入。';
+          impBtn.disabled=false;impBtn.textContent='导入我的教案';
+          if(importFeedback.scrollIntoView)importFeedback.scrollIntoView({block:'center'});
+        }).then(function(){fileIn.value=''});
       });
       var draftBtn=el('button',{text:r.hasPlan?'AI 重写':'没教案？AI 帮我写',onclick:function(){
         if(r.hasPlan&&!confirm('这节课已有教案，AI 重写会覆盖教案文字和未审核的草稿题，确定吗？'))return;
@@ -736,7 +747,7 @@ function plan(){
         }).catch(function(e){deleteFeedback.textContent=e.message;deleteBtn.disabled=false});
       }});
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
-        el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),impBtn,fileIn,draftBtn,qCount,qBtn,open,cwBtn,go,why,cancelDebugBtn,deleteBtn),deleteFeedback,detail));
+        el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),impBtn,fileIn,draftBtn,qCount,qBtn,open,cwBtn,go,why,cancelDebugBtn,deleteBtn),importFeedback,deleteFeedback,detail));
     });
     list.appendChild(el('button',{class:'primary',text:'保存进度表',onclick:function(){
       api('/teacher/weekend/schedule',{method:'PUT',json:{subject:SUBJ,rows:state.map(function(r){return {lessonNo:r.lessonNo,schoolWeek:r.schoolWeek,schoolUnit:r.schoolUnit||'',plannedDate:r.plannedDate||'',note:r.note||''}})}}).then(function(){note('ok','已保存');load()}).catch(function(e){note('error',e.message)})}}));
