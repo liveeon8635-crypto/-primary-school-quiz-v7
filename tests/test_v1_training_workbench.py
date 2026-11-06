@@ -253,3 +253,33 @@ def test_teacher_tutorial_explains_paper_import_and_where_imported_questions_go(
 
     assert "新导入的题目按导入时填写的单元归类" in STEP_RELATIONSHIPS["teacher_catalog"]["communication_tip"]
 
+
+
+def test_training_explains_the_follow_up_pilot_quota_rules():
+    """待跟进（试点）的口径要写进沙盒导览，并且和真实路由里的名额常量一致。"""
+    from changying.web.homework_help import FOLLOW_UP_DAILY_LIMIT
+    from changying.web.v1_training_sandbox import ROLE_FLOW, STEP_RELATIONSHIPS
+
+    assert FOLLOW_UP_DAILY_LIMIT == 5, "名额改了，导览里的“每个班每天最多 5 条”也要一起改"
+
+    teacher = [step["id"] for step in ROLE_FLOW["teacher"]]
+    assert teacher.index("teacher_homework") < teacher.index("teacher_follow_ups") < teacher.index("hub")
+    step = next(s for s in ROLE_FLOW["teacher"] if s["id"] == "teacher_follow_ups")
+    assert step["page"] == "/v1/homework"
+
+    rel = STEP_RELATIONSHIPS["teacher_follow_ups"]
+    assert all(rel[k] for k in ("who", "creates", "visible_to", "other_role_sees", "communication_tip", "next"))
+    tip = rel["communication_tip"]
+    for text in ("每个班每天最多 5 条", "同一学生当天最多 1 条", "都不返还名额", "同时占两个班的名额",
+                 "不改变求助本身的状态", "学生主动求助", "AI 解答验算未通过", "已讲解，尚无独立巩固结果",
+                 "尚无独立验证", "练习尚未通过", "无法判定是否已验证"):
+        assert text in tip, text
+    assert "看不到" in rel["other_role_sees"]
+
+    # 走真实的 /v1/training 路由，确认教师讲解随页面下发
+    app = FastAPI()
+    install_v1_training_workbench_route(app)
+    html = TestClient(app).get(TRAINING_WORKBENCH_PATH).text
+    assert "teacher_follow_ups:'在“晚托作业助手”顶部的“待跟进”标签" in html
+    assert "同时占两个班的名额" in html
+    assert "“待跟进”标签每个班每天最多推 5 条、同一学生当天 1 条" in html
