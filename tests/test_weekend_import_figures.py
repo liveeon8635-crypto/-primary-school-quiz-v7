@@ -85,9 +85,10 @@ def test_a_written_question_keeps_its_picture_in_the_stored_metadata():
 
 
 def test_courseware_uses_the_imported_picture_instead_of_a_drawing():
-    figures = [("第7题方桌人数规律", {"type": "uploaded_image", "data_url": FIG_URL, "alt": "原卷插图"})]
+    figures = [{"number": 7, "key": "第7题方桌人数规律", "figure": {"type": "uploaded_image", "data_url": FIG_URL, "alt": "原卷插图"}}]
 
-    assert match_figure(figures, "第 7 题 方桌人数规律 1 张方桌坐 4 人")["data_url"] == FIG_URL
+    # The screen labels the page “第 7 题 …”; the stem may use different separators, so the number decides.
+    assert match_figure(figures, "第 7 题 原题｜方桌人数规律 1 张方桌坐 4 人")["data_url"] == FIG_URL
     assert match_figure(figures, "第 3 题 平方与乘 2") == {}
 
 
