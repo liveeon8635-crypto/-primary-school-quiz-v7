@@ -203,23 +203,36 @@ def recognize_image(
         out = implementation._ai_extract_text(data)
         if not out:
             raise VisionFailure(502, "识别服务没有返回内容，请重拍或直接输入文字", "empty_response")
+        # 只有“看起来是结构化输出却没解析成功”才判失败；纯文本响应仍按旧行为收下，
+        # 让老师/学生拿到可编辑的草稿，而不是一个 502。
+        # 只认 `{` 开头的对象：三个入口的提示词都要求 JSON 对象；`[1] 计算题`、代码块这类
+        # 以 `[` 或 ``` 开头的正常文字不能被误判成破损的结构化输出。
+        stripped = out.strip()
+        structured = stripped.startswith("{")
         try:
             parsed = implementation._ai_json(out)
-        except HTTPException:
-            parsed = {"text": out, "confidence": None}
+        except (HTTPException, ValueError):
+            if structured:
+                raise VisionFailure(502, "识别结果格式异常或可能不完整，请核对重拍或直接输入文字", "invalid_transcription") from None
+            parsed = {"text": stripped, "confidence": None}
         if not isinstance(parsed, dict):
-            parsed = {"text": out, "confidence": None}
-        text = str(parsed.get("text") or "").strip()
-        if not text:
+            if structured:
+                raise VisionFailure(502, "识别结果格式异常或可能不完整，请核对重拍或直接输入文字", "invalid_transcription")
+            parsed = {"text": stripped, "confidence": None}
+        raw_text = str(parsed.get("text") or "").strip()
+        if not raw_text:
             raise VisionFailure(422, "没有识别出文字，请重拍或直接输入", "unreadable_response")
         try:
             confidence = float(parsed.get("confidence")) if parsed.get("confidence") is not None else None
         except (TypeError, ValueError):
             confidence = None
+        truncated = len(raw_text) >= RECOGNIZED_CHAR_LIMIT
         return {
-            "text": text[:RECOGNIZED_CHAR_LIMIT],
+            "text": raw_text[:RECOGNIZED_CHAR_LIMIT],
             "hasFigure": bool(parsed.get("hasFigure")),
             "confidence": confidence,
+            "truncated": truncated,
+            "warning": "识别内容已达 4000 字上限，可能不完整，请核对" if truncated else "",
         }
     except HTTPException as exc:
         status, error = "error", str(exc.detail)

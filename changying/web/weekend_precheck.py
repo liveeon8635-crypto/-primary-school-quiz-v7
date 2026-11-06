@@ -15,7 +15,13 @@ from sqlalchemy.exc import IntegrityError
 
 from changying.services import written_precheck as rules
 from changying.services.homework_limits import ai_slot, check_student_call, require_student_ai
-from changying.services.homework_vision import VISION_FAILURE_MESSAGES, VisionFailure, recognize_image, vision_enabled
+from changying.services.homework_vision import (
+    RECOGNIZED_CHAR_LIMIT,
+    VISION_FAILURE_MESSAGES,
+    VisionFailure,
+    recognize_image,
+    vision_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +116,7 @@ class WrittenPrechecks:
                     db.rollback(); return
             db.commit()
             status, payload = "manual", {"message": "请老师核验", "items": [], "suggestedResult": None, "requiresTeacher": True}
+            truncated = False
             try:
                 if not question.reference.strip():
                     payload["message"] = "本题尚无参考答案，请老师补充或手工批改"
@@ -126,6 +133,7 @@ class WrittenPrechecks:
                         db.rollback()
                         read = recognize_image(impl, db, actor, answer.photo,
                             feature="homework_help_written_precheck_ocr", prompt=rules.transcription_prompt())
+                    truncated = bool(read.get("truncated") or len(read.get("text") or "") >= RECOGNIZED_CHAR_LIMIT)
                     try:
                         parsed = impl._ai_json(read["text"])
                     except HTTPException:
@@ -137,6 +145,10 @@ class WrittenPrechecks:
                     if not isinstance(read.get("confidence"), (float, int)) or not .9 <= read["confidence"] <= 1:
                         observed = [{**i, "confidence": 0} for i in observed if isinstance(i, dict)]
                     payload = rules.preview(question.stem, question.reference, observed)
+                    if truncated or payload.get("truncated"):
+                        payload["truncated"] = True
+                        payload["suggestedResult"] = None
+                        payload["message"] = "识别内容已达 4000 字上限，可能不完整，请老师核对原图后手工批改"
                     status = "ready" if payload["suggestedResult"] else "manual"
                 else:
                     payload = rules.preview(question.stem, question.reference, rules.typed_observations(question.stem, answer.answer_text))
@@ -148,6 +160,9 @@ class WrittenPrechecks:
                     # Provider 403/503 remains an upstream failure, not a school permission denial.
                     status = "failed"
                     payload.update(code=exc.reason, message=VISION_FAILURE_MESSAGES[exc.reason])
+                    if truncated:
+                        payload["truncated"] = True
+                        payload["message"] = "识别内容已达 4000 字上限，可能不完整，请核对原图或手工批改"
                     if exc.upstream_status is not None:
                         payload["upstreamStatus"] = exc.upstream_status
                 elif exc.status_code == 429:
