@@ -13,7 +13,7 @@ PAGE_CSS = r"""
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.55 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
 header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
 header h1{margin:0;font-size:20px}header a{color:var(--brand);text-decoration:none;font-weight:600}
-main{max-width:980px;margin:0 auto;padding:16px}
+main{max-width:1440px;margin:0 auto;padding:16px 28px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:0 0 14px}
 .card h2{margin:0 0 10px;font-size:18px}.muted{color:var(--muted);font-size:15px}
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
