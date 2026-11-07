@@ -168,7 +168,7 @@ _FIGURE_URL = re.compile(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}")
 _QUESTION_NO = re.compile(r"第\s*(\d{1,2})\s*题")
 
 
-def lesson_figures(implementation: Any, db: Any, lesson: Any) -> list[dict[str, Any]]:
+def lesson_figures(implementation: Any, db: Any, lesson: Any, written_table: Any = None) -> list[dict[str, Any]]:
     """The pictures imported with this lesson's questions, with their question number when known."""
     TQ = implementation.TeachingQuestion
     rows = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != "weekend_removed").order_by(TQ.id)).all()
@@ -187,6 +187,25 @@ def lesson_figures(implementation: Any, db: Any, lesson: Any) -> list[dict[str, 
         number = _QUESTION_NO.search(stem)
         out.append({"number": int(number.group(1)) if number else None, "key": _normalize_text(stem)[:60],
                     "figure": {"type": "uploaded_image", "data_url": url, "alt": "原卷插图"}})
+    if written_table is not None:
+        # Imported written/fill-in questions keep their source picture in hints_json.figure.
+        written_rows = db.execute(select(written_table).where(written_table.c.lesson_id == lesson.id,
+            written_table.c.session_id == 0).order_by(written_table.c.id)).all()
+        for q in written_rows:
+            try:
+                meta = json.loads(q.hints_json or "{}")
+                fig = meta.get("figure") if isinstance(meta, dict) else None
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(fig, dict) or fig.get("type") != "uploaded_image":
+                continue
+            url = str(fig.get("data_url") or "")
+            if len(url) > 700000 or not _FIGURE_URL.fullmatch(url):
+                continue
+            stem = str(q.stem or "")
+            number = _QUESTION_NO.search(stem)
+            out.append({"number": int(number.group(1)) if number else None, "key": _normalize_text(stem)[:60],
+                        "figure": {"type": "uploaded_image", "data_url": url, "alt": "原卷插图"}})
     return out
 
 
@@ -337,7 +356,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             kind = str(data.get("template") or "") if isinstance(data, dict) else ""
             if kind not in cw.TEMPLATES[lesson.subject] or (kind == "reading" and not (lesson.reading_plan or "").strip()):
                 raise ValueError("没有选择可用的模板")
-            figures = lesson_figures(implementation, db, lesson)
+            figures = lesson_figures(implementation, db, lesson, written)
             original = match_figure(figures, page_text)
             notice = ""
             try:
