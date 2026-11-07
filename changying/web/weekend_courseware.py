@@ -190,23 +190,40 @@ def lesson_figures(implementation: Any, db: Any, lesson: Any) -> list[dict[str, 
     return out
 
 
-def match_figure(figures: list[dict[str, Any]], page_text: Any) -> dict[str, Any]:
-    """The imported picture of the question this page is teaching; {} when it cannot be told.
+def _figure_similarity(a: str, b: str) -> tuple[int, int]:
+    """Return shared three-character chunks and the longest shared run."""
+    if not a or not b:
+        return 0, 0
+    grams = {a[i:i + 3] for i in range(max(0, len(a) - 2)) if a[i:i + 3].strip()}
+    shared = sum(1 for g in grams if g in b)
+    best = 0
+    for i in range(len(a)):
+        for j in range(len(b)):
+            k = 0
+            while i + k < len(a) and j + k < len(b) and a[i + k] == b[j + k]:
+                k += 1
+            best = max(best, k)
+    return shared, best
 
-    The big screen labels each worked example “第N题”, so the number is the strongest signal;
-    text containment is the fallback when either side has no number.
-    """
+
+def match_figure(figures: list[dict[str, Any]], page_text: Any) -> dict[str, Any]:
+    """Match an imported figure conservatively by number, then by distinctive page wording."""
     text = _normalize_text(page_text)
     number = _QUESTION_NO.search(text)
     if number:
         wanted = int(number.group(1))
-        for item in figures:
-            if item.get("number") == wanted:
-                return item["figure"]
+        numbered = [item for item in figures if item.get("number") == wanted]
+        if len(numbered) == 1:
+            return numbered[0]["figure"]
+    scored = []
     for item in figures:
         key = str(item.get("key") or "")
-        if key and (key in text or text in key):
-            return item["figure"]
+        shared, run = _figure_similarity(key, text)
+        if run >= 8 and shared >= 2:
+            scored.append((shared, run, item))
+    scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
+    if scored and (len(scored) == 1 or scored[0][:2] > scored[1][:2]):
+        return scored[0][2]["figure"]
     return {}
 
 
