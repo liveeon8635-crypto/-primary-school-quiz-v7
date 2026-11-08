@@ -248,7 +248,15 @@ def _question_figure(value: Any) -> dict[str, Any]:
     url = str(value.get("data_url") or "")
     if len(url) > MAX_FIGURE_DATA_URL or not _FIGURE_URL.fullmatch(url):
         return {}
-    return {"type": "uploaded_image", "data_url": url, "alt": str(value.get("alt") or "原卷插图")[:80]}
+    figure = {"type": "uploaded_image", "data_url": url, "alt": str(value.get("alt") or "原卷插图")[:80]}
+    # Preserve PDF layout provenance; the AI-written question stem may omit its number.
+    try:
+        question_no = int(value.get("question_no"))
+    except (TypeError, ValueError):
+        question_no = 0
+    if 1 <= question_no <= 999:
+        figure["question_no"] = question_no
+    return figure
 
 
 def _stored_figure(q: Any) -> dict[str, Any]:
@@ -295,7 +303,8 @@ def _attach_figures(data: Any, figures: list[dict[str, Any]]) -> int:
     attached = 0
     for q, figure in candidates:
         if q_counts[id(q)] == 1 and f_counts[id(figure)] == 1:
-            q["figure"] = {"type": "uploaded_image", "data_url": figure["data_url"], "alt": "原卷插图"}
+            q["figure"] = {"type": "uploaded_image", "data_url": figure["data_url"], "alt": "原卷插图",
+                            "question_no": figure.get("question_no")}
             attached += 1
     return attached
 

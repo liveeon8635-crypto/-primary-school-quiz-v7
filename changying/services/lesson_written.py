@@ -101,7 +101,15 @@ def _figure(value: Any) -> dict[str, Any]:
     url = str(value.get('data_url') or '')
     if len(url) > 700000 or not _FIGURE_URL.fullmatch(url):
         return {}
-    return {'type': 'uploaded_image', 'data_url': url, 'alt': str(value.get('alt') or '原卷插图')[:80]}
+    figure = {'type': 'uploaded_image', 'data_url': url, 'alt': str(value.get('alt') or '原卷插图')[:80]}
+    # Keep PDF-verified provenance through written-question validation and storage.
+    try:
+        question_no = int(value.get('question_no'))
+    except (TypeError, ValueError):
+        question_no = 0
+    if 1 <= question_no <= 999:
+        figure['question_no'] = question_no
+    return figure
 
 
 def replace_written_drafts(db: Any, table: Any, school_id: int, teacher_id: int, lesson_id: int, questions: list[dict[str, Any]]) -> None:
