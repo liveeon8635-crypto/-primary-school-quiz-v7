@@ -28,6 +28,37 @@ def test_mismatched_or_ambiguous_numbers_never_fall_back_to_another_figure():
     assert match_figure(figures + figures, '第7题 两个题共用的很长文字以及更多的说明') == {}
 
 
+def test_editor_preview_and_save_keep_original_image(tmp_path):
+    import subprocess
+    from changying.web.weekend_courseware_pages import COURSEWARE_JS, COURSEWARE_PLAN_JS
+    dom = r'''
+const assert=require('assert');
+class E{constructor(tag,a){this.tag=tag;this.a=a||{};this.children=[];this.value=String(this.a.value||'');this.checked=false;this.handlers={};this._text=this.a.text||''}
+ appendChild(c){this.children.push(c);if(this.tag==='select'&&!this.value)this.value=String(c.a.value||'');return c}
+ addEventListener(k,f){this.handlers[k]=f} set textContent(v){this._text=v;this.children=[]} get textContent(){return this._text}
+ scrollIntoView(){} }
+function el(tag,a,...children){let e=new E(tag,a);children.filter(Boolean).forEach(c=>e.appendChild(c));return e}
+function all(e){return [e,...e.children.flatMap(c=>c instanceof E?all(c):[])]}
+function find(e,text){return all(e).find(x=>x.tag==='button'&&x.a.text===text)}
+var document={},confirm=()=>true,prompt=()=>null,sent=null;
+var figure={type:'uploaded_image',data_url:'data:image/jpeg;base64,'+'A'.repeat(40),alt:'原卷插图'};
+var data={subject:'数学',templates:['steps'],kindLabels:{steps:'分步讲解'},pages:{'3':['第1题']},items:[{stage:3,page:0,kind:'steps',status:'draft',params:{title:'原题',problem:'题目',steps:['一','二'],answer:'4',figure:figure}}]};
+function api(path,opts){if(opts&&opts.method==='PUT'){sent=opts.json;return Promise.resolve(data)}return Promise.resolve(data)}
+'''
+    exercise = r'''
+(async()=>{let root=new E('div');cwPlan(root,1,null);await Promise.resolve();await Promise.resolve();
+ let open=find(root,'预览／修改');assert(open);open.a.onclick();
+ assert(all(root).some(x=>x.tag==='img'&&x.a.src===figure.data_url));
+ let save=find(root,'保存修改（需重新审核）');assert(save);save.a.onclick();await Promise.resolve();
+ assert.deepStrictEqual(sent.params.figure,figure);console.log('OK')})().catch(e=>{console.error(e);process.exit(1)});
+'''
+    script = tmp_path / 'courseware_editor.js'
+    script.write_text(dom + COURSEWARE_JS + COURSEWARE_PLAN_JS + exercise, encoding='utf-8')
+    r = subprocess.run(['node', str(script)], capture_output=True, text=True, encoding='utf-8', timeout=20)
+    assert r.returncode == 0, r.stderr
+    assert 'OK' in r.stdout
+
+
 def test_original_image_survives_save_and_approval(tmp_path):
     b.helpers.run_isolated(tmp_path, b.COMMON + r'''
 with TestClient(app) as client:
