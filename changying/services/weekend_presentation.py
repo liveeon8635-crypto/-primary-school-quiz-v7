@@ -10,7 +10,10 @@ PAGE_PARAGRAPHS=5
 
 def literal_numbered_questions(source: str) -> list[str]:
     """Extract question text only where explicit, unique question headings exist."""
-    heading = re.compile(r'(?m)^\s*第\s*(\d{1,2})\s*题[^\n]*$')
+    # A PDF can put each glyph on its own line, even in ordinary teacher commentary.
+    # Only accept a standalone heading (optionally followed by the printed score).
+    heading = re.compile(r'(?m)^[^\S\n]*第[^\S\n]*(\d{1,2})[^\S\n]*题'
+                         r'[^\S\n]*(?:[（(]?[^\S\n]*\d+(?:\.\d+)?[^\S\n]*分[^\S\n]*[）)]?)?[^\S\n]*$')
     marks = list(heading.finditer(source or ''))
     numbers = [int(m.group(1)) for m in marks]
     if len(marks) < 2 or len(set(numbers)) != len(numbers):

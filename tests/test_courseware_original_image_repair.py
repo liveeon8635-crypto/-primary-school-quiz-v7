@@ -16,6 +16,9 @@ def test_numbered_original_questions_are_extracted_without_teacher_answers():
     assert '1＋1＝？' in questions[0] and '2＋2＝？' in questions[1]
     assert all('答案' not in q and q in text for q in questions)
     assert literal_numbered_questions(text + '\n第2题\n重复题') == []
+    commentary = '第1题检查学生能否区分数量。\n第2题检查运算顺序。'
+    assert literal_numbered_questions(commentary) == []
+    assert literal_numbered_questions('\n'.join(commentary)) == []
     pages = lesson_deck({'reading_plan': text, 'examples_json': '["AI 摘要"]'}, 3)
     assert len(pages) == 2 and '1＋1＝？' in pages[0] and 'AI 摘要' not in pages[0]
 
@@ -160,3 +163,52 @@ with TestClient(app) as client:
     assert read()[0]["teacherPlan"] == "导入后老师手改"
     print("OK")
 ''')
+
+
+def test_teacher_restores_previous_lesson_from_review_in_chrome(tmp_path):
+    """Exercise the actual teacher page in Chrome with synthetic, in-memory HTTP responses."""
+    import shutil
+    import subprocess
+    import pytest
+    from changying.web.weekend_pages import plan_page_html
+
+    chrome = shutil.which("google-chrome") or shutil.which("chromium")
+    if not chrome:
+        pytest.skip("Chrome unavailable on this host")
+    fixture = """
+sessionStorage.setItem('v717Token','test-only');
+let restored=false,confirmed=false,posts=0;
+window.confirm=()=>confirmed;
+window.fetch=(path,opts)=>{
+  let row={subject:'数学',lessonId:4,lessonNo:4,hasPlan:true,approvedQuestions:1,draftQuestions:0,title:restored?'旧教案':'新教案'};
+  let data={items:[]};
+  if(path==='/session')data={role:'teacher'};
+  if(path.includes('/schedule?'))data={items:[row]};
+  if(path==='/teacher/weekend/lessons/4/import-history/7/restore'){
+    if(opts.method!=='POST')throw Error('method');
+    restored=true;posts++;data=row;
+  }
+  if(path==='/teacher/weekend/lessons/4')data={title:row.title,ppt:[],examples:[],previousImportId:restored?null:7};
+  return Promise.resolve({ok:true,json:()=>Promise.resolve(data)});
+};
+"""
+    exercise = """
+function button(label){return Array.from(document.querySelectorAll('button')).find(b=>b.textContent===label)}
+let phase=0;
+let timer=setInterval(()=>{
+  let undo=button('恢复重新导入前的整份教案');
+  if(phase===0&&button('审改')){button('审改').click();phase=1}
+  else if(phase===1&&undo){undo.click();if(posts)throw Error('cancel');confirmed=true;undo.click();phase=2}
+  else if(phase===2&&!undo&&posts===1&&Array.from(document.querySelectorAll('input')).some(i=>i.value==='旧教案')){
+    document.body.setAttribute('data-restore-result','passed');clearInterval(timer);
+  }
+},40);
+"""
+    html = plan_page_html().replace('<script>', '<script>'+fixture+'</script><script>', 1)
+    path = tmp_path / 'review.html'
+    path.write_text(html.replace('</body>', '<script>'+exercise+'</script></body>'), encoding='utf-8')
+    result = subprocess.run([chrome, '--headless', '--no-sandbox', '--disable-dev-shm-usage',
+        '--disable-gpu', '--disable-background-networking', '--user-data-dir='+str(tmp_path/'chrome'),
+        '--virtual-time-budget=4000', '--dump-dom', path.as_uri()], capture_output=True, text=True, timeout=40)
+    assert result.returncode == 0, result.stderr
+    assert 'data-restore-result="passed"' in result.stdout

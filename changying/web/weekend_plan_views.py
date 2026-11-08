@@ -643,8 +643,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(409, "这份教案包含其他老师的习题或课件，无法覆盖或恢复。")
         return state
 
-    def latest_version(db, lesson):
-        return db.execute(select(versions).where(versions.c.lesson_id == lesson.id,
+    def latest_version(db, lesson, *, with_content=False):
+        query = select(versions) if with_content else select(versions.c.id, versions.c.teacher_id)
+        return db.execute(query.where(versions.c.lesson_id == lesson.id,
             versions.c.school_id == lesson.school_id).order_by(versions.c.id.desc()).limit(1)).mappings().first()
 
     @router.post("/teacher/weekend/lessons/{lid}/import-history/{version_id}/restore")
@@ -653,7 +654,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         lesson = db.scalar(select(Lesson).where(Lesson.id == lid, Lesson.school_id == u.school_id).with_for_update())
         if lesson is None or lesson.subject not in SUBJECTS:
             raise HTTPException(404, "没有找到这节课")
-        saved = latest_version(db, lesson)
+        saved = latest_version(db, lesson, with_content=True)
         if not saved or saved["id"] != version_id or saved["teacher_id"] != u.id:
             raise HTTPException(409, "可恢复的版本已变化，请刷新教案。")
         _assert_lesson_not_in_use(db, lesson)
@@ -666,7 +667,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         return lesson_status(db, u, lesson)
 
     def _apply_lesson_plan(db: Any, u: Any, subject: str, lessonNo: int, data: dict[str, Any], source_text: str,
-                           *, slides_hint: list[str] | None = None, use_literal: bool = True) -> dict[str, Any]:
+                           *, slides_hint: list[str] | None = None, use_literal: bool = True, overwrite: bool = False) -> dict[str, Any]:
         """Write one structured lesson plan plus its draft questions, then commit.
 
         Shared by the AI import, the structured JSON import and the Markdown import, so all
@@ -691,6 +692,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             db.add(lesson)
             db.flush()
         else:
+            if has_real_plan(lesson) and not overwrite:
+                raise HTTPException(409, "这节课已有教案，请确认覆盖后重新导入。")
             _assert_lesson_not_in_use(db, lesson)
             before = plan_state(db, u, lesson)
             db.execute(delete(courseware_table).where(courseware_table.c.lesson_id == lesson.id))
@@ -732,7 +735,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(409, "这节课已经有教案了。导入会覆盖教案文字（已通过的习题保留）。")
         plan = _markdown_plan(extracted)
         if plan is not None:
-            got = _apply_lesson_plan(db, u, subject, lessonNo, plan, extracted["text"], use_literal=False)
+            got = _apply_lesson_plan(db, u, subject, lessonNo, plan, extracted["text"], use_literal=False, overwrite=force == "1")
             got["engine"] = "markdown"
             return got
         figures = extracted.get("images") or []
@@ -762,7 +765,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         _attach_figures(data, figures)
         if not isinstance(data, dict) or not (str(data.get("title") or "").strip() or str(data.get("coreTarget") or "").strip() or _lines(data.get("examples"))):
             raise HTTPException(502, "AI 没能整理出教案，请再试一次，或在“审改”里手动填写")
-        got = _apply_lesson_plan(db, u, subject, lessonNo, data, extracted["text"], slides_hint=extracted["slides"] or None)
+        got = _apply_lesson_plan(db, u, subject, lessonNo, data, extracted["text"], slides_hint=extracted["slides"] or None, overwrite=force == "1")
         got["engine"] = "ai"
         return got
 
@@ -927,7 +930,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                     results.append({**base, "ok": True, "status": "ready", "contentHash": fingerprint})
                     continue
                 source_text = job.get("sourceText") or _plan_source_text(plan)
-                got = _apply_lesson_plan(db, u, subject, int(job["lessonNo"]), plan, source_text, use_literal=False)
+                got = _apply_lesson_plan(db, u, subject, int(job["lessonNo"]), plan, source_text, use_literal=False, overwrite=on_conflict == "overwrite")
                 implementation.audit(db, u, "weekend.lessons.import_structured",
                                      f"lesson={job['lessonNo']}:hash={fingerprint[:16]}:chars={len(source_text)}")
                 imported += 1

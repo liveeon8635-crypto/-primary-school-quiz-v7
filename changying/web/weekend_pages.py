@@ -585,7 +585,7 @@ function batchPlanPanel(d,picked,panel,after){
   });
   if(!ready.length){panel.appendChild(el('div',{class:'notice warn',text:'没有可以导入的文件：请确认文件名里有课次，并且文件能读出文字。'}));return null}
   var go=el('button',{class:'primary',text:'确认导入 '+ready.length+' 节',onclick:function(){
-    if(over.length&&!confirm('有 '+over.length+' 节课已经有教案，导入会覆盖教案文字和未审核的草稿题（已通过的习题保留）。确定吗？'))return;
+    if(over.length&&!confirm('有 '+over.length+' 节课已经有教案，导入会替换教案、草稿题和本课课件，已通过的习题保留。导入前的整份教案可在“审改”里恢复。确定导入吗？'))return;
     go.disabled=true;panel.appendChild(el('div',{class:'notice',text:'正在逐份导入，每份大约半分钟…'}));
     api('/teacher/weekend/lessons/import/batch',{method:'POST',body:batchForm(picked,over.length>0)})
       .then(function(r){batchShowResult(r,panel);if(after)after(r)})
@@ -694,7 +694,7 @@ function plan(){
       var importFeedback=el('div',{role:'status','aria-live':'polite','data-import-feedback':'1'});
       fileIn.addEventListener('change',function(){
         var f=fileIn.files&&fileIn.files[0];if(!f)return;
-        if(r.hasPlan&&!confirm('这节课已有教案，导入会覆盖教案文字和未审核的草稿题（已通过的习题保留）。确定吗？')){fileIn.value='';return}
+        if(r.hasPlan&&!confirm('这节课已有教案，导入会替换教案、草稿题和本课课件，已通过的习题保留。导入前的整份教案可在“审改”里恢复。确定导入吗？')){fileIn.value='';return}
         var fd=new FormData();fd.append('subject',SUBJ);fd.append('lessonNo',String(r.lessonNo));fd.append('force',r.hasPlan?'1':'0');fd.append('file',f);
         impBtn.disabled=true;impBtn.textContent='正在导入…';
         importFeedback.className='muted';importFeedback.textContent='正在读取并整理你的教案（约半分钟）…';
@@ -721,7 +721,8 @@ function plan(){
         qBtn.disabled=true;note('ok','AI 正在按题型和难度出题，数学答案会逐题验算，约一分钟…');
         api('/teacher/weekend/lessons/'+r.lessonId+'/questions/generate',{json:{count:+qCount.value}}).then(function(g){note('ok','习题草稿已生成：'+genSummary(g)+' 展开“审改”逐题通过后才会给学生。');load()}).catch(function(e){note('error',e.message);qBtn.disabled=false});
       }}):null;
-      function refreshRow(st){Object.assign(r,st);go.disabled=!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0);why.textContent=startReason(r);tag.textContent='有教案 · 已通过 '+r.approvedQuestions+' 题 · 草稿 '+r.draftQuestions+' 题'}
+      var titleLabel=el('span',{class:'muted',text:r.title||''});
+      function refreshRow(st){Object.assign(r,st);titleLabel.textContent=r.title||'';go.disabled=!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0);why.textContent=startReason(r);tag.textContent=r.hasPlan?'有教案 · 已通过 '+r.approvedQuestions+' 题 · 草稿 '+r.draftQuestions+' 题':'未备课'}
       var open=el('button',{text:'审改',disabled:!r.lessonId,onclick:function(){detail.hidden=!detail.hidden;if(!detail.hidden)lessonDetail(r,detail,refreshRow)}});
       var cwBtn=r.hasPlan&&r.lessonId?el('button',{text:'生成互动课件',onclick:function(){detail.hidden=false;lessonDetail(r,detail,refreshRow,3)}}):null;
       var go=el('button',{class:'primary',text:'开课',title:'需要教案和已通过的习题',disabled:!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0),onclick:function(){
@@ -752,7 +753,7 @@ function plan(){
         }).catch(function(e){deleteFeedback.textContent=e.message;deleteBtn.disabled=false});
       }});
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
-        el('div',{class:'row'},tag,el('span',{class:'muted',text:r.title||''}),impBtn,fileIn,draftBtn,qCount,qBtn,open,cwBtn,go,why,cancelDebugBtn,deleteBtn),importFeedback,deleteFeedback,detail));
+        el('div',{class:'row'},tag,titleLabel,impBtn,fileIn,draftBtn,qCount,qBtn,open,cwBtn,go,why,cancelDebugBtn,deleteBtn),importFeedback,deleteFeedback,detail));
     });
     list.appendChild(el('button',{class:'primary',text:'保存进度表',onclick:function(){
       api('/teacher/weekend/schedule',{method:'PUT',json:{subject:SUBJ,rows:state.map(function(r){return {lessonNo:r.lessonNo,schoolWeek:r.schoolWeek,schoolUnit:r.schoolUnit||'',plannedDate:r.plannedDate||'',note:r.note||''}})}}).then(function(){note('ok','已保存');load()}).catch(function(e){note('error',e.message)})}}));
