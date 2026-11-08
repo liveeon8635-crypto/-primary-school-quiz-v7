@@ -188,7 +188,12 @@ def lesson_figures(implementation: Any, db: Any, lesson: Any, written_table: Any
             continue
         stem = str(q.stem or "")
         number = _QUESTION_NO.search(stem)
-        out.append({"number": int(number.group(1)) if number else None, "key": _normalize_text(stem)[:60],
+        verified_no = fig.get("question_no")
+        try:
+            verified_no = int(verified_no) if verified_no is not None else None
+        except (TypeError, ValueError):
+            verified_no = None
+        out.append({"number": verified_no or (int(number.group(1)) if number else None), "key": _normalize_text(stem)[:60],
                     "figure": {"type": "uploaded_image", "data_url": url, "alt": "原卷插图"}})
     if written_table is not None:
         # Imported written/fill-in questions keep their source picture in hints_json.figure.
@@ -207,7 +212,12 @@ def lesson_figures(implementation: Any, db: Any, lesson: Any, written_table: Any
                 continue
             stem = str(q.stem or "")
             number = _QUESTION_NO.search(stem)
-            out.append({"number": int(number.group(1)) if number else None, "key": _normalize_text(stem)[:60],
+            verified_no = fig.get("question_no")
+            try:
+                verified_no = int(verified_no) if verified_no is not None else None
+            except (TypeError, ValueError):
+                verified_no = None
+            out.append({"number": verified_no or (int(number.group(1)) if number else None), "key": _normalize_text(stem)[:60],
                         "figure": {"type": "uploaded_image", "data_url": url, "alt": "原卷插图"}})
     return out
 
@@ -220,9 +230,8 @@ def match_figure(figures: list[dict[str, Any]], page_text: Any) -> dict[str, Any
         wanted = int(number.group(1))
         numbered = [item for item in figures if item.get("number") == wanted]
         if len(numbered) == 1:
-            key = _QUESTION_NO.sub('', str(numbered[0].get('key') or '')).strip('：:|｜、-')
-            if len(key) >= 4 and key in text:
-                return numbered[0]["figure"]
+            # The original PDF layout established this association. AI may reword the slide.
+            return numbered[0]["figure"]
         return {}
     matched = [item for item in figures if len(str(item.get('key') or '')) >= 12 and str(item['key']) in text]
     if len(matched) == 1:

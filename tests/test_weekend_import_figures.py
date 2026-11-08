@@ -129,13 +129,14 @@ def test_a_written_question_keeps_its_picture_in_the_stored_metadata():
                   Column("reference", Text), Column("hints_json", Text))
     engine = create_engine("sqlite://")
     md.create_all(engine)
-    figure = {"type": "uploaded_image", "data_url": FIG_URL, "alt": "原卷插图"}
+    figure = {"type": "uploaded_image", "data_url": FIG_URL, "alt": "原卷插图", "question_no": 13}
     with Session(engine) as db:
         replace_written_drafts(db, table, 1, 2, 3, [
             {"stem": "第7题：方桌人数规律", "reference": "答案", "hints": [], "type": "short_answer", "figure": figure}])
         db.commit()
         row = db.execute(select(table)).first()
     assert json.loads(row.hints_json)["figure"]["data_url"] == FIG_URL
+    assert json.loads(row.hints_json)["figure"]["question_no"] == 13
 
 
 def test_courseware_uses_the_imported_picture_instead_of_a_drawing():
@@ -152,4 +153,59 @@ def test_the_courseware_screen_can_show_an_imported_picture():
     assert "uploaded_image" in COURSEWARE_JS
 
 
+def test_pdf_verified_question_number_survives_storage_and_courseware_rewording():
+    import json
+    from types import SimpleNamespace
+    from sqlalchemy import Column, Integer, MetaData, Table, Text
+    from sqlalchemy.orm import registry
 
+    from changying.services.lesson_written import valid_written_questions
+    from changying.web.weekend_courseware import lesson_figures, match_figure
+    from changying.web.weekend_plan_views import _attach_figures
+
+    figure = {
+        "page": 5,
+        "question_no": 13,
+        "question_source_text": "\u7b2c13\u9898 \u6708\u5386\u5341\u5b57\u6846\u4e2d\u7684\u5b57\u6bcd\u8868\u793a\u4e0e\u6c42\u503c\uff1a\u7528\u5341\u5b57\u6846\u5728\u6708\u5386\u4e2d\u6846\u51fa\u4e94\u4e2a\u6570\u3002",
+        "data_url": FIG_URL,
+    }
+    data = {"writtenQuestions": [{
+        "stem": "\u7528\u5341\u5b57\u6846\u5728\u6708\u5386\u4e2d\u6846\u51fa\u4e94\u4e2a\u6570\u3002",
+        "figureImage": 8,
+    }]}
+    assert _attach_figures(data, [figure]) == 1
+    written = valid_written_questions(data["writtenQuestions"])
+    saved_figure = written[0]["figure"]
+    assert saved_figure["question_no"] == 13
+
+    metadata = MetaData()
+    questions = Table("question_probe", metadata, Column("id", Integer, primary_key=True),
+                      Column("lesson_id", Integer), Column("stage", Text))
+    mapper = registry()
+
+    class TeachingQuestion:
+        pass
+
+    mapper.map_imperatively(TeachingQuestion, questions)
+    written_table = Table("written_probe", metadata, Column("id", Integer, primary_key=True),
+                          Column("lesson_id", Integer), Column("session_id", Integer), Column("hints_json", Text))
+
+    class Result:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def all(self):
+            return self.rows
+
+    class DB:
+        def scalars(self, _statement):
+            return Result([])
+
+        def execute(self, _statement):
+            return Result([SimpleNamespace(hints_json=json.dumps({"figure": saved_figure}),
+                                           stem="AI rewritten title without a question number")])
+
+    candidates = lesson_figures(SimpleNamespace(TeachingQuestion=TeachingQuestion), DB(),
+                                SimpleNamespace(id=3), written_table)
+    assert candidates[0]["number"] == 13
+    assert match_figure(candidates, "\u7b2c 13 \u9898 \u6708\u5386\u5341\u5b57\u6846\u4e2d\u7684\u5b57\u6bcd\u8868\u793a\u4e0e\u6c42\u503c")["data_url"] == FIG_URL
