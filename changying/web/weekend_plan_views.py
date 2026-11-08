@@ -258,23 +258,46 @@ def _stored_figure(q: Any) -> dict[str, Any]:
         return {}
 
 
-def _attach_figures(data: Any, figures: list[dict[str, Any]]) -> None:
-    """Turn the model's "figureImage": n into the real picture so the question keeps it.
+def _attach_figures(data: Any, figures: list[dict[str, Any]]) -> int:
+    """Attach only when the question text matches a uniquely positioned PDF figure.
 
-    Choice and written questions both keep their own picture; every other question keeps none.
+    The model's figureImage index is untrusted and ignored. PDFs without reliable
+    question geometry (and Office images without layout metadata) stay unattached.
     """
     if not isinstance(data, dict) or not figures:
-        return
-    for key in ("questions", "writtenQuestions"):
-        for q in data.get(key) or []:
-            if not isinstance(q, dict):
-                continue
-            try:
-                index = int(q.pop("figureImage", 0) or 0)
-            except (TypeError, ValueError):
-                index = 0
-            if 1 <= index <= len(figures):
-                q["figure"] = {"type": "uploaded_image", "data_url": figures[index - 1]["data_url"], "alt": "原卷插图"}
+        return 0
+
+    def normalized(value: Any) -> str:
+        return "".join(char.casefold() for char in str(value or "") if char.isalnum())
+
+    questions = [q for key in ("questions", "writtenQuestions")
+                 for q in (data.get(key) or []) if isinstance(q, dict)]
+    candidates: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for q in questions:
+        # Never accept model-provided URLs or indexes as evidence of ownership.
+        q.pop("figureImage", None)
+        q.pop("figure", None)
+        qtext = normalized(" ".join((str(q.get("stem") or ""), str(q.get("material") or ""))))
+        if len(qtext) < 8:
+            continue
+        for figure in figures:
+            source = normalized(figure.get("question_source_text"))
+            if figure.get("question_no") is not None and source and qtext in source:
+                candidates.append((q, figure))
+
+    # Both directions must be unique; duplicate stems or repeated image placements
+    # are left for teacher review instead of being guessed.
+    q_counts: dict[int, int] = {}
+    f_counts: dict[int, int] = {}
+    for q, f in candidates:
+        q_counts[id(q)] = q_counts.get(id(q), 0) + 1
+        f_counts[id(f)] = f_counts.get(id(f), 0) + 1
+    attached = 0
+    for q, figure in candidates:
+        if q_counts[id(q)] == 1 and f_counts[id(figure)] == 1:
+            q["figure"] = {"type": "uploaded_image", "data_url": figure["data_url"], "alt": "原卷插图"}
+            attached += 1
+    return attached
 
 
 def _valid_questions(raw: Any) -> list[dict[str, Any]]:
@@ -741,12 +764,13 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         figures = extracted.get("images") or []
         figure_note = ""
         if figures:
-            pages = "、".join(str(f["page"]) for f in figures if f.get("page"))
+            verified = [f for f in figures if f.get("question_no")]
+            pages = "、".join(str(f["page"]) for f in verified if f.get("page"))
+            mappings = "；".join(f"第 {f['question_no']} 题（第 {f['page']} 页）" for f in verified)
             figure_note = (
-                f"文档里另外带了 {len(figures)} 张图片（按文档顺序编号 1–{len(figures)}，以附图形式一并给你"
-                + (f"，分别在第 {pages} 页" if pages else "")
-                + "）。哪道题在原文档里配了图，就给那道题加 \"figureImage\": 编号；"
-                  "不要凭空引用不存在的编号，没有配图的题不要写这个字段。\n"
+                f"文档里另外带了 {len(figures)} 张原图，以附图形式一并给你。系统根据原 PDF 版面位置独立核对图片与题号；"
+                + (f"已核对：{mappings}。" if mappings else "当前版面无法唯一核对题号。")
+                + "不要猜图片所属题目，也不要输出 figureImage 字段。\n"
             )
         prompt = (
             f"下面是一位小学{p.grade}年级{subject}老师自己写的周末课教案内容。请只整理、归类里面已有的内容，不要编造新内容；文档里没有的字段留空。\n"
@@ -754,18 +778,22 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             + figure_note +
             '只输出 JSON：{"title":"课题","coreTarget":"本节目标","teacherPlan":"教学流程(300字内)","ppt":["完整讲解页：标题＋原文中的方法步骤＋示例，每页用\\n换行，不得把每一行拆成一页；禁止放入教师参考答案或评分细则"],'
             '"examples":["文档里的例题和解答，原文照录"],"closureTraining":"课后练习",'
-            '"questions":[{"stem":"文档里已有的选择题","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名","figureImage":1}],"writtenQuestions":[{"type":"short_answer或final_answer或composition","material":"对应完整阅读文章，不含教师答案","stem":"原有题目，不得改题型或漏题","reference":"原文对应参考答案及评分要点","hints":[],"figureImage":2}]}'
+            '"questions":[{"stem":"文档里已有的选择题","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}],"writtenQuestions":[{"type":"short_answer或final_answer或composition","material":"对应完整阅读文章，不含教师答案","stem":"原有题目，不得改题型或漏题","reference":"原文对应参考答案及评分要点","hints":[]}]}'
             "（questions 只放原有选择题，writtenQuestions放全部原有简答、填空、复述、写作和挑战题，不要编造新题。阅读文章和非选择题不可省略；原文由系统完整保存。closureTraining 必须包含全部课后题，不能只列前几题。"
-            "figureImage 只在原文档那道题确实配了图时才写，值是图片编号；选择题和非选择题都可以写。）"
+            "图片由系统依据原 PDF 位置和原题文字匹配，AI 不负责给图片编号。）"
         )
         data = implementation._ai_json(implementation._ai_call(
             db, u, AI_FEATURE, prompt, images=[f["data_url"] for f in figures] or None,
             timeout=150 if figures else 90,
         ))
-        _attach_figures(data, figures)
+        attached_figures = _attach_figures(data, figures)
         if not isinstance(data, dict) or not (str(data.get("title") or "").strip() or str(data.get("coreTarget") or "").strip() or _lines(data.get("examples"))):
             raise HTTPException(502, "AI 没能整理出教案，请再试一次，或在“审改”里手动填写")
         got = _apply_lesson_plan(db, u, subject, lessonNo, data, extracted["text"], slides_hint=extracted["slides"] or None, overwrite=force == "1")
+        if figures and attached_figures < len(figures):
+            unmatched = len(figures) - attached_figures
+            got["figureWarning"] = f"有 {unmatched} 张原卷图未能与题目唯一核对，系统没有自动挂到题目上，请老师复核。"
+            got["message"] = str(got.get("message") or "") + " " + got["figureWarning"]
         got["engine"] = "ai"
         return got
 

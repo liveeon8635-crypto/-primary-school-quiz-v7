@@ -62,38 +62,138 @@ def _pdf(data: bytes) -> tuple[str, list[dict[str, Any]]]:
         raise ValueError("PDF exceeds supported page count")
     texts, figures = [], []
     for number, page in enumerate(reader.pages, start=1):
-        texts.append(page.extract_text() or "")
-        # The teacher's paper is exported with its question pictures as JPEG XObjects;
-        # read those streams directly (no imaging library on the server).
-        for url in _pdf_page_figures(page):
-            figures.append({"page": number, "data_url": url})
+        page_text = page.extract_text() or ""
+        texts.append(page_text)
+        # A page number alone is not enough when one page contains several questions.
+        # Map an image only when its rendered position falls inside one unique numbered
+        # question region. Unknown layouts deliberately keep question_no=None.
+        regions = _pdf_question_regions(page, page_text)
+        figures.extend(_pdf_page_figures(page, number, regions))
     return "\n".join(texts), figures
 
 
-def _pdf_page_figures(page: Any) -> list[str]:
+_PDF_QUESTION_HEADING = re.compile(r"第\s*(\d{1,3})\s*题")
+
+
+def _pdf_question_regions(page: Any, page_text: str) -> list[dict[str, Any]]:
+    """Return numbered question text blocks with their top-origin page coordinates."""
+    if int(page.get("/Rotate") or 0) % 360:
+        return []  # rotated-page coordinates need a separate transform
+    lines: list[tuple[float, str]] = []
+    try:
+        chunks: list[tuple[float, float, str]] = []
+
+        def collect(text: str, _cm: Any, tm: Any, _font: Any, _size: Any) -> None:
+            if text and text.strip():
+                chunks.append((float(tm[5]), float(tm[4]), text))
+
+        page.extract_text(visitor_text=collect)
+        # pypdf emits separate text runs for glyphs and style changes. Rejoin runs on
+        # the same baseline before looking for a heading such as “第 7 题”.
+        for y, x, value in sorted(chunks, key=lambda row: (row[0], row[1])):
+            match = next((i for i, (line_y, _) in enumerate(lines) if abs(line_y - y) <= 2.0), None)
+            if match is None:
+                lines.append((y, value))
+            else:
+                line_y, current = lines[match]
+                lines[match] = ((line_y + y) / 2, current + " " + value)
+        lines.sort(key=lambda row: row[0])
+    except Exception:  # noqa: BLE001 - unsupported text geometry means no automatic match
+        return []
+
+    headings: list[tuple[int, float]] = []
+    for y, line in lines:
+        for found in _PDF_QUESTION_HEADING.finditer(line):
+            try:
+                headings.append((int(found.group(1)), y))
+            except ValueError:
+                continue
+    # A repeated heading number on one page makes the page ambiguous.
+    if not headings or len({n for n, _ in headings}) != len(headings):
+        return []
+
+    text_matches = list(_PDF_QUESTION_HEADING.finditer(page_text))
+    by_number: dict[int, str] = {}
+    if len(text_matches) == len(headings):
+        for i, (number, _) in enumerate(headings):
+            start = text_matches[i].start()
+            end = text_matches[i + 1].start() if i + 1 < len(text_matches) else len(page_text)
+            by_number[number] = page_text[start:end].strip()
+
+    page_height = float(page.mediabox.height)
+    return [
+        {"question_no": number, "top": y, "bottom": headings[i + 1][1] if i + 1 < len(headings) else page_height,
+         "source_text": by_number.get(number, "")}
+        for i, (number, y) in enumerate(headings)
+    ]
+
+
+def _pdf_page_figures(page: Any, page_number: int, regions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Extract each placed JPEG with a question number only when geometry proves one."""
     try:
         xobjects = (page.get("/Resources") or {}).get("/XObject") or {}
     except Exception:  # noqa: BLE001 - a malformed page must not fail the whole import
         return []
-    out: list[str] = []
-    for _, ref in xobjects.items():
+
+    placed: list[dict[str, Any]] = []
+
+    def record(operator: bytes, operands: Any, cm: Any, _tm: Any) -> None:
+        if operator != b"Do" or not operands:
+            return
+        name = str(operands[0])
+        ref = xobjects.get(name)
+        if ref is None:
+            return
         try:
             obj = ref.get_object()
         except Exception:  # noqa: BLE001
-            continue
+            return
         if str(obj.get("/Subtype") or "") != "/Image":
-            continue
+            return
         filt = obj.get("/Filter")
         filters = [str(f) for f in (filt if isinstance(filt, list) else [filt])]
         if "/DCTDecode" not in filters and "/JPXDecode" not in filters:
-            continue
+            return
         try:
             url = _data_url(obj.get_data())
         except Exception:  # noqa: BLE001
-            continue
-        if url:
-            out.append(url)
-    return out
+            return
+        if not url:
+            return
+
+        # The image paints the unit square through the current PDF matrix [a b c d e f].
+        # Use its full transformed bounds so rotation/skew cannot silently select another row.
+        try:
+            a, b, c, d, e, f = (float(cm[i]) for i in range(6))
+            corners = [(e, f), (a + e, b + f), (c + e, d + f), (a + c + e, b + d + f)]
+            top = float(page.mediabox.height) - max(y for _, y in corners)
+            bottom = float(page.mediabox.height) - min(y for _, y in corners)
+            center = (top + bottom) / 2
+        except Exception:  # noqa: BLE001
+            top = bottom = center = -1
+
+        matches = [r for r in regions if top >= r["top"] and bottom <= r["bottom"] and r["top"] <= center < r["bottom"]]
+        region = matches[0] if len(matches) == 1 else None
+        placed.append({"page": page_number, "data_url": url,
+                       "question_no": region["question_no"] if region else None,
+                       "question_source_text": region["source_text"] if region else ""})
+
+    try:
+        page.extract_text(visitor_operand_before=record)
+    except Exception:  # noqa: BLE001
+        return []
+
+    # Two pictures placed in one question are ambiguous for the single-picture field.
+    counts: dict[int, int] = {}
+    for item in placed:
+        no = item["question_no"]
+        if no is not None:
+            counts[no] = counts.get(no, 0) + 1
+    for item in placed:
+        if item["question_no"] is not None and counts[item["question_no"]] != 1:
+            item["question_no"] = None
+            item["question_source_text"] = ""
+    return placed
 
 
 def _docx_figures(data: bytes) -> list[str]:
@@ -169,7 +269,9 @@ def _budget_figures(figures: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         if len(kept) >= MAX_FIGURES or total + len(url) > MAX_TOTAL_FIGURE_CHARS:
             break
-        kept.append({"page": int(item.get("page") or 0), "data_url": url})
+        kept.append({"page": int(item.get("page") or 0), "data_url": url,
+                     "question_no": item.get("question_no") if isinstance(item.get("question_no"), int) else None,
+                     "question_source_text": str(item.get("question_source_text") or "")[:MAX_TEXT_CHARS]})
         total += len(url)
     return kept
 

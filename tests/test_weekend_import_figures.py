@@ -30,19 +30,38 @@ def test_a_word_lesson_keeps_the_pictures_inside_it():
     assert got["images"][0]["data_url"].startswith("data:image/jpeg;base64,")
 
 
-def test_pictures_map_back_to_the_question_the_model_named():
-    figure = {"type": "uploaded_image", "data_url": "data:image/jpeg;base64," + "A" * 40, "alt": "原卷插图"}
+def test_model_image_indexes_are_ignored_and_text_geometry_selects_the_picture():
+    image7 = "data:image/jpeg;base64," + "A" * 40
+    image8 = "data:image/jpeg;base64," + "B" * 40
+    source7 = "第 7 题 方桌人数规律 1 张方桌可坐 8 人，2 张方桌拼在一起可坐 12 人。"
+    source8 = "第 8 题 连续正方形与小棒 摆 1 个正方形用 4 根小棒，摆 2 个用 7 根。"
     data = {"questions": [
-        {"stem": "一个两位数，十位是 m，个位是 n，这个两位数是？", "options": ["mn", "m+n", "10m+n"], "correctIndex": 2,
-         "explanation": "", "knowledge": "位值", "figureImage": 1},
-        {"stem": "下面说法正确的是？", "options": ["A", "B"], "correctIndex": 0, "explanation": "", "knowledge": "判断"},
+        {"stem": "方桌人数规律 1 张方桌可坐 8 人，2 张方桌拼在一起可坐 12 人。", "options": ["A", "B"], "correctIndex": 0, "figureImage": 2},
+        {"stem": "连续正方形与小棒 摆 1 个正方形用 4 根小棒，摆 2 个用 7 根。", "options": ["A", "B"], "correctIndex": 0, "figureImage": 1},
     ]}
-    _attach_figures(data, [{"page": 3, "data_url": figure["data_url"]}])
+    figures = [
+        {"page": 3, "question_no": 7, "question_source_text": source7, "data_url": image7},
+        {"page": 3, "question_no": 8, "question_source_text": source8, "data_url": image8},
+    ]
 
+    assert _attach_figures(data, figures) == 2
     qs = _valid_questions(data["questions"])
-    assert len(qs) == 2
-    assert qs[0]["fig"]["data_url"] == figure["data_url"]
-    assert qs[1]["fig"] == {}
+    assert qs[0]["fig"]["data_url"] == image7
+    assert qs[1]["fig"]["data_url"] == image8
+
+
+def test_picture_is_not_attached_when_question_text_or_source_geometry_is_ambiguous():
+    data = {"questions": [
+        {"stem": "另一道不相关的题目内容", "options": ["A", "B"], "correctIndex": 0, "figureImage": 1,
+         "figure": {"type": "uploaded_image", "data_url": FIG_URL}},
+    ]}
+    figures = [
+        {"page": 3, "question_no": None, "question_source_text": "", "data_url": FIG_URL},
+        {"page": 3, "question_no": 7, "question_source_text": "原题：方桌人数规律，有 8 人和 12 人", "data_url": FIG_URL},
+    ]
+
+    assert _attach_figures(data, figures) == 0
+    assert "figure" not in data["questions"][0]
 
 
 def test_an_out_of_range_image_number_is_ignored_and_bad_urls_are_dropped():
@@ -52,6 +71,41 @@ def test_an_out_of_range_image_number_is_ignored_and_bad_urls_are_dropped():
 
     assert _question_figure({"type": "uploaded_image", "data_url": "https://example.com/x.jpg"}) == {}
     assert _question_figure({"type": "geometry"}) == {}
+
+
+def test_pdf_images_are_matched_by_their_position_inside_a_numbered_question():
+    from types import SimpleNamespace
+
+    class Image:
+        def get(self, key):
+            return {"/Subtype": "/Image", "/Filter": "/DCTDecode"}.get(key)
+
+        def get_object(self):
+            return self
+
+        def get_data(self):
+            return JPEG
+
+    class Page(dict):
+        mediabox = SimpleNamespace(height=100)
+
+        def extract_text(self, visitor_operand_before=None, visitor_text=None):
+            if visitor_text:
+                for x, part, y in ((0, "第", 10), (10, "7", 10), (20, "题", 10), (0, "第 8 题", 70)):
+                    visitor_text(part, None, [1, 0, 0, 1, x, y], None, 10)
+            if visitor_operand_before:
+                visitor_operand_before(b"Do", ["/pic"], [10, 0, 0, 10, 10, 80], None)
+
+    page = Page({"/Resources": {"/XObject": {"/pic": Image()}}})
+    page_text = "第 7 题 原题：方桌人数规律\n第 8 题 原题：连续正方形与小棒"
+    regions = lesson_import._pdf_question_regions(page, page_text)
+    figures = lesson_import._pdf_page_figures(page, 3, regions)
+
+    assert [(r["question_no"], r["source_text"]) for r in regions] == [
+        (7, "第 7 题 原题：方桌人数规律"), (8, "第 8 题 原题：连续正方形与小棒")]
+    assert len(figures) == 1
+    assert figures[0]["question_no"] == 7
+    assert figures[0]["page"] == 3
 
 
 def test_the_weekend_page_renders_the_imported_picture():
@@ -96,5 +150,6 @@ def test_the_courseware_screen_can_show_an_imported_picture():
     from changying.web.weekend_courseware_pages import COURSEWARE_JS
 
     assert "uploaded_image" in COURSEWARE_JS
+
 
 
