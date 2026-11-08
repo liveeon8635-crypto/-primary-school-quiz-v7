@@ -363,12 +363,16 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             from changying.services.weekend_presentation import literal_numbered_questions
             literal_page = bool(page_text and any(page_text in q for q in literal_numbered_questions(lesson.reading_plan or '')))
             prompt = cw.generation_prompt(lesson.subject, info)
+            if lesson.subject == '数学':
+                prompt += '\n请使用 steps 模板，图示由系统核对原卷图片，不要自行绘图。'
             if literal_page:
                 prompt += '\n本页必须选择 steps，题目原文由系统提供，不要另编题目或绘制图形。'
             data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=60))
             kind = str(data.get("template") or "") if isinstance(data, dict) else ""
             if kind not in cw.TEMPLATES[lesson.subject] or (kind == "reading" and not (lesson.reading_plan or "").strip()):
                 raise ValueError("没有选择可用的模板")
+            if lesson.subject == '数学' and kind != 'steps':
+                raise ValueError('自动生成未能保留可核对的题图，请重试或手动填写')
             if literal_page:
                 if kind != 'steps':
                     raise ValueError('该页需要保留原题，请重试或手动填写')

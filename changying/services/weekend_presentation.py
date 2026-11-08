@@ -23,7 +23,7 @@ def literal_numbered_questions(source: str) -> list[str]:
         if stop:
             chunk = chunk[:stop.start()]
         chunk = chunk.strip()
-        if '\n' not in chunk:
+        if '\n' not in chunk or re.search(r'(?:答案|解析|评分要点)\s*[：:]', chunk):
             return []
         out.append(chunk)
     return out
