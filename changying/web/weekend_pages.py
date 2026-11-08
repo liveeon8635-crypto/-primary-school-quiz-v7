@@ -792,6 +792,16 @@ function plan(){
         saveLessonEdits('/teacher/weekend/lessons/'+r.lessonId,{title:title.value.trim(),coreTarget:tgt.value,teacherPlan:plan.value,closureTraining:cl.value,examples:ls(ex),ppt:ppt.value.split(/\n\s*\n/).map(function(x){return x.trim()}).filter(Boolean)},saveButton,saveStatus,[title,tgt,plan,ppt,ex,cl],function(){api('/teacher/weekend/schedule?subject='+encodeURIComponent(SUBJ)).then(function(d){var st=d.items.filter(function(x){return x.lessonId===r.lessonId})[0];if(st)refreshStatus(st)})});
       }});
       editPane.appendChild(saveButton);editPane.appendChild(saveStatus);
+      if(L.previousImportId){
+        var undo=el('button',{text:'恢复重新导入前的整份教案',onclick:function(){
+          if(!confirm('恢复上一次导入前的教案、习题和互动课件？当前未保存的编辑将丢失。'))return;
+          undo.disabled=true;
+          api('/teacher/weekend/lessons/'+r.lessonId+'/import-history/'+L.previousImportId+'/restore',{json:{}}).then(function(st){
+            refreshStatus(st);lessonDetail(r,box,refreshStatus);note('ok','已恢复导入前的整份教案。');
+          }).catch(function(e){saveStatus.textContent=e.message;undo.disabled=false});
+        }});
+        editPane.appendChild(undo);
+      }
       var qbox=el('div'),wbox=el('div');questionPane.appendChild(el('h2',{text:'习题审核'}));questionPane.appendChild(el('p',{text:'选择题自动判分；填答案、阅读简答与写作支持文字／拍照提交，由老师批改。至少通过一道题即可进入课堂。'}));questionPane.appendChild(qbox);questionPane.appendChild(wbox);
       function loadQ(){
         qbox.textContent='';

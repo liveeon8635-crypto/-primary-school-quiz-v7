@@ -108,3 +108,55 @@ with TestClient(app) as client:
     assert params['problem']==params['sourceProblem']
     print('OK')
 ''')
+
+
+
+def test_reimport_restores_lesson_questions_figures_and_courseware_atomically(tmp_path):
+    b.helpers.run_isolated(tmp_path, b.COMMON + r'''
+with TestClient(app) as client:
+    th, sh, sid, school = setup(client)
+    path = "/teacher/weekend/lessons/import/structured"
+    def put(title):
+        item = dict(lessonNo=6, title=title, coreTarget=title, teacherPlan=title + "教法",
+            ppt=[title + "大屏"], examples=[title + "例题"], closureTraining=title + "练习",
+            questions=[dict(stem=title+"选择", options=["左","右"], correctIndex=1)],
+            writtenQuestions=[dict(stem=title+"简答", reference=title+"参考")])
+        response = client.post(path, headers=th, json=dict(subject="数学", onConflict="overwrite", items=[item]))
+        assert response.status_code == 200, response.text
+        result = response.json()["items"][0]
+        assert result["ok"], result
+        return result["lessonId"]
+    lid = put("原版")
+    url = "/teacher/weekend/lessons/" + str(lid)
+    figure = dict(type="uploaded_image",data_url="data:image/jpeg;base64,"+"A"*40,alt="原卷插图")
+    params = dict(title="原图题",problem="题目",steps=["步骤一","步骤二"],answer="4",figure=figure)
+    saved = client.put(url+"/courseware",headers=th,json=dict(stageNo=3,page=0,kind="steps",params=params))
+    assert saved.status_code == 200, saved.text
+    with legacy.SessionLocal() as db:
+        question = db.scalar(select(legacy.TeachingQuestion).where(legacy.TeachingQuestion.lesson_id == lid,
+            legacy.TeachingQuestion.stem == "原版选择"))
+        question.figure_json = json.dumps(figure)
+        db.commit()
+    def read():
+        return [client.get(url+suffix,headers=th).json() for suffix in ("","/questions","/written/questions","/courseware")]
+    before = read()
+    assert put("新版") == lid
+    current = read()
+    version = current[0]["previousImportId"]
+    assert version and current[0]["title"] == "新版" and current[3]["items"] == []
+    undo = url + "/import-history/" + str(version) + "/restore"
+    assert client.post(undo,headers=sh).status_code == 403
+    response = client.post(undo,headers=th)
+    assert response.status_code == 200, response.text
+    assert read() == before
+    assert client.post(undo,headers=th).status_code == 409
+    put("再次导入")
+    undo = url + "/import-history/" + str(read()[0]["previousImportId"]) + "/restore"
+    with legacy.SessionLocal() as db:
+        lesson = db.get(legacy.TeachingLesson, lid)
+        lesson.teacher_plan = "导入后老师手改"
+        db.commit()
+    assert client.post(undo,headers=th).status_code == 409
+    assert read()[0]["teacherPlan"] == "导入后老师手改"
+    print("OK")
+''')

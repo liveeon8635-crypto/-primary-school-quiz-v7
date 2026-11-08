@@ -28,7 +28,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, UniqueConstraint, delete, func, insert, select, update
 
-from changying.services import lesson_markdown
+from changying.services import lesson_markdown, weekend_plan_history as history
 from changying.services import weekend_question_gen as qg
 from changying.services.weekend_presentation import literal_numbered_questions
 from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUPPORTED, detect_lesson_no, extract
@@ -307,6 +307,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     sessions = register_weekend_tables(implementation)["sessions"]
     from changying.web.weekend_written import register_written_tables
     written = register_written_tables(implementation)["questions"]
+    from changying.web.weekend_courseware import register_courseware_table
+    courseware_table = register_courseware_table(implementation)
+    versions = history.register_history(implementation.Base.metadata)
     sched = register_plan_tables(implementation)
     Lesson, TQ, Program = implementation.TeachingLesson, implementation.TeachingQuestion, implementation.TeachingProgram
     User, ClassStudent, SchoolClass = implementation.User, implementation.ClassStudent, implementation.SchoolClass
@@ -634,6 +637,34 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         except ValueError:
             return None
 
+    def plan_state(db, u, lesson):
+        state = history.capture(db, lesson, TQ.__table__, written, courseware_table, REMOVED_STAGE)
+        if any(row["teacher_id"] != u.id for key in ("written", "courseware") for row in state[key]):
+            raise HTTPException(409, "这份教案包含其他老师的习题或课件，无法覆盖或恢复。")
+        return state
+
+    def latest_version(db, lesson):
+        return db.execute(select(versions).where(versions.c.lesson_id == lesson.id,
+            versions.c.school_id == lesson.school_id).order_by(versions.c.id.desc()).limit(1)).mappings().first()
+
+    @router.post("/teacher/weekend/lessons/{lid}/import-history/{version_id}/restore")
+    def restore_import(lid: int, version_id: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        lesson = db.scalar(select(Lesson).where(Lesson.id == lid, Lesson.school_id == u.school_id).with_for_update())
+        if lesson is None or lesson.subject not in SUBJECTS:
+            raise HTTPException(404, "没有找到这节课")
+        saved = latest_version(db, lesson)
+        if not saved or saved["id"] != version_id or saved["teacher_id"] != u.id:
+            raise HTTPException(409, "可恢复的版本已变化，请刷新教案。")
+        _assert_lesson_not_in_use(db, lesson)
+        current = plan_state(db, u, lesson)
+        if history.digest(current) != saved["after_hash"]:
+            raise HTTPException(409, "重新导入后教案、习题或课件已有修改，已保留当前内容。")
+        history.restore_content(db, lesson, json.loads(saved["before_json"]), current, TQ.__table__, written, courseware_table)
+        db.execute(delete(versions).where(versions.c.id == version_id))
+        db.commit()
+        return lesson_status(db, u, lesson)
+
     def _apply_lesson_plan(db: Any, u: Any, subject: str, lessonNo: int, data: dict[str, Any], source_text: str,
                            *, slides_hint: list[str] | None = None, use_literal: bool = True) -> dict[str, Any]:
         """Write one structured lesson plan plus its draft questions, then commit.
@@ -642,7 +673,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         three keep exactly the same validation and write behaviour.
         """
         p = program(db, int(u.school_id))
-        lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == subject, Lesson.lesson_no == lessonNo))
+        lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == subject, Lesson.lesson_no == lessonNo).with_for_update().execution_options(populate_existing=True))
         slides = slides_hint or _content_lines(data.get("ppt"))
         original_examples = literal_numbered_questions(source_text) if use_literal else []
         row = db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == subject, sched.c.lesson_no == lessonNo)).first()
@@ -654,11 +685,15 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                       unit=(row.school_unit if row and row.school_unit else "")[:120] or "待配置单元", published=False, updated_at=now)
         if not fields["core_target"].strip() and not _lines(data.get("examples")):
             fields["core_target"] = fields["title"]            # a real (non-placeholder) target, so the lesson counts as prepared
+        before = None
         if lesson is None:
             lesson = Lesson(school_id=u.school_id, program_id=p.id, subject=subject, lesson_no=lessonNo, duration_min=120, **fields)
             db.add(lesson)
             db.flush()
         else:
+            _assert_lesson_not_in_use(db, lesson)
+            before = plan_state(db, u, lesson)
+            db.execute(delete(courseware_table).where(courseware_table.c.lesson_id == lesson.id))
             for k, v in fields.items():
                 setattr(lesson, k, v)
             db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False)))
@@ -670,16 +705,21 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             # when the original question text matches, never by array position.
             for q in literal:
                 question = q["stem"].split("\n")[-1]
-                match = next((a for a in wqs if question in a["stem"]), None)
+                matches = [a for a in wqs if a["stem"].split("\n")[-1].strip() == question.strip()]
+                match = matches[0] if len(matches) == 1 else None
                 if match:
                     q["reference"] = q["reference"] or match["reference"]
                     q["hints"] = match["hints"]
+                    q["figure"] = match["figure"]
             wqs = valid_written_questions(literal)
         replace_written_drafts(db, written, u.school_id, u.id, lesson.id, wqs)
         for i, q in enumerate(qs[:12]):
             db.add(TQ(school_id=u.school_id, program_id=p.id, lesson_id=lesson.id, stage="lesson", subject=subject, level=LEVELS[min(i, len(LEVELS) - 1)], knowledge=q["kp"],
                       stem=q["stem"], options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False,
                       figure_json=json.dumps(q["fig"], ensure_ascii=False)))
+        if before is not None:
+            db.execute(insert(versions).values(school_id=u.school_id, teacher_id=u.id, lesson_id=lesson.id,
+                before_json=history.serialize(before), after_hash=history.digest(plan_state(db, u, lesson))))
         db.commit()
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs) + len(wqs), "writtenQuestionsFound": len(wqs),
                 "sourceChars": len(source_text), "message": f"原文 {len(source_text)} 字已完整保留（含阅读材料及非选择题）。已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道选择题、{len(wqs)} 道简答/写作题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
@@ -1077,7 +1117,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 return _content_lines(json.loads(raw or "[]"))
             except (ValueError, TypeError):  # noqa: BLE001
                 return []
-        return {"id": lesson.id, "title": lesson.title, "coreTarget": lesson.core_target, "teacherPlan": lesson.teacher_plan, "sourceText": lesson.reading_plan or "", "closureTraining": lesson.closure_training,
+        saved = latest_version(db, lesson)
+        return {"previousImportId": saved["id"] if saved and saved["teacher_id"] == u.id else None,
+                "id": lesson.id, "title": lesson.title, "coreTarget": lesson.core_target, "teacherPlan": lesson.teacher_plan, "sourceText": lesson.reading_plan or "", "closureTraining": lesson.closure_training,
                 "examples": lst(lesson.examples_json), "ppt": lst(lesson.ppt_json)}
 
     @router.get("/teacher/weekend/lessons/{lid}/questions")
