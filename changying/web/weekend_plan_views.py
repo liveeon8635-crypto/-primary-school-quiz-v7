@@ -30,6 +30,7 @@ from sqlalchemy import Column, DateTime, Integer, String, Table, UniqueConstrain
 
 from changying.services import lesson_markdown
 from changying.services import weekend_question_gen as qg
+from changying.services.weekend_presentation import literal_numbered_questions
 from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUPPORTED, detect_lesson_no, extract
 from changying.web.weekend_pages import plan_page_html
 from changying.services.lesson_written import (MAX_KNOWLEDGE, lesson_goals, literal_written_questions, suggest_knowledge,
@@ -643,11 +644,12 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         p = program(db, int(u.school_id))
         lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == subject, Lesson.lesson_no == lessonNo))
         slides = slides_hint or _content_lines(data.get("ppt"))
+        original_examples = literal_numbered_questions(source_text) if use_literal else []
         row = db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == subject, sched.c.lesson_no == lessonNo)).first()
         now = datetime.utcnow()
         fields = dict(title=(str(data.get("title") or "").strip() or f"{subject}第{lessonNo}课")[:180], core_target=str(data.get("coreTarget") or "")[:1000],
                       teacher_plan=str(data.get("teacherPlan") or ""), reading_plan=source_text, ppt_json=json.dumps(slides, ensure_ascii=False),
-                      examples_json=json.dumps(_content_lines(data.get("examples")), ensure_ascii=False),
+                      examples_json=json.dumps(original_examples or _content_lines(data.get("examples")), ensure_ascii=False),
                       closure_training=_homework_from_source(source_text, str(data.get("closureTraining") or "")),
                       unit=(row.school_unit if row and row.school_unit else "")[:120] or "待配置单元", published=False, updated_at=now)
         if not fields["core_target"].strip() and not _lines(data.get("examples")):
@@ -1190,4 +1192,5 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_plan", "register_plan_tables"]
+
 

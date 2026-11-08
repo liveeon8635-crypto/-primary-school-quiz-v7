@@ -98,16 +98,3 @@ def test_the_courseware_screen_can_show_an_imported_picture():
     assert "uploaded_image" in COURSEWARE_JS
 
 
-
-def test_courseware_matches_reworded_page_without_question_number():
-    figures = [{"number": 7, "key": "第7题连续正方形与小棒每增加一个正方形增加3根小棒", "figure": {"type": "uploaded_image", "data_url": FIG_URL, "alt": "原卷插图"}}]
-    got = match_figure(figures, "连续正方形与小棒：每增加一个相连正方形，小棒只增加3根。")
-    assert got["data_url"] == FIG_URL
-
-
-def test_courseware_does_not_guess_when_two_figures_tie():
-    figures = [
-        {"number": None, "key": "方格中连续正方形每增加一个增加3根小棒", "figure": {"type": "uploaded_image", "data_url": FIG_URL}},
-        {"number": None, "key": "方格中连续三角形每增加一个增加3根小棒", "figure": {"type": "uploaded_image", "data_url": FIG_URL + "x"}},
-    ]
-    assert match_figure(figures, "每增加一个图形增加3根小棒") == {}

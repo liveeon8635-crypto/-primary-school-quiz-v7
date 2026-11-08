@@ -149,6 +149,9 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
             if bound:
                 return None, "本环节第 " + "、".join(str(int(i["page"]) + 1) for i in sorted(bound, key=lambda i: i["page"])) + " 页有互动课件。"
             return None, "本环节有互动课件，但没有对应到具体的页（例题）。请到备课页“互动课件”选择对应页并重新审核。"
+        approved_text = item.get('approvedPageText', item.get('pageText', ''))
+        if approved_text and approved_text != pages[int(item['page'])]:
+            return None, '教案页面已变化，原课件暂不显示，请老师核对对应题目后重新审核。'
     else:
         item = approved[0]
     params = item["approved"]
@@ -209,40 +212,21 @@ def lesson_figures(implementation: Any, db: Any, lesson: Any, written_table: Any
     return out
 
 
-def _figure_similarity(a: str, b: str) -> tuple[int, int]:
-    """Return shared three-character chunks and the longest shared run."""
-    if not a or not b:
-        return 0, 0
-    grams = {a[i:i + 3] for i in range(max(0, len(a) - 2)) if a[i:i + 3].strip()}
-    shared = sum(1 for g in grams if g in b)
-    best = 0
-    for i in range(len(a)):
-        for j in range(len(b)):
-            k = 0
-            while i + k < len(a) and j + k < len(b) and a[i + k] == b[j + k]:
-                k += 1
-            best = max(best, k)
-    return shared, best
-
-
 def match_figure(figures: list[dict[str, Any]], page_text: Any) -> dict[str, Any]:
-    """Match an imported figure conservatively by number, then by distinctive page wording."""
+    """Return an unambiguous original figure or leave the page without a picture."""
     text = _normalize_text(page_text)
     number = _QUESTION_NO.search(text)
     if number:
         wanted = int(number.group(1))
         numbered = [item for item in figures if item.get("number") == wanted]
         if len(numbered) == 1:
-            return numbered[0]["figure"]
-    scored = []
-    for item in figures:
-        key = str(item.get("key") or "")
-        shared, run = _figure_similarity(key, text)
-        if run >= 8 and shared >= 2:
-            scored.append((shared, run, item))
-    scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
-    if scored and (len(scored) == 1 or scored[0][:2] > scored[1][:2]):
-        return scored[0][2]["figure"]
+            key = _QUESTION_NO.sub('', str(numbered[0].get('key') or '')).strip('：:|｜、-')
+            if len(key) >= 4 and key in text:
+                return numbered[0]["figure"]
+        return {}
+    matched = [item for item in figures if len(str(item.get('key') or '')) >= 12 and str(item['key']) in text]
+    if len(matched) == 1:
+        return matched[0]['figure']
     return {}
 
 
@@ -324,13 +308,16 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
 
     def upsert(db: Any, u: Any, lesson: Any, stage: int, page: int | None, kind: str, params: dict[str, Any],
                written_task: bool | None, page_text: str) -> None:
-        items = items_of(row_for(db, lesson))
+        items = items_of(row_for(db, lesson, lock=True))
         old = find(items, stage, page)
         if old is None:
             items.append({"stage": stage, "page": page, "kind": kind, "status": "draft", "params": params, "approved": None,
                           "writtenTask": bool(written_task), "templateId": None, "pageText": page_text})
         else:
             # The approved version stays in classrooms until this draft is approved.
+            if old.get('approved') is not None and old.get('kind') != kind:
+                raise HTTPException(409, '已审核的课件不能直接更换模板类型，请先核对后处理原课件')
+            old['previousDraft'] = {k: old.get(k) for k in ('kind', 'params', 'writtenTask', 'pageText')}
             old.update(kind=kind, status="draft", params=params, pageText=page_text or old.get("pageText", ""))
             if written_task is not None:
                 old["writtenTask"] = bool(written_task)
@@ -342,6 +329,27 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     def get_courseware(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         return payload(db, my_lesson(db, u, lid))
 
+    @router.post("/teacher/weekend/lessons/{lid}/courseware/restore-previous")
+    def restore_previous(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        lesson = my_lesson(db, u, lid)
+        page = checked_page(lesson, b.stageNo, b.page)
+        items = items_of(row_for(db, lesson, lock=True))
+        item = find(items, b.stageNo, page)
+        previous = item.get('previousDraft') if item else None
+        if not isinstance(previous, dict):
+            raise HTTPException(404, '这页没有可恢复的上一版')
+        if item.get('approved') is not None and previous.get('kind') != item.get('kind'):
+            raise HTTPException(409, '上一版模板与已审核课件不同，不能自动恢复')
+        pages = stage_pages(lesson, b.stageNo)
+        current_text = pages[page] if page is not None else ''
+        if previous.get('pageText') != current_text:
+            raise HTTPException(409, '教案分页已变化，不能自动恢复到这一页，请先核对原教案')
+        item['previousDraft'] = {k: item.get(k) for k in ('kind', 'params', 'writtenTask', 'pageText')}
+        item.update({k: previous.get(k) for k in ('kind', 'params', 'writtenTask', 'pageText')})
+        item['status'] = 'draft'
+        write(db, u, lesson, items)
+        return payload(db, lesson)
+
     @router.post("/teacher/weekend/lessons/{lid}/courseware/generate")
     def generate(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Preparation only: for one page, AI picks a reviewed template and fills it; validated, saved as a draft."""
@@ -352,10 +360,20 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         info = {"title": lesson.title, "coreTarget": lesson.core_target or "", "sourceText": lesson.reading_plan or "",
                 "pageText": page_text or (lesson.teacher_plan or "")[:1500]}
         try:
-            data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, cw.generation_prompt(lesson.subject, info), timeout=60))
+            from changying.services.weekend_presentation import literal_numbered_questions
+            literal_page = bool(page_text and any(page_text in q for q in literal_numbered_questions(lesson.reading_plan or '')))
+            prompt = cw.generation_prompt(lesson.subject, info)
+            if literal_page:
+                prompt += '\n本页必须选择 steps，题目原文由系统提供，不要另编题目或绘制图形。'
+            data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=60))
             kind = str(data.get("template") or "") if isinstance(data, dict) else ""
             if kind not in cw.TEMPLATES[lesson.subject] or (kind == "reading" and not (lesson.reading_plan or "").strip()):
                 raise ValueError("没有选择可用的模板")
+            if literal_page:
+                if kind != 'steps':
+                    raise ValueError('该页需要保留原题，请重试或手动填写')
+                data['sourceProblem'] = page_text
+                data['problem'] = page_text
             figures = lesson_figures(implementation, db, lesson, written)
             original = match_figure(figures, page_text)
             notice = ""
@@ -371,8 +389,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 # The lesson came in with its own picture: show that instead of a drawing made from the text.
                 params["figure"] = original
                 notice = "这页用的是原卷插图"
-            elif kind == "steps" and figures:
-                # This lesson has original pictures: a drawing made from the text is worse than none.
+            elif kind == "steps":
+                # No confidently linked source image: keep the lesson text and let the teacher review.
                 params = cw.clean(kind, {**data, "figure": {}}, lesson.reading_plan or "")
                 notice = "这页没有匹配到原卷插图，已留空；可在“预览/修改”里手动补"
         except ValueError as e:
@@ -434,7 +452,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         else:
             drop_template(db, u, lesson, template_id)
             template_id = None
-        item.update(status="approved", params=params, approved=params, templateId=template_id)
+        item.update(status="approved", params=params, approved=params, approvedPageText=item.get('pageText', ''), templateId=template_id)
         write(db, u, lesson, items)
         implementation.audit(db, u, "weekend.courseware.approve", f"lesson={lid}:stage={b.stageNo}:page={page}:template={template_id}")
         db.commit()
@@ -545,4 +563,5 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
 
 __all__ = ["courseware_for_session", "install_weekend_courseware", "items_of", "register_courseware_table",
            "register_courseware_template_table", "stage_pages"]
+
 

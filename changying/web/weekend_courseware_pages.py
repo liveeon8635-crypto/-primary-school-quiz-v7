@@ -115,6 +115,7 @@ function cwFigure(wrap,f,big){
 function cwSteps(box,p,view,big,teacher){
   var wrap=el('div',{style:'background:#fff;color:#111;border-radius:12px;padding:12px;line-height:1.8;'+(big?'font-size:2.8vh':'')});box.appendChild(wrap);
   wrap.appendChild(el('b',{text:p.title}));
+  if(p.sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:p.sourceProblem}));
   cwFigure(wrap,p.figure,big);
   var shown=teacher?p.steps.length:(view.step||0),list=el('ol');
   p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?'':'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
@@ -229,6 +230,12 @@ function cwPlan(box,lessonId,refresh){
         }).catch(function(err){busy=false;b.disabled=false;b.textContent=label;note.className='notice error';note.textContent=err.message});
       }}));
       line.appendChild(el('button',{text:it?'预览／修改':'手动填写',onclick:function(){edit(editor,x,itemAt(x.page))}}));
+      if(it&&it.previousDraft)line.appendChild(el('button',{text:'恢复上一版',onclick:function(){
+        if(!confirm('恢复这一页上一次的课件草稿？恢复后请重新核对。'))return;
+        api('/teacher/weekend/lessons/'+lessonId+'/courseware/restore-previous',{json:{stageNo:+stageNo,page:x.page}})
+          .then(function(d2){paint(d2);msg.textContent='已恢复上一版草稿，请预览核对。'})
+          .catch(function(e){note.className='notice error';note.textContent=e.message});
+      }}));
       if(it)line.appendChild(el('button',{text:'存为模板',onclick:function(){
         var name=prompt('给这个模板起个名字，以后可以套用到其它课：',(data.subject||'')+'课件模板');
         if(name===null)return;
@@ -299,7 +306,7 @@ function cwPlan(box,lessonId,refresh){
       }else if(kind==='steps'){
         field('problem','题目原文（不含答案，生成学生作答题时使用）',area(p.problem));
         field('steps','讲解步骤（每行一步，2—6 步）',area((p.steps||[]).join('\n')));field('answer','答案',input(p.answer));
-        var f=p.figure||{},ft=sel([['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表']],f.type||'');
+        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
         field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure={type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
         if(f.type==='segment'){
           field('figA','线段上的点（名称:位置，分号隔开，如 A:0; C:3; B:6; D:10）',input((f.points||[]).map(function(q){return q.name+':'+q.at}).join('; ')));
@@ -325,7 +332,7 @@ function cwPlan(box,lessonId,refresh){
     function lines(n){return n.value.split('\n').map(function(v){return v.trim()}).filter(Boolean)}
     function parts(v,sep){return String(v||'').split(sep).map(function(x){return x.trim()}).filter(Boolean)}
     function figure(){
-      var t=fields.figType?fields.figType.value:'';if(!t)return {};
+      var t=fields.figType?fields.figType.value:'';if(!t)return {};if(t==='uploaded_image')return p.figure||{};
       if(!fields.figA)return {type:t,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};
       if(t==='segment')return {type:t,points:parts(fields.figA.value,/[;；]/).map(function(x){var k=x.split(/[:：]/);return {name:(k[0]||'').trim(),at:Number((k[1]||'').trim())}}),
         marks:parts(fields.figB.value,/[;；]/).map(function(x){var k=x.split(/[:：]/),ab=(k[0]||'').split(/[-－—]/);return {from:(ab[0]||'').trim(),to:(ab[1]||'').trim(),label:(k.slice(1).join(':')||'').trim()}})};
@@ -340,12 +347,12 @@ function cwPlan(box,lessonId,refresh){
       var v={title:fields.title.value,question:fields.question.value,reference:fields.reference.value};
       if(kind==='rotation'){v.width=+fields.width.value;v.height=+fields.height.value;v.shape=fields.shape.value.split(/[;；]/).filter(function(x){return x.trim()}).map(pt);v.center=pt(fields.center.value);v.direction=fields.direction.value;v.angle=+fields.angle.value;v.steps=lines(fields.steps)}
       else if(kind==='clock'){v.start=+fields.start.value;v.direction=fields.direction.value;v.angle=+fields.angle.value;v.steps=lines(fields.steps)}
-      else if(kind==='steps'){v.problem=fields.problem.value;v.steps=lines(fields.steps);v.answer=fields.answer.value;v.figure=figure()}
+      else if(kind==='steps'){v.problem=fields.problem.value;v.sourceProblem=p.sourceProblem||'';v.steps=lines(fields.steps);v.answer=fields.answer.value;v.figure=figure()}
       else{v.passage=fields.passage.value;v.sentences=cwSplit(v.passage);v.material=fields.material.value;v.writingPrompt=fields.writingPrompt.value;p.evidence=(p.evidence||[]).filter(function(i){return i<v.sentences.length});v.evidence=p.evidence}
       return v;
     }
     function show(){
-      var v=collect(),title=el('b',{text:'预览（教师视角，含答案）'}),view=el('div');preview.textContent='';preview.appendChild(el('div',{class:'row',style:'justify-content:space-between'},title,el('span',{class:'tag',text:(it&&it.params&&it.params.figure&&it.params.figure.type==='uploaded_image')?'原卷图片':'当前课件图示'})));preview.appendChild(view);
+      var v=collect(),title=el('b',{text:'预览（教师视角，含答案）'}),view=el('div'),fig=v.figure||{};preview.textContent='';preview.appendChild(el('div',{class:'row',style:'justify-content:space-between'},title,el('span',{class:'tag',text:kind!=='steps'?'模板图示':fig.type==='uploaded_image'?'原卷图片':fig.type?'课件图示':'无图'})));preview.appendChild(view);
       if(kind==='rotation'){if(!(v.shape.length>=3&&v.center.length===2&&v.shape.every(function(q){return q.length===2&&isFinite(q[0])&&isFinite(q[1])}))){view.appendChild(el('div',{class:'notice warn',text:'坐标格式不完整'}));return}
         v.rotated=v.shape.map(function(q){return cwRotate(q,v.center,v.direction,v.angle)});cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,showCenter:true,step:v.steps.length},false,true)}
       else if(kind==='clock'){var t=v.angle/30*(v.direction==='cw'?1:-1);v.end=((v.start-1+t)%12+12)%12+1;cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,step:v.steps.length},false,true)}
@@ -362,3 +369,4 @@ function cwPlan(box,lessonId,refresh){
   load();
 }
 """
+

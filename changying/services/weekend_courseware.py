@@ -178,6 +178,11 @@ def clean_figure(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("图示格式不正确")
     kind = str(raw.get("type") or "")
+    if kind == "uploaded_image":
+        url = str(raw.get("data_url") or "")
+        if len(url) > 700000 or not re.fullmatch(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}", url):
+            raise ValueError("原卷图片格式不正确")
+        return {"type": "uploaded_image", "data_url": url, "alt": _text(raw.get("alt"), 80) or "原卷插图"}
     if kind == "segment":
         points, seen = [], set()
         for p in raw.get("points") if isinstance(raw.get("points"), list) else []:
@@ -253,7 +258,14 @@ def clean(kind: str, raw: Any, source_text: str = "") -> dict[str, Any]:
     if kind == "clock":
         return clean_clock(raw)
     if kind == "steps":
-        return clean_steps(raw)
+        result = clean_steps(raw)
+        source_problem = str(raw.get('sourceProblem') or '') if isinstance(raw, dict) else ''
+        if source_problem:
+            from changying.services.weekend_presentation import literal_numbered_questions
+            if len(source_problem) > 2000 or not any(source_problem in q for q in literal_numbered_questions(source_text)):
+                raise ValueError('原题与教案原文不一致，请重新核对')
+            result['sourceProblem'] = source_problem
+        return result
     raise ValueError("没有这种课件模板")
 
 
@@ -351,3 +363,4 @@ def generation_prompt(subject: str, lesson: dict[str, Any]) -> str:
     if "reading" in kinds:
         text += "\n本课原文：\n" + lesson["sourceText"][:6000]
     return text
+
