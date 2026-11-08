@@ -165,11 +165,11 @@ def test_pdf_verified_question_number_survives_storage_and_courseware_rewording(
     figure = {
         "page": 5,
         "question_no": 13,
-        "question_source_text": "\\u7b2c13\\u9898 \\u6708\\u5386\\u5341\\u5b57\\u6846\\u4e2d\\u7684\\u5b57\\u6bcd\\u8868\\u793a\\u4e0e\\u6c42\\u503c\\uff1a\\u7528\\u5341\\u5b57\\u6846\\u5728\\u6708\\u5386\\u4e2d\\u6846\\u51fa\\u4e94\\u4e2a\\u6570\\u3002",
+        "question_source_text": "\u7b2c13\u9898 \u6708\u5386\u5341\u5b57\u6846\u4e2d\u7684\u5b57\u6bcd\u8868\u793a\u4e0e\u6c42\u503c\uff1a\u7528\u5341\u5b57\u6846\u5728\u6708\u5386\u4e2d\u6846\u51fa\u4e94\u4e2a\u6570\u3002",
         "data_url": FIG_URL,
     }
     data = {"writtenQuestions": [{
-        "stem": "\\u7528\\u5341\\u5b57\\u6846\\u5728\\u6708\\u5386\\u4e2d\\u6846\\u51fa\\u4e94\\u4e2a\\u6570\\u3002",
+        "stem": "\u7528\u5341\u5b57\u6846\u5728\u6708\u5386\u4e2d\u6846\u51fa\u4e94\u4e2a\u6570\u3002",
         "figureImage": 8,
     }]}
     assert _attach_figures(data, [figure]) == 1
@@ -207,4 +207,4 @@ def test_pdf_verified_question_number_survives_storage_and_courseware_rewording(
     candidates = lesson_figures(SimpleNamespace(TeachingQuestion=TeachingQuestion), DB(),
                                 SimpleNamespace(id=3), written_table)
     assert candidates[0]["number"] == 13
-    assert match_figure(candidates, "\\u7b2c 13 \\u9898 \\u6708\\u5386\\u5341\\u5b57\\u6846\\u4e2d\\u7684\\u5b57\\u6bcd\\u8868\\u793a\\u4e0e\\u6c42\\u503c")["data_url"] == FIG_URL
+    assert match_figure(candidates, "\u7b2c 13 \u9898 \u6708\u5386\u5341\u5b57\u6846\u4e2d\u7684\u5b57\u6bcd\u8868\u793a\u4e0e\u6c42\u503c")["data_url"] == FIG_URL
