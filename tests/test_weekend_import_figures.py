@@ -129,13 +129,14 @@ def test_a_written_question_keeps_its_picture_in_the_stored_metadata():
                   Column("reference", Text), Column("hints_json", Text))
     engine = create_engine("sqlite://")
     md.create_all(engine)
-    figure = {"type": "uploaded_image", "data_url": FIG_URL, "alt": "原卷插图"}
+    figure = {"type": "uploaded_image", "data_url": FIG_URL, "alt": "原卷插图", "question_no": 13}
     with Session(engine) as db:
         replace_written_drafts(db, table, 1, 2, 3, [
             {"stem": "第7题：方桌人数规律", "reference": "答案", "hints": [], "type": "short_answer", "figure": figure}])
         db.commit()
         row = db.execute(select(table)).first()
     assert json.loads(row.hints_json)["figure"]["data_url"] == FIG_URL
+    assert json.loads(row.hints_json)["figure"]["question_no"] == 13
 
 
 def test_courseware_uses_the_imported_picture_instead_of_a_drawing():
