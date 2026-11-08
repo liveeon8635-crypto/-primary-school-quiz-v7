@@ -104,9 +104,14 @@ with TestClient(app) as client:
                                "center": [4, 4], "direction": "ccw", "angle": 90}, ensure_ascii=False))
     replies.append(json.dumps({"template": "html", "html": "<script>alert(1)</script>"}))                         # not a template
     replies.append(json.dumps({"template": "steps", "title": "转一圈要几秒", "steps": ["1分钟=60秒", "60÷4=15"], "answer": "15秒"}, ensure_ascii=False))
+    manual = [json.loads(reply) for reply in replies[:2]]
     gen = [client.post(base + "/generate", headers=th, json={"stageNo": 3, "page": i}) for i in (0, 1, 2)]
-    assert [g.status_code for g in gen] == [200, 200, 502] and "第 3 页" in gen[2].json()["detail"]
+    assert [g.status_code for g in gen] == [502, 502, 502] and "第 3 页" in gen[2].json()["detail"]
     assert "钟面上的指针从数字2出发" in prompts[-3] and "三角形ABC" in prompts[-2] and "钟面上的指针" not in prompts[-2]
+    assert client.get(base, headers=th).json()["items"] == []
+    for i, params in enumerate(manual):
+        saved = client.put(base, headers=th, json={"stageNo": 3, "page": i, "kind": params["template"], "params": params})
+        assert saved.status_code == 200, saved.text
     d = client.post(base + "/generate", headers=th, json={"stageNo": 3, "page": 2}).json()
     kinds = {i["page"]: (i["kind"], i["status"]) for i in d["items"]}
     assert kinds == {0: ("clock", "draft"), 1: ("rotation", "draft"), 2: ("steps", "draft")}

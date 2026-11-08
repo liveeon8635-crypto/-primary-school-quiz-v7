@@ -398,16 +398,16 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/weekend": [
-      "3fa81b39f98c6599b8427712113fa1a2d3950caaf6a705cc132e7b13bdb11e7a"
+      "67e01fa1f0d10d564391151f620a02a3e6017cd3fe536da89b6f965f4d6e64c2"
     ],
     "/v1/weekend-board": [
-      "8833c4c39af67128f8c383d59de1b15078e265c7fa7ca631583d92e8be5c6f1b"
+      "d3885e634bb6d68e1246e9e62ec005012688f6811129e528f6d8f0af7045ba92"
     ],
     "/v1/weekend-brief": [
       "e86f7c0621509469f5f6795ec3d9efcb520623ec8440adbe5b89b3ed16197ee7"
     ],
     "/v1/weekend-plan": [
-      "74741071aeede13d3cb43ae5f8871785450f5ae38199619ebb021baee9269fc6"
+      "fc05da590d08dd98bbb46de483b718fb14086026dae179b3685dde4c3ec81abb"
     ],
     "/v1/weekend-practice": [
       "beb8fffd39a0ad154f1f6b12e0592451ebd84f9726f27a6e0406e021c9d103ce"
@@ -741,20 +741,20 @@
       "sourceBytes": 45693,
       "compiledBytes": 45693
     },
-    "3fa81b39f98c6599b8427712113fa1a2d3950caaf6a705cc132e7b13bdb11e7a": {
+    "fc05da590d08dd98bbb46de483b718fb14086026dae179b3685dde4c3ec81abb": {
       "unchanged": true,
-      "sourceBytes": 82461,
-      "compiledBytes": 82461
+      "sourceBytes": 74449,
+      "compiledBytes": 74449
     },
-    "74741071aeede13d3cb43ae5f8871785450f5ae38199619ebb021baee9269fc6": {
+    "67e01fa1f0d10d564391151f620a02a3e6017cd3fe536da89b6f965f4d6e64c2": {
       "unchanged": true,
-      "sourceBytes": 72447,
-      "compiledBytes": 72447
+      "sourceBytes": 83324,
+      "compiledBytes": 83324
     },
-    "8833c4c39af67128f8c383d59de1b15078e265c7fa7ca631583d92e8be5c6f1b": {
+    "d3885e634bb6d68e1246e9e62ec005012688f6811129e528f6d8f0af7045ba92": {
       "unchanged": true,
-      "sourceBytes": 35168,
-      "compiledBytes": 35168
+      "sourceBytes": 35678,
+      "compiledBytes": 35678
     }
   }
 }

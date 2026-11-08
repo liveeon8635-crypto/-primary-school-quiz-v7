@@ -28,8 +28,9 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, UniqueConstraint, delete, func, insert, select, update
 
-from changying.services import lesson_markdown
+from changying.services import lesson_markdown, weekend_plan_history as history
 from changying.services import weekend_question_gen as qg
+from changying.services.weekend_presentation import literal_numbered_questions
 from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUPPORTED, detect_lesson_no, extract
 from changying.web.weekend_pages import plan_page_html
 from changying.services.lesson_written import (MAX_KNOWLEDGE, lesson_goals, literal_written_questions, suggest_knowledge,
@@ -257,23 +258,46 @@ def _stored_figure(q: Any) -> dict[str, Any]:
         return {}
 
 
-def _attach_figures(data: Any, figures: list[dict[str, Any]]) -> None:
-    """Turn the model's "figureImage": n into the real picture so the question keeps it.
+def _attach_figures(data: Any, figures: list[dict[str, Any]]) -> int:
+    """Attach only when the question text matches a uniquely positioned PDF figure.
 
-    Choice and written questions both keep their own picture; every other question keeps none.
+    The model's figureImage index is untrusted and ignored. PDFs without reliable
+    question geometry (and Office images without layout metadata) stay unattached.
     """
     if not isinstance(data, dict) or not figures:
-        return
-    for key in ("questions", "writtenQuestions"):
-        for q in data.get(key) or []:
-            if not isinstance(q, dict):
-                continue
-            try:
-                index = int(q.pop("figureImage", 0) or 0)
-            except (TypeError, ValueError):
-                index = 0
-            if 1 <= index <= len(figures):
-                q["figure"] = {"type": "uploaded_image", "data_url": figures[index - 1]["data_url"], "alt": "原卷插图"}
+        return 0
+
+    def normalized(value: Any) -> str:
+        return "".join(char.casefold() for char in str(value or "") if char.isalnum())
+
+    questions = [q for key in ("questions", "writtenQuestions")
+                 for q in (data.get(key) or []) if isinstance(q, dict)]
+    candidates: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for q in questions:
+        # Never accept model-provided URLs or indexes as evidence of ownership.
+        q.pop("figureImage", None)
+        q.pop("figure", None)
+        qtext = normalized(" ".join((str(q.get("stem") or ""), str(q.get("material") or ""))))
+        if len(qtext) < 8:
+            continue
+        for figure in figures:
+            source = normalized(figure.get("question_source_text"))
+            if figure.get("question_no") is not None and source and qtext in source:
+                candidates.append((q, figure))
+
+    # Both directions must be unique; duplicate stems or repeated image placements
+    # are left for teacher review instead of being guessed.
+    q_counts: dict[int, int] = {}
+    f_counts: dict[int, int] = {}
+    for q, f in candidates:
+        q_counts[id(q)] = q_counts.get(id(q), 0) + 1
+        f_counts[id(f)] = f_counts.get(id(f), 0) + 1
+    attached = 0
+    for q, figure in candidates:
+        if q_counts[id(q)] == 1 and f_counts[id(figure)] == 1:
+            q["figure"] = {"type": "uploaded_image", "data_url": figure["data_url"], "alt": "原卷插图"}
+            attached += 1
+    return attached
 
 
 def _valid_questions(raw: Any) -> list[dict[str, Any]]:
@@ -306,6 +330,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     sessions = register_weekend_tables(implementation)["sessions"]
     from changying.web.weekend_written import register_written_tables
     written = register_written_tables(implementation)["questions"]
+    from changying.web.weekend_courseware import register_courseware_table
+    courseware_table = register_courseware_table(implementation)
+    versions = history.register_history(implementation.Base.metadata)
     sched = register_plan_tables(implementation)
     Lesson, TQ, Program = implementation.TeachingLesson, implementation.TeachingQuestion, implementation.TeachingProgram
     User, ClassStudent, SchoolClass = implementation.User, implementation.ClassStudent, implementation.SchoolClass
@@ -633,30 +660,66 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         except ValueError:
             return None
 
+    def plan_state(db, u, lesson):
+        state = history.capture(db, lesson, TQ.__table__, written, courseware_table, REMOVED_STAGE)
+        if any(row["teacher_id"] != u.id for key in ("written", "courseware") for row in state[key]):
+            raise HTTPException(409, "这份教案包含其他老师的习题或课件，无法覆盖或恢复。")
+        return state
+
+    def latest_version(db, lesson, *, with_content=False):
+        query = select(versions) if with_content else select(versions.c.id, versions.c.teacher_id)
+        return db.execute(query.where(versions.c.lesson_id == lesson.id,
+            versions.c.school_id == lesson.school_id).order_by(versions.c.id.desc()).limit(1)).mappings().first()
+
+    @router.post("/teacher/weekend/lessons/{lid}/import-history/{version_id}/restore")
+    def restore_import(lid: int, version_id: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        lesson = db.scalar(select(Lesson).where(Lesson.id == lid, Lesson.school_id == u.school_id).with_for_update())
+        if lesson is None or lesson.subject not in SUBJECTS:
+            raise HTTPException(404, "没有找到这节课")
+        saved = latest_version(db, lesson, with_content=True)
+        if not saved or saved["id"] != version_id or saved["teacher_id"] != u.id:
+            raise HTTPException(409, "可恢复的版本已变化，请刷新教案。")
+        _assert_lesson_not_in_use(db, lesson)
+        current = plan_state(db, u, lesson)
+        if history.digest(current) != saved["after_hash"]:
+            raise HTTPException(409, "重新导入后教案、习题或课件已有修改，已保留当前内容。")
+        history.restore_content(db, lesson, json.loads(saved["before_json"]), current, TQ.__table__, written, courseware_table)
+        db.execute(delete(versions).where(versions.c.id == version_id))
+        db.commit()
+        return lesson_status(db, u, lesson)
+
     def _apply_lesson_plan(db: Any, u: Any, subject: str, lessonNo: int, data: dict[str, Any], source_text: str,
-                           *, slides_hint: list[str] | None = None, use_literal: bool = True) -> dict[str, Any]:
+                           *, slides_hint: list[str] | None = None, use_literal: bool = True, overwrite: bool = False) -> dict[str, Any]:
         """Write one structured lesson plan plus its draft questions, then commit.
 
         Shared by the AI import, the structured JSON import and the Markdown import, so all
         three keep exactly the same validation and write behaviour.
         """
         p = program(db, int(u.school_id))
-        lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == subject, Lesson.lesson_no == lessonNo))
+        lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == subject, Lesson.lesson_no == lessonNo).with_for_update().execution_options(populate_existing=True))
         slides = slides_hint or _content_lines(data.get("ppt"))
+        original_examples = literal_numbered_questions(source_text) if use_literal else []
         row = db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == subject, sched.c.lesson_no == lessonNo)).first()
         now = datetime.utcnow()
         fields = dict(title=(str(data.get("title") or "").strip() or f"{subject}第{lessonNo}课")[:180], core_target=str(data.get("coreTarget") or "")[:1000],
                       teacher_plan=str(data.get("teacherPlan") or ""), reading_plan=source_text, ppt_json=json.dumps(slides, ensure_ascii=False),
-                      examples_json=json.dumps(_content_lines(data.get("examples")), ensure_ascii=False),
+                      examples_json=json.dumps(original_examples or _content_lines(data.get("examples")), ensure_ascii=False),
                       closure_training=_homework_from_source(source_text, str(data.get("closureTraining") or "")),
                       unit=(row.school_unit if row and row.school_unit else "")[:120] or "待配置单元", published=False, updated_at=now)
         if not fields["core_target"].strip() and not _lines(data.get("examples")):
             fields["core_target"] = fields["title"]            # a real (non-placeholder) target, so the lesson counts as prepared
+        before = None
         if lesson is None:
             lesson = Lesson(school_id=u.school_id, program_id=p.id, subject=subject, lesson_no=lessonNo, duration_min=120, **fields)
             db.add(lesson)
             db.flush()
         else:
+            if has_real_plan(lesson) and not overwrite:
+                raise HTTPException(409, "这节课已有教案，请确认覆盖后重新导入。")
+            _assert_lesson_not_in_use(db, lesson)
+            before = plan_state(db, u, lesson)
+            db.execute(delete(courseware_table).where(courseware_table.c.lesson_id == lesson.id))
             for k, v in fields.items():
                 setattr(lesson, k, v)
             db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False)))
@@ -668,16 +731,21 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             # when the original question text matches, never by array position.
             for q in literal:
                 question = q["stem"].split("\n")[-1]
-                match = next((a for a in wqs if question in a["stem"]), None)
+                matches = [a for a in wqs if a["stem"].split("\n")[-1].strip() == question.strip()]
+                match = matches[0] if len(matches) == 1 else None
                 if match:
                     q["reference"] = q["reference"] or match["reference"]
                     q["hints"] = match["hints"]
+                    q["figure"] = match["figure"]
             wqs = valid_written_questions(literal)
         replace_written_drafts(db, written, u.school_id, u.id, lesson.id, wqs)
         for i, q in enumerate(qs[:12]):
             db.add(TQ(school_id=u.school_id, program_id=p.id, lesson_id=lesson.id, stage="lesson", subject=subject, level=LEVELS[min(i, len(LEVELS) - 1)], knowledge=q["kp"],
                       stem=q["stem"], options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False,
                       figure_json=json.dumps(q["fig"], ensure_ascii=False)))
+        if before is not None:
+            db.execute(insert(versions).values(school_id=u.school_id, teacher_id=u.id, lesson_id=lesson.id,
+                before_json=history.serialize(before), after_hash=history.digest(plan_state(db, u, lesson))))
         db.commit()
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs) + len(wqs), "writtenQuestionsFound": len(wqs),
                 "sourceChars": len(source_text), "message": f"原文 {len(source_text)} 字已完整保留（含阅读材料及非选择题）。已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道选择题、{len(wqs)} 道简答/写作题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
@@ -690,18 +758,19 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(409, "这节课已经有教案了。导入会覆盖教案文字（已通过的习题保留）。")
         plan = _markdown_plan(extracted)
         if plan is not None:
-            got = _apply_lesson_plan(db, u, subject, lessonNo, plan, extracted["text"], use_literal=False)
+            got = _apply_lesson_plan(db, u, subject, lessonNo, plan, extracted["text"], use_literal=False, overwrite=force == "1")
             got["engine"] = "markdown"
             return got
         figures = extracted.get("images") or []
         figure_note = ""
         if figures:
-            pages = "、".join(str(f["page"]) for f in figures if f.get("page"))
+            verified = [f for f in figures if f.get("question_no")]
+            pages = "、".join(str(f["page"]) for f in verified if f.get("page"))
+            mappings = "；".join(f"第 {f['question_no']} 题（第 {f['page']} 页）" for f in verified)
             figure_note = (
-                f"文档里另外带了 {len(figures)} 张图片（按文档顺序编号 1–{len(figures)}，以附图形式一并给你"
-                + (f"，分别在第 {pages} 页" if pages else "")
-                + "）。哪道题在原文档里配了图，就给那道题加 \"figureImage\": 编号；"
-                  "不要凭空引用不存在的编号，没有配图的题不要写这个字段。\n"
+                f"文档里另外带了 {len(figures)} 张原图，以附图形式一并给你。系统根据原 PDF 版面位置独立核对图片与题号；"
+                + (f"已核对：{mappings}。" if mappings else "当前版面无法唯一核对题号。")
+                + "不要猜图片所属题目，也不要输出 figureImage 字段。\n"
             )
         prompt = (
             f"下面是一位小学{p.grade}年级{subject}老师自己写的周末课教案内容。请只整理、归类里面已有的内容，不要编造新内容；文档里没有的字段留空。\n"
@@ -709,18 +778,22 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             + figure_note +
             '只输出 JSON：{"title":"课题","coreTarget":"本节目标","teacherPlan":"教学流程(300字内)","ppt":["完整讲解页：标题＋原文中的方法步骤＋示例，每页用\\n换行，不得把每一行拆成一页；禁止放入教师参考答案或评分细则"],'
             '"examples":["文档里的例题和解答，原文照录"],"closureTraining":"课后练习",'
-            '"questions":[{"stem":"文档里已有的选择题","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名","figureImage":1}],"writtenQuestions":[{"type":"short_answer或final_answer或composition","material":"对应完整阅读文章，不含教师答案","stem":"原有题目，不得改题型或漏题","reference":"原文对应参考答案及评分要点","hints":[],"figureImage":2}]}'
+            '"questions":[{"stem":"文档里已有的选择题","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}],"writtenQuestions":[{"type":"short_answer或final_answer或composition","material":"对应完整阅读文章，不含教师答案","stem":"原有题目，不得改题型或漏题","reference":"原文对应参考答案及评分要点","hints":[]}]}'
             "（questions 只放原有选择题，writtenQuestions放全部原有简答、填空、复述、写作和挑战题，不要编造新题。阅读文章和非选择题不可省略；原文由系统完整保存。closureTraining 必须包含全部课后题，不能只列前几题。"
-            "figureImage 只在原文档那道题确实配了图时才写，值是图片编号；选择题和非选择题都可以写。）"
+            "图片由系统依据原 PDF 位置和原题文字匹配，AI 不负责给图片编号。）"
         )
         data = implementation._ai_json(implementation._ai_call(
             db, u, AI_FEATURE, prompt, images=[f["data_url"] for f in figures] or None,
             timeout=150 if figures else 90,
         ))
-        _attach_figures(data, figures)
+        attached_figures = _attach_figures(data, figures)
         if not isinstance(data, dict) or not (str(data.get("title") or "").strip() or str(data.get("coreTarget") or "").strip() or _lines(data.get("examples"))):
             raise HTTPException(502, "AI 没能整理出教案，请再试一次，或在“审改”里手动填写")
-        got = _apply_lesson_plan(db, u, subject, lessonNo, data, extracted["text"], slides_hint=extracted["slides"] or None)
+        got = _apply_lesson_plan(db, u, subject, lessonNo, data, extracted["text"], slides_hint=extracted["slides"] or None, overwrite=force == "1")
+        if figures and attached_figures < len(figures):
+            unmatched = len(figures) - attached_figures
+            got["figureWarning"] = f"有 {unmatched} 张原卷图未能与题目唯一核对，系统没有自动挂到题目上，请老师复核。"
+            got["message"] = str(got.get("message") or "") + " " + got["figureWarning"]
         got["engine"] = "ai"
         return got
 
@@ -885,7 +958,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                     results.append({**base, "ok": True, "status": "ready", "contentHash": fingerprint})
                     continue
                 source_text = job.get("sourceText") or _plan_source_text(plan)
-                got = _apply_lesson_plan(db, u, subject, int(job["lessonNo"]), plan, source_text, use_literal=False)
+                got = _apply_lesson_plan(db, u, subject, int(job["lessonNo"]), plan, source_text, use_literal=False, overwrite=on_conflict == "overwrite")
                 implementation.audit(db, u, "weekend.lessons.import_structured",
                                      f"lesson={job['lessonNo']}:hash={fingerprint[:16]}:chars={len(source_text)}")
                 imported += 1
@@ -1075,7 +1148,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 return _content_lines(json.loads(raw or "[]"))
             except (ValueError, TypeError):  # noqa: BLE001
                 return []
-        return {"id": lesson.id, "title": lesson.title, "coreTarget": lesson.core_target, "teacherPlan": lesson.teacher_plan, "sourceText": lesson.reading_plan or "", "closureTraining": lesson.closure_training,
+        saved = latest_version(db, lesson)
+        return {"previousImportId": saved["id"] if saved and saved["teacher_id"] == u.id else None,
+                "id": lesson.id, "title": lesson.title, "coreTarget": lesson.core_target, "teacherPlan": lesson.teacher_plan, "sourceText": lesson.reading_plan or "", "closureTraining": lesson.closure_training,
                 "examples": lst(lesson.examples_json), "ppt": lst(lesson.ppt_json)}
 
     @router.get("/teacher/weekend/lessons/{lid}/questions")
@@ -1190,4 +1265,5 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_plan", "register_plan_tables"]
+
 

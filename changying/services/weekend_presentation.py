@@ -8,6 +8,30 @@ PAGE_CHARS=360
 PAGE_PARAGRAPHS=5
 
 
+def literal_numbered_questions(source: str) -> list[str]:
+    """Extract question text only where explicit, unique question headings exist."""
+    # A PDF can put each glyph on its own line, even in ordinary teacher commentary.
+    # Only accept a standalone heading (optionally followed by the printed score).
+    heading = re.compile(r'(?m)^[^\S\n]*第[^\S\n]*(\d{1,2})[^\S\n]*题'
+                         r'[^\S\n]*(?:[（(]?[^\S\n]*\d+(?:\.\d+)?[^\S\n]*分[^\S\n]*[）)]?)?[^\S\n]*$')
+    marks = list(heading.finditer(source or ''))
+    numbers = [int(m.group(1)) for m in marks]
+    if len(marks) < 2 or len(set(numbers)) != len(numbers):
+        return []
+    out = []
+    for i, mark in enumerate(marks):
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(source)
+        chunk = source[mark.start():end]
+        stop = re.search(r'(?m)^\s*(?:考点提醒|答案|解析|参考答案|评分要点)\s*[：:]', chunk)
+        if stop:
+            chunk = chunk[:stop.start()]
+        chunk = chunk.strip()
+        if '\n' not in chunk or re.search(r'(?:答案|解析|评分要点)\s*[：:]', chunk):
+            return []
+        out.append(chunk)
+    return out
+
+
 def _screen_chunks(text: str) -> list[str]:
     """Split at a paragraph/sentence boundary, retaining every character."""
     chunks=[]
@@ -67,6 +91,11 @@ def lesson_deck(lesson: dict[str, Any], stage_no: int) -> list[str]:
         return []
     raw = lesson.get("ppt_json") if stage_no == 2 else lesson.get("examples_json")
     source = str(lesson.get("reading_plan") or "")
+    if stage_no == 3:
+        originals = literal_numbered_questions(source)
+        if originals:
+            return presentation_pages(originals, preserve_pages=True)
     return presentation_pages(raw, preserve_pages=stage_no == 2 and source.startswith("第1页："),
                               source=source if stage_no == 2 else "", example_mode=stage_no == 3)
+
 
