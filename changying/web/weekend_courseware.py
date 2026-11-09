@@ -403,13 +403,18 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 params = cw.clean(kind, {**data, "figure": {}}, lesson.reading_plan or "")
                 notice = f"AI 画的图示没有通过校验（{e}），已去掉，可在预览里手动补上"
             if original and kind == "steps":
+                # The scan is always a comparison image, never a substitute for a teaching diagram.
                 if params.get("figure") and params["figure"].get("type") != "uploaded_image":
                     params["sourceFigure"] = original
                     notice = "已生成课件图示；原题图片保留为对照，可在预览中展开"
                 else:
-                    params["figure"] = original
-                    notice = "只匹配到原题图片，尚无课件演示图；请在预览/修改中补充图示"
-            elif kind == "steps" and not params.get("figure"):
+                    params["figure"] = {}
+                    params["sourceFigure"] = original
+                    if notice:
+                        notice += "；原题图片保留为对照，可在预览中展开"
+                    else:
+                        notice = "只匹配到原题图片，尚无课件演示图；请在预览/修改中补充图示"
+            elif kind == "steps" and not params.get("figure") and not notice:
                 notice = "未生成可视化图示；课件保留为草稿，请在预览/修改中补图后再审核"
         except ValueError as e:
             raise HTTPException(502, f"第 {(page or 0) + 1} 页：AI 生成的课件未通过校验（{e}），已有课件未改动，可重试或手动填写")
