@@ -58,6 +58,7 @@ function cwFigureText(f){
   if(f.type==='calendar_cross')return '\u6708\u5386\u5341\u5b57\u6846\uff1a\u4e2d\u5fc3 '+f.center+'\uff0c\u4e94\u6570\u548c '+f.total;
   if(f.type==='seating_pattern')return '\u65b9\u684c\u4eba\u6570\u89c4\u5f8b\uff1a'+f.sampleCounts.join('\u3001');
   if(f.type==='alternating_triangle')return '\u9ed1\u767d\u68cb\u5b50\u4e09\u89d2\u5f62\uff1a'+f.rows+'\u5c42\uff0c\u5dee\u503c '+f.differenceSymbol;
+  if(f.type==='running_track')return '\u540c\u5411\u73af\u5f62\u8dd1\u9053\uff1a'+f.fastSpeed+'\u7c73/\u5206\u949f\u548c '+f.slowSpeed+'\u7c73/\u5206\u949f\uff0c\u8dd1\u9053\u5468\u957f '+f.distanceSymbol;
   return f.rows.map(function(r){return r.join(' | ')}).join('\n');
 }
 function cwFigureOk(f){
@@ -68,6 +69,7 @@ function cwFigureOk(f){
   if(f.type==='calendar_cross')return isFinite(f.center)&&isFinite(f.daysInMonth)&&isFinite(f.firstWeekday)&&isFinite(f.total)&&f.center===f.total/5;
   if(f.type==='seating_pattern')return (f.sampleCounts||[]).length>=2&&f.sampleCounts.length<=4&&f.sampleCounts[0]===8&&f.sampleCounts.every(function(n,i){return isFinite(n)&&n===8+i*4});
   if(f.type==='alternating_triangle')return f.rows>=4&&f.rows<=8&&f.rows%2===0&&/^[A-Za-z]$/.test(f.differenceSymbol||'');
+  if(f.type==='running_track')return f.fastSpeed>f.slowSpeed&&f.slowSpeed>0&&/^[A-Za-z]$/.test(f.distanceSymbol||'');
   return (f.rows||[]).length>0;
 }
 function cwCalendarCross(box,f,view,big,teacher){
@@ -129,6 +131,22 @@ function cwAlternatingTriangle(box,f,view,big,teacher,stepCount){
   wrap.appendChild(el('div',{style:'font-size:14px;color:#475467',text:'\u6bcf\u5c42\u9ed1\u767d\u4ea4\u66ff\uff1b\u4ece\u9876\u5c42\u767d\u68cb\u5f00\u59cb'}));
   if(step>=stepCount)wrap.appendChild(el('div',{style:'margin-top:10px;font-weight:700;color:#17449b;font-size:'+(big?'2.3vh':'16px'),text:'\u767d\uff1a1+3+\u22ef+(2k-1)=k\u00b2\uff1b\u9ed1\uff1a2+4+\u22ef+2k=k(k+1)\uff1b\u9ed1\u6bd4\u767d\u591a k='+f.differenceSymbol+'\uff0c\u6240\u4ee5\u603b\u5c42\u6570=2'+f.differenceSymbol}));
 }
+function cwRunningTrack(box,f,view,big,teacher,stepCount){
+  var step=teacher&&!view.previewMode?(stepCount||99):Math.max(1,view.step||0),max=Math.max(4,stepCount||4),shown=Math.min(max,step),gap=(f.fastSpeed-f.slowSpeed)*shown;
+  var wrap=el('div',{style:'max-width:720px;margin:10px auto;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#fff;text-align:center'});
+  var svg=cwNode('svg',{viewBox:'0 0 680 300',width:'100%',style:'display:block;max-height:'+(big?'40vh':'320px'),role:'img','aria-label':cwFigureText(f)});
+  svg.appendChild(cwNode('ellipse',{cx:340,cy:145,rx:245,ry:92,fill:'none',stroke:'#98a2b3','stroke-width':24}));
+  svg.appendChild(cwNode('ellipse',{cx:340,cy:145,rx:245,ry:92,fill:'none',stroke:'#fff','stroke-width':2,'stroke-dasharray':'8 8'}));
+  svg.appendChild(cwNode('path',{d:'M520 83 L548 90 L527 108',fill:'none',stroke:'#2563eb','stroke-width':5,'stroke-linecap':'round','stroke-linejoin':'round'}));
+  svg.appendChild(cwNode('text',{x:340,y:137,'text-anchor':'middle','font-size':23,'font-weight':700,fill:'#344054'},'\u591a\u8dd1\u4e00\u5708 = '+f.distanceSymbol+' \u7c73'));
+  svg.appendChild(cwNode('text',{x:340,y:169,'text-anchor':'middle','font-size':17,fill:'#475467'},'\u540c\u4e00\u5730\u70b9\u51fa\u53d1\uff0c\u540c\u65b9\u5411\u8ffd\u53ca\uff08\u56fe\u793a\u975e\u6309\u6bd4\u4f8b\uff09'));
+  var angleFast=(-90+shown*19)*Math.PI/180,angleSlow=(-90+shown*19*(f.slowSpeed/f.fastSpeed))*Math.PI/180;
+  function runner(a,color,label,speed){var x=340+245*Math.cos(a),y=145+92*Math.sin(a);svg.appendChild(cwNode('circle',{cx:x,cy:y,r:16,fill:color,stroke:'#fff','stroke-width':3}));svg.appendChild(cwNode('text',{x:x,y:y+5,'text-anchor':'middle','font-size':14,'font-weight':700,fill:'#fff'},label));svg.appendChild(cwNode('text',{x:x,y:y+34,'text-anchor':'middle','font-size':15,'font-weight':700,fill:color},speed+'\u7c73/\u5206'))}
+  runner(angleFast,'#dc2626','\u5feb',f.fastSpeed);runner(angleSlow,'#2563eb','\u6162',f.slowSpeed);
+  wrap.appendChild(svg);
+  wrap.appendChild(el('div',{style:'font-weight:700;color:#17449b;font-size:'+(big?'2.3vh':'16px'),text:'\u7b2c '+shown+' \u5206\u949f\uff1a\u5feb\u8005\u591a\u8dd1 '+gap+' \u7c73\uff1b\u6bcf\u5206\u949f\u8def\u7a0b\u5dee '+f.fastSpeed+' - '+f.slowSpeed+' = '+(f.fastSpeed-f.slowSpeed)+' \u7c73'}));
+  if(step>=stepCount)wrap.appendChild(el('div',{style:'margin-top:8px;color:#b42318;font-weight:700',text:'\u8def\u7a0b\u5dee\u8fbe\u5230\u4e00\u5708 '+f.distanceSymbol+' \u7c73\u65f6\u8ffd\u4e0a\uff1a'+f.distanceSymbol+' \u00f7 ('+f.fastSpeed+' - '+f.slowSpeed+') = '+f.distanceSymbol+' / '+(f.fastSpeed-f.slowSpeed)+' \u5206\u949f'}));
+}
 function cwFigure(wrap,f,big,view,teacher,stepCount){
   view=view||{};
   if(!f||!f.type)return;
@@ -141,6 +159,7 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
   if(f.type==='calendar_cross'){cwCalendarCross(box,f,view,big,teacher);return}
   if(f.type==='seating_pattern'){cwSeatingPattern(box,f,view,big,teacher,stepCount);return}
   if(f.type==='alternating_triangle'){cwAlternatingTriangle(box,f,view,big,teacher,stepCount);return}
+  if(f.type==='running_track'){cwRunningTrack(box,f,view,big,teacher,stepCount);return}
   f={type:f.type,points:(f.points||[]).slice().sort(function(a,b){return a.at-b.at}),marks:(f.marks||[]).filter(function(m){return m.from&&m.to}),
     boxes:f.boxes||[],branches:f.branches||[],shape:f.shape,labels:f.labels||{},rows:f.rows||[]};
   var visualStep=teacher&&!view.previewMode?(stepCount||1):(view.step||0),visualSteps=Math.max(1,stepCount||1);
@@ -354,7 +373,7 @@ function cwPlan(box,lessonId,refresh){
     next();
   }
   function edit(box2,x,it){
-    box2.textContent='';var card=el('div',{class:'card'}),fields={},kinds=data.templates,kind=it?it.kind:kinds[kinds.length-1],p=JSON.parse(JSON.stringify(it?it.params:{})),previewState={step:0,previewMode:true},preview=el('div',{class:'card',style:'position:sticky;top:76px;z-index:4;max-height:76vh;overflow:auto;box-shadow:0 8px 24px #10182822'});
+    box2.textContent='';var card=el('div',{class:'card'}),fields={},kinds=data.templates,kind=it?it.kind:kinds[kinds.length-1],p=JSON.parse(JSON.stringify(it?it.params:{})),previewState={step:1,previewMode:true},preview=el('div',{class:'card',style:'position:sticky;top:76px;z-index:4;max-height:76vh;overflow:auto;box-shadow:0 8px 24px #10182822'});
     card.appendChild(el('h3',{text:(x.page==null?'整个环节':'第'+(x.page+1)+'页')+' 的课件'}));
     card.appendChild(el('p',{class:'muted',style:'white-space:pre-wrap',text:'这一页的内容：'+x.text}));
     var kindSel=el('select');kinds.forEach(function(k){kindSel.appendChild(el('option',{value:k,text:data.kindLabels[k]}))});kindSel.value=kind;
@@ -380,8 +399,8 @@ function cwPlan(box,lessonId,refresh){
       }else if(kind==='steps'){
         field('problem','题目原文（不含答案，生成学生作答题时使用）',area(p.problem));
         field('steps','讲解步骤（每行一步，2—6 步）',area((p.steps||[]).join('\n')));field('answer','答案',input(p.answer));
-        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
-        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
+        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
+        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
         if(f.type==='segment'){
           field('figA','线段上的点（名称:位置，分号隔开，如 A:0; C:3; B:6; D:10）',input((f.points||[]).map(function(q){return q.name+':'+q.at}).join('; ')));
           field('figB','标注（如 A-D:L; A-B:x，可留空）',input((f.marks||[]).map(function(m){return m.from+'-'+m.to+':'+m.label}).join('; ')));
@@ -399,6 +418,8 @@ function cwPlan(box,lessonId,refresh){
           field('figCounts','\u6bcf\u79cd\u684c\u6570\u7684\u4eba\u6570\uff08\u9017\u53f7\u9694\u5f00\uff0c\u4ece1\u5f20\u684c8\u4eba\u5f00\u59cb\uff09',input((f.sampleCounts||[8,12,16]).join(', ')));
         }else if(f.type==='alternating_triangle'){
           field('figRows','\u663e\u793a\u5c42\u6570\uff084/6/8\uff0c\u9996\u5c42\u767d\uff0c\u5076\u6570\u5c42\u9ed1\uff09',input(f.rows||6));field('figDiff','\u9ed1\u591a\u767d\u7684\u9897\u6570\u5b57\u6bcd',input(f.differenceSymbol||'m'));
+        }else if(f.type==='running_track'){
+          field('figFast','\u5feb\u8005\u901f\u5ea6\uff08\u7c73/\u5206\uff09',input(f.fastSpeed||180));field('figSlow','\u6162\u8005\u901f\u5ea6\uff08\u7c73/\u5206\uff09',input(f.slowSpeed||140));field('figDistanceSymbol','\u8dd1\u9053\u5468\u957f\u5b57\u6bcd',input(f.distanceSymbol||'s'));
         }else if(f.type==='table'){
           field('figA','数表（每行一行，格子用 | 隔开）',area((f.rows||[]).map(function(r){return r.join(' | ')}).join('\n')));
         }
@@ -417,6 +438,7 @@ function cwPlan(box,lessonId,refresh){
       if(t==='calendar_cross')return {type:t,center:Number(fields.figCenter.value),daysInMonth:Number(fields.figDays.value),firstWeekday:Number(fields.figWeekday.value),total:Number(fields.figTotal.value)};
       if(t==='seating_pattern')return {type:t,sampleCounts:parts(fields.figCounts.value,/,/).map(function(x){return Number(x)})};
       if(t==='alternating_triangle')return {type:t,rows:Number(fields.figRows.value),differenceSymbol:fields.figDiff.value};
+      if(t==='running_track')return {type:t,fastSpeed:Number(fields.figFast.value),slowSpeed:Number(fields.figSlow.value),distanceSymbol:fields.figDistanceSymbol.value};
       if(!fields.figA)return {type:t,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};
       if(t==='segment')return {type:t,points:parts(fields.figA.value,/[;；]/).map(function(x){var k=x.split(/[:：]/);return {name:(k[0]||'').trim(),at:Number((k[1]||'').trim())}}),
         marks:parts(fields.figB.value,/[;；]/).map(function(x){var k=x.split(/[:：]/),ab=(k[0]||'').split(/[-－—]/);return {from:(ab[0]||'').trim(),to:(ab[1]||'').trim(),label:(k.slice(1).join(':')||'').trim()}})};
@@ -441,9 +463,9 @@ function cwPlan(box,lessonId,refresh){
         v.rotated=v.shape.map(function(q){return cwRotate(q,v.center,v.direction,v.angle)});cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,showCenter:true,step:v.steps.length},false,true)}
       else if(kind==='clock'){var t=v.angle/30*(v.direction==='cw'?1:-1);v.end=((v.start-1+t)%12+12)%12+1;cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,step:v.steps.length},false,true)}
       else if(kind==='steps'){
-        previewState.step=Math.min(previewState.step,v.steps.length);
+        previewState.step=Math.max(1,Math.min(previewState.step,v.steps.length));
         var nav=el('div',{class:'row',style:'margin:8px 0'});
-        nav.appendChild(el('button',{text:'\u4e0a\u4e00\u6b65',disabled:previewState.step<=0,onclick:function(){previewState.step=Math.max(0,previewState.step-1);show()}}));
+        nav.appendChild(el('button',{text:'\u4e0a\u4e00\u6b65',disabled:previewState.step<=1,onclick:function(){previewState.step=Math.max(1,previewState.step-1);show()}}));
         nav.appendChild(el('button',{text:'\u4e0b\u4e00\u6b65',disabled:previewState.step>=v.steps.length,onclick:function(){previewState.step=Math.min(v.steps.length,previewState.step+1);show()}}));
         nav.appendChild(el('span',{class:'muted',text:'\u5df2\u663e\u793a '+previewState.step+' / '+v.steps.length+' \u6b65'}));preview.appendChild(nav);
         cwRender(view,{kind:kind,params:v},previewState,false,true);
@@ -460,5 +482,6 @@ function cwPlan(box,lessonId,refresh){
   load();
 }
 """
+
 
 
