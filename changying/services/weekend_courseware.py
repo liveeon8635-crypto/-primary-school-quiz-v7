@@ -252,6 +252,19 @@ def clean_figure(raw: Any) -> dict[str, Any]:
         if not re.fullmatch(r"[A-Za-z]", symbol):
             raise ValueError("黑白棋子差值只能使用一个英文字母")
         return {"type": "alternating_triangle", "rows": rows, "differenceSymbol": symbol}
+    if kind == "running_track":
+        try:
+            fast = _int(raw.get("fastSpeed"))
+            slow = _int(raw.get("slowSpeed"))
+        except ValueError:
+            raise ValueError("跑步速度必须是整数")
+        if not 1 <= slow < fast <= 1000:
+            raise ValueError("跑道题需满足 1—1000 的整数速度，且快者速度大于慢者")
+        distance_symbol = _text(raw.get("distanceSymbol", "s"), 1) or "s"
+        if not re.fullmatch(r"[A-Za-z]", distance_symbol):
+            raise ValueError("跑道长度只能使用一个英文字母表示")
+        return {"type": "running_track", "fastSpeed": fast, "slowSpeed": slow,
+                "distanceSymbol": distance_symbol}
     if kind == "calendar_cross":
         try:
             center = _int(raw.get("center"))
@@ -285,7 +298,7 @@ def clean_steps(raw: Any) -> dict[str, Any]:
     if not answer:
         raise ValueError("请填写例题答案")
     figure = clean_figure(raw.get("figure"))
-    if figure.get("type") in ("calendar_cross", "seating_pattern", "alternating_triangle") and len(steps) < 4:
+    if figure.get("type") in ("calendar_cross", "seating_pattern", "alternating_triangle", "running_track") and len(steps) < 4:
         raise ValueError("这类规律题的互动图示需要至少 4 步，才能逐步展示规律和结论")
     return {"title": _text(raw.get("title"), 40) or "分步讲解", "steps": steps, "answer": answer,
             "problem": _text(raw.get("problem"), 600),        # the example's own question, without its answer (pupils' task)
@@ -403,7 +416,9 @@ def generation_prompt(subject: str, lesson: dict[str, Any]) -> str:
                       'firstWeekday：0=周日，6=周六；中心不能在周末。按题意确定中心和总和；此图为关系示意，不代表真实年月。'
                       '必须讲4步以上：定位中心、看左右差1、看上下差7、列五数和/代入。'
                       '方桌拼接人数规律题必须用 {"type":"seating_pattern","sampleCounts":[8,12,16]}，方桌每排相连，1张8人、每加1张增加4人；图中展示对应桌数的俯视图和外圈座位点，不要只给数表。'
-                      '黑白棋子按层交替排成三角形、黑比白多 m 颗时必须用 {"type":"alternating_triangle","rows":6,"differenceSymbol":"m"}；首层白色，偶数层黑色，画 4/6/8 个示意层，逐层显现，最后突出每两层黑比白多1颗、总层数为2m；不能用静态颜色表代替。')
+                      '黑白棋子按层交替排成三角形、黑比白多 m 颗时必须用 {"type":"alternating_triangle","rows":6,"differenceSymbol":"m"}；首层白色，偶数层黑色，画 4/6/8 个示意层，逐层显现，最后突出每两层黑比白多1颗、总层数为2m；不能用静态颜色表代替。'
+                      '同向环形跑道追及题必须用 {"type":"running_track","fastSpeed":180,"slowSpeed":140,"distanceSymbol":"s"}；画环形跑道、两个不同颜色的跑者和方向箭头，逐步展示每分钟相差的路程，最后说明追一圈需要 s/(快者速度-慢者速度) 分钟；原题图只能折叠作对照，不能代替互动示意图。'
+                      '所有步骤预览打开后默认显示第1步及对应图示状态；不得把每一步都留作“点下一步显示”的空占位。对长方形周长/面积题用标注边长的图形，并逐步突出对应边、周长路径或面积区域。')
     text = (f"你是小学{subject}教师，为大屏上的一页例题选择一个互动课件模板并填写参数。只输出 JSON，不要 HTML、代码或 Markdown。\n"
             f"课题：{lesson['title']}\n教学目标：{lesson['coreTarget']}\n"
             "这一页的内容（课件必须演示这一页本身，图形、数据、问题与之一致，不能另换一道题）：\n" + lesson.get("pageText", "")[:1500] + "\n"
@@ -412,5 +427,6 @@ def generation_prompt(subject: str, lesson: dict[str, Any]) -> str:
         text += "\n本课原文：\n" + lesson["sourceText"][:6000]
     text += "\n图示必须表达题目本身的数量关系；原卷图片只作对照，不要用它代替课件图示。\n"
     return text
+
 
 
