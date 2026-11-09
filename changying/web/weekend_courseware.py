@@ -286,6 +286,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             return "seating_pattern"
         if "黑白棋子" in text and "三角形" in text:
             return "alternating_triangle"
+        if "跑道" in text and ("追上" in text or "超过" in text or "多跑一圈" in text):
+            return "running_track"
         return ""
 
     def lesson_grade(db: Any, lesson: Any) -> int:
@@ -470,7 +472,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             raise HTTPException(400, str(e))
         required_figure = required_visual_type(item.get("pageText") or "")
         if required_figure and (params.get("figure") or {}).get("type") != required_figure:
-            labels = {"calendar_cross": "月历十字框", "seating_pattern": "方桌人数规律", "alternating_triangle": "黑白棋子三角形"}
+            labels = {"calendar_cross": "月历十字框", "seating_pattern": "方桌人数规律", "alternating_triangle": "黑白棋子三角形", "running_track": "环形跑道追及"}
             raise HTTPException(400, "请先补全本题的" + labels.get(required_figure, "专用") + "课件图示，再审核")
         template_id = item.get("templateId")
         if item.get("writtenTask"):
@@ -600,6 +602,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
 
 __all__ = ["courseware_for_session", "install_weekend_courseware", "items_of", "register_courseware_table",
            "register_courseware_template_table", "stage_pages"]
+
 
 
 
