@@ -792,6 +792,49 @@ _login_rate_limiter=BoundedLoginRateLimiter(
     max_keys=LOGIN_RATE_MAX_CLIENTS,
 )
 
+PERSONAL_SIGNUP_ENABLED=(os.getenv("PERSONAL_SIGNUP","1").strip().lower() not in ("0","false","off","no"))
+SIGNUP_HOUR_MAX=max(1,min(int(os.getenv("SIGNUP_HOUR_MAX","5") or 5),100))
+SIGNUP_DAY_MAX=max(1,min(int(os.getenv("SIGNUP_DAY_MAX","20") or 20),500))
+_signup_hour_limiter=BoundedLoginRateLimiter(window_seconds=3600,max_attempts=SIGNUP_HOUR_MAX,max_keys=4096)
+_signup_day_limiter=BoundedLoginRateLimiter(window_seconds=86400,max_attempts=SIGNUP_DAY_MAX,max_keys=4096)
+SIGNUP_CHALLENGE_TTL_SECONDS=600
+SIGNUP_CHALLENGE_MAX_KEYS=4096
+_signup_challenges={}
+
+def _signup_challenge_new():
+    """A tiny arithmetic gate: enough to stop scripted bulk signups, no third-party service."""
+    now=datetime.utcnow()
+    for key,value in list(_signup_challenges.items()):
+        if (now-value["created"]).total_seconds()>SIGNUP_CHALLENGE_TTL_SECONDS:_signup_challenges.pop(key,None)
+    if len(_signup_challenges)>=SIGNUP_CHALLENGE_MAX_KEYS:
+        oldest=sorted(_signup_challenges.items(),key=lambda item:item[1]["created"])[:len(_signup_challenges)-SIGNUP_CHALLENGE_MAX_KEYS+1]
+        for key,_value in oldest:_signup_challenges.pop(key,None)
+    left=secrets.randbelow(8)+1;right=secrets.randbelow(8)+1
+    challenge_id=secrets.token_hex(12)
+    _signup_challenges[challenge_id]={"answer":left+right,"created":now}
+    return {"challengeId":challenge_id,"question":f"{left} + {right} = ?"}
+
+def _signup_challenge_check(challenge_id,answer):
+    row=_signup_challenges.pop(str(challenge_id or "").strip(),None)
+    if not row:raise HTTPException(400,"验证题已过期，请刷新后重试")
+    if (datetime.utcnow()-row["created"]).total_seconds()>SIGNUP_CHALLENGE_TTL_SECONDS:
+        raise HTTPException(400,"验证题已过期，请刷新后重试")
+    try:given=int(str(answer or "").strip())
+    except Exception:raise HTTPException(400,"请填写验证题的答案")
+    if given!=row["answer"]:raise HTTPException(400,"验证题答案不正确")
+
+def _signup_require_enabled():
+    if not PERSONAL_SIGNUP_ENABLED:raise HTTPException(404,"Not Found")
+
+def _signup_rate_check(request:Request):
+    key=_client_ip(request)
+    try:
+        _signup_hour_limiter.check(key);_signup_day_limiter.check(key)
+    except LoginRateLimitExceeded:
+        raise HTTPException(429,"注册过于频繁，请稍后再试")
+    _signup_hour_limiter.failure(key);_signup_day_limiter.failure(key)
+    return key
+
 def _client_ip(request:Request):
     return trusted_client_ip(
         request.headers,
@@ -4369,6 +4412,98 @@ def operator_school_quota(school_id:int,b:OperatorQuotaUpdateBody,_ok:bool=Depen
     commercial_operation(db,school_id,"quota_update",before,after,row.note)
     db.commit()
     return operator_school_payload(db,school_id)
+
+class PersonalSignupBody(BaseModel):
+    name:str=""
+    username:str=""
+    password:str=""
+    workspace_name:str=""
+    contact:str=""
+    challenge_id:str=""
+    challenge_answer:str=""
+
+SIGNUP_USERNAME_PATTERN=re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,39}$")
+
+@app.get("/signup/challenge")
+def personal_signup_challenge():
+    _signup_require_enabled();return _signup_challenge_new()
+
+@app.post("/signup")
+def personal_signup(b:PersonalSignupBody,request:Request,db:Session=Depends(get_db)):
+    _signup_require_enabled();_signup_rate_check(request);_signup_challenge_check(b.challenge_id,b.challenge_answer)
+    name=(b.name or "").strip();username=(b.username or "").strip();password=b.password or ""
+    workspace=(b.workspace_name or "").strip() or (name+"的工作室" if name else "")
+    contact=(b.contact or "").strip()[:200]
+    if not name:raise HTTPException(400,"请填写你的姓名")
+    if len(name)>50:raise HTTPException(400,"姓名过长")
+    if not SIGNUP_USERNAME_PATTERN.match(username):raise HTTPException(400,"账号需为 3-40 位字母、数字、点、下划线或短横线，并以字母或数字开头")
+    if not password_ok(password):raise HTTPException(400,"密码至少8位，并同时包含字母和数字")
+    if not workspace or len(workspace)>120:raise HTTPException(400,"请填写工作室名称（不超过 120 字）")
+    if db.scalar(select(User).where(User.username==username)):raise HTTPException(400,"这个账号已被使用，请换一个")
+    if db.scalar(select(School).where(School.name==workspace)):raise HTTPException(400,"这个工作室名称已被使用，请换一个")
+    school_code=username.lower()[:32]
+    if db.scalar(select(School).where(School.code==school_code)):
+        school_code=f"{school_code[:26]}-{secrets.token_hex(2)}"
+    body=OperatorSchoolCreateBody(school_name=workspace,school_code=school_code,admin_name=name,admin_username=username,admin_password=password,individual=True,plan_code="free",status="active",contact_name=name,contact_value=contact,source="signup",note="个人免费版自助注册")
+    created=operator_create_school(body,True,db)
+    return {"ok":True,"username":created["temporaryCredential"]["username"],"workspaceName":workspace,"loginURL":"/v1","next":"用账号登录后先改密码，再添加学生、填写 AI Key"}
+
+SIGNUP_HTML = """<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>免费注册 · 长缨辅学</title>
+<style>
+:root{--ink:#1f2738;--muted:#778095;--line:#e5e8f0;--brand:#a8101c}
+*{box-sizing:border-box}body{margin:0;background:#f4f6fb;color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+main{max-width:520px;margin:0 auto;padding:28px 16px 60px}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px}
+h1{font-size:24px;margin:0 0 6px}p.sub{color:var(--muted);margin:0 0 18px;font-size:14px}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
+input{width:100%;padding:12px;border:1px solid #dfe3ee;border-radius:12px;font-size:16px}
+button{width:100%;margin-top:18px;padding:14px;border:0;border-radius:12px;background:var(--brand);color:#fff;font-size:17px;font-weight:700}
+button:disabled{opacity:.6}.note{margin-top:14px;font-size:13px;color:var(--muted)}
+.err{background:#fdecea;color:#bb3145;border-radius:12px;padding:10px 12px;font-size:14px;margin-bottom:12px}
+.ok{background:#e9f9f1;color:#0b8f5a;border-radius:12px;padding:12px;font-size:15px;margin-bottom:12px}
+code{background:#f4f6fb;border-radius:6px;padding:2px 6px}
+</style></head><body><main>
+<div class="card">
+<h1>免费注册个人工作台</h1>
+<p class="sub">给一个人带班的老师用。永久免费，AI 由你自己填 Key。</p>
+<div id="msg"></div>
+<form id="f">
+<label>你的姓名</label><input name="name" maxlength="50" required>
+<label>登录账号</label><input name="username" maxlength="40" required placeholder="3-40 位字母或数字">
+<label>密码</label><input name="password" type="password" required placeholder="至少 8 位，含字母和数字">
+<label>工作室名称</label><input name="workspace_name" maxlength="120" required placeholder="例如：李老师数学工作室">
+<label>手机或邮箱（选填，方便找回）</label><input name="contact" maxlength="200">
+<label>验证题：<span id="q">加载中…</span></label><input name="challenge_answer" inputmode="numeric" required>
+<button type="submit" id="go">创建我的工作台</button>
+</form>
+<div class="note">注册后：先改密码 → 添加学生 → 在「AI 设置」填自己的 Key → 上一节课。</div>
+</div></main>
+<script>
+(function(){
+  var cid="",msg=document.getElementById("msg"),q=document.getElementById("q");
+  function show(cls,html){msg.innerHTML="<div class=\""+cls+"\">"+html+"</div>"}
+  function loadChallenge(){fetch("/signup/challenge").then(function(r){return r.json()}).then(function(d){cid=d.challengeId;q.textContent=d.question}).catch(function(){q.textContent="加载失败，请刷新"})}
+  loadChallenge();
+  document.getElementById("f").onsubmit=function(e){
+    e.preventDefault();var btn=document.getElementById("go");btn.disabled=true;show("ok","正在创建…");
+    var data=Object.fromEntries(new FormData(e.target));data.challenge_id=cid;
+    fetch("/signup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)})
+      .then(function(r){return r.json().then(function(j){return {s:r.status,j:j}})})
+      .then(function(x){
+        if(x.s===200){show("ok","工作台已创建。账号：<code>"+x.j.username+"</code>，工作室："+x.j.workspaceName+"。请<a href=\"/v1\">去登录</a>，登录后先改密码。")}
+        else{show("err",(x.j&&x.j.detail)||"注册失败，请重试");btn.disabled=false;loadChallenge()}
+      })
+      .catch(function(){show("err","网络异常，请重试");btn.disabled=false});
+  };
+})();
+</script></body></html>"""
+
+@app.get("/signup",include_in_schema=False)
+def personal_signup_page():
+    _signup_require_enabled();return HTMLResponse(SIGNUP_HTML)
 
 @app.post("/operator/schools/create")
 def operator_create_school(b:OperatorSchoolCreateBody,_ok:bool=Depends(commercial_operator),db:Session=Depends(get_db)):
