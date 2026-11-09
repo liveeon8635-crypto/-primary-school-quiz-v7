@@ -278,6 +278,16 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             raise HTTPException(400, "这个环节有分页，请选择课件对应的页（例题）")
         return page
 
+    def required_visual_type(page_text: Any) -> str:
+        text = str(page_text or "")
+        if "月历" in text and "十" in text and "框" in text:
+            return "calendar_cross"
+        if "方桌" in text and ("可坐" in text or "座位" in text):
+            return "seating_pattern"
+        if "黑白棋子" in text and "三角形" in text:
+            return "alternating_triangle"
+        return ""
+
     def lesson_grade(db: Any, lesson: Any) -> int:
         """The school's current grade, kept on the template so a listing can be filtered later."""
         Program = getattr(implementation, "TeachingProgram", None)
@@ -380,9 +390,9 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             kind = str(data.get("template") or "") if isinstance(data, dict) else ""
             if kind not in cw.TEMPLATES[lesson.subject] or (kind == "reading" and not (lesson.reading_plan or "").strip()):
                 raise ValueError("没有选择可用的模板")
-            calendar_cross_page = bool(page_text and "月历" in page_text and "十" in page_text and "框" in page_text)
-            if calendar_cross_page and isinstance(data, dict) and (data.get("figure") or {}).get("type") != "calendar_cross":
-                # This question requires a calendar relationship diagram; do not accept a generic table/image as a substitute.
+            required_figure = required_visual_type(page_text)
+            if required_figure and isinstance(data, dict) and (data.get("figure") or {}).get("type") != required_figure:
+                # These questions need a domain-specific, step-linked diagram; a generic table or scan is not a substitute.
                 data["figure"] = {}
             if lesson.subject == '数学' and kind != 'steps':
                 raise ValueError('自动生成未能保留可核对的题图，请重试或手动填写')
@@ -458,6 +468,10 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             params = cw.clean(item["kind"], item["params"], lesson.reading_plan or "")
         except ValueError as e:
             raise HTTPException(400, str(e))
+        required_figure = required_visual_type(item.get("pageText") or "")
+        if required_figure and (params.get("figure") or {}).get("type") != required_figure:
+            labels = {"calendar_cross": "月历十字框", "seating_pattern": "方桌人数规律", "alternating_triangle": "黑白棋子三角形"}
+            raise HTTPException(400, "请先补全本题的" + labels.get(required_figure, "专用") + "课件图示，再审核")
         template_id = item.get("templateId")
         if item.get("writtenTask"):
             try:
