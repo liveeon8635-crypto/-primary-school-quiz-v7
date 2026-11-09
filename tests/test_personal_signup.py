@@ -9,6 +9,7 @@ operator path — one account, one student list, free forever.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import uuid
 from pathlib import Path
@@ -86,6 +87,24 @@ def _login(client, username, password=PASSWORD):
         assert client.post("/change-password", json={"current_password": password, "new_password": CHANGED}, headers=h).status_code == 200
         data = client.post("/login", json={"username": username, "password": CHANGED}).json()
     return {"Authorization": "Bearer " + data["token"]}, data
+
+
+def _inline_script(html):
+    match = re.search(r"<script>([\s\S]*?)</script>", html)
+    assert match, "signup page must ship one inline script"
+    return match.group(1)
+
+
+def test_signup_inline_script_is_valid_and_quote_safe(client):
+    """The page once shipped a script broken by unescaped quotes, so every field
+    showed 加载中… forever. Parse it for real when node is available."""
+    import script_check
+
+    script = _inline_script(client.get("/signup").text)
+    assert 'innerHTML' not in script, "build messages with textContent, not innerHTML"
+    assert '""+' not in script, "unescaped quotes would break the whole script"
+    assert "msgText" in script
+    script_check.assert_parses(script)
 
 
 def test_signup_page_and_challenge_are_public(client):
