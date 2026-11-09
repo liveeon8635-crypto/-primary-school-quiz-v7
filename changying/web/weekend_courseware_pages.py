@@ -55,6 +55,7 @@ function cwFigureText(f){
   if(f.type==='segment')return '线段上的点：'+f.points.map(function(q){return q.name}).join(' — ')+(f.marks.length?'；'+f.marks.map(function(m){return m.from+m.to+'＝'+m.label}).join('，'):'');
   if(f.type==='flow')return '程序：'+f.boxes.join(' → ')+(f.branches.length?'；'+f.branches.map(function(b){return b.when+'：'+b.boxes.join(' → ')}).join('；'):'');
   if(f.type==='shape')return CW_SHAPES[f.shape]+'：'+Object.keys(f.labels).map(function(k){return f.labels[k]}).join('，');
+  if(f.type==='calendar_cross')return '\u6708\u5386\u5341\u5b57\u6846\uff1a\u4e2d\u5fc3 '+f.center+'\uff0c\u4e94\u6570\u548c '+f.total;
   return f.rows.map(function(r){return r.join(' | ')}).join('\n');
 }
 function cwFigureOk(f){
@@ -62,9 +63,26 @@ function cwFigureOk(f){
   if(f.type==='segment'){var at=(f.points||[]).map(function(q){return q.at});return at.length>=2&&at.every(function(a){return isFinite(a)})&&Math.max.apply(null,at)>Math.min.apply(null,at)}
   if(f.type==='flow')return (f.boxes||[]).length>0||(f.branches||[]).length>0;
   if(f.type==='shape')return !!CW_SHAPES[f.shape];
+  if(f.type==='calendar_cross')return isFinite(f.center)&&isFinite(f.daysInMonth)&&isFinite(f.firstWeekday)&&isFinite(f.total)&&f.center===f.total/5;
   return (f.rows||[]).length>0;
 }
-function cwFigure(wrap,f,big){
+function cwCalendarCross(box,f,view,big,teacher){
+  var step=teacher&&!view.previewMode?4:(view.step||0),wrap=el('div',{style:'max-width:560px;margin:8px auto;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#fff'});
+  box.appendChild(wrap);wrap.appendChild(el('div',{style:'text-align:center;font-weight:700;margin-bottom:8px',text:'\u6708\u5386\u793a\u610f\uff1a\u5de6\u53f3\u76f8\u5dee 1\uff0c\u4e0a\u4e0b\u76f8\u5dee 7'}));
+  var grid=el('div',{style:'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px'}),names=['\u65e5','\u4e00','\u4e8c','\u4e09','\u56db','\u4e94','\u516d'];
+  names.forEach(function(n){grid.appendChild(el('div',{style:'text-align:center;color:#667085;font-size:12px;padding:4px 0',text:n}))});
+  var count=f.firstWeekday+f.daysInMonth;for(var i=0;i<Math.ceil(count/7)*7;i++){
+    var day=i-f.firstWeekday+1;if(day<1||day>f.daysInMonth){grid.appendChild(el('div',{style:'aspect-ratio:1'}));continue}
+    var diff=day-f.center,active=day===f.center||(step>=1&&Math.abs(diff)===1)||(step>=2&&Math.abs(diff)===7),center=day===f.center;
+    var label='';if(step>=3&&active)label=center?'a':diff===-7?'a-7':diff===-1?'a-1':diff===1?'a+1':'a+7';
+    var style='aspect-ratio:1;min-height:32px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-weight:700;font-size:'+(big?'2.5vh':'14px')+';background:'+(active?(center?'#f5b942':'#2364e8'):'#f2f4f7')+';color:'+(active?(center?'#412b00':'#fff'):'#475467')+';border:'+(active?'2px solid '+(center?'#d49413':'#2364e8'):'2px solid transparent');
+    grid.appendChild(el('div',{style:style},el('span',{text:String(day)}),label?el('small',{style:'font-size:10px;line-height:1.1',text:label}):null));
+  }
+  wrap.appendChild(grid);
+  if(step>=3)wrap.appendChild(el('div',{style:'margin-top:12px;text-align:center;font-weight:700;color:#17449b;font-size:'+(big?'2.4vh':'16px'),text:'\u4e94\u6570\u548c = (a-7)+(a-1)+a+(a+1)+(a+7) = 5a'}));
+  if(view.showAnswer||teacher){var a=f.total/5;wrap.appendChild(el('div',{style:'margin-top:8px;text-align:center;color:#b42318;font-weight:700',text:'5a='+f.total+'\uff0ca='+a+'\uff1b\u6700\u5c0f\u6570 '+(a-7)+'\uff0c\u6700\u5927\u6570 '+(a+7)}))}
+}
+function cwFigure(wrap,f,big,view,teacher){
   if(!f||!f.type)return;
   var box=el('div',{style:'margin:8px 0'});wrap.appendChild(box);
   if(!cwFigureOk(f)){box.appendChild(el('div',{class:'notice warn',text:'图示还没填完整'}));return}
@@ -72,6 +90,7 @@ function cwFigure(wrap,f,big){
     box.appendChild(el('img',{src:f.data_url,alt:f.alt||'原卷插图',style:'display:block;max-width:100%;max-height:'+(big?'40vh':'300px')+';object-fit:contain;margin:0 auto;border:1px solid #e5e8f0;border-radius:8px'}));
     return;
   }
+  if(f.type==='calendar_cross'){cwCalendarCross(box,f,view||{},big,teacher);return}
   f={type:f.type,points:(f.points||[]).slice().sort(function(a,b){return a.at-b.at}),marks:(f.marks||[]).filter(function(m){return m.from&&m.to}),
     boxes:f.boxes||[],branches:f.branches||[],shape:f.shape,labels:f.labels||{},rows:f.rows||[]};
   if(f.type==='table'){
@@ -116,8 +135,9 @@ function cwSteps(box,p,view,big,teacher){
   var wrap=el('div',{style:'background:#fff;color:#111;border-radius:12px;padding:12px;line-height:1.8;'+(big?'font-size:2.8vh':'')});box.appendChild(wrap);
   wrap.appendChild(el('b',{text:p.title}));
   if(p.sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:p.sourceProblem}));
-  cwFigure(wrap,p.figure,big);
-  var shown=teacher?p.steps.length:(view.step||0),list=el('ol');
+  cwFigure(wrap,p.figure,big,view,teacher);
+  if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
+  var shown=teacher?(view.previewMode?(view.step||0):p.steps.length):(view.step||0),list=el('ol');
   p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?'':'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
   wrap.appendChild(list);
   if(view.showAnswer||teacher)wrap.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
@@ -280,7 +300,7 @@ function cwPlan(box,lessonId,refresh){
     next();
   }
   function edit(box2,x,it){
-    box2.textContent='';var card=el('div',{class:'card'}),fields={},kinds=data.templates,kind=it?it.kind:kinds[kinds.length-1],p=JSON.parse(JSON.stringify(it?it.params:{})),preview=el('div',{class:'card',style:'position:sticky;top:76px;z-index:4;max-height:76vh;overflow:auto;box-shadow:0 8px 24px #10182822'});
+    box2.textContent='';var card=el('div',{class:'card'}),fields={},kinds=data.templates,kind=it?it.kind:kinds[kinds.length-1],p=JSON.parse(JSON.stringify(it?it.params:{})),previewState={step:0,previewMode:true},preview=el('div',{class:'card',style:'position:sticky;top:76px;z-index:4;max-height:76vh;overflow:auto;box-shadow:0 8px 24px #10182822'});
     card.appendChild(el('h3',{text:(x.page==null?'整个环节':'第'+(x.page+1)+'页')+' 的课件'}));
     card.appendChild(el('p',{class:'muted',style:'white-space:pre-wrap',text:'这一页的内容：'+x.text}));
     var kindSel=el('select');kinds.forEach(function(k){kindSel.appendChild(el('option',{value:k,text:data.kindLabels[k]}))});kindSel.value=kind;
@@ -306,8 +326,8 @@ function cwPlan(box,lessonId,refresh){
       }else if(kind==='steps'){
         field('problem','题目原文（不含答案，生成学生作答题时使用）',area(p.problem));
         field('steps','讲解步骤（每行一步，2—6 步）',area((p.steps||[]).join('\n')));field('answer','答案',input(p.answer));
-        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
-        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure={type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
+        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
+        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
         if(f.type==='segment'){
           field('figA','线段上的点（名称:位置，分号隔开，如 A:0; C:3; B:6; D:10）',input((f.points||[]).map(function(q){return q.name+':'+q.at}).join('; ')));
           field('figB','标注（如 A-D:L; A-B:x，可留空）',input((f.marks||[]).map(function(m){return m.from+'-'+m.to+':'+m.label}).join('; ')));
@@ -318,6 +338,9 @@ function cwPlan(box,lessonId,refresh){
           field('figShape','图形',sel([['rectangle','长方形'],['square','正方形'],['triangle','三角形'],['parallelogram','平行四边形'],['trapezoid','梯形']],f.shape||'rectangle'));
           var names={top:'上',bottom:'下',left:'左',right:'右',height:'高'};
           field('figA','边上的标注（如 上:a cm; 左:b cm; 高:h，可用 上 下 左 右 高）',input(Object.keys(f.labels||{}).map(function(k){return names[k]+':'+f.labels[k]}).join('; ')));
+        }else if(f.type==='calendar_cross'){
+          field('figCenter','\u5341\u5b57\u6846\u4e2d\u5fc3\u65e5\u671f',input(f.center||18));field('figDays','\u672c\u6708\u5929\u6570\uff0828\u201431\uff09',input(f.daysInMonth||31));
+          field('figWeekday','\u672c\u67081\u65e5\u661f\u671f\u51e0\uff080\u5468\u65e5\u20146\u5468\u516d\uff09',input(f.firstWeekday==null?0:f.firstWeekday));field('figTotal','\u4e94\u4e2a\u6570\u7684\u603b\u548c',input(f.total||90));
         }else if(f.type==='table'){
           field('figA','数表（每行一行，格子用 | 隔开）',area((f.rows||[]).map(function(r){return r.join(' | ')}).join('\n')));
         }
@@ -333,6 +356,7 @@ function cwPlan(box,lessonId,refresh){
     function parts(v,sep){return String(v||'').split(sep).map(function(x){return x.trim()}).filter(Boolean)}
     function figure(){
       var t=fields.figType?fields.figType.value:'';if(!t)return {};if(t==='uploaded_image')return p.figure||{};
+      if(t==='calendar_cross')return {type:t,center:Number(fields.figCenter.value),daysInMonth:Number(fields.figDays.value),firstWeekday:Number(fields.figWeekday.value),total:Number(fields.figTotal.value)};
       if(!fields.figA)return {type:t,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};
       if(t==='segment')return {type:t,points:parts(fields.figA.value,/[;；]/).map(function(x){var k=x.split(/[:：]/);return {name:(k[0]||'').trim(),at:Number((k[1]||'').trim())}}),
         marks:parts(fields.figB.value,/[;；]/).map(function(x){var k=x.split(/[:：]/),ab=(k[0]||'').split(/[-－—]/);return {from:(ab[0]||'').trim(),to:(ab[1]||'').trim(),label:(k.slice(1).join(':')||'').trim()}})};
@@ -347,7 +371,7 @@ function cwPlan(box,lessonId,refresh){
       var v={title:fields.title.value,question:fields.question.value,reference:fields.reference.value};
       if(kind==='rotation'){v.width=+fields.width.value;v.height=+fields.height.value;v.shape=fields.shape.value.split(/[;；]/).filter(function(x){return x.trim()}).map(pt);v.center=pt(fields.center.value);v.direction=fields.direction.value;v.angle=+fields.angle.value;v.steps=lines(fields.steps)}
       else if(kind==='clock'){v.start=+fields.start.value;v.direction=fields.direction.value;v.angle=+fields.angle.value;v.steps=lines(fields.steps)}
-      else if(kind==='steps'){v.problem=fields.problem.value;v.sourceProblem=p.sourceProblem||'';v.steps=lines(fields.steps);v.answer=fields.answer.value;v.figure=figure()}
+      else if(kind==='steps'){v.problem=fields.problem.value;v.sourceProblem=p.sourceProblem||'';v.steps=lines(fields.steps);v.answer=fields.answer.value;v.figure=figure();v.sourceFigure=p.sourceFigure||{}}
       else{v.passage=fields.passage.value;v.sentences=cwSplit(v.passage);v.material=fields.material.value;v.writingPrompt=fields.writingPrompt.value;p.evidence=(p.evidence||[]).filter(function(i){return i<v.sentences.length});v.evidence=p.evidence}
       return v;
     }
@@ -356,7 +380,16 @@ function cwPlan(box,lessonId,refresh){
       if(kind==='rotation'){if(!(v.shape.length>=3&&v.center.length===2&&v.shape.every(function(q){return q.length===2&&isFinite(q[0])&&isFinite(q[1])}))){view.appendChild(el('div',{class:'notice warn',text:'坐标格式不完整'}));return}
         v.rotated=v.shape.map(function(q){return cwRotate(q,v.center,v.direction,v.angle)});cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,showCenter:true,step:v.steps.length},false,true)}
       else if(kind==='clock'){var t=v.angle/30*(v.direction==='cw'?1:-1);v.end=((v.start-1+t)%12+12)%12+1;cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,step:v.steps.length},false,true)}
-      else if(kind==='steps')cwRender(view,{kind:kind,params:v},{},false,true);
+      else if(kind==='steps'){
+        previewState.step=Math.min(previewState.step,v.steps.length);
+        if(v.figure&&v.figure.type==='calendar_cross'){
+          var nav=el('div',{class:'row',style:'margin:8px 0'});
+          nav.appendChild(el('button',{text:'\u4e0a\u4e00\u6b65',disabled:previewState.step<=0,onclick:function(){previewState.step=Math.max(0,previewState.step-1);show()}}));
+          nav.appendChild(el('button',{text:'\u4e0b\u4e00\u6b65',disabled:previewState.step>=v.steps.length,onclick:function(){previewState.step=Math.min(v.steps.length,previewState.step+1);show()}}));
+          nav.appendChild(el('span',{class:'muted',text:'\u9884\u89c8\u7b2c '+Math.min(previewState.step+1,v.steps.length)+' / '+v.steps.length+' \u6b65'}));preview.appendChild(nav);
+        }
+        cwRender(view,{kind:kind,params:v},previewState,false,true);
+      }
       else cwRender(view,{kind:kind,params:v},{showMaterial:true,showPrompt:true},false,true,function(i){var k=p.evidence.indexOf(i);if(k>=0)p.evidence.splice(k,1);else p.evidence.push(i);show()});
     }
     kindSel.onchange=build;build();
@@ -369,4 +402,5 @@ function cwPlan(box,lessonId,refresh){
   load();
 }
 """
+
 
