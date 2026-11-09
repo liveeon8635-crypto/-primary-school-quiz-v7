@@ -4484,7 +4484,6 @@ code{background:#f4f6fb;border-radius:6px;padding:2px 6px;font-size:17px;font-we
 <button type="submit" id="go">创建我的工作台</button>
 </form>
 <div class="note">注册后：先改密码 → 添加学生 → 在「AI 设置」填自己的 Key → 上一节课。</div>
-<div class="note">已经有账号了？<a href="/v1">用账号登录</a></div>
 </div>
 <div id="doneView" hidden>
 <h1>工作台已创建</h1>
