@@ -4439,7 +4439,7 @@ def personal_signup(b:PersonalSignupBody,request:Request,db:Session=Depends(get_
     if not SIGNUP_USERNAME_PATTERN.match(username):raise HTTPException(400,"账号需为 3-40 位字母、数字、点、下划线或短横线，并以字母或数字开头")
     if not password_ok(password):raise HTTPException(400,"密码至少8位，并同时包含字母和数字")
     if not workspace or len(workspace)>120:raise HTTPException(400,"请填写工作室名称（不超过 120 字）")
-    if db.scalar(select(User).where(User.username==username)):raise HTTPException(400,"这个账号已被使用，请换一个")
+    if db.scalar(select(User).where(User.username==username)):raise HTTPException(400,"这个账号已被使用；如果这是你自己注册的，请直接用该账号登录")
     if db.scalar(select(School).where(School.name==workspace)):raise HTTPException(400,"这个工作室名称已被使用，请换一个")
     school_code=username.lower()[:32]
     if db.scalar(select(School).where(School.code==school_code)):
@@ -4472,6 +4472,7 @@ code{background:#f4f6fb;border-radius:6px;padding:2px 6px;font-size:17px;font-we
 <div id="formView">
 <h1>免费注册个人工作台</h1>
 <p class="sub">给一个人带班的老师用。永久免费，AI 由你自己填 Key。</p>
+<p class="sub">已经有工作台了？<a href="/v1">去登录</a></p>
 <div id="msg" class="err" hidden><span id="msgText"></span></div>
 <form id="f">
 <label>你的姓名</label><input name="name" maxlength="50" required>
@@ -4483,6 +4484,7 @@ code{background:#f4f6fb;border-radius:6px;padding:2px 6px;font-size:17px;font-we
 <button type="submit" id="go">创建我的工作台</button>
 </form>
 <div class="note">注册后：先改密码 → 添加学生 → 在「AI 设置」填自己的 Key → 上一节课。</div>
+<div class="note">已经有账号了？<a href="/v1">用账号登录</a></div>
 </div>
 <div id="doneView" hidden>
 <h1>工作台已创建</h1>
