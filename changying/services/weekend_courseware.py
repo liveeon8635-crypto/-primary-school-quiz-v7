@@ -232,6 +232,26 @@ def clean_figure(raw: Any) -> dict[str, Any]:
         if len(rows) < 2 or len({len(r) for r in rows}) != 1 or len(rows[0]) < 2:
             raise ValueError("表格需要至少 2 行、2 列，并且每行格数相同")
         return {"type": "table", "rows": rows}
+    if kind == "calendar_cross":
+        try:
+            center = _int(raw.get("center"))
+            days = _int(raw.get("daysInMonth", 31))
+            first_weekday = _int(raw.get("firstWeekday", 0))
+            total = _int(raw.get("total"))
+        except ValueError:
+            raise ValueError("月历十字框参数必须是整数")
+        if not 28 <= days <= 31 or not 0 <= first_weekday <= 6:
+            raise ValueError("月历天数需为 28—31，首日星期需为 0—6")
+        if total <= 0 or total % 5:
+            raise ValueError("五数和必须是大于零且能被 5 整除的数")
+        if center != total // 5:
+            raise ValueError("五数和必须是中心数的 5 倍，请核对题目数据")
+        if not 8 <= center <= days - 7:
+            raise ValueError("十字框中心日期必须有完整的上一周、下一周和相邻日期")
+        if (first_weekday + center - 1) % 7 in (0, 6):
+            raise ValueError("十字框中心不能位于星期日或星期六")
+        return {"type": "calendar_cross", "center": center, "daysInMonth": days,
+                "firstWeekday": first_weekday, "total": total}
     raise ValueError("图示只能是线段图、程序图、图形或表格")
 
 
@@ -244,9 +264,12 @@ def clean_steps(raw: Any) -> dict[str, Any]:
     answer = _text(raw.get("answer"), 200)
     if not answer:
         raise ValueError("请填写例题答案")
+    figure = clean_figure(raw.get("figure"))
+    if figure.get("type") == "calendar_cross" and len(steps) < 4:
+        raise ValueError("月历十字框可视化需要至少 4 步，保证图形能跟上讲解")
     return {"title": _text(raw.get("title"), 40) or "分步讲解", "steps": steps, "answer": answer,
             "problem": _text(raw.get("problem"), 600),        # the example's own question, without its answer (pupils' task)
-            "figure": clean_figure(raw.get("figure")),
+            "figure": figure, "sourceFigure": clean_figure(raw.get("sourceFigure")),
             "question": _text(raw.get("question"), 200) or "写出解题过程和答案。", "reference": _text(raw.get("reference"), 1000)}
 
 
@@ -356,11 +379,16 @@ def generation_prompt(subject: str, lesson: dict[str, Any]) -> str:
                  '图形 {"type":"shape","shape":"rectangle|square|triangle|parallelogram|trapezoid","labels":{"top":"a cm","left":"b cm","height":""}}；'
                  '数表 {"type":"table","rows":[["n","1","2","3"],["结果","6","8","10"]]}。没有这类条件时 figure 写 {}。',
     }
+    spec["steps"] += ('月历十字框 {"type":"calendar_cross","center":18,"daysInMonth":31,"firstWeekday":0,"total":90}。'
+                      'firstWeekday：0=周日，6=周六；中心不能在周末。按题意确定中心和总和；此图为关系示意，不代表真实年月。'
+                      '必须讲4步以上：定位中心、看左右差1、看上下差7、列五数和/代入。')
     text = (f"你是小学{subject}教师，为大屏上的一页例题选择一个互动课件模板并填写参数。只输出 JSON，不要 HTML、代码或 Markdown。\n"
             f"课题：{lesson['title']}\n教学目标：{lesson['coreTarget']}\n"
             "这一页的内容（课件必须演示这一页本身，图形、数据、问题与之一致，不能另换一道题）：\n" + lesson.get("pageText", "")[:1500] + "\n"
             "可选模板（优先选最贴合的专用模板；都不贴合时选 steps）：\n" + "\n".join(f"- {spec[k]}" for k in kinds))
     if "reading" in kinds:
         text += "\n本课原文：\n" + lesson["sourceText"][:6000]
+    text += "\n图示必须表达题目本身的数量关系；原卷图片只作对照，不要用它代替课件图示。\n"
     return text
+
 

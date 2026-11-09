@@ -373,13 +373,17 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             literal_page = bool(page_text and any(page_text in q for q in literal_numbered_questions(lesson.reading_plan or '')))
             prompt = cw.generation_prompt(lesson.subject, info)
             if lesson.subject == '数学':
-                prompt += '\n请使用 steps 模板，图示由系统核对原卷图片，不要自行绘图。'
+                prompt += '\n\u8bf7\u4f7f\u7528 steps \u6a21\u677f\u3002\u539f\u5377\u56fe\u7247\u53ea\u4f5c\u5bf9\u7167\uff1b\u5fc5\u987b\u6309\u9898\u610f\u63d0\u4f9b\u53d7\u652f\u6301\u7684\u6570\u636e\u56fe\u793a\uff0c\u4e0d\u80fd\u7528\u539f\u56fe\u4ee3\u66ff\u8bb2\u89e3\u56fe\u3002\u4e0d\u786e\u5b9a\u65f6\u7559\u7a7a。'
             if literal_page:
-                prompt += '\n本页必须选择 steps，题目原文由系统提供，不要另编题目或绘制图形。'
+                prompt += '\n\u672c\u9875\u5fc5\u987b\u9009\u62e9 steps\uff0c\u9898\u76ee\u539f\u6587\u7531\u7cfb\u7edf\u63d0\u4f9b\uff0c\u4e0d\u8981\u53e6\u7f16\u9898\u76ee\uff1b\u6839\u636e\u9898\u610f\u751f\u6210\u53d7\u652f\u6301\u7684\u6570\u636e\u56fe\u793a\uff0c\u4e0d\u80fd\u6539\u53d8\u539f\u9898\u6761\u4ef6。'
             data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, prompt, timeout=60))
             kind = str(data.get("template") or "") if isinstance(data, dict) else ""
             if kind not in cw.TEMPLATES[lesson.subject] or (kind == "reading" and not (lesson.reading_plan or "").strip()):
                 raise ValueError("没有选择可用的模板")
+            calendar_cross_page = bool(page_text and "月历" in page_text and "十" in page_text and "框" in page_text)
+            if calendar_cross_page and isinstance(data, dict) and (data.get("figure") or {}).get("type") != "calendar_cross":
+                # This question requires a calendar relationship diagram; do not accept a generic table/image as a substitute.
+                data["figure"] = {}
             if lesson.subject == '数学' and kind != 'steps':
                 raise ValueError('自动生成未能保留可核对的题图，请重试或手动填写')
             if literal_page:
@@ -399,13 +403,19 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 params = cw.clean(kind, {**data, "figure": {}}, lesson.reading_plan or "")
                 notice = f"AI 画的图示没有通过校验（{e}），已去掉，可在预览里手动补上"
             if original and kind == "steps":
-                # The lesson came in with its own picture: show that instead of a drawing made from the text.
-                params["figure"] = original
-                notice = "这页用的是原卷插图"
-            elif kind == "steps":
-                # No confidently linked source image: keep the lesson text and let the teacher review.
-                params = cw.clean(kind, {**data, "figure": {}}, lesson.reading_plan or "")
-                notice = "这页没有匹配到原卷插图，已留空；可在“预览/修改”里手动补"
+                # The scan is always a comparison image, never a substitute for a teaching diagram.
+                if params.get("figure") and params["figure"].get("type") != "uploaded_image":
+                    params["sourceFigure"] = original
+                    notice = "已生成课件图示；原题图片保留为对照，可在预览中展开"
+                else:
+                    params["figure"] = {}
+                    params["sourceFigure"] = original
+                    if notice:
+                        notice += "；原题图片保留为对照，可在预览中展开"
+                    else:
+                        notice = "只匹配到原题图片，尚无课件演示图；请在预览/修改中补充图示"
+            elif kind == "steps" and not params.get("figure") and not notice:
+                notice = "未生成可视化图示；课件保留为草稿，请在预览/修改中补图后再审核"
         except ValueError as e:
             raise HTTPException(502, f"第 {(page or 0) + 1} 页：AI 生成的课件未通过校验（{e}），已有课件未改动，可重试或手动填写")
         except HTTPException as e:
@@ -576,5 +586,6 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
 
 __all__ = ["courseware_for_session", "install_weekend_courseware", "items_of", "register_courseware_table",
            "register_courseware_template_table", "stage_pages"]
+
 
 
