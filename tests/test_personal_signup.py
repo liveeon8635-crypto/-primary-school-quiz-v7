@@ -94,6 +94,11 @@ def test_signup_page_and_challenge_are_public(client):
     assert "免费注册个人工作台" in page.text
     assert 'fetch("/signup/challenge")' in page.text
 
+    # Entry link lives in static shell markup, so it cannot change any inline script.
+    shell = client.get("/v1")
+    assert shell.status_code == 200
+    assert 'href="/signup"' in shell.text
+
     first = client.get("/signup/challenge").json()
     second = client.get("/signup/challenge").json()
     assert first["challengeId"] != second["challengeId"]
