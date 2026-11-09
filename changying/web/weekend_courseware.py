@@ -131,6 +131,43 @@ def items_of(row: Any) -> list[dict[str, Any]]:
     return items
 
 
+def required_visual_type(page_text: Any) -> str:
+    text = str(page_text or "")
+    if "月历" in text and "十" in text and "框" in text:
+        return "calendar_cross"
+    if "方桌" in text and ("可坐" in text or "座位" in text):
+        return "seating_pattern"
+    if "黑白棋子" in text and "三角形" in text:
+        return "alternating_triangle"
+    if "跑道" in text and ("追上" in text or "超过" in text or "多跑一圈" in text):
+        return "running_track"
+    compact = _normalize_text(text)
+    if "三角形数" in compact or re.search(r"1[,，、]3[,，、]6[,，、]10[,，、]15", text):
+        return "triangular_numbers"
+    return ""
+
+
+def required_visual_figure(page_text: Any) -> dict[str, Any]:
+    """Stable, data-only diagrams for known question types, including older approved drafts."""
+    text = str(page_text or "")
+    kind = required_visual_type(text)
+    if kind == "running_track":
+        speeds = [int(x) for x in re.findall(r"每分钟\s*跑\s*(\d+)\s*米", text)]
+        distance = re.search(r"(?:跑道)?(?:周长|长)\s*(?:为|是)?\s*([A-Za-z])\s*米", text)
+        if len(speeds) >= 2:
+            symbol = distance.group(1) if distance else "s"
+            return {"type": kind, "fastSpeed": max(speeds[:2]), "slowSpeed": min(speeds[:2]), "distanceSymbol": symbol}
+    if kind == "triangular_numbers":
+        target = re.search(r"第\s*(\d+)\s*个(?:三角形数)?", text)
+        return {"type": kind, "terms": [1, 3, 6, 10, 15], "targetTerm": int(target.group(1)) if target else 10}
+    if kind == "alternating_triangle":
+        symbol = re.search(r"黑(?:棋子)?比白(?:棋子)?多\s*([A-Za-z])", text)
+        return {"type": kind, "rows": 6, "differenceSymbol": symbol.group(1) if symbol else "m"}
+    if kind == "seating_pattern":
+        return {"type": kind, "sampleCounts": [8, 12, 16]}
+    return {}
+
+
 def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: int | None) -> tuple[dict[str, Any] | None, str]:
     """The approved courseware of the page on screen, without answers; else a note for the teacher."""
     t = register_courseware_table(implementation)
@@ -155,6 +192,10 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
     else:
         item = approved[0]
     params = item["approved"]
+    visual_text = (approved_text or pages[int(item['page'])]) if pages else (item.get('approvedPageText') or item.get('pageText') or '')
+    fallback_figure = required_visual_figure(visual_text)
+    if fallback_figure and (params.get("figure") or {}).get("type") != fallback_figure.get("type"):
+        params = {**params, "figure": fallback_figure}
     key = f"{row.id}:{stage}:{item.get('page')}"
     view = json.loads(c.live_json or "{}").get(key) or cw.clean_view(item["kind"], params, {})
     return {"id": c.id, "kind": item["kind"], "kindLabel": cw.KIND_LABEL[item["kind"]], "stageNo": stage, "page": item.get("page"),
@@ -279,16 +320,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         return page
 
     def required_visual_type(page_text: Any) -> str:
-        text = str(page_text or "")
-        if "月历" in text and "十" in text and "框" in text:
-            return "calendar_cross"
-        if "方桌" in text and ("可坐" in text or "座位" in text):
-            return "seating_pattern"
-        if "黑白棋子" in text and "三角形" in text:
-            return "alternating_triangle"
-        if "跑道" in text and ("追上" in text or "超过" in text or "多跑一圈" in text):
-            return "running_track"
-        return ""
+        return globals()["required_visual_type"](page_text)
 
     def lesson_grade(db: Any, lesson: Any) -> int:
         """The school's current grade, kept on the template so a listing can be filtered later."""
@@ -322,6 +354,16 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     def payload(db: Any, lesson: Any) -> dict[str, Any]:
         items = []
         for i in items_of(row_for(db, lesson)):
+            pages = stage_pages(lesson, int(i.get("stage") or 0))
+            page_index = i.get("page")
+            page_text = i.get("approvedPageText") or i.get("pageText") or (
+                pages[int(page_index)] if page_index is not None and 0 <= int(page_index) < len(pages) else "")
+            fallback_figure = required_visual_figure(page_text)
+            if fallback_figure:
+                for key in ("params", "approved"):
+                    current = i.get(key)
+                    if isinstance(current, dict) and (current.get("figure") or {}).get("type") != fallback_figure["type"]:
+                        i[key] = {**current, "figure": fallback_figure}
             items.append({**i, "kindLabel": cw.KIND_LABEL.get(i["kind"], i["kind"]), "writtenTaskPreview": task(i, i["params"])})
         return {"lessonId": lesson.id, "subject": lesson.subject, "templates": list(cw.TEMPLATES[lesson.subject]), "kindLabels": cw.KIND_LABEL,
                 "hasSource": bool((lesson.reading_plan or "").strip()), "items": items,
@@ -394,8 +436,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 raise ValueError("没有选择可用的模板")
             required_figure = required_visual_type(page_text)
             if required_figure and isinstance(data, dict) and (data.get("figure") or {}).get("type") != required_figure:
-                # These questions need a domain-specific, step-linked diagram; a generic table or scan is not a substitute.
-                data["figure"] = {}
+                # Known classroom visuals are generated from the question's literal givens, also repairing older model outputs.
+                data["figure"] = required_visual_figure(page_text)
             if lesson.subject == '数学' and kind != 'steps':
                 raise ValueError('自动生成未能保留可核对的题图，请重试或手动填写')
             if literal_page:
@@ -448,7 +490,11 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             raise HTTPException(400, str(e))
         page = checked_page(lesson, b.stageNo, b.page)
         pages = stage_pages(lesson, b.stageNo)
-        upsert(db, u, lesson, b.stageNo, page, b.kind, params, b.writtenTask, pages[page] if page is not None else "")
+        page_text = pages[page] if page is not None else ""
+        fallback_figure = required_visual_figure(page_text)
+        if fallback_figure and (params.get("figure") or {}).get("type") != fallback_figure["type"]:
+            params = cw.clean(b.kind, {**params, "figure": fallback_figure}, lesson.reading_plan or "")
+        upsert(db, u, lesson, b.stageNo, page, b.kind, params, b.writtenTask, page_text)
         return payload(db, lesson)
 
     def drop_template(db: Any, u: Any, lesson: Any, template_id: int | None) -> None:
@@ -471,6 +517,10 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         except ValueError as e:
             raise HTTPException(400, str(e))
         required_figure = required_visual_type(item.get("pageText") or "")
+        if required_figure and (params.get("figure") or {}).get("type") != required_figure:
+            fallback_figure = required_visual_figure(item.get("pageText") or "")
+            if fallback_figure:
+                params = cw.clean(item["kind"], {**params, "figure": fallback_figure}, lesson.reading_plan or "")
         if required_figure and (params.get("figure") or {}).get("type") != required_figure:
             labels = {"calendar_cross": "月历十字框", "seating_pattern": "方桌人数规律", "alternating_triangle": "黑白棋子三角形", "running_track": "环形跑道追及"}
             raise HTTPException(400, "请先补全本题的" + labels.get(required_figure, "专用") + "课件图示，再审核")
