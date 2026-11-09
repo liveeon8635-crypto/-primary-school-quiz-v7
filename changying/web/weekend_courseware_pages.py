@@ -86,8 +86,8 @@ function cwCalendarCross(box,f,view,big,teacher){
   if(step>=3)wrap.appendChild(el('div',{style:'margin-top:12px;text-align:center;font-weight:700;color:#17449b;font-size:'+(big?'2.4vh':'16px'),text:'\u4e94\u6570\u548c = (a-7)+(a-1)+a+(a+1)+(a+7) = 5a'}));
   if(view.showAnswer||teacher){var a=f.total/5;wrap.appendChild(el('div',{style:'margin-top:8px;text-align:center;color:#b42318;font-weight:700',text:'5a='+f.total+'\uff0ca='+a+'\uff1b\u6700\u5c0f\u6570 '+(a-7)+'\uff0c\u6700\u5927\u6570 '+(a+7)}))}
 }
-function cwSeatingPattern(box,f,view,big,teacher){
-  var step=teacher&&!view.previewMode?99:(view.step||0),shown=Math.max(1,Math.min(f.sampleCounts.length,step||1));
+function cwSeatingPattern(box,f,view,big,teacher,stepCount){
+  var step=teacher&&!view.previewMode?(stepCount||99):(view.step||0),shown=Math.max(1,Math.min(f.sampleCounts.length,Math.ceil(Math.max(1,step)*f.sampleCounts.length/Math.max(1,(stepCount||f.sampleCounts.length+1)-1))));
   var wrap=el('div',{style:'max-width:760px;margin:10px auto;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#fff'});
   box.appendChild(wrap);
   var svg=cwNode('svg',{viewBox:'0 0 720 210',width:'100%',style:'display:block;max-height:'+(big?'38vh':'300px'),role:'img','aria-label':cwFigureText(f)});
@@ -110,10 +110,10 @@ function cwSeatingPattern(box,f,view,big,teacher){
     svg.appendChild(cwNode('text',{x:x0+90,y:157,'text-anchor':'middle','font-size':18,'font-weight':700,fill:color},f.sampleCounts[i]+' \u4eba'));
   }
   wrap.appendChild(svg);
-  if(step>=f.sampleCounts.length+1)wrap.appendChild(el('div',{style:'text-align:center;font-weight:700;color:#17449b;font-size:'+(big?'2.4vh':'16px'),text:'1\u5f20\u684c8\u4eba\uff0c\u6bcf\u52a0\u4e00\u5f20\u591a4\u4eba\uff1a8+4(n-1)=4n+4'}));
+  if(step>=stepCount)wrap.appendChild(el('div',{style:'text-align:center;font-weight:700;color:#17449b;font-size:'+(big?'2.4vh':'16px'),text:'1\u5f20\u684c8\u4eba\uff0c\u6bcf\u52a0\u4e00\u5f20\u591a4\u4eba\uff1a8+4(m-1)=4m+4'}));
 }
-function cwAlternatingTriangle(box,f,view,big,teacher){
-  var step=teacher&&!view.previewMode?f.rows+1:(view.step||0),shown=Math.max(1,Math.min(f.rows,step||1));
+function cwAlternatingTriangle(box,f,view,big,teacher,stepCount){
+  var step=teacher&&!view.previewMode?(stepCount||99):(view.step||0),shown=Math.max(1,Math.min(f.rows,Math.ceil(Math.max(1,step)*f.rows/Math.max(1,stepCount||f.rows))));
   var wrap=el('div',{style:'max-width:620px;margin:10px auto;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#fff;text-align:center'});
   box.appendChild(wrap);
   var size=31,svg=cwNode('svg',{viewBox:'0 0 420 310',width:'100%',style:'display:block;max-height:'+(big?'42vh':'320px'),role:'img','aria-label':cwFigureText(f)});
@@ -127,7 +127,7 @@ function cwAlternatingTriangle(box,f,view,big,teacher){
   }
   wrap.appendChild(svg);
   wrap.appendChild(el('div',{style:'font-size:14px;color:#475467',text:'\u6bcf\u5c42\u9ed1\u767d\u4ea4\u66ff\uff1b\u4ece\u9876\u5c42\u767d\u68cb\u5f00\u59cb'}));
-  if(step>=f.rows)wrap.appendChild(el('div',{style:'margin-top:10px;font-weight:700;color:#17449b;font-size:'+(big?'2.3vh':'16px'),text:'\u767d\uff1a1+3+\u22ef+(2k-1)=k\u00b2\uff1b\u9ed1\uff1a2+4+\u22ef+2k=k(k+1)\uff1b\u9ed1\u6bd4\u767d\u591a k='+f.differenceSymbol+'\uff0c\u6240\u4ee5\u603b\u5c42\u6570=2'+f.differenceSymbol}));
+  if(step>=stepCount)wrap.appendChild(el('div',{style:'margin-top:10px;font-weight:700;color:#17449b;font-size:'+(big?'2.3vh':'16px'),text:'\u767d\uff1a1+3+\u22ef+(2k-1)=k\u00b2\uff1b\u9ed1\uff1a2+4+\u22ef+2k=k(k+1)\uff1b\u9ed1\u6bd4\u767d\u591a k='+f.differenceSymbol+'\uff0c\u6240\u4ee5\u603b\u5c42\u6570=2'+f.differenceSymbol}));
 }
 function cwFigure(wrap,f,big,view,teacher,stepCount){
   view=view||{};
@@ -139,8 +139,8 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
     return;
   }
   if(f.type==='calendar_cross'){cwCalendarCross(box,f,view,big,teacher);return}
-  if(f.type==='seating_pattern'){cwSeatingPattern(box,f,view,big,teacher);return}
-  if(f.type==='alternating_triangle'){cwAlternatingTriangle(box,f,view,big,teacher);return}
+  if(f.type==='seating_pattern'){cwSeatingPattern(box,f,view,big,teacher,stepCount);return}
+  if(f.type==='alternating_triangle'){cwAlternatingTriangle(box,f,view,big,teacher,stepCount);return}
   f={type:f.type,points:(f.points||[]).slice().sort(function(a,b){return a.at-b.at}),marks:(f.marks||[]).filter(function(m){return m.from&&m.to}),
     boxes:f.boxes||[],branches:f.branches||[],shape:f.shape,labels:f.labels||{},rows:f.rows||[]};
   var visualStep=teacher&&!view.previewMode?(stepCount||1):(view.step||0),visualSteps=Math.max(1,stepCount||1);
