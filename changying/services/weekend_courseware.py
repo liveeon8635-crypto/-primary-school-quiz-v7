@@ -285,8 +285,8 @@ def clean_steps(raw: Any) -> dict[str, Any]:
     if not answer:
         raise ValueError("请填写例题答案")
     figure = clean_figure(raw.get("figure"))
-    if figure.get("type") == "calendar_cross" and len(steps) < 4:
-        raise ValueError("月历十字框可视化需要至少 4 步，保证图形能跟上讲解")
+    if figure.get("type") in ("calendar_cross", "seating_pattern", "alternating_triangle") and len(steps) < 4:
+        raise ValueError("这类规律题的互动图示需要至少 4 步，才能逐步展示规律和结论")
     return {"title": _text(raw.get("title"), 40) or "分步讲解", "steps": steps, "answer": answer,
             "problem": _text(raw.get("problem"), 600),        # the example's own question, without its answer (pupils' task)
             "figure": figure, "sourceFigure": clean_figure(raw.get("sourceFigure")),
