@@ -232,6 +232,26 @@ def clean_figure(raw: Any) -> dict[str, Any]:
         if len(rows) < 2 or len({len(r) for r in rows}) != 1 or len(rows[0]) < 2:
             raise ValueError("表格需要至少 2 行、2 列，并且每行格数相同")
         return {"type": "table", "rows": rows}
+    if kind == "seating_pattern":
+        try:
+            sample_counts = [_int(v) for v in raw.get("sampleCounts", [])]
+        except (TypeError, ValueError):
+            raise ValueError("方桌人数样例必须是整数")
+        if not 2 <= len(sample_counts) <= 4 or sample_counts[0] != 8 or any(
+                sample_counts[i] - sample_counts[i - 1] != 4 for i in range(1, len(sample_counts))):
+            raise ValueError("方桌图需从 1 张桌 8 人开始，每增加 1 张桌增加 4 人")
+        return {"type": "seating_pattern", "sampleCounts": sample_counts}
+    if kind == "alternating_triangle":
+        try:
+            rows = _int(raw.get("rows", 6))
+        except ValueError:
+            raise ValueError("棋子三角形层数必须是整数")
+        symbol = _text(raw.get("differenceSymbol", "m"), 1) or "m"
+        if rows < 4 or rows > 8 or rows % 2:
+            raise ValueError("棋子三角形示意层数需为 4、6 或 8 层")
+        if not re.fullmatch(r"[A-Za-z]", symbol):
+            raise ValueError("黑白棋子差值只能使用一个英文字母")
+        return {"type": "alternating_triangle", "rows": rows, "differenceSymbol": symbol}
     if kind == "calendar_cross":
         try:
             center = _int(raw.get("center"))
@@ -252,7 +272,7 @@ def clean_figure(raw: Any) -> dict[str, Any]:
             raise ValueError("十字框中心不能位于星期日或星期六")
         return {"type": "calendar_cross", "center": center, "daysInMonth": days,
                 "firstWeekday": first_weekday, "total": total}
-    raise ValueError("图示只能是线段图、程序图、图形或表格")
+    raise ValueError("图示类型无效，请选择线段图、程序图、图形、表格、方桌规律图或黑白棋子三角形")
 
 
 def clean_steps(raw: Any) -> dict[str, Any]:
@@ -381,7 +401,9 @@ def generation_prompt(subject: str, lesson: dict[str, Any]) -> str:
     }
     spec["steps"] += ('月历十字框 {"type":"calendar_cross","center":18,"daysInMonth":31,"firstWeekday":0,"total":90}。'
                       'firstWeekday：0=周日，6=周六；中心不能在周末。按题意确定中心和总和；此图为关系示意，不代表真实年月。'
-                      '必须讲4步以上：定位中心、看左右差1、看上下差7、列五数和/代入。')
+                      '必须讲4步以上：定位中心、看左右差1、看上下差7、列五数和/代入。'
+                      '方桌拼接人数规律题必须用 {"type":"seating_pattern","sampleCounts":[8,12,16]}，方桌每排相连，1张8人、每加1张增加4人；图中展示对应桌数的俯视图和外圈座位点，不要只给数表。'
+                      '黑白棋子按层交替排成三角形、黑比白多 m 颗时必须用 {"type":"alternating_triangle","rows":6,"differenceSymbol":"m"}；首层白色，偶数层黑色，画 4/6/8 个示意层，逐层显现，最后突出每两层黑比白多1颗、总层数为2m；不能用静态颜色表代替。')
     text = (f"你是小学{subject}教师，为大屏上的一页例题选择一个互动课件模板并填写参数。只输出 JSON，不要 HTML、代码或 Markdown。\n"
             f"课题：{lesson['title']}\n教学目标：{lesson['coreTarget']}\n"
             "这一页的内容（课件必须演示这一页本身，图形、数据、问题与之一致，不能另换一道题）：\n" + lesson.get("pageText", "")[:1500] + "\n"
