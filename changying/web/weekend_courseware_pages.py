@@ -440,12 +440,10 @@ function cwPlan(box,lessonId,refresh){
       else if(kind==='clock'){var t=v.angle/30*(v.direction==='cw'?1:-1);v.end=((v.start-1+t)%12+12)%12+1;cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,step:v.steps.length},false,true)}
       else if(kind==='steps'){
         previewState.step=Math.min(previewState.step,v.steps.length);
-        if(v.figure&&v.figure.type==='calendar_cross'){
-          var nav=el('div',{class:'row',style:'margin:8px 0'});
-          nav.appendChild(el('button',{text:'\u4e0a\u4e00\u6b65',disabled:previewState.step<=0,onclick:function(){previewState.step=Math.max(0,previewState.step-1);show()}}));
-          nav.appendChild(el('button',{text:'\u4e0b\u4e00\u6b65',disabled:previewState.step>=v.steps.length,onclick:function(){previewState.step=Math.min(v.steps.length,previewState.step+1);show()}}));
-          nav.appendChild(el('span',{class:'muted',text:'\u9884\u89c8\u7b2c '+Math.min(previewState.step+1,v.steps.length)+' / '+v.steps.length+' \u6b65'}));preview.appendChild(nav);
-        }
+        var nav=el('div',{class:'row',style:'margin:8px 0'});
+        nav.appendChild(el('button',{text:'\u4e0a\u4e00\u6b65',disabled:previewState.step<=0,onclick:function(){previewState.step=Math.max(0,previewState.step-1);show()}}));
+        nav.appendChild(el('button',{text:'\u4e0b\u4e00\u6b65',disabled:previewState.step>=v.steps.length,onclick:function(){previewState.step=Math.min(v.steps.length,previewState.step+1);show()}}));
+        nav.appendChild(el('span',{class:'muted',text:'\u5df2\u663e\u793a '+previewState.step+' / '+v.steps.length+' \u6b65'}));preview.appendChild(nav);
         cwRender(view,{kind:kind,params:v},previewState,false,true);
       }
       else cwRender(view,{kind:kind,params:v},{showMaterial:true,showPrompt:true},false,true,function(i){var k=p.evidence.indexOf(i);if(k>=0)p.evidence.splice(k,1);else p.evidence.push(i);show()});
