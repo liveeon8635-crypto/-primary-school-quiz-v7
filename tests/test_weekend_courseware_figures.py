@@ -63,14 +63,14 @@ with TestClient(app) as client:
                                "answer": "不变", "figure": seg}, ensure_ascii=False))
     d = client.post(base + "/generate", headers=th, json={"stageNo": 3, "page": 0}).json()
     item = next(i for i in d["items"] if i["page"] == 0)
-    assert item["kind"] == "steps" and item["params"]["figure"] == {} and "没有匹配到原卷插图" in d["notice"]
+    assert item["kind"] == "steps" and item["params"]["figure"] == seg and not d["notice"]
     assert '"type":"segment"' in prompts[-1] and '"type":"flow"' in prompts[-1] and "只画已知条件" in prompts[-1]
     # A figure that fails the checks is dropped; the worked example itself is kept, and the teacher is told.
     replies.append(json.dumps({"template": "steps", "title": "程序", "steps": ["a÷0.5=2a", "再加b"], "answer": "2a+b",
                                "figure": {"type": "flow", "boxes": ["只有一个框"]}}, ensure_ascii=False))
     d = client.post(base + "/generate", headers=th, json={"stageNo": 3, "page": 1}).json()
     item = next(i for i in d["items"] if i["page"] == 1)
-    assert item["params"]["figure"] == {} and "没有匹配到原卷插图" in d["notice"]
+    assert item["params"]["figure"] == {} and "AI 画的图示没有通过校验" in d["notice"]
     # The teacher explicitly adds the reviewed segment to the first page.
     first = next(i for i in d['items'] if i['page'] == 0)
     r = client.put(base, headers=th, json={'stageNo':3,'page':0,'kind':'steps','params':{**first['params'],'figure':seg}})
