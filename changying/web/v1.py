@@ -71,7 +71,7 @@ def v1_html() -> str:
   </style>
 </head>
 <body>
-  <div class="app" id="app"><header class="top">{_RIBBON_SVG}<a class="brand" href="/v1"><span>长缨辅学<small>学生连续发展档案 · V1</small></span></a><div class="top-actions"><span class="identity-chip" id="identityChip">检查登录状态</span><button class="btn" id="identityButton" hidden>切换身份</button></div></header><div id="screen"></div></div>
+  <div class="app" id="app"><header class="top">{_RIBBON_SVG}<a class="brand" href="/v1"><span>长缨辅学<small>学生连续发展档案 · V1</small></span></a><div class="top-actions"><a class="btn" href="/signup" style="text-decoration:none" title="独立老师可免费注册个人工作台">免费注册</a><span class="identity-chip" id="identityChip">检查登录状态</span><button class="btn" id="identityButton" hidden>切换身份</button></div></header><div id="screen"></div></div>
   <div class="toast" id="toast"></div>
   <script id="{V1_UI_MARKER}-script">
   (()=>{{
