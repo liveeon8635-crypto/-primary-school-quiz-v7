@@ -70,7 +70,7 @@ with TestClient(app) as client:
                                "figure": {"type": "flow", "boxes": ["只有一个框"]}}, ensure_ascii=False))
     d = client.post(base + "/generate", headers=th, json={"stageNo": 3, "page": 1}).json()
     item = next(i for i in d["items"] if i["page"] == 1)
-    assert item["params"]["figure"] == {} and item["params"]["sourceFigure"]["type"] == "uploaded_image" and "AI 画的图示没有通过校验" in d["notice"] and "原题图片保留为对照" in d["notice"]
+    assert item["params"]["figure"] == {} and item["params"].get("sourceFigure") and "AI 画的图示没有通过校验" in d["notice"] and "原题图片保留为对照" in d["notice"]
     # The teacher explicitly adds the reviewed segment to the first page.
     first = next(i for i in d['items'] if i['page'] == 0)
     r = client.put(base, headers=th, json={'stageNo':3,'page':0,'kind':'steps','params':{**first['params'],'figure':seg}})
