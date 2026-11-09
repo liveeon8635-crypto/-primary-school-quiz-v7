@@ -104,6 +104,10 @@ def test_signup_inline_script_is_valid_and_quote_safe(client):
     assert 'innerHTML' not in script, "build messages with textContent, not innerHTML"
     assert '""+' not in script, "unescaped quotes would break the whole script"
     assert "msgText" in script
+    # After success the form must be replaced, not left editable with a banner on top.
+    page = client.get("/signup").text
+    assert 'id="formView"' in page and 'id="doneView"' in page
+    assert 'formView").hidden=true' in script
     script_check.assert_parses(script)
 
 

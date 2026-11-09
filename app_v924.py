@@ -4464,13 +4464,15 @@ button{width:100%;margin-top:18px;padding:14px;border:0;border-radius:12px;backg
 button:disabled{opacity:.6}.note{margin-top:14px;font-size:13px;color:var(--muted)}
 .err{background:#fdecea;color:#bb3145;border-radius:12px;padding:10px 12px;font-size:14px;margin-bottom:12px}
 .ok{background:#e9f9f1;color:#0b8f5a;border-radius:12px;padding:12px;font-size:15px;margin-bottom:12px}
-code{background:#f4f6fb;border-radius:6px;padding:2px 6px}
+code{background:#f4f6fb;border-radius:6px;padding:2px 6px;font-size:17px;font-weight:700}
+.line{margin:10px 0;font-size:15px}
+.btn{display:block;text-align:center;text-decoration:none;background:var(--brand);color:#fff;border-radius:12px;padding:14px;font-weight:700;margin-top:20px;font-size:17px}
 </style></head><body><main>
 <div class="card">
+<div id="formView">
 <h1>免费注册个人工作台</h1>
 <p class="sub">给一个人带班的老师用。永久免费，AI 由你自己填 Key。</p>
-<div id="msg" class="ok" hidden><span id="msgText"></span><a id="loginLink" href="/v1" hidden>
-去登录</a></div>
+<div id="msg" class="err" hidden><span id="msgText"></span></div>
 <form id="f">
 <label>你的姓名</label><input name="name" maxlength="50" required>
 <label>登录账号</label><input name="username" maxlength="40" required placeholder="3-40 位字母或数字">
@@ -4481,21 +4483,28 @@ code{background:#f4f6fb;border-radius:6px;padding:2px 6px}
 <button type="submit" id="go">创建我的工作台</button>
 </form>
 <div class="note">注册后：先改密码 → 添加学生 → 在「AI 设置」填自己的 Key → 上一节课。</div>
+</div>
+<div id="doneView" hidden>
+<h1>工作台已创建</h1>
+<p class="sub">记下账号，登录后先改密码。</p>
+<p class="line">账号：<code id="doneAccount"></code></p>
+<p class="line">工作室：<span id="doneWorkspace"></span></p>
+<a class="btn" id="goLogin" href="/v1">去登录</a>
+<div class="note">登录后：先改密码 → 添加学生 → 在「AI 设置」填自己的 Key → 上一节课。</div>
+</div>
 </div></main>
 <script>
 (function(){
   var cid="";
   var msg=document.getElementById("msg");
   var msgText=document.getElementById("msgText");
-  var loginLink=document.getElementById("loginLink");
   var q=document.getElementById("q");
   var form=document.getElementById("f");
   var btn=document.getElementById("go");
-  function say(text,isError,showLink){
+  function say(text,isError){
     msg.className=isError?"err":"ok";
     msg.hidden=false;
     msgText.textContent=text;
-    loginLink.hidden=!showLink;
   }
   function loadChallenge(){
     fetch("/signup/challenge").then(function(r){return r.json()}).then(function(d){
@@ -4507,7 +4516,7 @@ code{background:#f4f6fb;border-radius:6px;padding:2px 6px}
   form.onsubmit=function(e){
     e.preventDefault();
     btn.disabled=true;
-    say("正在创建…",false,false);
+    say("正在创建…",false);
     var payload={
       name:field("name"),
       username:field("username"),
@@ -4521,16 +4530,20 @@ code{background:#f4f6fb;border-radius:6px;padding:2px 6px}
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,body:j}})})
       .then(function(x){
         if(x.ok){
-          say("工作台已创建。账号："+x.body.username+"，工作室："+x.body.workspaceName+"。登录后请先改密码。",false,true);
+          document.getElementById("doneAccount").textContent=x.body.username;
+          document.getElementById("doneWorkspace").textContent=x.body.workspaceName;
+          document.getElementById("formView").hidden=true;
+          document.getElementById("doneView").hidden=false;
+          window.scrollTo(0,0);
         }else{
           var d=x.body&&x.body.detail;
           if(d&&typeof d!=="string"){d="请检查填写内容"}
-          say(d||"注册失败，请重试",true,false);
+          say(d||"注册失败，请重试",true);
           btn.disabled=false;
           loadChallenge();
         }
       })
-      .catch(function(){say("网络异常，请重试",true,false);btn.disabled=false});
+      .catch(function(){say("网络异常，请重试",true);btn.disabled=false});
   };
 })();
 </script></body></html>"""
