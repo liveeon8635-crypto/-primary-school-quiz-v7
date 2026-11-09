@@ -48,6 +48,7 @@ class School(Base):
     name:Mapped[str]=mapped_column(String(120),unique=True,index=True)
     code:Mapped[str]=mapped_column(String(40),unique=True,index=True)
     active:Mapped[bool]=mapped_column(Boolean,default=True)
+    individual:Mapped[bool]=mapped_column(Boolean,default=False,server_default=sa_text("false"),index=True)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
 
 class User(Base):
@@ -857,7 +858,61 @@ def authenticated_user(authorization:Optional[str]=Header(default=None),db:Sessi
         raise HTTPException(401,"登录状态已失效，请重新登录")
     return u
 
+def acting_role(u,*roles):
+    """The single account of a personal workspace may act as teacher and as admin."""
+    if is_personal_workspace_user(u):
+        if "teacher" in roles:return "teacher"
+        return u.role
+    return u.role
+
+def individual_scope(db,school_id):
+    """(individual, owning account id) for a personal workspace; (False, None) for schools.
+
+    A personal workspace has exactly one account: the admin who also teaches. Every
+    class it owns uses that account id as teacher_id, so weekend class, knowledge map,
+    homework and parent binding all see the same data instead of a second identity.
+    """
+    school=db.get(School,school_id)
+    if not school or not school.individual:return False,None
+    owner=db.scalar(select(User.id).where(User.school_id==school_id,User.role=="admin",User.active==True).order_by(User.id).limit(1))
+    return True,owner
+
+def is_individual_school(db,school_id):
+    school=db.get(School,school_id)
+    return bool(school and school.individual)
+
+def personal_student_list_grade(db,school_id):
+    rows=db.execute(select(User.grade,func.count()).join(ClassStudent,ClassStudent.student_id==User.id).join(SchoolClass,SchoolClass.id==ClassStudent.class_id).where(SchoolClass.school_id==school_id,User.role=="student").group_by(User.grade)).all()
+    rows=[(int(g),int(c)) for g,c in rows if g is not None]
+    if not rows:return 5
+    rows.sort(key=lambda x:(-x[1],x[0]))
+    return rows[0][0]
+
+def personal_owner_id(db,u):
+    """The teaching account that owns a personal workspace list, whichever account is acting."""
+    _individual,owner_id=individual_scope(db,u.school_id)
+    return owner_id or u.id
+
+def ensure_personal_student_list(db,school_id,teacher_id,grade=None):
+    """One visible list per individual workspace, titled by grade; the teacher never has to create a class."""
+    grade=int(grade or personal_student_list_grade(db,school_id))
+    rows=db.scalars(select(SchoolClass).where(SchoolClass.school_id==school_id,SchoolClass.teacher_id==teacher_id).order_by(SchoolClass.id)).all()
+    match=next((c for c in rows if c.grade==grade),None)
+    if not match and len(rows)==1:match=rows[0]
+    if match:
+        match.grade=grade;match.name=f"我的学生名单（{grade}年级）"
+        return match
+    c=SchoolClass(school_id=school_id,name=f"我的学生名单（{grade}年级）",grade=grade,teacher_id=teacher_id);db.add(c);db.flush();return c
+
+def session_role(db,u):
+    """What the client should present. A personal workspace opens the teaching UI,
+    while the stored role stays admin so account-level endpoints keep working."""
+    if is_individual_school(db,u.school_id) and u.role=="admin":return "teacher"
+    return u.role
+
 def current_user(request:Request,u:User=Depends(authenticated_user),db:Session=Depends(get_db)):
+    # Mark the request in place: the ORM instance itself stays usable for serialisation.
+    u.school_individual=is_individual_school(db,u.school_id)
     s=security_for(db,u)
     if s.must_change_password:
         raise HTTPException(428,"请先修改初始密码")
@@ -873,7 +928,11 @@ def current_user(request:Request,u:User=Depends(authenticated_user),db:Session=D
     return u
 
 def need(u,*roles):
-    if u.role not in roles: raise HTTPException(403,"无权限")
+    if acting_role(u,*roles) not in roles: raise HTTPException(403,"无权限")
+
+def is_personal_workspace_user(u):
+    """True for the single account of a personal workspace (its admin also teaches)."""
+    return bool(getattr(u,"school_individual",False))
 
 # ---------------- Schemas ----------------
 class SubscriptionUpdateBody(BaseModel):
@@ -891,6 +950,7 @@ class OperatorSchoolCreateBody(BaseModel):
     admin_name:str
     admin_username:str
     admin_password:str
+    individual:bool=False
     contact_name:str=""
     contact_value:str=""
     source:str="manual"
@@ -985,7 +1045,7 @@ class RestoreStudentBody(BaseModel): class_id:int
 class ParentBindBody(BaseModel): parent_id:Optional[int]=None
 class UserCreate(BaseModel): name:str;username:str;password:str;role:str
 class ClassCreate(BaseModel): name:str;grade:int
-class StudentCreate(BaseModel): name:str;username:str;password:str;grade:int;class_id:int;parent_username:Optional[str]=None
+class StudentCreate(BaseModel): name:str;username:str;password:str;grade:int;class_id:Optional[int]=None;parent_username:Optional[str]=None
 class QuestionCreate(BaseModel): grade:int;subject:str;textbook:str;semester:str;unit:str;knowledge:str;text:str;options:list[str]=[];correct_index:int=-1;explanation:str="";question_type:str="";reference_answer:str="";scoring_points:list[str]=[];answer:str="";accepted_answers:list[str]=[];figure:dict={}
 class AIConfigBody(BaseModel):
     provider:str="openai_responses"
@@ -2773,23 +2833,28 @@ def subscription_payload(db,school_id):
     row=ensure_subscription(db,school_id)
     plan=_commercial_plan(row.plan_code)
     status=_effective_subscription_status(row)
+    school=db.get(School,school_id)
+    if school and school.individual:
+        # A personal workspace is free forever by design: never read-only, never expiring.
+        plan=_commercial_plan("free");status="active"
     usage=subscription_usage(db,school_id)
     plan_limits=dict(plan["limits"])
-    quota_overrides=commercial_quota_limits(db,school_id)
+    quota_overrides={} if (school and school.individual) else commercial_quota_limits(db,school_id)
     effective_limits=dict(plan_limits)
     for resource,value in quota_overrides.items():
         if resource in ("teachers","classes","students"):
             effective_limits[resource]=value
     now=datetime.utcnow()
     end=None
-    if status=="trial":end=row.trial_ends_at
+    if school and school.individual:
+        end=None
+    elif status=="trial":end=row.trial_ends_at
     elif status=="active":end=row.current_period_ends_at
     elif status=="grace":end=row.grace_ends_at
     days=None
     if end:
         days=max(0,(end-now).days + (1 if (end-now).seconds>0 else 0))
-    renewal_due=(status=="expired") or bool(end and end<=now+timedelta(days=7))
-    school=db.get(School,school_id)
+    renewal_due=False if (school and school.individual) else ((status=="expired") or bool(end and end<=now+timedelta(days=7)))
     return {
         "schoolID":school_id,
         "schoolName":school.name if school else "",
@@ -2803,9 +2868,9 @@ def subscription_payload(db,school_id):
         "daysRemaining":days,
         "serviceEndAt":school_local_iso(end) if end else None,
         "renewalDue":renewal_due,
-        "trialEndsAt":school_local_iso(row.trial_ends_at) if row.trial_ends_at else None,
-        "periodEndsAt":school_local_iso(row.current_period_ends_at) if row.current_period_ends_at else None,
-        "graceEndsAt":school_local_iso(row.grace_ends_at) if row.grace_ends_at else None,
+        "trialEndsAt":school_local_iso(row.trial_ends_at) if (row.trial_ends_at and not (school and school.individual)) else None,
+        "periodEndsAt":school_local_iso(row.current_period_ends_at) if (row.current_period_ends_at and not (school and school.individual)) else None,
+        "graceEndsAt":school_local_iso(row.grace_ends_at) if (row.grace_ends_at and not (school and school.individual)) else None,
         "limits":effective_limits,
         "planLimits":plan_limits,
         "quotaOverrides":quota_overrides,
@@ -3612,6 +3677,32 @@ def ensure_submission_completion_actor_column():
         conn.execute(sa_text("ALTER TABLE submissions ADD COLUMN completion_actor VARCHAR(30) NULL"))
         conn.execute(sa_text("CREATE INDEX IF NOT EXISTS ix_submissions_completion_actor ON submissions (completion_actor)"))
 
+def ensure_school_individual_column():
+    """Add the workspace-kind column before any ORM query loads School.
+
+    create_all() never alters an existing table, so an older database still
+    lacks schools.individual. Idempotent, additive only; every existing school
+    keeps the default (institution) and no historical row is rewritten.
+    """
+    inspector=sa_inspect(engine)
+    if "schools" not in set(inspector.get_table_names()):
+        return
+    if "individual" in {col["name"] for col in inspector.get_columns("schools")}:
+        return
+    if engine.dialect.name=="postgresql":
+        # Metadata-only add on PostgreSQL 11+, and safe if another worker wins the race.
+        statement="ALTER TABLE schools ADD COLUMN IF NOT EXISTS individual BOOLEAN DEFAULT FALSE"
+    else:
+        statement="ALTER TABLE schools ADD COLUMN individual BOOLEAN DEFAULT 0"
+    try:
+        with engine.begin() as conn:
+            conn.execute(sa_text(statement))
+    except Exception as error:
+        # Only a lost race is tolerated here; every other failure must stop the startup.
+        if "individual" not in {col["name"] for col in sa_inspect(engine).get_columns("schools")}:
+            raise error
+        print(f"[startup] schools.individual already added by another worker: {type(error).__name__}")
+
 def ensure_teaching_question_figure_column():
     """Add the nullable figure column before any ORM query touches TeachingQuestion.
 
@@ -3630,6 +3721,7 @@ def ensure_teaching_question_figure_column():
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(engine)
+    ensure_school_individual_column()
     ensure_submission_completion_actor_column()
     ensure_teaching_question_figure_column()
     # V7.3.0: keep the V7.2.0 production seeding behavior; never create public demo credentials automatically on PostgreSQL.
@@ -3897,6 +3989,7 @@ def operator_commercial_backup(_ok:bool=Depends(commercial_operator),db:Session=
 def operator_school_go_live(school_id:int,b:OperatorGoLiveBody,_ok:bool=Depends(commercial_operator),db:Session=Depends(get_db)):
     school=db.get(School,school_id)
     if not school:raise HTTPException(404,"学校不存在")
+    if school.individual:raise HTTPException(400,"个人工作台为永久免费，不需要正式开通")
     before=_operator_snapshot(db,school_id)
     if not school.active:
         school.active=True
@@ -4181,6 +4274,7 @@ def operator_school_renewals(school_id:int,limit:int=100,_ok:bool=Depends(commer
 def operator_add_renewal(school_id:int,b:OperatorRenewalCreateBody,_ok:bool=Depends(commercial_operator),db:Session=Depends(get_db)):
     school=db.get(School,school_id)
     if not school:raise HTTPException(404,"学校不存在")
+    if school.individual:raise HTTPException(400,"个人工作台为永久免费，不需要续费")
     row=ensure_subscription(db,school_id)
     plan_code=(b.plan_code or row.plan_code or "school_standard").strip()
     if plan_code not in COMMERCIAL_PLANS:raise HTTPException(400,"套餐代码无效")
@@ -4248,6 +4342,7 @@ def operator_operations(limit:int=200,school_id:Optional[int]=None,_ok:bool=Depe
 def operator_school_state(school_id:int,b:OperatorSchoolStateBody,_ok:bool=Depends(commercial_operator),db:Session=Depends(get_db)):
     school=db.get(School,school_id)
     if not school:raise HTTPException(404,"学校不存在")
+    if school.individual:raise HTTPException(400,"个人工作台为永久免费，不能暂停或恢复")
     before=_operator_snapshot(db,school_id)
     school.active=bool(b.active)
     sub=ensure_subscription(db,school_id)
@@ -4259,7 +4354,9 @@ def operator_school_state(school_id:int,b:OperatorSchoolStateBody,_ok:bool=Depen
 
 @app.post("/operator/schools/{school_id}/quota")
 def operator_school_quota(school_id:int,b:OperatorQuotaUpdateBody,_ok:bool=Depends(commercial_operator),db:Session=Depends(get_db)):
-    if not db.get(School,school_id):raise HTTPException(404,"学校不存在")
+    school=db.get(School,school_id)
+    if not school:raise HTTPException(404,"学校不存在")
+    if school.individual:raise HTTPException(400,"个人工作台的额度跟随免费套餐，不能单独调整")
     before=_operator_snapshot(db,school_id);limits={}
     for resource,raw in (("teachers",b.teachers),("classes",b.classes),("students",b.students)):
         include,value=parse_quota_mode(raw)
@@ -4284,9 +4381,13 @@ def operator_create_school(b:OperatorSchoolCreateBody,_ok:bool=Depends(commercia
     if db.scalar(select(School).where(School.name==school_name)):raise HTTPException(400,"学校名称已存在")
     if db.scalar(select(School).where(School.code==school_code)):raise HTTPException(400,"学校代码已存在")
     if db.scalar(select(User).where(User.username==admin_username)):raise HTTPException(400,"管理员账号已存在")
-    school=School(name=school_name,code=school_code,active=True);db.add(school);db.flush()
+    school=School(name=school_name,code=school_code,active=True,individual=bool(b.individual));db.add(school);db.flush()
     ensure_default_point_rules(db,school.id)
     admin=User(school_id=school.id,username=admin_username,password_hash=hash_password(admin_password),name=admin_name,role="admin",active=True);db.add(admin);db.flush();db.add(UserSecurity(user_id=admin.id,must_change_password=True,failed_login_count=0))
+    if b.individual:
+        # One account per personal workspace: the admin account also teaches, so its id
+        # owns the single student list and every later class lookup matches.
+        ensure_personal_student_list(db,school.id,admin.id)
     now=datetime.utcnow();status=(b.status or "trial").lower()
     if status not in ("trial","active","grace","expired"):raise HTTPException(400,"订阅状态无效")
     row=SchoolSubscription(school_id=school.id,plan_code=b.plan_code,status=status,started_at=now,source="operator_create",note=(b.note or "")[:1000])
@@ -4298,8 +4399,13 @@ def operator_create_school(b:OperatorSchoolCreateBody,_ok:bool=Depends(commercia
             if grace:row.grace_ends_at=row.current_period_ends_at+timedelta(days=grace)
     elif status=="grace":row.current_period_ends_at=now;row.grace_ends_at=now+timedelta(days=max(1,min(int(b.grace_days or 7),60)))
     else:row.current_period_ends_at=now;row.grace_ends_at=now
-    db.add(row);db.add(CommercialCustomer(school_id=school.id,contact_name=(b.contact_name or "").strip()[:100],contact_value=(b.contact_value or "").strip()[:200],source=(b.source or "manual").strip()[:80],note=(b.note or "").strip()[:1000]));db.add(SubscriptionEvent(school_id=school.id,action="create_school",plan_code=b.plan_code,status=status,detail=f"admin={admin_username};contact={(b.contact_value or '').strip()};note={(b.note or '').strip()[:300]}"));db.flush();commercial_operation(db,school.id,"school_create",{},_operator_snapshot(db,school.id),f"admin={admin_username};contact={(b.contact_value or '').strip()}");db.commit()
-    return {"ok":True,"school":operator_school_payload(db,school.id),"temporaryCredential":{"schoolName":school.name,"schoolCode":school.code,"username":admin.username,"password":admin_password,"mustChangePassword":True}}
+    if b.individual:
+        # A personal workspace is free forever and must never fall into read-only by expiry.
+        row.plan_code="free";row.status="active";row.trial_ends_at=None;row.current_period_ends_at=None;row.grace_ends_at=None
+    event_plan=row.plan_code;event_status=row.status
+    db.add(row);db.add(CommercialCustomer(school_id=school.id,contact_name=(b.contact_name or "").strip()[:100],contact_value=(b.contact_value or "").strip()[:200],source=(b.source or "manual").strip()[:80],note=(b.note or "").strip()[:1000]));db.add(SubscriptionEvent(school_id=school.id,action="create_school",plan_code=event_plan,status=event_status,detail=f"admin={admin_username};contact={(b.contact_value or '').strip()};note={(b.note or '').strip()[:300]}"));db.flush();commercial_operation(db,school.id,"school_create",{},_operator_snapshot(db,school.id),f"admin={admin_username};contact={(b.contact_value or '').strip()}");db.commit()
+    out={"ok":True,"school":operator_school_payload(db,school.id),"temporaryCredential":{"schoolName":school.name,"schoolCode":school.code,"username":admin.username,"password":admin_password,"mustChangePassword":True}}
+    return out
 
 @app.get("/operator/schools/{school_id}/followups")
 def operator_school_followups(school_id:int,limit:int=50,_ok:bool=Depends(commercial_operator),db:Session=Depends(get_db)):
@@ -4381,6 +4487,7 @@ def operator_reset_admin(school_id:int,b:OperatorResetPasswordBody,_ok:bool=Depe
 def operator_update_subscription(school_id:int,b:SubscriptionUpdateBody,_ok:bool=Depends(commercial_operator),db:Session=Depends(get_db)):
     school=db.get(School,school_id)
     if not school:raise HTTPException(404,"学校不存在")
+    if school.individual:raise HTTPException(400,"个人工作台为永久免费，不能修改套餐或状态")
     if b.plan_code not in COMMERCIAL_PLANS:raise HTTPException(400,"套餐代码无效")
     status=(b.status or "active").lower()
     if status not in ("trial","active","grace","expired"):raise HTTPException(400,"订阅状态无效")
@@ -4469,8 +4576,8 @@ def login(b:LoginBody,request:Request,db:Session=Depends(get_db)):
     sec.locked_until=None
     db.commit()
     return {
-        "token":make_token(u,sec,b.remember),"role":u.role,"userID":u.id,
-        "name":u.name,"grade":u.grade,
+        "token":make_token(u,sec,b.remember),"role":session_role(db,u),"userID":u.id,
+        "name":u.name,"grade":u.grade,"schoolIndividual":is_individual_school(db,u.school_id),
         "mustChangePassword":bool(sec.must_change_password),
         "subscription":subscription_payload(db,u.school_id)
     }
@@ -4482,8 +4589,9 @@ def session_status(u:User=Depends(authenticated_user),db:Session=Depends(get_db)
         "valid":True,
         "userID":u.id,
         "name":u.name,
-        "role":u.role,
+        "role":session_role(db,u),
         "grade":u.grade,
+        "schoolIndividual":is_individual_school(db,u.school_id),
         "mustChangePassword":bool(sec.must_change_password),
         "subscription":subscription_payload(db,u.school_id)
     }
@@ -4537,6 +4645,22 @@ def ai_status(u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"admin","teacher")
     return ai_config_payload(db,u.school_id)
 
+@app.get("/teacher/ai-config")
+def teacher_ai_config(u:User=Depends(current_user),db:Session=Depends(get_db)):
+    need(u,"teacher");return ai_config_payload(db,u.school_id)
+
+@app.put("/teacher/ai-config")
+def save_teacher_ai_config(b:AIConfigBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
+    need(u,"teacher")
+    if not is_individual_school(db,u.school_id):raise HTTPException(403,"机构账号的 AI 设置由学校管理员统一配置")
+    return _save_ai_config(db,u,b)
+
+@app.post("/teacher/ai-test")
+def test_teacher_ai(u:User=Depends(current_user),db:Session=Depends(get_db)):
+    need(u,"teacher")
+    if not is_individual_school(db,u.school_id):raise HTTPException(403,"机构账号的 AI 设置由学校管理员统一配置")
+    return _test_ai_config(db,u)
+
 @app.get("/admin/ai-config")
 def admin_ai_config(u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"admin");payload=ai_config_payload(db,u.school_id);since=datetime.utcnow()-timedelta(days=30)
@@ -4546,9 +4670,8 @@ def admin_ai_config(u:User=Depends(current_user),db:Session=Depends(get_db)):
     out=db.scalar(select(func.coalesce(func.sum(AIUsageLog.output_tokens),0)).where(AIUsageLog.school_id==u.school_id,AIUsageLog.created_at>=since)) or 0
     payload["usage30d"]={"calls":calls,"success":ok,"inputTokens":int(inp),"outputTokens":int(out)};return payload
 
-@app.put("/admin/ai-config")
-def save_admin_ai_config(b:AIConfigBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"admin");provider=(b.provider or "").strip()
+def _save_ai_config(db,u,b):
+    provider=(b.provider or "").strip()
     if provider not in AI_PROVIDERS:raise HTTPException(400,"AI 接口类型无效")
     base=_validate_ai_base_url(b.base_url or AI_DEFAULT_BASE)
     configured_model=(b.model or "").strip();model=_ai_effective_model(provider,base,configured_model)
@@ -4562,9 +4685,16 @@ def save_admin_ai_config(b:AIConfigBody,u:User=Depends(current_user),db:Session=
     if row.enabled and not row.api_key_cipher and not _ai_env_key():raise HTTPException(400,"启用 AI 前请填写 API Key，或在环境变量配置 AI_API_KEY / OPENAI_API_KEY")
     audit(db,u,"ai.config.update",f"provider={provider}:model={model}:enabled={row.enabled}:student_data={row.allow_student_data}");db.commit();return {"ok":True,"config":ai_config_payload(db,u.school_id)}
 
+@app.put("/admin/ai-config")
+def save_admin_ai_config(b:AIConfigBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
+    need(u,"admin");return _save_ai_config(db,u,b)
+
+def _test_ai_config(db,u):
+    text=_ai_call(db,u,"connection_test","你是长缨辅学的AI连接测试。请只回复：连接成功");return {"ok":True,"reply":text[:200]}
+
 @app.post("/admin/ai-test")
 def test_admin_ai(u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"admin");text=_ai_call(db,u,"connection_test","你是长缨辅学的AI连接测试。请只回复：连接成功");return {"ok":True,"reply":text[:200]}
+    need(u,"admin");return _test_ai_config(db,u)
 
 @app.post("/ai/questions/generate")
 def ai_generate_questions(b:AIQuestionGenerateBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -5503,6 +5633,7 @@ def admin_users(u:User=Depends(current_user),db:Session=Depends(get_db)):
 @app.post("/admin/users")
 def admin_user(b:UserCreate,u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"admin")
+    if is_personal_workspace_user(u) and b.role=="teacher":raise HTTPException(400,"个人工作台的管理员账号本身就是任课老师，不需要再建教师账号")
     if b.role not in ("teacher","parent"):raise HTTPException(400,"仅可创建教师或家长")
     if b.role=="teacher":require_plan_capacity(db,u.school_id,"teachers")
     if not b.name.strip() or not b.username.strip():raise HTTPException(400,"姓名和账号不能为空")
@@ -5809,12 +5940,19 @@ def global_search(q:str="",limit:int=24,u:User=Depends(current_user),db:Session=
 
 @app.get("/teacher/classes")
 def tclasses(u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"teacher");rows=db.scalars(select(SchoolClass).where(SchoolClass.school_id==u.school_id,SchoolClass.teacher_id==u.id).order_by(SchoolClass.id.desc())).all()
+    need(u,"teacher");rows=db.scalars(select(SchoolClass).where(SchoolClass.school_id==u.school_id,SchoolClass.teacher_id==personal_owner_id(db,u)).order_by(SchoolClass.id.desc())).all()
     return [{"id":c.id,"name":c.name,"grade":c.grade,"teacherID":c.teacher_id,"studentCount":db.scalar(select(func.count()).select_from(ClassStudent).where(ClassStudent.class_id==c.id)) or 0} for c in rows]
 
 @app.post("/teacher/classes")
 def addclass(b:ClassCreate,u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"teacher");require_plan_capacity(db,u.school_id,"classes")
+    need(u,"teacher")
+    if u.school_individual:
+        # A personal workspace keeps one visible list titled by the students' grade; it never counts against the plan.
+        validate_class_grade("我的学生名单",b.grade)
+        c=ensure_personal_student_list(db,u.school_id,personal_owner_id(db,u),b.grade)
+        c.grade=b.grade;audit(db,u,"class.create",f"{c.id}:{c.name} (个人工作台学生名单)");db.commit();db.refresh(c)
+        return {"id":c.id,"name":c.name,"grade":c.grade,"teacherID":c.teacher_id,"studentCount":db.scalar(select(func.count()).select_from(ClassStudent).where(ClassStudent.class_id==c.id)) or 0,"sharedList":True}
+    require_plan_capacity(db,u.school_id,"classes")
     name=(b.name or "").strip() or "新班级"
     validate_class_grade(name,b.grade)
     c=SchoolClass(school_id=u.school_id,name=name,grade=b.grade,teacher_id=u.id)
@@ -5835,11 +5973,16 @@ def cstudents(cid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
 
 @app.post("/teacher/students")
 def addstudent(b:StudentCreate,u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"teacher");require_plan_capacity(db,u.school_id,"students");c=db.scalar(select(SchoolClass).where(SchoolClass.id==b.class_id,SchoolClass.school_id==u.school_id,SchoolClass.teacher_id==u.id))
+    need(u,"teacher");require_plan_capacity(db,u.school_id,"students")
+    personal=(is_personal_workspace_user(u) and b.class_id is None)
+    if b.class_id is None and not is_personal_workspace_user(u):raise HTTPException(422,"机构账号添加学生时必须选择班级")
+    if personal:validate_class_grade("我的学生名单",b.grade)
+    owner_id=personal_owner_id(db,u)
+    c=ensure_personal_student_list(db,u.school_id,owner_id,b.grade) if personal else db.scalar(select(SchoolClass).where(SchoolClass.id==b.class_id,SchoolClass.school_id==u.school_id,SchoolClass.teacher_id==owner_id))
     if not c:raise HTTPException(404,"班级不存在或无权限")
     if db.scalar(select(User).where(User.username==b.username)):raise HTTPException(400,"学生账号已存在")
     if not password_ok(b.password):raise HTTPException(400,"初始密码至少8位，并同时包含字母和数字")
-    s=User(school_id=u.school_id,username=b.username,password_hash=hash_password(b.password),name=b.name,role="student",grade=c.grade);db.add(s);db.flush();db.add(UserSecurity(user_id=s.id,must_change_password=True,failed_login_count=0));db.add(ClassStudent(class_id=c.id,student_id=s.id));ensure_history_open(db,u.school_id,s.id,c.id,u.id,"teacher_create",s.created_at)
+    s=User(school_id=u.school_id,username=b.username,password_hash=hash_password(b.password),name=b.name,role="student",grade=c.grade);db.add(s);db.flush();db.add(UserSecurity(user_id=s.id,must_change_password=True,failed_login_count=0));db.add(ClassStudent(class_id=c.id,student_id=s.id));ensure_history_open(db,u.school_id,s.id,c.id,owner_id,"teacher_create",s.created_at)
     if b.parent_username:
         p=db.scalar(select(User).where(User.school_id==u.school_id,User.username==b.parent_username,User.role=="parent"))
         if p:db.add(ParentStudent(parent_id=p.id,student_id=s.id))
@@ -5848,6 +5991,7 @@ def addstudent(b:StudentCreate,u:User=Depends(current_user),db:Session=Depends(g
 @app.get("/teacher/parents")
 def teacher_parents(u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"teacher")
+    if u.school_individual:return []
     rows=db.scalars(select(User).where(User.school_id==u.school_id,User.role=="parent",User.active==True).order_by(User.name,User.username)).all()
     return [{"id":x.id,"name":x.name,"username":x.username} for x in rows]
 
