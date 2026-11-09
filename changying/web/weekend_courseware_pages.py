@@ -127,7 +127,7 @@ function cwAlternatingTriangle(box,f,view,big,teacher){
   }
   wrap.appendChild(svg);
   wrap.appendChild(el('div',{style:'font-size:14px;color:#475467',text:'\u6bcf\u5c42\u9ed1\u767d\u4ea4\u66ff\uff1b\u4ece\u9876\u5c42\u767d\u68cb\u5f00\u59cb'}));
-  if(step>=f.rows+1)wrap.appendChild(el('div',{style:'margin-top:10px;font-weight:700;color:#17449b;font-size:'+(big?'2.3vh':'16px'),text:'\u767d\uff1a1+3+\u22ef+(2k-1)=k\u00b2\uff1b\u9ed1\uff1a2+4+\u22ef+2k=k(k+1)\uff1b\u9ed1\u6bd4\u767d\u591a k='+f.differenceSymbol+'\uff0c\u6240\u4ee5\u603b\u5c42\u6570=2'+f.differenceSymbol}));
+  if(step>=f.rows)wrap.appendChild(el('div',{style:'margin-top:10px;font-weight:700;color:#17449b;font-size:'+(big?'2.3vh':'16px'),text:'\u767d\uff1a1+3+\u22ef+(2k-1)=k\u00b2\uff1b\u9ed1\uff1a2+4+\u22ef+2k=k(k+1)\uff1b\u9ed1\u6bd4\u767d\u591a k='+f.differenceSymbol+'\uff0c\u6240\u4ee5\u603b\u5c42\u6570=2'+f.differenceSymbol}));
 }
 function cwFigure(wrap,f,big,view,teacher,stepCount){
   view=view||{};
@@ -190,7 +190,7 @@ function cwSteps(box,p,view,big,teacher){
   cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
   if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
   var shown=teacher?(view.previewMode?(view.step||0):p.steps.length):(view.step||0),list=el('ol');
-  p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?'':'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
+  p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?(i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:0 4px':''):'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
   wrap.appendChild(list);
   if(view.showAnswer||teacher)wrap.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
 }
