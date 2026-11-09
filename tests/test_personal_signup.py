@@ -122,6 +122,10 @@ def test_signup_page_and_challenge_are_public(client):
     assert shell.status_code == 200
     assert 'href="/signup"' in shell.text
 
+    # Someone who already has a workspace must be able to get to the login page.
+    assert 'href="/v1"' in page.text
+    assert '去登录' in page.text
+
     first = client.get("/signup/challenge").json()
     second = client.get("/signup/challenge").json()
     assert first["challengeId"] != second["challengeId"]
