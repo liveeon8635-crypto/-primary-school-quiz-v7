@@ -26,7 +26,9 @@ def test_all_shipped_routes_have_current_compilation(tmp_path):
     sources, routes = collect()
     manifest = json.loads((ASSETS / 'manifest.json').read_text())
     assert '/v1' in routes and len(routes) >= 20
-    assert set(sources) == set(manifest['scripts']), 'Regenerate Safari 12 assets after inline JS changes'
+    missing = sorted(set(sources) - set(manifest['scripts']))
+    extra = sorted(set(manifest['scripts']) - set(sources))
+    assert not missing and not extra, f'Regenerate Safari 12 assets after inline JS changes; missing={missing}; extra={extra}'
     assert '/v1/homework' in routes and '/join' in routes
     for source in sources.values():
         result = compatible_html('<html><head></head><body><script>'+source+'</script></body></html>')
