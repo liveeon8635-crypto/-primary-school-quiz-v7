@@ -122,9 +122,11 @@ def test_signup_page_and_challenge_are_public(client):
     assert shell.status_code == 200
     assert 'href="/signup"' in shell.text
 
-    # Someone who already has a workspace must be able to get to the login page.
-    assert 'href="/v1"' in page.text
-    assert '去登录' in page.text
+    # Someone who already has a workspace gets exactly one way back to login
+    # on the form screen (the result screen has its own button).
+    form_view = page.text.split('id="formView"', 1)[1].split('id="doneView"', 1)[0]
+    assert form_view.count('href="/v1"') == 1
+    assert '去登录' in form_view
 
     first = client.get("/signup/challenge").json()
     second = client.get("/signup/challenge").json()
