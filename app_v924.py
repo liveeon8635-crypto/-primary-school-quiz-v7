@@ -4469,7 +4469,8 @@ code{background:#f4f6fb;border-radius:6px;padding:2px 6px}
 <div class="card">
 <h1>免费注册个人工作台</h1>
 <p class="sub">给一个人带班的老师用。永久免费，AI 由你自己填 Key。</p>
-<div id="msg"></div>
+<div id="msg" class="ok" hidden><span id="msgText"></span><a id="loginLink" href="/v1" hidden>
+去登录</a></div>
 <form id="f">
 <label>你的姓名</label><input name="name" maxlength="50" required>
 <label>登录账号</label><input name="username" maxlength="40" required placeholder="3-40 位字母或数字">
@@ -4483,20 +4484,53 @@ code{background:#f4f6fb;border-radius:6px;padding:2px 6px}
 </div></main>
 <script>
 (function(){
-  var cid="",msg=document.getElementById("msg"),q=document.getElementById("q");
-  function show(cls,html){msg.innerHTML="<div class=\""+cls+"\">"+html+"</div>"}
-  function loadChallenge(){fetch("/signup/challenge").then(function(r){return r.json()}).then(function(d){cid=d.challengeId;q.textContent=d.question}).catch(function(){q.textContent="加载失败，请刷新"})}
+  var cid="";
+  var msg=document.getElementById("msg");
+  var msgText=document.getElementById("msgText");
+  var loginLink=document.getElementById("loginLink");
+  var q=document.getElementById("q");
+  var form=document.getElementById("f");
+  var btn=document.getElementById("go");
+  function say(text,isError,showLink){
+    msg.className=isError?"err":"ok";
+    msg.hidden=false;
+    msgText.textContent=text;
+    loginLink.hidden=!showLink;
+  }
+  function loadChallenge(){
+    fetch("/signup/challenge").then(function(r){return r.json()}).then(function(d){
+      cid=d.challengeId;q.textContent=d.question;
+    }).catch(function(){q.textContent="加载失败，请刷新"});
+  }
+  function field(name){var el=form.elements[name];return el?el.value:"";}
   loadChallenge();
-  document.getElementById("f").onsubmit=function(e){
-    e.preventDefault();var btn=document.getElementById("go");btn.disabled=true;show("ok","正在创建…");
-    var data=Object.fromEntries(new FormData(e.target));data.challenge_id=cid;
-    fetch("/signup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)})
-      .then(function(r){return r.json().then(function(j){return {s:r.status,j:j}})})
+  form.onsubmit=function(e){
+    e.preventDefault();
+    btn.disabled=true;
+    say("正在创建…",false,false);
+    var payload={
+      name:field("name"),
+      username:field("username"),
+      password:field("password"),
+      workspace_name:field("workspace_name"),
+      contact:field("contact"),
+      challenge_id:cid,
+      challenge_answer:field("challenge_answer")
+    };
+    fetch("/signup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
+      .then(function(r){return r.json().then(function(j){return {ok:r.ok,body:j}})})
       .then(function(x){
-        if(x.s===200){show("ok","工作台已创建。账号：<code>"+x.j.username+"</code>，工作室："+x.j.workspaceName+"。请<a href=\"/v1\">去登录</a>，登录后先改密码。")}
-        else{show("err",(x.j&&x.j.detail)||"注册失败，请重试");btn.disabled=false;loadChallenge()}
+        if(x.ok){
+          say("工作台已创建。账号："+x.body.username+"，工作室："+x.body.workspaceName+"。登录后请先改密码。",false,true);
+        }else{
+          var d=x.body&&x.body.detail;
+          if(d&&typeof d!=="string"){d="请检查填写内容"}
+          say(d||"注册失败，请重试",true,false);
+          btn.disabled=false;
+          loadChallenge();
+        }
       })
-      .catch(function(){show("err","网络异常，请重试");btn.disabled=false});
+      .catch(function(){say("网络异常，请重试",true,false);btn.disabled=false});
   };
 })();
 </script></body></html>"""
