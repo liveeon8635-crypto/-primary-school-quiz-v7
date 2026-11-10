@@ -188,6 +188,36 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
     return {}
 
 
+def _courseware_visual_text(item: dict[str, Any], params: dict[str, Any] | None = None, page_text: str = "") -> str:
+    """Use both the source page and saved question fields when repairing legacy diagrams."""
+    parts = [page_text, item.get("approvedPageText"), item.get("pageText")]
+    for source in (params, item.get("params"), item.get("approved")):
+        if isinstance(source, dict):
+            parts.extend(source.get(key) for key in ("problem", "sourceProblem", "question", "title"))
+    return " ".join(str(part or "") for part in parts)
+
+
+def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[str, Any]:
+    """Supply required legacy diagrams and replace placeholder steps for the square-stick question."""
+    result = dict(params or {})
+    figure = required_visual_figure(visual_text)
+    if not figure:
+        return result
+    if not isinstance(result.get("figure"), dict) or result["figure"].get("type") != figure.get("type"):
+        result["figure"] = figure
+    if figure["type"] == "square_sticks_pattern":
+        steps = result.get("steps") if isinstance(result.get("steps"), list) else []
+        if len(steps) < 4 or any("点下一步显示" in str(step) for step in steps):
+            result["steps"] = [
+                "观察：摆1个正方形用4根；摆2个共用一条边，只需新增3根，共7根；摆3个再新增3根，共10根。",
+                "发现：每增加1个正方形，都会和前一个共用一条边，所以只增加3根小棒。",
+                "列式：摆m个，先用4根，后面m−1个各增加3根，n=4+3(m−1)=3m+1。",
+                "代入：m=8时n=25；m=60时n=181。",
+                "反求：n=100时，3m+1=100，所以m=33。",
+            ]
+    return result
+
+
 def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: int | None) -> tuple[dict[str, Any] | None, str]:
     """The approved courseware of the page on screen, without answers; else a note for the teacher."""
     t = register_courseware_table(implementation)
@@ -212,10 +242,11 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
     else:
         item = approved[0]
     params = item["approved"]
-    visual_text = (approved_text or pages[int(item['page'])]) if pages else (item.get('approvedPageText') or item.get('pageText') or '')
-    fallback_figure = required_visual_figure(visual_text)
-    if fallback_figure and (params.get("figure") or {}).get("type") != fallback_figure.get("type"):
-        params = {**params, "figure": fallback_figure}
+    page_text = ""
+    if pages and item.get("page") is not None and 0 <= int(item["page"]) < len(pages):
+        page_text = pages[int(item["page"])]
+    visual_text = _courseware_visual_text(item, params, page_text)
+    params = _repair_courseware_visual(params, visual_text)
     key = f"{row.id}:{stage}:{item.get('page')}"
     view = json.loads(c.live_json or "{}").get(key) or cw.clean_view(item["kind"], params, {})
     return {"id": c.id, "kind": item["kind"], "kindLabel": cw.KIND_LABEL[item["kind"]], "stageNo": stage, "page": item.get("page"),
@@ -376,14 +407,12 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         for i in items_of(row_for(db, lesson)):
             pages = stage_pages(lesson, int(i.get("stage") or 0))
             page_index = i.get("page")
-            page_text = i.get("approvedPageText") or i.get("pageText") or (
-                pages[int(page_index)] if page_index is not None and 0 <= int(page_index) < len(pages) else "")
-            fallback_figure = required_visual_figure(page_text)
-            if fallback_figure:
-                for key in ("params", "approved"):
-                    current = i.get(key)
-                    if isinstance(current, dict) and (current.get("figure") or {}).get("type") != fallback_figure["type"]:
-                        i[key] = {**current, "figure": fallback_figure}
+            page_text = pages[int(page_index)] if page_index is not None and 0 <= int(page_index) < len(pages) else ""
+            visual_text = _courseware_visual_text(i, i.get("params"), page_text)
+            for key in ("params", "approved"):
+                current = i.get(key)
+                if isinstance(current, dict):
+                    i[key] = _repair_courseware_visual(current, visual_text)
             items.append({**i, "kindLabel": cw.KIND_LABEL.get(i["kind"], i["kind"]), "writtenTaskPreview": task(i, i["params"])})
         return {"lessonId": lesson.id, "subject": lesson.subject, "templates": list(cw.TEMPLATES[lesson.subject]), "kindLabels": cw.KIND_LABEL,
                 "hasSource": bool((lesson.reading_plan or "").strip()), "items": items,
