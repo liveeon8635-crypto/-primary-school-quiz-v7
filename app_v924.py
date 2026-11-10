@@ -4740,7 +4740,7 @@ def personal_start(request:Request,authorization:Optional[str]=Header(default=No
 PERSONAL_START_BLANK=dict(
     title="我的工作室",subtitle="个人免费版 · 一个账号就是一间工作室",
     s1cls="",s1text="先把要带的学生加进来，1-2 个也行",s1url="/v1/tool?page=classes",s1label="去添加",s1a="",
-    s2cls="",s2text="填模型地址、模型名和 Key；不填也能手工写教案",s2url="/v1/tool?page=ai",s2label="去填写",s2a="",
+    s2cls="",s2text="填模型地址、模型名和 Key；不填也能手工写教案",s2url="/teacher/ai-settings",s2label="去填写",s2a="",
     s3cls="",s3text="先建课程方案，再导入教案、审习题、上课",s3url="/v1/tool?page=teaching",s3label="去准备",s3a="",
 )
 
@@ -4765,7 +4765,7 @@ def personal_start_state(db,u):
         "s1cls":("ok" if students else ""),"s1text":(f"已经有 {students} 名学生" if students else "还没有学生，先加 1-2 个试试"),
         "s1url":"/v1/tool?page=classes","s1label":("查看" if students else "去添加"),"s1a":("plain" if students else ""),
         "s2cls":("ok" if ai_ready else ""),"s2text":("AI 已配置，可以生成教案和习题" if ai_ready else "填模型地址、模型名和 Key；不填也能手工写教案"),
-        "s2url":"/v1/tool?page=ai","s2label":("查看" if ai_ready else "去填写"),"s2a":("plain" if ai_ready else ""),
+        "s2url":"/teacher/ai-settings","s2label":("查看" if ai_ready else "去填写"),"s2a":("plain" if ai_ready else ""),
         "s3cls":("ok" if (program and lessons) else ""),
         "s3text":(f"已有课程方案（{lessons} 节课）" if (program and lessons) else ("还没有课程方案，先去「定制教学」建一个" if not program else "方案已建，但还没有课")),
         "s3url":("/v1/weekend-plan" if (program and lessons) else "/v1/tool?page=teaching"),
@@ -4979,6 +4979,114 @@ def personal_parent_accounts_page():
     so the shared Safari 12 asset manifest never changes.
     """
     return HTMLResponse(PERSONAL_PARENTS_HTML,headers={"Cache-Control":"no-store, no-cache, must-revalidate, max-age=0"})
+
+PERSONAL_AI_HTML = """<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>我的 AI 设置 · 长缨辅学</title>
+<style>
+:root{--ink:#1f2738;--muted:#778095;--line:#e5e8f0;--brand:#a8101c;--ok:#0b8f5a}
+*{box-sizing:border-box}body{margin:0;background:#f4f6fb;color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+main{max-width:660px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}p.sub{color:var(--muted);margin:0 0 18px;font-size:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
+label{display:block;font-size:13.5px;font-weight:700;margin:14px 0 6px}
+input{width:100%;border:1px solid #cfd7e5;border-radius:10px;padding:11px 12px;font:inherit;background:#fff}
+.hint{color:var(--muted);font-size:12.5px;margin-top:6px;line-height:1.5}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+button{border:0;border-radius:10px;padding:10px 16px;font:inherit;font-weight:700;cursor:pointer}
+button.primary{background:var(--brand);color:#fff}
+button.plain{background:#eef2fa;color:var(--brand)}
+button:disabled{opacity:.6;cursor:wait}
+.status{margin-top:14px;font-size:13.5px;line-height:1.6;color:var(--muted)}
+.status.ok{color:var(--ok)}.status.err{color:#b91c1c}
+a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:none;font-weight:700}
+</style></head><body><main>
+<h1>我的 AI 设置</h1>
+<p class="sub">个人免费版：模型由你自己提供，Key 只保存在这间工作室，费用也由你自己承担。</p>
+<div class="card">
+<div id="cy-status" class="status">正在读取当前设置…</div>
+<label for="cy-base">模型地址</label>
+<input id="cy-base" autocomplete="off" placeholder="https://api.openai.com/v1">
+<div class="hint">一般保持默认；用中转或自建服务时才改。</div>
+<label for="cy-model">模型名</label>
+<input id="cy-model" autocomplete="off" placeholder="例如 gpt-4o-mini">
+<label for="cy-key">API Key</label>
+<input id="cy-key" type="password" autocomplete="off" placeholder="粘贴你的 Key">
+<div class="hint">保存后不再显示完整 Key，只显示末四位；留空表示不修改已保存的 Key。</div>
+<div class="actions">
+<button class="primary" id="cy-save">保存</button>
+<button class="plain" id="cy-test">测试连接</button>
+</div>
+<div id="cy-msg" class="status"></div>
+</div>
+<a class="back" href="/start">← 返回我的工作室</a>
+</main>
+<script>
+(function(){
+  function token(){try{return localStorage.getItem('v717Token')||sessionStorage.getItem('v717Token')||''}catch(e){return ''}}
+  var t=token();
+  function el(id){return document.getElementById(id)}
+  function setStatus(text,cls){var s=el('cy-status');if(!s)return;s.textContent=text;s.className='status'+(cls?' '+cls:'')}
+  function msg(text,cls){var m=el('cy-msg');if(!m)return;m.textContent=text;m.className='status'+(cls?' '+cls:'')}
+  if(!t){setStatus('请先用你的账号登录，再从工作台打开这个页面。','err');if(el('cy-save'))el('cy-save').disabled=true;if(el('cy-test'))el('cy-test').disabled=true;return}
+  function send(method,url,body,cb){
+    var x=new XMLHttpRequest();
+    x.open(method,url,true);
+    x.setRequestHeader('Authorization','Bearer '+t);
+    if(body)x.setRequestHeader('Content-Type','application/json');
+    x.onload=function(){var d=null;try{d=JSON.parse(x.responseText)}catch(e){}cb(x.status,d)};
+    x.onerror=function(){cb(0,null)};
+    x.send(body?JSON.stringify(body):null);
+  }
+  var hasKey=false;
+  function apply(d){
+    if(!d)return;
+    el('cy-base').value=d.baseURL||'';
+    el('cy-model').value=d.configuredModel||d.model||'';
+    hasKey=!!d.hasKey;
+    if(hasKey){
+      el('cy-key').placeholder='已保存，留空表示不修改';
+      setStatus('当前已保存 Key（末四位 '+(d.keyLast4||'****')+'）'+(d.enabled?'，AI 已启用。':'，但还没有启用。'),'ok');
+    }else{
+      setStatus('还没有填写 Key，AI 功能暂不可用。','');
+    }
+  }
+  send('GET','/teacher/ai-config',null,function(s,d){
+    if(s===200)apply(d);else setStatus((d&&d.detail)||'读取失败，请刷新重试','err');
+  });
+  el('cy-save').onclick=function(){
+    var body={provider:'openai_responses',base_url:el('cy-base').value.trim(),model:el('cy-model').value.trim(),api_key:el('cy-key').value.trim(),enabled:true,allow_student_data:false,clear_api_key:false};
+    if(!body.model){msg('请先填写模型名','err');return}
+    if(!body.api_key&&!hasKey){msg('请填写 API Key','err');return}
+    el('cy-save').disabled=true;msg('正在保存…','');
+    send('PUT','/teacher/ai-config',body,function(s,d){
+      el('cy-save').disabled=false;
+      if(s===200){el('cy-key').value='';msg('已保存，可以点「测试连接」确认能不能用。','ok');if(d&&d.config)apply(d.config)}
+      else{msg((d&&d.detail)||'保存失败，请重试','err')}
+    });
+  };
+  el('cy-test').onclick=function(){
+    el('cy-test').disabled=true;msg('正在连接…','');
+    send('POST','/teacher/ai-test',{},function(s,d){
+      el('cy-test').disabled=false;
+      if(s===200){msg('连接成功：'+((d&&d.reply)||'模型已响应'),'ok')}
+      else{msg((d&&d.detail)||'连接失败，请检查地址、模型名和 Key','err')}
+    });
+  };
+})();
+</script></body></html>"""
+
+@app.get("/teacher/ai-settings",include_in_schema=False)
+def personal_ai_settings_page():
+    """A solo teacher's own AI settings page.
+
+    The API (/teacher/ai-config, /teacher/ai-test) already existed, but nothing in
+    the UI called it, so a personal workspace had no way to fill in its own key.
+    Kept outside INDEX_HTML on purpose: the shared Safari 12 asset manifest never
+    changes because this page is not part of the classic shell.
+    """
+    return HTMLResponse(PERSONAL_AI_HTML,headers={"Cache-Control":"no-store, no-cache, must-revalidate, max-age=0"})
 
 @app.get("/signup",include_in_schema=False)
 def personal_signup_page():
