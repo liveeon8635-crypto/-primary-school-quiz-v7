@@ -1780,6 +1780,7 @@ AUDIT_ACTION_NAMES={
     "account.deletion.request":"提交账号注销申请",
     "account.deletion.resolve":"处理账号注销申请",
     "account.export":"导出个人数据",
+    "course.create":"建立课程方案",
     "ai.config.update":"更新 AI 配置",
     "ai.grade.assist":"生成 AI 批改建议",
     "ai.grade.confirm":"确认 AI 批改结果",
