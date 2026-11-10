@@ -99,3 +99,12 @@ def test_teacher_dashboard_count_patch_is_idempotent_and_leaves_non_teacher_payl
 def test_unified_mobile_page_heading_is_kept_below_fixed_top_chrome():
     assert "html.cy-v1-unified #page>.page-head:first-child{margin-top:34px!important}" in V1_CLASSIC_UNIFIED_SNIPPET
     assert "#cy-v1-unified-top{position:fixed" in V1_CLASSIC_UNIFIED_SNIPPET
+
+
+def test_repository_entrypoint_and_inventory_consistency():
+    from app import app as main_app
+    from changying.compat.legacy import apply_legacy_compatibility, NO_CACHE_HEADERS
+
+    assert main_app is not None
+    assert callable(apply_legacy_compatibility)
+    assert "no-store" in NO_CACHE_HEADERS["Cache-Control"]
