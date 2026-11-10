@@ -76,6 +76,27 @@ def test_start_is_public_and_v1_lands_there_for_personal_browsers(client):
     assert client.get("/v1").url.path == "/v1"
 
 
+def test_shell_loads_an_external_home_script(client):
+    """The redirect lives in an external file so inline hashes, and therefore the
+    shared Safari 12 manifest, never change."""
+    shell = client.get("/v1").text
+    assert '<script src="/v1/personal-home.js"></script>' in shell
+
+    js = client.get("/v1/personal-home.js")
+    assert js.status_code == 200
+    assert "application/javascript" in js.headers["content-type"]
+    assert "cy_personal_home" in js.text
+    assert "/start" in js.text
+
+
+def test_session_marks_a_personal_browser(client):
+    headers = _personal_workspace(client)
+    r = client.get("/session", headers=headers)
+    assert r.status_code == 200
+    cookies = ";".join(r.headers.get_list("set-cookie"))
+    assert "cy_personal_home=1" in cookies
+
+
 def test_start_page_guides_three_steps(client):
     headers = _personal_workspace(client)
     r = client.get("/start", headers=headers)

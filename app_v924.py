@@ -4871,8 +4871,12 @@ def login(b:LoginBody,request:Request,response:Response,db:Session=Depends(get_d
     }
 
 @app.get("/session")
-def session_status(u:User=Depends(authenticated_user),db:Session=Depends(get_db)):
+def session_status(response:Response,u:User=Depends(authenticated_user),db:Session=Depends(get_db)):
     sec=security_for(db,u)
+    if is_individual_school(db,u.school_id):
+        response.set_cookie(PERSONAL_HOME_COOKIE,"1",max_age=60*60*24*30,httponly=True,samesite="lax",secure=True,path="/")
+    else:
+        response.delete_cookie(PERSONAL_HOME_COOKIE,path="/")
     return {
         "valid":True,
         "userID":u.id,
