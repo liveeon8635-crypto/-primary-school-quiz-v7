@@ -94,29 +94,34 @@ function cwCalendarCross(box,f,view,big,teacher){
 }
 function cwSeatingPattern(box,f,view,big,teacher,stepCount){
   var step=teacher&&!view.previewMode?(stepCount||99):(view.step||0),shown=Math.max(1,Math.min(f.sampleCounts.length,Math.ceil(Math.max(1,step)*f.sampleCounts.length/Math.max(1,(stepCount||f.sampleCounts.length+1)-1))));
-  var wrap=el('div',{style:'max-width:760px;margin:10px auto;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#fff'});
+  var wrap=el('div',{style:'max-width:920px;margin:10px auto;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#fff'});
   box.appendChild(wrap);
-  var svg=cwNode('svg',{viewBox:'0 0 720 210',width:'100%',style:'display:block;max-height:'+(big?'38vh':'300px'),role:'img','aria-label':cwFigureText(f)});
+  var svg=cwNode('svg',{viewBox:'0 0 900 250',width:'100%',style:'display:block;max-height:'+(big?'38vh':'320px'),role:'img','aria-label':cwFigureText(f)});
   for(var i=0;i<shown;i++){
-    var n=i+1,panel=180,x0=i*180,unit=22,w=n*unit,x=x0+(180-w)/2,y=76,h=42,color=i===shown-1?'#2563eb':'#667085';
-    svg.appendChild(cwNode('rect',{x:x0+5,y:12,width:170,height:188,rx:10,fill:i===shown-1?'#eff6ff':'#fff',stroke:i===shown-1?'#2563eb':'#d0d5dd','stroke-width':i===shown-1?2:1}));
-    svg.appendChild(cwNode('text',{x:x0+90,y:36,'text-anchor':'middle','font-size':17,'font-weight':700,fill:'#111'},n+' \u5f20\u684c'));
+    var n=i+1,panel=300,x0=i*300,side=48,gap=0,w=n*side,x=x0+(300-w)/2,y=94,color=i===shown-1?'#2563eb':'#667085';
+    svg.appendChild(cwNode('rect',{x:x0+5,y:12,width:290,height:224,rx:10,fill:i===shown-1?'#eff6ff':'#fff',stroke:i===shown-1?'#2563eb':'#d0d5dd','stroke-width':i===shown-1?2:1}));
+    svg.appendChild(cwNode('text',{x:x0+150,y:38,'text-anchor':'middle','font-size':18,'font-weight':700,fill:'#111'},n+' \u5f20\u65b9\u684c'));
+    function chair(cx,cy,sideName){
+      var sx=cx-6,sy=cy-5,back={x1:cx-7,y1:cy-7,x2:cx+7,y2:cy-7};
+      if(sideName==='bottom')back={x1:cx-7,y1:cy+7,x2:cx+7,y2:cy+7};
+      if(sideName==='left')back={x1:cx-7,y1:cy-7,x2:cx-7,y2:cy+7};
+      if(sideName==='right')back={x1:cx+7,y1:cy-7,x2:cx+7,y2:cy+7};
+      svg.appendChild(cwNode('rect',{x:sx,y:sy,width:12,height:10,rx:2,fill:color,stroke:'#fff','stroke-width':1}));
+      svg.appendChild(cwNode('line',{x1:back.x1,y1:back.y1,x2:back.x2,y2:back.y2,stroke:color,'stroke-width':2}));
+    }
     for(var j=0;j<n;j++){
-      svg.appendChild(cwNode('rect',{x:x+j*unit,y:y,width:unit,height:h,fill:'#fef3c7',stroke:'#344054','stroke-width':2}));
-      for(var k=0;k<2;k++){
-        var sx=x+j*unit+unit*(k+1)/3;
-        svg.appendChild(cwNode('circle',{cx:sx,cy:y-10,r:4,fill:color,stroke:'#fff','stroke-width':1}));
-        svg.appendChild(cwNode('circle',{cx:sx,cy:y+h+10,r:4,fill:color,stroke:'#fff','stroke-width':1}));
-      }
+      svg.appendChild(cwNode('rect',{x:x+j*side+gap,y:y,width:side,height:side,fill:'#fef3c7',stroke:'#344054','stroke-width':2}));
+      if(j>0)svg.appendChild(cwNode('line',{x1:x+j*side,y1:y+4,x2:x+j*side,y2:y+side-4,stroke:'#344054','stroke-width':1}));
+      chair(x+j*side+side/4,y-12,'top');chair(x+j*side+side*3/4,y-12,'top');
+      chair(x+j*side+side/4,y+side+12,'bottom');chair(x+j*side+side*3/4,y+side+12,'bottom');
     }
-    for(var q=0;q<2;q++){
-      svg.appendChild(cwNode('circle',{cx:x-10,cy:y+12+q*18,r:4,fill:color,stroke:'#fff','stroke-width':1}));
-      svg.appendChild(cwNode('circle',{cx:x+w+10,cy:y+12+q*18,r:4,fill:color,stroke:'#fff','stroke-width':1}));
-    }
-    svg.appendChild(cwNode('text',{x:x0+90,y:157,'text-anchor':'middle','font-size':18,'font-weight':700,fill:color},f.sampleCounts[i]+' \u4eba'));
+    chair(x-12,y+side/3,'left');chair(x-12,y+side*2/3,'left');
+    chair(x+w+12,y+side/3,'right');chair(x+w+12,y+side*2/3,'right');
+    svg.appendChild(cwNode('text',{x:x0+150,y:207,'text-anchor':'middle','font-size':18,'font-weight':700,fill:color},f.sampleCounts[i]+' \u4eba'));
   }
   wrap.appendChild(svg);
-  if(step>=stepCount)wrap.appendChild(el('div',{style:'text-align:center;font-weight:700;color:#17449b;font-size:'+(big?'2.4vh':'16px'),text:'1\u5f20\u684c8\u4eba\uff0c\u6bcf\u52a0\u4e00\u5f20\u591a4\u4eba\uff1a8+4(m-1)=4m+4'}));
+  wrap.appendChild(el('div',{style:'text-align:center;color:#475467;font-size:14px',text:'\u684c\u9762\u7531\u6b63\u65b9\u5f62\u65b9\u684c\u62fc\u6210\uff1b\u6905\u5b50\u53ea\u56f4\u5728\u6700\u5916\u4fa7'}));
+  if(step>=stepCount)wrap.appendChild(el('div',{style:'text-align:center;font-weight:700;color:#17449b;font-size:'+(big?'2.4vh':'16px'),text:'1\u5f20\u65b9\u684c8\u4eba\uff0c\u6bcf\u52a0\u4e00\u5f20\u591a4\u4eba\uff1a8+4(m-1)=4m+4'}));
 }
 function cwAlternatingTriangle(box,f,view,big,teacher,stepCount){
   var step=teacher&&!view.previewMode?(stepCount||99):(view.step||0),shown=Math.max(1,Math.min(f.rows,Math.ceil(Math.max(1,step)*f.rows/Math.max(1,stepCount||f.rows))));
@@ -457,6 +462,15 @@ function cwPlan(box,lessonId,refresh){
   }
   function edit(box2,x,it){
     box2.textContent='';var card=el('div',{class:'card'}),fields={},kinds=data.templates,kind=it?it.kind:kinds[kinds.length-1],p=JSON.parse(JSON.stringify(it?it.params:{})),previewState={step:1,previewMode:true},preview=el('div',{class:'card',style:'position:sticky;top:76px;z-index:4;max-height:76vh;overflow:auto;box-shadow:0 8px 24px #10182822'});
+    if(kind==='steps'){
+      var sourceText=String(x.text||'')+' '+String(p.problem||'')+' '+String(p.sourceProblem||''),required=null;
+      if(sourceText.indexOf('地砖')>=0&&(sourceText.indexOf('排列')>=0||sourceText.indexOf('白地砖')>=0)){
+        function values(re){var out=[],m;re.lastIndex=0;while((m=re.exec(sourceText))!==null)out.push(Number(m[1]));return out}
+        var white=values(/(\d+)\s*块白地砖/g),blue=values(/(\d+)\s*块蓝地砖/g),term=sourceText.match(/当\s*n\s*[=＝]\s*(\d+)/),target=sourceText.match(/(?:用了|用)\s*(\d+)\s*块蓝(?:色)?砖/);
+        required={type:'tile_pattern',whiteCounts:white.length>=2?white.slice(0,2):[5,8],blueCounts:blue.length>=2?blue.slice(0,2):[4,7],targetTerm:term?Number(term[1]):10,targetBlue:target?Number(target[1]):100};
+      }else if(sourceText.indexOf('方桌')>=0&&(sourceText.indexOf('可坐')>=0||sourceText.indexOf('拼')>=0))required={type:'seating_pattern',sampleCounts:[8,12,16]};
+      if(required&&(!p.figure||p.figure.type!==required.type))p.figure=required;
+    }
     card.appendChild(el('h3',{text:(x.page==null?'整个环节':'第'+(x.page+1)+'页')+' 的课件'}));
     card.appendChild(el('p',{class:'muted',style:'white-space:pre-wrap',text:'这一页的内容：'+x.text}));
     var kindSel=el('select');kinds.forEach(function(k){kindSel.appendChild(el('option',{value:k,text:data.kindLabels[k]}))});kindSel.value=kind;
