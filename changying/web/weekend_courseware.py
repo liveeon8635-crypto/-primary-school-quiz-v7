@@ -165,12 +165,12 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
     if kind == "tile_pattern":
         white = [int(x) for x in re.findall(r"(\d+)\s*块白地砖", text)]
         blue = [int(x) for x in re.findall(r"(\d+)\s*块蓝地砖", text)]
-        if len(white) >= 2 and len(blue) >= 2:
-            term = re.search(r"当\s*n\s*[=＝]\s*(\d+)", text)
-            target = re.search(r"(?:用了|用)\s*(\d+)\s*块蓝(?:色)?砖", text)
-            return {"type": kind, "whiteCounts": white[:2], "blueCounts": blue[:2],
-                    "targetTerm": int(term.group(1)) if term else 10,
-                    "targetBlue": int(target.group(1)) if target else 100}
+        term = re.search(r"当\s*n\s*[=＝]\s*(\d+)", text)
+        target = re.search(r"(?:用了|用)\s*(\d+)\s*块蓝(?:色)?砖", text)
+        return {"type": kind, "whiteCounts": white[:2] if len(white) >= 2 else [5, 8],
+                "blueCounts": blue[:2] if len(blue) >= 2 else [4, 7],
+                "targetTerm": int(term.group(1)) if term else 10,
+                "targetBlue": int(target.group(1)) if target else 100}
     if kind == "alternating_triangle":
         symbol = re.search(r"黑(?:棋子)?比白(?:棋子)?多\s*([A-Za-z])", text)
         return {"type": kind, "rows": 6, "differenceSymbol": symbol.group(1) if symbol else "m"}
