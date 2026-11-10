@@ -1,4 +1,4 @@
-import os, io, json, secrets, hashlib, time, threading, base64, zipfile, re, socket, html as html_lib
+import os, io, json, secrets, hashlib, time, threading, base64, zipfile, re, socket, gzip, html as html_lib
 import requests
 from pathlib import Path
 from urllib.parse import quote, urlsplit
@@ -3685,6 +3685,45 @@ _cors_raw=os.getenv("CORS_ORIGINS","").strip()
 _cors_origins=["*"] if _cors_raw=="*" else [x.strip() for x in _cors_raw.split(",") if x.strip()]
 app.add_middleware(CORSMiddleware,allow_origins=_cors_origins,allow_credentials=False,allow_methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS"],allow_headers=["*"])
 app.add_middleware(GZipMiddleware,minimum_size=1000)
+
+PERSONAL_HOME_TAG = '<script src="/v1/personal-home.js"></script>'
+
+
+@app.middleware("http")
+async def inject_personal_home_script(request: Request, call_next):
+    """Make every coaching shell load the personal-home redirect.
+
+    The shells are assembled by many string patches, so editing one of them is
+    unreliable; inserting the tag on the way out covers /v1 and /classic alike.
+    It is an external script on purpose: the Safari 12 builder ignores src= tags,
+    so the shared inline asset manifest never changes.
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if request.method != "GET" or not (path == "/classic" or path.startswith("/v1")):
+        return response
+    if "text/html" not in (response.headers.get("content-type") or ""):
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    encoding = (response.headers.get("content-encoding") or "").lower()
+    compressed = encoding == "gzip"
+    if compressed:
+        try:
+            body = gzip.decompress(body)
+        except OSError:
+            compressed = False
+    headers = dict(response.headers)
+    headers.pop("content-length", None)
+    headers.pop("content-encoding", None)
+    if PERSONAL_HOME_TAG.encode() in body or b"</body>" not in body:
+        return Response(content=gzip.compress(body) if compressed else body, status_code=response.status_code,
+                        headers={**headers, **({"content-encoding": "gzip"} if compressed else {})}, media_type="text/html")
+    body = body.replace(b"</body>", PERSONAL_HOME_TAG.encode() + b"</body>", 1)
+    if compressed:
+        headers["content-encoding"] = "gzip"
+        body = gzip.compress(body)
+    return Response(content=body, status_code=response.status_code, headers=headers, media_type="text/html")
+
 
 @app.middleware("http")
 async def production_security_headers(request:Request,call_next):

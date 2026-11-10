@@ -82,6 +82,9 @@ def test_shell_loads_an_external_home_script(client):
     shell = client.get("/v1").text
     assert '<script src="/v1/personal-home.js"></script>' in shell
 
+    # The classic shell (where个人账号 actually lands) loads the same script.
+    assert '<script src="/v1/personal-home.js"></script>' in client.get("/classic?legacy=1").text
+
     js = client.get("/v1/personal-home.js")
     assert js.status_code == 200
     assert "application/javascript" in js.headers["content-type"]
