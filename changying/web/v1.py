@@ -7,13 +7,21 @@ import os
 import subprocess
 
 from fastapi import APIRouter, FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from changying.web.v1_ribbon_banner import BRAND_FONT_B64 as _BRAND_FONT_B64
 from changying.web.v1_ribbon_banner import RIBBON_SVG as _RIBBON_SVG
 
 V1_UI_MARKER = "changying_v1_20260915"
 PERSONAL_HOME_COOKIE = "cy_personal_home"
+PERSONAL_HOME_JS = """(function(){
+  try{
+    if(!/(?:^|; )cy_personal_home=1(?:;|$)/.test(document.cookie||""))return;
+    var p=location.pathname,q=location.search||"";
+    var home=p==="/"||p==="/v1"||p==="/v1/"||(p==="/v1/workspace"&&q.indexOf("view=all")<0);
+    if(home&&window.location.pathname!=="/start")window.location.replace("/start");
+  }catch(e){}
+})();"""
 
 V1_PATHS = ("/v1", "/v1/workspace", "/v1/student", "/v1/history", "/v1/transition")
 
@@ -272,6 +280,7 @@ def v1_html() -> str:
     identityButton.onclick=chooseIdentity;window.addEventListener('popstate',async()=>{{if(await ensureFreshBuild(location.pathname+location.search))return;render()}});document.addEventListener('visibilitychange',()=>{{if(!document.hidden)ensureFreshBuild(location.pathname+location.search)}});document.addEventListener('click',e=>{{const classic=e.target.closest('a[href^="/v1/tool"],a[href^="/classic"]');if(classic&&token&&token!=='demo'){{e.preventDefault();openClassic(classic.getAttribute('href'));return}}const a=e.target.closest('a[data-nav]');if(a){{e.preventDefault();navigate(a.getAttribute('href'))}}}});render();
   }})();
   </script>
+  <script src="/v1/personal-home.js"></script>
 </body>
 </html>'''
 
@@ -291,6 +300,19 @@ def install_v1_routes(app: FastAPI) -> None:
                 "X-Changying-V1": V1_UI_MARKER,
                 "X-Changying-V1-Build": current_v1_build_id(),
             },
+        )
+
+    @router.get("/v1/personal-home.js", include_in_schema=False)
+    def personal_home_script():
+        """Send a personal workspace to the quick page on first paint.
+
+        Kept as an external file on purpose: the Safari 12 builder ignores
+        <script src=...>, so adding this cannot invalidate the shared asset manifest.
+        """
+        return Response(
+            PERSONAL_HOME_JS,
+            media_type="application/javascript; charset=utf-8",
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
         )
 
     @router.get("/v1/version", include_in_schema=False)
