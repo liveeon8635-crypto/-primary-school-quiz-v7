@@ -193,3 +193,20 @@ def test_start_summary_follows_students_and_the_first_course(client):
     assert data["has_program"] is True and data["lessons"] == 18
     assert data["s3cls"] == "ok" and data["s3url"] == "/v1/weekend-plan"
     assert "18 节课" in data["s3text"]
+
+
+def test_start_stages_the_classic_handoff_before_leaving(client):
+    """Clicking a classic entry from /start must hand the session over first.
+
+    Without it, classic cannot see the V1 token in every context (another tab,
+    another browser, a just-expired token) and drops the teacher on the legacy
+    login page with no way back.
+    """
+    page = client.get("/start").text
+    assert "'/v1/auth-handoff'" in page
+    assert 'id="cy-link-msg"' in page
+
+    headers = _personal_workspace(client)
+    r = client.post("/v1/auth-handoff", headers=headers)
+    assert r.status_code == 200
+    assert "cy_v1_auth_handoff" in ";".join(r.headers.get_list("set-cookie"))

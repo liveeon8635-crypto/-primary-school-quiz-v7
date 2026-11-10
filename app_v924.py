@@ -4643,6 +4643,27 @@ PERSONAL_START_SCRIPT = """<script>
   x.setRequestHeader('Authorization','Bearer '+t);
   x.onload=function(){if(x.status!==200)return;var d=null;try{d=JSON.parse(x.responseText)}catch(e){return}if(d&&d.ok)apply(d)};
   x.send();
+  function goClassic(href){
+    var h=new XMLHttpRequest();
+    h.open('POST','/v1/auth-handoff',true);
+    h.setRequestHeader('Authorization','Bearer '+t);
+    h.onload=function(){
+      if(h.status===200){window.location.href=href;return}
+      var box=el('cy-link-msg');
+      if(box){box.textContent='登录状态已失效，请回到登录页重新登录后再打开。';box.hidden=false}
+    };
+    h.onerror=function(){window.location.href=href};
+    h.send();
+  }
+  document.addEventListener('click',function(e){
+    var a=e.target;
+    while(a&&a.tagName!=='A'){a=a.parentNode}
+    if(!a)return;
+    var href=a.getAttribute('href')||'';
+    if(href.indexOf('/v1/tool')!==0&&href.indexOf('/classic')!==0)return;
+    e.preventDefault();
+    goClassic(href);
+  });
   var form=el('cy-build');
   if(!form)return;
   var subject='数学';
@@ -4704,6 +4725,7 @@ a.tile b{display:block;font-size:16px}a.tile span{color:var(--muted);font-size:1
 <div class="step"><div class="dot $s1cls" id="cy-s1dot">1</div><div><div class="t">添加我的学生</div><div class="d" id="cy-s1text">$s1text</div></div><a class="go $s1a" id="cy-s1link" href="$s1url">$s1label</a></div>
 <div class="step"><div class="dot $s2cls" id="cy-s2dot">2</div><div><div class="t">填写自己的 AI Key</div><div class="d" id="cy-s2text">$s2text</div></div><a class="go $s2a" id="cy-s2link" href="$s2url">$s2label</a></div>
 <div class="step"><div class="dot $s3cls" id="cy-s3dot">3</div><div><div class="t">准备并上第一节课</div><div class="d" id="cy-s3text">$s3text</div>$s3action<div class="d" id="cy-build-msg" hidden style="margin-top:8px;color:#b91c1c"></div></div><a class="go $s3a" id="cy-s3link" href="$s3url">$s3label</a></div>
+<div class="d" id="cy-link-msg" hidden style="margin-top:10px;color:#b91c1c"></div>
 </div>
 <div class="grid">
 <a class="tile" href="/v1/weekend-plan"><b>周末课备课</b><span>导入教案、审习题、配课件</span></a>
