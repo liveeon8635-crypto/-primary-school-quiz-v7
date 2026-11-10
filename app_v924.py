@@ -4680,6 +4680,7 @@ def ensure_default_course(db,school_id,subject,grade):
 def personal_start_program(request:Request,subject:str=Form("数学"),u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"teacher","admin")
     if not is_personal_workspace_user(u):raise HTTPException(403,"只有个人工作台可以一键建课")
+    if subject not in DEFAULT_COURSE_SUBJECTS:raise HTTPException(400,"暂只支持数学和语文两科")
     grade=personal_student_list_grade(db,u.school_id)
     program,created=ensure_default_course(db,u.school_id,subject,grade)
     audit(db,u,"course.create",f"program={program.id}:subject={subject}:lessons={created}")

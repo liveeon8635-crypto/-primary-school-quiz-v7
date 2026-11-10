@@ -102,3 +102,8 @@ def test_school_teacher_cannot_build_a_personal_course(client):
 
     r = client.post("/start/program", headers=headers, data={"subject": "数学"}, follow_redirects=False)
     assert r.status_code == 403
+
+    # Unknown subjects are rejected before anything is written.
+    personal = _workspace(client)
+    r = client.post("/start/program", headers=personal, data={"subject": "英语"}, follow_redirects=False)
+    assert r.status_code == 400
