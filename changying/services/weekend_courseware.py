@@ -276,6 +276,22 @@ def clean_figure(raw: Any) -> dict[str, Any]:
         if not 2 <= target_term <= 100:
             raise ValueError("要计算的项数需在 2—100 之间")
         return {"type": "triangular_numbers", "terms": terms, "targetTerm": target_term}
+    if kind == "tile_pattern":
+        try:
+            white = [_int(v) for v in raw.get("whiteCounts", [5, 8])]
+            blue = [_int(v) for v in raw.get("blueCounts", [4, 7])]
+            target_term = _int(raw.get("targetTerm", 10))
+            target_blue = _int(raw.get("targetBlue", 100))
+        except (TypeError, ValueError):
+            raise ValueError("地砖样例数量必须是整数")
+        if len(white) != 2 or len(blue) != 2 or any(not 1 <= n <= 100 for n in white + blue):
+            raise ValueError("地砖样例需填写前两幅的白砖、蓝砖数量")
+        if white[1] <= white[0] or blue[1] <= blue[0]:
+            raise ValueError("两种地砖数量都应逐幅增加")
+        if not 1 <= target_term <= 100 or not 1 <= target_blue <= 10000:
+            raise ValueError("地砖规律题的目标幅数或砖数超出范围")
+        return {"type": "tile_pattern", "whiteCounts": white, "blueCounts": blue,
+                "targetTerm": target_term, "targetBlue": target_blue}
     if kind == "calendar_cross":
         try:
             center = _int(raw.get("center"))
@@ -309,7 +325,7 @@ def clean_steps(raw: Any) -> dict[str, Any]:
     if not answer:
         raise ValueError("请填写例题答案")
     figure = clean_figure(raw.get("figure"))
-    if figure.get("type") in ("calendar_cross", "seating_pattern", "alternating_triangle", "running_track", "triangular_numbers") and len(steps) < 4:
+    if figure.get("type") in ("calendar_cross", "seating_pattern", "alternating_triangle", "running_track", "triangular_numbers", "tile_pattern") and len(steps) < 4:
         raise ValueError("这类规律题的互动图示需要至少 4 步，才能逐步展示规律和结论")
     return {"title": _text(raw.get("title"), 40) or "分步讲解", "steps": steps, "answer": answer,
             "problem": _text(raw.get("problem"), 600),        # the example's own question, without its answer (pupils' task)
@@ -430,6 +446,7 @@ def generation_prompt(subject: str, lesson: dict[str, Any]) -> str:
                       '黑白棋子按层交替排成三角形、黑比白多 m 颗时必须用 {"type":"alternating_triangle","rows":6,"differenceSymbol":"m"}；首层白色，偶数层黑色，画 4/6/8 个示意层，逐层显现，最后突出每两层黑比白多1颗、总层数为2m；不能用静态颜色表代替。'
                       '同向环形跑道追及题必须用 {"type":"running_track","fastSpeed":180,"slowSpeed":140,"distanceSymbol":"s"}；画环形跑道、两个不同颜色的跑者和方向箭头，逐步展示每分钟相差的路程，最后说明追一圈需要 s/(快者速度-慢者速度) 分钟；原题图只能折叠作对照，不能代替互动示意图。'
                       '三角形数规律（1、3、6、10、15…）必须用 {"type":"triangular_numbers","terms":[1,3,6,10,15],"targetTerm":10}；逐步加出点阵三角形，并在最后一步把两份相同的三角形拼成 n 行、每行 n+1 个点的长方形，推导 n(n+1)/2；若题目问第10个，明确计算为55。'
+                      '地砖颜色/数量规律必须用 {"type":"tile_pattern","whiteCounts":[5,8],"blueCounts":[4,7],"targetTerm":10,"targetBlue":100}；将前两幅按白砖和蓝砖分别画成方块阵列，逐步展示每幅增加的数量、通项和代入/反推结果，不能只显示表格或原题图片。'
                       '所有步骤预览打开后默认显示第1步及对应图示状态；不得把每一步都留作“点下一步显示”的空占位。对长方形周长/面积题用标注边长的图形，并逐步突出对应边、周长路径或面积区域。')
     text = (f"你是小学{subject}教师，为大屏上的一页例题选择一个互动课件模板并填写参数。只输出 JSON，不要 HTML、代码或 Markdown。\n"
             f"课题：{lesson['title']}\n教学目标：{lesson['coreTarget']}\n"

@@ -60,6 +60,7 @@ function cwFigureText(f){
   if(f.type==='alternating_triangle')return '\u9ed1\u767d\u68cb\u5b50\u4e09\u89d2\u5f62\uff1a'+f.rows+'\u5c42\uff0c\u5dee\u503c '+f.differenceSymbol;
   if(f.type==='running_track')return '\u540c\u5411\u73af\u5f62\u8dd1\u9053\uff1a'+f.fastSpeed+'\u7c73/\u5206\u949f\u548c '+f.slowSpeed+'\u7c73/\u5206\u949f\uff0c\u8dd1\u9053\u5468\u957f '+f.distanceSymbol;
   if(f.type==='triangular_numbers')return '\u4e09\u89d2\u5f62\u6570\uff1a'+f.terms.join('\u3001')+'\uff0c\u6c42\u7b2c '+f.targetTerm+' \u9879';
+  if(f.type==='tile_pattern')return '\u5730\u7816\u6392\u5217\u89c4\u5f8b\uff1a\u767d\u7816 '+f.whiteCounts.join('\u3001')+'\uff0c\u84dd\u7816 '+f.blueCounts.join('\u3001');
   return f.rows.map(function(r){return r.join(' | ')}).join('\n');
 }
 function cwFigureOk(f){
@@ -72,6 +73,7 @@ function cwFigureOk(f){
   if(f.type==='alternating_triangle')return f.rows>=4&&f.rows<=8&&f.rows%2===0&&/^[A-Za-z]$/.test(f.differenceSymbol||'');
   if(f.type==='running_track')return f.fastSpeed>f.slowSpeed&&f.slowSpeed>0&&/^[A-Za-z]$/.test(f.distanceSymbol||'');
   if(f.type==='triangular_numbers')return (f.terms||[]).length>=3&&f.terms.every(function(n,i){return n===(i+1)*(i+2)/2})&&f.targetTerm>=2&&f.targetTerm<=100;
+  if(f.type==='tile_pattern')return (f.whiteCounts||[]).length===2&&(f.blueCounts||[]).length===2&&f.whiteCounts[1]>f.whiteCounts[0]&&f.blueCounts[1]>f.blueCounts[0]&&f.targetTerm>=1&&f.targetTerm<=100&&f.targetBlue>=1;
   return (f.rows||[]).length>0;
 }
 function cwCalendarCross(box,f,view,big,teacher){
@@ -132,10 +134,11 @@ function cwAlternatingTriangle(box,f,view,big,teacher,stepCount){
   wrap.appendChild(svg);
   wrap.appendChild(el('div',{style:'font-size:14px;color:#475467',text:'\u6bcf\u5c42\u9ed1\u767d\u4ea4\u66ff\uff1b\u4ece\u9876\u5c42\u767d\u68cb\u5f00\u59cb'}));
   if(step>=stepCount){
-    var formulas=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px;text-align:left'});
-    formulas.appendChild(el('div',{style:'padding:8px 10px;border-radius:8px;background:#f8fafc;color:#17449b;font-weight:700',text:'\u767d\u68cb\u5b50\uff08\u5947\u6570\u5c42\uff09\uff1a1+3+\u22ef+(2k-1)=k\u00b2'}));
-    formulas.appendChild(el('div',{style:'padding:8px 10px;border-radius:8px;background:#f8fafc;color:#344054;font-weight:700',text:'\u9ed1\u68cb\u5b50\uff08\u5076\u6570\u5c42\uff09\uff1a2+4+\u22ef+2k=k(k+1)'}));
-    formulas.appendChild(el('div',{style:'padding:8px 10px;border-radius:8px;background:#eff6ff;color:#17449b;font-weight:700',text:'\u9ed1\u6bd4\u767d\u591a k='+f.differenceSymbol+'\uff1b\u4e00\u5171\u6709 2'+f.differenceSymbol+' \u5c42'}));
+    var formulas=el('div',{style:'display:grid;grid-template-columns:1fr;gap:6px;margin-top:10px;text-align:left'});
+    function formulaCard(title,equation,color){var card=el('div',{style:'padding:7px 10px;border-radius:8px;background:#f8fafc;color:'+color});card.appendChild(el('div',{style:'font-size:13px;font-weight:600;color:#475467',text:title}));card.appendChild(el('div',{style:'font-size:15px;font-weight:700;text-align:center;white-space:nowrap;margin-top:3px',text:equation}));return card}
+    formulas.appendChild(formulaCard('\u767d\u68cb\u5b50\uff08\u5947\u6570\u5c42\uff09','1 + 3 + \u22ef + (2k\u22121) = k\u00b2','#17449b'));
+    formulas.appendChild(formulaCard('\u9ed1\u68cb\u5b50\uff08\u5076\u6570\u5c42\uff09','2 + 4 + \u22ef + 2k = k(k+1)','#344054'));
+    formulas.appendChild(formulaCard('\u4e24\u8272\u5c42\u6570\u5173\u7cfb','\u9ed1\u6bd4\u767d\u591a '+f.differenceSymbol+'\uff0c\u603b\u5c42\u6570 = 2'+f.differenceSymbol,'#17449b'));
     wrap.appendChild(formulas);
   }
 }
@@ -154,6 +157,42 @@ function cwRunningTrack(box,f,view,big,teacher,stepCount){
   wrap.appendChild(svg);
   wrap.appendChild(el('div',{style:'font-weight:700;color:#17449b;font-size:'+(big?'2.3vh':'16px'),text:'\u7b2c '+shown+' \u5206\u949f\uff1a\u5feb\u8005\u591a\u8dd1 '+gap+' \u7c73\uff1b\u6bcf\u5206\u949f\u8def\u7a0b\u5dee '+f.fastSpeed+' - '+f.slowSpeed+' = '+(f.fastSpeed-f.slowSpeed)+' \u7c73'}));
   if(step>=stepCount)wrap.appendChild(el('div',{style:'margin-top:8px;color:#b42318;font-weight:700',text:'\u8def\u7a0b\u5dee\u8fbe\u5230\u4e00\u5708 '+f.distanceSymbol+' \u7c73\u65f6\u8ffd\u4e0a\uff1a'+f.distanceSymbol+' \u00f7 ('+f.fastSpeed+' - '+f.slowSpeed+') = '+f.distanceSymbol+' / '+(f.fastSpeed-f.slowSpeed)+' \u5206\u949f'}));
+}
+function cwTilePattern(box,f,view,big,teacher,stepCount){
+  var finalStep=Math.max(4,stepCount||4),step=teacher&&!view.previewMode?finalStep:Math.max(1,view.step||0),wrap=el('div',{style:'max-width:840px;margin:10px auto;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#fff'});
+  var svg=cwNode('svg',{viewBox:'0 0 820 220',width:'100%',style:'display:block;max-height:'+(big?'34vh':'250px'),role:'img','aria-label':cwFigureText(f)});
+  function label(x,y,t,size,color,weight,anchor){svg.appendChild(cwNode('text',{x:x,y:y,'font-size':size||16,'font-weight':weight||600,'text-anchor':anchor||'start',fill:color||'#344054'},t))}
+  function row(x,y,white,blue,name){
+    label(x,y-14,name,17,'#344054',700);
+    var size=22,gap=4;
+    for(var i=0;i<white;i++)svg.appendChild(cwNode('rect',{x:x+i*(size+gap),y:y,width:size,height:size,rx:3,fill:'#fff',stroke:'#667085','stroke-width':2}));
+    for(var j=0;j<blue;j++)svg.appendChild(cwNode('rect',{x:x+(white+j)*(size+gap),y:y,width:size,height:size,rx:3,fill:'#93c5fd',stroke:'#2563eb','stroke-width':2}));
+    label(x,y+size+20,'白砖 '+white+' 块  +  蓝砖 '+blue+' 块  =  '+(white+blue)+' 块',14,'#475467',600);
+  }
+  row(35,55,f.whiteCounts[0],f.blueCounts[0],'第 1 幅');
+  if(step>=2){
+    row(390,55,f.whiteCounts[1],f.blueCounts[1],'第 2 幅');
+    label(350,100,'→',23,'#2563eb',700,'middle');
+    label(350,124,'各增加',13,'#475467',600,'middle');
+    label(350,144,'白 +'+(f.whiteCounts[1]-f.whiteCounts[0])+'、蓝 +'+(f.blueCounts[1]-f.blueCounts[0]),12,'#475467',600,'middle');
+  }else{
+    label(440,104,'\\u7b2c\\u4e8c\\u5e45\\u4f1a\\u600e\\u6837\\u53d8\\u5316\\uff1f',16,'#98a2b3',500,'middle');
+  }
+  wrap.appendChild(svg);
+  if(step>=Math.max(3,finalStep-1)){
+    var wi=f.whiteCounts[1]-f.whiteCounts[0],bi=f.blueCounts[1]-f.blueCounts[0],wc=f.whiteCounts[0]-wi,bc=f.blueCounts[0]-bi;
+    function expr(a,b){return a+'n'+(b>0?' + '+b:b<0?' - '+Math.abs(b):'')}
+    var formulas=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px;margin-top:6px'});
+    formulas.appendChild(el('div',{style:'padding:9px 12px;border-radius:8px;background:#f8fafc;color:#17449b;font-weight:700;text-align:center',text:'\\u767d\\u7816\\u6570\\uff1a'+f.whiteCounts[0]+' + '+wi+'(n\\u22121) = '+expr(wi,wc)}));
+    formulas.appendChild(el('div',{style:'padding:9px 12px;border-radius:8px;background:#eff6ff;color:#17449b;font-weight:700;text-align:center',text:'\\u84dd\\u7816\\u6570\\uff1a'+f.blueCounts[0]+' + '+bi+'(n\\u22121) = '+expr(bi,bc)}));
+    wrap.appendChild(formulas);
+  }
+  if(step>=finalStep){
+    var blueInc=f.blueCounts[1]-f.blueCounts[0],blueConst=f.blueCounts[0]-blueInc,whiteInc=f.whiteCounts[1]-f.whiteCounts[0],whiteConst=f.whiteCounts[0]-whiteInc;
+    var whiteAt=whiteInc*f.targetTerm+whiteConst,blueAt=blueInc*f.targetTerm+blueConst,sol=(f.targetBlue-blueConst)/blueInc;
+    wrap.appendChild(el('div',{style:'margin-top:8px;padding:9px 12px;border-radius:8px;background:#fff7ed;color:#9a3412;font-weight:700;text-align:center',text:'\\u7b2c '+f.targetTerm+' \\u5e45\\uff1a\\u767d\\u7816 '+whiteInc+'\\u00d7'+f.targetTerm+(whiteConst>0?' + '+whiteConst:'')+' = '+whiteAt+' \\u5757\\uff1b\\u84dd\\u7816 '+blueAt+' \\u5757\\u3002  '+f.targetBlue+' \\u5757\\u84dd\\u7816\\uff1an = ('+f.targetBlue+' - ('+blueConst+')) \\u00f7 '+blueInc+' = '+(Number.isInteger(sol)?sol:'\\u4e0d\\u662f\\u6574\\u6570')}));
+  }
+  box.appendChild(wrap);
 }
 function cwTriangularNumbers(box,f,view,big,teacher,stepCount){
   var step=teacher&&!view.previewMode?(stepCount||99):Math.max(1,view.step||0),maxRows=f.terms.length;
@@ -203,6 +242,7 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
   if(f.type==='alternating_triangle'){cwAlternatingTriangle(box,f,view,big,teacher,stepCount);return}
   if(f.type==='running_track'){cwRunningTrack(box,f,view,big,teacher,stepCount);return}
   if(f.type==='triangular_numbers'){cwTriangularNumbers(box,f,view,big,teacher,stepCount);return}
+  if(f.type==='tile_pattern'){cwTilePattern(box,f,view,big,teacher,stepCount);return}
   f={type:f.type,points:(f.points||[]).slice().sort(function(a,b){return a.at-b.at}),marks:(f.marks||[]).filter(function(m){return m.from&&m.to}),
     boxes:f.boxes||[],branches:f.branches||[],shape:f.shape,labels:f.labels||{},rows:f.rows||[]};
   var visualStep=teacher&&!view.previewMode?(stepCount||1):(view.step||0),visualSteps=Math.max(1,stepCount||1);
@@ -442,8 +482,8 @@ function cwPlan(box,lessonId,refresh){
       }else if(kind==='steps'){
         field('problem','题目原文（不含答案，生成学生作答题时使用）',area(p.problem));
         field('steps','讲解步骤（每行一步，2—6 步）',area((p.steps||[]).join('\n')));field('answer','答案',input(p.answer));
-        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
-        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
+        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律'],['tile_pattern','地砖排列规律']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
+        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:ft.value==='tile_pattern'?{type:ft.value,whiteCounts:[5,8],blueCounts:[4,7],targetTerm:10,targetBlue:100}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
         if(f.type==='segment'){
           field('figA','线段上的点（名称:位置，分号隔开，如 A:0; C:3; B:6; D:10）',input((f.points||[]).map(function(q){return q.name+':'+q.at}).join('; ')));
           field('figB','标注（如 A-D:L; A-B:x，可留空）',input((f.marks||[]).map(function(m){return m.from+'-'+m.to+':'+m.label}).join('; ')));
@@ -465,6 +505,10 @@ function cwPlan(box,lessonId,refresh){
           field('figFast','\u5feb\u8005\u901f\u5ea6\uff08\u7c73/\u5206\uff09',input(f.fastSpeed||180));field('figSlow','\u6162\u8005\u901f\u5ea6\uff08\u7c73/\u5206\uff09',input(f.slowSpeed||140));field('figDistanceSymbol','\u8dd1\u9053\u5468\u957f\u5b57\u6bcd',input(f.distanceSymbol||'s'));
         }else if(f.type==='triangular_numbers'){
           field('figTerms','\u4e09\u89d2\u5f62\u6570\u6837\u4f8b\uff08\u9017\u53f7\u5206\u9694\uff09',input((f.terms||[1,3,6,10,15]).join(', ')));field('figTarget','\u9898\u76ee\u95ee\u7b2c\u51e0\u9879',input(f.targetTerm||10));
+        }else if(f.type==='tile_pattern'){
+          field('figWhiteCounts','\u524d\u4e24\u5e45\u767d\u5730\u7816\u6570\uff08\u9017\u53f7\u5206\u9694\uff09',input((f.whiteCounts||[5,8]).join(', ')));
+          field('figBlueCounts','\u524d\u4e24\u5e45\u84dd\u5730\u7816\u6570\uff08\u9017\u53f7\u5206\u9694\uff09',input((f.blueCounts||[4,7]).join(', ')));
+          field('figTarget','\u9898\u76ee\u95ee\u7684\u5e45\u6570 n',input(f.targetTerm||10));field('figBlueTarget','\u9898\u76ee\u7ed9\u51fa\u7684\u84dd\u7816\u6570',input(f.targetBlue||100));
         }else if(f.type==='table'){
           field('figA','数表（每行一行，格子用 | 隔开）',area((f.rows||[]).map(function(r){return r.join(' | ')}).join('\n')));
         }
@@ -485,6 +529,7 @@ function cwPlan(box,lessonId,refresh){
       if(t==='alternating_triangle')return {type:t,rows:Number(fields.figRows.value),differenceSymbol:fields.figDiff.value};
       if(t==='running_track')return {type:t,fastSpeed:Number(fields.figFast.value),slowSpeed:Number(fields.figSlow.value),distanceSymbol:fields.figDistanceSymbol.value};
       if(t==='triangular_numbers')return {type:t,terms:parts(fields.figTerms.value,/,/).map(function(x){return Number(x)}),targetTerm:Number(fields.figTarget.value)};
+      if(t==='tile_pattern')return {type:t,whiteCounts:parts(fields.figWhiteCounts.value,/,/).map(function(x){return Number(x)}),blueCounts:parts(fields.figBlueCounts.value,/,/).map(function(x){return Number(x)}),targetTerm:Number(fields.figTarget.value),targetBlue:Number(fields.figBlueTarget.value)};
       if(!fields.figA)return {type:t,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};
       if(t==='segment')return {type:t,points:parts(fields.figA.value,/[;；]/).map(function(x){var k=x.split(/[:：]/);return {name:(k[0]||'').trim(),at:Number((k[1]||'').trim())}}),
         marks:parts(fields.figB.value,/[;；]/).map(function(x){var k=x.split(/[:：]/),ab=(k[0]||'').split(/[-－—]/);return {from:(ab[0]||'').trim(),to:(ab[1]||'').trim(),label:(k.slice(1).join(':')||'').trim()}})};

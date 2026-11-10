@@ -139,6 +139,8 @@ def required_visual_type(page_text: Any) -> str:
         return "seating_pattern"
     if "黑白棋子" in text and "三角形" in text:
         return "alternating_triangle"
+    if "地砖" in text and ("排列" in text or "白地砖" in text):
+        return "tile_pattern"
     if "跑道" in text and ("追上" in text or "超过" in text or "多跑一圈" in text):
         return "running_track"
     compact = _normalize_text(text)
@@ -160,6 +162,15 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
     if kind == "triangular_numbers":
         target = re.search(r"第\s*(\d+)\s*个(?:三角形数)?", text)
         return {"type": kind, "terms": [1, 3, 6, 10, 15], "targetTerm": int(target.group(1)) if target else 10}
+    if kind == "tile_pattern":
+        white = [int(x) for x in re.findall(r"(\d+)\s*块白地砖", text)]
+        blue = [int(x) for x in re.findall(r"(\d+)\s*块蓝地砖", text)]
+        if len(white) >= 2 and len(blue) >= 2:
+            term = re.search(r"当\s*n\s*[=＝]\s*(\d+)", text)
+            target = re.search(r"(?:用了|用)\s*(\d+)\s*块蓝(?:色)?砖", text)
+            return {"type": kind, "whiteCounts": white[:2], "blueCounts": blue[:2],
+                    "targetTerm": int(term.group(1)) if term else 10,
+                    "targetBlue": int(target.group(1)) if target else 100}
     if kind == "alternating_triangle":
         symbol = re.search(r"黑(?:棋子)?比白(?:棋子)?多\s*([A-Za-z])", text)
         return {"type": kind, "rows": 6, "differenceSymbol": symbol.group(1) if symbol else "m"}
@@ -522,7 +533,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             if fallback_figure:
                 params = cw.clean(item["kind"], {**params, "figure": fallback_figure}, lesson.reading_plan or "")
         if required_figure and (params.get("figure") or {}).get("type") != required_figure:
-            labels = {"calendar_cross": "月历十字框", "seating_pattern": "方桌人数规律", "alternating_triangle": "黑白棋子三角形", "running_track": "环形跑道追及"}
+            labels = {"calendar_cross": "月历十字框", "seating_pattern": "方桌人数规律", "alternating_triangle": "黑白棋子三角形", "running_track": "环形跑道追及", "tile_pattern": "地砖排列规律"}
             raise HTTPException(400, "请先补全本题的" + labels.get(required_figure, "专用") + "课件图示，再审核")
         template_id = item.get("templateId")
         if item.get("writtenTask"):
