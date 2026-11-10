@@ -4611,13 +4611,67 @@ code{background:#f4f6fb;border-radius:6px;padding:2px 6px;font-size:17px;font-we
 </script></body></html>"""
 
 DEFAULT_COURSE_FORM=(
-    '<form class="build" method="post" action="/start/program">'
+    '<form class="build" id="cy-build" method="post" action="/start/program">'
     '<button type="submit" name="subject" value="数学">建数学课（18 节）</button>'
     '<button type="submit" name="subject" value="语文" class="alt">建语文课（18 节）</button>'
     '</form>'
 )
 DEFAULT_COURSE_LESSONS=18
 DEFAULT_COURSE_SUBJECTS=("数学","语文")
+
+# Browsers open /start without an Authorization header, so the page refreshes its
+# own state and posts the course form with the stored token. Kept as a plain ES5
+# script (no arrow functions, no template strings) for the iOS 12 iPad.
+PERSONAL_START_SCRIPT = """<script>
+(function(){
+  function token(){try{return localStorage.getItem('v717Token')||sessionStorage.getItem('v717Token')||''}catch(e){return ''}}
+  var t=token();if(!t)return;
+  function el(id){return document.getElementById(id)}
+  function setText(id,v){var e=el(id);if(e&&typeof v==='string')e.textContent=v}
+  function setDot(id,ok){var e=el(id);if(e)e.className='dot'+(ok?' ok':'')}
+  function setLink(id,href,label,plain){var a=el(id);if(!a)return;if(typeof href==='string'&&href)a.setAttribute('href',href);if(typeof label==='string')a.textContent=label;a.className='go'+(plain?' plain':'')}
+  function apply(d){
+    setText('cy-title',d.title);setText('cy-subtitle',d.subtitle);
+    setDot('cy-s1dot',d.s1cls==='ok');setText('cy-s1text',d.s1text);setLink('cy-s1link',d.s1url,d.s1label,d.s1a==='plain');
+    setDot('cy-s2dot',d.s2cls==='ok');setText('cy-s2text',d.s2text);setLink('cy-s2link',d.s2url,d.s2label,d.s2a==='plain');
+    setDot('cy-s3dot',d.s3cls==='ok');setText('cy-s3text',d.s3text);setLink('cy-s3link',d.s3url,d.s3label,d.s3a==='plain');
+    var f=el('cy-build');
+    if(f&&d.s3cls==='ok'&&f.parentNode)f.parentNode.removeChild(f);
+  }
+  var x=new XMLHttpRequest();
+  x.open('GET','/start/summary',true);
+  x.setRequestHeader('Authorization','Bearer '+t);
+  x.onload=function(){if(x.status!==200)return;var d=null;try{d=JSON.parse(x.responseText)}catch(e){return}if(d&&d.ok)apply(d)};
+  x.send();
+  var form=el('cy-build');
+  if(!form)return;
+  var subject='数学';
+  var buttons=form.querySelectorAll('button[name=subject]');
+  for(var i=0;i<buttons.length;i++){(function(b){b.addEventListener('click',function(){subject=b.value||'数学'})})(buttons[i])}
+  form.addEventListener('submit',function(ev){
+    ev.preventDefault();
+    var msg=el('cy-build-msg');
+    if(msg){msg.hidden=true;msg.textContent=''}
+    for(var j=0;j<buttons.length;j++)buttons[j].disabled=true;
+    var r=new XMLHttpRequest();
+    r.open('POST','/start/program',true);
+    r.setRequestHeader('Authorization','Bearer '+t);
+    r.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+    r.onload=function(){
+      if(r.status>=200&&r.status<400){location.reload();return}
+      var d=null;try{d=JSON.parse(r.responseText)}catch(e){}
+      var text=(d&&typeof d.detail==='string')?d.detail:'建课失败，请刷新后重试';
+      if(msg){msg.textContent=text;msg.hidden=false}
+      for(var k=0;k<buttons.length;k++)buttons[k].disabled=false;
+    };
+    r.onerror=function(){
+      if(msg){msg.textContent='网络异常，请重试';msg.hidden=false}
+      for(var k=0;k<buttons.length;k++)buttons[k].disabled=false;
+    };
+    r.send('subject='+encodeURIComponent(subject));
+  });
+})();
+</script>"""
 
 PERSONAL_START_HTML = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -4644,12 +4698,12 @@ form.build button.alt{background:#eef2fa;color:var(--brand)}
 a.tile{display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
 a.tile b{display:block;font-size:16px}a.tile span{color:var(--muted);font-size:13px}
 </style></head><body><main>
-<h1>$title</h1>
-<p class="sub">$subtitle</p>
+<h1 id="cy-title">$title</h1>
+<p class="sub" id="cy-subtitle">$subtitle</p>
 <div class="card">
-<div class="step"><div class="dot $s1cls">1</div><div><div class="t">添加我的学生</div><div class="d">$s1text</div></div><a class="go $s1a" href="$s1url">$s1label</a></div>
-<div class="step"><div class="dot $s2cls">2</div><div><div class="t">填写自己的 AI Key</div><div class="d">$s2text</div></div><a class="go $s2a" href="$s2url">$s2label</a></div>
-<div class="step"><div class="dot $s3cls">3</div><div><div class="t">准备并上第一节课</div><div class="d">$s3text</div>$s3action</div><a class="go $s3a" href="$s3url">$s3label</a></div>
+<div class="step"><div class="dot $s1cls" id="cy-s1dot">1</div><div><div class="t">添加我的学生</div><div class="d" id="cy-s1text">$s1text</div></div><a class="go $s1a" id="cy-s1link" href="$s1url">$s1label</a></div>
+<div class="step"><div class="dot $s2cls" id="cy-s2dot">2</div><div><div class="t">填写自己的 AI Key</div><div class="d" id="cy-s2text">$s2text</div></div><a class="go $s2a" id="cy-s2link" href="$s2url">$s2label</a></div>
+<div class="step"><div class="dot $s3cls" id="cy-s3dot">3</div><div><div class="t">准备并上第一节课</div><div class="d" id="cy-s3text">$s3text</div>$s3action<div class="d" id="cy-build-msg" hidden style="margin-top:8px;color:#b91c1c"></div></div><a class="go $s3a" id="cy-s3link" href="$s3url">$s3label</a></div>
 </div>
 <div class="grid">
 <a class="tile" href="/v1/weekend-plan"><b>周末课备课</b><span>导入教案、审习题、配课件</span></a>
@@ -4666,42 +4720,68 @@ def personal_start(request:Request,authorization:Optional[str]=Header(default=No
     Browsers navigate here without the JSON token, so the page also renders as a
     plain guide; the numbers simply show up when the request carries a token.
     """
-    values=dict(
-        title="我的工作室",subtitle="个人免费版 · 一个账号就是一间工作室",
-        s1cls="",s1text="先把要带的学生加进来，1-2 个也行",s1url="/v1/tool?page=classes",s1label="去添加",s1a="",
-        s2cls="",s2text="填模型地址、模型名和 Key；不填也能手工写教案",s2url="/v1/tool?page=ai",s2label="去填写",s2a="",
-        s3cls="",s3text="先建课程方案，再导入教案、审习题、上课",s3url="/v1/tool?page=teaching",s3label="去准备",s3a="",
-        s3action=DEFAULT_COURSE_FORM,
-    )
+    values=dict(PERSONAL_START_BLANK)
+    values["s3action"]=DEFAULT_COURSE_FORM
     token=(authorization or "")[7:].strip() if (authorization or "").startswith("Bearer ") else ""
     if token:
         try:
             u=authenticated_user("Bearer "+token,db)
             u.school_individual=is_individual_school(db,u.school_id)
             if is_personal_workspace_user(u):
-                school=db.get(School,u.school_id)
-                owner_id=personal_owner_id(db,u)
-                students=db.scalar(select(func.count()).select_from(ClassStudent).join(SchoolClass,SchoolClass.id==ClassStudent.class_id).where(SchoolClass.school_id==u.school_id,SchoolClass.teacher_id==owner_id)) or 0
-                cfg=db.scalar(select(SchoolAIConfig).where(SchoolAIConfig.school_id==u.school_id))
-                ai_ready=bool(cfg and cfg.enabled and cfg.model)
-                program=db.scalar(select(TeachingProgram).where(TeachingProgram.school_id==u.school_id).order_by(TeachingProgram.active.desc(),TeachingProgram.id.desc()).limit(1))
-                lessons=db.scalar(select(func.count()).select_from(TeachingLesson).where(TeachingLesson.school_id==u.school_id)) if program else 0
-                values.update(
-                    title=(school.name if school else "我的工作室"),
-                    subtitle=f"{u.name} · 个人免费版 · 一个账号就是一间工作室",
-                    s1cls="ok" if students else "",s1text=(f"已经有 {students} 名学生" if students else "还没有学生，先加 1-2 个试试"),
-                    s1label=("查看" if students else "去添加"),s1a=("plain" if students else ""),
-                    s2cls="ok" if ai_ready else "",s2text=("AI 已配置，可以生成教案和习题" if ai_ready else "填模型地址、模型名和 Key；不填也能手工写教案"),
-                    s2label=("查看" if ai_ready else "去填写"),s2a=("plain" if ai_ready else ""),
-                    s3cls="ok" if (program and lessons) else "",
-                    s3text=(f"已有课程方案（{lessons} 节课）" if (program and lessons) else ("还没有课程方案，先去「定制教学」建一个" if not program else "方案已建，但还没有课")),
-                    s3url=("/v1/weekend-plan" if (program and lessons) else "/v1/tool?page=teaching"),
-                    s3label=("去备课" if (program and lessons) else "去建立"),s3a=("plain" if (program and lessons) else ""),
-                    s3action=("" if (program and lessons) else DEFAULT_COURSE_FORM),
-                )
+                state=personal_start_state(db,u)
+                values.update(state)
+                values["s3action"]=("" if state["s3cls"]=="ok" else DEFAULT_COURSE_FORM)
         except HTTPException:
             pass
-    return HTMLResponse(Template(PERSONAL_START_HTML).substitute(**values))
+    html=Template(PERSONAL_START_HTML).substitute(**values).replace("</body>",PERSONAL_START_SCRIPT+"</body>")
+    return HTMLResponse(html)
+
+PERSONAL_START_BLANK=dict(
+    title="我的工作室",subtitle="个人免费版 · 一个账号就是一间工作室",
+    s1cls="",s1text="先把要带的学生加进来，1-2 个也行",s1url="/v1/tool?page=classes",s1label="去添加",s1a="",
+    s2cls="",s2text="填模型地址、模型名和 Key；不填也能手工写教案",s2url="/v1/tool?page=ai",s2label="去填写",s2a="",
+    s3cls="",s3text="先建课程方案，再导入教案、审习题、上课",s3url="/v1/tool?page=teaching",s3label="去准备",s3a="",
+)
+
+def personal_start_state(db,u):
+    """What the quick page knows about a real personal workspace.
+
+    Shared by the server-rendered page and by /start/summary, so a browser (which
+    cannot send an Authorization header while navigating) sees the same numbers.
+    """
+    school=db.get(School,u.school_id)
+    owner_id=personal_owner_id(db,u)
+    students=db.scalar(select(func.count()).select_from(ClassStudent).join(SchoolClass,SchoolClass.id==ClassStudent.class_id).where(SchoolClass.school_id==u.school_id,SchoolClass.teacher_id==owner_id)) or 0
+    cfg=db.scalar(select(SchoolAIConfig).where(SchoolAIConfig.school_id==u.school_id))
+    ai_ready=bool(cfg and cfg.enabled and cfg.model)
+    program=db.scalar(select(TeachingProgram).where(TeachingProgram.school_id==u.school_id).order_by(TeachingProgram.active.desc(),TeachingProgram.id.desc()).limit(1))
+    lessons=db.scalar(select(func.count()).select_from(TeachingLesson).where(TeachingLesson.school_id==u.school_id)) if program else 0
+    return {
+        "title":(school.name if school else "我的工作室"),
+        "subtitle":f"{u.name} · 个人免费版 · 一个账号就是一间工作室",
+        "students":int(students),"ai_ready":ai_ready,
+        "has_program":bool(program),"lessons":int(lessons or 0),
+        "s1cls":("ok" if students else ""),"s1text":(f"已经有 {students} 名学生" if students else "还没有学生，先加 1-2 个试试"),
+        "s1url":"/v1/tool?page=classes","s1label":("查看" if students else "去添加"),"s1a":("plain" if students else ""),
+        "s2cls":("ok" if ai_ready else ""),"s2text":("AI 已配置，可以生成教案和习题" if ai_ready else "填模型地址、模型名和 Key；不填也能手工写教案"),
+        "s2url":"/v1/tool?page=ai","s2label":("查看" if ai_ready else "去填写"),"s2a":("plain" if ai_ready else ""),
+        "s3cls":("ok" if (program and lessons) else ""),
+        "s3text":(f"已有课程方案（{lessons} 节课）" if (program and lessons) else ("还没有课程方案，先去「定制教学」建一个" if not program else "方案已建，但还没有课")),
+        "s3url":("/v1/weekend-plan" if (program and lessons) else "/v1/tool?page=teaching"),
+        "s3label":("去备课" if (program and lessons) else "去建立"),"s3a":("plain" if (program and lessons) else ""),
+    }
+
+@app.get("/start/summary",include_in_schema=False)
+def personal_start_summary(authorization:Optional[str]=Header(default=None),db:Session=Depends(get_db)):
+    """Same numbers as /start, for the page script that runs in a real browser."""
+    token=(authorization or "")[7:].strip() if (authorization or "").startswith("Bearer ") else ""
+    if not token:raise HTTPException(401,"未登录")
+    u=authenticated_user("Bearer "+token,db)
+    u.school_individual=is_individual_school(db,u.school_id)
+    if not is_personal_workspace_user(u):raise HTTPException(403,"只有个人工作台可以使用快速页")
+    state=personal_start_state(db,u)
+    state["ok"]=True
+    return state
 
 def ensure_default_course(db,school_id,subject,grade):
     """Give a personal workspace its first course so备课 has somewhere to start."""
