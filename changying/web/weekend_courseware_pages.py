@@ -93,35 +93,35 @@ function cwCalendarCross(box,f,view,big,teacher){
   if(view.showAnswer||teacher){var a=f.total/5;wrap.appendChild(el('div',{style:'margin-top:8px;text-align:center;color:#b42318;font-weight:700',text:'5a='+f.total+'\uff0ca='+a+'\uff1b\u6700\u5c0f\u6570 '+(a-7)+'\uff0c\u6700\u5927\u6570 '+(a+7)}))}
 }
 function cwSeatingPattern(box,f,view,big,teacher,stepCount){
-  var step=teacher&&!view.previewMode?(stepCount||99):(view.step||0),shown=Math.max(1,Math.min(f.sampleCounts.length,Math.ceil(Math.max(1,step)*f.sampleCounts.length/Math.max(1,(stepCount||f.sampleCounts.length+1)-1))));
-  var wrap=el('div',{style:'max-width:920px;margin:10px auto;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#fff'});
-  box.appendChild(wrap);
-  var svg=cwNode('svg',{viewBox:'0 0 900 250',width:'100%',style:'display:block;max-height:'+(big?'38vh':'320px'),role:'img','aria-label':cwFigureText(f)});
+  var step=teacher&&!view.previewMode?(stepCount||99):(view.step||0),counts=f.sampleCounts||[8,12,16],shown=Math.max(1,Math.min(counts.length,Math.ceil(Math.max(1,step)*counts.length/Math.max(1,(stepCount||counts.length+1)-1))));
+  var wrap=el('div',{style:'max-width:920px;margin:10px auto;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#fff'});box.appendChild(wrap);
+  var svg=cwNode('svg',{viewBox:'0 0 900 300',width:'100%',style:'display:block;max-height:'+(big?'42vh':'340px'),role:'img','aria-label':cwFigureText(f)});
+  function chair(cx,cy,dir,color){
+    var g=cwNode('g',{transform:'translate('+cx+' '+cy+') rotate('+dir+')'});
+    g.appendChild(cwNode('rect',{x:-8,y:-7,width:16,height:12,rx:2,fill:'#fff',stroke:color,'stroke-width':2}));
+    g.appendChild(cwNode('line',{x1:-9,y1:7,x2:9,y2:7,stroke:color,'stroke-width':2}));
+    g.appendChild(cwNode('line',{x1:-7,y1:5,x2:-7,y2:11,stroke:color,'stroke-width':2}));g.appendChild(cwNode('line',{x1:7,y1:5,x2:7,y2:11,stroke:color,'stroke-width':2}));svg.appendChild(g);
+  }
   for(var i=0;i<shown;i++){
-    var n=i+1,panel=300,x0=i*300,side=48,gap=0,w=n*side,x=x0+(300-w)/2,y=94,color=i===shown-1?'#2563eb':'#667085';
-    svg.appendChild(cwNode('rect',{x:x0+5,y:12,width:290,height:224,rx:10,fill:i===shown-1?'#eff6ff':'#fff',stroke:i===shown-1?'#2563eb':'#d0d5dd','stroke-width':i===shown-1?2:1}));
-    svg.appendChild(cwNode('text',{x:x0+150,y:38,'text-anchor':'middle','font-size':18,'font-weight':700,fill:'#111'},n+' \u5f20\u65b9\u684c'));
-    function chair(cx,cy,sideName){
-      var sx=cx-6,sy=cy-5,back={x1:cx-7,y1:cy-7,x2:cx+7,y2:cy-7};
-      if(sideName==='bottom')back={x1:cx-7,y1:cy+7,x2:cx+7,y2:cy+7};
-      if(sideName==='left')back={x1:cx-7,y1:cy-7,x2:cx-7,y2:cy+7};
-      if(sideName==='right')back={x1:cx+7,y1:cy-7,x2:cx+7,y2:cy+7};
-      svg.appendChild(cwNode('rect',{x:sx,y:sy,width:12,height:10,rx:2,fill:color,stroke:'#fff','stroke-width':1}));
-      svg.appendChild(cwNode('line',{x1:back.x1,y1:back.y1,x2:back.x2,y2:back.y2,stroke:color,'stroke-width':2}));
-    }
+    var n=i+1,x0=i*300,side=42,w=n*side,x=x0+(300-w)/2,y=112,color=i===shown-1?'#2563eb':'#667085';
+    svg.appendChild(cwNode('rect',{x:x0+5,y:8,width:290,height:278,rx:10,fill:i===shown-1?'#eff6ff':'#fff',stroke:i===shown-1?'#2563eb':'#d0d5dd','stroke-width':i===shown-1?2:1}));
+    svg.appendChild(cwNode('text',{x:x0+150,y:34,'text-anchor':'middle','font-size':18,'font-weight':700,fill:'#111'},n+' 张单位正方桌'));
     for(var j=0;j<n;j++){
-      svg.appendChild(cwNode('rect',{x:x+j*side+gap,y:y,width:side,height:side,fill:'#fef3c7',stroke:'#344054','stroke-width':2}));
-      if(j>0)svg.appendChild(cwNode('line',{x1:x+j*side,y1:y+4,x2:x+j*side,y2:y+side-4,stroke:'#344054','stroke-width':1}));
-      chair(x+j*side+side/4,y-12,'top');chair(x+j*side+side*3/4,y-12,'top');
-      chair(x+j*side+side/4,y+side+12,'bottom');chair(x+j*side+side*3/4,y+side+12,'bottom');
+      svg.appendChild(cwNode('rect',{x:x+j*side,y:y,width:side,height:side,fill:'#fef3c7',stroke:'#344054','stroke-width':2}));
+      if(j>0)svg.appendChild(cwNode('line',{x1:x+j*side,y1:y+3,x2:x+j*side,y2:y+side-3,stroke:'#98a2b3','stroke-width':1,'stroke-dasharray':'3 3'}));
+      chair(x+j*side+side/4,y-13,0,color);chair(x+j*side+side*3/4,y-13,0,color);
+      chair(x+j*side+side/4,y+side+13,180,color);chair(x+j*side+side*3/4,y+side+13,180,color);
     }
-    chair(x-12,y+side/3,'left');chair(x-12,y+side*2/3,'left');
-    chair(x+w+12,y+side/3,'right');chair(x+w+12,y+side*2/3,'right');
-    svg.appendChild(cwNode('text',{x:x0+150,y:207,'text-anchor':'middle','font-size':18,'font-weight':700,fill:color},f.sampleCounts[i]+' \u4eba'));
+    chair(x-13,y+side/3,-90,color);chair(x-13,y+side*2/3,-90,color);chair(x+w+13,y+side/3,90,color);chair(x+w+13,y+side*2/3,90,color);
+    svg.appendChild(cwNode('rect',{x:x-4,y:y-4,width:w+8,height:side+8,fill:'none',stroke:'#dc2626','stroke-width':3,'stroke-dasharray':'7 4',rx:3}));
+    svg.appendChild(cwNode('text',{x:x0+150,y:222,'text-anchor':'middle','font-size':18,'font-weight':700,fill:color},counts[i]+' 人'));
+    svg.appendChild(cwNode('text',{x:x0+150,y:250,'text-anchor':'middle','font-size':13,fill:'#b42318'},'红虚线：拼接后外周'));
   }
   wrap.appendChild(svg);
-  wrap.appendChild(el('div',{style:'text-align:center;color:#475467;font-size:14px',text:'\u684c\u9762\u7531\u6b63\u65b9\u5f62\u65b9\u684c\u62fc\u6210\uff1b\u6905\u5b50\u53ea\u56f4\u5728\u6700\u5916\u4fa7'}));
-  if(step>=stepCount)wrap.appendChild(el('div',{style:'text-align:center;font-weight:700;color:#17449b;font-size:'+(big?'2.4vh':'16px'),text:'1\u5f20\u65b9\u684c8\u4eba\uff0c\u6bcf\u52a0\u4e00\u5f20\u591a4\u4eba\uff1a8+4(m-1)=4m+4'}));
+  wrap.appendChild(el('div',{style:'text-align:center;color:#475467;font-size:14px',text:'每张桌面是单位正方形；相邻边拼在内部，座位只沿外周排列。'}));
+  if(step>=stepCount){
+    wrap.appendChild(el('div',{style:'margin-top:8px;padding:10px 12px;border-radius:8px;background:#fff7ed;color:#9a3412;font-weight:700;text-align:center',text:'外周单位边数 = 4m − 2(m−1) = 2m+2；每条外周边坐2人，所以人数 = 2(2m+2) = 4m+4。'}));
+  }
 }
 function cwAlternatingTriangle(box,f,view,big,teacher,stepCount){
   var step=teacher&&!view.previewMode?(stepCount||99):(view.step||0),shown=Math.max(1,Math.min(f.rows,Math.ceil(Math.max(1,step)*f.rows/Math.max(1,stepCount||f.rows))));
@@ -165,40 +165,38 @@ function cwRunningTrack(box,f,view,big,teacher,stepCount){
 }
 function cwTilePattern(box,f,view,big,teacher,stepCount){
   var finalStep=Math.max(4,stepCount||4),step=teacher&&!view.previewMode?finalStep:Math.max(1,view.step||0),wrap=el('div',{style:'max-width:840px;margin:10px auto;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#fff'});
-  var svg=cwNode('svg',{viewBox:'0 0 820 220',width:'100%',style:'display:block;max-height:'+(big?'34vh':'250px'),role:'img','aria-label':cwFigureText(f)});
+  var svg=cwNode('svg',{viewBox:'0 0 820 300',width:'100%',style:'display:block;max-height:'+(big?'38vh':'300px'),role:'img','aria-label':cwFigureText(f)});
   function label(x,y,t,size,color,weight,anchor){svg.appendChild(cwNode('text',{x:x,y:y,'font-size':size||16,'font-weight':weight||600,'text-anchor':anchor||'start',fill:color||'#344054'},t))}
-  function row(x,y,white,blue,name){
-    label(x,y-14,name,17,'#344054',700);
-    var size=22,gap=4;
-    for(var i=0;i<white;i++)svg.appendChild(cwNode('rect',{x:x+i*(size+gap),y:y,width:size,height:size,rx:3,fill:'#fff',stroke:'#667085','stroke-width':2}));
-    for(var j=0;j<blue;j++)svg.appendChild(cwNode('rect',{x:x+(white+j)*(size+gap),y:y,width:size,height:size,rx:3,fill:'#93c5fd',stroke:'#2563eb','stroke-width':2}));
-    label(x,y+size+20,'白砖 '+white+' 块  +  蓝砖 '+blue+' 块  =  '+(white+blue)+' 块',14,'#475467',600);
+  function arrangement(x,white,blue,name){
+    var size=18,gap=2,unit=size+gap,base=207;
+    label(x+175,35,name,17,'#344054',700,'middle');
+    // A white horizontal side and a blue vertical side meet at a right angle.
+    for(var i=0;i<white;i++)svg.appendChild(cwNode('rect',{x:x+i*unit,y:base,width:size,height:size,rx:2,fill:'#fff',stroke:'#667085','stroke-width':2}));
+    for(var j=0;j<blue;j++)svg.appendChild(cwNode('rect',{x:x+white*unit,y:base-(j+1)*unit,width:size,height:size,rx:2,fill:'#93c5fd',stroke:'#2563eb','stroke-width':2}));
+    svg.appendChild(cwNode('path',{d:'M '+(x-3)+' '+(base-3)+' L '+(x+white*unit+size+3)+' '+(base-3)+' L '+(x+white*unit+size+3)+' '+(base-blue*unit-3),fill:'none',stroke:'#dc2626','stroke-width':2,'stroke-dasharray':'5 4'}));
+    label(x+white*unit/2,base+37,'白砖边 '+white+' 块',14,'#475467',600,'middle');
+    label(x+white*unit+size+7,base-blue*unit+size/2,'蓝砖边 '+blue+' 块',13,'#17449b',600,'start');
+    svg.appendChild(cwNode('path',{d:'M '+(x+white*unit-2)+' '+(base-4)+' l 0 -12 l 12 0',fill:'none',stroke:'#b42318','stroke-width':2}));
   }
-  row(35,55,f.whiteCounts[0],f.blueCounts[0],'第 1 幅');
-  if(step>=2){
-    row(390,55,f.whiteCounts[1],f.blueCounts[1],'第 2 幅');
-    label(350,100,'→',23,'#2563eb',700,'middle');
-    label(350,124,'各增加',13,'#475467',600,'middle');
-    label(350,144,'白 +'+(f.whiteCounts[1]-f.whiteCounts[0])+'、蓝 +'+(f.blueCounts[1]-f.blueCounts[0]),12,'#475467',600,'middle');
-  }else{
-    label(440,104,'\\u7b2c\\u4e8c\\u5e45\\u4f1a\\u600e\\u6837\\u53d8\\u5316\\uff1f',16,'#98a2b3',500,'middle');
-  }
+  arrangement(30,f.whiteCounts[0],f.blueCounts[0],'第 1 幅：两条直角边');
+  if(step>=2){arrangement(430,f.whiteCounts[1],f.blueCounts[1],'第 2 幅：边长递增');label(410,150,'→',22,'#2563eb',700,'middle');label(410,173,'白、蓝边各增加 '+(f.whiteCounts[1]-f.whiteCounts[0])+' 块',13,'#475467',600,'middle')}
+  else label(410,280,'白砖边与蓝砖边在拐角相接，构成直角',15,'#98a2b3',500,'middle');
   wrap.appendChild(svg);
   if(step>=Math.max(3,finalStep-1)){
     var wi=f.whiteCounts[1]-f.whiteCounts[0],bi=f.blueCounts[1]-f.blueCounts[0],wc=f.whiteCounts[0]-wi,bc=f.blueCounts[0]-bi;
-    function expr(a,b){return a+'n'+(b>0?' + '+b:b<0?' - '+Math.abs(b):'')}
+    function expr(a,b){return a+'n'+(b>0?' + '+b:b<0?' − '+Math.abs(b):'')}
     var formulas=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px;margin-top:6px'});
-    formulas.appendChild(el('div',{style:'padding:9px 12px;border-radius:8px;background:#f8fafc;color:#17449b;font-weight:700;text-align:center',text:'\\u767d\\u7816\\u6570\\uff1a'+f.whiteCounts[0]+' + '+wi+'(n\\u22121) = '+expr(wi,wc)}));
-    formulas.appendChild(el('div',{style:'padding:9px 12px;border-radius:8px;background:#eff6ff;color:#17449b;font-weight:700;text-align:center',text:'\\u84dd\\u7816\\u6570\\uff1a'+f.blueCounts[0]+' + '+bi+'(n\\u22121) = '+expr(bi,bc)}));
-    wrap.appendChild(formulas);
+    formulas.appendChild(el('div',{style:'padding:9px 12px;border-radius:8px;background:#f8fafc;color:#17449b;font-weight:700;text-align:center',text:'白砖边长：'+f.whiteCounts[0]+' + '+wi+'(n−1) = '+expr(wi,wc)}));
+    formulas.appendChild(el('div',{style:'padding:9px 12px;border-radius:8px;background:#eff6ff;color:#17449b;font-weight:700;text-align:center',text:'蓝砖边长：'+f.blueCounts[0]+' + '+bi+'(n−1) = '+expr(bi,bc)}));wrap.appendChild(formulas);
   }
   if(step>=finalStep){
     var blueInc=f.blueCounts[1]-f.blueCounts[0],blueConst=f.blueCounts[0]-blueInc,whiteInc=f.whiteCounts[1]-f.whiteCounts[0],whiteConst=f.whiteCounts[0]-whiteInc;
     var whiteAt=whiteInc*f.targetTerm+whiteConst,blueAt=blueInc*f.targetTerm+blueConst,sol=(f.targetBlue-blueConst)/blueInc;
-    wrap.appendChild(el('div',{style:'margin-top:8px;padding:9px 12px;border-radius:8px;background:#fff7ed;color:#9a3412;font-weight:700;text-align:center',text:'\\u7b2c '+f.targetTerm+' \\u5e45\\uff1a\\u767d\\u7816 '+whiteInc+'\\u00d7'+f.targetTerm+(whiteConst>0?' + '+whiteConst:'')+' = '+whiteAt+' \\u5757\\uff1b\\u84dd\\u7816 '+blueAt+' \\u5757\\u3002  '+f.targetBlue+' \\u5757\\u84dd\\u7816\\uff1an = ('+f.targetBlue+' - ('+blueConst+')) \\u00f7 '+blueInc+' = '+(Number.isInteger(sol)?sol:'\\u4e0d\\u662f\\u6574\\u6570')}));
+    wrap.appendChild(el('div',{style:'margin-top:8px;padding:9px 12px;border-radius:8px;background:#fff7ed;color:#9a3412;font-weight:700;text-align:center',text:'第 '+f.targetTerm+' 幅：白砖边长 '+whiteAt+' 块，蓝砖边长 '+blueAt+' 块；蓝砖边长为 '+f.targetBlue+' 块时，n = '+(Number.isInteger(sol)?sol:'不是整数')}));
   }
   box.appendChild(wrap);
 }
+
 function cwTriangularNumbers(box,f,view,big,teacher,stepCount){
   var step=teacher&&!view.previewMode?(stepCount||99):Math.max(1,view.step||0),maxRows=f.terms.length;
   var shown=Math.max(1,Math.min(maxRows,Math.ceil(maxRows*Math.min(step,Math.max(1,stepCount||maxRows))/Math.max(1,stepCount||maxRows))));
@@ -469,7 +467,11 @@ function cwPlan(box,lessonId,refresh){
         var white=values(/(\d+)\s*块白地砖/g),blue=values(/(\d+)\s*块蓝地砖/g),term=sourceText.match(/当\s*n\s*[=＝]\s*(\d+)/),target=sourceText.match(/(?:用了|用)\s*(\d+)\s*块蓝(?:色)?砖/);
         required={type:'tile_pattern',whiteCounts:white.length>=2?white.slice(0,2):[5,8],blueCounts:blue.length>=2?blue.slice(0,2):[4,7],targetTerm:term?Number(term[1]):10,targetBlue:target?Number(target[1]):100};
       }else if(sourceText.indexOf('方桌')>=0&&(sourceText.indexOf('可坐')>=0||sourceText.indexOf('拼')>=0))required={type:'seating_pattern',sampleCounts:[8,12,16]};
-      if(required&&(!p.figure||p.figure.type!==required.type))p.figure=required;
+      if(required){
+        // Legacy saved slides may contain the wrong figure parameters; infer the pictured counts from the actual problem text.
+        p.figure=required;
+        if(required.type==='seating_pattern'&&!(p.steps||[]).some(function(q){return /周长|外周/.test(String(q))}))p.steps=['1张方桌是一块单位正方形，外周有4条单位边，每条边坐2人，共8人。','拼接时相邻方桌共用一条边；共用边在内部，不算外周。','m张连成一排：外周单位边数 = 4m − 2(m−1) = 2m+2。','每条外周单位边坐2人：人数 = 2(2m+2) = 4m+4。'];
+      }
     }
     card.appendChild(el('h3',{text:(x.page==null?'整个环节':'第'+(x.page+1)+'页')+' 的课件'}));
     card.appendChild(el('p',{class:'muted',style:'white-space:pre-wrap',text:'这一页的内容：'+x.text}));
@@ -587,6 +589,5 @@ function cwPlan(box,lessonId,refresh){
   load();
 }
 """
-
 
 
