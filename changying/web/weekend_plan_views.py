@@ -223,14 +223,17 @@ def _homework_from_source(text: str, fallback: str) -> str:
     return text[matches[-1].start():].strip() if matches else fallback
 
 
-PLACEHOLDER_PREFIX = "请依据学校"      # the school's seeded template lessons carry this text: they are blank, not a plan
+# Lessons that are not prepared carry a hint instead of a real target: the school
+# template says "请依据学校…", and the personal one-click course says "在上课时填写…".
+# A hint is not a plan.
+PLACEHOLDER_PREFIXES = ("请依据学校", "在上课时填写")
 
 
 def has_real_plan(lesson: Any) -> bool:
     """A lesson counts as prepared only when the teacher (or AI) wrote real content: a real target or examples.
-    The seeded template (generic timeline + "请依据学校…填写") does not count."""
+    Seeded template lessons and one-click personal lessons carry a hint, so they do not count."""
     target = (lesson.core_target or "").strip()
-    if target and not target.startswith(PLACEHOLDER_PREFIX):
+    if target and not target.startswith(PLACEHOLDER_PREFIXES):
         return True
     try:
         return bool(_lines(json.loads(lesson.examples_json or "[]")))

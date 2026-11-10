@@ -85,6 +85,21 @@ def test_start_offers_course_buttons_then_builds_one(client):
     assert "已有课程方案（18 节课）" in client.get("/start", headers=headers).text
 
 
+def test_one_click_course_is_not_reported_as_already_prepared(client):
+    """The one-click lessons carry a hint ("在上课时填写…"), not a plan.
+
+    If the hint counts as a plan, all 18 lessons show 有教案 before the teacher
+    imported anything, and importing asks to overwrite content that is not there.
+    """
+    headers = _workspace(client)
+    r = client.post("/start/program", headers=headers, data={"subject": "数学"}, follow_redirects=False)
+    assert r.status_code == 303
+
+    rows = client.get("/teacher/weekend/schedule?subject=数学", headers=headers).json()["items"]
+    assert len(rows) == 18
+    assert not any(row["hasPlan"] for row in rows), [x["lessonNo"] for x in rows if x["hasPlan"]]
+
+
 def test_school_teacher_cannot_build_a_personal_course(client):
     tag = uuid.uuid4().hex[:8]
     code = f"orgc-{tag}"
