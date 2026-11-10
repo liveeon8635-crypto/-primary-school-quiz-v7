@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
+from string import Template
 from sqlalchemy import create_engine, String, Integer, ForeignKey, Text, DateTime, Boolean, LargeBinary, UniqueConstraint, select, func, inspect as sa_inspect, text as sa_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
 from cryptography.fernet import Fernet, InvalidToken
@@ -4567,6 +4568,66 @@ code{background:#f4f6fb;border-radius:6px;padding:2px 6px;font-size:17px;font-we
   };
 })();
 </script></body></html>"""
+
+PERSONAL_START_HTML = """<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>我的工作室 · 长缨辅学</title>
+<style>
+:root{--ink:#1f2738;--muted:#778095;--line:#e5e8f0;--brand:#a8101c;--ok:#0b8f5a;--warn:#b45309}
+*{box-sizing:border-box}body{margin:0;background:#f4f6fb;color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+main{max-width:720px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}p.sub{color:var(--muted);margin:0 0 18px;font-size:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
+.step{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
+.step:last-child{border-bottom:0}
+.dot{flex:0 0 26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:800;background:#f1ebff;color:#6d3ad6}
+.dot.ok{background:#e9f9f1;color:var(--ok)}
+.t{font-weight:700}.d{color:var(--muted);font-size:13.5px}
+a.go{margin-left:auto;white-space:nowrap;text-decoration:none;background:var(--brand);color:#fff;border-radius:10px;padding:8px 14px;font-weight:700;font-size:14px}
+a.go.plain{background:#eef2fa;color:var(--brand)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media(max-width:560px){.grid{grid-template-columns:1fr}}
+a.tile{display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+a.tile b{display:block;font-size:16px}a.tile span{color:var(--muted);font-size:13px}
+</style></head><body><main>
+<h1>$title</h1>
+<p class="sub">$subtitle</p>
+<div class="card">
+<div class="step"><div class="dot $s1cls">1</div><div><div class="t">添加我的学生</div><div class="d">$s1text</div></div><a class="go $s1a" href="$s1url">$s1label</a></div>
+<div class="step"><div class="dot $s2cls">2</div><div><div class="t">填写自己的 AI Key</div><div class="d">$s2text</div></div><a class="go $s2a" href="$s2url">$s2label</a></div>
+<div class="step"><div class="dot $s3cls">3</div><div><div class="t">准备并上第一节课</div><div class="d">$s3text</div></div><a class="go $s3a" href="$s3url">$s3label</a></div>
+</div>
+<div class="grid">
+<a class="tile" href="/v1/weekend-plan"><b>周末课备课</b><span>导入教案、审习题、配课件</span></a>
+<a class="tile" href="/v1/weekend"><b>上课</b><span>开课、大屏、随堂练习</span></a>
+<a class="tile" href="/v1/homework"><b>晚托作业</b><span>学生拍题求助、生成巩固</span></a>
+<a class="tile" href="/v1/knowledge-map"><b>知识地图</b><span>哪里薄弱、一键布置</span></a>
+</div>
+</main></body></html>"""
+
+@app.get("/start",include_in_schema=False)
+def personal_start(u:User=Depends(current_user),db:Session=Depends(get_db)):
+    need(u,"teacher","admin")
+    school=db.get(School,u.school_id)
+    owner_id=personal_owner_id(db,u)
+    students=db.scalar(select(func.count()).select_from(ClassStudent).join(SchoolClass,SchoolClass.id==ClassStudent.class_id).where(SchoolClass.school_id==u.school_id,SchoolClass.teacher_id==owner_id)) or 0
+    cfg=db.scalar(select(SchoolAIConfig).where(SchoolAIConfig.school_id==u.school_id))
+    ai_ready=bool(cfg and cfg.enabled and cfg.model)
+    program=db.scalar(select(TeachingProgram).where(TeachingProgram.school_id==u.school_id).order_by(TeachingProgram.active.desc(),TeachingProgram.id.desc()).limit(1))
+    lesson_count=db.scalar(select(func.count()).select_from(TeachingLesson).where(TeachingLesson.school_id==u.school_id)) if program else 0
+    values=dict(
+        title=(school.name if school else "我的工作室"),
+        subtitle=f"{u.name} · 个人免费版 · 一个账号就是一间工作室",
+        s1cls="ok" if students else "",s1text=(f"已经有 {students} 名学生" if students else "还没有学生，先加 1-2 个试试"),
+        s1url="/v1/tool?page=classes",s1label=("查看" if students else "去添加"),s1a=("plain" if students else ""),
+        s2cls="ok" if ai_ready else "",s2text=("AI 已配置，可以生成教案和习题" if ai_ready else "填模型地址、模型名和 Key；不填也能手工写教案"),
+        s2url="/v1/tool?page=ai",s2label=("查看" if ai_ready else "去填写"),s2a=("plain" if ai_ready else ""),
+        s3cls="ok" if (program and lesson_count) else "",s3text=(f"已有课程方案（{lesson_count} 节课）" if (program and lesson_count) else ("还没有课程方案，先去「定制教学」建一个" if not program else "方案已建，但还没有课")),
+        s3url=("/v1/weekend-plan" if (program and lesson_count) else "/v1/tool?page=teaching"),
+        s3label=("去备课" if (program and lesson_count) else "去建立"),s3a=("plain" if (program and lesson_count) else ""),
+    )
+    return HTMLResponse(Template(PERSONAL_START_HTML).substitute(**values))
 
 @app.get("/signup",include_in_schema=False)
 def personal_signup_page():
