@@ -905,7 +905,7 @@ def acting_role(u,*roles):
     """The single account of a personal workspace may act as teacher and as admin."""
     if is_personal_workspace_user(u):
         if "teacher" in roles:return "teacher"
-        return u.role
+        if "admin" in roles:return "admin"
     return u.role
 
 def individual_scope(db,school_id):
@@ -917,7 +917,9 @@ def individual_scope(db,school_id):
     """
     school=db.get(School,school_id)
     if not school or not school.individual:return False,None
-    owner=db.scalar(select(User.id).where(User.school_id==school_id,User.role=="admin",User.active==True).order_by(User.id).limit(1))
+    owner=db.scalar(select(User.id).where(User.school_id==school_id,User.role=="teacher",User.active==True).order_by(User.id).limit(1))
+    if owner is None:
+        owner=db.scalar(select(User.id).where(User.school_id==school_id,User.role=="admin",User.active==True).order_by(User.id).limit(1))
     return True,owner
 
 def is_individual_school(db,school_id):
@@ -3720,6 +3722,22 @@ def ensure_submission_completion_actor_column():
         conn.execute(sa_text("ALTER TABLE submissions ADD COLUMN completion_actor VARCHAR(30) NULL"))
         conn.execute(sa_text("CREATE INDEX IF NOT EXISTS ix_submissions_completion_actor ON submissions (completion_actor)"))
 
+def normalize_personal_workspace_accounts():
+    """Personal workspaces have one account, and it must present as the teacher.
+
+    Older rows were created with role=admin, which opened the school-admin UI and
+    hid the teaching menu. Only accounts inside individual workspaces are touched;
+    ordinary schools keep their admins. Idempotent, no other column changed.
+    """
+    try:
+        with engine.begin() as conn:
+            conn.execute(sa_text(
+                "UPDATE users SET role='teacher' WHERE role='admin' AND school_id IN "
+                "(SELECT id FROM schools WHERE individual)"
+            ))
+    except Exception as error:
+        print(f"[startup] personal workspace role normalisation skipped: {type(error).__name__}")
+
 def ensure_school_individual_column():
     """Add the workspace-kind column before any ORM query loads School.
 
@@ -3765,6 +3783,7 @@ def ensure_teaching_question_figure_column():
 def startup():
     Base.metadata.create_all(engine)
     ensure_school_individual_column()
+    normalize_personal_workspace_accounts()
     ensure_submission_completion_actor_column()
     ensure_teaching_question_figure_column()
     # V7.3.0: keep the V7.2.0 production seeding behavior; never create public demo credentials automatically on PostgreSQL.
@@ -4566,7 +4585,8 @@ def operator_create_school(b:OperatorSchoolCreateBody,_ok:bool=Depends(commercia
     if db.scalar(select(User).where(User.username==admin_username)):raise HTTPException(400,"管理员账号已存在")
     school=School(name=school_name,code=school_code,active=True,individual=bool(b.individual));db.add(school);db.flush()
     ensure_default_point_rules(db,school.id)
-    admin=User(school_id=school.id,username=admin_username,password_hash=hash_password(admin_password),name=admin_name,role="admin",active=True);db.add(admin);db.flush();db.add(UserSecurity(user_id=admin.id,must_change_password=True,failed_login_count=0))
+    account_role="teacher" if b.individual else "admin"
+    admin=User(school_id=school.id,username=admin_username,password_hash=hash_password(admin_password),name=admin_name,role=account_role,active=True);db.add(admin);db.flush();db.add(UserSecurity(user_id=admin.id,must_change_password=True,failed_login_count=0))
     if b.individual:
         # One account per personal workspace: the admin account also teaches, so its id
         # owns the single student list and every later class lookup matches.
