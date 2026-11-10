@@ -62,6 +62,7 @@ function cwFigureText(f){
   if(f.type==='triangular_numbers')return '\u4e09\u89d2\u5f62\u6570\uff1a'+f.terms.join('\u3001')+'\uff0c\u6c42\u7b2c '+f.targetTerm+' \u9879';
   if(f.type==='tile_pattern')return '\u5730\u7816\u6392\u5217\u89c4\u5f8b\uff1a\u767d\u7816 '+f.whiteCounts.join('\u3001')+'\uff0c\u84dd\u7816 '+f.blueCounts.join('\u3001');
   if(f.type==='square_sticks_pattern')return '\u8fde\u7eed\u6b63\u65b9\u5f62\u4e0e\u5c0f\u68d2\uff1a'+f.sampleCounts.join('\u3001')+'\u6839\uff1b\u5171\u7528\u8fb9\u53ea\u7b97\u4e00\u6839';
+  if(f.type==='hundred_chart_square')return '\u767e\u6570\u8868\u7530\u5b57\u683c\uff1a'+f.topLeftNumber+'\uff1b\u6a2a\u5411\u76f8\u5dee1\uff0c\u7eb5\u5411\u76f8\u5dee10';
   return f.rows.map(function(r){return r.join(' | ')}).join('\n');
 }
 function cwFigureOk(f){
@@ -76,6 +77,7 @@ function cwFigureOk(f){
   if(f.type==='triangular_numbers')return (f.terms||[]).length>=3&&f.terms.every(function(n,i){return n===(i+1)*(i+2)/2})&&f.targetTerm>=2&&f.targetTerm<=100;
   if(f.type==='tile_pattern')return (f.whiteCounts||[]).length===2&&(f.blueCounts||[]).length===2&&f.whiteCounts[1]>f.whiteCounts[0]&&f.blueCounts[1]>f.blueCounts[0]&&f.targetTerm>=1&&f.targetTerm<=100&&f.targetBlue>=1;
   if(f.type==='square_sticks_pattern')return (f.sampleCounts||[]).join(',')==='4,7,10'&&(f.targetSquares||[]).length===2&&f.targetSquares.every(function(n){return n>=1&&n<=1000})&&f.targetSticks>=4&&f.targetSticks<=10000;
+  if(f.type==='hundred_chart_square')return f.topLeftNumber>=1&&f.topLeftNumber<=89&&f.topLeftNumber%10!==0;
   return (f.rows||[]).length>0;
 }
 function cwCalendarCross(box,f,view,big,teacher){
@@ -232,6 +234,37 @@ function cwSquareSticksPattern(box,f,view,big,teacher,stepCount){
   box.appendChild(wrap);
 }
 
+function cwHundredChartSquare(box,f,view,big,teacher,stepCount){
+  var finalStep=5,step=teacher&&!view.previewMode?finalStep:Math.max(1,view.step||0),n=f.topLeftNumber||45;
+  var wrap=el('div',{style:'max-width:780px;margin:10px auto;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#fff'});
+  var svg=cwNode('svg',{viewBox:'0 0 760 525',width:'100%',style:'display:block;max-height:'+(big?'45vh':'380px'),role:'img','aria-label':cwFigureText(f)});
+  function label(x,y,t,size,color,weight,anchor){svg.appendChild(cwNode('text',{x:x,y:y,'font-size':size||15,'font-weight':weight||600,'text-anchor':anchor||'middle',fill:color||'#344054'},t))}
+  label(380,24,'百数表：同行向右 +1，同列向下 +10',17,'#344054',700,'middle');
+  var highlightRow=Math.floor((n-1)/10),highlightCol=(n-1)%10;
+  for(var r=0;r<10;r++)for(var c=0;c<10;c++){
+    var value=r*10+c+1,x=55+c*33,y=48+r*28,hot=(r===highlightRow||r===highlightRow+1)&&(c===highlightCol||c===highlightCol+1);
+    svg.appendChild(cwNode('rect',{x:x,y:y,width:31,height:26,rx:2,fill:hot?'#dbeafe':'#fff',stroke:hot?'#2563eb':'#cbd5e1','stroke-width':hot?2:1}));
+    label(x+15.5,y+18,String(value),12,hot?'#17449b':'#475467',hot?700:400,'middle');
+  }
+  var gx=170,gy=365,cell=74,labels=step===1?[String(n),String(n+1),String(n+10),String(n+11)]:step<4?['n','n+1','n+10','n+11']:['m−11','m−10','m−1','m'];
+  var defs=cwNode('defs'),marker=cwNode('marker',{id:'cw-hundred-arrow',viewBox:'0 0 10 10',refX:8,refY:5,markerWidth:5,markerHeight:5,orient:'auto'});
+  marker.appendChild(cwNode('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'#2563eb'}));defs.appendChild(marker);svg.appendChild(defs);
+  for(var rr=0;rr<2;rr++)for(var cc=0;cc<2;cc++){
+    var idx=rr*2+cc;
+    svg.appendChild(cwNode('rect',{x:gx+cc*cell,y:gy+rr*cell,width:cell,height:cell,fill:step>=2?'#eff6ff':'#f8fafc',stroke:'#2563eb','stroke-width':2}));
+    label(gx+cc*cell+cell/2,gy+rr*cell+cell/2+7,labels[idx],18,'#17449b',700,'middle');
+  }
+  label(gx+cell,gy-14,'向右 +1',14,'#2563eb',700,'middle');
+  label(gx-18,gy+cell,'向下 +10',13,'#2563eb',700,'end');
+  svg.appendChild(cwNode('path',{d:'M '+(gx+5)+' '+(gy-4)+' L '+(gx+cell*2-5)+' '+(gy-4),stroke:'#2563eb','stroke-width':2,'marker-end':'url(#cw-hundred-arrow)'}));
+  svg.appendChild(cwNode('path',{d:'M '+(gx-7)+' '+(gy+5)+' L '+(gx-7)+' '+(gy+cell*2-5),stroke:'#2563eb','stroke-width':2,'marker-end':'url(#cw-hundred-arrow)'}));
+  wrap.appendChild(svg);
+  if(step>=3)wrap.appendChild(el('div',{style:'margin-top:8px;padding:10px;border-radius:8px;background:#eff6ff;color:#17449b;font-weight:700;text-align:center',text:'左上角 n：n + (n+1) + (n+10) + (n+11) = 4n + 22'}));
+  if(step>=4)wrap.appendChild(el('div',{style:'margin-top:8px;padding:10px;border-radius:8px;background:#f8fafc;color:#344054;font-weight:700;text-align:center',text:'改以右下角 m 表示：左上 m−11，右上 m−10，左下 m−1，右下 m'}));
+  if(step>=5)wrap.appendChild(el('div',{style:'margin-top:8px;padding:10px;border-radius:8px;background:#fff7ed;color:#9a3412;font-weight:700;text-align:center',text:'四数和：(m−11)+(m−10)+(m−1)+m = 4m − 22'}));
+  box.appendChild(wrap);
+}
+
 function cwTriangularNumbers(box,f,view,big,teacher,stepCount){
   var step=teacher&&!view.previewMode?(stepCount||99):Math.max(1,view.step||0),maxRows=f.terms.length;
   var shown=Math.max(1,Math.min(maxRows,Math.ceil(maxRows*Math.min(step,Math.max(1,stepCount||maxRows))/Math.max(1,stepCount||maxRows))));
@@ -282,6 +315,7 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
   if(f.type==='triangular_numbers'){cwTriangularNumbers(box,f,view,big,teacher,stepCount);return}
   if(f.type==='tile_pattern'){cwTilePattern(box,f,view,big,teacher,stepCount);return}
   if(f.type==='square_sticks_pattern'){cwSquareSticksPattern(box,f,view,big,teacher,stepCount);return}
+  if(f.type==='hundred_chart_square'){cwHundredChartSquare(box,f,view,big,teacher,stepCount);return}
   f={type:f.type,points:(f.points||[]).slice().sort(function(a,b){return a.at-b.at}),marks:(f.marks||[]).filter(function(m){return m.from&&m.to}),
     boxes:f.boxes||[],branches:f.branches||[],shape:f.shape,labels:f.labels||{},rows:f.rows||[]};
   var visualStep=teacher&&!view.previewMode?(stepCount||1):(view.step||0),visualSteps=Math.max(1,stepCount||1);
@@ -518,7 +552,8 @@ function cwPlan(box,lessonId,refresh){
     box2.textContent='';var card=el('div',{class:'card'}),fields={},kinds=data.templates,kind=it?it.kind:kinds[kinds.length-1],p=JSON.parse(JSON.stringify(it?it.params:{})),previewState={step:1,previewMode:true},preview=el('div',{class:'card',style:'position:sticky;top:76px;z-index:4;max-height:76vh;overflow:auto;box-shadow:0 8px 24px #10182822'});
     if(kind==='steps'){
       var sourceText=String(x.text||'')+' '+String(p.problem||'')+' '+String(p.sourceProblem||''),required=null;
-      if(sourceText.indexOf('地砖')>=0&&(sourceText.indexOf('排列')>=0||sourceText.indexOf('白地砖')>=0)){
+      if(sourceText.indexOf('田字形')>=0&&sourceText.indexOf('百数表')>=0){required={type:'hundred_chart_square',topLeftNumber:45};}
+      else if(sourceText.indexOf('地砖')>=0&&(sourceText.indexOf('排列')>=0||sourceText.indexOf('白地砖')>=0)){
         function values(re){var out=[],m;re.lastIndex=0;while((m=re.exec(sourceText))!==null)out.push(Number(m[1]));return out}
         var white=values(/(\d+)\s*块白地砖/g),blue=values(/(\d+)\s*块蓝地砖/g),term=sourceText.match(/当\s*n\s*[=＝]\s*(\d+)/),target=sourceText.match(/(?:用了|用)\s*(\d+)\s*块蓝(?:色)?砖/);
         required={type:'tile_pattern',whiteCounts:white.length>=2?white.slice(0,2):[5,8],blueCounts:blue.length>=2?blue.slice(0,2):[4,7],targetTerm:term?Number(term[1]):10,targetBlue:target?Number(target[1]):100};
@@ -529,6 +564,7 @@ function cwPlan(box,lessonId,refresh){
       if(required){
         // Legacy saved slides may contain the wrong figure parameters; infer the pictured counts from the actual problem text.
         p.figure=required;
+        if(required.type==='hundred_chart_square'&&(!(p.steps||[]).some(function(q){return /4n\s*[+＋]\s*22/.test(String(q))})||(p.steps||[]).some(function(q){return String(q).indexOf('点下一步显示')>=0})))p.steps=['百数表中，同一行向右相邻数相差1，同一列向下相邻数相差10。','设田字格左上角为n，则右上是n+1，左下是n+10，右下是n+11。','四数相加：n+(n+1)+(n+10)+(n+11)=4n+22。','若右下角为m，则左上m−11，右上m−10，左下m−1。','四数和：(m−11)+(m−10)+(m−1)+m=4m−22。'];
         if(required.type==='square_sticks_pattern'&&!(p.steps||[]).some(function(q){return /共用边|新增3根|3m\s*[+＋]\s*1/.test(String(q))}))p.steps=['观察：摆1个正方形用4根；摆2个共用一条边，只需新增3根，共7根；摆3个再新增3根，共10根。','发现：每增加1个正方形，都会和前一个共用一条边，所以只增加3根小棒。','列式：摆m个，先用4根，后面m−1个各增加3根，n=4+3(m−1)=3m+1。','代入：m=8时n=25；m=60时n=181。','反求：n=100时，3m+1=100，所以m=33。'];
         if(required.type==='seating_pattern'&&!(p.steps||[]).some(function(q){return /周长|外周/.test(String(q))}))p.steps=['1张方桌是一块单位正方形，外周有4条单位边，每条边坐2人，共8人。','拼接时相邻方桌共用一条边；共用边在内部，不算外周。','m张连成一排：外周单位边数 = 4m − 2(m−1) = 2m+2。','每条外周单位边坐2人：人数 = 2(2m+2) = 4m+4。'];
       }
@@ -558,8 +594,8 @@ function cwPlan(box,lessonId,refresh){
       }else if(kind==='steps'){
         field('problem','题目原文（不含答案，生成学生作答题时使用）',area(p.problem));
         field('steps','讲解步骤（每行一步，2—6 步）',area((p.steps||[]).join('\n')));field('answer','答案',input(p.answer));
-        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律'],['tile_pattern','地砖排列规律'],['square_sticks_pattern','连续正方形小棒规律']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
-        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:ft.value==='tile_pattern'?{type:ft.value,whiteCounts:[5,8],blueCounts:[4,7],targetTerm:10,targetBlue:100}:ft.value==='square_sticks_pattern'?{type:ft.value,sampleCounts:[4,7,10],targetSquares:[8,60],targetSticks:100}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
+        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律'],['tile_pattern','地砖排列规律'],['square_sticks_pattern','连续正方形小棒规律'],['hundred_chart_square','百数表田字形四数规律']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
+        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:ft.value==='tile_pattern'?{type:ft.value,whiteCounts:[5,8],blueCounts:[4,7],targetTerm:10,targetBlue:100}:ft.value==='square_sticks_pattern'?{type:ft.value,sampleCounts:[4,7,10],targetSquares:[8,60],targetSticks:100}:ft.value==='hundred_chart_square'?{type:ft.value,topLeftNumber:45}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
         if(f.type==='segment'){
           field('figA','线段上的点（名称:位置，分号隔开，如 A:0; C:3; B:6; D:10）',input((f.points||[]).map(function(q){return q.name+':'+q.at}).join('; ')));
           field('figB','标注（如 A-D:L; A-B:x，可留空）',input((f.marks||[]).map(function(m){return m.from+'-'+m.to+':'+m.label}).join('; ')));
@@ -589,6 +625,8 @@ function cwPlan(box,lessonId,refresh){
           field('figSquareCounts','小棒样例数量（4、7、10）',input((f.sampleCounts||[4,7,10]).join(', ')));
           field('figTargets','题目给出的m值（两个，逗号分隔）',input((f.targetSquares||[8,60]).join(', ')));
           field('figTargetSticks','题目给出的n值',input(f.targetSticks||100));
+        }else if(f.type==='hundred_chart_square'){
+          field('figHundredTop','百数表田字格左上角示意数（1—89，不能在整十列）',input(f.topLeftNumber||45));
         }else if(f.type==='table'){
           field('figA','数表（每行一行，格子用 | 隔开）',area((f.rows||[]).map(function(r){return r.join(' | ')}).join('\n')));
         }
@@ -611,6 +649,7 @@ function cwPlan(box,lessonId,refresh){
       if(t==='triangular_numbers')return {type:t,terms:parts(fields.figTerms.value,/,/).map(function(x){return Number(x)}),targetTerm:Number(fields.figTarget.value)};
       if(t==='tile_pattern')return {type:t,whiteCounts:parts(fields.figWhiteCounts.value,/,/).map(function(x){return Number(x)}),blueCounts:parts(fields.figBlueCounts.value,/,/).map(function(x){return Number(x)}),targetTerm:Number(fields.figTarget.value),targetBlue:Number(fields.figBlueTarget.value)};
       if(t==='square_sticks_pattern')return {type:t,sampleCounts:parts(fields.figSquareCounts.value,/,/).map(function(x){return Number(x)}),targetSquares:parts(fields.figTargets.value,/,/).map(function(x){return Number(x)}),targetSticks:Number(fields.figTargetSticks.value)};
+      if(t==='hundred_chart_square')return {type:t,topLeftNumber:Number(fields.figHundredTop.value)};
       if(!fields.figA)return {type:t,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};
       if(t==='segment')return {type:t,points:parts(fields.figA.value,/[;；]/).map(function(x){var k=x.split(/[:：]/);return {name:(k[0]||'').trim(),at:Number((k[1]||'').trim())}}),
         marks:parts(fields.figB.value,/[;；]/).map(function(x){var k=x.split(/[:：]/),ab=(k[0]||'').split(/[-－—]/);return {from:(ab[0]||'').trim(),to:(ab[1]||'').trim(),label:(k.slice(1).join(':')||'').trim()}})};
