@@ -133,3 +133,63 @@ def test_start_page_reflects_real_state(client):
 
     # Adding a student must not change the AI step's wording.
     assert "还没有配置" in page or "填模型地址" in page
+
+
+def test_start_page_hydrates_state_for_a_real_browser(client):
+    """A browser navigates to /start without an Authorization header.
+
+    The page therefore carries the ids the script updates and the endpoint it
+    reads them from; otherwise the teacher sees "no students" forever.
+    """
+    page = client.get("/start").text
+    assert 'id="cy-build"' in page
+    assert 'id="cy-s1text"' in page and 'id="cy-s3link"' in page
+    assert page.count("/start/summary") == 1
+    assert page.rstrip().endswith("</html>")
+
+
+def test_start_summary_refuses_anonymous_and_institution_accounts(client):
+    assert client.get("/start/summary").status_code == 401
+
+    tag = uuid.uuid4().hex[:8]
+    code = f"orgs-{tag}"
+    client.post(
+        "/operator/schools/create",
+        headers={"X-Commercial-Key": COMMERCIAL_KEY},
+        json={"school_name": f"机构{tag}", "school_code": code, "admin_name": "王管理", "admin_username": code, "admin_password": PASSWORD, "plan_code": "school_basic"},
+    )
+    data = client.post("/login", json={"username": code, "password": PASSWORD}).json()
+    headers = {"Authorization": "Bearer " + data["token"]}
+    if data.get("mustChangePassword"):
+        client.post("/change-password", json={"current_password": PASSWORD, "new_password": CHANGED}, headers=headers)
+        data = client.post("/login", json={"username": code, "password": CHANGED}).json()
+        headers = {"Authorization": "Bearer " + data["token"]}
+    assert client.get("/start/summary", headers=headers).status_code == 403
+
+
+def test_start_summary_follows_students_and_the_first_course(client):
+    headers = _personal_workspace(client)
+
+    data = client.get("/start/summary", headers=headers).json()
+    assert data["ok"] is True
+    assert data["students"] == 0 and data["has_program"] is False
+    assert data["s1cls"] == "" and data["s3cls"] == ""
+
+    created = client.post(
+        "/teacher/students",
+        headers=headers,
+        json={"name": "小明", "username": f"stu-{uuid.uuid4().hex[:8]}", "password": PASSWORD, "grade": 5},
+    )
+    assert created.status_code == 200, created.text[:300]
+
+    data = client.get("/start/summary", headers=headers).json()
+    assert data["students"] == 1
+    assert data["s1cls"] == "ok" and "1 名学生" in data["s1text"]
+
+    r = client.post("/start/program", headers=headers, data={"subject": "数学"}, follow_redirects=False)
+    assert r.status_code == 303
+
+    data = client.get("/start/summary", headers=headers).json()
+    assert data["has_program"] is True and data["lessons"] == 18
+    assert data["s3cls"] == "ok" and data["s3url"] == "/v1/weekend-plan"
+    assert "18 节课" in data["s3text"]
