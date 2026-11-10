@@ -18,7 +18,7 @@ PERSONAL_HOME_JS = """(function(){
   try{
     if(!/(?:^|; )cy_personal_home=1(?:;|$)/.test(document.cookie||""))return;
     var p=location.pathname,q=location.search||"";
-    var home=p==="/"||p==="/v1"||p==="/v1/"||(p==="/v1/workspace"&&q.indexOf("view=all")<0);
+    var home=p==="/"||p==="/v1"||p==="/v1/"||p==="/classic"||p==="/classic/"||(p==="/v1/workspace"&&q.indexOf("view=all")<0);
     if(home&&window.location.pathname!=="/start")window.location.replace("/start");
   }catch(e){}
 })();"""
