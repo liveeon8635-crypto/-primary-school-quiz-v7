@@ -144,6 +144,8 @@ def required_visual_type(page_text: Any) -> str:
     if ("正方形" in text and "小棒" in text and ("摆" in text or "根" in text)
             and re.search(r"4\s*根", text) and re.search(r"7\s*根", text) and re.search(r"10\s*根", text)):
         return "square_sticks_pattern"
+    if "田字形" in text and "百数表" in text and ("四数和" in text or "四数之和" in text or "四个数" in text):
+        return "hundred_chart_square"
     if "跑道" in text and ("追上" in text or "超过" in text or "多跑一圈" in text):
         return "running_track"
     compact = _normalize_text(text)
@@ -156,6 +158,8 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
     """Stable, data-only diagrams for known question types, including older approved drafts."""
     text = str(page_text or "")
     kind = required_visual_type(text)
+    if kind == "hundred_chart_square":
+        return {"type": kind, "topLeftNumber": 45}
     if kind == "running_track":
         speeds = [int(x) for x in re.findall(r"每分钟\s*跑\s*(\d+)\s*米", text)]
         distance = re.search(r"(?:跑道)?(?:周长|长)\s*(?:为|是)?\s*([A-Za-z])\s*米", text)
@@ -205,6 +209,26 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
         return result
     if not isinstance(result.get("figure"), dict) or result["figure"].get("type") != figure.get("type"):
         result["figure"] = figure
+    if figure["type"] == "hundred_chart_square":
+        steps = result.get("steps") if isinstance(result.get("steps"), list) else []
+        if len(steps) < 4 or any("点下一步显示" in str(step) for step in steps):
+            result["steps"] = [
+                "百数表中，同一行向右相邻数相差1，同一列向下相邻数相差10。",
+                "设田字格左上角为n，则右上是n+1，左下是n+10，右下是n+11。",
+                "四数相加：n+(n+1)+(n+10)+(n+11)=4n+22。",
+                "若右下角为m，则左上m−11，右上m−10，左下m−1。",
+                "四数和：(m−11)+(m−10)+(m−1)+m=4m−22。",
+            ]
+    if figure["type"] == "hundred_chart_square":
+        steps = result.get("steps") if isinstance(result.get("steps"), list) else []
+        if len(steps) < 4 or any("点下一步显示" in str(step) for step in steps):
+            result["steps"] = [
+                "百数表中，同一行向右相邻数相差1，同一列向下相邻数相差10。",
+                "设田字格左上角为n，则右上是n+1，左下是n+10，右下是n+11。",
+                "四数相加：n+(n+1)+(n+10)+(n+11)=4n+22。",
+                "若右下角为m，则左上m−11，右上m−10，左下m−1。",
+                "四数和：(m−11)+(m−10)+(m−1)+m=4m−22。",
+            ]
     if figure["type"] == "square_sticks_pattern":
         steps = result.get("steps") if isinstance(result.get("steps"), list) else []
         if len(steps) < 4 or any("点下一步显示" in str(step) for step in steps):
