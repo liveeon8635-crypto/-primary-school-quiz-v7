@@ -6,13 +6,14 @@ import json
 import os
 import subprocess
 
-from fastapi import APIRouter, FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from changying.web.v1_ribbon_banner import BRAND_FONT_B64 as _BRAND_FONT_B64
 from changying.web.v1_ribbon_banner import RIBBON_SVG as _RIBBON_SVG
 
 V1_UI_MARKER = "changying_v1_20260915"
+PERSONAL_HOME_COOKIE = "cy_personal_home"
 
 V1_PATHS = ("/v1", "/v1/workspace", "/v1/student", "/v1/history", "/v1/transition")
 
@@ -303,8 +304,18 @@ def install_v1_routes(app: FastAPI) -> None:
             },
         )
 
+    def personal_home(request: Request):
+        """A personal workspace lands on the quick page instead of the school console.
+
+        The cookie is set at login; it only decides where /v1 sends the browser.
+        """
+        if request.cookies.get(PERSONAL_HOME_COOKIE) == "1":
+            return RedirectResponse("/start", status_code=307, headers={"Cache-Control": "no-store"})
+        return response()
+
     for path in V1_PATHS:
-        router.add_api_route(path, response, methods=["GET"], include_in_schema=False)
+        handler = personal_home if path == "/v1" else response
+        router.add_api_route(path, handler, methods=["GET"], include_in_schema=False)
     app.include_router(router)
     app.state.v1_routes_installed = True
 

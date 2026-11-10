@@ -793,6 +793,7 @@ _login_rate_limiter=BoundedLoginRateLimiter(
     max_keys=LOGIN_RATE_MAX_CLIENTS,
 )
 
+PERSONAL_HOME_COOKIE="cy_personal_home"
 PERSONAL_SIGNUP_ENABLED=(os.getenv("PERSONAL_SIGNUP","1").strip().lower() not in ("0","false","off","no"))
 SIGNUP_HOUR_MAX=max(1,min(int(os.getenv("SIGNUP_HOUR_MAX","5") or 5),100))
 SIGNUP_DAY_MAX=max(1,min(int(os.getenv("SIGNUP_DAY_MAX","20") or 20),500))
@@ -4607,26 +4608,45 @@ a.tile b{display:block;font-size:16px}a.tile span{color:var(--muted);font-size:1
 </main></body></html>"""
 
 @app.get("/start",include_in_schema=False)
-def personal_start(u:User=Depends(current_user),db:Session=Depends(get_db)):
-    need(u,"teacher","admin")
-    school=db.get(School,u.school_id)
-    owner_id=personal_owner_id(db,u)
-    students=db.scalar(select(func.count()).select_from(ClassStudent).join(SchoolClass,SchoolClass.id==ClassStudent.class_id).where(SchoolClass.school_id==u.school_id,SchoolClass.teacher_id==owner_id)) or 0
-    cfg=db.scalar(select(SchoolAIConfig).where(SchoolAIConfig.school_id==u.school_id))
-    ai_ready=bool(cfg and cfg.enabled and cfg.model)
-    program=db.scalar(select(TeachingProgram).where(TeachingProgram.school_id==u.school_id).order_by(TeachingProgram.active.desc(),TeachingProgram.id.desc()).limit(1))
-    lesson_count=db.scalar(select(func.count()).select_from(TeachingLesson).where(TeachingLesson.school_id==u.school_id)) if program else 0
+def personal_start(request:Request,authorization:Optional[str]=Header(default=None),db:Session=Depends(get_db)):
+    """Quick start screen for a solo teacher.
+
+    Browsers navigate here without the JSON token, so the page also renders as a
+    plain guide; the numbers simply show up when the request carries a token.
+    """
     values=dict(
-        title=(school.name if school else "我的工作室"),
-        subtitle=f"{u.name} · 个人免费版 · 一个账号就是一间工作室",
-        s1cls="ok" if students else "",s1text=(f"已经有 {students} 名学生" if students else "还没有学生，先加 1-2 个试试"),
-        s1url="/v1/tool?page=classes",s1label=("查看" if students else "去添加"),s1a=("plain" if students else ""),
-        s2cls="ok" if ai_ready else "",s2text=("AI 已配置，可以生成教案和习题" if ai_ready else "填模型地址、模型名和 Key；不填也能手工写教案"),
-        s2url="/v1/tool?page=ai",s2label=("查看" if ai_ready else "去填写"),s2a=("plain" if ai_ready else ""),
-        s3cls="ok" if (program and lesson_count) else "",s3text=(f"已有课程方案（{lesson_count} 节课）" if (program and lesson_count) else ("还没有课程方案，先去「定制教学」建一个" if not program else "方案已建，但还没有课")),
-        s3url=("/v1/weekend-plan" if (program and lesson_count) else "/v1/tool?page=teaching"),
-        s3label=("去备课" if (program and lesson_count) else "去建立"),s3a=("plain" if (program and lesson_count) else ""),
+        title="我的工作室",subtitle="个人免费版 · 一个账号就是一间工作室",
+        s1cls="",s1text="先把要带的学生加进来，1-2 个也行",s1url="/v1/tool?page=classes",s1label="去添加",s1a="",
+        s2cls="",s2text="填模型地址、模型名和 Key；不填也能手工写教案",s2url="/v1/tool?page=ai",s2label="去填写",s2a="",
+        s3cls="",s3text="先建课程方案，再导入教案、审习题、上课",s3url="/v1/tool?page=teaching",s3label="去准备",s3a="",
     )
+    token=(authorization or "")[7:].strip() if (authorization or "").startswith("Bearer ") else ""
+    if token:
+        try:
+            u=authenticated_user("Bearer "+token,db)
+            u.school_individual=is_individual_school(db,u.school_id)
+            if is_personal_workspace_user(u):
+                school=db.get(School,u.school_id)
+                owner_id=personal_owner_id(db,u)
+                students=db.scalar(select(func.count()).select_from(ClassStudent).join(SchoolClass,SchoolClass.id==ClassStudent.class_id).where(SchoolClass.school_id==u.school_id,SchoolClass.teacher_id==owner_id)) or 0
+                cfg=db.scalar(select(SchoolAIConfig).where(SchoolAIConfig.school_id==u.school_id))
+                ai_ready=bool(cfg and cfg.enabled and cfg.model)
+                program=db.scalar(select(TeachingProgram).where(TeachingProgram.school_id==u.school_id).order_by(TeachingProgram.active.desc(),TeachingProgram.id.desc()).limit(1))
+                lessons=db.scalar(select(func.count()).select_from(TeachingLesson).where(TeachingLesson.school_id==u.school_id)) if program else 0
+                values.update(
+                    title=(school.name if school else "我的工作室"),
+                    subtitle=f"{u.name} · 个人免费版 · 一个账号就是一间工作室",
+                    s1cls="ok" if students else "",s1text=(f"已经有 {students} 名学生" if students else "还没有学生，先加 1-2 个试试"),
+                    s1label=("查看" if students else "去添加"),s1a=("plain" if students else ""),
+                    s2cls="ok" if ai_ready else "",s2text=("AI 已配置，可以生成教案和习题" if ai_ready else "填模型地址、模型名和 Key；不填也能手工写教案"),
+                    s2label=("查看" if ai_ready else "去填写"),s2a=("plain" if ai_ready else ""),
+                    s3cls="ok" if (program and lessons) else "",
+                    s3text=(f"已有课程方案（{lessons} 节课）" if (program and lessons) else ("还没有课程方案，先去「定制教学」建一个" if not program else "方案已建，但还没有课")),
+                    s3url=("/v1/weekend-plan" if (program and lessons) else "/v1/tool?page=teaching"),
+                    s3label=("去备课" if (program and lessons) else "去建立"),s3a=("plain" if (program and lessons) else ""),
+                )
+        except HTTPException:
+            pass
     return HTMLResponse(Template(PERSONAL_START_HTML).substitute(**values))
 
 @app.get("/signup",include_in_schema=False)
@@ -4812,7 +4832,7 @@ def operator_console():
     return HTMLResponse(OPERATOR_HTML,headers={"Cache-Control":"no-store, no-cache, must-revalidate, max-age=0"})
 
 @app.post("/login")
-def login(b:LoginBody,request:Request,db:Session=Depends(get_db)):
+def login(b:LoginBody,request:Request,response:Response,db:Session=Depends(get_db)):
     rate_key=login_rate_check(request)
     u=db.scalar(select(User).where(User.username==b.username))
     now=datetime.utcnow()
@@ -4839,6 +4859,10 @@ def login(b:LoginBody,request:Request,db:Session=Depends(get_db)):
     sec.failed_login_count=0
     sec.locked_until=None
     db.commit()
+    if is_individual_school(db,u.school_id):
+        response.set_cookie(PERSONAL_HOME_COOKIE,"1",max_age=60*60*24*30,httponly=True,samesite="lax",secure=True,path="/")
+    else:
+        response.delete_cookie(PERSONAL_HOME_COOKIE,path="/")
     return {
         "token":make_token(u,sec,b.remember),"role":session_role(db,u),"userID":u.id,
         "name":u.name,"grade":u.grade,"schoolIndividual":is_individual_school(db,u.school_id),

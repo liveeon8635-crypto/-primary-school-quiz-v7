@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
 
 COMMERCIAL_KEY = "personal-start-commercial-key-0123456789"
 PASSWORD = "Teacher1234"
+PERSONAL_COOKIE = "cy_personal_home"
 CHANGED = "Teacher5678"
 
 
@@ -64,8 +65,15 @@ def _personal_workspace(client):
     return headers
 
 
-def test_start_requires_login(client):
-    assert client.get("/start").status_code == 401
+def test_start_is_public_and_v1_lands_there_for_personal_browsers(client):
+    # Browsers navigate without the JSON token, so the quick page must render as a guide.
+    page = client.get("/start")
+    assert page.status_code == 200
+    assert "添加我的学生" in page.text
+
+    # /v1 sends a personal browser to the quick page; other browsers keep the console.
+    assert client.get("/v1", cookies={PERSONAL_COOKIE: "1"}).url.path == "/start"
+    assert client.get("/v1").url.path == "/v1"
 
 
 def test_start_page_guides_three_steps(client):
