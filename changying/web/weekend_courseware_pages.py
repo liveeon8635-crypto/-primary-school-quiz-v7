@@ -551,8 +551,8 @@ function cwPlan(box,lessonId,refresh){
   function edit(box2,x,it){
     box2.textContent='';var card=el('div',{class:'card'}),fields={},kinds=data.templates,kind=it?it.kind:kinds[kinds.length-1],p=JSON.parse(JSON.stringify(it?it.params:{})),previewState={step:1,previewMode:true},preview=el('div',{class:'card',style:'position:sticky;top:76px;z-index:4;max-height:76vh;overflow:auto;box-shadow:0 8px 24px #10182822'});
     if(kind==='steps'){
-      var sourceText=String(x.text||'')+' '+String(p.problem||'')+' '+String(p.sourceProblem||''),required=null;
-      if(sourceText.indexOf('田字形')>=0&&sourceText.indexOf('百数表')>=0){required={type:'hundred_chart_square',topLeftNumber:45};}
+      var sourceText=String(x.text||'')+' '+String(p.problem||'')+' '+String(p.sourceProblem||''),normalizedSource=sourceText.replace(/[\s"'“”‘’「」『』]/g,''),required=null;
+      if(normalizedSource.indexOf('田字形')>=0&&normalizedSource.indexOf('百数表')>=0){required={type:'hundred_chart_square',topLeftNumber:45};}
       else if(sourceText.indexOf('地砖')>=0&&(sourceText.indexOf('排列')>=0||sourceText.indexOf('白地砖')>=0)){
         function values(re){var out=[],m;re.lastIndex=0;while((m=re.exec(sourceText))!==null)out.push(Number(m[1]));return out}
         var white=values(/(\d+)\s*块白地砖/g),blue=values(/(\d+)\s*块蓝地砖/g),term=sourceText.match(/当\s*n\s*[=＝]\s*(\d+)/),target=sourceText.match(/(?:用了|用)\s*(\d+)\s*块蓝(?:色)?砖/);

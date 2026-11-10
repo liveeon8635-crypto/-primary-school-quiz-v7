@@ -144,7 +144,10 @@ def required_visual_type(page_text: Any) -> str:
     if ("正方形" in text and "小棒" in text and ("摆" in text or "根" in text)
             and re.search(r"4\s*根", text) and re.search(r"7\s*根", text) and re.search(r"10\s*根", text)):
         return "square_sticks_pattern"
-    if "田字形" in text and "百数表" in text and ("四数和" in text or "四数之和" in text or "四个数" in text):
+    normalized = _normalize_text(text)
+    for quote in ("'", '"', "“", "”", "‘", "’", "「", "」", "『", "』"):
+        normalized = normalized.replace(quote, "")
+    if "田字形" in normalized and "百数表" in normalized and ("四数和" in normalized or "四数之和" in normalized or "四个数" in normalized):
         return "hundred_chart_square"
     if "跑道" in text and ("追上" in text or "超过" in text or "多跑一圈" in text):
         return "running_track"
