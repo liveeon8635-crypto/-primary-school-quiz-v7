@@ -4656,6 +4656,7 @@ a.tile b{display:block;font-size:16px}a.tile span{color:var(--muted);font-size:1
 <a class="tile" href="/v1/weekend"><b>上课</b><span>开课、大屏、随堂练习</span></a>
 <a class="tile" href="/v1/homework"><b>晚托作业</b><span>学生拍题求助、生成巩固</span></a>
 <a class="tile" href="/v1/knowledge-map"><b>知识地图</b><span>哪里薄弱、一键布置</span></a>
+<a class="tile" href="/parent-accounts"><b>家长账号</b><span>给家长建登录账号，绑定到孩子</span></a>
 </div>
 </main></body></html>"""
 
@@ -4726,6 +4727,178 @@ def personal_start_program(request:Request,subject:str=Form("数学"),u:User=Dep
     audit(db,u,"course.create",f"program={program.id}:subject={subject}:lessons={created}")
     db.commit()
     return RedirectResponse("/start",status_code=303)
+
+PERSONAL_PARENTS_HTML = """<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>家长账号 · 长缨辅学</title>
+<style>
+:root{--ink:#1f2738;--muted:#778095;--line:#e5e8f0;--brand:#a8101c;--ok:#0b8f5a}
+*{box-sizing:border-box}body{margin:0;background:#f4f6fb;color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+main{max-width:720px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}p.sub{color:var(--muted);margin:0 0 18px;font-size:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
+h2{font-size:15px;margin:18px 0 8px}
+label{display:block;font-size:13.5px;font-weight:700;margin:12px 0 6px}
+input,select{width:100%;border:1px solid #cfd7e5;border-radius:10px;padding:11px 12px;font:inherit;background:#fff}
+.hint{color:var(--muted);font-size:12.5px;margin-top:6px;line-height:1.5}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+button{border:0;border-radius:10px;padding:10px 16px;font:inherit;font-weight:700;cursor:pointer}
+button.primary{background:var(--brand);color:#fff}
+button.plain{background:#eef2fa;color:var(--brand)}
+button.small{padding:6px 10px;font-size:13px;border-radius:8px}
+button:disabled{opacity:.6;cursor:wait}
+.status{margin-top:14px;font-size:13.5px;line-height:1.6;color:var(--muted)}
+.status.ok{color:var(--ok)}.status.err{color:#b91c1c}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line)}
+.row:last-child{border-bottom:0}
+.row b{font-size:14.5px}.row small{display:block;color:var(--muted);font-size:12.5px}
+a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:none;font-weight:700}
+</style></head><body><main>
+<h1>家长账号</h1>
+<p class="sub">给家长建一个登录账号，绑定到孩子。家长登录后只看得到自己孩子已发布的反馈。</p>
+<div class="card">
+<div id="cy-status" class="status">正在读取…</div>
+<label for="cy-student">选择学生</label>
+<select id="cy-student"></select>
+<label for="cy-name">家长姓名</label>
+<input id="cy-name" autocomplete="off" placeholder="例如 小明妈妈">
+<label for="cy-username">家长账号</label>
+<input id="cy-username" autocomplete="off" placeholder="例如 parent_xm">
+<label for="cy-password">初始密码</label>
+<input id="cy-password" type="password" autocomplete="off" placeholder="至少8位，同时包含字母和数字">
+<div class="hint">家长首次登录会被要求改密码。</div>
+<div class="actions"><button class="primary" id="cy-create">创建并绑定</button></div>
+<div id="cy-msg" class="status"></div>
+</div>
+<div class="card">
+<h2>把已有家长账号绑到学生</h2>
+<select id="cy-parent"></select>
+<div class="actions"><button class="plain" id="cy-bind">绑到上面选中的学生</button></div>
+<h2>学生与家长</h2>
+<div id="cy-students"></div>
+</div>
+<a class="back" href="/start">← 返回我的工作室</a>
+</main>
+<script>
+(function(){
+  function token(){try{return localStorage.getItem('v717Token')||sessionStorage.getItem('v717Token')||''}catch(e){return ''}}
+  var t=token();
+  function el(id){return document.getElementById(id)}
+  function setStatus(text,cls){var s=el('cy-status');if(!s)return;s.textContent=text;s.className='status'+(cls?' '+cls:'')}
+  function msg(text,cls){var m=el('cy-msg');if(!m)return;m.textContent=text;m.className='status'+(cls?' '+cls:'')}
+  if(!t){setStatus('请先用你的账号登录，再从工作台打开这个页面。','err');el('cy-create').disabled=true;el('cy-bind').disabled=true;return}
+  function send(method,url,body,cb){
+    var x=new XMLHttpRequest();
+    x.open(method,url,true);
+    x.setRequestHeader('Authorization','Bearer '+t);
+    if(body)x.setRequestHeader('Content-Type','application/json');
+    x.onload=function(){var d=null;try{d=JSON.parse(x.responseText)}catch(e){}cb(x.status,d)};
+    x.onerror=function(){cb(0,null)};
+    x.send(body?JSON.stringify(body):null);
+  }
+  var state={cid:null,students:[],parents:[]};
+  function fillStudents(){
+    var sel=el('cy-student');if(!sel)return;
+    sel.innerHTML='';
+    for(var i=0;i<state.students.length;i++){
+      var o=document.createElement('option');o.value=String(state.students[i].id);
+      o.textContent=state.students[i].name+(state.students[i].parentName?('（家长：'+state.students[i].parentName+'）'):'（未绑定家长）');
+      sel.appendChild(o);
+    }
+  }
+  function fillParents(){
+    var sel=el('cy-parent');if(!sel)return;
+    sel.innerHTML='';
+    for(var i=0;i<state.parents.length;i++){
+      var o=document.createElement('option');o.value=String(state.parents[i].id);
+      o.textContent=state.parents[i].name+'（'+state.parents[i].username+'）';
+      sel.appendChild(o);
+    }
+    if(!state.parents.length){var o2=document.createElement('option');o2.value='';o2.textContent='还没有家长账号，先在上面创建一个';sel.appendChild(o2)}
+  }
+  function renderStudents(){
+    var box=el('cy-students');if(!box)return;
+    box.innerHTML='';
+    if(!state.students.length){box.innerHTML='<div class="hint">还没有学生，先在「班级学生」里加学生。</div>';return}
+    for(var i=0;i<state.students.length;i++){(function(s){
+      var row=document.createElement('div');row.className='row';
+      var left=document.createElement('div');
+      var b=document.createElement('b');b.textContent=s.name;
+      var sm=document.createElement('small');sm.textContent=s.parentName?('家长：'+s.parentName+(s.parentUsername?('（'+s.parentUsername+'）'):'')):'未绑定家长';
+      left.appendChild(b);left.appendChild(sm);row.appendChild(left);
+      if(s.parentID){
+        var un=document.createElement('button');un.className='plain small';un.textContent='解绑';
+        un.onclick=function(){bind(s.id,null)};
+        row.appendChild(un);
+      }
+      box.appendChild(row);
+    })(state.students[i])}
+  }
+  function loadParents(){
+    send('GET','/teacher/parents',null,function(s,ps){
+      state.parents=(s===200&&ps)?ps:[];
+      fillParents();
+    });
+  }
+  function loadStudents(){
+    if(!state.cid){setStatus('还没有学生名单。','err');return}
+    send('GET','/teacher/classes/'+state.cid+'/students',null,function(s,list){
+      state.students=(s===200&&list)?list:[];
+      fillStudents();renderStudents();
+      setStatus('共 '+state.students.length+' 名学生，'+state.parents.length+' 个家长账号。','');
+    });
+  }
+  function load(){
+    send('GET','/teacher/classes',null,function(s,cls){
+      if(s!==200){setStatus((cls&&cls.detail)||'读取班级失败','err');return}
+      if(!cls||!cls.length){setStatus('还没有学生名单，先在「班级学生」里加学生。','err');el('cy-create').disabled=true;el('cy-bind').disabled=true;return}
+      state.cid=cls[0].id;
+      loadParents();loadStudents();
+    });
+  }
+  function bind(sid,pid){
+    send('POST','/teacher/students/'+sid+'/parent',{parent_id:pid},function(s,d){
+      if(s===200){loadStudents();msg(pid?'已绑定':'已解绑','ok')}
+      else{msg((d&&d.detail)||'操作失败，请重试','err')}
+    });
+  }
+  el('cy-create').onclick=function(){
+    var sid=Number(el('cy-student').value||0);
+    var name=el('cy-name').value.trim(),user=el('cy-username').value.trim(),pwd=el('cy-password').value;
+    if(!sid){msg('请先选择学生','err');return}
+    if(!name||!user||!pwd){msg('姓名、账号、初始密码都要填写','err');return}
+    el('cy-create').disabled=true;msg('正在创建…','');
+    send('POST','/admin/users',{name:name,username:user,password:pwd,role:'parent'},function(s,d){
+      if(s!==200){el('cy-create').disabled=false;msg((d&&d.detail)||'创建失败，请重试','err');return}
+      var pid=d&&d.id;
+      send('POST','/teacher/students/'+sid+'/parent',{parent_id:pid},function(s2,d2){
+        el('cy-create').disabled=false;
+        if(s2===200){el('cy-name').value='';el('cy-username').value='';el('cy-password').value='';msg('已创建并绑定：'+name,'ok');loadParents();loadStudents()}
+        else{msg('家长账号已创建，但绑定失败：'+((d2&&d2.detail)||''),'err');loadParents()}
+      });
+    });
+  };
+  el('cy-bind').onclick=function(){
+    var sid=Number(el('cy-student').value||0);
+    var pid=Number(el('cy-parent').value||0);
+    if(!sid||!pid){msg('请先选择学生和一个家长账号','err');return}
+    bind(sid,pid);
+  };
+  load();
+})();
+</script></body></html>"""
+
+@app.get("/parent-accounts",include_in_schema=False)
+def personal_parent_accounts_page():
+    """Create a parent account and bind it to a child, for a solo teacher.
+
+    Two things were missing: nothing in the UI created a parent account, and
+    /teacher/parents used to answer [] for every personal workspace. This page
+    uses the same endpoints the school console uses, and stays outside INDEX_HTML
+    so the shared Safari 12 asset manifest never changes.
+    """
+    return HTMLResponse(PERSONAL_PARENTS_HTML,headers={"Cache-Control":"no-store, no-cache, must-revalidate, max-age=0"})
 
 @app.get("/signup",include_in_schema=False)
 def personal_signup_page():
@@ -6361,7 +6534,8 @@ def addstudent(b:StudentCreate,u:User=Depends(current_user),db:Session=Depends(g
 @app.get("/teacher/parents")
 def teacher_parents(u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"teacher")
-    if u.school_individual:return []
+    # A personal workspace keeps its parents in the same school row, so they are
+    # found the same way; hiding them here made the "绑定家长" picker always empty.
     rows=db.scalars(select(User).where(User.school_id==u.school_id,User.role=="parent",User.active==True).order_by(User.name,User.username)).all()
     return [{"id":x.id,"name":x.name,"username":x.username} for x in rows]
 
