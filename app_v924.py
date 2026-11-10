@@ -7,10 +7,10 @@ from ipaddress import ip_address
 from typing import Optional
 
 import jwt
-from fastapi import APIRouter, FastAPI, HTTPException, Header, Depends, UploadFile, File, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Header, Depends, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from string import Template
 from sqlalchemy import create_engine, String, Integer, ForeignKey, Text, DateTime, Boolean, LargeBinary, UniqueConstraint, select, func, inspect as sa_inspect, text as sa_text
@@ -4570,6 +4570,15 @@ code{background:#f4f6fb;border-radius:6px;padding:2px 6px;font-size:17px;font-we
 })();
 </script></body></html>"""
 
+DEFAULT_COURSE_FORM=(
+    '<form class="build" method="post" action="/start/program">'
+    '<button type="submit" name="subject" value="数学">建数学课（18 节）</button>'
+    '<button type="submit" name="subject" value="语文" class="alt">建语文课（18 节）</button>'
+    '</form>'
+)
+DEFAULT_COURSE_LESSONS=18
+DEFAULT_COURSE_SUBJECTS=("数学","语文")
+
 PERSONAL_START_HTML = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -4587,6 +4596,9 @@ h1{font-size:22px;margin:0 0 4px}p.sub{color:var(--muted);margin:0 0 18px;font-s
 .t{font-weight:700}.d{color:var(--muted);font-size:13.5px}
 a.go{margin-left:auto;white-space:nowrap;text-decoration:none;background:var(--brand);color:#fff;border-radius:10px;padding:8px 14px;font-weight:700;font-size:14px}
 a.go.plain{background:#eef2fa;color:var(--brand)}
+form.build{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+form.build button{border:0;border-radius:10px;padding:9px 14px;font:inherit;font-weight:700;background:var(--brand);color:#fff;cursor:pointer}
+form.build button.alt{background:#eef2fa;color:var(--brand)}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 @media(max-width:560px){.grid{grid-template-columns:1fr}}
 a.tile{display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
@@ -4597,7 +4609,7 @@ a.tile b{display:block;font-size:16px}a.tile span{color:var(--muted);font-size:1
 <div class="card">
 <div class="step"><div class="dot $s1cls">1</div><div><div class="t">添加我的学生</div><div class="d">$s1text</div></div><a class="go $s1a" href="$s1url">$s1label</a></div>
 <div class="step"><div class="dot $s2cls">2</div><div><div class="t">填写自己的 AI Key</div><div class="d">$s2text</div></div><a class="go $s2a" href="$s2url">$s2label</a></div>
-<div class="step"><div class="dot $s3cls">3</div><div><div class="t">准备并上第一节课</div><div class="d">$s3text</div></div><a class="go $s3a" href="$s3url">$s3label</a></div>
+<div class="step"><div class="dot $s3cls">3</div><div><div class="t">准备并上第一节课</div><div class="d">$s3text</div>$s3action</div><a class="go $s3a" href="$s3url">$s3label</a></div>
 </div>
 <div class="grid">
 <a class="tile" href="/v1/weekend-plan"><b>周末课备课</b><span>导入教案、审习题、配课件</span></a>
@@ -4619,6 +4631,7 @@ def personal_start(request:Request,authorization:Optional[str]=Header(default=No
         s1cls="",s1text="先把要带的学生加进来，1-2 个也行",s1url="/v1/tool?page=classes",s1label="去添加",s1a="",
         s2cls="",s2text="填模型地址、模型名和 Key；不填也能手工写教案",s2url="/v1/tool?page=ai",s2label="去填写",s2a="",
         s3cls="",s3text="先建课程方案，再导入教案、审习题、上课",s3url="/v1/tool?page=teaching",s3label="去准备",s3a="",
+        s3action=DEFAULT_COURSE_FORM,
     )
     token=(authorization or "")[7:].strip() if (authorization or "").startswith("Bearer ") else ""
     if token:
@@ -4644,10 +4657,34 @@ def personal_start(request:Request,authorization:Optional[str]=Header(default=No
                     s3text=(f"已有课程方案（{lessons} 节课）" if (program and lessons) else ("还没有课程方案，先去「定制教学」建一个" if not program else "方案已建，但还没有课")),
                     s3url=("/v1/weekend-plan" if (program and lessons) else "/v1/tool?page=teaching"),
                     s3label=("去备课" if (program and lessons) else "去建立"),s3a=("plain" if (program and lessons) else ""),
+                    s3action=("" if (program and lessons) else DEFAULT_COURSE_FORM),
                 )
         except HTTPException:
             pass
     return HTMLResponse(Template(PERSONAL_START_HTML).substitute(**values))
+
+def ensure_default_course(db,school_id,subject,grade):
+    """Give a personal workspace its first course so备课 has somewhere to start."""
+    program=db.scalar(select(TeachingProgram).where(TeachingProgram.school_id==school_id).order_by(TeachingProgram.id).limit(1))
+    if program is None:
+        program=TeachingProgram(school_id=school_id,title=f"{grade}年级{subject}课",academic_year=2026,term="秋季",grade=grade,semester="上册",chinese_textbook="人教版",math_textbook="人教版",pass_threshold=60,active=True)
+        db.add(program);db.flush()
+    existing=db.scalar(select(func.count()).select_from(TeachingLesson).where(TeachingLesson.program_id==program.id,TeachingLesson.subject==subject)) or 0
+    if existing:
+        return program,0
+    for no in range(1,DEFAULT_COURSE_LESSONS+1):
+        db.add(TeachingLesson(school_id=school_id,program_id=program.id,subject=subject,lesson_no=no,unit="待配置单元",title=f"{subject}第 {no} 课",core_target="在上课时填写本节课要教会的内容。",duration_min=120,teacher_plan="",reading_plan="",writing_plan="",examples_json="[]",ppt_json=json.dumps(["本课目标","核心知识点","例题精讲","分层练习","总结复盘"],ensure_ascii=False),closure_training="",essay_review="",published=False))
+    return program,DEFAULT_COURSE_LESSONS
+
+@app.post("/start/program",include_in_schema=False)
+def personal_start_program(request:Request,subject:str=Form("数学"),u:User=Depends(current_user),db:Session=Depends(get_db)):
+    need(u,"teacher","admin")
+    if not is_personal_workspace_user(u):raise HTTPException(403,"只有个人工作台可以一键建课")
+    grade=personal_student_list_grade(db,u.school_id)
+    program,created=ensure_default_course(db,u.school_id,subject,grade)
+    audit(db,u,"course.create",f"program={program.id}:subject={subject}:lessons={created}")
+    db.commit()
+    return RedirectResponse("/start",status_code=303)
 
 @app.get("/signup",include_in_schema=False)
 def personal_signup_page():
