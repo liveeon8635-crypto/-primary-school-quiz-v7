@@ -219,16 +219,6 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
                 "若右下角为m，则左上m−11，右上m−10，左下m−1。",
                 "四数和：(m−11)+(m−10)+(m−1)+m=4m−22。",
             ]
-    if figure["type"] == "hundred_chart_square":
-        steps = result.get("steps") if isinstance(result.get("steps"), list) else []
-        if len(steps) < 4 or any("点下一步显示" in str(step) for step in steps):
-            result["steps"] = [
-                "百数表中，同一行向右相邻数相差1，同一列向下相邻数相差10。",
-                "设田字格左上角为n，则右上是n+1，左下是n+10，右下是n+11。",
-                "四数相加：n+(n+1)+(n+10)+(n+11)=4n+22。",
-                "若右下角为m，则左上m−11，右上m−10，左下m−1。",
-                "四数和：(m−11)+(m−10)+(m−1)+m=4m−22。",
-            ]
     if figure["type"] == "square_sticks_pattern":
         steps = result.get("steps") if isinstance(result.get("steps"), list) else []
         if len(steps) < 4 or any("点下一步显示" in str(step) for step in steps):
