@@ -217,7 +217,7 @@ function cwSquareSticksPattern(box,f,view,big,teacher,stepCount){
       svg.appendChild(cwNode('line',{x1:x,y1:y+unit,x2:x+unit,y2:y+unit,stroke:c,'stroke-width':sw,'stroke-linecap':'round'}));
     }
     for(var k=0;k<=n;k++){
-      var vc=k===0?'#667085':k===n||k>1?'#2563eb':'#2563eb';
+      var vc=(k===0||n===1)?'#667085':'#2563eb';
       svg.appendChild(cwNode('line',{x1:x0+k*unit,y1:y,x2:x0+k*unit,y2:y+unit,stroke:vc,'stroke-width':k===0?4:5,'stroke-linecap':'round'}));
     }
   }
