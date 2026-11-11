@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, Text, delete, insert, select, update
 
 from changying.services import weekend_courseware as cw
+from changying.services.weekend_courseware_quality import audit_example_pages
 from changying.services.weekend_stages import STAGE_COUNT
 
 AI_FEATURE = "weekend_courseware"
@@ -534,7 +535,12 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 if isinstance(current, dict):
                     i[key] = _repair_courseware_visual(current, visual_text)
             items.append({**i, "kindLabel": cw.KIND_LABEL.get(i["kind"], i["kind"]), "writtenTaskPreview": task(i, i["params"])})
+        quality_audit = audit_example_pages(
+            stage_pages(lesson, 3), items_of(row_for(db, lesson)),
+            globals()["required_visual_type"], stage=3,
+        )
         return {"lessonId": lesson.id, "subject": lesson.subject, "templates": list(cw.TEMPLATES[lesson.subject]), "kindLabels": cw.KIND_LABEL,
+                "qualityAudit": quality_audit,
                 "hasSource": bool((lesson.reading_plan or "").strip()), "items": items,
                 "pages": {str(n): [_short(x, 80) for x in stage_pages(lesson, n)] for n in (2, 3)}}
 
