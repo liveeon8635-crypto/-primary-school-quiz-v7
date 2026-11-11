@@ -457,11 +457,11 @@ function cwControl(box,c,sid){
 COURSEWARE_PLAN_JS = r"""
 var CW_STAGES=['到课与热身','知识点介绍','例题讲解','随堂练习','练习复盘','课堂互动','布置课后'];
 function cwPlan(box,lessonId,refresh){
-  var stageNo='3',msg=el('div',{role:'status','aria-live':'polite'}),data=null,busy=false,editorBox=null,notes={};
+  var stageNo='3',msg=el('div',{role:'status','aria-live':'polite'}),data=null,busy=false,editorBox=null,notes={},rowEls={};
   function load(){api('/teacher/weekend/lessons/'+lessonId+'/courseware').then(paint).catch(function(e){box.textContent='';box.appendChild(el('div',{class:'notice error',text:e.message}))})}
   function itemAt(page){return (data.items||[]).filter(function(i){return String(i.stage)===stageNo&&i.page===page})[0]}
   function paint(d){
-    data=d;box.textContent='';
+    data=d;rowEls={};box.textContent='';
     box.appendChild(el('p',{class:'muted',text:'每一页讲解／例题可配一个互动课件。AI 从审核过的模板（'+d.templates.map(function(k){return d.kindLabels[k]}).join('、')+'）中为每页选一个并填写参数；你逐页预览、修改、审核后才会在大屏那一页出现。上课翻页和操作不调用 AI。'}));
     var stageSel=el('select',{'aria-label':'环节'});CW_STAGES.forEach(function(x,i){stageSel.appendChild(el('option',{value:i+1,text:'第'+(i+1)+'环节：'+x+((d.pages[String(i+1)]||[]).length?'（'+d.pages[String(i+1)].length+' 页）':'')}))});
     stageSel.value=stageNo;stageSel.onchange=function(){stageNo=stageSel.value;paint(data)};
@@ -481,7 +481,7 @@ function cwPlan(box,lessonId,refresh){
     }});
     box.appendChild(el('div',{class:'row'},stageSel,all,el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})),approveAll));
     box.appendChild(msg);
-    var rows=el('div'),editor=el('div');box.appendChild(rows);box.appendChild(editor);editorBox=editor;notes={};
+    var rows=el('div'),editor=el('div');box.appendChild(rows);box.appendChild(editor);editorBox=editor;notes={};rowEls={};
     list.forEach(function(x){
       var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
       var line=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:(x.page==null?'':'第'+(x.page+1)+'页：')+x.text}),
@@ -495,10 +495,10 @@ function cwPlan(box,lessonId,refresh){
           busy=false;paint(d);if(refresh)refresh();
           // Say it on this page's row (the list can be long), then open the new draft's preview.
           var n=notes[String(x.page)];if(n){n.className='notice ok';n.textContent='已生成新草稿'+(d.notice?'（'+d.notice+'）':'')+'，预览在下方，核对后点“审核通过”。'}
-          edit(editorBox,x,itemAt(x.page));
+          openEditor(x,itemAt(x.page));
         }).catch(function(err){busy=false;b.disabled=false;b.textContent=label;note.className='notice error';note.textContent=err.message});
       }}));
-      line.appendChild(el('button',{text:it?'预览／修改':'手动填写',onclick:function(){edit(editor,x,itemAt(x.page))}}));
+      line.appendChild(el('button',{type:'button',text:it?'预览／修改':'手动填写',onclick:function(){openEditor(x,itemAt(x.page))}}));
       if(it&&it.previousDraft)line.appendChild(el('button',{text:'恢复上一版',onclick:function(){
         if(!confirm('恢复这一页上一次的课件草稿？恢复后请重新核对。'))return;
         api('/teacher/weekend/lessons/'+lessonId+'/courseware/restore-previous',{json:{stageNo:+stageNo,page:x.page}})
@@ -514,8 +514,19 @@ function cwPlan(box,lessonId,refresh){
       line.appendChild(el('button',{text:'套用模板',onclick:function(){pickTemplate(x)}}));
       if(it&&it.status==='draft')line.appendChild(el('button',{class:'primary',text:'审核通过',onclick:function(){run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:y.page}})},'审核')}}));
       if(it)line.appendChild(el('button',{text:'删除',onclick:function(){if(confirm('删除这一页的课件？'))api('/teacher/weekend/lessons/'+lessonId+'/courseware/remove',{json:{stageNo:+stageNo,page:x.page}}).then(paint).catch(function(e){msg.textContent=e.message})}}));
-      rows.appendChild(line);line.appendChild(note);
+      rows.appendChild(line);line.appendChild(note);rowEls[String(x.page)]=line;
     });
+  }
+  function openEditor(x,it){
+    try{
+      edit(editorBox,x,it);
+      var target=rowEls[String(x.page)];
+      if(target&&target.parentNode)target.parentNode.insertBefore(editorBox,target.nextSibling);
+      if(editorBox&&editorBox.scrollIntoView)editorBox.scrollIntoView({block:'start',behavior:'smooth'});
+    }catch(err){
+      var note=notes[String(x.page)];
+      if(note){note.className='notice error';note.textContent='预览打开失败：'+(err&&err.message?err.message:'页面脚本异常')}
+    }
   }
   function pickTemplate(x){
     editorBox.textContent='';
