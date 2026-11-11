@@ -132,7 +132,23 @@ def items_of(row: Any) -> list[dict[str, Any]]:
 
 
 def required_visual_type(page_text: Any) -> str:
+    """Known lesson types whose saved courseware must include a matching visual."""
     text = str(page_text or "")
+    compact = _normalize_text(text)
+    for quote in ("'", '"', "“", "”", "‘", "’", "「", "」", "『", "』"):
+        compact = compact.replace(quote, "")
+
+    # More specific patterns must be checked before the general calendar cases.
+    if "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
+        return "table"
+    if ("3×3" in text or "3x3" in text or "3＊3" in text) and ("九数和" in text or "中心数" in text):
+        return "table"
+    if "a＋b²" in compact or "a+b²" in compact or ("小明算成" in text and "平方" in text):
+        return "flow"
+    if "大正方形" in text and "小正方形" in text and "长方形" in text and "周长" in text:
+        return "table"
+    if "正方形边长" in text and "长方形长" in text and ("周长" in text or "面积" in text):
+        return "table"
     if "月历" in text and "十" in text and "框" in text:
         return "calendar_cross"
     if "方桌" in text and ("可坐" in text or "座位" in text):
@@ -144,23 +160,35 @@ def required_visual_type(page_text: Any) -> str:
     if ("正方形" in text and "小棒" in text and ("摆" in text or "根" in text)
             and re.search(r"4\s*根", text) and re.search(r"7\s*根", text) and re.search(r"10\s*根", text)):
         return "square_sticks_pattern"
-    normalized = _normalize_text(text)
-    for quote in ("'", '"', "“", "”", "‘", "’", "「", "」", "『", "』"):
-        normalized = normalized.replace(quote, "")
-    if "田字形" in normalized and "百数表" in normalized and ("四数和" in normalized or "四数之和" in normalized or "四个数" in normalized):
+    if "田字形" in compact and "百数表" in compact and ("四数和" in compact or "四数之和" in compact or "四个数" in compact):
         return "hundred_chart_square"
     if "跑道" in text and ("追上" in text or "超过" in text or "多跑一圈" in text):
         return "running_track"
-    compact = _normalize_text(text)
     if "三角形数" in compact or re.search(r"1[,，、]3[,，、]6[,，、]10[,，、]15", text):
         return "triangular_numbers"
     return ""
 
 
 def required_visual_figure(page_text: Any) -> dict[str, Any]:
-    """Stable, data-only diagrams for known question types, including older approved drafts."""
+    """Return stable, data-only visual parameters for known questions."""
     text = str(page_text or "")
     kind = required_visual_type(text)
+    if kind == "table":
+        compact = _normalize_text(text)
+        if ("3×3" in text or "3x3" in text or "3＊3" in text) and ("九数和" in text or "中心数" in text):
+            return {"type": "table", "rows": [["a−11", "a−10", "a−9"], ["a−1", "a", "a+1"], ["a+9", "a+10", "a+11"]]}
+        if "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
+            return {"type": "table", "rows": [["框形", "月历关系", "判断"], ["A", "横向差1", "正确"], ["B", "横差1竖差7", "正确"], ["C", "竖列差10", "错误"], ["D", "中心对称", "正确"]]}
+        if "大正方形" in text and "小正方形" in text and "长方形" in text:
+            return {"type": "table", "rows": [["拼接排", "正方形数", "总宽"], ["上排", "3个小正方形", "3n"], ["下排", "2个大正方形", "2m"], ["同一长方形", "两排等宽", "2m=3n"]]}
+        if "正方形边长" in text and "长方形长" in text:
+            return {"type": "table", "rows": [["图形", "周长", "面积"], ["正方形a", "4a", "a²"], ["长方形a,b", "2(a+b)", "ab"]]}
+    if kind == "flow" and ("a＋b²" in text or "a+b²" in text or "小明算成" in text):
+        return {"type": "flow", "boxes": ["代入 a=5,b=3", "先算 b²=9", "再加 a=5", "结果=14"], "branches": []}
+    if kind == "calendar_cross":
+        total_match = re.search(r"五数和\s*(?:是|为)\s*(\d+)", text)
+        total = int(total_match.group(1)) if total_match else 90
+        return {"type": kind, "center": total // 5, "daysInMonth": 31, "firstWeekday": 0, "total": total}
     if kind == "hundred_chart_square":
         return {"type": kind, "topLeftNumber": 45}
     if kind == "running_track":
@@ -175,8 +203,7 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
     if kind == "square_sticks_pattern":
         targets = [int(x) for x in re.findall(r"m\s*[=＝]\s*(\d+)", text)]
         target_sticks = re.search(r"n\s*[=＝]\s*(\d+)", text)
-        return {"type": kind, "sampleCounts": [4, 7, 10],
-                "targetSquares": targets[:2] if len(targets) >= 2 else [8, 60],
+        return {"type": kind, "sampleCounts": [4, 7, 10], "targetSquares": targets[:2] if len(targets) >= 2 else [8, 60],
                 "targetSticks": int(target_sticks.group(1)) if target_sticks else 100}
     if kind == "tile_pattern":
         white = [int(x) for x in re.findall(r"(\d+)\s*块白地砖", text)]
@@ -184,8 +211,7 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
         term = re.search(r"当\s*n\s*[=＝]\s*(\d+)", text)
         target = re.search(r"(?:用了|用)\s*(\d+)\s*块蓝(?:色)?砖", text)
         return {"type": kind, "whiteCounts": white[:2] if len(white) >= 2 else [5, 8],
-                "blueCounts": blue[:2] if len(blue) >= 2 else [4, 7],
-                "targetTerm": int(term.group(1)) if term else 10,
+                "blueCounts": blue[:2] if len(blue) >= 2 else [4, 7], "targetTerm": int(term.group(1)) if term else 10,
                 "targetBlue": int(target.group(1)) if target else 100}
     if kind == "alternating_triangle":
         symbol = re.search(r"黑(?:棋子)?比白(?:棋子)?多\s*([A-Za-z])", text)
@@ -205,33 +231,109 @@ def _courseware_visual_text(item: dict[str, Any], params: dict[str, Any] | None 
 
 
 def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[str, Any]:
-    """Supply required legacy diagrams and replace placeholder steps for the square-stick question."""
+    """Repair known lesson diagrams at display time while preserving the scanned source separately."""
     result = dict(params or {})
     figure = required_visual_figure(visual_text)
     if not figure:
         return result
-    if not isinstance(result.get("figure"), dict) or result["figure"].get("type") != figure.get("type"):
+    # A correct figure is deterministic from the source question. Keep sourceFigure as the folded original comparison.
+    if result.get("figure") != figure:
         result["figure"] = figure
-    if figure["type"] == "hundred_chart_square":
-        steps = result.get("steps") if isinstance(result.get("steps"), list) else []
-        if len(steps) < 4 or any("点下一步显示" in str(step) for step in steps):
-            result["steps"] = [
-                "百数表中，同一行向右相邻数相差1，同一列向下相邻数相差10。",
-                "设田字格左上角为n，则右上是n+1，左下是n+10，右下是n+11。",
-                "四数相加：n+(n+1)+(n+10)+(n+11)=4n+22。",
-                "若右下角为m，则左上m−11，右上m−10，左下m−1。",
-                "四数和：(m−11)+(m−10)+(m−1)+m=4m−22。",
-            ]
-    if figure["type"] == "square_sticks_pattern":
-        steps = result.get("steps") if isinstance(result.get("steps"), list) else []
-        if len(steps) < 4 or any("点下一步显示" in str(step) for step in steps):
-            result["steps"] = [
-                "观察：摆1个正方形用4根；摆2个共用一条边，只需新增3根，共7根；摆3个再新增3根，共10根。",
-                "发现：每增加1个正方形，都会和前一个共用一条边，所以只增加3根小棒。",
-                "列式：摆m个，先用4根，后面m−1个各增加3根，n=4+3(m−1)=3m+1。",
-                "代入：m=8时n=25；m=60时n=181。",
-                "反求：n=100时，3m+1=100，所以m=33。",
-            ]
+    text = str(visual_text or "")
+    compact = _normalize_text(text)
+    steps: list[str] | None = None
+    if ("3×3" in text or "3x3" in text or "3＊3" in text) and ("九数和" in text or "中心数" in text):
+        steps = [
+            "百数表中横向相邻数相差1，纵向相邻数相差10；九个数按3行3列排列。",
+            "设中心数为a，中心周围两两对称：a−11与a+11、a−10与a+10、a−9与a+9、a−1与a+1。",
+            "四组对称数各相加都是2a，再加中心a，九数和为9a。",
+            "九数和为2016时，中心数a=2016÷9=224。",
+        ]
+    elif "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
+        steps = [
+            "月历同一行从左到右每格相差1，同一列从上到下每格相差7。",
+            "横向四格连续时可写成x−3、x−2、x−1、x；2×2方格横差1、竖差7。",
+            "竖列三格应相差7，所以可写成x−14、x−7、x。",
+            "选项C写成相差10，把百数表的规律误套到月历，因此C错误。",
+        ]
+    elif "正方形边长" in text and "长方形长" in text:
+        steps = [
+            "正方形边长为a，四条边相等，所以周长4a、面积a×a=a²。",
+            "长方形长a、宽b，对边相等，所以周长2(a+b)、面积ab。",
+            "由m=n+20且m=37，代入得37=n+20。",
+            "等式两边同时减20，得到n=17。",
+        ]
+    elif "a＋b²" in text or "a+b²" in text or "小明算成" in text:
+        steps = [
+            "代入a=5、b=3，原式是a+b²；平方只作用在b上。",
+            "先算乘方：b²=3²=9，不是3×2。",
+            "再加a：5+9=14；不能把a+b改成(a+b)²。",
+            "所以正确结果是14。",
+        ]
+    elif "大正方形" in text and "小正方形" in text and "长方形" in text:
+        steps = [
+            "长方形上排由3个边长为n的小正方形组成，总宽3n。",
+            "下排由2个边长为m的大正方形组成，总宽2m；两排拼成同一长方形，所以2m=3n。",
+            "长方形的长是2m，宽是m+n，周长C=2[2m+(m+n)]=6m+2n。",
+            "由2m=3n得6m=9n，所以C=9n+2n=11n。",
+            "当m=3时，2m=3n，6=3n，n=2。",
+        ]
+    elif figure["type"] == "hundred_chart_square":
+        steps = [
+            "百数表中，同一行向右相邻数相差1，同一列向下相邻数相差10。",
+            "设田字格左上角为n，则右上是n+1，左下是n+10，右下是n+11。",
+            "四数相加：n+(n+1)+(n+10)+(n+11)=4n+22。",
+            "若右下角为m，则左上m−11，右上m−10，左下m−1。",
+            "四数和：(m−11)+(m−10)+(m−1)+m=4m−22。",
+        ]
+    elif figure["type"] == "square_sticks_pattern":
+        steps = [
+            "观察：摆1个正方形用4根；摆2个共用一条边，只需新增3根，共7根；摆3个再新增3根，共10根。",
+            "发现：每增加1个正方形，都会和前一个共用一条边，所以只增加3根小棒。",
+            "列式：摆m个，先用4根，后面m−1个各增加3根，n=4+3(m−1)=3m+1。",
+            "代入：m=8时n=25；m=60时n=181。",
+            "反求：n=100时，3m+1=100，所以m=33。",
+        ]
+    if steps is not None:
+        result["steps"] = steps
+    elif figure["type"] == "calendar_cross":
+        if re.search(r"五数和\s*(?:是|为)\s*\d+", text):
+            total, center = int(figure["total"]), int(figure["center"])
+            result["steps"] = ["月历中左右相邻两数相差1，上下相邻两数相差7。",
+                               "若中心数为a，四周依次是a−7、a−1、a+1、a+7。",
+                               "五数相加：(a−7)+(a−1)+a+(a+1)+(a+7)=5a。",
+                               f"五数和为{total}，所以a={total}÷5={center}，最小{center-7}，最大{center+7}。"]
+        else:
+            result["steps"] = ["设十字框中心数为a。", "最上面和最下面分别是a−7、a+7，两数相加等于2a。",
+                               "最左面和最右面分别是a−1、a+1，两数相加也等于2a。",
+                               "所以两组相对数的和相等，都是中心数的2倍。"]
+    elif figure["type"] == "tile_pattern":
+        white, blue = figure["whiteCounts"], figure["blueCounts"]
+        white_step, blue_step = white[1] - white[0], blue[1] - blue[0]
+        target_n, target_blue = figure["targetTerm"], figure["targetBlue"]
+        white_n = white[0] + (target_n - 1) * white_step
+        blue_n = blue[0] + (target_n - 1) * blue_step
+        reverse_n = (target_blue - blue[0] + blue_step - 1) // blue_step + 1
+        result["steps"] = [f"第1幅白砖{white[0]}块、蓝砖{blue[0]}块；第2幅白砖{white[1]}块、蓝砖{blue[1]}块。",
+                           f"两种颜色每增加一幅分别增加{white_step}块和{blue_step}块。",
+                           f"第n幅白砖为{white[0]}+{white_step}(n−1)，蓝砖为{blue[0]}+{blue_step}(n−1)。",
+                           f"第{target_n}幅白砖{white_n}块；蓝砖为{target_blue}块时对应第{reverse_n}幅。"]
+    elif figure["type"] == "running_track":
+        fast, slow, symbol = figure["fastSpeed"], figure["slowSpeed"], figure["distanceSymbol"]
+        result["steps"] = [f"同向出发后，快者追上一整圈时比慢者多跑一圈{symbol}米。",
+                           f"快者每分钟跑{fast}米，慢者每分钟跑{slow}米。",
+                           f"每分钟路程差为{fast}−{slow}={fast-slow}米。",
+                           f"追上一整圈所需时间={symbol}÷{fast-slow}分钟。"]
+    elif figure["type"] == "triangular_numbers":
+        target = figure["targetTerm"]
+        result["steps"] = ["点阵每一层依次增加1、2、3、4……个点，前几项是1、3、6、10、15。",
+                           "第n个三角形数是1+2+…+n。",
+                           "两份同样的点阵可拼成n行、每行n+1个点的长方形，共n(n+1)个点。",
+                           f"原点阵为一半，所以第n个是n(n+1)÷2；第{target}个为{target*(target+1)//2}。"]
+    elif figure["type"] == "alternating_triangle":
+        result["steps"] = ["从顶层开始，白、黑两种颜色按层交替排列。", "每两层一组，黑层比白层多1颗棋子。", "黑棋子比白棋子多m颗，说明有m组这样的两层。", "总层数为2m层。"]
+    elif figure["type"] == "seating_pattern":
+        result["steps"] = ["1张方桌外周有8个座位；方桌是正方形，座位沿外周排列。", "每增加1张方桌，与前一张共用一条边，内部共用边不坐人，所以外周座位增加4人。", "m张方桌可坐8+4(m−1)人。", "化简得到4m+4人。"]
     return result
 
 
