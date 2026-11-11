@@ -8,6 +8,8 @@ import pytest
 
 from changying.services import weekend_courseware as cw
 from changying.web.weekend_courseware_pages import COURSEWARE_JS, COURSEWARE_PLAN_JS
+from changying.web.weekend_courseware import required_visual_figure, required_visual_type, _repair_courseware_visual
+from changying.web.homework_assistant_pages import PAGE_CSS
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("weekend_courseware_figure_helpers", ROOT / "tests" / "test_homework_solve.py")
@@ -102,3 +104,30 @@ print("OK")
 def test_worked_example_figure_from_ai_to_the_big_screen(tmp_path):
     helpers.run_isolated(tmp_path, helpers.COMMON + FLOW)
 
+
+
+
+def test_remaining_tenth_lesson_questions_get_matching_diagrams_and_explanations():
+    questions = [
+        ("月历“十”字框：若五数和是90", "calendar_cross"),
+        ("说明月历十字框中最上与最下之和为何等于最左与最右之和", "calendar_cross"),
+        ("3×3方框圈九个数，中心数为a，九数和是多少", "table"),
+        ("月历框形辨析：哪一种错误？", "table"),
+        ("正方形边长a、长方形长a宽b，求周长和面积公式", "table"),
+        ("地砖排列：第1幅5块白地砖4块蓝地砖，第2幅8块白地砖7块蓝地砖", "tile_pattern"),
+        ("当a=5、b=3，求a+b²；小明算成5+6", "flow"),
+        ("2个大正方形和3个小正方形拼成长方形，求关系和周长", "table"),
+        ("跑道周长s米，丽丽每分钟跑180米，丙丙每分钟跑140米，多久超过一圈", "running_track"),
+        ("三角形数1、3、6、10、15，第10个是多少", "triangular_numbers"),
+        ("黑白棋子按层排成三角形，黑棋子比白棋子多m颗", "alternating_triangle"),
+    ]
+    for question, expected in questions:
+        assert required_visual_type(question) == expected, question
+        figure = required_visual_figure(question)
+        assert figure.get("type") == expected, question
+        repaired = _repair_courseware_visual({"figure": {}, "steps": ["(第1步，点下一步显示)"]}, question)
+        assert repaired["figure"] == figure
+        assert len(repaired["steps"]) >= 4
+        assert not any("点下一步显示" in step for step in repaired["steps"])
+    assert ".item{display:flex;flex-wrap:wrap;" in PAGE_CSS
+    assert ".item>button{flex:0 0 auto;min-width:68px" in PAGE_CSS
