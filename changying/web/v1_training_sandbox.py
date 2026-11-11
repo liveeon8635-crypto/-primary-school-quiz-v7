@@ -148,7 +148,7 @@ STEP_RELATIONSHIPS: dict[str, dict[str, str]] = {
     "add_student": {"who": "教师", "creates": "学生账号 + 连续档案起点", "visible_to": "教师/学生/授权家长", "other_role_sees": "学生得到自己的入口；家长只有关联后才看到该学生", "communication_tip": "告知学生使用哪个账号、家长能看到什么，避免把教师入口当成学生入口", "next": "组卷和布置"},
     "paper": {"who": "教师", "creates": "试卷草稿", "visible_to": "教师", "other_role_sees": "未发布前学生和家长都看不到", "communication_tip": "草稿不是作业，教师审核通过后才进入布置环节", "next": "审核后布置"},
     "assign": {"who": "教师", "creates": "学生待办", "visible_to": "教师/学生/家长状态页", "other_role_sees": "学生看到待完成作业；家长看到状态和截止信息，不代替学生作答", "communication_tip": "让教师明确告诉学生作业名称、截止时间和入口", "next": "学生作答"},
-    "student_submission": {"who": "学生或沙盒模拟器", "creates": "提交结果", "visible_to": "学生/教师/家长摘要", "other_role_sees": "教师看到提交状态与结果；家长看到授权范围内的完成状态/摘要", "communication_tip": "提交与保存草稿要区分，避免教师误以为学生已交", "next": "教师查看证据"},
+    "student_submission": {"who": "学生或沙盒模拟器", "creates": "稳定的一条作业提交记录、逐题提交历史和首次完整覆盖时的一次积分", "visible_to": "学生/教师/家长摘要", "other_role_sees": "教师看到进行中/已完成、逐题历史并可追加修改次数；家长看到授权范围内的完成状态/摘要", "communication_tip": "草稿不判分、不发积分；每题默认共 4 次正式提交机会，各题独立计数；重交复用同一提交记录，不重复发完成积分", "next": "教师查看证据"},
     "evidence": {"who": "系统汇总", "creates": "分数/逐题/知识点/错题/积分", "visible_to": "按角色授权可见", "other_role_sees": "学生看自己的结果；教师看教学证据；家长看适合家长理解的摘要", "communication_tip": "页面要解释同一结果在不同角色下为什么显示不同", "next": "针对性练习"},
     "targeted": {"who": "AI 草稿 + 教师审核", "creates": "针对性练习", "visible_to": "教师审核后给指定学生", "other_role_sees": "学生只看到教师确认发布后的练习", "communication_tip": "明确说明练习为什么被生成、依据哪次测试/哪些错题", "next": "继续练习并回流"},
     "class_review": {"who": "教师", "creates": "班级复盘讲义草稿", "visible_to": "教师确认后再发布", "other_role_sees": "草稿阶段学生不可见；发布后按课堂流程使用", "communication_tip": "区分“系统建议复盘”和“教师确认发布”", "next": "互动课堂"},
@@ -157,9 +157,9 @@ STEP_RELATIONSHIPS: dict[str, dict[str, str]] = {
     "history": {"who": "系统归档", "creates": "只读往期教学", "visible_to": "授权角色", "other_role_sees": "当前工作台减少旧内容，但学生连续档案仍保留历史", "communication_tip": "结束班级不等于删除学生或删除成绩", "next": "阶段衔接"},
     "transition": {"who": "教师/管理员", "creates": "同一学生的阶段变化计划", "visible_to": "授权角色", "other_role_sees": "学生/家长看到的是同一学生下一阶段的连续变化，而不是一个新账号", "communication_tip": "强调学生ID连续性，避免升年级重复建档", "next": "下一阶段继续同一档案"},
     "classroom": {"who": "学生参与", "creates": "课堂参与/随堂反馈", "visible_to": "学生本人/教师汇总", "other_role_sees": "教师看到参与结果；家长只看适合家长端的摘要", "communication_tip": "讲解邀请可拒绝，拒绝不形成负面证据", "next": "作业与随堂反馈"},
-    "assignments": {"who": "教师布置、学生完成", "creates": "待办与完成状态", "visible_to": "学生/教师/家长状态页", "other_role_sees": "学生负责作答；家长看状态；教师看完成情况", "communication_tip": "保存过程不等于正式提交", "next": "逐题作答或查看状态"},
-    "answer": {"who": "学生", "creates": "答题内容", "visible_to": "提交前仅学生本人", "other_role_sees": "教师只有提交后才获得结果", "communication_tip": "提交前不会显示正确答案，避免误把练习预览当正式提交", "next": "提交结果"},
-    "result": {"who": "系统根据提交形成", "creates": "得分/知识点/错题/积分", "visible_to": "按角色授权显示", "other_role_sees": "教师看教学证据；家长看摘要", "communication_tip": "一次分数不等于长期掌握结论", "next": "针对性练习/学情"},
+    "assignments": {"who": "教师布置、学生完成", "creates": "待办、进行中与完成状态", "visible_to": "学生/教师/家长状态页", "other_role_sees": "学生负责作答；家长看状态；教师看完成情况", "communication_tip": "保存草稿不等于正式提交；只交部分题时显示进行中", "next": "逐题作答或查看状态"},
+    "answer": {"who": "学生", "creates": "草稿或某一道题的正式提交", "visible_to": "草稿仅学生本人，正式提交后教师可见历史", "other_role_sees": "教师只有正式提交后才获得结果，并可按整份作业追加修改次数", "communication_tip": "答案自动保存为草稿；每题默认合计 4 次正式提交机会，提交一题不会覆盖其他题", "next": "继续其他题或查看提交结果"},
+    "result": {"who": "系统根据提交形成", "creates": "进行中/完成状态、得分、知识点、错题和首次完成积分", "visible_to": "按角色授权显示", "other_role_sees": "教师看教学证据与逐题历史；家长看摘要", "communication_tip": "分数始终以全卷为分母；第一次覆盖全部题目后只发一次积分，后续修改不重复发", "next": "针对性练习/学情"},
     "practice": {"who": "学生完成、教师可审核来源", "creates": "下一轮练习结果", "visible_to": "学生/教师", "other_role_sees": "教师可看到结果继续调整教学", "communication_tip": "告诉学生为什么收到这组题", "next": "继续回流学情"},
     "progress": {"who": "系统汇总", "creates": "长期趋势视图", "visible_to": "学生/教师/家长摘要", "other_role_sees": "各角色看到不同解释层级", "communication_tip": "重点解释趋势和证据来源，不只说一个总分", "next": "下一步学习"},
     "rewards": {"who": "规则/教师评价产生", "creates": "积分动态", "visible_to": "学生/教师/家长摘要", "other_role_sees": "积分来源一致，展示粒度不同", "communication_tip": "积分不是学业成绩", "next": "持续激励"},
@@ -986,4 +986,5 @@ __all__ = [
     "apply_training_action",
     "install_v1_training_sandbox_routes",
 ]
+
 

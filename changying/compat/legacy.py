@@ -324,6 +324,8 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
         assignment_mode_name=assignment_mode_name,
         school_local_iso=school_local_iso,
         due_deadline_utc=due_deadline_utc,
+        assignment_question_attempt_model=implementation.AssignmentQuestionAttempt,
+        paper_model=implementation.Paper,
     )
     implementation.assignment_service = assignment_service
     implementation.assignment_submission_setting = assignment_service.submission_setting
@@ -557,3 +559,4 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
 
 
 __all__ = ["NO_CACHE_HEADERS", "apply_legacy_compatibility", "install_product_visibility_routes", "install_teacher_dashboard_current_student_count"]
+

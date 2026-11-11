@@ -270,11 +270,11 @@ function renderStudentRole(step,d,rel){
   if(step.id==='classroom'){
     stage.innerHTML=pageIntro(step,'先理解课堂邀请、随堂检测与教师课堂控制之间的关系。')+pageCard('同步课堂',s?esc(s.className)+' · 教师 '+esc(d.classes?.at(-1)?.teacher||'周老师'):'虚拟课堂','<div class="notice">当前课堂知识点：小数乘法。讲解邀请可以接受或拒绝；拒绝不会形成负面学习证据。</div>'+roleRelationBlock(rel),done);
   }else if(step.id==='assignments'){
-    stage.innerHTML=pageIntro(step,'找到教师刚布置的任务，确认名称、截止时间和提交状态。')+pageCard('我的作业','待完成 / 已完成状态来自教师布置和你的提交。',listItems(d.assignments,x=>'<div class="item"><b>'+esc(x.title)+'</b><small>截止 '+esc(x.due)+' · '+(sub?'已完成':'待完成')+'</small></div>')+roleRelationBlock(rel),done);
+    stage.innerHTML=pageIntro(step,'找到教师刚布置的任务，确认名称、截止时间和提交状态。')+pageCard('我的作业','正式系统会区分待完成、进行中和已完成；沙盒本步演示首次完整提交。',listItems(d.assignments,x=>'<div class="item"><b>'+esc(x.title)+'</b><small>截止 '+esc(x.due)+' · '+(sub?'已完成':'待完成')+'</small></div>')+roleRelationBlock(rel),done);
   }else if(step.id==='answer'){
-    stage.innerHTML=pageIntro(step,'像正式学生一样逐题选择答案，再正式提交。')+pageCard('逐题作答',a?esc(a.title):'暂无作业',sub?'<div class="notice ok">这份练习已经提交。可继续查看结果，或重置沙盒后再练。</div>':(p?questionPager(p,'studentSelfOption','studentSelfInput'):'<div class="notice">暂无题目。</div>'),sub?done:'<button class="btn primary" id="studentSelfSubmit">正式提交</button>');
+    stage.innerHTML=pageIntro(step,'正式系统会自动保存草稿，也可以逐题正式提交；每道题默认合计 4 次机会，互相独立。沙盒本步用一次完整提交演示结果回流。')+pageCard('逐题作答',a?esc(a.title):'暂无作业',sub?'<div class="notice ok">这份练习已经完成首次提交。正式系统仍可逐题修改，老师也可追加次数；修改不会重复发完成积分。</div>':(p?questionPager(p,'studentSelfOption','studentSelfInput'):'<div class="notice">暂无题目。</div>'),sub?done:'<button class="btn primary" id="studentSelfSubmit">正式提交</button>');
   }else if(step.id==='result'){
-    stage.innerHTML=pageIntro(step,'提交后才形成结果。一次分数只是一次证据，不代表长期掌握结论。')+pageCard('提交结果',sub?esc(sub.studentName):'尚未提交',sub?'<div class="metric-grid"><div class="metric"><strong>'+sub.score+'%</strong><small>得分</small></div><div class="metric"><strong>'+sub.correct+'/'+sub.total+'</strong><small>答对</small></div><div class="metric"><strong>'+sub.wrongCount+'</strong><small>错题</small></div><div class="metric"><strong>'+esc(sub.knowledge)+'</strong><small>知识点</small></div></div>'+roleRelationBlock(rel):'<div class="notice warn">请先完成上一页的正式提交。</div>',done);
+    stage.innerHTML=pageIntro(step,'部分题正式提交后先显示进行中，分数仍以全卷为分母；首次覆盖全部题目才完成并发一次积分。一次分数不代表长期掌握结论。')+pageCard('提交结果',sub?esc(sub.studentName):'尚未提交',sub?'<div class="metric-grid"><div class="metric"><strong>'+sub.score+'%</strong><small>得分</small></div><div class="metric"><strong>'+sub.correct+'/'+sub.total+'</strong><small>答对</small></div><div class="metric"><strong>'+sub.wrongCount+'</strong><small>错题</small></div><div class="metric"><strong>'+esc(sub.knowledge)+'</strong><small>知识点</small></div></div>'+roleRelationBlock(rel):'<div class="notice warn">请先完成上一页的正式提交。</div>',done);
   }else if(step.id==='practice'){
     stage.innerHTML=pageIntro(step,'针对性练习说明“为什么给我这些题”，并继续把结果回流到同一档案。')+pageCard('针对性练习','依据最近提交和错题生成。',listItems(d.targeted_practices,x=>'<div class="item"><b>'+esc(x.knowledge)+' · '+x.questionCount+'题</b><small>状态：'+esc(x.status)+'</small></div>')+roleRelationBlock(rel),d.targeted_practices?.length?'<button class="btn primary" id="completeStudentPractice">完成这组针对练习</button>':done);
   }else if(step.id==='progress'){
@@ -485,4 +485,5 @@ __all__ = [
     "install_v1_training_workbench_route",
     "training_workbench_html",
 ]
+
 

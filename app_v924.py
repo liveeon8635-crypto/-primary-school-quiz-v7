@@ -13,7 +13,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from string import Template
-from sqlalchemy import create_engine, String, Integer, ForeignKey, Text, DateTime, Boolean, LargeBinary, UniqueConstraint, select, func, inspect as sa_inspect, text as sa_text
+from sqlalchemy import create_engine, String, Integer, ForeignKey, Text, DateTime, Boolean, LargeBinary, UniqueConstraint, CheckConstraint, Index, select, func, inspect as sa_inspect, text as sa_text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
 from cryptography.fernet import Fernet, InvalidToken
 from changying.services.assignments import student_assignment_rows, teacher_assignment_rows
@@ -176,6 +177,52 @@ class Submission(Base):
     # be guessed as student-completed. New student submissions write "student".
     completion_actor:Mapped[str|None]=mapped_column(String(30),nullable=True,index=True)
     submitted_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
+
+class AssignmentQuestionAttempt(Base):
+    __tablename__="assignment_question_attempts"
+    __table_args__=(
+        UniqueConstraint("school_id","assignment_id","student_id","question_id","attempt_number",name="uq_assignment_question_attempt_no"),
+        CheckConstraint("attempt_number >= 1",name="ck_assignment_question_attempt_positive"),
+        Index("ix_assignment_question_attempt_lookup","school_id","assignment_id","student_id","question_id","submitted_at"),
+    )
+    id:Mapped[int]=mapped_column(primary_key=True)
+    school_id:Mapped[int]=mapped_column(ForeignKey("schools.id"),index=True)
+    submission_id:Mapped[int]=mapped_column(ForeignKey("submissions.id"),index=True)
+    assignment_id:Mapped[int]=mapped_column(ForeignKey("assignments.id"),index=True)
+    student_id:Mapped[int]=mapped_column(ForeignKey("users.id"),index=True)
+    question_id:Mapped[int]=mapped_column(ForeignKey("questions.id"),index=True)
+    attempt_number:Mapped[int]=mapped_column(Integer)
+    answer_json:Mapped[str]=mapped_column(Text)
+    is_correct:Mapped[bool]=mapped_column(Boolean)
+    actor_id:Mapped[int]=mapped_column(ForeignKey("users.id"))
+    source:Mapped[str]=mapped_column(String(30),default="student")
+    submitted_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,index=True)
+
+class AssignmentDraft(Base):
+    __tablename__="assignment_drafts"
+    __table_args__=(UniqueConstraint("school_id","assignment_id","student_id",name="uq_assignment_draft_student"),)
+    id:Mapped[int]=mapped_column(primary_key=True)
+    school_id:Mapped[int]=mapped_column(ForeignKey("schools.id"),index=True)
+    assignment_id:Mapped[int]=mapped_column(ForeignKey("assignments.id"),index=True)
+    student_id:Mapped[int]=mapped_column(ForeignKey("users.id"),index=True)
+    answers_json:Mapped[str]=mapped_column(Text,default="[]")
+    created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
+    updated_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,index=True)
+
+class AssignmentRetryGrant(Base):
+    __tablename__="assignment_retry_grants"
+    __table_args__=(
+        CheckConstraint("extra_attempts > 0",name="ck_assignment_retry_grant_positive"),
+        Index("ix_assignment_retry_grant_lookup","school_id","assignment_id","student_id"),
+    )
+    id:Mapped[int]=mapped_column(primary_key=True)
+    school_id:Mapped[int]=mapped_column(ForeignKey("schools.id"),index=True)
+    assignment_id:Mapped[int]=mapped_column(ForeignKey("assignments.id"),index=True)
+    student_id:Mapped[int]=mapped_column(ForeignKey("users.id"),index=True)
+    extra_attempts:Mapped[int]=mapped_column(Integer)
+    granted_by_id:Mapped[int]=mapped_column(ForeignKey("users.id"),index=True)
+    reason:Mapped[str]=mapped_column(String(300),default="")
+    created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,index=True)
 
 class AssignmentSubmissionSetting(Base):
     __tablename__="assignment_submission_settings"
@@ -1175,7 +1222,9 @@ class AssignmentCreate(BaseModel):
     instructions:str=""
 class HomeworkMediaSubmitBody(BaseModel): note:str=""
 class AnswerItem(BaseModel): question_id:int;selected_index:Optional[int]=None;text_answer:str="";correct:Optional[bool]=None
-class SubmitBody(BaseModel): title:Optional[str]=None;correct:Optional[int]=None;total:Optional[int]=None;score:Optional[int]=None;answers:list[AnswerItem]=[]
+class SubmitBody(BaseModel): title:Optional[str]=None;correct:Optional[int]=None;total:Optional[int]=None;score:Optional[int]=None;answers:list[AnswerItem]=[];partial:bool=False
+class AssignmentDraftBody(BaseModel): answers:list[AnswerItem]=[]
+class AssignmentRetryGrantBody(BaseModel): extra_attempts:int=1;reason:str=""
 
 class TeachingProgramUpdate(BaseModel):
     title:Optional[str]=None
@@ -1447,6 +1496,7 @@ HOMEWORK_MEDIA_EXTS={
     ".mp4":("video","video/mp4"),".mov":("video","video/quicktime"),".webm":("video","video/webm")
 }
 ASSIGNMENT_SUBMISSION_MODES={"quiz","media","mixed"}
+ASSIGNMENT_QUESTION_ATTEMPT_LIMIT=4
 
 def assignment_submission_setting(db,a):
     return db.scalar(select(AssignmentSubmissionSetting).where(AssignmentSubmissionSetting.assignment_id==a.id,AssignmentSubmissionSetting.school_id==a.school_id))
@@ -1454,6 +1504,127 @@ def assignment_submission_setting(db,a):
 def assignment_submission_mode(db,a):
     row=assignment_submission_setting(db,a)
     return row.mode if row and row.mode in ASSIGNMENT_SUBMISSION_MODES else "quiz"
+
+def assignment_question_ids(db,a):
+    p=db.scalar(select(Paper).where(Paper.id==a.paper_id,Paper.school_id==a.school_id))
+    if not p:return []
+    try:raw=json.loads(p.question_ids_json or "[]")
+    except Exception:return []
+    return list(dict.fromkeys(int(x) for x in raw if isinstance(x,int) or str(x).isdigit()))
+
+def submission_answer_map(sub):
+    if not sub:return {}
+    try:items=json.loads(sub.answers_json or "[]")
+    except Exception:items=[]
+    return {int(x["question_id"]):dict(x) for x in items if isinstance(x,dict) and int(x.get("question_id") or 0)>0}
+
+def assignment_attempt_rows(db,school_id,assignment_id,student_id):
+    return list(db.scalars(select(AssignmentQuestionAttempt).where(
+        AssignmentQuestionAttempt.school_id==school_id,
+        AssignmentQuestionAttempt.assignment_id==assignment_id,
+        AssignmentQuestionAttempt.student_id==student_id,
+    ).order_by(AssignmentQuestionAttempt.question_id,AssignmentQuestionAttempt.attempt_number,AssignmentQuestionAttempt.id)).all())
+
+def assignment_quiz_complete(db,a,student_id,sub=None):
+    sub=sub or db.scalar(select(Submission).where(
+        Submission.school_id==a.school_id,Submission.assignment_id==a.id,Submission.student_id==student_id
+    ).order_by(Submission.id.desc()).limit(1))
+    if not sub:return False
+    attempted=set(db.scalars(select(AssignmentQuestionAttempt.question_id).where(
+        AssignmentQuestionAttempt.school_id==a.school_id,
+        AssignmentQuestionAttempt.assignment_id==a.id,
+        AssignmentQuestionAttempt.student_id==student_id,
+    ).distinct()).all())
+    # Before this feature every accepted assignment submission was complete.
+    # An untouched historical Submission therefore remains complete forever.
+    if not attempted:return True
+    expected=set(assignment_question_ids(db,a))
+    return bool(expected) and attempted>=expected
+
+def assignment_retry_extra(db,school_id,assignment_id,student_id):
+    return int(db.scalar(select(func.coalesce(func.sum(AssignmentRetryGrant.extra_attempts),0)).where(
+        AssignmentRetryGrant.school_id==school_id,
+        AssignmentRetryGrant.assignment_id==assignment_id,
+        AssignmentRetryGrant.student_id==student_id,
+    )) or 0)
+
+def assignment_attempt_count(db,school_id,assignment_id,student_id,question_id):
+    return int(db.scalar(select(func.count()).select_from(AssignmentQuestionAttempt).where(
+        AssignmentQuestionAttempt.school_id==school_id,
+        AssignmentQuestionAttempt.assignment_id==assignment_id,
+        AssignmentQuestionAttempt.student_id==student_id,
+        AssignmentQuestionAttempt.question_id==question_id,
+    )) or 0)
+
+def seed_legacy_assignment_attempts(db,a,student,sub):
+    if not sub or assignment_attempt_rows(db,a.school_id,a.id,student.id):return
+    for answer in submission_answer_map(sub).values():
+        qid=int(answer["question_id"])
+        db.add(AssignmentQuestionAttempt(
+            school_id=a.school_id,submission_id=sub.id,assignment_id=a.id,student_id=student.id,
+            question_id=qid,attempt_number=1,answer_json=json.dumps(answer,ensure_ascii=False),
+            is_correct=bool(answer.get("correct") is True),actor_id=student.id,source="legacy_snapshot",
+            submitted_at=sub.submitted_at,
+        ))
+    db.flush()
+
+def assignment_attempt_summary(db,a,student_id):
+    extra=assignment_retry_extra(db,a.school_id,a.id,student_id);allowed=ASSIGNMENT_QUESTION_ATTEMPT_LIMIT+extra
+    counts={qid:assignment_attempt_count(db,a.school_id,a.id,student_id,qid) for qid in assignment_question_ids(db,a)}
+    return [{"questionID":qid,"attempts":count,"allowedAttempts":allowed,"remainingAttempts":max(allowed-count,0)} for qid,count in counts.items()]
+
+def assignment_history_payload(db,a,student_id):
+    sub=db.scalar(select(Submission).where(
+        Submission.school_id==a.school_id,Submission.assignment_id==a.id,Submission.student_id==student_id
+    ).order_by(Submission.id.desc()).limit(1))
+    rows=assignment_attempt_rows(db,a.school_id,a.id,student_id)
+    if rows:
+        attempts=[{"id":x.id,"submissionID":x.submission_id,"questionID":x.question_id,"attemptNumber":x.attempt_number,
+                   "answer":json.loads(x.answer_json or "{}"),"correct":x.is_correct,"source":x.source,
+                   "submittedAt":school_local_iso(x.submitted_at)} for x in rows]
+    else:
+        attempts=[{"id":None,"submissionID":sub.id,"questionID":qid,"attemptNumber":1,"answer":answer,
+                   "correct":bool(answer.get("correct") is True),"source":"legacy_snapshot",
+                   "submittedAt":school_local_iso(sub.submitted_at)} for qid,answer in submission_answer_map(sub).items()] if sub else []
+    grants=list(db.scalars(select(AssignmentRetryGrant).where(
+        AssignmentRetryGrant.school_id==a.school_id,AssignmentRetryGrant.assignment_id==a.id,
+        AssignmentRetryGrant.student_id==student_id,
+    ).order_by(AssignmentRetryGrant.id)).all())
+    return {"assignmentID":a.id,"studentID":student_id,"submissionID":sub.id if sub else None,
+            "completed":assignment_quiz_complete(db,a,student_id,sub),"attempts":attempts,
+            "attemptSummary":assignment_attempt_summary(db,a,student_id),
+            "grants":[{"id":x.id,"extraAttempts":x.extra_attempts,"reason":x.reason,
+                       "grantedByID":x.granted_by_id,"createdAt":school_local_iso(x.created_at)} for x in grants]}
+
+def normalize_assignment_draft(db,u,answers,expected):
+    if len(answers)>100:raise HTTPException(400,"草稿题量过多")
+    allowed=set(expected);seen=set();out=[]
+    for answer in answers:
+        qid=int(answer.question_id)
+        if qid in seen:raise HTTPException(400,"草稿包含重复题目")
+        if qid not in allowed:raise HTTPException(400,"草稿包含不属于本试卷的题目")
+        seen.add(qid);q=db.scalar(select(Question).where(Question.id==qid,Question.school_id==u.school_id))
+        if not q:raise HTTPException(400,"题目不存在或无权限")
+        selected=answer.selected_index;text=str(answer.text_answer or "")
+        if selected is not None:
+            try:options=json.loads(q.options_json or "[]")
+            except Exception:options=[]
+            if selected<0 or selected>=len(options):raise HTTPException(400,"草稿答案选项无效")
+            out.append({"question_id":qid,"selected_index":selected,"text_answer":""})
+        elif text.strip():out.append({"question_id":qid,"selected_index":None,"text_answer":text[:4000]})
+    return out
+
+def clear_submitted_draft_answers(db,a,student_id,submitted_ids):
+    draft=db.scalar(select(AssignmentDraft).where(
+        AssignmentDraft.school_id==a.school_id,AssignmentDraft.assignment_id==a.id,AssignmentDraft.student_id==student_id
+    ))
+    if not draft:return
+    try:items=json.loads(draft.answers_json or "[]")
+    except Exception:items=[]
+    remaining=[x for x in items if isinstance(x,dict) and int(x.get("question_id") or 0) not in submitted_ids]
+    if remaining:
+        draft.answers_json=json.dumps(remaining,ensure_ascii=False);draft.updated_at=datetime.utcnow()
+    else:db.delete(draft)
 
 def assignment_mode_name(mode):
     return {"quiz":"在线答题","media":"拍照/视频","mixed":"在线答题 + 拍照/视频"}.get(mode,"在线答题")
@@ -1465,7 +1636,7 @@ def assignment_effective_status(db,a,student_id,now=None):
     mode=assignment_submission_mode(db,a)
     quiz_sub=db.scalar(select(Submission).where(Submission.assignment_id==a.id,Submission.student_id==student_id,Submission.school_id==a.school_id).order_by(Submission.submitted_at.desc(),Submission.id.desc()).limit(1))
     media_sub=db.scalar(select(HomeworkMediaSubmit).where(HomeworkMediaSubmit.assignment_id==a.id,HomeworkMediaSubmit.student_id==student_id,HomeworkMediaSubmit.school_id==a.school_id).limit(1))
-    quiz_ok=bool(quiz_sub);media_ok=bool(media_sub)
+    quiz_started=bool(quiz_sub);quiz_ok=assignment_quiz_complete(db,a,student_id,quiz_sub);media_ok=bool(media_sub)
     completed=quiz_ok if mode=="quiz" else media_ok if mode=="media" else bool(quiz_ok and media_ok)
     completed_at=None
     if completed:
@@ -1476,11 +1647,13 @@ def assignment_effective_status(db,a,student_id,now=None):
     deadline=due_deadline_utc(a.due_date);now=now or datetime.utcnow()
     late=bool(completed and completed_at and deadline and completed_at>deadline)
     overdue=bool((not completed) and deadline and now>deadline)
-    status=("逾期完成" if late else "已完成") if completed else ("逾期未交" if overdue else "未完成")
-    code=("late_completed" if late else "completed") if completed else ("overdue" if overdue else "pending")
+    in_progress=bool(quiz_started and not quiz_ok and mode in ("quiz","mixed"))
+    status=("逾期完成" if late else "已完成") if completed else ("逾期未完成" if overdue and in_progress else "逾期未交" if overdue else "进行中" if in_progress else "未完成")
+    code=("late_completed" if late else "completed") if completed else ("overdue" if overdue else "in_progress" if in_progress else "pending")
     return {"completed":completed,"status":status,"statusCode":code,"late":late,"overdue":overdue,
             "deadlinePassed":bool(deadline and now>deadline),"submissionMode":mode,"submissionModeName":assignment_mode_name(mode),
-            "quizSubmitted":quiz_ok,"mediaSubmitted":media_ok,"mediaCount":homework_media_count(db,a.id,student_id,a.school_id),
+            "quizStarted":quiz_started,"quizSubmitted":quiz_ok,"mediaSubmitted":media_ok,"mediaCount":homework_media_count(db,a.id,student_id,a.school_id),
+            "answeredCount":len(assignment_question_ids(db,a)) if quiz_started and not db.scalar(select(AssignmentQuestionAttempt.id).where(AssignmentQuestionAttempt.assignment_id==a.id,AssignmentQuestionAttempt.student_id==student_id,AssignmentQuestionAttempt.school_id==a.school_id).limit(1)) else len(submission_answer_map(quiz_sub)),"expectedCount":len(assignment_question_ids(db,a)),
             "submittedAt":school_local_iso(completed_at) if completed_at else None,"quizSubmission":quiz_sub,"mediaSubmission":media_sub}
 
 def homework_media_payload(row):
@@ -1522,10 +1695,7 @@ def aj(db,a):
     sids=list(db.scalars(select(AssignmentRecipient.student_id).where(AssignmentRecipient.assignment_id==a.id,AssignmentRecipient.school_id==a.school_id)).all())
     student_count=len(sids);mode=assignment_submission_mode(db,a);completed=0
     if sids:
-        quiz_ids=set(db.scalars(select(Submission.student_id).where(Submission.assignment_id==a.id,Submission.school_id==a.school_id,Submission.student_id.in_(sids))).all())
-        media_ids=set(db.scalars(select(HomeworkMediaSubmit.student_id).where(HomeworkMediaSubmit.assignment_id==a.id,HomeworkMediaSubmit.school_id==a.school_id,HomeworkMediaSubmit.student_id.in_(sids))).all())
-        done_ids=quiz_ids if mode=="quiz" else media_ids if mode=="media" else (quiz_ids & media_ids)
-        completed=len(done_ids)
+        completed=sum(1 for sid in sids if assignment_effective_status(db,a,sid)["completed"])
     pending=max(student_count-completed,0);meta=assignment_status(a.due_date);setting=assignment_submission_setting(db,a)
     return {"id":a.id,"title":a.title,"classID":a.class_id,"paperID":a.paper_id,"dueDate":a.due_date,"paper":pj(p) if p else None,
             "submissionMode":mode,"submissionModeName":assignment_mode_name(mode),"instructions":setting.instructions if setting else "",
@@ -1538,12 +1708,18 @@ def protected_question_ids_for_student(db,u):
     protected=set()
     for a in assignments:
         if assignment_submission_mode(db,a)=="media":continue
-        submitted=db.scalar(select(Submission.id).where(Submission.assignment_id==a.id,Submission.student_id==u.id,Submission.school_id==u.school_id).limit(1))
-        if submitted: continue
         p=db.scalar(select(Paper).where(Paper.id==a.paper_id,Paper.school_id==u.school_id))
         if not p: continue
-        try: protected.update(int(x) for x in json.loads(p.question_ids_json or "[]"))
+        try:qids={int(x) for x in json.loads(p.question_ids_json or "[]")}
         except Exception: pass
+        else:
+            sub=db.scalar(select(Submission).where(Submission.assignment_id==a.id,Submission.student_id==u.id,Submission.school_id==u.school_id).order_by(Submission.id.desc()).limit(1))
+            if not sub:protected.update(qids);continue
+            attempted=set(db.scalars(select(AssignmentQuestionAttempt.question_id).where(
+                AssignmentQuestionAttempt.school_id==u.school_id,AssignmentQuestionAttempt.assignment_id==a.id,
+                AssignmentQuestionAttempt.student_id==u.id,
+            ).distinct()).all())
+            if attempted:protected.update(qids-attempted)
     return protected
 
 def normalized_answer_stats(db,answers,school_id):
@@ -1770,7 +1946,9 @@ def save_sub(db,u,aid,title,normalized,correct,total,score,completion_actor="stu
     if completion_actor not in ("student","parent_assisted","parent_submitted","teacher_recorded"):
         raise ValueError("invalid completion actor")
     if aid is not None:
-        old=db.scalar(select(Submission).where(Submission.assignment_id==aid,Submission.student_id==u.id,Submission.school_id==u.school_id))
+        # Assignment retries must always reuse the same Submission row. Per-question
+        # snapshots belong in AssignmentQuestionAttempt, never in a new Submission.
+        old=db.scalar(select(Submission).where(Submission.assignment_id==aid,Submission.student_id==u.id,Submission.school_id==u.school_id).order_by(Submission.id.desc()).limit(1).with_for_update())
         if old:
             old.title=title;old.score=score;old.correct=correct;old.total=total;old.answers_json=answers;old.completion_actor=completion_actor;old.submitted_at=datetime.utcnow();return old
     sub=Submission(school_id=u.school_id,assignment_id=aid,student_id=u.id,title=title,score=score,correct=correct,total=total,answers_json=answers,completion_actor=completion_actor);db.add(sub);db.flush();return sub
@@ -1795,6 +1973,7 @@ AUDIT_ACTION_NAMES={
     "learning.evidence.retract":"撤回学习证据",
     "assignment.create":"布置作业",
     "assignment.export":"导出作业成绩",
+    "assignment.retry.grant":"增加作业修改次数",
     "auto.reward.bulk_fulfill":"批量发放自动奖励",
     "auto.reward.cancel":"取消自动奖励",
     "auto.reward.fulfill":"发放自动奖励",
@@ -6869,8 +7048,35 @@ def tsubs(aid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
         shown_score=review.confirmed_score if review and review.status=="confirmed" and review.confirmed_score is not None else (sub.score if sub else None)
         out.append({"id":sub.id if sub else None,"studentID":stu.id,"studentName":stu.name,"username":stu.username,**state,
                     "score":shown_score,"quizScore":sub.score if sub else None,"correct":sub.correct if sub else None,"total":sub.total if sub else None,
+                    "attemptSummary":assignment_attempt_summary(db,a,stu.id),
                     "aiReviewStatus":review.status if review else "","teacherConfirmed":bool(review and review.status=="confirmed"),"wrongCount":wrong_count})
-    rank={"overdue":0,"pending":1,"late_completed":2,"completed":3};out.sort(key=lambda x:(rank.get(x["statusCode"],9),-(x["score"] if x["score"] is not None else -1),x["studentName"]));return out
+    rank={"overdue":0,"pending":1,"in_progress":2,"late_completed":3,"completed":4};out.sort(key=lambda x:(rank.get(x["statusCode"],9),-(x["score"] if x["score"] is not None else -1),x["studentName"]));return out
+
+@app.get("/teacher/assignments/{aid}/students/{sid}/history")
+def teacher_assignment_history(aid:int,sid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
+    need(u,"teacher");a=teacher_assignment_for(db,u.school_id,u.id,aid)
+    if not a:raise HTTPException(404,"作业不存在或无权限")
+    recipient=db.scalar(select(AssignmentRecipient).where(
+        AssignmentRecipient.school_id==u.school_id,AssignmentRecipient.assignment_id==aid,AssignmentRecipient.student_id==sid
+    ))
+    if not recipient:raise HTTPException(404,"学生不在该作业接收名单")
+    return assignment_history_payload(db,a,sid)
+
+@app.post("/teacher/assignments/{aid}/students/{sid}/retry-grants")
+def grant_assignment_retries(aid:int,sid:int,b:AssignmentRetryGrantBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
+    need(u,"teacher");a=teacher_assignment_for(db,u.school_id,u.id,aid)
+    if not a:raise HTTPException(404,"作业不存在或无权限")
+    a=db.get(Assignment,a.id,with_for_update=True)
+    recipient=db.scalar(select(AssignmentRecipient).where(
+        AssignmentRecipient.school_id==u.school_id,AssignmentRecipient.assignment_id==aid,AssignmentRecipient.student_id==sid
+    ))
+    if not recipient:raise HTTPException(404,"学生不在该作业接收名单")
+    if b.extra_attempts<1 or b.extra_attempts>20:raise HTTPException(400,"每次可增加 1 至 20 次修改机会")
+    row=AssignmentRetryGrant(school_id=u.school_id,assignment_id=aid,student_id=sid,
+                             extra_attempts=b.extra_attempts,granted_by_id=u.id,reason=(b.reason or "")[:300])
+    db.add(row);db.flush();audit(db,u,"assignment.retry.grant",f"assignment={aid}:student={sid}:extra={b.extra_attempts}")
+    payload=assignment_history_payload(db,a,sid);db.commit()
+    return {"ok":True,"grantID":row.id,"extraAttempts":b.extra_attempts,"attemptSummary":payload["attemptSummary"]}
 
 @app.get("/teacher/assignments/{aid}/export.xlsx")
 def export_assignment_report(aid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -6993,6 +7199,42 @@ def paperq(pid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
     serializer=qj_public if u.role=="student" else qj
     return [serializer(q) for qid in json.loads(p.question_ids_json) if (q:=db.get(Question,qid)) and q.school_id==u.school_id]
 
+@app.get("/student/assignments/{aid}/draft")
+def get_assignment_draft(aid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
+    need(u,"student");a=student_assignment_for(db,u.school_id,u.id,aid)
+    if not a:raise HTTPException(403,"无权查看此作业")
+    row=db.scalar(select(AssignmentDraft).where(
+        AssignmentDraft.school_id==u.school_id,AssignmentDraft.assignment_id==aid,AssignmentDraft.student_id==u.id
+    ))
+    try:answers=json.loads(row.answers_json or "[]") if row else []
+    except Exception:answers=[]
+    return {"assignmentID":aid,"answers":answers,"updatedAt":school_local_iso(row.updated_at) if row else None}
+
+@app.put("/student/assignments/{aid}/draft")
+def save_assignment_draft(aid:int,b:AssignmentDraftBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
+    need(u,"student");a=db.scalar(select(Assignment).where(Assignment.id==aid,Assignment.school_id==u.school_id).with_for_update())
+    if not a or not db.scalar(select(AssignmentRecipient.id).where(
+        AssignmentRecipient.school_id==u.school_id,AssignmentRecipient.assignment_id==aid,AssignmentRecipient.student_id==u.id
+    )):raise HTTPException(403,"无权保存此作业草稿")
+    if assignment_submission_mode(db,a)=="media":raise HTTPException(400,"此作业使用拍照/视频提交")
+    normalized=normalize_assignment_draft(db,u,b.answers,assignment_question_ids(db,a))
+    row=db.scalar(select(AssignmentDraft).where(
+        AssignmentDraft.school_id==u.school_id,AssignmentDraft.assignment_id==aid,AssignmentDraft.student_id==u.id
+    ))
+    now=datetime.utcnow()
+    if normalized:
+        if row:row.answers_json=json.dumps(normalized,ensure_ascii=False);row.updated_at=now
+        else:row=AssignmentDraft(school_id=u.school_id,assignment_id=aid,student_id=u.id,answers_json=json.dumps(normalized,ensure_ascii=False),created_at=now,updated_at=now);db.add(row)
+    elif row:db.delete(row);row=None
+    db.commit()
+    return {"ok":True,"assignmentID":aid,"answers":normalized,"updatedAt":school_local_iso(now) if normalized else None}
+
+@app.get("/student/assignments/{aid}/history")
+def student_assignment_history(aid:int,u:User=Depends(current_user),db:Session=Depends(get_db)):
+    need(u,"student");a=student_assignment_for(db,u.school_id,u.id,aid)
+    if not a:raise HTTPException(403,"无权查看此作业")
+    return assignment_history_payload(db,a,u.id)
+
 @app.post("/student/assignments/{aid}/submit")
 def ssubmit(aid:int,b:SubmitBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"student");a=db.scalar(select(Assignment).where(Assignment.id==aid,Assignment.school_id==u.school_id).with_for_update())
@@ -7001,13 +7243,39 @@ def ssubmit(aid:int,b:SubmitBody,u:User=Depends(current_user),db:Session=Depends
     if mode=="media":raise HTTPException(400,"此作业使用拍照/视频提交")
     recipient=db.scalar(select(AssignmentRecipient).where(AssignmentRecipient.assignment_id==aid,AssignmentRecipient.student_id==u.id,AssignmentRecipient.school_id==u.school_id))
     if not recipient:raise HTTPException(403,"你不是此作业的接收学生")
-    old=db.scalar(select(Submission.id).where(Submission.assignment_id==aid,Submission.student_id==u.id,Submission.school_id==u.school_id).limit(1))
-    if old:raise HTTPException(409,"在线答题已提交，不能重复提交")
     p=db.scalar(select(Paper).where(Paper.id==a.paper_id,Paper.school_id==u.school_id))
     if not p:raise HTTPException(400,"作业试卷不存在")
-    expected=json.loads(p.question_ids_json or "[]")
-    normalized,correct,total,score=grade_answers(db,u,b.answers,expected,require_all=True)
-    sub=save_sub(db,u,aid,a.title,normalized,correct,total,score)
+    expected=assignment_question_ids(db,a)
+    old=db.scalar(select(Submission).where(Submission.assignment_id==aid,Submission.student_id==u.id,Submission.school_id==u.school_id).order_by(Submission.id.desc()).limit(1))
+    was_complete=assignment_quiz_complete(db,a,u.id,old) if old else False
+    seed_legacy_assignment_attempts(db,a,u,old)
+    normalized,_,_,_=grade_answers(db,u,b.answers,expected,require_all=not b.partial)
+    extra=assignment_retry_extra(db,u.school_id,aid,u.id);allowed=ASSIGNMENT_QUESTION_ATTEMPT_LIMIT+extra
+    counts={}
+    for answer in normalized:
+        qid=int(answer["question_id"]);count=assignment_attempt_count(db,u.school_id,aid,u.id,qid);counts[qid]=count
+        if count>=allowed:
+            number=expected.index(qid)+1 if qid in expected else qid
+            raise HTTPException(409,f"第 {number} 题修改次数已用完（最多提交 {allowed} 次）")
+    merged=submission_answer_map(old)
+    for answer in normalized:merged[int(answer["question_id"])]=answer
+    merged_list=[merged[qid] for qid in expected if qid in merged]
+    aggregate_correct=sum(1 for answer in merged_list if answer.get("correct") is True)
+    aggregate_total=len(expected);aggregate_score=half_up_percent(aggregate_correct,aggregate_total)
+    sub=save_sub(db,u,aid,a.title,merged_list,aggregate_correct,aggregate_total,aggregate_score)
+    now=datetime.utcnow()
+    try:
+        for answer in normalized:
+            qid=int(answer["question_id"])
+            db.add(AssignmentQuestionAttempt(
+                school_id=u.school_id,submission_id=sub.id,assignment_id=aid,student_id=u.id,question_id=qid,
+                attempt_number=counts[qid]+1,answer_json=json.dumps(answer,ensure_ascii=False),
+                is_correct=bool(answer.get("correct") is True),actor_id=u.id,source="student",submitted_at=now,
+            ))
+        db.flush()
+    except IntegrityError:
+        db.rollback();raise HTTPException(409,"提交发生冲突，请刷新后重试") from None
+    clear_submitted_draft_answers(db,a,u.id,{int(x["question_id"]) for x in normalized})
     feedback_wrong=archive_objective_assessment_wrong_answers(
         db,
         AssignmentRecipient=AssignmentRecipient,
@@ -7018,13 +7286,16 @@ def ssubmit(aid:int,b:SubmitBody,u:User=Depends(current_user),db:Session=Depends
         assignment_id=aid,
         answers=normalized,
     )
-    mastery_changed=_reinforcement_mastery_update(db,aid,u.id,score)
+    completed=bool(expected) and set(merged)>=set(expected)
+    mastery_changed=_reinforcement_mastery_update(db,aid,u.id,aggregate_score) if completed and not was_complete else 0
     state=assignment_effective_status(db,a,u.id)
     db.commit()
     return {"id":sub.id,"score":sub.score,"correct":sub.correct,"total":sub.total,
             "status":state["status"],"late":state["late"],"completed":state["completed"],
+            "pointsEligible":bool(completed and not was_complete),
+            "answeredCount":len(merged_list),"expectedCount":len(expected),"attemptSummary":assignment_attempt_summary(db,a,u.id),
             "submissionMode":mode,"mediaSubmitted":state["mediaSubmitted"],
-            "reinforcementClosed":mastery_changed if score>=80 else 0,
+            "reinforcementClosed":mastery_changed if aggregate_score>=80 else 0,
             "assessmentFeedbackArchived":len(feedback_wrong),
             "learningFeedbackArchived":len(feedback_wrong)}
 
