@@ -125,7 +125,9 @@ with TestClient(app) as client:
         headers=student_headers,
         json={"answers": [{"question_id": qid, "selected_index": 1}]},
     )
-    assert duplicate.status_code == 409, duplicate.text
+    assert duplicate.status_code == 200, duplicate.text
+    assert duplicate.json()["id"] == result["id"]
+    assert duplicate.json()["learningPointsAwarded"] == 0
 
     submissions = client.get(
         f"/teacher/assignments/{aid}/submissions",
@@ -185,3 +187,4 @@ with TestClient(app) as client:
         f"stdout:\n{result.stdout}\n"
         f"stderr:\n{result.stderr}"
     )
+
