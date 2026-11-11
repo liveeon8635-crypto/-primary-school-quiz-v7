@@ -91,19 +91,23 @@ def audit_example_pages(
                 warnings.append("存在新草稿：课堂版本与当前编辑版本不同")
             if _figure_exposes_choice(figure):
                 problems.append("图示中含直接判断结论，可能提前泄露选择题答案")
-            if not figure_type:
-                problems.append("没有可核对的教学图示")
+            if not figure_type and expected:
+                problems.append("此题需要图示，但当前课件没有可核对的教学图示")
             elif figure_type == "uploaded_image":
                 warnings.append("当前只有原卷图片，尚需独立教学图示")
             elif expected and figure_type != expected:
                 problems.append("图示类型与题型不匹配（期望：" + expected + "）")
+            if ("灯笼锦" in source or "正八边形" in source) and figure_type == "table":
+                warnings.append("八边形数量题目前只有数表，请核对原题排列图后再决定是否补图")
+            if ("计算小程序" in source or ("输入" in source and "输出" in source)) and figure_type == "table":
+                warnings.append("计算程序题目前只有数表，如原课件没有程序流向图可酌情补充")
             if figure_type == "table" and ("3×3" in source or "3x3" in source) and not figure.get("nineGrid"):
                 warnings.append("九宫格仍使用普通表格，需核对是否缺少分步高亮")
             if figure_type == "table" and any(word in source for word in ("大小正方形", "大正方形", "长方形拼", "拼成长方形")):
                 warnings.append("空间拼接题仅有数表，建议核对是否缺少实际拼接图")
             if item.get("kind") == "steps":
-                if len(steps) < 4:
-                    warnings.append("分步引导不足四步，请核对观察、探索、表达和验证过程")
+                if expected and len(steps) < 4:
+                    warnings.append("此规律/图形题分步不足四步，可核对是否缺少观察、探索或验证")
                 if not answer:
                     problems.append("缺少教师参考答案")
                 if _first_step_reveals_solution([str(x) for x in steps], answer):
@@ -112,8 +116,8 @@ def audit_example_pages(
                     warnings.append("第一步直接讲出规律，建议改为观察性提问")
             else:
                 warnings.append("非通用分步课件，应人工核对专用交互是否完整")
-            if not expected:
-                warnings.append("未命中已知图示规则，必须对照原题人工确认图示")
+            if not expected and figure_type:
+                warnings.append("此题未配置专用图示规则，保留现有课件并按原题核对")
 
         # A check with zero machine-detectable issues still needs content review.
         reports.append({
