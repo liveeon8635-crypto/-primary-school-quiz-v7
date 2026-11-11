@@ -97,6 +97,10 @@ def audit_example_pages(
                 warnings.append("当前只有原卷图片，尚需独立教学图示")
             elif expected and figure_type != expected:
                 problems.append("图示类型与题型不匹配（期望：" + expected + "）")
+            if figure_type == "table" and ("3×3" in source or "3x3" in source) and not figure.get("nineGrid"):
+                warnings.append("九宫格仍使用普通表格，需核对是否缺少分步高亮")
+            if figure_type == "table" and any(word in source for word in ("大小正方形", "大正方形", "长方形拼", "拼成长方形")):
+                warnings.append("空间拼接题仅有数表，建议核对是否缺少实际拼接图")
             if item.get("kind") == "steps":
                 if len(steps) < 4:
                     warnings.append("分步引导不足四步，请核对观察、探索、表达和验证过程")
