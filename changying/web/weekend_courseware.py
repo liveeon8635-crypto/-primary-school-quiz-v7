@@ -242,9 +242,33 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
     figure = required_visual_figure(visual_text)
     if not figure:
         return result
-    # A correct figure is deterministic from the source question. Keep sourceFigure as the folded original comparison.
+    # Saved courseware is the authority: never silently replace a teacher's valid
+    # diagram or their hand-tuned steps with a deterministic fallback.
+    original_figure = result.get("figure") if isinstance(result.get("figure"), dict) else {}
+    original_steps = result.get("steps") if isinstance(result.get("steps"), list) else []
+    legacy_calendar_answer_table = (
+        figure.get("type") == "calendar_compare"
+        and original_figure.get("type") == "table"
+        and any(
+            isinstance(row, list) and any("月历关系" in str(cell) or "竖列差10" in str(cell) for cell in row)
+            for row in (original_figure.get("rows") or [])
+        )
+    )
+    if original_figure.get("type") and not legacy_calendar_answer_table:
+        return result
     if result.get("figure") != figure:
         result["figure"] = figure
+    # Even if an old slide lacks a figure, retain its existing explanation.
+    # Only replace clearly empty or scaffold text.
+    placeholder_steps = not original_steps or all(
+        not str(step).strip() or "点下一步显示" in str(step) or "第1步" in str(step)
+        for step in original_steps
+    )
+    if not placeholder_steps and not (
+        legacy_calendar_answer_table and
+        any("选项C写成" in str(step) or "因此C错误" in str(step) for step in original_steps)
+    ):
+        return result
     text = str(visual_text or "")
     compact = _normalize_text(text)
     steps: list[str] | None = None
