@@ -13,6 +13,9 @@ def test_teaching_action_patch_reuses_existing_homework_and_lesson_routes():
     assert "/teacher/assignments" in html
     assert "/teacher/papers" in html
     assert "/teacher/assignments/${aid}/submissions" in html
+    assert "/students/${sid}/history" in html
+    assert "/retry-grants" in html
+    assert "增加一次修改" in html
     assert "/teaching/lessons" in html
     assert "method:'POST'" in html
     assert "method:'PUT'" in html
@@ -50,6 +53,7 @@ def test_assignment_bridge_keeps_write_scope_on_existing_apis():
     assert "submission_mode:mode" in snippet
     assert "teacherConfirmed" in snippet
     assert "wrongCount" in snippet
+    assert "extra_attempts:1" in snippet
 
 
 def test_teaching_actions_use_shared_remember_aware_auth_storage():
@@ -57,3 +61,4 @@ def test_teaching_actions_use_shared_remember_aware_auth_storage():
     assert "v717Remember" in snippet
     assert "sessionStorage.getItem('v717Token')" in snippet
     assert "localStorage.getItem('v717Token')" in snippet
+
