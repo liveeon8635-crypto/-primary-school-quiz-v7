@@ -31,7 +31,7 @@ def _premature_rule(steps: list[str]) -> bool:
         return False
     first = _text(steps[0])
     return bool(re.search(
-        r"(?:月历|百数表|同行|同列|同一行|同一列).{0,26}(?:相差|差为|加[+＋]?\\d+|减[−-]?\\d+)",
+        r"(?:月历|百数表|同行|同列|同一行|同一列).{0,26}(?:相差|差为|加[+＋]?\d+|减[−-]?\d+)",
         first,
     )) and not bool(re.search(r"(?:想一想|观察|比较|试一试|找一找|你认为|请判断|怎样|多少|什么)", first))
 
