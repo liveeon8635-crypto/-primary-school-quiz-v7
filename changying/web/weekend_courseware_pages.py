@@ -309,7 +309,7 @@ function cwCalendarCompare(box,f,view,big,teacher){
   var nav=el('div',{style:'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px'});
   options.forEach(function(opt){
     var btn=el('button',{type:'button',style:'padding:8px 18px;border-radius:9px;border:2px solid '+(selected===opt[0]?'#2563eb':'#b7c8df')+';background:'+(selected===opt[0]?'#dbeafe':'#fff')+';font-weight:700',text:opt[0]+' · '+opt[1]+'×'+opt[2]});
-    btn.onclick=function(){view.calendarChoice=opt[0];view.calendarFeedback=false;cwRender(box.parentNode.parentNode,view._calendarCourseware,view,big,teacher)};
+    btn.onclick=function(){view.calendarChoice=opt[0];view.calendarFeedback=false;if(view._calendarOnChange)view._calendarOnChange();else cwRender(box.parentNode.parentNode,view._calendarCourseware,view,big,teacher)};
     nav.appendChild(btn);
   });
   wrap.appendChild(nav);
@@ -326,7 +326,7 @@ function cwCalendarCompare(box,f,view,big,teacher){
   wrap.appendChild(el('p',{style:'font-weight:600',text:question}));
   if(!teacher){
     var check=el('button',{type:'button',style:'padding:8px 14px;border:1px solid #2563eb;border-radius:8px;background:#fff;color:#1d4ed8',text:'我已思考，查看提示'});
-    check.onclick=function(){view.calendarFeedback=true;cwRender(box.parentNode.parentNode,view._calendarCourseware,view,big,teacher)};
+    check.onclick=function(){view.calendarFeedback=true;if(view._calendarOnChange)view._calendarOnChange();else cwRender(box.parentNode.parentNode,view._calendarCourseware,view,big,teacher)};
     wrap.appendChild(check);
   }
   if(view.calendarFeedback||teacher&&!view.previewMode){
@@ -454,7 +454,7 @@ function cwControl(box,c,sid){
   var view=JSON.parse(JSON.stringify(c.view||{})),stage=el('div'),bar=el('div',{class:'row'}),msg=el('div',{role:'status'});
   box.textContent='';box.appendChild(el('h2',{text:'互动课件：'+c.kindLabel+'（大屏同步，约3秒）'}));box.appendChild(bar);box.appendChild(stage);box.appendChild(msg);
   function send(){api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:view}}).then(function(r){view=r.view;draw()}).catch(function(e){msg.textContent=e.message})}
-  function draw(){cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
+  function draw(){if(c.kind==='steps'&&c.params.figure&&c.params.figure.type==='calendar_compare')view._calendarOnChange=send;cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
   function button(text,fn){bar.appendChild(el('button',{text:text,style:'min-height:44px;min-width:44px',onclick:function(){fn();draw();send()}}))}
   if(c.kind==='rotation'){
     var p=c.params,range=el('input',{type:'range',min:0,max:p.angle,step:15,value:view.angle||0,style:'width:220px;min-height:44px','aria-label':'旋转角度'});
