@@ -29,6 +29,7 @@ from sqlalchemy import MetaData, create_engine, text
 DELETE_TABLES = (
     "weekend_written_prechecks",  # provisional suggestions, never formal marks
     # homework and answers
+    "assignment_question_attempts", "assignment_drafts", "assignment_retry_grants",
     "submissions", "assignment_recipients", "assignment_submission_settings", "ai_grading_reviews",
     "reinforcement_links", "assignments", "homework_media", "homework_media_submits", "wrong_question_records",
     # points, rewards, learning evidence

@@ -34,6 +34,9 @@ CREATE TEMP TABLE _keep_before AS
 
 CREATE TEMP TABLE _deleted (tbl text, n bigint);
 WITH d AS (DELETE FROM wrong_question_records RETURNING 1) INSERT INTO _deleted SELECT 'wrong_question_records', COUNT(*) FROM d;
+WITH d AS (DELETE FROM assignment_question_attempts RETURNING 1) INSERT INTO _deleted SELECT 'assignment_question_attempts', COUNT(*) FROM d;
+WITH d AS (DELETE FROM assignment_drafts RETURNING 1) INSERT INTO _deleted SELECT 'assignment_drafts', COUNT(*) FROM d;
+WITH d AS (DELETE FROM assignment_retry_grants RETURNING 1) INSERT INTO _deleted SELECT 'assignment_retry_grants', COUNT(*) FROM d;
 WITH d AS (DELETE FROM teaching_attempts RETURNING 1) INSERT INTO _deleted SELECT 'teaching_attempts', COUNT(*) FROM d;
 WITH d AS (DELETE FROM submissions RETURNING 1) INSERT INTO _deleted SELECT 'submissions', COUNT(*) FROM d;
 WITH d AS (DELETE FROM student_followup_logs RETURNING 1) INSERT INTO _deleted SELECT 'student_followup_logs', COUNT(*) FROM d;
