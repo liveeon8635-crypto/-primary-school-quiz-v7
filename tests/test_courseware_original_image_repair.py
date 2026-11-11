@@ -36,10 +36,12 @@ def test_editor_preview_and_save_keep_original_image(tmp_path):
     from changying.web.weekend_courseware_pages import COURSEWARE_JS, COURSEWARE_PLAN_JS
     dom = r'''
 const assert=require('assert');
-class E{constructor(tag,a){this.tag=tag;this.a=a||{};this.children=[];this.value=String(this.a.value||'');this.checked=false;this.handlers={};this._text=this.a.text||''}
- appendChild(c){this.children.push(c);if(this.tag==='select'&&!this.value)this.value=String(c.a.value||'');return c}
+class E{constructor(tag,a){this.tag=tag;this.a=a||{};this.children=[];this.parentNode=null;this.value=String(this.a.value||'');this.checked=false;this.handlers={};this._text=this.a.text||'';this.scrolled=false}
+ appendChild(c){if(c.parentNode)c.parentNode.children=c.parentNode.children.filter(x=>x!==c);this.children.push(c);c.parentNode=this;if(this.tag==='select'&&!this.value)this.value=String(c.a.value||'');return c}
+ insertBefore(c,b){if(c.parentNode)c.parentNode.children=c.parentNode.children.filter(x=>x!==c);let i=b?this.children.indexOf(b):-1;this.children.splice(i<0?this.children.length:i,0,c);c.parentNode=this;return c}
+ get nextSibling(){if(!this.parentNode)return null;let i=this.parentNode.children.indexOf(this);return this.parentNode.children[i+1]||null}
  addEventListener(k,f){this.handlers[k]=f} set textContent(v){this._text=v;this.children=[]} get textContent(){return this._text}
- scrollIntoView(){} }
+ scrollIntoView(){this.scrolled=true} }
 function el(tag,a,...children){let e=new E(tag,a);children.filter(Boolean).forEach(c=>e.appendChild(c));return e}
 function all(e){return [e,...e.children.flatMap(c=>c instanceof E?all(c):[])]}
 function find(e,text){return all(e).find(x=>x.tag==='button'&&x.a.text===text)}
@@ -52,7 +54,12 @@ function api(path,opts){if(opts&&opts.method==='PUT'){sent=opts.json;return Prom
 (async()=>{let root=new E('div');cwPlan(root,1,null);await Promise.resolve();await Promise.resolve();
  let open=find(root,'预览／修改');assert(open);open.a.onclick();
  assert(all(root).some(x=>x.tag==='img'&&x.a.src===figure.data_url));
- let save=find(root,'保存修改（需重新审核）');assert(save);save.a.onclick();await Promise.resolve();
+ let save=find(root,'保存修改（需重新审核）');assert(save);
+ let line=open.parentNode,editorBox=save.parentNode.parentNode;
+ assert.strictEqual(editorBox.parentNode,line.parentNode,'editor is placed directly after the clicked question row');
+ assert.strictEqual(line.parentNode.children.indexOf(editorBox),line.parentNode.children.indexOf(line)+1);
+ assert(editorBox.scrolled,'the editor is brought into view');
+ save.a.onclick();await Promise.resolve();
  assert.deepStrictEqual(sent.params.figure,figure);console.log('OK')})().catch(e=>{console.error(e);process.exit(1)});
 '''
     script = tmp_path / 'courseware_editor.js'
