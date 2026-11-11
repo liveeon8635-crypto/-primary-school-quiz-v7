@@ -101,18 +101,19 @@ class E{
   constructor(tag,a){this.tag=tag;this.a=a||{};this.children=[];this.parentNode=null;this._text=this.a.text||''}
   appendChild(c){this.children.push(c);c.parentNode=this;return c}
 }
-function el(tag,attrs){var n=new E(tag,attrs);Object.keys(attrs||{}).forEach(function(k){if(k==='text')n.textContent=attrs[k]});for(var i=2;i<arguments.length;i++){var c=arguments[i];if(c==null)continue;n.appendChild(typeof c==='string'?new E('#text',{text:c}):c)}return n}
+function el(tag,attrs){var n=new E(tag,attrs);Object.keys(attrs||{}).forEach(function(k){if(k==='text')n.textContent=attrs[k];else if(k==='style')n.style=attrs[k]});for(var i=2;i<arguments.length;i++){var c=arguments[i];if(c==null)continue;n.appendChild(typeof c==='string'?new E('#text',{text:c}):c)}return n}
 var document={createElement:function(t){return new E(t,{})}};
 function all(e){return [e].concat(e.children.reduce(function(out,c){return out.concat(c instanceof E?all(c):[])},[]))}
 '''
     exercise = r'''
 var rows=[["a−11","a−10","a−9"],["a−1","a","a+1"],["a+9","a+10","a+11"]];
-function cells(reveal){var box=new E('div');cwFigure(box,{type:'table',reveal:reveal,rows:rows},false,{step:1,previewMode:true},true,4);
-  return all(box).filter(function(x){return x.tag==='td'||x.tag==='th'}).map(function(x){return x.textContent})}
-var full=cells(false).join('|');
+function nodes(reveal){var box=new E('div');cwFigure(box,{type:'table',reveal:reveal,rows:rows},false,{step:1,previewMode:true},true,4);
+  return all(box).filter(function(x){return x.tag==='td'||x.tag==='th'})}
+var fullNodes=nodes(false),full=fullNodes.map(function(x){return x.textContent}).join('|');
 assert(full.indexOf('a+1')>=0&&full.indexOf('a+11')>=0,'all nine numbers are visible');
 assert(full.indexOf('·')<0,'no hidden cell at step 1');
-var partial=cells(undefined).join('|');
+assert(fullNodes.every(function(x){return String(x.style||'').indexOf('#dbeafe')<0}),'no column highlight when all cells are shown');
+var partial=nodes(undefined).map(function(x){return x.textContent}).join('|');
 assert(partial.indexOf('·')>=0,'tables without the flag still reveal by step');
 console.log('OK');
 '''
