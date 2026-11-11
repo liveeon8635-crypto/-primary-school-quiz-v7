@@ -226,6 +226,8 @@ def clean_figure(raw: Any) -> dict[str, Any]:
             raise ValueError("图形只能是长方形、正方形、三角形、平行四边形或梯形")
         labels = raw.get("labels") if isinstance(raw.get("labels"), dict) else {}
         return {"type": "shape", "shape": shape, "labels": {k: _text(labels.get(k), 12) for k in SHAPE_SIDES if _text(labels.get(k), 12)}}
+    if kind == "calendar_compare":
+        return {"type": "calendar_compare"}
     if kind == "table":
         rows = [[_text(c, 10) for c in r[:8]] for r in (raw.get("rows") if isinstance(raw.get("rows"), list) else [])[:5]
                 if isinstance(r, list) and any(_text(c, 10) for c in r)]
