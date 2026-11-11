@@ -124,6 +124,47 @@ console.log('OK');
     assert 'OK' in result.stdout
 
 
+def test_nine_grid_figure_follows_the_four_steps(tmp_path):
+    """Step 2 colours the four symmetric pairs, step 3 marks the centre, step 4 shows 224."""
+    import subprocess
+
+    dom = r'''
+const assert=require('assert');
+class E{
+  constructor(tag,a){this.tag=tag;this.a=a||{};this.children=[];this.parentNode=null;this._text=this.a.text||'';this.style=''}
+  appendChild(c){this.children.push(c);c.parentNode=this;return c}
+  set textContent(v){this._text=v;this.children=[]}
+  get textContent(){return this._text}
+}
+function el(tag,attrs){var n=new E(tag,attrs);Object.keys(attrs||{}).forEach(function(k){if(k==='text')n.textContent=attrs[k];else if(k==='style')n.style=attrs[k]});for(var i=2;i<arguments.length;i++){var c=arguments[i];if(c==null)continue;n.appendChild(typeof c==='string'?new E('#text',{text:c}):c)}return n}
+var document={createElement:function(t){return new E(t,{})}};
+function all(e){return [e].concat(e.children.reduce(function(out,c){return out.concat(c instanceof E?all(c):[])},[]))}
+'''
+    exercise = r'''
+var rows=[["a−11","a−10","a−9"],["a−1","a","a+1"],["a+9","a+10","a+11"]];
+function render(step){var box=new E('div');cwFigure(box,{type:'table',nineGrid:true,reveal:false,targetSum:2016,center:224,rows:rows},false,{step:step,previewMode:true},true,4);return box}
+function cells(box){return all(box).filter(function(x){return x.style&&x.style.indexOf('min-height:')>=0})}
+function text(box){return all(box).map(function(x){return x.textContent}).join('|')}
+var s1=cells(render(1));
+assert.strictEqual(s1.length,9,'nine cells');
+assert(s1.every(function(x){return x.style.indexOf('background:#fff')>=0}),'step 1 is neutral');
+var s2=cells(render(2)),colors=s2.map(function(x){return (x.style.match(/background:#[0-9a-f]+/)||[''])[0]});
+assert.strictEqual(colors.filter(function(c){return c!=='background:#fff'}).length,8,'eight cells form four pairs');
+assert.strictEqual(new Set(colors).size,5,'four pair colours plus the centre');
+var s3=cells(render(3));
+assert(s3[4].style.indexOf('#1f6feb')>=0,'step 3 marks the centre');
+var b4=render(4),s4=cells(b4);
+assert.strictEqual(s4[4].textContent,'224','step 4 shows the centre number');
+assert(text(b4).indexOf('2016 ÷ 9 = 224')>=0,'step 4 states the division');
+console.log('OK');
+'''
+    script = tmp_path / 'nine_grid_steps.js'
+    script.write_text(dom + COURSEWARE_JS + exercise, encoding='utf-8')
+    result = subprocess.run(['node', str(script)], capture_output=True, text=True, encoding='utf-8', timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert 'OK' in result.stdout
+
+
 def test_page_code_draws_figures_without_markup_and_answers_on_the_row():
     for t in ("function cwFigure(", "cwFigureText", "createSVGRect"):
         assert t in COURSEWARE_JS, t
@@ -215,3 +256,6 @@ def test_remaining_tenth_lesson_questions_get_matching_diagrams_and_explanations
         assert not any("点下一步显示" in step for step in repaired["steps"])
     assert ".item{display:flex;flex-wrap:wrap;" in PAGE_CSS
     assert ".item>button{flex:0 0 auto;min-width:68px" in PAGE_CSS
+    nine = required_visual_figure("第15题 3×3方格规律：用3×3方框圈九个数，九数和为2016，中心数是多少")
+    assert nine["nineGrid"] is True and nine["targetSum"] == 2016 and nine["center"] == 224
+    assert _repair_courseware_visual({"figure": {}}, "3×3方格中，九数和为2016，中心数是多少")["figure"]["nineGrid"] is True
