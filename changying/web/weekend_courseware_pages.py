@@ -4,7 +4,7 @@ COURSEWARE_JS = r"""
 var CW_SVG='http://www.w3.org/2000/svg',CW_LETTERS='ABCDEF';
 function cwSplit(text){return (String(text||'').match(/[^。！？；!?;\n]+[。！？；!?;]?[”」』]?/g)||[]).map(function(s){return s.trim()}).filter(Boolean)}
 function cwRotate(p,c,dir,angle){var x=p[0]-c[0],y=p[1]-c[1],t=(angle/90)%4;if(dir==='ccw')t=(4-t)%4;for(var i=0;i<t;i++){var nx=y;y=-x;x=nx}return [c[0]+x,c[1]+y]}
-function cwNode(tag,attrs,text){var n=document.createElementNS(CW_SVG,tag);Object.keys(attrs).forEach(function(k){n.setAttribute(k,attrs[k])});if(text!=null)n.textContent=text;return n}
+function cwNode(tag,attrs,text){var n=document.createElementNS(CW_SVG,tag);Object.keys(attrs||{}).forEach(function(k){n.setAttribute(k,attrs[k])});if(text!=null)n.textContent=text;return n}
 function cwRotation(box,p,view,big){
   var cell=40,pad=24,W=p.width*cell+pad*2,H=p.height*cell+pad*2,on=-1;
   p.shape.forEach(function(q,k){if(q[0]===p.center[0]&&q[1]===p.center[1])on=k});
@@ -247,7 +247,7 @@ function cwHundredChartSquare(box,f,view,big,teacher,stepCount){
     label(x+15.5,y+18,String(value),12,hot?'#17449b':'#475467',hot?700:400,'middle');
   }
   var gx=170,gy=365,cell=74,labels=step===1?[String(n),String(n+1),String(n+10),String(n+11)]:step<4?['n','n+1','n+10','n+11']:['m−11','m−10','m−1','m'];
-  var defs=cwNode('defs'),marker=cwNode('marker',{id:'cw-hundred-arrow',viewBox:'0 0 10 10',refX:8,refY:5,markerWidth:5,markerHeight:5,orient:'auto'});
+  var defs=cwNode('defs',{}),marker=cwNode('marker',{id:'cw-hundred-arrow',viewBox:'0 0 10 10',refX:8,refY:5,markerWidth:5,markerHeight:5,orient:'auto'});
   marker.appendChild(cwNode('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'#2563eb'}));defs.appendChild(marker);svg.appendChild(defs);
   for(var rr=0;rr<2;rr++)for(var cc=0;cc<2;cc++){
     var idx=rr*2+cc;
