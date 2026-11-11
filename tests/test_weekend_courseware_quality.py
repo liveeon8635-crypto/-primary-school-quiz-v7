@@ -235,3 +235,14 @@ def test_audit_uses_approved_snapshot_not_incomplete_draft():
     assert row["issues"] == []
     assert any("新草稿" in warn for warn in row["warnings"])
     assert row["figureType"] == "seating_pattern"
+
+
+def test_teacher_save_and_approve_do_not_force_the_generic_diagram_type():
+    from changying.web.weekend_courseware import install_weekend_courseware
+    import inspect
+    source = inspect.getsource(install_weekend_courseware)
+    # Only an actually absent diagram receives a fallback, not a hand-tuned
+    # figure of another type that has already passed schema validation.
+    assert 'fallback_figure and not (params.get("figure") or {}).get("type")' in source
+    assert 'required_figure and not saved_figure.get("type")' in source
+    assert "月历判断表直接显示了正确/错误" in source
