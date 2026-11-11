@@ -348,7 +348,7 @@ def clean_steps(raw: Any) -> dict[str, Any]:
     if not answer:
         raise ValueError("请填写例题答案")
     figure = clean_figure(raw.get("figure"))
-    if figure.get("type") in ("calendar_cross", "seating_pattern", "alternating_triangle", "running_track", "triangular_numbers", "tile_pattern", "square_sticks_pattern", "hundred_chart_square") and len(steps) < 4:
+    if figure.get("type") in ("calendar_compare", "calendar_cross", "seating_pattern", "alternating_triangle", "running_track", "triangular_numbers", "tile_pattern", "square_sticks_pattern", "hundred_chart_square") and len(steps) < 4:
         raise ValueError("这类规律题的互动图示需要至少 4 步，才能逐步展示规律和结论")
     return {"title": _text(raw.get("title"), 40) or "分步讲解", "steps": steps, "answer": answer,
             "problem": _text(raw.get("problem"), 600),        # the example's own question, without its answer (pupils' task)
@@ -396,7 +396,12 @@ def clean_view(kind: str, params: dict[str, Any], raw: Any) -> dict[str, Any]:
         return {"angle": max(0, min(int(params["angle"]), angle)), "showResult": bool(raw.get("showResult")),
                 "step": max(0, min(len(params["steps"]), step))}
     if kind == "steps":
-        return {"step": max(0, min(len(params["steps"]), step)), "showAnswer": bool(raw.get("showAnswer"))}
+        state = {"step": max(0, min(len(params["steps"]), step)), "showAnswer": bool(raw.get("showAnswer"))}
+        if params.get("figure", {}).get("type") == "calendar_compare":
+            choice = raw.get("calendarChoice", "A")
+            state["calendarChoice"] = choice if choice in ("A", "B", "C", "D") else "A"
+            state["calendarFeedback"] = bool(raw.get("calendarFeedback"))
+        return state
     count = len(params["sentences"])
     marks = []
     for i in raw.get("highlight") or []:
