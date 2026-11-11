@@ -140,7 +140,7 @@ def required_visual_type(page_text: Any) -> str:
 
     # More specific patterns must be checked before the general calendar cases.
     if "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
-        return "table"
+        return "calendar_compare"
     if ("3×3" in text or "3x3" in text or "3＊3" in text) and ("九数和" in text or "中心数" in text):
         return "table"
     if "a＋b²" in compact or "a+b²" in compact or ("小明算成" in text and "平方" in text):
@@ -173,13 +173,13 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
     """Return stable, data-only visual parameters for known questions."""
     text = str(page_text or "")
     kind = required_visual_type(text)
+    if kind == "calendar_compare":
+        return {"type": "calendar_compare"}
     if kind == "table":
         compact = _normalize_text(text)
         if ("3×3" in text or "3x3" in text or "3＊3" in text) and ("九数和" in text or "中心数" in text):
             # 九宫格本身是题目条件，九个数要一次看全；逐列显现会只剩前两列。
             return {"type": "table", "reveal": False, "rows": [["a−11", "a−10", "a−9"], ["a−1", "a", "a+1"], ["a+9", "a+10", "a+11"]]}
-        if "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
-            return {"type": "table", "rows": [["框形", "月历关系", "判断"], ["A", "横向差1", "正确"], ["B", "横差1竖差7", "正确"], ["C", "竖列差10", "错误"], ["D", "中心对称", "正确"]]}
         if "大正方形" in text and "小正方形" in text and "长方形" in text:
             return {"type": "table", "rows": [["拼接排", "正方形数", "总宽"], ["上排", "3个小正方形", "3n"], ["下排", "2个大正方形", "2m"], ["同一长方形", "两排等宽", "2m=3n"]]}
         if "正方形边长" in text and "长方形长" in text:
@@ -252,10 +252,10 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
         ]
     elif "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
         steps = [
-            "月历同一行从左到右每格相差1，同一列从上到下每格相差7。",
-            "横向四格连续时可写成x−3、x−2、x−1、x；2×2方格横差1、竖差7。",
-            "竖列三格应相差7，所以可写成x−14、x−7、x。",
-            "选项C写成相差10，把百数表的规律误套到月历，因此C错误。",
+            "观察月历：同一行相邻两格的日期有什么变化？同一列呢？先说出你的发现。",
+            "选择A和B，对照蓝色日期格：题目中的横向、纵向关系能成立吗？说说理由。",
+            "重点检查C：从下往上数三格，若最下格是x，另外两格该怎样表示？先自己写。",
+            "比较D的中心对称日期，再回看四个选项：你认为哪项有误？说明依据。",
         ]
     elif "正方形边长" in text and "长方形长" in text:
         steps = [
