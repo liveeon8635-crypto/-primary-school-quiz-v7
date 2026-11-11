@@ -89,7 +89,9 @@ def award_submission_learning_points(
     awarded = min(awarded, maximum)
 
     if _existing_submission_points(implementation, db, submission) is not None:
-        return {"awarded": awarded, "maximum": maximum}
+        # Assignment retries reuse the same Submission id. The existing ledger
+        # row is the award; this response must not claim the points were added again.
+        return {"awarded": 0, "maximum": maximum}
 
     if awarded > 0:
         row = implementation.PointLedger(
@@ -329,12 +331,17 @@ def install_learning_points(implementation: ModuleType) -> None:
         original = route.dependant.call
 
         @wraps(original)
-        def scored_submission(*args: Any, __original=original, **kwargs: Any):
+        def scored_submission(*args: Any, __original=original, __path=path, **kwargs: Any):
             result = __original(*args, **kwargs)
             db = kwargs.get("db")
             actor = kwargs.get("u")
             if db is None or actor is None or not isinstance(result, dict):
                 return result
+            if __path == "/student/assignments/{aid}/submit" and not result.get("pointsEligible", result.get("completed")):
+                payload = dict(result)
+                payload["learningPointsAwarded"] = 0
+                payload["learningPointMax"] = int(result.get("total", 0) or 0)
+                return payload
             submission_id = result.get("id")
             submission = (
                 db.get(implementation.Submission, int(submission_id))
@@ -451,3 +458,4 @@ __all__ = [
     "award_subjective_learning_points",
     "install_learning_points",
 ]
+
