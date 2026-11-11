@@ -84,7 +84,7 @@ function cwFigureOk(f){
 }
 function cwCalendarCross(box,f,view,big,teacher){
   var step=teacher&&!view.previewMode?4:(view.step||0),wrap=el('div',{style:'max-width:560px;margin:8px auto;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#fff'});
-  box.appendChild(wrap);wrap.appendChild(el('div',{style:'text-align:center;font-weight:700;margin-bottom:8px',text:'\u6708\u5386\u793a\u610f\uff1a\u5de6\u53f3\u76f8\u5dee 1\uff0c\u4e0a\u4e0b\u76f8\u5dee 7'}));
+  box.appendChild(wrap);wrap.appendChild(el('div',{style:'text-align:center;font-weight:700;margin-bottom:8px',text:step<2?'观察月历：相邻日期分别怎样变化？':'月历规律：左右相差1，上下相差7'}));
   var grid=el('div',{style:'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px'}),names=['\u65e5','\u4e00','\u4e8c','\u4e09','\u56db','\u4e94','\u516d'];
   names.forEach(function(n){grid.appendChild(el('div',{style:'text-align:center;color:#667085;font-size:12px;padding:4px 0',text:n}))});
   var count=f.firstWeekday+f.daysInMonth;for(var i=0;i<Math.ceil(count/7)*7;i++){
@@ -92,7 +92,8 @@ function cwCalendarCross(box,f,view,big,teacher){
     var diff=day-f.center,active=day===f.center||(step>=1&&Math.abs(diff)===1)||(step>=2&&Math.abs(diff)===7),center=day===f.center;
     var label='';if(step>=3&&active)label=center?'a':diff===-7?'a-7':diff===-1?'a-1':diff===1?'a+1':'a+7';
     var style='aspect-ratio:1;min-height:32px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-weight:700;font-size:'+(big?'2.5vh':'14px')+';background:'+(active?(center?'#f5b942':'#2364e8'):'#f2f4f7')+';color:'+(active?(center?'#412b00':'#fff'):'#475467')+';border:'+(active?'2px solid '+(center?'#d49413':'#2364e8'):'2px solid transparent');
-    grid.appendChild(el('div',{style:style},el('span',{text:String(day)}),label?el('small',{style:'font-size:10px;line-height:1.1',text:label}):null));
+    var visibleDay=active&&!teacher&&!view.showAnswer?(center?'a':step>=3?label:'？'):String(day);
+    grid.appendChild(el('div',{style:style},el('span',{text:visibleDay}),label&&(!active||teacher||view.showAnswer)?el('small',{style:'font-size:10px;line-height:1.1',text:label}):null));
   }
   wrap.appendChild(grid);
   if(step>=3)wrap.appendChild(el('div',{style:'margin-top:12px;text-align:center;font-weight:700;color:#17449b;font-size:'+(big?'2.4vh':'16px'),text:'\u4e94\u6570\u548c = (a-7)+(a-1)+a+(a+1)+(a+7) = 5a'}));
