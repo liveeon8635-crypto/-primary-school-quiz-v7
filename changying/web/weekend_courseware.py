@@ -246,7 +246,7 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
     steps: list[str] | None = None
     if ("3×3" in text or "3x3" in text or "3＊3" in text) and ("九数和" in text or "中心数" in text):
         steps = [
-            "百数表中横向相邻数相差1，纵向相邻数相差10；九个数按3行3列排列。",
+            "先观察九宫格：同一行和同一列相邻数如何变化？试着找出中心格。",
             "设中心数为a，中心周围两两对称：a−11与a+11、a−10与a+10、a−9与a+9、a−1与a+1。",
             "四组对称数各相加都是2a，再加中心a，九数和为9a。",
             "九数和为2016时，中心数a=2016÷9=224。",
@@ -260,21 +260,21 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
         ]
     elif "正方形边长" in text and "长方形长" in text:
         steps = [
-            "正方形边长为a，四条边相等，所以周长4a、面积a×a=a²。",
+            "观察正方形和长方形：哪些边相等？周长与面积分别要求什么？",
             "长方形长a、宽b，对边相等，所以周长2(a+b)、面积ab。",
             "由m=n+20且m=37，代入得37=n+20。",
             "等式两边同时减20，得到n=17。",
         ]
     elif "a＋b²" in text or "a+b²" in text or "小明算成" in text:
         steps = [
-            "代入a=5、b=3，原式是a+b²；平方只作用在b上。",
+            "观察a+b²：平方究竟作用于哪个数？你准备先算哪一步？",
             "先算乘方：b²=3²=9，不是3×2。",
             "再加a：5+9=14；不能把a+b改成(a+b)²。",
             "所以正确结果是14。",
         ]
     elif "大正方形" in text and "小正方形" in text and "长方形" in text:
         steps = [
-            "长方形上排由3个边长为n的小正方形组成，总宽3n。",
+            "观察大小正方形拼成的长方形：上下两排的宽度有什么关系？",
             "下排由2个边长为m的大正方形组成，总宽2m；两排拼成同一长方形，所以2m=3n。",
             "长方形的长是2m，宽是m+n，周长C=2[2m+(m+n)]=6m+2n。",
             "由2m=3n得6m=9n，所以C=9n+2n=11n。",
@@ -282,7 +282,7 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
         ]
     elif figure["type"] == "hundred_chart_square":
         steps = [
-            "百数表中，同一行向右相邻数相差1，同一列向下相邻数相差10。",
+            "观察百数表田字格：向右和向下移动一格，数字分别怎么变化？",
             "设田字格左上角为n，则右上是n+1，左下是n+10，右下是n+11。",
             "四数相加：n+(n+1)+(n+10)+(n+11)=4n+22。",
             "若右下角为m，则左上m−11，右上m−10，左下m−1。",
@@ -290,7 +290,7 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
         ]
     elif figure["type"] == "square_sticks_pattern":
         steps = [
-            "观察：摆1个正方形用4根；摆2个共用一条边，只需新增3根，共7根；摆3个再新增3根，共10根。",
+            "观察连续正方形：从1个摆到2个、3个，共用边在哪里？小棒数如何变化？",
             "发现：每增加1个正方形，都会和前一个共用一条边，所以只增加3根小棒。",
             "列式：摆m个，先用4根，后面m−1个各增加3根，n=4+3(m−1)=3m+1。",
             "代入：m=8时n=25；m=60时n=181。",
@@ -301,12 +301,12 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
     elif figure["type"] == "calendar_cross":
         if re.search(r"五数和\s*(?:是|为)\s*\d+", text):
             total, center = int(figure["total"]), int(figure["center"])
-            result["steps"] = ["月历中左右相邻两数相差1，上下相邻两数相差7。",
+            result["steps"] = ["观察月历十字框：左右、上下移动一格，日期怎样变化？",
                                "若中心数为a，四周依次是a−7、a−1、a+1、a+7。",
                                "五数相加：(a−7)+(a−1)+a+(a+1)+(a+7)=5a。",
                                f"五数和为{total}，所以a={total}÷5={center}，最小{center-7}，最大{center+7}。"]
         else:
-            result["steps"] = ["设十字框中心数为a。", "最上面和最下面分别是a−7、a+7，两数相加等于2a。",
+            result["steps"] = ["先观察十字框：如果用a表示中心数，四周日期如何表示？", "最上面和最下面分别是a−7、a+7，两数相加等于2a。",
                                "最左面和最右面分别是a−1、a+1，两数相加也等于2a。",
                                "所以两组相对数的和相等，都是中心数的2倍。"]
     elif figure["type"] == "tile_pattern":
@@ -322,18 +322,18 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
                            f"第{target_n}幅白砖{white_n}块；蓝砖为{target_blue}块时对应第{reverse_n}幅。"]
     elif figure["type"] == "running_track":
         fast, slow, symbol = figure["fastSpeed"], figure["slowSpeed"], figure["distanceSymbol"]
-        result["steps"] = [f"同向出发后，快者追上一整圈时比慢者多跑一圈{symbol}米。",
+        result["steps"] = [f"观察同向跑步：快者追上一整圈时，两人累计路程相差多少？{symbol}米。",
                            f"快者每分钟跑{fast}米，慢者每分钟跑{slow}米。",
                            f"每分钟路程差为{fast}−{slow}={fast-slow}米。",
                            f"追上一整圈所需时间={symbol}÷{fast-slow}分钟。"]
     elif figure["type"] == "triangular_numbers":
         target = figure["targetTerm"]
-        result["steps"] = ["点阵每一层依次增加1、2、3、4……个点，前几项是1、3、6、10、15。",
+        result["steps"] = ["观察三角形点阵：每增加一层，新增点数遵循什么规律？",
                            "第n个三角形数是1+2+…+n。",
                            "两份同样的点阵可拼成n行、每行n+1个点的长方形，共n(n+1)个点。",
                            f"原点阵为一半，所以第n个是n(n+1)÷2；第{target}个为{target*(target+1)//2}。"]
     elif figure["type"] == "alternating_triangle":
-        result["steps"] = ["从顶层开始，白、黑两种颜色按层交替排列。", "每两层一组，黑层比白层多1颗棋子。", "黑棋子比白棋子多m颗，说明有m组这样的两层。", "总层数为2m层。"]
+        result["steps"] = ["观察三角形棋子图：黑白棋子是怎样分层排列的？", "每两层一组，黑层比白层多1颗棋子。", "黑棋子比白棋子多m颗，说明有m组这样的两层。", "总层数为2m层。"]
     elif figure["type"] == "seating_pattern":
         result["steps"] = ["1张方桌外周有8个座位；方桌是正方形，座位沿外周排列。", "每增加1张方桌，与前一张共用一条边，内部共用边不坐人，所以外周座位增加4人。", "m张方桌可坐8+4(m−1)人。", "化简得到4m+4人。"]
     return result
