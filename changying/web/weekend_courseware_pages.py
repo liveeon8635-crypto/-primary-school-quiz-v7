@@ -562,6 +562,9 @@ function cwPlan(box,lessonId,refresh){
   function edit(box2,x,it){
     box2.textContent='';var card=el('div',{class:'card'}),fields={},kinds=data.templates,kind=it&&it.kind?it.kind:kinds[kinds.length-1],p=JSON.parse(JSON.stringify(it&&it.params?it.params:{})),previewState={step:1,previewMode:true},preview=el('div',{class:'card',style:'max-height:76vh;overflow:auto;box-shadow:0 8px 24px #10182822'});
     if(kind==='steps'){
+      if(!p || typeof p!=='object')p={};
+      if(!Array.isArray(p.steps))p.steps=[];
+      if(!p.figure || typeof p.figure!=='object')p.figure={type:''};
       var sourceText=String(x.text||'')+' '+String(p.problem||'')+' '+String(p.sourceProblem||''),normalizedSource=sourceText.replace(/[\s"'“”‘’「」『』]/g,''),required=null;
       if(normalizedSource.indexOf('田字形')>=0&&normalizedSource.indexOf('百数表')>=0){required={type:'hundred_chart_square',topLeftNumber:45};}
       else if(sourceText.indexOf('地砖')>=0&&(sourceText.indexOf('排列')>=0||sourceText.indexOf('白地砖')>=0)){
