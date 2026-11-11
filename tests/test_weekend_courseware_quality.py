@@ -127,3 +127,44 @@ def test_live_view_sync_omits_private_preview_objects():
     from changying.web.weekend_courseware_pages import COURSEWARE_JS
     assert "if(k.charAt(0)!=='_')publicState[k]=view[k]" in COURSEWARE_JS
     assert "json:{view:publicState}" in COURSEWARE_JS
+
+
+def test_saved_teacher_courseware_is_never_replaced_by_default_diagram():
+    from changying.web.weekend_courseware import _repair_courseware_visual
+    import copy
+
+    original = {
+        "title": "老师已经调试的月历课件",
+        "figure": {"type": "table", "rows": [["图形", "关系"], ["教师自定图", "观察"]]},
+        "steps": ["观察自己画好的框", "移动框形", "比较日期", "说出结论"],
+        "answer": "老师核对后的答案",
+        "sourceFigure": {"type": "uploaded_image", "data_url": "test://do-not-modify"},
+    }
+    saved = copy.deepcopy(original)
+    result = _repair_courseware_visual(original, "月历框形辨析：哪一种错误？")
+    assert result == saved
+    assert original == saved
+
+
+def test_missing_diagram_repair_preserves_custom_teacher_steps():
+    from changying.web.weekend_courseware import _repair_courseware_visual
+
+    original = {"figure": {}, "steps": [
+        "请先看原题", "让学生提出猜想", "小组讨论", "学生总结",
+    ], "answer": "C"}
+    fixed = _repair_courseware_visual(original, "月历框形辨析：哪一种错误？")
+    assert fixed["figure"] == {"type": "calendar_compare"}
+    assert fixed["steps"] == original["steps"]
+    assert original["figure"] == {}
+
+
+def test_legacy_answer_table_repaired_without_replacing_teacher_custom_steps():
+    from changying.web.weekend_courseware import _repair_courseware_visual
+
+    original = {"figure": {"type": "table", "rows": [
+        ["框形", "月历关系", "判断"], ["A", "横向差1", "正确"],
+        ["C", "竖列差10", "错误"],
+    ]}, "steps": ["先让学生观察", "检查两种框", "再讨论分歧", "提出结论"], "answer": "C"}
+    fixed = _repair_courseware_visual(original, "月历框形辨析：哪一种错误？")
+    assert fixed["figure"]["type"] == "calendar_compare"
+    assert fixed["steps"] == original["steps"]
