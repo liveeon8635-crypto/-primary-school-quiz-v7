@@ -76,9 +76,9 @@ function choose(i){active=i;c=cases[active];state={step:0,showAnswer:false,calen
 function extraDiagram(){extra.textContent="";var n=c.params.number;
   if(n===20){var wrap=el("div",{class:"extra"}),title=el("div",{class:"diag-title",text:"原题拼图结构示意（上排2个大正方形，下排3个小正方形）"});wrap.appendChild(title);
     var top=el("div",{class:"diagram-row"}),bottom=el("div",{class:"diagram-row"});
-    for(var a=0;a<2;a++)top.appendChild(el("div",{class:"geo",style:"width:126px;height:82px",text:"m"}));
-    for(var b=0;b<3;b++)bottom.appendChild(el("div",{class:"geo small",style:"width:82px;height:48px",text:"n"}));
-    wrap.appendChild(top);wrap.appendChild(bottom);wrap.appendChild(el("div",{style:"text-align:center;color:#475467;font-size:12px",text:"这是关系示意，格子高度按阅读清晰度缩放，实际几何边长见原题"}));extra.appendChild(wrap);
+    for(var a=0;a<2;a++)top.appendChild(el("div",{class:"geo",style:"width:126px;height:126px",text:"m"}));
+    for(var b=0;b<3;b++)bottom.appendChild(el("div",{class:"geo small",style:"width:84px;height:84px",text:"n"}));
+    wrap.appendChild(top);wrap.appendChild(bottom);wrap.appendChild(el("div",{style:"text-align:center;color:#475467;font-size:12px",text:"面积拼接比例示意：两大正方形总宽与三小正方形总宽相等；原图见PDF第8页"}));extra.appendChild(wrap);
   }
   if(n===9){var wrap2=el("div",{class:"extra"});wrap2.appendChild(el("div",{class:"diag-title",text:"数量示意（并非原八边形排列图）"}));
     [5,8].forEach(function(count,i){var row=el("div",{class:"diagram-row"});row.appendChild(el("b",{text:"第"+(i+1)+"幅：" }));for(var j=0;j<count;j++)row.appendChild(el("div",{class:"oct"}));wrap2.appendChild(row)});extra.appendChild(wrap2);
