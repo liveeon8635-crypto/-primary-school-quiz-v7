@@ -233,7 +233,28 @@ def clean_figure(raw: Any) -> dict[str, Any]:
                 if isinstance(r, list) and any(_text(c, 10) for c in r)]
         if len(rows) < 2 or len({len(r) for r in rows}) != 1 or len(rows[0]) < 2:
             raise ValueError("表格需要至少 2 行、2 列，并且每行格数相同")
-        return {"type": "table", "rows": rows}
+        result = {"type": "table", "rows": rows}
+        if raw.get("nineGrid") is True:
+            if len(rows) != 3 or any(len(row) != 3 for row in rows):
+                raise ValueError("九宫格必须是3行3列")
+            result["reveal"] = False
+            result["nineGrid"] = True
+            try:
+                total = _int(raw.get("targetSum")) if raw.get("targetSum") is not None else None
+                center = _int(raw.get("center")) if raw.get("center") is not None else None
+            except ValueError:
+                raise ValueError("九宫格目标和与中心数必须是整数")
+            if total is not None and (total <= 0 or total > 1_000_000):
+                raise ValueError("九宫格目标和超出可用范围")
+            if center is not None and (center <= 0 or center > 100_000):
+                raise ValueError("九宫格中心数超出可用范围")
+            if total is not None and center is not None and total != 9 * center:
+                raise ValueError("九宫格目标和必须是中心数的9倍")
+            result["targetSum"] = total
+            result["center"] = center
+        elif raw.get("reveal") is False:
+            result["reveal"] = False
+        return result
     if kind == "seating_pattern":
         try:
             sample_counts = [_int(v) for v in raw.get("sampleCounts", [])]
