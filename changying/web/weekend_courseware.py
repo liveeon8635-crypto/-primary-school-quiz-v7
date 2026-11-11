@@ -190,7 +190,7 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
         if "正方形边长" in text and "长方形长" in text:
             return {"type": "table", "rows": [["图形", "周长", "面积"], ["正方形a", "4a", "a²"], ["长方形a,b", "2(a+b)", "ab"]]}
     if kind == "flow" and ("a＋b²" in text or "a+b²" in text or "小明算成" in text):
-        return {"type": "flow", "boxes": ["代入 a=5,b=3", "先算 b²=9", "再加 a=5", "结果=14"], "branches": []}
+        return {"type": "flow", "boxes": ["原式 a+b²", "代入 a=5、b=3", "先求平方", "再做加法"], "branches": []}
     if kind == "calendar_cross":
         total_match = re.search(r"五数和\s*(?:是|为)\s*(\d+)", text)
         total = int(total_match.group(1)) if total_match else 90
