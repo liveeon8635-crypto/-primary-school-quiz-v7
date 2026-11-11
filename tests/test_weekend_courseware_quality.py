@@ -199,3 +199,24 @@ def test_missing_diagram_for_example19_does_not_preveal_answer():
     figure = required_visual_figure("a＋b² 易错辨析：当a=5，b=3，小明算成5+6")
     assert figure["type"] == "flow"
     assert "结果=14" not in "".join(figure["boxes"])
+
+
+def test_original_pdf_example20_tiling_orientation_for_missing_diagram_only():
+    from changying.web.weekend_courseware import required_visual_figure, _repair_courseware_visual
+    source = "由2个大正方形和3个小正方形拼成长方形，大正方形边长m，小正方形边长n，求周长"
+    default = required_visual_figure(source)
+    assert default["rows"][1] == ["上排", "2个大正方形", "2m"]
+    assert default["rows"][2] == ["下排", "3个小正方形", "3n"]
+    polished = {"figure": {"type": "shape", "shape": "rectangle", "labels": {"top": "老师原图"}},
+                "steps": ["观察", "归纳", "演算", "验证"]}
+    assert _repair_courseware_visual(polished, source) == polished
+
+
+def test_example11_program_diagram_is_optional_fallback_when_missing():
+    from changying.web.weekend_courseware import required_visual_figure, _repair_courseware_visual
+    source = "计算小程序：程序输入4、9、15，分别输出11、26、44"
+    figure = required_visual_figure(source)
+    assert figure == {"type": "flow", "boxes": ["输入 a", "×3", "−1", "输出 b"], "branches": []}
+    own = {"figure": {"type": "flow", "boxes": ["教师优化的运算框", "学生验证框"], "branches": []},
+           "steps": ["自定义观察", "自定义检验"]}
+    assert _repair_courseware_visual(own, source) == own
