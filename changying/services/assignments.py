@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from typing import Any, Callable
 
 from sqlalchemy import func, select
@@ -26,6 +27,8 @@ class AssignmentService:
         assignment_mode_name: Callable[[str], str],
         school_local_iso: Callable[[Any], str],
         due_deadline_utc: Callable[[str], Any],
+        assignment_question_attempt_model: Any | None = None,
+        paper_model: Any | None = None,
     ) -> None:
         self.AssignmentSubmissionSetting = assignment_submission_setting_model
         self.Submission = submission_model
@@ -39,6 +42,8 @@ class AssignmentService:
         self.assignment_mode_name = assignment_mode_name
         self.school_local_iso = school_local_iso
         self.due_deadline_utc = due_deadline_utc
+        self.AssignmentQuestionAttempt = assignment_question_attempt_model
+        self.Paper = paper_model
 
     def submission_setting(self, db, assignment):
         return db.scalar(
@@ -190,7 +195,40 @@ class AssignmentService:
             .limit(1)
         )
 
-        quiz_ok = bool(quiz_sub)
+        quiz_started = bool(quiz_sub)
+        expected_count = 0
+        answered_count = 0
+        if quiz_sub and self.AssignmentQuestionAttempt is not None and self.Paper is not None:
+            attempted = set(
+                db.scalars(
+                    select(self.AssignmentQuestionAttempt.question_id)
+                    .where(
+                        self.AssignmentQuestionAttempt.school_id == assignment.school_id,
+                        self.AssignmentQuestionAttempt.assignment_id == assignment.id,
+                        self.AssignmentQuestionAttempt.student_id == student_id,
+                    )
+                    .distinct()
+                ).all()
+            )
+            paper = db.get(self.Paper, assignment.paper_id)
+            try:
+                expected = {
+                    int(x)
+                    for x in json.loads(getattr(paper, "question_ids_json", "[]") or "[]")
+                }
+            except Exception:
+                expected = set()
+            expected_count = len(expected)
+            answered_count = len(attempted)
+            # Historical rows predate per-question history. They were accepted
+            # only after a full-paper submission and remain complete.
+            if not attempted:
+                quiz_ok = True
+                answered_count = expected_count
+            else:
+                quiz_ok = bool(expected) and attempted >= expected
+        else:
+            quiz_ok = bool(quiz_sub)
         media_ok = bool(media_sub)
         completed = (
             quiz_ok
@@ -213,15 +251,24 @@ class AssignmentService:
         now = now or datetime.utcnow()
         late = bool(completed and completed_at and deadline and completed_at > deadline)
         overdue = bool((not completed) and deadline and now > deadline)
+        in_progress = bool(quiz_started and not quiz_ok and mode in ("quiz", "mixed"))
         status = (
             ("逾期完成" if late else "已完成")
             if completed
-            else ("逾期未交" if overdue else "未完成")
+            else (
+                "逾期未完成"
+                if overdue and in_progress
+                else "逾期未交"
+                if overdue
+                else "进行中"
+                if in_progress
+                else "未完成"
+            )
         )
         code = (
             ("late_completed" if late else "completed")
             if completed
-            else ("overdue" if overdue else "pending")
+            else ("overdue" if overdue else "in_progress" if in_progress else "pending")
         )
 
         return {
@@ -233,7 +280,10 @@ class AssignmentService:
             "deadlinePassed": bool(deadline and now > deadline),
             "submissionMode": mode,
             "submissionModeName": self.assignment_mode_name(mode),
+            "quizStarted": quiz_started,
             "quizSubmitted": quiz_ok,
+            "answeredCount": answered_count,
+            "expectedCount": expected_count,
             "mediaSubmitted": media_ok,
             "mediaCount": self.homework_media_count(
                 db,
@@ -297,3 +347,4 @@ def student_assignment_rows(
 
 
 __all__ = ["AssignmentService", "teacher_assignment_rows", "student_assignment_rows"]
+
