@@ -55,6 +55,7 @@ function cwFigureText(f){
   if(f.type==='segment')return '线段上的点：'+f.points.map(function(q){return q.name}).join(' — ')+(f.marks.length?'；'+f.marks.map(function(m){return m.from+m.to+'＝'+m.label}).join('，'):'');
   if(f.type==='flow')return '程序：'+f.boxes.join(' → ')+(f.branches.length?'；'+f.branches.map(function(b){return b.when+'：'+b.boxes.join(' → ')}).join('；'):'');
   if(f.type==='shape')return CW_SHAPES[f.shape]+'：'+Object.keys(f.labels).map(function(k){return f.labels[k]}).join('，');
+  if(f.type==='calendar_compare')return '月历四种框形：A一行四格、B两行两列、C一列三格、D三行三列';
   if(f.type==='calendar_cross')return '\u6708\u5386\u5341\u5b57\u6846\uff1a\u4e2d\u5fc3 '+f.center+'\uff0c\u4e94\u6570\u548c '+f.total;
   if(f.type==='seating_pattern')return '\u65b9\u684c\u4eba\u6570\u89c4\u5f8b\uff1a'+f.sampleCounts.join('\u3001');
   if(f.type==='alternating_triangle')return '\u9ed1\u767d\u68cb\u5b50\u4e09\u89d2\u5f62\uff1a'+f.rows+'\u5c42\uff0c\u5dee\u503c '+f.differenceSymbol;
@@ -70,6 +71,7 @@ function cwFigureOk(f){
   if(f.type==='segment'){var at=(f.points||[]).map(function(q){return q.at});return at.length>=2&&at.every(function(a){return isFinite(a)})&&Math.max.apply(null,at)>Math.min.apply(null,at)}
   if(f.type==='flow')return (f.boxes||[]).length>0||(f.branches||[]).length>0;
   if(f.type==='shape')return !!CW_SHAPES[f.shape];
+  if(f.type==='calendar_compare')return true;
   if(f.type==='calendar_cross')return isFinite(f.center)&&isFinite(f.daysInMonth)&&isFinite(f.firstWeekday)&&isFinite(f.total)&&f.center===f.total/5;
   if(f.type==='seating_pattern')return (f.sampleCounts||[]).length>=2&&f.sampleCounts.length<=4&&f.sampleCounts[0]===8&&f.sampleCounts.every(function(n,i){return isFinite(n)&&n===8+i*4});
   if(f.type==='alternating_triangle')return f.rows>=4&&f.rows<=8&&f.rows%2===0&&/^[A-Za-z]$/.test(f.differenceSymbol||'');
@@ -299,6 +301,39 @@ function cwTriangularNumbers(box,f,view,big,teacher,stepCount){
     wrap.appendChild(formula);
   }
 }
+function cwCalendarCompare(box,f,view,big,teacher){
+  var wrap=el('div',{style:'max-width:920px;margin:10px auto;padding:14px;border:1px solid #d5dfef;border-radius:14px;background:#f8fbff'});
+  wrap.appendChild(el('p',{style:'font-weight:700;margin:0 0 8px',text:'月历观察实验：先比较日期，再判断题目中的表达是否正确。'}));
+  var options=[['A',4,1],['B',2,2],['C',1,3],['D',3,3]];
+  var selected=view.calendarChoice||'A';
+  var nav=el('div',{style:'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px'});
+  options.forEach(function(opt){
+    var btn=el('button',{type:'button',style:'padding:8px 18px;border-radius:9px;border:2px solid '+(selected===opt[0]?'#2563eb':'#b7c8df')+';background:'+(selected===opt[0]?'#dbeafe':'#fff')+';font-weight:700',text:opt[0]+' · '+opt[1]+'×'+opt[2]});
+    btn.onclick=function(){view.calendarChoice=opt[0];view.calendarFeedback=false;cwRender(box.parentNode.parentNode,view._calendarCourseware,view,big,teacher)};
+    nav.appendChild(btn);
+  });
+  wrap.appendChild(nav);
+  var shape=options.filter(function(o){return o[0]===selected})[0]||options[0];
+  var calendar=el('div',{style:'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;max-width:620px;margin:0 auto'});
+  ['一','二','三','四','五','六','日'].forEach(function(d){calendar.appendChild(el('div',{style:'text-align:center;font-weight:700;color:#475569;padding:6px',text:d}))});
+  for(var day=1;day<=35;day++){
+    var row=Math.floor((day-1)/7),col=(day-1)%7,active=row>=1&&row<1+shape[2]&&col>=1&&col<1+shape[1];
+    calendar.appendChild(el('div',{style:'text-align:center;padding:8px 0;min-height:24px;border:1px solid '+(active?'#2563eb':'#e2e8f0')+';border-radius:6px;background:'+(active?'#bfdbfe':'#fff')+';font-weight:'+(active?'700':'400'),text:day<=31?String(day):''}));
+  }
+  wrap.appendChild(calendar);
+  wrap.appendChild(el('p',{style:'margin:10px 0 4px;color:#334155',text:'蓝色区域是 '+selected+' 的示意框形。想一想：横向与纵向每移动一格，日期分别怎样变化？'}));
+  var question=selected==='C'?'如果最下方是 x，向上一格、两格分别应是什么？':selected==='D'?'中心对称的两格，与中心格有什么数量关系？':'这些蓝色日期能否支持题目对 '+selected+' 的描述？';
+  wrap.appendChild(el('p',{style:'font-weight:600',text:question}));
+  if(!teacher){
+    var check=el('button',{type:'button',style:'padding:8px 14px;border:1px solid #2563eb;border-radius:8px;background:#fff;color:#1d4ed8',text:'我已思考，查看提示'});
+    check.onclick=function(){view.calendarFeedback=true;cwRender(box.parentNode.parentNode,view._calendarCourseware,view,big,teacher)};
+    wrap.appendChild(check);
+  }
+  if(view.calendarFeedback||teacher&&!view.previewMode){
+    wrap.appendChild(el('p',{style:'margin-top:10px;padding:10px;border-radius:8px;background:#eff6ff',text:'提示：同一行每向右一格加1，同一列每向下一格加7。请用这个规则自行核对题目表达。'}));
+  }
+  box.appendChild(wrap);
+}
 function cwFigure(wrap,f,big,view,teacher,stepCount){
   view=view||{};
   if(!f||!f.type)return;
@@ -308,6 +343,7 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
     box.appendChild(el('img',{src:f.data_url,alt:f.alt||'原卷插图',style:'display:block;max-width:100%;max-height:'+(big?'40vh':'300px')+';object-fit:contain;margin:0 auto;border:1px solid #e5e8f0;border-radius:8px'}));
     return;
   }
+  if(f.type==='calendar_compare'){cwCalendarCompare(box,f,view,big,teacher);return}
   if(f.type==='calendar_cross'){cwCalendarCross(box,f,view,big,teacher);return}
   if(f.type==='seating_pattern'){cwSeatingPattern(box,f,view,big,teacher,stepCount);return}
   if(f.type==='alternating_triangle'){cwAlternatingTriangle(box,f,view,big,teacher,stepCount);return}
@@ -385,6 +421,7 @@ function cwSteps(box,p,view,big,teacher){
   var wrap=el('div',{style:'max-width:980px;margin:0 auto;background:#fff;color:#111;border-radius:12px;padding:12px;line-height:1.75;'+(big?'font-size:2.8vh':'')});box.appendChild(wrap);
   wrap.appendChild(el('b',{text:p.title}));
   if(p.sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:p.sourceProblem}));
+  if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
   cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
   if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
   var shown=teacher?(view.previewMode?Math.max(1,view.step||0):p.steps.length):(view.step||0),list=el('ol',{style:'padding-left:1.6em;margin:12px 0'});
