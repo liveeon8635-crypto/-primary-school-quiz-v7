@@ -9,7 +9,7 @@ import pytest
 from changying.services import weekend_courseware as cw
 
 CASES = json.loads(
-    (Path(__file__).parent / "fixtures" / "weekend_lesson10_23_teacher_pdf.json").read_text("utf-8")
+    (Path(__file__).parents[1] / "changying" / "services" / "weekend_lesson10_teacher_reference.json").read_text("utf-8")
 )
 
 def test_exact_23_questions_and_chapter_positions():
