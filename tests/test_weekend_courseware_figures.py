@@ -40,6 +40,57 @@ def test_figures_are_data_checked_before_they_are_drawn():
     assert steps["figure"]["type"] == "table" and cw.public_params("steps", steps)["figure"] == steps["figure"]
 
 
+def test_hundred_chart_page_preview_opens_in_the_plan_editor(tmp_path):
+    """The 田字形百数表 figure draws an SVG arrow marker; that path must not crash the editor."""
+    import subprocess
+
+    dom = r'''
+const assert=require('assert');
+class E{
+  constructor(tag,a){this.tag=tag;this.a=a||{};this.children=[];this.parentNode=null;this.value=String(this.a.value==null?'':this.a.value);this.checked=false;this.handlers={};this._text=this.a.text||'';this.scrolled=false;this.className='';this.attrs={}}
+  appendChild(c){if(c.parentNode)c.parentNode.children=c.parentNode.children.filter(x=>x!==c);this.children.push(c);c.parentNode=this;if(this.tag==='select'&&!this.value)this.value=String(c.a.value==null?'':c.a.value);return c}
+  insertBefore(c,b){if(c.parentNode)c.parentNode.children=c.parentNode.children.filter(x=>x!==c);let i=b?this.children.indexOf(b):-1;this.children.splice(i<0?this.children.length:i,0,c);c.parentNode=this;return c}
+  get nextSibling(){if(!this.parentNode)return null;let i=this.parentNode.children.indexOf(this);return this.parentNode.children[i+1]||null}
+  addEventListener(k,f){this.handlers[k]=f}
+  setAttribute(k,v){this.attrs[k]=v}
+  set textContent(v){this._text=v;this.children=[]}
+  get textContent(){return this._text}
+  scrollIntoView(){this.scrolled=true}
+}
+function el(tag,attrs){var n=new E(tag,attrs);Object.keys(attrs||{}).forEach(function(k){if(k==='class')n.className=attrs[k];else if(k==='text')n.textContent=attrs[k];else if(k.slice(0,2)==='on')n.addEventListener(k.slice(2),attrs[k]);else if(attrs[k]===true)n.setAttribute(k,'');else if(attrs[k]!==false&&attrs[k]!=null)n.setAttribute(k,attrs[k])});for(var i=2;i<arguments.length;i++){var c=arguments[i];if(c==null)continue;n.appendChild(typeof c==='string'?new E('#text',{text:c}):c)}return n}
+var document={createElement:function(t){return new E(t,{})},createElementNS:function(ns,t){var n=new E(t,{});if(t==='svg')n.createSVGRect=function(){return {}};return n},getElementById:function(){return null}};
+var window={},sessionStorage={getItem:function(){return 'x'}},requestAnimationFrame=function(f){return f()},confirm=function(){return true},prompt=function(){return null};
+function all(e){return [e].concat(e.children.reduce(function(out,c){return out.concat(c instanceof E?all(c):[])},[]))}
+function find(e,text){return all(e).find(function(x){return x.tag==='button'&&x.a.text===text})}
+var payload={lessonId:10,subject:'数学',templates:['rotation','clock','steps','reading'],kindLabels:{rotation:'图形旋转',clock:'时钟旋转',steps:'分步讲解',reading:'阅读分析'},hasSource:true,
+  items:[{stage:3,page:11,kind:'steps',status:'draft',params:{title:'田字形百数表',problem:'“田”字形方格 百数表中，四格用 n、m 表示。',steps:['同行向右+1，同列向下+10。','四数和为 4n+22。'],answer:'4n+22',figure:{type:'hundred_chart_square',topLeftNumber:45},sourceFigure:{}},approved:null,writtenTask:false,templateId:null,pageText:'',updatedAt:''}],
+  pages:{'2':[],'3':['第1题','第2题','第3题','第4题','第5题','第6题','第7题','第8题','第9题','第10题','第11题','第12题 “田”字形方格 百数表中，“田”字形四格左上角的数用 n 表示。']}};
+function api(){return Promise.resolve(payload)}
+'''
+    exercise = r'''
+(async function(){
+  var root=new E('div');
+  cwPlan(root,10,null);
+  await new Promise(function(r){setTimeout(r,30)});
+  var open=find(root,'预览／修改');
+  assert(open,'preview button is rendered');
+  open.a.onclick();
+  await new Promise(function(r){setTimeout(r,30)});
+  var notes=all(root).filter(function(x){return x.a&&x.a.role==='status'}).map(function(x){return x.textContent}).filter(Boolean);
+  assert(!notes.some(function(t){return t.indexOf('预览打开失败')>=0}),notes.join('|'));
+  var nodes=all(root);
+  assert(nodes.some(function(x){return String(x.textContent||'').indexOf('百数表：同行向右')>=0}),'hundred chart preview is drawn');
+  assert(nodes.some(function(x){return x.tag==='marker'&&x.attrs.id==='cw-hundred-arrow'}),'arrow marker is created');
+  console.log('OK');
+})().catch(function(e){console.error(e);process.exit(1)});
+'''
+    script = tmp_path / 'hundred_chart_preview.js'
+    script.write_text(dom + COURSEWARE_JS + COURSEWARE_PLAN_JS + exercise, encoding='utf-8')
+    result = subprocess.run(['node', str(script)], capture_output=True, text=True, encoding='utf-8', timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert 'OK' in result.stdout
+
+
 def test_page_code_draws_figures_without_markup_and_answers_on_the_row():
     for t in ("function cwFigure(", "cwFigureText", "createSVGRect"):
         assert t in COURSEWARE_JS, t
