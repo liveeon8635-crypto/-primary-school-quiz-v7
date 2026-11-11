@@ -146,6 +146,8 @@ def required_visual_type(page_text: Any) -> str:
         return "table"
     if "a＋b²" in compact or "a+b²" in compact or ("小明算成" in text and "平方" in text):
         return "flow"
+    if ("计算小程序" in text or "程序输入" in text) and all(token in text for token in ("4", "9", "15", "11", "26", "44")):
+        return "flow"
     if "大正方形" in text and "小正方形" in text and "长方形" in text and "周长" in text:
         return "table"
     if "正方形边长" in text and "长方形长" in text and ("周长" in text or "面积" in text):
@@ -186,11 +188,13 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
                     "center": total // 9 if total and total % 9 == 0 else None,
                     "rows": [["a−11", "a−10", "a−9"], ["a−1", "a", "a+1"], ["a+9", "a+10", "a+11"]]}
         if "大正方形" in text and "小正方形" in text and "长方形" in text:
-            return {"type": "table", "rows": [["拼接排", "正方形数", "总宽"], ["上排", "3个小正方形", "3n"], ["下排", "2个大正方形", "2m"], ["同一长方形", "两排等宽", "2m=3n"]]}
+            return {"type": "table", "rows": [["拼接排", "正方形数", "总宽"], ["上排", "2个大正方形", "2m"], ["下排", "3个小正方形", "3n"], ["同一长方形", "两排等宽", "2m=3n"]]}
         if "正方形边长" in text and "长方形长" in text:
             return {"type": "table", "rows": [["图形", "周长", "面积"], ["正方形a", "4a", "a²"], ["长方形a,b", "2(a+b)", "ab"]]}
     if kind == "flow" and ("a＋b²" in text or "a+b²" in text or "小明算成" in text):
         return {"type": "flow", "boxes": ["原式 a+b²", "代入 a=5、b=3", "先求平方", "再做加法"], "branches": []}
+    if kind == "flow" and ("计算小程序" in text or "程序输入" in text):
+        return {"type": "flow", "boxes": ["输入 a", "×3", "−1", "输出 b"], "branches": []}
     if kind == "calendar_cross":
         total_match = re.search(r"五数和\s*(?:是|为)\s*(\d+)", text)
         total = int(total_match.group(1)) if total_match else 90
@@ -305,7 +309,7 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
     elif "大正方形" in text and "小正方形" in text and "长方形" in text:
         steps = [
             "观察大小正方形拼成的长方形：上下两排的宽度有什么关系？",
-            "下排由2个边长为m的大正方形组成，总宽2m；两排拼成同一长方形，所以2m=3n。",
+            "上排2个大正方形的总宽为2m，下排3个小正方形的总宽为3n；所以2m=3n。",
             "长方形的长是2m，宽是m+n，周长C=2[2m+(m+n)]=6m+2n。",
             "由2m=3n得6m=9n，所以C=9n+2n=11n。",
             "如果题目提供m的数值，再代入2m=3n计算n，并检查拼接宽度相等。",
