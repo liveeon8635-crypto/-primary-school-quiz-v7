@@ -26,7 +26,7 @@ textarea{min-height:150px;resize:vertical}
 select{font:inherit;min-height:46px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:#fff}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0}
 .notice{border-radius:10px;padding:10px 14px;margin:10px 0}.notice.error{background:#fef3f2;color:var(--bad)}.notice.ok{background:#ecfdf3;color:var(--ok)}.notice.warn{background:var(--warnbg);color:var(--warn);font-weight:600}
-.item{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}.item:first-child{border-top:0}
+.item{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}.item:first-child{border-top:0}.item>.t{flex:1 1 320px;min-width:240px}.item>button{flex:0 0 auto;min-width:68px;white-space:normal;writing-mode:horizontal-tb}
 .item input[type=checkbox]{width:26px;height:26px;margin-top:3px;flex:none}
 .item.done .t{text-decoration:line-through;color:var(--muted)}.t b{display:block}
 .edit{display:grid;grid-template-columns:90px 1fr 100px 1fr 46px;gap:8px;margin:6px 0}
