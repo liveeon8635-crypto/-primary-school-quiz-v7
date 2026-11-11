@@ -264,9 +264,15 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
         result["figure"] = figure
     # Even if an old slide lacks a figure, retain its existing explanation.
     # Only replace clearly empty or scaffold text.
-    placeholder_steps = not original_steps or all(
+    placeholder_steps = len(original_steps) < 2 or all(
         not str(step).strip() or "点下一步显示" in str(step) or "第1步" in str(step)
         for step in original_steps
+    ) or (
+        figure.get("type") in (
+            "calendar_compare", "calendar_cross", "seating_pattern",
+            "alternating_triangle", "running_track", "triangular_numbers",
+            "tile_pattern", "square_sticks_pattern", "hundred_chart_square",
+        ) and len(original_steps) < 4
     )
     if not placeholder_steps and not (
         legacy_calendar_answer_table and
