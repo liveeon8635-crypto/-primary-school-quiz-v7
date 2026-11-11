@@ -474,7 +474,7 @@ function cwRender(box,c,view,big,teacher,onTap){box.textContent='';view=view||{}
 function cwControl(box,c,sid){
   var view=JSON.parse(JSON.stringify(c.view||{})),stage=el('div'),bar=el('div',{class:'row'}),msg=el('div',{role:'status'});
   box.textContent='';box.appendChild(el('h2',{text:'互动课件：'+c.kindLabel+'（大屏同步，约3秒）'}));box.appendChild(bar);box.appendChild(stage);box.appendChild(msg);
-  function send(){api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:view}}).then(function(r){view=r.view;draw()}).catch(function(e){msg.textContent=e.message})}
+  function send(){var publicState={};Object.keys(view).forEach(function(k){if(k.charAt(0)!=='_')publicState[k]=view[k]});api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:publicState}}).then(function(r){view=r.view;draw()}).catch(function(e){msg.textContent=e.message})}
   function draw(){if(c.kind==='steps'&&c.params.figure&&c.params.figure.type==='calendar_compare')view._calendarOnChange=send;cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
   function button(text,fn){bar.appendChild(el('button',{text:text,style:'min-height:44px;min-width:44px',onclick:function(){fn();draw();send()}}))}
   if(c.kind==='rotation'){
