@@ -603,6 +603,24 @@ function cwPlan(box,lessonId,refresh){
       if(!p || typeof p!=='object')p={};
       if(!Array.isArray(p.steps))p.steps=[];
       if(!p.figure || typeof p.figure!=='object')p.figure={type:''};
+      // The legacy example-16 table is an answer key, not a useful calendar diagram.
+      // Upgrade only this recognisable legacy rendering; preserve teacher-authored steps.
+      var calendarSource=String(x.text||'')+' '+String(p.problem||'')+' '+String(p.title||'');
+      if(calendarSource.indexOf('月历')>=0 &&
+         (calendarSource.indexOf('框形辨析')>=0||calendarSource.indexOf('哪一种错误')>=0||calendarSource.indexOf('哪种错误')>=0)){
+        var oldCalendarTable=p.figure.type==='table' && (p.figure.rows||[]).some(function(r){
+          return (r||[]).some(function(c){return String(c).indexOf('月历关系')>=0||String(c).indexOf('竖列差10')>=0});
+        });
+        if(oldCalendarTable||!p.figure.type){
+          p.figure={type:'calendar_compare'};
+          if((p.steps||[]).some(function(line){return /选项C写成|因此C错误|竖列三格应相差7/.test(String(line))})){
+            p.steps=['观察月历：同一行、同一列的相邻日期分别怎样变化？',
+                     '切换A与B的框形，检查横向与纵向关系是否符合题意。',
+                     '检查C：若最下格为x，从下往上另外两格该怎样表达？',
+                     '比较D中中心对称的日期，再逐项判断并说出理由。'];
+          }
+        }
+      }
       var sourceText=String(x.text||'')+' '+String(p.problem||'')+' '+String(p.sourceProblem||''),normalizedSource=sourceText.replace(/[\s"'“”‘’「」『』]/g,''),required=null;
       if(normalizedSource.indexOf('田字形')>=0&&normalizedSource.indexOf('百数表')>=0){required={type:'hundred_chart_square',topLeftNumber:45};}
       else if(sourceText.indexOf('地砖')>=0&&(sourceText.indexOf('排列')>=0||sourceText.indexOf('白地砖')>=0)){
@@ -646,8 +664,8 @@ function cwPlan(box,lessonId,refresh){
       }else if(kind==='steps'){
         field('problem','题目原文（不含答案，生成学生作答题时使用）',area(p.problem));
         field('steps','讲解步骤（每行一步，2—6 步）',area((p.steps||[]).join('\n')));field('answer','答案',input(p.answer));
-        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律'],['tile_pattern','地砖排列规律'],['square_sticks_pattern','连续正方形小棒规律'],['hundred_chart_square','百数表田字形四数规律']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
-        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:ft.value==='tile_pattern'?{type:ft.value,whiteCounts:[5,8],blueCounts:[4,7],targetTerm:10,targetBlue:100}:ft.value==='square_sticks_pattern'?{type:ft.value,sampleCounts:[4,7,10],targetSquares:[8,60],targetSticks:100}:ft.value==='hundred_chart_square'?{type:ft.value,topLeftNumber:45}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
+        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['calendar_compare','月历框形辨析'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律'],['tile_pattern','地砖排列规律'],['square_sticks_pattern','连续正方形小棒规律'],['hundred_chart_square','百数表田字形四数规律']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
+        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='calendar_compare'?{type:ft.value}:ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:ft.value==='tile_pattern'?{type:ft.value,whiteCounts:[5,8],blueCounts:[4,7],targetTerm:10,targetBlue:100}:ft.value==='square_sticks_pattern'?{type:ft.value,sampleCounts:[4,7,10],targetSquares:[8,60],targetSticks:100}:ft.value==='hundred_chart_square'?{type:ft.value,topLeftNumber:45}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
         if(f.type==='segment'){
           field('figA','线段上的点（名称:位置，分号隔开，如 A:0; C:3; B:6; D:10）',input((f.points||[]).map(function(q){return q.name+':'+q.at}).join('; ')));
           field('figB','标注（如 A-D:L; A-B:x，可留空）',input((f.marks||[]).map(function(m){return m.from+'-'+m.to+':'+m.label}).join('; ')));
@@ -694,6 +712,7 @@ function cwPlan(box,lessonId,refresh){
     function parts(v,sep){return String(v||'').split(sep).map(function(x){return x.trim()}).filter(Boolean)}
     function figure(){
       var t=fields.figType?fields.figType.value:'';if(!t)return {};if(t==='uploaded_image')return p.figure||{};
+      if(t==='calendar_compare')return {type:t};
       if(t==='calendar_cross')return {type:t,center:Number(fields.figCenter.value),daysInMonth:Number(fields.figDays.value),firstWeekday:Number(fields.figWeekday.value),total:Number(fields.figTotal.value)};
       if(t==='seating_pattern')return {type:t,sampleCounts:parts(fields.figCounts.value,/,/).map(function(x){return Number(x)})};
       if(t==='alternating_triangle')return {type:t,rows:Number(fields.figRows.value),differenceSymbol:fields.figDiff.value};
@@ -733,6 +752,7 @@ function cwPlan(box,lessonId,refresh){
         nav.appendChild(el('button',{text:'\u4e0a\u4e00\u6b65',disabled:previewState.step<=1,onclick:function(){previewState.step=Math.max(1,previewState.step-1);show()}}));
         nav.appendChild(el('button',{text:'\u4e0b\u4e00\u6b65',disabled:previewState.step>=v.steps.length,onclick:function(){previewState.step=Math.min(v.steps.length,previewState.step+1);show()}}));
         nav.appendChild(el('span',{class:'muted',text:'\u5df2\u663e\u793a '+previewState.step+' / '+v.steps.length+' \u6b65'}));preview.appendChild(nav);
+        if(v.figure&&v.figure.type==='calendar_compare')previewState._calendarOnChange=show;
         cwRender(view,{kind:kind,params:v},previewState,false,true);
       }
       else cwRender(view,{kind:kind,params:v},{showMaterial:true,showPrompt:true},false,true,function(i){var k=p.evidence.indexOf(i);if(k>=0)p.evidence.splice(k,1);else p.evidence.push(i);show()});
