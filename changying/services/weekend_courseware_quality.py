@@ -71,12 +71,15 @@ def audit_example_pages(
         problems: list[str] = []
         warnings: list[str] = []
         expected = required_visual_type(source)
-        saved = item.get("params") if item and isinstance(item.get("params"), dict) else {}
+        approved = item.get("approved") if item and isinstance(item.get("approved"), dict) else None
+        draft = item.get("params") if item and isinstance(item.get("params"), dict) else {}
+        # The approved snapshot is what the classroom sees; do not mistake a
+        # newer, unfinished teacher draft for the quality of the live lesson.
+        saved = approved if approved is not None else draft
         figure = saved.get("figure") if isinstance(saved.get("figure"), dict) else {}
         figure_type = str(figure.get("type") or "")
         steps = saved.get("steps") if isinstance(saved.get("steps"), list) else []
         answer = _text(saved.get("answer"))
-        approved = item.get("approved") if item else None
 
         if not item:
             problems.append("尚未配置互动课件")
@@ -87,7 +90,7 @@ def audit_example_pages(
                 problems.append("课件绑定的原题与当前教案不一致")
             if item.get("approvedPageText") and _text(item["approvedPageText"]) != _text(source):
                 problems.append("已审核课件对应的原题发生变化")
-            if approved is not None and saved != approved:
+            if approved is not None and draft != approved:
                 warnings.append("存在新草稿：课堂版本与当前编辑版本不同")
             if _figure_exposes_choice(figure):
                 problems.append("图示中含直接判断结论，可能提前泄露选择题答案")
