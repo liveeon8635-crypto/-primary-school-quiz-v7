@@ -237,7 +237,7 @@ def test_remaining_tenth_lesson_questions_get_matching_diagrams_and_explanations
         ("月历“十”字框：若五数和是90", "calendar_cross"),
         ("说明月历十字框中最上与最下之和为何等于最左与最右之和", "calendar_cross"),
         ("3×3方框圈九个数，中心数为a，九数和是多少", "table"),
-        ("月历框形辨析：哪一种错误？", "table"),
+        ("月历框形辨析：哪一种错误？", "calendar_compare"),
         ("正方形边长a、长方形长a宽b，求周长和面积公式", "table"),
         ("地砖排列：第1幅5块白地砖4块蓝地砖，第2幅8块白地砖7块蓝地砖", "tile_pattern"),
         ("当a=5、b=3，求a+b²；小明算成5+6", "flow"),
@@ -256,6 +256,38 @@ def test_remaining_tenth_lesson_questions_get_matching_diagrams_and_explanations
         assert not any("点下一步显示" in step for step in repaired["steps"])
     assert ".item{display:flex;flex-wrap:wrap;" in PAGE_CSS
     assert ".item>button{flex:0 0 auto;min-width:68px" in PAGE_CSS
+
+def test_calendar_comparison_is_answer_free_and_keeps_four_shapes():
+    question = "月历框形辨析：哪一种错误？"
+    figure = required_visual_figure(question)
+    assert figure == {"type": "calendar_compare"}
+    assert cw.clean_figure(figure) == figure
+    repaired = _repair_courseware_visual({"figure": {}, "steps": ["旧步骤"], "answer": "C"}, question)
+    assert repaired["figure"] == figure
+    assert len(repaired["steps"]) == 4
+    assert all("C错误" not in s and "选项C写成" not in s for s in repaired["steps"])
+    assert "function cwCalendarCompare(" in COURSEWARE_JS
+    assert "view.calendarChoice" in COURSEWARE_JS
+
+def test_calendar_choice_is_validated_and_survives_teacher_screen_state():
+    params = cw.clean_steps({
+        "title": "月历框形辨析", "problem": "哪一种错误？",
+        "steps": ["先观察", "再比较", "自己表达", "独立判断"],
+        "answer": "C", "figure": {"type": "calendar_compare"}
+    })
+    assert cw.clean_view("steps", params, {"calendarChoice": "D", "calendarFeedback": True})["calendarChoice"] == "D"
+    assert cw.clean_view("steps", params, {"calendarChoice": "invalid"})["calendarChoice"] == "A"
+    assert cw.clean_view("steps", params, {"calendarChoice": "B", "calendarFeedback": True})["calendarFeedback"]
+    assert "view._calendarOnChange=send" in COURSEWARE_JS
+    assert "if(view._calendarOnChange)view._calendarOnChange()" in COURSEWARE_JS
+
+def test_calendar_editor_uses_existing_preview_and_review_workflow():
+    """The new diagram should be selectable and clickable in the original editor."""
+    assert "['calendar_compare','月历框形辨析']" in COURSEWARE_PLAN_JS
+    assert "p.figure={type:'calendar_compare'}" in COURSEWARE_PLAN_JS
+    assert "if(t==='calendar_compare')return {type:t}" in COURSEWARE_PLAN_JS
+    assert "previewState._calendarOnChange=show" in COURSEWARE_PLAN_JS
+    assert "选项C写成" in COURSEWARE_PLAN_JS  # recognises only outdated stock explanation
     nine = required_visual_figure("第15题 3×3方格规律：用3×3方框圈九个数，九数和为2016，中心数是多少")
     assert nine["nineGrid"] is True and nine["targetSum"] == 2016 and nine["center"] == 224
     assert _repair_courseware_visual({"figure": {}}, "3×3方格中，九数和为2016，中心数是多少")["figure"]["nineGrid"] is True
