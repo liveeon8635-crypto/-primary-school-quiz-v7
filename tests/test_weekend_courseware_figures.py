@@ -239,3 +239,11 @@ def test_calendar_choice_is_validated_and_survives_teacher_screen_state():
     assert cw.clean_view("steps", params, {"calendarChoice": "B", "calendarFeedback": True})["calendarFeedback"]
     assert "view._calendarOnChange=send" in COURSEWARE_JS
     assert "if(view._calendarOnChange)view._calendarOnChange()" in COURSEWARE_JS
+
+def test_calendar_editor_uses_existing_preview_and_review_workflow():
+    """The new diagram should be selectable and clickable in the original editor."""
+    assert "['calendar_compare','月历框形辨析']" in COURSEWARE_PLAN_JS
+    assert "p.figure={type:'calendar_compare'}" in COURSEWARE_PLAN_JS
+    assert "if(t==='calendar_compare')return {type:t}" in COURSEWARE_PLAN_JS
+    assert "previewState._calendarOnChange=show" in COURSEWARE_PLAN_JS
+    assert "选项C写成" in COURSEWARE_PLAN_JS  # recognises only outdated stock explanation
