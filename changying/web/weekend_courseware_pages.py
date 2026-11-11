@@ -55,6 +55,7 @@ function cwFigureText(f){
   if(f.type==='segment')return '线段上的点：'+f.points.map(function(q){return q.name}).join(' — ')+(f.marks.length?'；'+f.marks.map(function(m){return m.from+m.to+'＝'+m.label}).join('，'):'');
   if(f.type==='flow')return '程序：'+f.boxes.join(' → ')+(f.branches.length?'；'+f.branches.map(function(b){return b.when+'：'+b.boxes.join(' → ')}).join('；'):'');
   if(f.type==='shape')return CW_SHAPES[f.shape]+'：'+Object.keys(f.labels).map(function(k){return f.labels[k]}).join('，');
+  if(f.type==='calendar_compare')return '月历四种框形：A一行四格、B两行两列、C一列三格、D三行三列';
   if(f.type==='calendar_cross')return '\u6708\u5386\u5341\u5b57\u6846\uff1a\u4e2d\u5fc3 '+f.center+'\uff0c\u4e94\u6570\u548c '+f.total;
   if(f.type==='seating_pattern')return '\u65b9\u684c\u4eba\u6570\u89c4\u5f8b\uff1a'+f.sampleCounts.join('\u3001');
   if(f.type==='alternating_triangle')return '\u9ed1\u767d\u68cb\u5b50\u4e09\u89d2\u5f62\uff1a'+f.rows+'\u5c42\uff0c\u5dee\u503c '+f.differenceSymbol;
@@ -70,6 +71,7 @@ function cwFigureOk(f){
   if(f.type==='segment'){var at=(f.points||[]).map(function(q){return q.at});return at.length>=2&&at.every(function(a){return isFinite(a)})&&Math.max.apply(null,at)>Math.min.apply(null,at)}
   if(f.type==='flow')return (f.boxes||[]).length>0||(f.branches||[]).length>0;
   if(f.type==='shape')return !!CW_SHAPES[f.shape];
+  if(f.type==='calendar_compare')return true;
   if(f.type==='calendar_cross')return isFinite(f.center)&&isFinite(f.daysInMonth)&&isFinite(f.firstWeekday)&&isFinite(f.total)&&f.center===f.total/5;
   if(f.type==='seating_pattern')return (f.sampleCounts||[]).length>=2&&f.sampleCounts.length<=4&&f.sampleCounts[0]===8&&f.sampleCounts.every(function(n,i){return isFinite(n)&&n===8+i*4});
   if(f.type==='alternating_triangle')return f.rows>=4&&f.rows<=8&&f.rows%2===0&&/^[A-Za-z]$/.test(f.differenceSymbol||'');
@@ -319,6 +321,39 @@ function cwNineGrid(box,f,view,big,teacher,stepCount){
   wrap.appendChild(el('div',{style:'margin-top:10px;text-align:center;font-weight:700;color:'+(step>=3?'#17449b':'#475467')+';font-size:'+(big?'2.1vh':'15px'),text:caption}));
   box.appendChild(wrap);
 }
+function cwCalendarCompare(box,f,view,big,teacher){
+  var wrap=el('div',{style:'max-width:920px;margin:10px auto;padding:14px;border:1px solid #d5dfef;border-radius:14px;background:#f8fbff'});
+  wrap.appendChild(el('p',{style:'font-weight:700;margin:0 0 8px',text:'月历观察实验：先比较日期，再判断题目中的表达是否正确。'}));
+  var options=[['A',4,1],['B',2,2],['C',1,3],['D',3,3]];
+  var selected=view.calendarChoice||'A';
+  var nav=el('div',{style:'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px'});
+  options.forEach(function(opt){
+    var btn=el('button',{type:'button',style:'padding:8px 18px;border-radius:9px;border:2px solid '+(selected===opt[0]?'#2563eb':'#b7c8df')+';background:'+(selected===opt[0]?'#dbeafe':'#fff')+';font-weight:700',text:opt[0]+' · '+opt[1]+'×'+opt[2]});
+    btn.onclick=function(){view.calendarChoice=opt[0];view.calendarFeedback=false;if(view._calendarOnChange)view._calendarOnChange();else cwRender(box.parentNode.parentNode,view._calendarCourseware,view,big,teacher)};
+    nav.appendChild(btn);
+  });
+  wrap.appendChild(nav);
+  var shape=options.filter(function(o){return o[0]===selected})[0]||options[0];
+  var calendar=el('div',{style:'display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;max-width:620px;margin:0 auto'});
+  ['一','二','三','四','五','六','日'].forEach(function(d){calendar.appendChild(el('div',{style:'text-align:center;font-weight:700;color:#475569;padding:6px',text:d}))});
+  for(var day=1;day<=35;day++){
+    var row=Math.floor((day-1)/7),col=(day-1)%7,active=row>=1&&row<1+shape[2]&&col>=1&&col<1+shape[1];
+    calendar.appendChild(el('div',{style:'text-align:center;padding:8px 0;min-height:24px;border:1px solid '+(active?'#2563eb':'#e2e8f0')+';border-radius:6px;background:'+(active?'#bfdbfe':'#fff')+';font-weight:'+(active?'700':'400'),text:day<=31?String(day):''}));
+  }
+  wrap.appendChild(calendar);
+  wrap.appendChild(el('p',{style:'margin:10px 0 4px;color:#334155',text:'蓝色区域是 '+selected+' 的示意框形。想一想：横向与纵向每移动一格，日期分别怎样变化？'}));
+  var question=selected==='C'?'如果最下方是 x，向上一格、两格分别应是什么？':selected==='D'?'中心对称的两格，与中心格有什么数量关系？':'这些蓝色日期能否支持题目对 '+selected+' 的描述？';
+  wrap.appendChild(el('p',{style:'font-weight:600',text:question}));
+  if(!teacher){
+    var check=el('button',{type:'button',style:'padding:8px 14px;border:1px solid #2563eb;border-radius:8px;background:#fff;color:#1d4ed8',text:'我已思考，查看提示'});
+    check.onclick=function(){view.calendarFeedback=true;if(view._calendarOnChange)view._calendarOnChange();else cwRender(box.parentNode.parentNode,view._calendarCourseware,view,big,teacher)};
+    wrap.appendChild(check);
+  }
+  if(view.calendarFeedback||teacher&&!view.previewMode){
+    wrap.appendChild(el('p',{style:'margin-top:10px;padding:10px;border-radius:8px;background:#eff6ff',text:'提示：同一行每向右一格加1，同一列每向下一格加7。请用这个规则自行核对题目表达。'}));
+  }
+  box.appendChild(wrap);
+}
 function cwFigure(wrap,f,big,view,teacher,stepCount){
   view=view||{};
   if(!f||!f.type)return;
@@ -328,6 +363,7 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
     box.appendChild(el('img',{src:f.data_url,alt:f.alt||'原卷插图',style:'display:block;max-width:100%;max-height:'+(big?'40vh':'300px')+';object-fit:contain;margin:0 auto;border:1px solid #e5e8f0;border-radius:8px'}));
     return;
   }
+  if(f.type==='calendar_compare'){cwCalendarCompare(box,f,view,big,teacher);return}
   if(f.type==='calendar_cross'){cwCalendarCross(box,f,view,big,teacher);return}
   if(f.type==='seating_pattern'){cwSeatingPattern(box,f,view,big,teacher,stepCount);return}
   if(f.type==='alternating_triangle'){cwAlternatingTriangle(box,f,view,big,teacher,stepCount);return}
@@ -406,6 +442,7 @@ function cwSteps(box,p,view,big,teacher){
   var wrap=el('div',{style:'max-width:980px;margin:0 auto;background:#fff;color:#111;border-radius:12px;padding:12px;line-height:1.75;'+(big?'font-size:2.8vh':'')});box.appendChild(wrap);
   wrap.appendChild(el('b',{text:p.title}));
   if(p.sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:p.sourceProblem}));
+  if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
   cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
   if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
   var shown=teacher?(view.previewMode?Math.max(1,view.step||0):p.steps.length):(view.step||0),list=el('ol',{style:'padding-left:1.6em;margin:12px 0'});
@@ -438,7 +475,7 @@ function cwControl(box,c,sid){
   var view=JSON.parse(JSON.stringify(c.view||{})),stage=el('div'),bar=el('div',{class:'row'}),msg=el('div',{role:'status'});
   box.textContent='';box.appendChild(el('h2',{text:'互动课件：'+c.kindLabel+'（大屏同步，约3秒）'}));box.appendChild(bar);box.appendChild(stage);box.appendChild(msg);
   function send(){api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:view}}).then(function(r){view=r.view;draw()}).catch(function(e){msg.textContent=e.message})}
-  function draw(){cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
+  function draw(){if(c.kind==='steps'&&c.params.figure&&c.params.figure.type==='calendar_compare')view._calendarOnChange=send;cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
   function button(text,fn){bar.appendChild(el('button',{text:text,style:'min-height:44px;min-width:44px',onclick:function(){fn();draw();send()}}))}
   if(c.kind==='rotation'){
     var p=c.params,range=el('input',{type:'range',min:0,max:p.angle,step:15,value:view.angle||0,style:'width:220px;min-height:44px','aria-label':'旋转角度'});
@@ -503,11 +540,24 @@ function cwPlan(box,lessonId,refresh){
     }});
     box.appendChild(el('div',{class:'row'},stageSel,all,el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})),approveAll));
     box.appendChild(msg);
+    if(stageNo==='3'&&d.qualityAudit){
+      var audit=d.qualityAudit;
+      box.appendChild(el('div',{class:'notice warn',style:'margin:10px 0;white-space:normal',
+        text:'课件逐页体检：共 '+audit.totalPages+' 页，已配置 '+audit.configured+' 页，发现明确问题 '+audit.flagged+' 页。全部仍须与原题逐页人工核对；机器未报警不等于验收通过。'}));
+    }
     var rows=el('div'),editor=el('div');box.appendChild(rows);box.appendChild(editor);editorBox=editor;notes={};rowEls={};
     list.forEach(function(x){
       var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
       var line=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:(x.page==null?'':'第'+(x.page+1)+'页：')+x.text}),
         el('div',{class:'row'},el('span',{class:'tag '+tag[0],text:tag[1]}),it?el('span',{class:'muted',text:d.kindLabels[it.kind]+(it.writtenTask?' · 含学生作答题':'')}):null)));
+      if(stageNo==='3'&&d.qualityAudit&&x.page!=null){
+        var auditRow=(d.qualityAudit.pages||[])[x.page];
+        if(auditRow){
+          var findings=(auditRow.issues||[]).concat(auditRow.warnings||[]);
+          line.appendChild(el('div',{style:'flex-basis:100%;font-size:13px;color:'+(auditRow.issues.length?'#b42318':'#475467'),
+            text:findings.length?'课件体检：'+findings.join('；'):'课件体检：暂无机器识别问题，仍须对照原题和课堂效果人工核对'}));
+        }
+      }
       var note=el('div',{role:'status','aria-live':'polite',style:'flex-basis:100%'});notes[String(x.page)]=note;
       line.appendChild(el('button',{text:it?'重新生成':'生成',onclick:function(e){
         if(busy){note.textContent='正在处理另一页，请等它完成后再点。';return}
@@ -587,6 +637,24 @@ function cwPlan(box,lessonId,refresh){
       if(!p || typeof p!=='object')p={};
       if(!Array.isArray(p.steps))p.steps=[];
       if(!p.figure || typeof p.figure!=='object')p.figure={type:''};
+      // The legacy example-16 table is an answer key, not a useful calendar diagram.
+      // Upgrade only this recognisable legacy rendering; preserve teacher-authored steps.
+      var calendarSource=String(x.text||'')+' '+String(p.problem||'')+' '+String(p.title||'');
+      if(calendarSource.indexOf('月历')>=0 &&
+         (calendarSource.indexOf('框形辨析')>=0||calendarSource.indexOf('哪一种错误')>=0||calendarSource.indexOf('哪种错误')>=0)){
+        var oldCalendarTable=p.figure.type==='table' && (p.figure.rows||[]).some(function(r){
+          return (r||[]).some(function(c){return String(c).indexOf('月历关系')>=0||String(c).indexOf('竖列差10')>=0});
+        });
+        if(oldCalendarTable||!p.figure.type){
+          p.figure={type:'calendar_compare'};
+          if((p.steps||[]).some(function(line){return /选项C写成|因此C错误|竖列三格应相差7/.test(String(line))})){
+            p.steps=['观察月历：同一行、同一列的相邻日期分别怎样变化？',
+                     '切换A与B的框形，检查横向与纵向关系是否符合题意。',
+                     '检查C：若最下格为x，从下往上另外两格该怎样表达？',
+                     '比较D中中心对称的日期，再逐项判断并说出理由。'];
+          }
+        }
+      }
       var sourceText=String(x.text||'')+' '+String(p.problem||'')+' '+String(p.sourceProblem||''),normalizedSource=sourceText.replace(/[\s"'“”‘’「」『』]/g,''),required=null;
       if(normalizedSource.indexOf('田字形')>=0&&normalizedSource.indexOf('百数表')>=0){required={type:'hundred_chart_square',topLeftNumber:45};}
       else if(sourceText.indexOf('地砖')>=0&&(sourceText.indexOf('排列')>=0||sourceText.indexOf('白地砖')>=0)){
@@ -630,8 +698,8 @@ function cwPlan(box,lessonId,refresh){
       }else if(kind==='steps'){
         field('problem','题目原文（不含答案，生成学生作答题时使用）',area(p.problem));
         field('steps','讲解步骤（每行一步，2—6 步）',area((p.steps||[]).join('\n')));field('answer','答案',input(p.answer));
-        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律'],['tile_pattern','地砖排列规律'],['square_sticks_pattern','连续正方形小棒规律'],['hundred_chart_square','百数表田字形四数规律']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
-        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:ft.value==='tile_pattern'?{type:ft.value,whiteCounts:[5,8],blueCounts:[4,7],targetTerm:10,targetBlue:100}:ft.value==='square_sticks_pattern'?{type:ft.value,sampleCounts:[4,7,10],targetSquares:[8,60],targetSticks:100}:ft.value==='hundred_chart_square'?{type:ft.value,topLeftNumber:45}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
+        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['calendar_compare','月历框形辨析'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律'],['tile_pattern','地砖排列规律'],['square_sticks_pattern','连续正方形小棒规律'],['hundred_chart_square','百数表田字形四数规律']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
+        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='calendar_compare'?{type:ft.value}:ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:ft.value==='tile_pattern'?{type:ft.value,whiteCounts:[5,8],blueCounts:[4,7],targetTerm:10,targetBlue:100}:ft.value==='square_sticks_pattern'?{type:ft.value,sampleCounts:[4,7,10],targetSquares:[8,60],targetSticks:100}:ft.value==='hundred_chart_square'?{type:ft.value,topLeftNumber:45}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
         if(f.type==='segment'){
           field('figA','线段上的点（名称:位置，分号隔开，如 A:0; C:3; B:6; D:10）',input((f.points||[]).map(function(q){return q.name+':'+q.at}).join('; ')));
           field('figB','标注（如 A-D:L; A-B:x，可留空）',input((f.marks||[]).map(function(m){return m.from+'-'+m.to+':'+m.label}).join('; ')));
@@ -678,6 +746,7 @@ function cwPlan(box,lessonId,refresh){
     function parts(v,sep){return String(v||'').split(sep).map(function(x){return x.trim()}).filter(Boolean)}
     function figure(){
       var t=fields.figType?fields.figType.value:'';if(!t)return {};if(t==='uploaded_image')return p.figure||{};
+      if(t==='calendar_compare')return {type:t};
       if(t==='calendar_cross')return {type:t,center:Number(fields.figCenter.value),daysInMonth:Number(fields.figDays.value),firstWeekday:Number(fields.figWeekday.value),total:Number(fields.figTotal.value)};
       if(t==='seating_pattern')return {type:t,sampleCounts:parts(fields.figCounts.value,/,/).map(function(x){return Number(x)})};
       if(t==='alternating_triangle')return {type:t,rows:Number(fields.figRows.value),differenceSymbol:fields.figDiff.value};
@@ -718,6 +787,7 @@ function cwPlan(box,lessonId,refresh){
         nav.appendChild(el('button',{text:'\u4e0a\u4e00\u6b65',disabled:previewState.step<=1,onclick:function(){previewState.step=Math.max(1,previewState.step-1);show()}}));
         nav.appendChild(el('button',{text:'\u4e0b\u4e00\u6b65',disabled:previewState.step>=v.steps.length,onclick:function(){previewState.step=Math.min(v.steps.length,previewState.step+1);show()}}));
         nav.appendChild(el('span',{class:'muted',text:'\u5df2\u663e\u793a '+previewState.step+' / '+v.steps.length+' \u6b65'}));preview.appendChild(nav);
+        if(v.figure&&v.figure.type==='calendar_compare')previewState._calendarOnChange=show;
         cwRender(view,{kind:kind,params:v},previewState,false,true);
       }
       else cwRender(view,{kind:kind,params:v},{showMaterial:true,showPrompt:true},false,true,function(i){var k=p.evidence.indexOf(i);if(k>=0)p.evidence.splice(k,1);else p.evidence.push(i);show()});
