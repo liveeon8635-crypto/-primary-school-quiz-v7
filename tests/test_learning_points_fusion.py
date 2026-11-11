@@ -325,8 +325,9 @@ with TestClient(app) as client:
             ]
         },
     )
-    assert reinforcement_resubmitted.status_code == 409, reinforcement_resubmitted.text
-    assert reinforcement_resubmitted.json()["detail"] == "在线答题已提交，不能重复提交"
+    assert reinforcement_resubmitted.status_code == 200, reinforcement_resubmitted.text
+    assert reinforcement_resubmitted.json()["id"] == reinforcement_body["id"]
+    assert reinforcement_resubmitted.json()["learningPointsAwarded"] == 0
     after_reinforcement_resubmit = client.get("/student/points", headers=sh).json()
     assert after_reinforcement_resubmit["summary"]["balance"] == baseline_balance + 5
     assert after_reinforcement_resubmit["summary"]["learning"] == baseline_learning + 5
@@ -364,3 +365,4 @@ with TestClient(app) as client:
         f"stdout:\n{result.stdout}\n"
         f"stderr:\n{result.stderr}"
     )
+
