@@ -249,7 +249,9 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
             "先观察九宫格：同一行和同一列相邻数如何变化？试着找出中心格。",
             "设中心数为a，中心周围两两对称：a−11与a+11、a−10与a+10、a−9与a+9、a−1与a+1。",
             "四组对称数各相加都是2a，再加中心a，九数和为9a。",
-            "九数和为2016时，中心数a=2016÷9=224。",
+            (f"九数和为{figure['targetSum']}时，中心数={figure['targetSum']}÷9={figure['center']}。"
+             if figure.get("targetSum") is not None and figure.get("center") is not None
+             else "如果题目给出九数和，请自己用总和÷9求中心数，并检验是否为整数。"),
         ]
     elif "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
         steps = [
@@ -262,8 +264,8 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
         steps = [
             "观察正方形和长方形：哪些边相等？周长与面积分别要求什么？",
             "长方形长a、宽b，对边相等，所以周长2(a+b)、面积ab。",
-            "由m=n+20且m=37，代入得37=n+20。",
-            "等式两边同时减20，得到n=17。",
+            "根据原题给出的边长或字母关系，代入相应的周长、面积公式。",
+            "自己检查结果的单位，并说明周长与面积的区别。",
         ]
     elif "a＋b²" in text or "a+b²" in text or "小明算成" in text:
         steps = [
@@ -278,7 +280,7 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
             "下排由2个边长为m的大正方形组成，总宽2m；两排拼成同一长方形，所以2m=3n。",
             "长方形的长是2m，宽是m+n，周长C=2[2m+(m+n)]=6m+2n。",
             "由2m=3n得6m=9n，所以C=9n+2n=11n。",
-            "当m=3时，2m=3n，6=3n，n=2。",
+            "如果题目提供m的数值，再代入2m=3n计算n，并检查拼接宽度相等。",
         ]
     elif figure["type"] == "hundred_chart_square":
         steps = [
@@ -316,13 +318,13 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
         white_n = white[0] + (target_n - 1) * white_step
         blue_n = blue[0] + (target_n - 1) * blue_step
         reverse_n = (target_blue - blue[0] + blue_step - 1) // blue_step + 1
-        result["steps"] = [f"第1幅白砖{white[0]}块、蓝砖{blue[0]}块；第2幅白砖{white[1]}块、蓝砖{blue[1]}块。",
+        result["steps"] = ["先观察前两幅地砖：白砖与蓝砖的数量分别怎样变化？",
                            f"两种颜色每增加一幅分别增加{white_step}块和{blue_step}块。",
                            f"第n幅白砖为{white[0]}+{white_step}(n−1)，蓝砖为{blue[0]}+{blue_step}(n−1)。",
                            f"第{target_n}幅白砖{white_n}块；蓝砖为{target_blue}块时对应第{reverse_n}幅。"]
     elif figure["type"] == "running_track":
         fast, slow, symbol = figure["fastSpeed"], figure["slowSpeed"], figure["distanceSymbol"]
-        result["steps"] = [f"观察同向跑步：快者追上一整圈时，两人累计路程相差多少？{symbol}米。",
+        result["steps"] = ["观察同向跑步：快者追上一整圈时，两人累计路程相差多少？",
                            f"快者每分钟跑{fast}米，慢者每分钟跑{slow}米。",
                            f"每分钟路程差为{fast}−{slow}={fast-slow}米。",
                            f"追上一整圈所需时间={symbol}÷{fast-slow}分钟。"]
