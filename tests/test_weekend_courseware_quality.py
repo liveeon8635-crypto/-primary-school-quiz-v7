@@ -94,3 +94,30 @@ def test_first_step_rule_statement_requires_more_guidance():
     item["params"]["steps"][0] = "观察月历：同一行相邻日期差多少？"
     other = audit_example_pages(["月历规律"], [item], required_visual_type)
     assert not any("直接讲出规律" in warning for warning in other["pages"][0]["warnings"])
+
+
+def test_known_example_repairs_do_not_invent_other_question_answers():
+    from changying.web.weekend_courseware import _repair_courseware_visual
+    from changying.services import weekend_courseware as cw
+
+    nine = _repair_courseware_visual(
+        {"figure": {}, "steps": []},
+        "3×3方框圈九个数，九数和为180，中心数是多少？",
+    )
+    assert "180÷9=20" in nine["steps"][-1]
+    assert not any("2016" in line for line in nine["steps"])
+    unknown = _repair_courseware_visual(
+        {"figure": {}, "steps": []},
+        "3×3方框圈九个数，中心数如何表示？",
+    )
+    assert not any("224" in line for line in unknown["steps"])
+    rectangles = _repair_courseware_visual(
+        {"figure": {}, "steps": []},
+        "正方形边长a，长方形长a宽b，求周长和面积公式",
+    )
+    assert not any("n=17" in line for line in rectangles["steps"])
+    prompt = cw.generation_prompt("数学", {
+        "title": "数学", "coreTarget": "表达数学关系", "pageText": "例题",
+    })
+    assert "首步只提出观察或操作问题" in prompt
+    assert "不得把选择题的正确/错误判断表" in prompt
