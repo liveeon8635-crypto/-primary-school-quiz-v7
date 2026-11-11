@@ -301,6 +301,26 @@ function cwTriangularNumbers(box,f,view,big,teacher,stepCount){
     wrap.appendChild(formula);
   }
 }
+function cwNineGrid(box,f,view,big,teacher,stepCount){
+  var finalStep=Math.max(4,stepCount||4),step=teacher&&!view.previewMode?finalStep:Math.max(1,view.step||0),rows=f.rows||[];
+  var pairs=[[[0,0],[2,2]],[[0,1],[2,1]],[[0,2],[2,0]],[[1,0],[1,2]]],
+      colors=[['#e0f2fe','#0284c7'],['#dcfce7','#15803d'],['#fef3c7','#b45309'],['#fae8ff','#a21caf']],pairAt={};
+  pairs.forEach(function(p,k){p.forEach(function(q){pairAt[q[0]+','+q[1]]=k})});
+  var wrap=el('div',{style:'max-width:640px;margin:10px auto;padding:14px 16px 12px;border:1px solid #d0d5dd;border-radius:16px;background:linear-gradient(180deg,#fff,#f8fafc);box-shadow:0 8px 22px #10182810'});
+  wrap.appendChild(el('div',{style:'text-align:center;color:#667085;font-size:'+(big?'1.4vh':'12px')+';font-weight:600;letter-spacing:.02em',text:'百数表九宫格：同行向右 +1，同列向下 +10'}));
+  var grid=el('div',{style:'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-width:'+(big?'480px':'360px')+';margin:8px auto'});
+  rows.forEach(function(r,i){r.forEach(function(cell,j){
+    var pair=step>=2&&pairAt[i+','+j]!=null?colors[pairAt[i+','+j]]:null,center=i===1&&j===1,active=center&&step>=3;
+    var bg=active?'#1f6feb':pair?pair[0]:'#fff',bd=active?'#1f6feb':pair?pair[1]:'#d0d5dd',
+        fg=active?'#fff':center?'#1f6feb':'#1c2333',
+        label=center&&step>=4&&f.center!=null?String(f.center):cell;
+    grid.appendChild(el('div',{style:'min-height:'+(big?'94px':'78px')+';display:flex;align-items:center;justify-content:center;border:2px solid '+bd+';border-radius:12px;background:'+bg+';color:'+fg+';font-weight:800;font-size:'+(big?'3vh':'22px')+';box-shadow:'+(active?'0 8px 18px #1f6feb55':'0 1px 3px #1018280f')+';transition:background .18s,border-color .18s,color .18s',text:label}));
+  })});
+  wrap.appendChild(grid);
+  var caption=step>=4&&f.center!=null?'九数和 '+f.targetSum+' ÷ 9 = '+f.center+'（中心数）':step>=3?'九个数相加 = 9a':step>=2?'四组对称数，每组相加都等于 2a':'九个数的位置关系';
+  wrap.appendChild(el('div',{style:'margin-top:10px;text-align:center;font-weight:700;color:'+(step>=3?'#17449b':'#475467')+';font-size:'+(big?'2.1vh':'15px'),text:caption}));
+  box.appendChild(wrap);
+}
 function cwCalendarCompare(box,f,view,big,teacher){
   var wrap=el('div',{style:'max-width:920px;margin:10px auto;padding:14px;border:1px solid #d5dfef;border-radius:14px;background:#f8fbff'});
   wrap.appendChild(el('p',{style:'font-weight:700;margin:0 0 8px',text:'月历观察实验：先比较日期，再判断题目中的表达是否正确。'}));
@@ -352,10 +372,11 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
   if(f.type==='tile_pattern'){cwTilePattern(box,f,view,big,teacher,stepCount);return}
   if(f.type==='square_sticks_pattern'){cwSquareSticksPattern(box,f,view,big,teacher,stepCount);return}
   if(f.type==='hundred_chart_square'){cwHundredChartSquare(box,f,view,big,teacher,stepCount);return}
-  f={type:f.type,reveal:f.reveal,points:(f.points||[]).slice().sort(function(a,b){return a.at-b.at}),marks:(f.marks||[]).filter(function(m){return m.from&&m.to}),
+  f={type:f.type,reveal:f.reveal,nineGrid:f.nineGrid,targetSum:f.targetSum,center:f.center,points:(f.points||[]).slice().sort(function(a,b){return a.at-b.at}),marks:(f.marks||[]).filter(function(m){return m.from&&m.to}),
     boxes:f.boxes||[],branches:f.branches||[],shape:f.shape,labels:f.labels||{},rows:f.rows||[]};
   var visualStep=teacher&&!view.previewMode?(stepCount||1):(view.step||0),visualSteps=Math.max(1,stepCount||1);
   if(f.type==='table'){
+    if(f.nineGrid){cwNineGrid(box,f,view,big,teacher,stepCount);return}
     var t=el('table',{style:'border-collapse:collapse;margin:0 auto;'+(big?'font-size:3vh':'')});
     var revealAll=f.reveal===false,maxCols=f.rows[0].length-1;
     var step=teacher&&!view.previewMode?Math.max(1,stepCount||maxCols):(view.step||0);
@@ -453,7 +474,7 @@ function cwRender(box,c,view,big,teacher,onTap){box.textContent='';view=view||{}
 function cwControl(box,c,sid){
   var view=JSON.parse(JSON.stringify(c.view||{})),stage=el('div'),bar=el('div',{class:'row'}),msg=el('div',{role:'status'});
   box.textContent='';box.appendChild(el('h2',{text:'互动课件：'+c.kindLabel+'（大屏同步，约3秒）'}));box.appendChild(bar);box.appendChild(stage);box.appendChild(msg);
-  function send(){api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:view}}).then(function(r){view=r.view;draw()}).catch(function(e){msg.textContent=e.message})}
+  function send(){var publicState={};Object.keys(view).forEach(function(k){if(k.charAt(0)!=='_')publicState[k]=view[k]});api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:publicState}}).then(function(r){view=r.view;draw()}).catch(function(e){msg.textContent=e.message})}
   function draw(){if(c.kind==='steps'&&c.params.figure&&c.params.figure.type==='calendar_compare')view._calendarOnChange=send;cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
   function button(text,fn){bar.appendChild(el('button',{text:text,style:'min-height:44px;min-width:44px',onclick:function(){fn();draw();send()}}))}
   if(c.kind==='rotation'){
@@ -743,6 +764,7 @@ function cwPlan(box,lessonId,refresh){
         return {type:t,shape:fields.figShape.value,labels:labels}}
       var table={type:t,rows:lines(fields.figA).map(function(r){return parts(r,'|')})};
       if(p.figure&&p.figure.reveal===false)table.reveal=false;
+      if(p.figure&&p.figure.nineGrid){table.nineGrid=true;table.targetSum=p.figure.targetSum;table.center=p.figure.center}
       return table;
     }
     function pt(v){return String(v).split(/[,，]/).map(function(x){return Number(x.trim())})}
