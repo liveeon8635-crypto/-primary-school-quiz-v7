@@ -121,3 +121,9 @@ def test_known_example_repairs_do_not_invent_other_question_answers():
     })
     assert "首步只提出观察或操作问题" in prompt
     assert "不得把选择题的正确/错误判断表" in prompt
+
+
+def test_live_view_sync_omits_private_preview_objects():
+    from changying.web.weekend_courseware_pages import COURSEWARE_JS
+    assert "if(k.charAt(0)!=='_')publicState[k]=view[k]" in COURSEWARE_JS
+    assert "json:{view:publicState}" in COURSEWARE_JS
