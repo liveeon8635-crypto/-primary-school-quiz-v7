@@ -220,3 +220,18 @@ def test_example11_program_diagram_is_optional_fallback_when_missing():
     own = {"figure": {"type": "flow", "boxes": ["教师优化的运算框", "学生验证框"], "branches": []},
            "steps": ["自定义观察", "自定义检验"]}
     assert _repair_courseware_visual(own, source) == own
+
+
+def test_audit_uses_approved_snapshot_not_incomplete_draft():
+    approved = {"figure": {"type": "seating_pattern", "sampleCounts": [8, 12, 16]},
+                "steps": ["观察拼桌", "比较共用边", "归纳座位", "检验"],
+                "answer": "4m+4"}
+    item = {"stage": 3, "page": 0, "kind": "steps", "approved": approved,
+            "params": {"figure": {}, "steps": ["未完成"], "answer": ""}}
+    report = audit_example_pages(
+        ["方桌1张可坐8人，2张可坐12人"], [item], required_visual_type
+    )
+    row = report["pages"][0]
+    assert row["issues"] == []
+    assert any("新草稿" in warn for warn in row["warnings"])
+    assert row["figureType"] == "seating_pattern"
