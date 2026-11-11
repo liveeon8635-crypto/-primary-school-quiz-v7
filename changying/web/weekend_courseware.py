@@ -707,7 +707,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         pages = stage_pages(lesson, b.stageNo)
         page_text = pages[page] if page is not None else ""
         fallback_figure = required_visual_figure(page_text)
-        if fallback_figure and (params.get("figure") or {}).get("type") != fallback_figure["type"]:
+        if fallback_figure and not (params.get("figure") or {}).get("type"):
             params = cw.clean(b.kind, {**params, "figure": fallback_figure}, lesson.reading_plan or "")
         upsert(db, u, lesson, b.stageNo, page, b.kind, params, b.writtenTask, page_text)
         return payload(db, lesson)
@@ -732,13 +732,23 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         except ValueError as e:
             raise HTTPException(400, str(e))
         required_figure = required_visual_type(item.get("pageText") or "")
-        if required_figure and (params.get("figure") or {}).get("type") != required_figure:
+        saved_figure = params.get("figure") or {}
+        if required_figure and not saved_figure.get("type"):
             fallback_figure = required_visual_figure(item.get("pageText") or "")
             if fallback_figure:
                 params = cw.clean(item["kind"], {**params, "figure": fallback_figure}, lesson.reading_plan or "")
-        if required_figure and (params.get("figure") or {}).get("type") != required_figure:
-            labels = {"calendar_cross": "月历十字框", "seating_pattern": "方桌人数规律", "alternating_triangle": "黑白棋子三角形", "running_track": "环形跑道追及", "tile_pattern": "地砖排列规律", "square_sticks_pattern": "连续正方形小棒规律"}
-            raise HTTPException(400, "请先补全本题的" + labels.get(required_figure, "专用") + "课件图示，再审核")
+                saved_figure = params.get("figure") or {}
+        # A reviewed custom diagram may be better than our generic fallback.
+        # Prevent approval of the known old solved-answer calendar table, but
+        # never silently overwrite any teacher-authored drawing.
+        if required_figure == "calendar_compare" and saved_figure.get("type") == "table":
+            if any(
+                isinstance(row, list) and any(str(cell).strip() in ("正确", "错误") for cell in row)
+                for row in saved_figure.get("rows", [])
+            ):
+                raise HTTPException(400, "月历判断表直接显示了正确/错误，请先改为不泄露答案的图示")
+        if required_figure and not saved_figure.get("type"):
+            raise HTTPException(400, "请先补充本题的教学图示，再审核")
         template_id = item.get("templateId")
         if item.get("writtenTask"):
             try:
