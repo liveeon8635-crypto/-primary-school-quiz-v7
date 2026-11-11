@@ -25,6 +25,29 @@ def _first_step_reveals_solution(steps: list[str], answer: str) -> bool:
     return bool(re.search(r"(?:正确答案|最终答案|故选|因此选|所以选|答案[是为：:])\s*[A-D](?:\b|[。！；])", first))
 
 
+def _premature_rule(steps: list[str]) -> bool:
+    """Flag obvious immediate explanation where the pupil should observe first."""
+    if not steps:
+        return False
+    first = _text(steps[0])
+    return bool(re.search(
+        r"(?:月历|百数表|同行|同列|同一行|同一列).{0,26}(?:相差|差为|加[+＋]?\\d+|减[−-]?\\d+)",
+        first,
+    )) and not bool(re.search(r"(?:想一想|观察|比较|试一试|找一找|你认为|请判断|怎样|多少|什么)", first))
+
+
+def _figure_exposes_choice(figure: dict[str, Any]) -> bool:
+    """The diagram should display question conditions, not a solved A/B/C/D key."""
+    if figure.get("type") != "table":
+        return False
+    rows = figure.get("rows") or []
+    return any(
+        bool(re.search(r"(?:^|[：:])(?:正确|错误|故选|答案是|答案为)", str(cell)))
+        for row in rows if isinstance(row, list)
+        for cell in row
+    )
+
+
 def audit_example_pages(
     pages: list[str],
     items: list[dict[str, Any]],
@@ -64,6 +87,10 @@ def audit_example_pages(
                 problems.append("课件绑定的原题与当前教案不一致")
             if item.get("approvedPageText") and _text(item["approvedPageText"]) != _text(source):
                 problems.append("已审核课件对应的原题发生变化")
+            if approved is not None and saved != approved:
+                warnings.append("存在新草稿：课堂版本与当前编辑版本不同")
+            if _figure_exposes_choice(figure):
+                problems.append("图示中含直接判断结论，可能提前泄露选择题答案")
             if not figure_type:
                 problems.append("没有可核对的教学图示")
             elif figure_type == "uploaded_image":
@@ -77,6 +104,8 @@ def audit_example_pages(
                     problems.append("缺少教师参考答案")
                 if _first_step_reveals_solution([str(x) for x in steps], answer):
                     problems.append("第一步可能提前暴露答案")
+                elif _premature_rule([str(x) for x in steps]):
+                    warnings.append("第一步直接讲出规律，建议改为观察性提问")
             else:
                 warnings.append("非通用分步课件，应人工核对专用交互是否完整")
             if not expected:
