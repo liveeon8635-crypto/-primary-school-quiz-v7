@@ -176,7 +176,8 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
     if kind == "table":
         compact = _normalize_text(text)
         if ("3×3" in text or "3x3" in text or "3＊3" in text) and ("九数和" in text or "中心数" in text):
-            return {"type": "table", "rows": [["a−11", "a−10", "a−9"], ["a−1", "a", "a+1"], ["a+9", "a+10", "a+11"]]}
+            # 九宫格本身是题目条件，九个数要一次看全；逐列显现会只剩前两列。
+            return {"type": "table", "reveal": False, "rows": [["a−11", "a−10", "a−9"], ["a−1", "a", "a+1"], ["a+9", "a+10", "a+11"]]}
         if "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
             return {"type": "table", "rows": [["框形", "月历关系", "判断"], ["A", "横向差1", "正确"], ["B", "横差1竖差7", "正确"], ["C", "竖列差10", "错误"], ["D", "中心对称", "正确"]]}
         if "大正方形" in text and "小正方形" in text and "长方形" in text:

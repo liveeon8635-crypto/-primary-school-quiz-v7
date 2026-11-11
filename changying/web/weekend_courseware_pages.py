@@ -316,13 +316,14 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
   if(f.type==='tile_pattern'){cwTilePattern(box,f,view,big,teacher,stepCount);return}
   if(f.type==='square_sticks_pattern'){cwSquareSticksPattern(box,f,view,big,teacher,stepCount);return}
   if(f.type==='hundred_chart_square'){cwHundredChartSquare(box,f,view,big,teacher,stepCount);return}
-  f={type:f.type,points:(f.points||[]).slice().sort(function(a,b){return a.at-b.at}),marks:(f.marks||[]).filter(function(m){return m.from&&m.to}),
+  f={type:f.type,reveal:f.reveal,points:(f.points||[]).slice().sort(function(a,b){return a.at-b.at}),marks:(f.marks||[]).filter(function(m){return m.from&&m.to}),
     boxes:f.boxes||[],branches:f.branches||[],shape:f.shape,labels:f.labels||{},rows:f.rows||[]};
   var visualStep=teacher&&!view.previewMode?(stepCount||1):(view.step||0),visualSteps=Math.max(1,stepCount||1);
   if(f.type==='table'){
     var t=el('table',{style:'border-collapse:collapse;margin:0 auto;'+(big?'font-size:3vh':'')});
-    var step=teacher&&!view.previewMode?Math.max(1,stepCount||f.rows[0].length-1):(view.step||0);
-    var columns=Math.max(1,Math.min(f.rows[0].length-1,Math.ceil((step/Math.max(1,stepCount||f.rows[0].length-1))*(f.rows[0].length-1))));
+    var revealAll=f.reveal===false,maxCols=f.rows[0].length-1;
+    var step=teacher&&!view.previewMode?Math.max(1,stepCount||maxCols):(view.step||0);
+    var columns=revealAll?maxCols:Math.max(1,Math.min(maxCols,Math.ceil((step/Math.max(1,stepCount||maxCols))*maxCols)));
     f.rows.forEach(function(r,i){var tr=el('tr');r.forEach(function(c,j){var shown=i===0||j===0||j<=columns;tr.appendChild(el(i?'td':'th',{style:'border:1px solid #98a2b3;padding:4px 12px;text-align:center;background:'+(j===columns&&i>0?'#dbeafe':'#fff')+';color:'+(shown?'#111':'#98a2b3'),text:shown?c:'·'}))});t.appendChild(tr)});
     box.appendChild(t);return;
   }
@@ -671,7 +672,9 @@ function cwPlan(box,lessonId,refresh){
       if(t==='shape'){var keys={'上':'top','下':'bottom','左':'left','右':'right','高':'height'},labels={};
         parts(fields.figA.value,/[;；]/).forEach(function(x){var k=x.split(/[:：]/);if(keys[(k[0]||'').trim()])labels[keys[k[0].trim()]]=k.slice(1).join(':').trim()});
         return {type:t,shape:fields.figShape.value,labels:labels}}
-      return {type:t,rows:lines(fields.figA).map(function(r){return parts(r,'|')})};
+      var table={type:t,rows:lines(fields.figA).map(function(r){return parts(r,'|')})};
+      if(p.figure&&p.figure.reveal===false)table.reveal=false;
+      return table;
     }
     function pt(v){return String(v).split(/[,，]/).map(function(x){return Number(x.trim())})}
     function collect(){
