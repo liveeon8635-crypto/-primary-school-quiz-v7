@@ -519,11 +519,24 @@ function cwPlan(box,lessonId,refresh){
     }});
     box.appendChild(el('div',{class:'row'},stageSel,all,el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})),approveAll));
     box.appendChild(msg);
+    if(stageNo==='3'&&d.qualityAudit){
+      var audit=d.qualityAudit;
+      box.appendChild(el('div',{class:'notice warn',style:'margin:10px 0;white-space:normal',
+        text:'课件逐页体检：共 '+audit.totalPages+' 页，已配置 '+audit.configured+' 页，发现明确问题 '+audit.flagged+' 页。全部仍须与原题逐页人工核对；机器未报警不等于验收通过。'}));
+    }
     var rows=el('div'),editor=el('div');box.appendChild(rows);box.appendChild(editor);editorBox=editor;notes={};rowEls={};
     list.forEach(function(x){
       var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
       var line=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:(x.page==null?'':'第'+(x.page+1)+'页：')+x.text}),
         el('div',{class:'row'},el('span',{class:'tag '+tag[0],text:tag[1]}),it?el('span',{class:'muted',text:d.kindLabels[it.kind]+(it.writtenTask?' · 含学生作答题':'')}):null)));
+      if(stageNo==='3'&&d.qualityAudit&&x.page!=null){
+        var auditRow=(d.qualityAudit.pages||[])[x.page];
+        if(auditRow){
+          var findings=(auditRow.issues||[]).concat(auditRow.warnings||[]);
+          line.appendChild(el('div',{style:'flex-basis:100%;font-size:13px;color:'+(auditRow.issues.length?'#b42318':'#475467'),
+            text:findings.length?'课件体检：'+findings.join('；'):'课件体检：暂无机器识别问题，仍须对照原题和课堂效果人工核对'}));
+        }
+      }
       var note=el('div',{role:'status','aria-live':'polite',style:'flex-basis:100%'});notes[String(x.page)]=note;
       line.appendChild(el('button',{text:it?'重新生成':'生成',onclick:function(e){
         if(busy){note.textContent='正在处理另一页，请等它完成后再点。';return}
