@@ -37,7 +37,7 @@ def test_missing_mismatched_and_answer_leaking_pages_are_flagged():
         "月历框形辨析：哪一种错误？",
         "第15题 3×3方框圈九个数，九数和2016",
         "图形变化规律",
-        "线段中点问题",
+        "方桌1张可坐8人，2张拼起来可坐12人",
     ]
     items = [
         make_item(0, figure={"type": "table"}, steps=["答案是C", "第二步", "第三步", "第四步"], answer="C"),
@@ -69,7 +69,7 @@ def test_unrecognised_types_are_not_certified_as_correct():
     item = make_item(0)
     report = audit_example_pages(["一个尚无专用规则的新题型"], [item], required_visual_type)
     assert report["pages"][0]["status"] == "needs_teacher_review"
-    assert "人工确认" in "".join(report["pages"][0]["warnings"])
+    assert "保留现有课件" in "".join(report["pages"][0]["warnings"])
 
 
 def test_legacy_text_table_leaks_answer_even_if_steps_are_guiding():
@@ -168,3 +168,34 @@ def test_legacy_answer_table_repaired_without_replacing_teacher_custom_steps():
     fixed = _repair_courseware_visual(original, "月历框形辨析：哪一种错误？")
     assert fixed["figure"]["type"] == "calendar_compare"
     assert fixed["steps"] == original["steps"]
+
+
+def test_polished_brief_algebra_question_does_not_need_extra_diagram_or_four_steps():
+    item = make_item(0, figure={}, steps=[
+        "观察数位", "尝试表示", "独立验证",
+    ])
+    report = audit_example_pages(
+        ["十位数字m、个位数字n，写出这个两位数"], [item],
+        required_visual_type,
+    )
+    assert report["pages"][0]["issues"] == []
+    assert not any("不足四步" in w for w in report["pages"][0]["warnings"])
+
+
+def test_specialised_maths_without_figure_is_reported_without_changing_original():
+    item = make_item(0, figure={}, steps=[
+        "观察方桌边缘", "找座位变化", "尝试写式子", "验算",
+    ])
+    original = item["params"]["steps"].copy()
+    report = audit_example_pages(
+        ["方桌1张可坐8人，2张可坐12人"], [item], required_visual_type
+    )
+    assert report["pages"][0]["issues"]
+    assert item["params"]["steps"] == original
+
+
+def test_missing_diagram_for_example19_does_not_preveal_answer():
+    from changying.web.weekend_courseware import required_visual_figure
+    figure = required_visual_figure("a＋b² 易错辨析：当a=5，b=3，小明算成5+6")
+    assert figure["type"] == "flow"
+    assert "结果=14" not in "".join(figure["boxes"])
