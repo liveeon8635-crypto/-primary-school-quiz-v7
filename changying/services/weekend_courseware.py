@@ -226,6 +226,8 @@ def clean_figure(raw: Any) -> dict[str, Any]:
             raise ValueError("图形只能是长方形、正方形、三角形、平行四边形或梯形")
         labels = raw.get("labels") if isinstance(raw.get("labels"), dict) else {}
         return {"type": "shape", "shape": shape, "labels": {k: _text(labels.get(k), 12) for k in SHAPE_SIDES if _text(labels.get(k), 12)}}
+    if kind == "calendar_compare":
+        return {"type": "calendar_compare"}
     if kind == "table":
         rows = [[_text(c, 10) for c in r[:8]] for r in (raw.get("rows") if isinstance(raw.get("rows"), list) else [])[:5]
                 if isinstance(r, list) and any(_text(c, 10) for c in r)]
@@ -346,7 +348,7 @@ def clean_steps(raw: Any) -> dict[str, Any]:
     if not answer:
         raise ValueError("请填写例题答案")
     figure = clean_figure(raw.get("figure"))
-    if figure.get("type") in ("calendar_cross", "seating_pattern", "alternating_triangle", "running_track", "triangular_numbers", "tile_pattern", "square_sticks_pattern", "hundred_chart_square") and len(steps) < 4:
+    if figure.get("type") in ("calendar_compare", "calendar_cross", "seating_pattern", "alternating_triangle", "running_track", "triangular_numbers", "tile_pattern", "square_sticks_pattern", "hundred_chart_square") and len(steps) < 4:
         raise ValueError("这类规律题的互动图示需要至少 4 步，才能逐步展示规律和结论")
     return {"title": _text(raw.get("title"), 40) or "分步讲解", "steps": steps, "answer": answer,
             "problem": _text(raw.get("problem"), 600),        # the example's own question, without its answer (pupils' task)
@@ -394,7 +396,12 @@ def clean_view(kind: str, params: dict[str, Any], raw: Any) -> dict[str, Any]:
         return {"angle": max(0, min(int(params["angle"]), angle)), "showResult": bool(raw.get("showResult")),
                 "step": max(0, min(len(params["steps"]), step))}
     if kind == "steps":
-        return {"step": max(0, min(len(params["steps"]), step)), "showAnswer": bool(raw.get("showAnswer"))}
+        state = {"step": max(0, min(len(params["steps"]), step)), "showAnswer": bool(raw.get("showAnswer"))}
+        if params.get("figure", {}).get("type") == "calendar_compare":
+            choice = raw.get("calendarChoice", "A")
+            state["calendarChoice"] = choice if choice in ("A", "B", "C", "D") else "A"
+            state["calendarFeedback"] = bool(raw.get("calendarFeedback"))
+        return state
     count = len(params["sentences"])
     marks = []
     for i in raw.get("highlight") or []:
@@ -475,6 +482,14 @@ def generation_prompt(subject: str, lesson: dict[str, Any]) -> str:
             f"课题：{lesson['title']}\n教学目标：{lesson['coreTarget']}\n"
             "这一页的内容（课件必须演示这一页本身，图形、数据、问题与之一致，不能另换一道题）：\n" + lesson.get("pageText", "")[:1500] + "\n"
             "可选模板（优先选最贴合的专用模板；都不贴合时选 steps）：\n" + "\n".join(f"- {spec[k]}" for k in kinds))
+    if subject == "数学":
+        text += (
+            "\\n教学引导质量要求：首步只提出观察或操作问题，不得直接公布规律、公式、正确选项或最终答案。"
+            "第二步引导学生比较图形的数量/空间关系，第三步让学生自己表示或推导，最后一步安排检验或解释。"
+            "图示只展示原题条件，不得把选择题的正确/错误判断表或计算后的最终答案当作初始图示。"
+            "选择专业图示应与题意相符；遇到不明确的图形位置、数据、日期，必须保持原题可核对并标为待教师确认，禁止臆造。"
+            "不同例题统一上一步/下一步/重来与教师答案隔离的交互节奏；只在适当阶段显示推导。"
+        )
     if "reading" in kinds:
         text += "\n本课原文：\n" + lesson["sourceText"][:6000]
     text += "\n图示必须表达题目本身的数量关系；原卷图片只作对照，不要用它代替课件图示。\n"
