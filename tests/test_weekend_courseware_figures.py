@@ -227,3 +227,15 @@ def test_calendar_comparison_is_answer_free_and_keeps_four_shapes():
     assert all("C错误" not in s and "选项C写成" not in s for s in repaired["steps"])
     assert "function cwCalendarCompare(" in COURSEWARE_JS
     assert "view.calendarChoice" in COURSEWARE_JS
+
+def test_calendar_choice_is_validated_and_survives_teacher_screen_state():
+    params = cw.clean_steps({
+        "title": "月历框形辨析", "problem": "哪一种错误？",
+        "steps": ["先观察", "再比较", "自己表达", "独立判断"],
+        "answer": "C", "figure": {"type": "calendar_compare"}
+    })
+    assert cw.clean_view("steps", params, {"calendarChoice": "D", "calendarFeedback": True})["calendarChoice"] == "D"
+    assert cw.clean_view("steps", params, {"calendarChoice": "invalid"})["calendarChoice"] == "A"
+    assert cw.clean_view("steps", params, {"calendarChoice": "B", "calendarFeedback": True})["calendarFeedback"]
+    assert "view._calendarOnChange=send" in COURSEWARE_JS
+    assert "if(view._calendarOnChange)view._calendarOnChange()" in COURSEWARE_JS
