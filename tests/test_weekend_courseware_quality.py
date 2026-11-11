@@ -70,3 +70,27 @@ def test_unrecognised_types_are_not_certified_as_correct():
     report = audit_example_pages(["一个尚无专用规则的新题型"], [item], required_visual_type)
     assert report["pages"][0]["status"] == "needs_teacher_review"
     assert "人工确认" in "".join(report["pages"][0]["warnings"])
+
+
+def test_legacy_text_table_leaks_answer_even_if_steps_are_guiding():
+    item = make_item(
+        0,
+        figure={"type": "table", "rows": [
+            ["选项", "日期关系", "判断"],
+            ["A", "横差1", "正确"], ["C", "竖差10", "错误"],
+        ]},
+    )
+    report = audit_example_pages(["月历框形辨析：哪一种错误？"], [item], required_visual_type)
+    assert any("直接判断结论" in issue for issue in report["pages"][0]["issues"])
+
+
+def test_first_step_rule_statement_requires_more_guidance():
+    item = make_item(0, steps=[
+        "月历同一行相邻两数相差1，同一列相差7。",
+        "比较图示", "用x表示", "验证",
+    ])
+    report = audit_example_pages(["月历规律"], [item], required_visual_type)
+    assert any("直接讲出规律" in warning for warning in report["pages"][0]["warnings"])
+    item["params"]["steps"][0] = "观察月历：同一行相邻日期差多少？"
+    other = audit_example_pages(["月历规律"], [item], required_visual_type)
+    assert not any("直接讲出规律" in warning for warning in other["pages"][0]["warnings"])
