@@ -8,6 +8,22 @@
     if(f&&f.type==='parallelogram_methods')return '四种操作：左侧沿高剪移、整图平移、右侧沿高剪移、换方向沿高剪移';
     return previousFigureText(f);
   };
+  // Earlier imports describe a different M/N-midpoint variant. Never silently
+  // display these final-paper cuts under that incompatible source question.
+  var previousSteps=window.cwSteps;
+  if(typeof previousSteps==='function'){
+    window.cwSteps=function(box,p,view,big,teacher){
+      var source=String((p&&(p.sourceProblem||p.problem))||'');
+      var legacy=!!(p&&p.figure&&p.figure.type==='parallelogram_methods'&&/(?:点\s*M\s*[、,，]\s*N|M\s*[、,，]\s*N|中点)/.test(source));
+      if(legacy){
+        box.appendChild(el('div',{class:'notice warn',text:teacher?
+          '第2题仍是旧版 M、N 中点题干，和最终审核稿的左右剪移四法不一致。请更新教案原题后再审核。':
+          '第2题题干与图形版本不一致，本页互动图已暂停展示，请教师复核。'}));
+        if(!teacher)return;
+      }
+      return previousSteps(box,p,view,big,teacher);
+    };
+  }
   window.cwParallelogramMethods=function(box,view,big,teacher){
     view=view||{};
     var answer=!!view.showAnswer||!!(teacher&&view.previewMode&&Number(view.step)>=5);
