@@ -768,7 +768,7 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
     line(65,220,345,220,'#1d4ed8',3);
     line(185,95,185,220,'#b42318',2,'6 4');
     line(185,206,199,206,'#b42318',2);line(199,206,199,220,'#b42318',2);
-    text(230,278,'面积差15 m² = 三角形面积；平行四边形面积=30 m²','#344054',14);
+    text(230,278,'三角形面积=15 m²；平行四边形面积=30 m²','#344054',14);
     line(520,35,520,325,'#d0d5dd',1);
     text(780,28,'（2）等底、等面积','#344054',17);
     svg.appendChild(cwNode('polygon',{points:'560,230 720,230 560,100',fill:'#60a5fa','fill-opacity':.55,stroke:'#225e7a','stroke-width':3}));
