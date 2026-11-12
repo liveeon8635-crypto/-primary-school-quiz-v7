@@ -96,9 +96,15 @@
 
 (function(){
   var previousSteps=window.cwSteps;
+  function isFourMethodQuestion(p){
+    var s=[p&&p.title||'',p&&p.problem||'',p&&p.sourceProblem||''].join(' ');
+    return /第\s*2\s*题/.test(s) && s.indexOf('平行四边形')>=0 &&
+      /四种(?:操作|方法|转化)/.test(s) &&
+      !/(?:点\s*M\s*[、,，]\s*N|M\s*[、,，]\s*N|中点)/.test(s);
+  }
   function lesson11Figure(p){
     var s=[p&&p.title||'',p&&p.problem||'',p&&p.sourceProblem||''].join(' ');
-    return (/第\s*5\s*题/.test(s)&&s.indexOf('方格测量')>=0)||
+    return isFourMethodQuestion(p) || (/第\s*5\s*题/.test(s)&&s.indexOf('方格测量')>=0)||
       (/第\s*6\s*题/.test(s)&&s.indexOf('两组对应底高')>=0)||
       (/第\s*8\s*题/.test(s)&&s.indexOf('面积累加')>=0)||
       (/第\s*10\s*题/.test(s)&&s.indexOf('等高分割')>=0)||
@@ -114,6 +120,7 @@
   }
   function cwLesson11Parallelogram(box,p,view,big,teacher){
   var source=[p.title||'',p.problem||'',p.sourceProblem||''].join(' ');
+  if(isFourMethodQuestion(p)){cwParallelogramMethods(box,view,big,teacher);return true;}
   var q5=/第\s*5\s*题/.test(source)&&source.indexOf('方格测量')>=0;
   var q10=/第\s*10\s*题/.test(source)&&source.indexOf('等高分割')>=0;
   var q6=/第\s*6\s*题/.test(source)&&source.indexOf('两组对应底高')>=0;
@@ -137,24 +144,24 @@
     for(var i=0;i<=cols;i++)line(x+i*cell,y,x+i*cell,y+h,'#c5d8e8',1);
     for(var j=0;j<=rows;j++)line(x,y+j*cell,x+w,y+j*cell,'#c5d8e8',1);
     var shift=cell*2,top=y+cell,bottom=top+height*cell;
-    svg.appendChild(cwNode('polygon',{points:(x+shift)+','+top+' '+(x+shift+base*cell)+','+top+' '+(x+shift+base*cell-cell)+','+bottom+' '+x+','+bottom,fill:'#3da9bd','fill-opacity':.18,stroke:'#225e7a','stroke-width':3}));
-    text(x+w/2,y+h+25,caption,'#344054',16);
+    svg.appendChild(cwNode('polygon',{points:(x+shift)+','+top+' '+(x+shift+base*cell)+','+top+' '+(x+base*cell)+','+bottom+' '+x+','+bottom,fill:'#3da9bd','fill-opacity':.18,stroke:'#225e7a','stroke-width':3}));
+    text(x+w/2,y+h+42,caption,'#344054',16);
     if(showHigh){
       line(x+shift,top,x+shift,bottom,'#b42318',2,'6 4');
       line(x+shift,top+10,x+shift+10,top+10,'#b42318',2);
       line(x+shift+10,top+10,x+shift+10,top,'#b42318',2);
     }
-    return {x:x+shift+base*cell/2,y:top+22};
+    return {left:x,right:x+base*cell,top:top,bottom:bottom,center:x+base*cell/2,heightTop:top+22};
   }
   if(q5){
     var revealGrid=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
-    panel(45,35,40,10,6,8,5,revealGrid?'每小格0.5 cm；底8格、高5格':'每小格0.5 cm',revealGrid);
+    var g5=panel(45,35,40,10,6,8,5,'每小格0.5 cm',revealGrid);
     if(revealGrid)text(365,150,'高5格','#b42318',17,'start');
-    if(revealGrid)text(280,285,'底8格','#1d4ed8',17);
+    if(revealGrid)text(g5.center,g5.bottom+17,'底8格','#1d4ed8',17);
   }else if(q8){
     var revealGrid8=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
-    panel(70,45,40,8,5,6,3,revealGrid8?'每小格1 dm；底6格、高3格':'每小格1 dm；请数底和高',revealGrid8);
-    if(revealGrid8){text(300,145,'高3格','#b42318',17,'start');text(300,245,'底6格','#1d4ed8',17);}
+    var g8=panel(70,45,40,8,5,6,3,'每小格1 dm',revealGrid8);
+    if(revealGrid8){text(300,145,'高3格','#b42318',17,'start');text(g8.center,g8.bottom+17,'底6格','#1d4ed8',17);}
   }else if(q10){
     var reveal=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
     text(350,28,'底边平均分成3份，高不变','#344054',17);
