@@ -713,6 +713,7 @@ function cwPlan(box,lessonId,refresh){
       run(todo,function(x){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate',{json:{stageNo:+stageNo,page:x.page}})},'生成');
     }});
     var approveAll=el('button',{text:'全部草稿审核通过',onclick:function(){
+      if(stageNo==='3'&&d.sourcePageMismatch){msg.textContent='题号与课件页数不符，不能审核错误的课件草稿。';return}
       var todo=list.filter(function(x){var it=itemAt(x.page);return it&&it.status==='draft'&&!it.needsSync});
       if(!todo.length){msg.textContent='没有待审核的草稿';return}
       if(!confirm('确认已逐页预览这 '+todo.length+' 页课件的内容和答案？审核后会在大屏对应页显示。'))return;
@@ -764,7 +765,7 @@ function cwPlan(box,lessonId,refresh){
           .then(function(r){msg.textContent='已存为模板：'+r.name}).catch(function(e){msg.textContent=e.message});
       }}));
       line.appendChild(el('button',{text:'套用模板',onclick:function(){pickTemplate(x)}}));
-      if(it&&it.status==='draft'&&!it.needsSync)line.appendChild(el('button',{class:'primary',text:'审核通过',onclick:function(){run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:y.page}})},'审核')}}));
+      if(it&&it.status==='draft'&&!it.needsSync&&!(stageNo==='3'&&d.sourcePageMismatch))line.appendChild(el('button',{class:'primary',text:'审核通过',onclick:function(){run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:y.page}})},'审核')}}));
       if(it)line.appendChild(el('button',{text:'删除',onclick:function(){if(confirm('删除这一页的课件？'))api('/teacher/weekend/lessons/'+lessonId+'/courseware/remove',{json:{stageNo:+stageNo,page:x.page}}).then(paint).catch(function(e){msg.textContent=e.message})}}));
       rows.appendChild(line);line.appendChild(note);rowEls[String(x.page)]=line;
     });
