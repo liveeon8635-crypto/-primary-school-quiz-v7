@@ -543,7 +543,13 @@ def _page(title: str, js: str, with_header: bool, back: tuple[str, str] = ("/v1"
     html = PAGE_HTML.replace("__TITLE__", title).replace("__CSS__", PAGE_CSS + EXTRA_CSS)
     if with_header:
         html = html.replace("<body>", f'<body><header><h1>{title}</h1><a href="{back[0]}">{back[1]}</a></header>', 1)
-    return html.replace("__JS__", (COMMON_JS + js).replace("__PAGE_AUTH__", PAGE_AUTH_JS))
+    rendered = html.replace("__JS__", (COMMON_JS + js).replace("__PAGE_AUTH__", PAGE_AUTH_JS))
+    if title in ("周末课备课", "周末课", "课堂大屏"):
+        # An ordinary external ES5 file does not change any of the precompiled
+        # Safari12 inline script fingerprints. It overrides only the known-bad
+        # four-method lesson 11 drawing, not generic geometry.
+        rendered = rendered.replace("</body>", '<script src="/v1/lesson11-methods-v2.js"></script></body>')
+    return rendered
 
 
 PLAN_JS = MARK_JS + r"""
