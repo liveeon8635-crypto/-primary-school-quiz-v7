@@ -37,7 +37,6 @@ var dims=elems(a1.root,'rect').map(function(x){return [+x.attrs.width,+x.attrs.h
 assert.strictEqual(dims[0][0],dims[0][1],'the first one is a square');
 assert(dims[1][0]!==dims[1][1],'the second one is a rectangle');
 assert(renderFigure({...ex17,title:'第17题',problem:'正方形边长a，长方形长a宽b'},1,false,true).matched,'17 title alone matches');
-assert(renderFigure({...ex20,title:'第20题'},1,false,true).matched,'20 title alone matches');
 assert(words(a1.root).indexOf('4a')<0,'no formula in the diagram at first step');
 assert(words(renderFigure(ex17,2,false,true).root).indexOf('4a')>=0);
 assert(words(renderFigure(ex17,3,false,true).root).indexOf('2(a+b)')>=0);
@@ -47,6 +46,7 @@ var ex20={title:'大、小正方形拼图',
  problem:'由2个大正方形和3个小正方形拼成一个长方形，大正方形边长m cm，小正方形边长n cm，求周长。',
  figure:{type:'shape',shape:'rectangle',labels:{top:'上边2m cm'}},
  steps:['观察拼图','比较上下','列等式','求出周长'],answer:'C=11n'};
+assert(renderFigure({...ex20,title:'第20题'},1,false,true).matched,'20 title alone matches');
 var b1=renderFigure(ex20,1,false,true);
 assert(b1.matched,'example 20 must use the tiling drawing');
 var squares=elems(b1.root,'rect');
