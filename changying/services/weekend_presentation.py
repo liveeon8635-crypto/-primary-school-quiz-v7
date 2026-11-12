@@ -23,10 +23,10 @@ def literal_numbered_questions(source: str) -> list[str]:
         # numbered exercises. Never use the table as screen content.
         # Limit this recovery to clearly labelled multi-part lesson bodies;
         # unstructured repeated headings continue to fail closed.
-        part = re.search(r'(?m)^\\s*第一部分(?:[\\s：:、]|$)', body)
+        part = re.search(r'(?m)^[^\S\n]*第一部分(?:[^\S\n：:、]|[：:、]|$)', body)
         if part:
             body = body[part.start():]
-            stop = re.search(r'(?m)^\\s*(?:课堂小结与板书|课后作业|自检表)(?:\\s|$)', body)
+            stop = re.search(r'(?m)^[^\S\n]*(?:课堂小结与板书|课后作业|自检表)(?:[^\S\n]|$)', body)
             if stop:
                 body = body[:stop.start()]
             marks = list(heading.finditer(body))
