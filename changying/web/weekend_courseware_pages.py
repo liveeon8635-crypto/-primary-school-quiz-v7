@@ -470,12 +470,51 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
   }
   box.appendChild(svg);
 }
+// Lesson 10 examples 17 and 20: display-time correction for the two
+// legacy *single rectangle* diagrams only. Teacher-authored data is unchanged.
+function cwLesson10Geometry(box,p,view,big,teacher){
+  if(!p.figure||p.figure.type!=='shape'||p.figure.shape!=='rectangle')return false;
+  var source=[p.title||'',p.problem||'',p.sourceProblem||''].join(' ');
+  var ex17=/(第\s*17\s*题|单元知识回顾)/.test(source)&&source.indexOf('正方形')>=0&&source.indexOf('长方形')>=0;
+  var ex20=/(第\s*20\s*题|大、小正方形拼图)/.test(source)&&
+    source.indexOf('大正方形')>=0&&source.indexOf('小正方形')>=0&&source.indexOf('拼')>=0;
+  if(!ex17&&!ex20)return false;
+  var last=Math.max(1,(p.steps||[]).length),step=teacher&&!view.previewMode?last:Math.max(0,Math.min(last,view.step||0));
+  var wrap=el('div',{style:'max-width:880px;margin:12px auto;padding:14px;background:#f8fbff;border:1px solid #d5dfef;border-radius:14px'});
+  wrap.appendChild(el('div',{style:'font-weight:700;text-align:center;color:#284b83;margin-bottom:6px',text:ex17?'分别观察：正方形与长方形':'观察拼图：上排2个大正方形，下排3个小正方形'}));
+  var canvas=cwNode('svg',{viewBox:ex17?'0 0 760 325':'0 0 760 465',width:'100%',role:'img',
+    'aria-label':ex17?'正方形边长a，与长方形长a宽b的对照图':'上排两个边长m的大正方形，下排三个边长n的小正方形，共同拼成一个长方形',
+    style:'display:block;max-height:'+(big?'54vh':'390px')+';margin:auto'});
+  function rect(x,y,w,h,fill,stroke){canvas.appendChild(cwNode('rect',{x:x,y:y,width:w,height:h,rx:2,fill:fill,stroke:stroke||'#2563eb','stroke-width':3}))}
+  function label(x,y,t,size,color){canvas.appendChild(cwNode('text',{x:x,y:y,'text-anchor':'middle','font-size':size||21,'font-weight':700,fill:color||'#1c3970'},t))}
+  if(ex17){
+    // The square really has four equal sides; do not infer b for this shape.
+    rect(68,71,210,210,'#e0edff');
+    rect(424,96,270,160,'#fef3c7','#b7791f');
+    label(173,54,'a');label(52,181,'a');
+    label(559,79,'a');label(404,182,'b');
+    label(173,311,'正方形');label(559,298,'长方形');
+  }else{
+    // m:n=3:2 follows from two m-squares and three n-squares sharing
+    // precisely the same total width: 2*210 = 3*140 = 420.
+    for(var a=0;a<2;a++){rect(170+a*210,42,210,210,'#dbeafe');label(275+a*210,157,'m',24)}
+    for(var b=0;b<3;b++){rect(170+b*140,252,140,140,'#fef3c7','#b7791f');label(240+b*140,326,'n',23)}
+    if(step>=2){label(380,27,'上排总宽 2m',19);label(380,419,'下排总宽 3n',19)}
+    if(step>=3)label(380,453,'两排等宽：2m = 3n',19);
+  }
+  wrap.appendChild(canvas);
+  if(ex17&&step>=2)wrap.appendChild(el('div',{style:'text-align:center;font-weight:600;color:#184b82',text:'正方形：周长 4a，面积 a²'}));
+  if(ex17&&step>=3)wrap.appendChild(el('div',{style:'text-align:center;font-weight:600;color:#184b82',text:'长方形：周长 2(a+b)，面积 ab'}));
+  if(ex17&&step>=4)wrap.appendChild(el('div',{style:'text-align:center;font-weight:600;color:#a15c12',text:'m = n + 20，m = 37：n = 17'}));
+  if(ex20&&step>=last)wrap.appendChild(el('div',{style:'text-align:center;font-weight:700;color:#184b82',text:'长 = 2m = 3n，宽 = m+n；C = 2(3n+m+n) = 11n'}));
+  box.appendChild(wrap);return true;
+}
 function cwSteps(box,p,view,big,teacher){
   var wrap=el('div',{style:'max-width:980px;margin:0 auto;background:#fff;color:#111;border-radius:12px;padding:12px;line-height:1.75;'+(big?'font-size:2.8vh':'')});box.appendChild(wrap);
   wrap.appendChild(el('b',{text:p.title}));
   if(p.sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:p.sourceProblem}));
   if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
-  cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
+  if(!cwLesson10Geometry(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
   if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
   var shown=teacher?(view.previewMode?Math.max(1,view.step||0):p.steps.length):(view.step||0),list=el('ol',{style:'padding-left:1.6em;margin:12px 0'});
   p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?(i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:0 4px':''):'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
