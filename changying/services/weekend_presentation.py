@@ -134,7 +134,11 @@ def lesson_deck(lesson: dict[str, Any], stage_no: int) -> list[str]:
     if stage_no == 3:
         originals = literal_numbered_questions(source)
         if originals:
-            return presentation_pages(originals, preserve_pages=True)
+            # One reviewed exercise maps to exactly one interaction slot,
+            # even when its full stem exceeds the generic slide text limit.
+            # Splitting a long stem moves later question/page indices and
+            # mismatches attached diagrams and approved courseware.
+            return originals
     return presentation_pages(raw, preserve_pages=stage_no == 2 and source.startswith("第1页："),
                               source=source if stage_no == 2 else "", example_mode=stage_no == 3)
 
