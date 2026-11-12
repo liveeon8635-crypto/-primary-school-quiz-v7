@@ -33,7 +33,7 @@ def test_explicit_main_number_and_choice_stay_at_original_number():
     m = lesson_question_number(SOURCE, q)
     assert (m["originalNumber"], m["partNumber"]) == (4, None)
     assert numbered_student_stem(SOURCE, q) == q
-    with_material = "阅读说明：请根据下图完成。\\n\\n" + q
+    with_material = "阅读说明：请根据下图完成。\n\n" + q
     assert numbered_student_stem(SOURCE, with_material) == with_material
 
 
