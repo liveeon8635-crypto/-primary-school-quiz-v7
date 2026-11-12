@@ -165,6 +165,15 @@ with TestClient(app) as client:
     assert response.status_code == 200, response.text
     assert read() == before
     assert client.post(undo,headers=th).status_code == 409
+    # Even when text is identical, a DOCX picture can have changed.
+    # Reimport must revoke old approval and demand an explicit new save.
+    assert put("原版") == lid
+    same = read()[3]["items"][0]
+    assert same["needsSync"] is True and same["status"] == "draft"
+    assert client.post(url+"/courseware/approve",headers=th,json=dict(stageNo=3,page=0)).status_code == 409
+    new_draft = client.put(url+"/courseware",headers=th,json=dict(stageNo=3,page=0,kind="steps",params=params))
+    assert new_draft.status_code == 200 and not new_draft.json()["items"][0]["needsSync"]
+    assert client.post(url+"/courseware/approve",headers=th,json=dict(stageNo=3,page=0)).status_code == 200
     put("再次导入")
     undo = url + "/import-history/" + str(read()[0]["previousImportId"]) + "/restore"
     with legacy.SessionLocal() as db:
