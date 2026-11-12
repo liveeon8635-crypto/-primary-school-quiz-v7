@@ -34,6 +34,15 @@ def literal_numbered_questions(source: str) -> list[str]:
         )
         if section:
             body = body[section.start():]
+            # Printed appendices can repeat question numbers: they are not
+            # worked-example pages and must be excluded before de-duplicating.
+            end_of_paper = re.search(
+                r'(?m)^[^\S\n]*(?:课堂小结与板书|课堂小结|课后作业|作答检查'
+                r'|自检表|附录[AB一二三四五六]|验收表)(?:[^\S\n]|[｜：:]|$)',
+                body,
+            )
+            if end_of_paper:
+                body = body[:end_of_paper.start()]
             marks = list(heading.finditer(body))
             numbers = [int(m.group(1)) for m in marks]
     if len(marks) < 2 or len(set(numbers)) != len(numbers):
