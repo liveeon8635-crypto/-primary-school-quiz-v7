@@ -544,6 +544,7 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
 function cwLesson11Parallelogram(box,p,view,big,teacher){
   var source=[p.title||'',p.problem||'',p.sourceProblem||''].join(' ');
   var q5=/第\s*5\s*题/.test(source)&&source.indexOf('方格测量')>=0;
+  var q10=/第\s*10\s*题/.test(source)&&source.indexOf('等高分割')>=0;
   var q6=/第\s*6\s*题/.test(source)&&source.indexOf('两组对应底高')>=0;
   var q8=/第\s*8\s*题/.test(source)&&source.indexOf('面积累加')>=0;
   var q15=/第\s*15\s*题/.test(source)&&source.indexOf('倍拼')>=0;
@@ -555,9 +556,9 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
   var q23=/第\s*23\s*题/.test(source)&&source.indexOf('逆向应用')>=0;
   var q22=/第\s*22\s*题/.test(source)&&source.indexOf('割补思想')>=0;
   var q14=/第\s*14\s*题/.test(source)&&source.indexOf('200 m')>=0&&source.indexOf('40000')>=0;
-  if(!q5&&!q6&&!q8&&!q14&&!q15&&!q16&&!q17&&!q18&&!q20&&!q21&&!q22&&!q23)return false;
+  if(!q5&&!q6&&!q8&&!q10&&!q14&&!q15&&!q16&&!q17&&!q18&&!q20&&!q21&&!q22&&!q23)return false;
   var wrap=el('div',{style:'max-width:900px;margin:10px auto;padding:10px;background:#fff;border:1px solid #d0d5dd;border-radius:10px'});
-  var svg=cwNode('svg',{viewBox:q22?'0 0 1400 380':q23?'0 0 1000 390':q21?'0 0 1000 390':q20?'0 0 1000 390':q18?'0 0 1000 360':q6?'0 0 860 350':(q15?'0 0 940 340':(q16?'0 0 1040 350':(q17?'0 0 1000 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q22?'三角形剪切、移动拼成长方形及任意三角形倍拼验证':q23?'原三角形与等面积长方形的割补前后对照':q21?'底边三等分且阴影三角形占一份的平行四边形':q20?'标出缺口的45度直角三角形玻璃残片及面积计算过程':q18?'半厘米方格三角形与标出直角的三角形':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':q16?'等底等高面积关系与等底等面积高的关系':q17?'方格中的平行四边形和两个等面积三角形作图区':'两组对应底和高'});
+  var svg=cwNode('svg',{viewBox:q10?'0 0 700 360':q22?'0 0 1400 380':q23?'0 0 1000 390':q21?'0 0 1000 390':q20?'0 0 1000 390':q18?'0 0 1000 360':q6?'0 0 860 350':(q15?'0 0 940 340':(q16?'0 0 1040 350':(q17?'0 0 1000 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q10?'底边三等分且中间部分高不变的平行四边形':q22?'三角形剪切、移动拼成长方形及任意三角形倍拼验证':q23?'原三角形与等面积长方形的割补前后对照':q21?'底边三等分且阴影三角形占一份的平行四边形':q20?'标出缺口的45度直角三角形玻璃残片及面积计算过程':q18?'半厘米方格三角形与标出直角的三角形':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':q16?'等底等高面积关系与等底等面积高的关系':q17?'方格中的平行四边形和两个等面积三角形作图区':'两组对应底和高'});
   function line(x1,y1,x2,y2,color,w,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color||'#c7d7e5','stroke-width':w||1,'stroke-dasharray':dash||''}))}
   function text(x,y,t,color,size,anchor){svg.appendChild(cwNode('text',{x:x,y:y,fill:color||'#344054','font-size':size||17,'font-weight':700,'text-anchor':anchor||'middle'},t))}
   function panel(x,y,cell,cols,rows,base,height,caption,showHigh){
@@ -582,6 +583,16 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
     panel(70,45,40,8,5,6,3,'每小格1 dm；底6格、高3格',true);
     text(300,145,'高3格','#b42318',17,'start');
     text(300,245,'底6格','#1d4ed8',17);
+  }else if(q10){
+    var reveal=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
+    text(350,28,'底边平均分成3份，高不变','#344054',17);
+    var b0=[100,260],b1=[200,260],b2=[300,260],b3=[400,260],t0=[160,100],t1=[260,100],t2=[360,100],t3=[460,100];
+    svg.appendChild(cwNode('polygon',{points:b0.join(',')+' '+b1.join(',')+' '+t1.join(',')+' '+t0.join(','),fill:'#60a5fa','fill-opacity':.18,stroke:'#1d4ed8','stroke-width':3}));
+    svg.appendChild(cwNode('polygon',{points:b1.join(',')+' '+b2.join(',')+' '+t2.join(',')+' '+t1.join(','),fill:'#f59e0b','fill-opacity':.6,stroke:'#b45309','stroke-width':3}));
+    svg.appendChild(cwNode('polygon',{points:b2.join(',')+' '+b3.join(',')+' '+t3.join(',')+' '+t2.join(','),fill:'#60a5fa','fill-opacity':.18,stroke:'#1d4ed8','stroke-width':3}));
+    text(280,80,'原图面积36 cm²','#344054',16);
+    text(250,292,'底边 1份','#1d4ed8',14);text(350,292,'中间1份','#b45309',14);text(450,292,'底边 1份','#1d4ed8',14);
+    if(reveal)text(350,330,'中间涂色面积=36÷3=12 cm²','#344054',16);
   }else if(q22){
     var reveal=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
     function tri22(points,fill,stroke){svg.appendChild(cwNode('polygon',{points:points,fill:fill,'fill-opacity':.55,stroke:stroke||'#225e7a','stroke-width':3}))}
