@@ -45,3 +45,11 @@ def test_three_shape_equal_base_height_problem_needs_real_figure():
                 "①的面积是（ ）；②的面积是（ ）；③的面积是（ ）。"
                 "发现三个图形的底与高关系。右图涂色平行四边形的面积是a²。")
     assert requires_original_geometry_image(question)
+
+
+
+def test_four_distinct_conversion_methods_require_checked_diagram_and_answer_not_a_measurement_scan():
+    text = ("第2题 四种转化方法辨析。下面的①②③④能否推导平行四边形面积公式？"
+            "观察点M、N的剪拼、旋转方向。")
+    assert not requires_original_geometry_image(text)
+    assert requires_original_geometry_image("第5题 平行四边形在图上画高后测量底和高")
