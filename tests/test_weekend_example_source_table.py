@@ -128,3 +128,9 @@ def test_long_numbered_question_stays_one_slot_for_figure_and_review_binding():
     assert len(pages) == 23
     assert all(page.startswith(f"第{i}题") for i, page in enumerate(pages, 1))
     assert all(len(page) > 360 for page in pages)
+
+
+def test_board_has_scroll_fallback_for_long_original_questions():
+    from changying.web.weekend_pages import BOARD_JS
+
+    assert "box.style.overflowY=box.scrollHeight>box.clientHeight?'auto':'hidden'" in BOARD_JS
