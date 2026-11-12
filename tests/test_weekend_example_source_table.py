@@ -51,3 +51,52 @@ def test_normal_numbered_source_retains_existing_behavior():
     pages = literal_numbered_questions(source)
     assert len(pages) == 2
     assert "1＋1" in pages[0] and "2＋2" in pages[1]
+
+
+def test_revised_23_question_student_layout_does_not_fall_back_to_one_ai_page():
+    # The final handout puts difficulty, points and task type on the same line
+    # as the numbered heading. The old strict regex recognized none of them.
+    levels = ("基础", "进阶", "提升")
+    source = "数学·第11次课\n一、诊断与面积概念\n" + "\n".join(
+        f"第{i}题  [{levels[i % 3]}]  4分  ·  操作·面积\n"
+        f"学生独立完成第{i}题，在原图画对应的底和高。\n"
+        "作答：___________________"
+        for i in range(1, 24)
+    ) + "\n作答检查\n课后总结不是第23题题干"
+    pages = lesson_deck({
+        "reading_plan": source,
+        "examples_json": json.dumps(["旧版唯一例题"], ensure_ascii=False),
+    }, 3)
+    assert len(pages) == 23
+    assert all(f"第{i}题" in pages[i-1] for i in range(1, 24))
+    assert all("旧版唯一例题" not in p and "作答检查" not in p for p in pages)
+
+
+def test_revised_teacher_copy_never_puts_answers_or_reveal_in_exercise_deck():
+    levels = ("基础", "进阶", "提升")
+    source = "数学第11次课\n一、诊断与面积概念\n" + "\n".join(
+        f"第{i}题  【{levels[i % 3]}】  4分  ·  画高\n"
+        f"求第{i}题的面积，并说明理由。\n"
+        f"【参考答案】第{i}题答案为{i}平方厘米。\n"
+        "【解析与错因】教师单独讲解。\n"
+        "【分步赋分】每步1分。\n"
+        "【课件分镜】教师提交后揭示正确图。"
+        for i in range(1, 24)
+    ) + "\n附录A｜教师专用评分清单"
+    pages = literal_numbered_questions(source)
+    assert len(pages) == 23
+    assert all("【" not in page or "【基础】" in page or "【进阶】" in page or "【提升】" in page for page in pages)
+    assert all("【参考答案】" not in page and "【解析与错因】" not in page
+               and "【课件分镜】" not in page and "附录A" not in page for page in pages)
+
+
+def test_revised_source_table_followed_by_chinese_sections_is_not_duplicated():
+    table = "原题对应表\n" + "\n".join(f"第{i}题\n第1课时·{i}" for i in range(1, 24))
+    exercises = "一、诊断与面积概念\n" + "\n".join(
+        f"第{i}题  [基础]  2分  ·  填空\n已知第{i}题的底和高，求面积。\n作答：____"
+        for i in range(1, 24)
+    )
+    pages = literal_numbered_questions(table + "\n" + exercises)
+    assert len(pages) == 23
+    assert "原题对应表" not in "".join(pages)
+    assert all("已知" in page for page in pages)
