@@ -378,6 +378,8 @@ function board(){
   function fitText(box){
     var size=Math.min(48,Math.max(20,window.innerHeight*.045));box.style.fontSize=size+'px';
     while(size>14&&(box.scrollHeight>box.clientHeight||box.scrollWidth>box.clientWidth)){size-=1;box.style.fontSize=size+'px'}
+     // At minimum font size, allow scrolling instead of clipping long exercise text.
+     box.style.overflowY=box.scrollHeight>box.clientHeight?'auto':'hidden';
   }
   function paint(d){
     wrap.textContent='';
