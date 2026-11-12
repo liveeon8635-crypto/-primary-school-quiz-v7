@@ -17,6 +17,7 @@ on the spot and they are stored as "auto" (visible to students, flagged for teac
 from __future__ import annotations
 
 from changying.services.weekend_answers import answers_published, practice_release
+from changying.services.lesson_written import numbered_student_stem
 from changying.services.weekend_submissions import submission_attempts, record_submission, require_unsettled
 
 import json
@@ -184,11 +185,13 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
     def teacher_questions(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         row = my_session(db, u, sid)
+        lesson = db.get(implementation.TeachingLesson, row.lesson_id)
+        source = lesson.reading_plan if lesson is not None else ""
         out = []
         for q in lesson_questions(db, int(u.school_id), int(row.lesson_id)):
             hs = hint_rows(db, int(u.school_id), q.id)
             status = "none" if len(hs) < 3 else ("approved" if all(h.status == "approved" for h in hs.values()) else ("auto" if any(h.status == "auto" for h in hs.values()) else "draft"))
-            out.append({"id": q.id, "stem": q.stem, "knowledge": q.knowledge, "subject": q.subject, "levelNames": level_names(q.subject),
+            out.append({"id": q.id, "stem": numbered_student_stem(source, q.stem), "knowledge": q.knowledge, "subject": q.subject, "levelNames": level_names(q.subject),
                         "hints": [hs[i].text if i in hs else "" for i in (1, 2, 3)], "hintStatus": status})
         return {"items": out}
 
@@ -277,6 +280,8 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
                 "stageName": stage["name"] if stage else "", "className": bound.class_name if bound else ""}
         if int(row.current_stage) != PRACTICE_STAGE:
             return {**base, "practice": False, "message": "还没到随堂练习，请看大屏听老师讲" if int(row.current_stage) < PRACTICE_STAGE else "随堂练习已关闭，可查看已提交答案与老师反馈"}
+        lesson = db.get(implementation.TeachingLesson, row.lesson_id)
+        source = lesson.reading_plan if lesson is not None else ""
         mine = {int(a.question_id): a for a in db.execute(select(answers).where(answers.c.session_id == row.id, answers.c.student_id == u.id)).all()}
         used = {}
         for qid, lvl in db.execute(select(hlog.c.question_id, func.max(hlog.c.level)).where(hlog.c.session_id == row.id, hlog.c.student_id == u.id).group_by(hlog.c.question_id)).all():
@@ -287,7 +292,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         qs = []
         for q in lesson_questions(db, int(u.school_id), int(row.lesson_id)):
             a = mine.get(q.id)
-            item = {"id": q.id, "stem": q.stem, "options": options(q), "figure": figure_of(q), "answersPublished": q.id in released_choices, "canSubmit": q.id not in released_choices, "hintUsed": used.get(q.id, 0), "levelNames": level_names(q.subject)}
+            item = {"id": q.id, "stem": numbered_student_stem(source, q.stem), "options": options(q), "figure": figure_of(q), "answersPublished": q.id in released_choices, "canSubmit": q.id not in released_choices, "hintUsed": used.get(q.id, 0), "levelNames": level_names(q.subject)}
             if used.get(q.id):
                 hs = hint_rows(db, int(u.school_id), q.id)
                 item["hintTexts"] = [hs[i].text for i in range(1, used[q.id] + 1) if i in hs]

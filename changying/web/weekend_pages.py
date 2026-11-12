@@ -457,7 +457,7 @@ function practice(){
     if(d.questions.length)box.appendChild(el('p',{class:'muted',text:'选择题：每题最多提交3次；老师公布本题答案后停止修改。'}));
     d.questions.forEach(function(q,qi){
       var locked=q.canSubmit===false||(q.attempts||0)>=3,card=el('div',{class:'card'}),out=el('div'),hintsOut=el('div');
-      card.appendChild(el('b',{text:(qi+1)+'. '+q.stem}));
+      card.appendChild(el('b',{text:/^\s*第\s*\d+\s*题/.test(q.stem)?q.stem:(qi+1)+'. '+q.stem}));
       var qfig=typeof questionFigureImg==='function'?questionFigureImg(q.figure):null;if(qfig)card.appendChild(qfig);
       var selectionKey=d.sessionId+':'+q.id,chosen=selectedAnswers[selectionKey]==null?(q.answered?q.selected:-1):selectedAnswers[selectionKey],opts=el('div');
       q.options.forEach(function(o,i){
@@ -832,16 +832,47 @@ function plan(){
         if(keys.length===1||(keys.length>1&&hits[keys[0]]>hits[keys[1]]))return Number(keys[0]);
         return null;
       }
+      function reviewIdentity(q){
+        var number=Object.prototype.hasOwnProperty.call(q,'originalNumber')?q.originalNumber:reviewOrder(q.stem);
+        var last=String(q.stem||'').split('\n').pop();
+        var partMatch=/^\s*(?:第\s*\d{1,3}\s*题\s*(?:\d+(?:\.\d+)?\s*分)?\s*[｜|]?\s*)?[（(]\s*(\d{1,2})\s*[）)]/.exec(last);
+        var part=Object.prototype.hasOwnProperty.call(q,'partNumber')?q.partNumber:(partMatch?parseInt(partMatch[1],10):null);
+        return {order:number==null?null:Number(number),part:part==null?null:Number(part),sourcePos:q.sourcePosition==null?null:Number(q.sourcePosition)};
+      }
+      function reviewLabel(meta,stem){
+        if(meta.order===null)return '原题号待核对';
+        var score=String(stem||'').match(/^\s*第\s*\d{1,3}\s*题\s*(\d+(?:\.\d+)?)\s*分/);
+        return '第 '+meta.order+' 题'+(meta.part!==null?'（'+meta.part+'）':'')+(score?'　'+score[1]+' 分':'');
+      }
+      function reviewLine(stem,meta){
+        var line=String(stem||'').split('\n').pop();
+        line=line.replace(/^\s*第\s*\d{1,3}\s*题\s*(?:\d+(?:\.\d+)?\s*分)?\s*[｜|]?\s*/,'');
+        if(meta.part!==null)line=line.replace(/^\s*[（(]\s*\d{1,2}\s*[）)]\s*/,'');
+        return line.trim()||String(stem||'').split('\n').pop();
+      }
       function renderReview(){
         var cards=choiceCards.concat(writtenCards);
         cards.sort(function(a,b){
           if(a.order!==null&&b.order!==null&&a.order!==b.order)return a.order-b.order;
           if(a.order!==null&&b.order===null)return -1;
           if(a.order===null&&b.order!==null)return 1;
+          if(a.part!==null&&b.part!==null&&a.part!==b.part)return a.part-b.part;
+          if(a.sourcePos!==null&&b.sourcePos!==null&&a.sourcePos!==b.sourcePos)return a.sourcePos-b.sourcePos;
           return a.seq-b.seq;
         });
         reviewList.textContent='';
-        cards.forEach(function(item){reviewList.appendChild(item.node)});
+        var totals={},groups={};
+        cards.forEach(function(item){if(item.order!==null)totals[item.order]=(totals[item.order]||0)+1});
+        cards.forEach(function(item){
+          if(item.order!==null&&totals[item.order]>1){
+            if(!groups[item.order]){
+              groups[item.order]=el('section',{class:'card','data-review-group':String(item.order)},
+                el('h3',{text:'第 '+item.order+' 题（'+totals[item.order]+'个审核条目，按小问分别审核）'}));
+              reviewList.appendChild(groups[item.order]);
+            }
+            groups[item.order].appendChild(item.node);
+          }else reviewList.appendChild(item.node);
+        });
         var unknown=cards.filter(function(item){return item.order===null}).length;
         reviewNote.textContent=unknown?'按原教案题号排序；'+unknown+'道题未能可靠识别原文序号，暂排在末尾，请教师核对。':'按原教案题号顺序展示（题型不改变教学顺序）。';
       }
@@ -850,20 +881,22 @@ function plan(){
         api('/teacher/weekend/lessons/'+r.lessonId+'/questions').then(function(d){
           if(!d.items.length){renderReview();return}
           d.items.forEach(function(q,i){
+            var meta=reviewIdentity(q);
             var opts=q.options.map(function(o,i){return 'ABCD'[i]+'. '+o+(i===q.correctIndex?' ✓':'')}).join('　');
             var levelTag=q.level?el('span',{class:'tag'+(q.level==='提高'?' warn':''),text:q.level}):null,
                 checkTag=q.verified?el('span',{class:'tag ok',text:'已验算'}):(q.level&&SUBJ==='数学'?el('span',{class:'tag warn',text:'答案待核对'}):null);
             var fig=typeof questionFigureImg==='function'?questionFigureImg(q.figure):null;
-            var row=el('div',{class:'item'},el('span',{class:'t'},levelTag,checkTag,el('b',{text:q.stem}),fig,el('div',{class:'muted',text:opts}),el('div',{class:'muted',text:q.explanation||''})));
+            var row=el('div',{class:'item'},el('span',{class:'t'},levelTag,checkTag,el('b',{text:reviewLine(q.stem,meta)}),fig,el('div',{class:'muted',text:opts}),el('div',{class:'muted',text:q.explanation||''})));
             var badge=el('span',{class:'tag '+(q.active?'ok':'warn'),text:q.active?'已通过':'草稿'}),act=el('div',{class:'row'},badge),feedback=el('div',{role:'status','aria-live':'polite'});
             if(!q.active){
               var approve=el('button',{text:'通过',onclick:function(){approveQuestionInPlace('/teacher/weekend/lessons/'+r.lessonId+'/questions',q,approve,act,badge,feedback,refreshStatus)}});
               act.appendChild(approve);
               act.appendChild(el('button',{text:'删除',onclick:function(){api('/teacher/weekend/lessons/'+r.lessonId+'/questions',{json:{remove:[q.id]}}).then(function(st){refreshStatus(st);loadQ()})}}));
             }
-            var order=reviewOrder(q.stem),choiceCard=el('div',{class:'card','data-review-number':order===null?'':String(order)});
+            var order=meta.order,choiceCard=el('div',{class:'card','data-review-number':order===null?'':String(order)});
+            choiceCard.appendChild(el('div',{class:'row'},el('b',{text:reviewLabel(meta,q.stem)})));
             choiceCard.appendChild(row);choiceCard.appendChild(act);choiceCard.appendChild(feedback);
-            choiceCards.push({node:choiceCard,order:order,seq:i});
+            choiceCards.push({node:choiceCard,order:order,part:meta.part,sourcePos:meta.sourcePos,seq:i});
           });
           renderReview();
         }).catch(function(e){qbox.appendChild(el('div',{class:'notice error',text:e.message}));renderReview()});
@@ -881,12 +914,12 @@ function plan(){
           }});wbox.appendChild(all)}
           if(!d.items.length)wbox.appendChild(el('p',{class:'muted',text:'还没有此类题目。重新导入原教案可提取原有简答／写作题，或使用 AI 出习题。'}));
           d.items.forEach(function(q,i){
-            var order=reviewOrder(q.stem);
+            var meta=reviewIdentity(q),order=meta.order;
             var labels={short_answer:'阅读简答／过程题',final_answer:'填最终答案',composition:'写作／复述'},card=el('div',{class:'card','data-review-number':order===null?'':String(order)});
             var badge=el('span',{class:'tag '+(q.approved?'ok':'warn'),text:q.approved?'已通过':'草稿'});
-            card.appendChild(el('div',{class:'row'},el('b',{text:labels[q.type]||'简答题'}),q.level?el('span',{class:'tag'+(q.level==='提高'?' warn':''),text:q.level}):null,q.verified?el('span',{class:'tag ok',text:'已验算'}):(SUBJ==='数学'&&q.level&&q.type!=='composition'?el('span',{class:'tag warn',text:'答案待核对'}):null),badge));
+            card.appendChild(el('div',{class:'row'},el('b',{text:reviewLabel(meta,q.stem)}),el('span',{class:'tag',text:labels[q.type]||'简答题'}),q.level?el('span',{class:'tag'+(q.level==='提高'?' warn':''),text:q.level}):null,q.verified?el('span',{class:'tag ok',text:'已验算'}):(SUBJ==='数学'&&q.level&&q.type!=='composition'?el('span',{class:'tag warn',text:'答案待核对'}):null),badge));
             var parts=q.stem.split('\n'),questionLine=parts.pop();
-            card.appendChild(el('p',{style:'white-space:pre-wrap;font-weight:600',text:questionLine}));
+            card.appendChild(el('p',{style:'white-space:pre-wrap;font-weight:600',text:reviewLine(questionLine,meta)}));
             var wfig=typeof questionFigureImg==='function'?questionFigureImg(q.figure):null;if(wfig)card.appendChild(wfig);
             if(parts.length)card.appendChild(el('details',{},el('summary',{text:'展开阅读材料／题目全文'}),el('pre',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7',text:parts.join('\n')})));
             var edit=el('details'),stem=el('textarea',{maxlength:20000}),ref=el('textarea',{maxlength:4000}),hs=[];
@@ -907,7 +940,7 @@ function plan(){
             }});actions.appendChild(b)})}
             card.appendChild(markBox(r.lessonId,{templateId:q.id,knowledge:q.knowledge,afterClass:q.afterClass,suggestedKnowledge:q.suggestedKnowledge},d.goals));
             card.appendChild(actions);card.appendChild(feedback);
-            writtenCards.push({node:card,order:order,seq:10000+i});
+            writtenCards.push({node:card,order:order,part:meta.part,sourcePos:meta.sourcePos,seq:10000+i});
           });
           renderReview();
         }).catch(function(e){wbox.appendChild(el('div',{class:'notice error',text:e.message}));renderReview()});

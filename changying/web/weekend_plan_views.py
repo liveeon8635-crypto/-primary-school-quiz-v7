@@ -34,7 +34,7 @@ from changying.services.weekend_presentation import literal_numbered_questions
 from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUPPORTED, detect_lesson_no, extract
 from changying.web.weekend_pages import plan_page_html
 from changying.services.lesson_written import (MAX_KNOWLEDGE, lesson_goals, literal_written_questions, suggest_knowledge,
-    valid_written_questions, replace_written_drafts, written_templates, template_meta)
+    valid_written_questions, replace_written_drafts, written_templates, template_meta, lesson_question_number)
 
 AI_FEATURE = "weekend_lesson_draft"
 SUBJECTS = ("语文", "数学")
@@ -1176,7 +1176,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             except Exception:  # noqa: BLE001
                 opts = []
             out.append({"id": q.id, "stem": q.stem, "options": opts, "correctIndex": q.correct_index, "explanation": q.explanation, "knowledge": q.knowledge,
-                        "figure": _stored_figure(q), "active": bool(q.active), "level": qg.CODE_LEVEL.get(q.level, ""), "verified": str(q.explanation or "").startswith("验算：")})
+                        "figure": _stored_figure(q), **lesson_question_number(lesson.reading_plan or "", q.stem), "active": bool(q.active), "level": qg.CODE_LEVEL.get(q.level, ""), "verified": str(q.explanation or "").startswith("验算：")})
         return {"items": out}
 
     @router.post("/teacher/weekend/lessons/{lid}/questions")
@@ -1195,7 +1195,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         need(u, "teacher")
         lesson = my_lesson(db, u, lid)
         return {"goals": lesson_goals(lesson.core_target or ""),
-                "items": [{"id": q.id, "stem": q.stem, "reference": q.reference, "suggestedKnowledge": suggest_knowledge(q.stem),
+                "items": [{"id": q.id, "stem": q.stem, "reference": q.reference, **lesson_question_number(lesson.reading_plan or "", q.stem), "suggestedKnowledge": suggest_knowledge(q.stem),
                  **template_meta(q)} for q in written_templates(db, written, u.school_id, u.id, lid)]}
 
     @router.put("/teacher/weekend/lessons/{lid}/written/questions/{qid}/marks")

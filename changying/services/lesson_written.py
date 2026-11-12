@@ -13,6 +13,66 @@ from typing import Any
 from sqlalchemy import delete, insert, select
 
 
+
+def lesson_question_number(source: str, stem: str) -> dict[str, int | None]:
+    """Read a printed main number and sub-number without changing stored question IDs.
+
+    A sub-question such as （2） receives its parent number only when its
+    wording matches a unique location under a numbered heading in the original
+    lesson. Ambiguous/missing source text is deliberately left unnumbered.
+    """
+    raw = str(stem or "").strip()
+    last = raw.split("\n")[-1].strip()
+    direct = re.match(r"^第\s*(\d{1,3})\s*题", raw) or re.match(r"^第\s*(\d{1,3})\s*题", last)
+    sub_text = re.sub(r"^第\s*\d{1,3}\s*题\s*(?:\d+(?:\.\d+)?\s*分)?\s*[｜|]?\s*", "", last)
+    part_match = re.match(r"^[（(]\s*(\d{1,2})\s*[）)]", sub_text)
+    part = int(part_match.group(1)) if part_match else None
+    if direct:
+        return {"originalNumber": int(direct.group(1)), "partNumber": part, "sourcePosition": None}
+
+    text = re.sub(r"\s+", "", str(source or ""))
+    sample = re.sub(r"\s+", "", last)
+    if len(sample) < 14 or not text:
+        return {"originalNumber": None, "partNumber": part, "sourcePosition": None}
+    headings = [(m.start(), int(m.group(1))) for m in re.finditer(r"第(\d{1,3})题", text)]
+    if not headings:
+        return {"originalNumber": None, "partNumber": part, "sourcePosition": None}
+    found: list[tuple[int, int]] = []
+    for offset in range(0, min(120, len(sample) - 13), 7):
+        fragment = sample[offset:offset + 18]
+        if len(fragment) < 14:
+            continue
+        at = text.find(fragment)
+        if at < 0 or text.find(fragment, at + 1) >= 0:
+            continue
+        earlier = [number for pos, number in headings if pos < at]
+        if earlier:
+            found.append((earlier[-1], at))
+    numbers = {number for number, _ in found}
+    if len(numbers) != 1:
+        return {"originalNumber": None, "partNumber": part, "sourcePosition": None}
+    return {"originalNumber": numbers.pop(), "partNumber": part, "sourcePosition": min(pos for _, pos in found)}
+
+
+def numbered_student_stem(source: str, stem: str) -> str:
+    """Present a verified lesson number without changing the stored question."""
+    raw = str(stem or "")
+    number = lesson_question_number(source, raw)
+    main = number["originalNumber"]
+    if main is None or re.match(r"^\s*第\s*\d{1,3}\s*题", raw):
+        return raw
+    label = f"第{main}题" + (f"（{number['partNumber']}）" if number["partNumber"] else "")
+    material, separator, question = raw.rpartition("\n\n")
+    if not separator:
+        question = raw
+    # A printed main number already present after reading material must not
+    # be prepended again when only the question line, not its material, matches.
+    if re.match(r"^\s*第\s*\d{1,3}\s*题", question):
+        return raw
+    if number["partNumber"] is not None:
+        question = re.sub(r"^\s*[（(]\s*" + str(number["partNumber"]) + r"\s*[）)]\s*", "", question)
+    return (material + separator if separator else "") + label + "　" + question
+
 def template_meta(row: Any) -> dict[str, Any]:
     data = json.loads(row.hints_json or '{}')
     return data if isinstance(data, dict) else {}
