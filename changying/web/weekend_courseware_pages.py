@@ -553,10 +553,11 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
   var q20=/第\s*20\s*题/.test(source)&&source.indexOf('破损玻璃')>=0;
   var q21=/第\s*21\s*题/.test(source)&&source.indexOf('阴影面积')>=0;
   var q23=/第\s*23\s*题/.test(source)&&source.indexOf('逆向应用')>=0;
+  var q22=/第\s*22\s*题/.test(source)&&source.indexOf('割补思想')>=0;
   var q14=/第\s*14\s*题/.test(source)&&source.indexOf('200 m')>=0&&source.indexOf('40000')>=0;
-  if(!q5&&!q6&&!q8&&!q14&&!q15&&!q16&&!q17&&!q18&&!q20&&!q21&&!q23)return false;
+  if(!q5&&!q6&&!q8&&!q14&&!q15&&!q16&&!q17&&!q18&&!q20&&!q21&&!q22&&!q23)return false;
   var wrap=el('div',{style:'max-width:900px;margin:10px auto;padding:10px;background:#fff;border:1px solid #d0d5dd;border-radius:10px'});
-  var svg=cwNode('svg',{viewBox:q23?'0 0 1000 390':q21?'0 0 1000 390':q20?'0 0 1000 390':q18?'0 0 1000 360':q6?'0 0 860 350':(q15?'0 0 940 340':(q16?'0 0 1040 350':(q17?'0 0 1000 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q23?'原三角形与等面积长方形的割补前后对照':q21?'底边三等分且阴影三角形占一份的平行四边形':q20?'标出缺口的45度直角三角形玻璃残片及面积计算过程':q18?'半厘米方格三角形与标出直角的三角形':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':q16?'等底等高面积关系与等底等面积高的关系':q17?'方格中的平行四边形和两个等面积三角形作图区':'两组对应底和高'});
+  var svg=cwNode('svg',{viewBox:q22?'0 0 1400 380':q23?'0 0 1000 390':q21?'0 0 1000 390':q20?'0 0 1000 390':q18?'0 0 1000 360':q6?'0 0 860 350':(q15?'0 0 940 340':(q16?'0 0 1040 350':(q17?'0 0 1000 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q22?'三角形剪切、移动拼成长方形及任意三角形倍拼验证':q23?'原三角形与等面积长方形的割补前后对照':q21?'底边三等分且阴影三角形占一份的平行四边形':q20?'标出缺口的45度直角三角形玻璃残片及面积计算过程':q18?'半厘米方格三角形与标出直角的三角形':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':q16?'等底等高面积关系与等底等面积高的关系':q17?'方格中的平行四边形和两个等面积三角形作图区':'两组对应底和高'});
   function line(x1,y1,x2,y2,color,w,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color||'#c7d7e5','stroke-width':w||1,'stroke-dasharray':dash||''}))}
   function text(x,y,t,color,size,anchor){svg.appendChild(cwNode('text',{x:x,y:y,fill:color||'#344054','font-size':size||17,'font-weight':700,'text-anchor':anchor||'middle'},t))}
   function panel(x,y,cell,cols,rows,base,height,caption,showHigh){
@@ -581,6 +582,42 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
     panel(70,45,40,8,5,6,3,'每小格1 dm；底6格、高3格',true);
     text(300,145,'高3格','#b42318',17,'start');
     text(300,245,'底6格','#1d4ed8',17);
+  }else if(q22){
+    var reveal=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
+    function tri22(points,fill,stroke){svg.appendChild(cwNode('polygon',{points:points,fill:fill,'fill-opacity':.55,stroke:stroke||'#225e7a','stroke-width':3}))}
+    function arrow22(x1,x2,y){line(x1,y,x2,y,'#667085',3);svg.appendChild(cwNode('polygon',{points:(x2-12)+','+(y-8)+' '+x2+','+y+' '+(x2-12)+','+(y+8),fill:'#667085'}))}
+    text(160,28,'① 原三角形：沿两腰中点连线剪开','#344054',15);
+    tri22('40,250 280,250 160,70','#60a5fa');
+    line(100,160,220,160,'#b42318',3,'7 5');
+    line(160,70,160,250,'#1d4ed8',2,'6 4');
+    text(160,282,'底 a','#1d4ed8',14);text(169,120,'高 h','#1d4ed8',14,'start');
+    text(160,184,'中点连线','#b42318',13);
+    arrow22(300,350,170);
+    text(505,28,'② 上部三角形沿高再剪成两块','#344054',15);
+    tri22('365,250 525,250 485,160 405,160','#60a5fa');
+    text(445,275,'下方梯形','#475467',13);
+    tri22('540,160 585,160 585,100','#a78bfa');
+    tri22('610,160 655,160 610,100','#a78bfa');
+    text(598,190,'剪下的两块','#475467',13);
+    arrow22(665,710,170);
+    text(860,28,'③ 旋转180°补在两侧，拼成长方形','#344054',15);
+    svg.appendChild(cwNode('rect',{x:725,y:145,width:300,height:105,fill:'#fff','fill-opacity':0,stroke:'#1d4ed8','stroke-width':3}));
+    // The lower trapezoid and the two rotated top pieces tile the rectangle.
+    tri22('725,250 1025,250 950,145 800,145','#60a5fa');
+    tri22('725,145 800,145 725,250','#a78bfa');
+    tri22('1025,145 950,145 1025,250','#a78bfa');
+    line(725,145,1025,145,'#1d4ed8',3);line(725,250,1025,250,'#1d4ed8',3);
+    line(725,145,725,250,'#b42318',2,'6 4');
+    text(875,280,'长 a','#1d4ed8',14);
+    text(734,205,'宽 h÷2','#b42318',13,'start');
+    arrow22(1035,1080,170);
+    text(1230,28,'④ 任意三角形：两张全等拼平行四边形','#344054',15);
+    tri22('1080,250 1170,250 1200,150','#60a5fa');
+    tri22('1200,150 1360,150 1330,250','#a78bfa');
+    line(1080,250,1360,150,'#fff',2,'6 4');
+    line(1080,250,1330,250,'#1d4ed8',2);line(1170,250,1200,150,'#b42318',2);
+    text(1220,280,'两倍面积；单个三角形为一半','#475467',13);
+    if(reveal)text(700,335,'长方形面积 a×(h÷2)=ah÷2；任意三角形均可用两全等副本验证','#344054',15);
   }else if(q23){
     var showSolutions=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
     text(250,28,'割补前：原三角形','#344054',17);
