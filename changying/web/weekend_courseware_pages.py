@@ -833,8 +833,10 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
         var foot=[sideStart[0]+ratio*dx,sideStart[1]+ratio*dy];
         line(sideStart[0],sideStart[1],sideEnd[0],sideEnd[1],'#1d4ed8',4);
         line(opposite[0],opposite[1],foot[0],foot[1],color,3,'7 4');
-        line(foot[0]-6,foot[1]-12,foot[0]+6,foot[1]-8,color,2);
-        line(foot[0]+6,foot[1]-8,foot[0]+2,foot[1]+4,color,2);
+        var sideLength=Math.sqrt(dx*dx+dy*dy),ux=dx/sideLength,uy=dy/sideLength,nx=-uy,ny=ux,mark=10;
+        line(foot[0],foot[1],foot[0]+ux*mark,foot[1]+uy*mark,color,2);
+        line(foot[0]+ux*mark,foot[1]+uy*mark,foot[0]+(ux+nx)*mark,foot[1]+(uy+ny)*mark,color,2);
+        line(foot[0]+(ux+nx)*mark,foot[1]+(uy+ny)*mark,foot[0]+nx*mark,foot[1]+ny*mark,color,2);
         text(x+80,265,base+' m 斜底','#1d4ed8',16);
         text(x+215,185,height+' m','#d97706',18);
         text(x+190,255,'虚线高与蓝色斜底垂直','#475467',14);
