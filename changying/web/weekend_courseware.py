@@ -516,11 +516,11 @@ def lesson_figures(implementation: Any, db: Any, lesson: Any, written_table: Any
 
 
 def requires_original_geometry_image(page_text: Any) -> bool:
-    """Measurement problems with a referenced drawing cannot be verified from a generic SVG."""
+    """Figure-dependent geometry questions cannot be verified from a text table or guessed SVG."""
     text = str(page_text or "")
     return (
         any(term in text for term in ("平行四边形", "三角形", "梯形", "多边形"))
-        and any(term in text for term in ("图上", "下图", "下面各个", "画高", "量出", "测量"))
+        and any(term in text for term in ("图上", "下图", "右图", "下面各个", "画高", "量出", "测量", "涂色", "①②③", "三个图形", "相邻点"))
     )
 
 
@@ -802,6 +802,10 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 (params.get("sourceFigure") or {}).get("type") != "uploaded_image"
             ):
                 raise HTTPException(400, "本题需要对照原题图片测量，但尚未找到匹配的原图；请重新导入原卷图并核对后审核")
+        if requires_original_geometry_image(item.get("pageText") or "") and (
+            (params.get("figure") or {}).get("type") in (None, "", "table")
+        ):
+            raise HTTPException(400, "本题依赖原图中的几何关系，文字表格不能代替①②③题图；请补充与原图一致的教学图后再审核")
         required_figure = required_visual_type(item.get("pageText") or "")
         saved_figure = params.get("figure") or {}
         if required_figure and not saved_figure.get("type"):
