@@ -342,7 +342,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     sessions = register_weekend_tables(implementation)["sessions"]
     from changying.web.weekend_written import register_written_tables
     written = register_written_tables(implementation)["questions"]
-    from changying.web.weekend_courseware import register_courseware_table
+    from changying.web.weekend_courseware import register_courseware_table, invalidate_courseware_on_reimport
     courseware_table = register_courseware_table(implementation)
     versions = history.register_history(implementation.Base.metadata)
     sched = register_plan_tables(implementation)
@@ -731,7 +731,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 raise HTTPException(409, "这节课已有教案，请确认覆盖后重新导入。")
             _assert_lesson_not_in_use(db, lesson)
             before = plan_state(db, u, lesson)
-            db.execute(delete(courseware_table).where(courseware_table.c.lesson_id == lesson.id))
+            invalidate_courseware_on_reimport(db, courseware_table, lesson.id)  # preserve drafts, revoke stale approvals
             for k, v in fields.items():
                 setattr(lesson, k, v)
             db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False)))
