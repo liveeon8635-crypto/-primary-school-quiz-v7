@@ -757,15 +757,18 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
       text(500,225,'请在A、B网格中分别作图并标出底和高','#475467',15);
     }
   }else if(q16){
-    text(245,28,'（1）等底、等高','#344054',17);
-    svg.appendChild(cwNode('polygon',{points:'60,230 120,90 410,90',fill:'#60a5fa','fill-opacity':.65,stroke:'#225e7a','stroke-width':3}));
-    svg.appendChild(cwNode('polygon',{points:'60,230 410,90 350,230',fill:'#a78bfa','fill-opacity':.65,stroke:'#225e7a','stroke-width':3}));
-    line(60,230,410,90,'#fff',2,'6 4');
-    line(60,230,350,230,'#1d4ed8',2);
-    text(205,258,'共同的底','#1d4ed8',15);
-    line(120,90,120,230,'#b42318',2,'6 4');
-    text(128,165,'共同的高','#b42318',15,'start');
-    text(245,292,'S平行四边形=2S三角形；面积差=S三角形=15 m²','#344054',15);
+    text(245,28,'（1）平行四边形与三角形：同底、等高','#344054',16);
+    svg.appendChild(cwNode('polygon',{points:'65,220 125,95 405,95 345,220',fill:'#60a5fa','fill-opacity':.3,stroke:'#225e7a','stroke-width':3}));
+    line(65,220,345,220,'#1d4ed8',3);
+    line(125,95,125,220,'#b42318',2,'6 4');
+    line(125,206,139,206,'#b42318',2);line(139,206,139,220,'#b42318',2);
+    text(205,243,'平行四边形底','#1d4ed8',14);
+    text(133,158,'共同的高','#b42318',13,'start');
+    svg.appendChild(cwNode('polygon',{points:'65,220 345,220 185,95',fill:'#a78bfa','fill-opacity':.5,stroke:'#6941c6','stroke-width':3}));
+    line(65,220,345,220,'#1d4ed8',3);
+    line(185,95,185,220,'#b42318',2,'6 4');
+    line(185,206,199,206,'#b42318',2);line(199,206,199,220,'#b42318',2);
+    text(230,278,'面积差15 m² = 三角形面积；平行四边形面积=30 m²','#344054',14);
     line(520,35,520,325,'#d0d5dd',1);
     text(780,28,'（2）等底、等面积','#344054',17);
     svg.appendChild(cwNode('polygon',{points:'560,230 720,230 560,100',fill:'#60a5fa','fill-opacity':.55,stroke:'#225e7a','stroke-width':3}));
@@ -824,10 +827,17 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
         text(x+170,255,base+' m 底','#1d4ed8',17);
         text(x+190,56,'高垂直于水平底','#475467',14);
       }else{
-        line(left+32,158,left+194,236,color,3,'7 4');
-        text(x+185,190,height+' m',color,18);
-        text(left+24,155,base+' m','#1d4ed8',17);
-        text(x+175,255,'高垂直于斜边所在直线','#475467',14);
+        var sideStart=[left,bottom],sideEnd=[left+shift,top],opposite=[right,top];
+        var dx=sideEnd[0]-sideStart[0],dy=sideEnd[1]-sideStart[1];
+        var ratio=((opposite[0]-sideStart[0])*dx+(opposite[1]-sideStart[1])*dy)/(dx*dx+dy*dy);
+        var foot=[sideStart[0]+ratio*dx,sideStart[1]+ratio*dy];
+        line(sideStart[0],sideStart[1],sideEnd[0],sideEnd[1],'#1d4ed8',4);
+        line(opposite[0],opposite[1],foot[0],foot[1],color,3,'7 4');
+        line(foot[0]-6,foot[1]-12,foot[0]+6,foot[1]-8,color,2);
+        line(foot[0]+6,foot[1]-8,foot[0]+2,foot[1]+4,color,2);
+        text(x+80,265,base+' m 斜底','#1d4ed8',16);
+        text(x+215,185,height+' m','#d97706',18);
+        text(x+190,255,'虚线高与蓝色斜底垂直','#475467',14);
       }
     }
     pair(15,'8 m 底 ↔ 5.4 m 高',8,5.4,'#d97706',false);
