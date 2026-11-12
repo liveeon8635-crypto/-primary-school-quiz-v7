@@ -185,11 +185,13 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
     def teacher_questions(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         row = my_session(db, u, sid)
+        lesson = db.get(implementation.TeachingLesson, row.lesson_id)
+        source = lesson.reading_plan if lesson is not None else ""
         out = []
         for q in lesson_questions(db, int(u.school_id), int(row.lesson_id)):
             hs = hint_rows(db, int(u.school_id), q.id)
             status = "none" if len(hs) < 3 else ("approved" if all(h.status == "approved" for h in hs.values()) else ("auto" if any(h.status == "auto" for h in hs.values()) else "draft"))
-            out.append({"id": q.id, "stem": q.stem, "knowledge": q.knowledge, "subject": q.subject, "levelNames": level_names(q.subject),
+            out.append({"id": q.id, "stem": numbered_student_stem(source, q.stem), "knowledge": q.knowledge, "subject": q.subject, "levelNames": level_names(q.subject),
                         "hints": [hs[i].text if i in hs else "" for i in (1, 2, 3)], "hintStatus": status})
         return {"items": out}
 
