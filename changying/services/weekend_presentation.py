@@ -14,14 +14,29 @@ def literal_numbered_questions(source: str) -> list[str]:
     # Only accept a standalone heading (optionally followed by the printed score).
     heading = re.compile(r'(?m)^[^\S\n]*第[^\S\n]*(\d{1,2})[^\S\n]*题'
                          r'[^\S\n]*(?:[（(]?[^\S\n]*\d+(?:\.\d+)?[^\S\n]*分[^\S\n]*[）)]?)?[^\S\n]*$')
-    marks = list(heading.finditer(source or ''))
+    body = source or ''
+    marks = list(heading.finditer(body))
     numbers = [int(m.group(1)) for m in marks]
+    if len(marks) >= 2 and len(set(numbers)) != len(numbers):
+        # A printed teacher lesson can first contain a two-column question
+        # provenance table ("第1题" / "第1课时·...") and then the actual
+        # numbered exercises. Never use the table as screen content.
+        # Limit this recovery to clearly labelled multi-part lesson bodies;
+        # unstructured repeated headings continue to fail closed.
+        part = re.search(r'(?m)^[^\S\n]*第一部分(?:[^\S\n：:、]|[：:、]|$)', body)
+        if part:
+            body = body[part.start():]
+            stop = re.search(r'(?m)^[^\S\n]*(?:课堂小结与板书|课后作业|自检表)(?:[^\S\n]|$)', body)
+            if stop:
+                body = body[:stop.start()]
+            marks = list(heading.finditer(body))
+            numbers = [int(m.group(1)) for m in marks]
     if len(marks) < 2 or len(set(numbers)) != len(numbers):
         return []
     out = []
     for i, mark in enumerate(marks):
-        end = marks[i + 1].start() if i + 1 < len(marks) else len(source)
-        chunk = source[mark.start():end]
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(body)
+        chunk = body[mark.start():end]
         stop = re.search(r'(?m)^\s*(?:考点提醒|答案|解析|参考答案|评分要点)\s*[：:]', chunk)
         if stop:
             chunk = chunk[:stop.start()]
