@@ -100,3 +100,19 @@ def test_revised_source_table_followed_by_chinese_sections_is_not_duplicated():
     assert len(pages) == 23
     assert "原题对应表" not in "".join(pages)
     assert all("已知" in page for page in pages)
+
+
+def test_failed_source_extraction_is_detected_before_generating_wrong_one_page():
+    from types import SimpleNamespace
+    from changying.web.weekend_courseware import source_page_mismatch
+
+    # A future template variation may not yet be recognized by the parser.
+    # Count the numbered source headings independently and fail visibly.
+    source = "\n".join(
+        f"第{i}题：题干在标题同行，需修订适配\n继续画图"
+        for i in range(1, 24)
+    )
+    lesson = SimpleNamespace(subject="数学", reading_plan=source,
+                             examples_json=json.dumps(["一页旧版AI摘要"]), ppt_json="[]")
+    assert source_page_mismatch(lesson) == (23, True)
+    assert len(lesson_deck({"reading_plan": source, "examples_json": lesson.examples_json}, 3)) == 1
