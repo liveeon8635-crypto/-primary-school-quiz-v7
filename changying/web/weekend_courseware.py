@@ -820,6 +820,12 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         item = find(items, b.stageNo, page)
         if item is None:
             raise HTTPException(404, "这一页还没有课件，请先生成或填写")
+        # A teacher may edit the lesson after a courseware draft was generated.
+        # Never approve that stale draft against an unrelated or revised question.
+        current_pages = stage_pages(lesson, b.stageNo)
+        current_text = current_pages[page] if page is not None else ""
+        if str(item.get("pageText") or "") != current_text:
+            raise HTTPException(409, "题目或教案页面已更新，请重新生成本页课件并复核，不能直接审核旧图")
         try:
             params = cw.clean(item["kind"], item["params"], lesson.reading_plan or "")
         except ValueError as e:
