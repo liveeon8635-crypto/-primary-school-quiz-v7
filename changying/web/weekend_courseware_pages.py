@@ -509,12 +509,47 @@ function cwLesson10Geometry(box,p,view,big,teacher){
   if(ex20&&step>=last)wrap.appendChild(el('div',{style:'text-align:center;font-weight:700;color:#184b82',text:'长 = 2m = 3n，宽 = m+n；C = 2(3n+m+n) = 11n'}));
   box.appendChild(wrap);return true;
 }
+// Restore the existing, reviewed visual components for the two remaining
+// lesson-10 examples shown with a blank diagram / stock numeric table.
+// This is presentation-only: do not edit saved teacher figures or steps.
+function cwLesson10RemainingFigure(wrap,p,view,big,teacher){
+  var f=p.figure||{},kind=f.type||'';
+  if(kind&&kind!=='table')return false;
+  var text=[p.title||'',p.problem||'',p.sourceProblem||''].join(' ');
+  var is21=/(?:第\s*21\s*题|跑道追及)/.test(text)
+    &&text.indexOf('跑道')>=0
+    &&/180\s*米/.test(text)&&/140\s*米/.test(text)
+    &&/(?:同向|同一方向)/.test(text);
+  if(is21&&(!kind||kind==='table')){
+    // Keep the original question and the teacher's five steps unchanged.
+    cwFigure(wrap,{type:'running_track',fastSpeed:180,slowSpeed:140,distanceSymbol:'s'},
+      big,view,teacher,p.steps.length);
+    return true;
+  }
+  var is22=/(?:第\s*22\s*题|三角形数规律)/.test(text)
+    &&text.indexOf('三角形数')>=0
+    &&/(?:第\s*10\s*个|第\s*10\s*项)/.test(text);
+  if(is22&&(!kind||kind==='table')){
+    // Replace only the generic n/三角形数 enumeration seen in the legacy
+    // editor, not an unrelated hand-crafted table or any specialized figure.
+    if(kind==='table'){
+      var rows=f.rows||[];
+      var header=rows.length?rows[0].join(''):'';
+      var values=rows.length>1?rows[1].join(''):'';
+      if(header.indexOf('n')<0||values.indexOf('三角形数')<0)return false;
+    }
+    cwFigure(wrap,{type:'triangular_numbers',terms:[1,3,6,10,15],targetTerm:10},
+      big,view,teacher,p.steps.length);
+    return true;
+  }
+  return false;
+}
 function cwSteps(box,p,view,big,teacher){
   var wrap=el('div',{style:'max-width:980px;margin:0 auto;background:#fff;color:#111;border-radius:12px;padding:12px;line-height:1.75;'+(big?'font-size:2.8vh':'')});box.appendChild(wrap);
   wrap.appendChild(el('b',{text:p.title}));
   if(p.sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:p.sourceProblem}));
   if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
-  if(!cwLesson10Geometry(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
+  if(!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
   if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
   var shown=teacher?(view.previewMode?Math.max(1,view.step||0):p.steps.length):(view.step||0),list=el('ol',{style:'padding-left:1.6em;margin:12px 0'});
   p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?(i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:0 4px':''):'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
