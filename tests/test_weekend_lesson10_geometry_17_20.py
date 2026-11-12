@@ -36,6 +36,8 @@ assert.strictEqual(elems(a1.root,'rect').length,2,'square and rectangle are two 
 var dims=elems(a1.root,'rect').map(function(x){return [+x.attrs.width,+x.attrs.height]});
 assert.strictEqual(dims[0][0],dims[0][1],'the first one is a square');
 assert(dims[1][0]!==dims[1][1],'the second one is a rectangle');
+assert(renderFigure({...ex17,title:'第17题',problem:'正方形边长a，长方形长a宽b'},1,false,true).matched,'17 title alone matches');
+assert(renderFigure({...ex20,title:'第20题'},1,false,true).matched,'20 title alone matches');
 assert(words(a1.root).indexOf('4a')<0,'no formula in the diagram at first step');
 assert(words(renderFigure(ex17,2,false,true).root).indexOf('4a')>=0);
 assert(words(renderFigure(ex17,3,false,true).root).indexOf('2(a+b)')>=0);
