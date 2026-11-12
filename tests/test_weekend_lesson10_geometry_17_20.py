@@ -75,6 +75,9 @@ console.log('OK');
 
 def test_no_unrelated_lesson_or_database_changes_in_renderer():
     assert "function cwLesson10Geometry(" in COURSEWARE_JS
-    assert "if(!cwLesson10Geometry(wrap,p,view,big,teacher))cwFigure(" in COURSEWARE_JS
+    # Other teaching figures may now be checked first; the original
+    # 17/20 renderer and generic fallback must still be present and used.
+    assert "cwLesson10Geometry(wrap,p,view,big,teacher)" in COURSEWARE_JS
+    assert "cwFigure(wrap,p.figure,big,view,teacher,p.steps.length)" in COURSEWARE_JS
     assert "if(!p.figure||p.figure.type!=='shape'||p.figure.shape!=='rectangle')return false" in COURSEWARE_JS
     assert "innerHTML" not in COURSEWARE_JS
