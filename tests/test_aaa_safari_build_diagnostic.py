@@ -15,6 +15,7 @@ def test_safari12_asset_regeneration_diagnostic():
         "@babel/core@7.28.5","@babel/preset-env@7.28.5","acorn@8.15.0"
     ],check=True,timeout=150,capture_output=True,text=True)
     old=json.loads((ASSETS/"manifest.json").read_text())
+    os.environ["DATABASE_URL"]="sqlite:////tmp/changying-safari12-asset-build.sqlite3"
     sources,routes=collect()
     raw=json.dumps({"scripts":sources,"routes":routes})
     compiler=Path(__file__).parents[1]/"changying"/"compat_tools"/"compile_safari12.cjs"
