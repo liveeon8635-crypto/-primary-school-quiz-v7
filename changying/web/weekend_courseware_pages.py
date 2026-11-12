@@ -675,7 +675,12 @@ function cwLesson10RemainingFigure(wrap,p,view,big,teacher){
 function cwSteps(box,p,view,big,teacher){
   var wrap=el('div',{style:'max-width:980px;margin:0 auto;background:#fff;color:#111;border-radius:12px;padding:12px;line-height:1.75;'+(big?'font-size:2.8vh':'')});box.appendChild(wrap);
   wrap.appendChild(el('b',{text:p.title}));
-  if(p.sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:p.sourceProblem}));
+  var sourceProblem=String(p.sourceProblem||'');
+  if(p.figure&&p.figure.type==='table'&&sourceProblem.indexOf('对应面积')>=0&&sourceProblem.indexOf('平方千米')>=0&&sourceProblem.indexOf('公顷')>=0){
+    var tableHeader=sourceProblem.lastIndexOf('正方形边长',sourceProblem.indexOf('对应面积'));
+    if(tableHeader>0)sourceProblem=sourceProblem.slice(0,tableHeader).trim();
+  }
+  if(sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:sourceProblem}));
   if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
   if(!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
   if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
