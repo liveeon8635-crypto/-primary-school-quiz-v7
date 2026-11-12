@@ -555,7 +555,7 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
     var w=cell*cols,h=cell*rows;
     for(var i=0;i<=cols;i++)line(x+i*cell,y,x+i*cell,y+h,'#c5d8e8',1);
     for(var j=0;j<=rows;j++)line(x,y+j*cell,x+w,y+j*cell,'#c5d8e8',1);
-    var shift=cell*2,top=y+cell,bottom=top+h;
+    var shift=cell*2,top=y+cell,bottom=top+height*cell;
     svg.appendChild(cwNode('polygon',{points:(x+shift)+','+top+' '+(x+shift+base*cell)+','+top+' '+(x+shift+base*cell-cell)+','+bottom+' '+x+','+bottom,fill:'#3da9bd','fill-opacity':.18,stroke:'#225e7a','stroke-width':3}));
     text(x+w/2,y+h+25,caption,'#344054',16);
     if(showHigh){
