@@ -729,7 +729,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                           "kindLabel": cw.KIND_LABEL.get(i["kind"], i["kind"]),
                           "writtenTaskPreview": task(i, i["params"])})
         quality_audit = audit_example_pages(
-            stage_pages(lesson, 3), items_of(row_for(db, lesson)),
+            stage_pages(lesson, 3), items,
             globals()["required_visual_type"], stage=3,
         )
         source_count, mismatch = source_page_mismatch(lesson)
@@ -869,6 +869,10 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         fallback_figure = required_visual_figure(page_text)
         if fallback_figure and not (params.get("figure") or {}).get("type"):
             params = cw.clean(b.kind, {**params, "figure": fallback_figure}, lesson.reading_plan or "")
+        elif fallback_figure and (params.get("figure") or {}).get("type") != fallback_figure.get("type"):
+            # These question types have fixed, source-derived diagrams; repair stale legacy figure kinds.
+            if fallback_figure.get("type") in ("equal_base_height", "parallelogram_thirds", "table"):
+                params = cw.clean(b.kind, {**params, "figure": fallback_figure}, lesson.reading_plan or "")
         if b.kind == "steps":
             params = attach_original_figure(params, lesson_figures(implementation, db, lesson, written), page_text)
         upsert(db, u, lesson, b.stageNo, page, b.kind, params, b.writtenTask, page_text)
@@ -915,7 +919,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             raise HTTPException(400, "本题依赖原图中的几何关系，文字表格不能代替①②③题图；请补充与原图一致的教学图后再审核")
         required_figure = required_visual_type(item.get("pageText") or "")
         saved_figure = params.get("figure") or {}
-        if required_figure and not saved_figure.get("type"):
+        if required_figure in ("equal_base_height", "parallelogram_thirds", "table") and saved_figure.get("type") != required_figure:
             fallback_figure = required_visual_figure(item.get("pageText") or "")
             if fallback_figure:
                 params = cw.clean(item["kind"], {**params, "figure": fallback_figure}, lesson.reading_plan or "")
