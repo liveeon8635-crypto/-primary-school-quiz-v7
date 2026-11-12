@@ -549,10 +549,11 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
   var q15=/第\s*15\s*题/.test(source)&&source.indexOf('倍拼')>=0;
   var q16=/第\s*16\s*题/.test(source)&&source.indexOf('面积关系')>=0;
   var q17=/第\s*17\s*题/.test(source)&&source.indexOf('等面积三角形')>=0;
+  var q18=/第\s*18\s*题/.test(source)&&source.indexOf('直角三角形')>=0;
   var q14=/第\s*14\s*题/.test(source)&&source.indexOf('200 m')>=0&&source.indexOf('40000')>=0;
-  if(!q5&&!q6&&!q8&&!q14&&!q15&&!q16&&!q17)return false;
+  if(!q5&&!q6&&!q8&&!q14&&!q15&&!q16&&!q17&&!q18)return false;
   var wrap=el('div',{style:'max-width:900px;margin:10px auto;padding:10px;background:#fff;border:1px solid #d0d5dd;border-radius:10px'});
-  var svg=cwNode('svg',{viewBox:q6?'0 0 860 350':(q15?'0 0 940 340':(q16?'0 0 1040 350':(q17?'0 0 1000 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':q16?'等底等高面积关系与等底等面积高的关系':q17?'方格中的平行四边形和两个等面积三角形作图区':'两组对应底和高'});
+  var svg=cwNode('svg',{viewBox:q18?'0 0 1000 360':q6?'0 0 860 350':(q15?'0 0 940 340':(q16?'0 0 1040 350':(q17?'0 0 1000 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q18?'半厘米方格三角形与标出直角的三角形':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':q16?'等底等高面积关系与等底等面积高的关系':q17?'方格中的平行四边形和两个等面积三角形作图区':'两组对应底和高'});
   function line(x1,y1,x2,y2,color,w,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color||'#c7d7e5','stroke-width':w||1,'stroke-dasharray':dash||''}))}
   function text(x,y,t,color,size,anchor){svg.appendChild(cwNode('text',{x:x,y:y,fill:color||'#344054','font-size':size||17,'font-weight':700,'text-anchor':anchor||'middle'},t))}
   function panel(x,y,cell,cols,rows,base,height,caption,showHigh){
@@ -577,6 +578,30 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
     panel(70,45,40,8,5,6,3,'每小格1 dm；底6格、高3格',true);
     text(300,145,'高3格','#b42318',17,'start');
     text(300,245,'底6格','#1d4ed8',17);
+  }else if(q18){
+    var showSolutions=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
+    text(250,25,'（1）每格0.5 cm：在三角形上画底和高并数格','#344054',15);
+    function grid18(x,y,cell,cols,rows){
+      for(var i=0;i<=cols;i++)line(x+i*cell,y,x+i*cell,y+rows*cell,'#c5d8e8',1);
+      for(var j=0;j<=rows;j++)line(x,y+j*cell,x+cols*cell,y+j*cell,'#c5d8e8',1);
+    }
+    grid18(25,45,22,12,8);
+    svg.appendChild(cwNode('polygon',{points:'69,199 245,199 157,89',fill:'#60a5fa','fill-opacity':.18,stroke:'#225e7a','stroke-width':3}));
+    if(showSolutions){
+      line(157,89,157,199,'#b42318',2,'6 4');
+      line(157,185,171,185,'#b42318',2);line(171,185,171,199,'#b42318',2);
+      text(157,222,'底8格=4 cm','#1d4ed8',14);
+      text(165,145,'高5格=2.5 cm','#b42318',14,'start');
+      text(250,260,'面积=4×2.5÷2=5 cm²','#344054',15);
+    }
+    line(500,40,500,320,'#d0d5dd',1);
+    text(750,25,'（2）两直角边10 cm、7.5 cm','#344054',15);
+    svg.appendChild(cwNode('polygon',{points:'570,250 770,250 570,100',fill:'#a78bfa','fill-opacity':.22,stroke:'#225e7a','stroke-width':3}));
+    line(570,230,590,230,'#b42318',2);line(590,230,590,250,'#b42318',2);
+    text(670,275,'直角边10 cm','#1d4ed8',15);
+    text(585,175,'直角边7.5 cm','#1d4ed8',15,'start');
+    text(700,158,'斜边12.5 cm','#344054',15);
+    if(showSolutions)text(750,315,'面积=10×7.5÷2=37.5 cm²','#344054',15);
   }else if(q17){
     var showSolutions=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
     function grid(x,y,cell,cols,rows){
