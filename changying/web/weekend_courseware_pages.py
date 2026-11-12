@@ -861,12 +861,12 @@ function cwPlan(box,lessonId,refresh){
     }).catch(function(e){listBox.appendChild(el('div',{class:'notice error',text:e.message}))});
   }
   function run(todo,call,label){
-    if(busy)return;busy=true;var failed=[],i=0,last=null;
+    if(busy){msg.textContent='正在处理其他课件，请等待完成后再审核。';return}busy=true;var failed=[],i=0,last=null;
     function next(){
-      if(i>=todo.length){busy=false;if(last)paint(last);else load();msg.textContent=label+'完成 '+(todo.length-failed.length)+'/'+todo.length+' 页'+(failed.length?'。未完成：\n'+failed.join('\n'):'');if(refresh)refresh();
+      if(i>=todo.length){busy=false;if(last)paint(last);else if(!failed.length)load();msg.textContent=label+'完成 '+(todo.length-failed.length)+'/'+todo.length+' 页'+(failed.length?'。未完成：\n'+failed.map(function(f){return (f.page==null?'本环节':'第'+(f.page+1)+'页')+'：'+f.message}).join('\n'):'');failed.forEach(function(f){var n=notes[String(f.page)];if(n){n.className='notice error';n.textContent=label+'未完成：'+f.message}});if(refresh)refresh();
         return}
       var x=todo[i++];msg.textContent='正在'+label+'第 '+i+'/'+todo.length+' 页…';
-      call(x).then(function(d){last=d}).catch(function(e){failed.push(e.message)}).then(next);
+      call(x).then(function(d){last=d}).catch(function(e){failed.push({page:x.page,message:e.message})}).then(next);
     }
     next();
   }
