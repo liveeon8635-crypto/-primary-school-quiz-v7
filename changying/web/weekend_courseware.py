@@ -561,8 +561,10 @@ def lesson_figures(implementation: Any, db: Any, lesson: Any, written_table: Any
 
 
 def requires_original_geometry_image(page_text: Any) -> bool:
-    """Figure-dependent geometry questions cannot be verified from a text table or guessed SVG."""
+    """Measurement diagrams require a source scan; reviewed transformation-method diagrams use their own verified four-panel figure."""
     text = str(page_text or "")
+    if required_visual_type(text) == "parallelogram_methods":
+        return False  # teacher must still verify all four panels and supply a real answer
     return (
         any(term in text for term in ("平行四边形", "三角形", "梯形", "多边形"))
         and any(term in text for term in ("图上", "下图", "右图", "下面各个", "画高", "量出", "测量", "涂色", "①②③", "三个图形", "相邻点"))
