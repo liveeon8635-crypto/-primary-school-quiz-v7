@@ -450,3 +450,59 @@
     if(view.showAnswer||teacher)wrap.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
   };
 }());
+
+(function(){
+  function cleanText(value){return String(value||'').replace(/\\s+/g,' ').replace(/^ | $/g,'');}
+  function classHas(node,name){return !!(node&&(' '+String(node.className||'')+' ').indexOf(' '+name+' ')>=0);}
+  function activity(scope){
+    if(!scope||!scope.querySelectorAll)return '';
+    var nodes=scope.querySelectorAll('div');
+    for(var i=0;i<nodes.length;i++){
+      var n=nodes[i],t=cleanText(n.textContent||'');
+      if(n.children&&n.children.length===0&&(/^(?:正在审核第|审核完成 \\d+\\/\\d+ 页)/.test(t)))return t;
+    }
+    return '';
+  }
+  function rowStatus(scope,label,message,error){
+    if(!scope||!scope.querySelectorAll)return;
+    var rows=scope.querySelectorAll('.item');
+    for(var i=0;i<rows.length;i++){
+      var b=rows[i].querySelector('b');
+      if(!b||cleanText(b.textContent)!==label)continue;
+      var note=rows[i].querySelector('[role="status"]');
+      if(note){note.className='notice '+(error?'error':'ok');note.textContent=message}
+      return;
+    }
+  }
+  document.addEventListener('click',function(event){
+    var button=event.target;
+    while(button&&button.tagName!=='BUTTON')button=button.parentNode;
+    if(!button||cleanText(button.textContent)!=='审核通过')return;
+    var row=button;
+    while(row&&!classHas(row,'item'))row=row.parentNode;
+    if(!row)return;
+    var title=row.querySelector('b');
+    var label=title?cleanText(title.textContent):'';
+    var scope=row;
+    while(scope&&!classHas(scope,'card'))scope=scope.parentNode;
+    if(!scope)return;
+    var current=activity(scope);
+    if(/^正在审核第/.test(current)){
+      rowStatus(scope,label,'上一项课件仍在审核处理中，请等待页面提示后再试。',true);
+      return;
+    }
+    rowStatus(scope,label,'正在提交审核…',false);
+    var tries=0;
+    var timer=setInterval(function(){
+      tries++;
+      var state=activity(scope);
+      if(/^审核完成 /.test(state)){
+        rowStatus(scope,label,state,state.indexOf('未完成：')>=0);
+        clearInterval(timer);
+      }else if(tries>=80){
+        rowStatus(scope,label,'审核请求仍未返回，请检查连接后重试。',true);
+        clearInterval(timer);
+      }
+    },250);
+  },true);
+}());
