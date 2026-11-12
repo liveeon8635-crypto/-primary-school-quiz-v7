@@ -700,15 +700,20 @@ function cwPlan(box,lessonId,refresh){
     var stageSel=el('select',{'aria-label':'环节'});CW_STAGES.forEach(function(x,i){stageSel.appendChild(el('option',{value:i+1,text:'第'+(i+1)+'环节：'+x+((d.pages[String(i+1)]||[]).length?'（'+d.pages[String(i+1)].length+' 页）':'')}))});
     stageSel.value=stageNo;stageSel.onchange=function(){stageNo=stageSel.value;paint(data)};
     var pages=d.pages[stageNo]||[],list=pages.length?pages.map(function(x,i){return {page:i,text:x}}):[{page:null,text:'整个环节'}];
+    if(stageNo==='3'&&d.sourcePageMismatch)box.appendChild(el('div',{class:'notice error',
+      text:'原文出现 '+d.sourceQuestionCount+' 个题号，但只识别出 '+pages.length+' 页例题。课件生成已阻断，避免将错误的单页摘要当作整套原题。'}));
+    else if(stageNo==='3'&&d.sourceQuestionCount)box.appendChild(el('div',{class:'notice',
+      text:'已核对原文题号：'+d.sourceQuestionCount+' 题，当前例题入口 '+pages.length+' 页；请逐页核对图文后再审核课件。'}));
     var redo=el('input',{type:'checkbox'});
     var all=el('button',{class:'primary',text:'为本环节全部 '+list.length+' 页生成',onclick:function(){
-      var todo=list.filter(function(x){var it=itemAt(x.page);return redo.checked||!it});
+      if(stageNo==='3'&&d.sourcePageMismatch){msg.textContent='题号与课件页数不符，已阻断生成；请核对教案导入。';return}
+      var todo=list.filter(function(x){var it=itemAt(x.page);return redo.checked||!it||it.needsSync});
       if(!todo.length){msg.textContent='本环节每页都已有课件；如需重新生成请勾选“包括已有课件的页”。';return}
       if(!confirm('将逐页调用 AI 生成 '+todo.length+' 页课件草稿（每页约十几秒），生成后需逐页审核才会上课堂。确定吗？'))return;
       run(todo,function(x){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate',{json:{stageNo:+stageNo,page:x.page}})},'生成');
     }});
     var approveAll=el('button',{text:'全部草稿审核通过',onclick:function(){
-      var todo=list.filter(function(x){var it=itemAt(x.page);return it&&it.status==='draft'});
+      var todo=list.filter(function(x){var it=itemAt(x.page);return it&&it.status==='draft'&&!it.needsSync});
       if(!todo.length){msg.textContent='没有待审核的草稿';return}
       if(!confirm('确认已逐页预览这 '+todo.length+' 页课件的内容和答案？审核后会在大屏对应页显示。'))return;
       run(todo,function(x){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:x.page}})},'审核');
@@ -722,7 +727,7 @@ function cwPlan(box,lessonId,refresh){
     }
     var rows=el('div'),editor=el('div');box.appendChild(rows);box.appendChild(editor);editorBox=editor;notes={};rowEls={};
     list.forEach(function(x){
-      var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
+      var it=itemAt(x.page),tag=!it?['','未生成']:it.needsSync?['warn','待同步·请重新生成并核对']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
       var line=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:(x.page==null?'':'第'+(x.page+1)+'页：')+x.text}),
         el('div',{class:'row'},el('span',{class:'tag '+tag[0],text:tag[1]}),it?el('span',{class:'muted',text:d.kindLabels[it.kind]+(it.writtenTask?' · 含学生作答题':'')}):null)));
       if(stageNo==='3'&&d.qualityAudit&&x.page!=null){
@@ -759,7 +764,7 @@ function cwPlan(box,lessonId,refresh){
           .then(function(r){msg.textContent='已存为模板：'+r.name}).catch(function(e){msg.textContent=e.message});
       }}));
       line.appendChild(el('button',{text:'套用模板',onclick:function(){pickTemplate(x)}}));
-      if(it&&it.status==='draft')line.appendChild(el('button',{class:'primary',text:'审核通过',onclick:function(){run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:y.page}})},'审核')}}));
+      if(it&&it.status==='draft'&&!it.needsSync)line.appendChild(el('button',{class:'primary',text:'审核通过',onclick:function(){run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:y.page}})},'审核')}}));
       if(it)line.appendChild(el('button',{text:'删除',onclick:function(){if(confirm('删除这一页的课件？'))api('/teacher/weekend/lessons/'+lessonId+'/courseware/remove',{json:{stageNo:+stageNo,page:x.page}}).then(paint).catch(function(e){msg.textContent=e.message})}}));
       rows.appendChild(line);line.appendChild(note);rowEls[String(x.page)]=line;
     });
