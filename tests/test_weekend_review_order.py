@@ -56,9 +56,10 @@ async function settle(){for(let i=0;i<20;i++)await Promise.resolve()}
  assert.equal(group.tag,'section');
  assert.deepEqual(group.children.slice(1).map(n=>n.attrs['data-review-number']),['1','1']);
  assert(group.children[0].textContent.includes('第 1 题'));
- assert(group.children[1].children[0].textContent.includes('第 1 题（1）'));
- assert(group.children[2].children[0].textContent.includes('第 1 题（2）'));
- assert(!group.children[1].children[1].textContent.includes('（1）'), 'subpart number is only in the header');
+ const headings=all(group,'b').map(n=>n.textContent);
+ assert(headings.includes('第 1 题（1）'));
+ assert(headings.includes('第 1 题（2）'));
+ assert(all(group.children[1],'p').some(n=>!n.textContent.startsWith('（1）')),'question text does not duplicate part numbering');
  const note=all(root,'p').find(n=>n.textContent.includes('未能可靠识别原文序号'));
  assert(note && note.textContent.includes('1道题'),'unknown order must be marked rather than guessed');
  const cards=review.children.slice();
