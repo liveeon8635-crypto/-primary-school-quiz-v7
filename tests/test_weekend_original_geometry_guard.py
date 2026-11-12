@@ -31,10 +31,17 @@ def test_ambiguous_scan_match_must_not_guess():
         {"number": 5, "key": "second", "figure": b},
     ]
     assert match_figure(figures, "第5题 画高测量") == {}
-    assert attach_original_figure({"figure": {}}, figures, "第5题 画高测量") == {}
+    assert attach_original_figure({"figure": {}}, figures, "第5题 画高测量") == {"figure": {}}
 
 
 def test_existing_source_is_not_overwritten():
     original = {"type": "uploaded_image", "data_url": "old"}
     saved = {"sourceFigure": original, "figure": {"type": "shape"}}
     assert attach_original_figure(saved, [], "第5题 画高测量") is saved
+
+
+def test_three_shape_equal_base_height_problem_needs_real_figure():
+    question = ("第9题 等底等高与a² 下面两条平行线上每两个相邻点间的距离为3cm。"
+                "①的面积是（ ）；②的面积是（ ）；③的面积是（ ）。"
+                "发现三个图形的底与高关系。右图涂色平行四边形的面积是a²。")
+    assert requires_original_geometry_image(question)
