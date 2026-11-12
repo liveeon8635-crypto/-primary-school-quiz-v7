@@ -550,7 +550,7 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
   var q14=/第\s*14\s*题/.test(source)&&source.indexOf('200 m')>=0&&source.indexOf('40000')>=0;
   if(!q5&&!q6&&!q8&&!q14&&!q15)return false;
   var wrap=el('div',{style:'max-width:900px;margin:10px auto;padding:10px;background:#fff;border:1px solid #d0d5dd;border-radius:10px'});
-  var svg=cwNode('svg',{viewBox:q6?'0 0 860 350':(q15?'0 0 900 340':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':'两组对应底和高'});
+  var svg=cwNode('svg',{viewBox:q6?'0 0 860 350':(q15?'0 0 940 340':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':'两组对应底和高'});
   function line(x1,y1,x2,y2,color,w,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color||'#c7d7e5','stroke-width':w||1,'stroke-dasharray':dash||''}))}
   function text(x,y,t,color,size,anchor){svg.appendChild(cwNode('text',{x:x,y:y,fill:color||'#344054','font-size':size||17,'font-weight':700,'text-anchor':anchor||'middle'},t))}
   function panel(x,y,cell,cols,rows,base,height,caption,showHigh){
@@ -595,6 +595,8 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
     line(A[0],A[1]+14,B[0],B[1]+14,'#1d4ed8',2);
     text(800,255,'底 a','#1d4ed8',15);
     line(D[0],D[1],D[0],A[1],'#b42318',2,'6 4');
+    line(D[0],A[1]-14,D[0]+14,A[1]-14,'#b42318',2);
+    line(D[0]+14,A[1]-14,D[0]+14,A[1],'#b42318',2);
     text(D[0]+9,175,'高 h','#b42318',15,'start');
     text(800,300,'S平行四边形=a×h=2×S三角形','#344054',15);
   }else if(q14){
