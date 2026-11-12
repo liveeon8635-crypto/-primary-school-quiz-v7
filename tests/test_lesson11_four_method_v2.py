@@ -31,11 +31,20 @@ global.document={createElementNS:function(_,t){return new E(t)},createElement:fu
 global.el=function(t,a){var n=new E(t,a);if(a&&a.text)n.text=a.text;return n};
 global.cwNode=function(t,a,v){return new E(t,a,v)};
 global.cwFigureText=function(f){return f.type};
+global.cwSteps=function(box,p){box.appendChild(new E('div',{text:'OLD_STEPS'}))};
 vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
 function render(view,teacher){var box=new E('div');cwParallelogramMethods(box,view,false,teacher);return box.children[0].children[0]}
 function polygonPoints(g){return g.children.filter(function(c){return c.tag==='polygon'}).map(function(c){return c.attrs.points})}
 var student=render({step:5},false),teacherStart=render({step:1,previewMode:true},true);
 var teacherEnd=render({step:5,previewMode:true},true);
+var legacy={figure:{type:'parallelogram_methods'},problem:'点M、N是所在边中点'};
+var teacherWarn=new E('div'),studentBlocked=new E('div');
+cwSteps(teacherWarn,legacy,{step:1},false,true);
+cwSteps(studentBlocked,legacy,{step:1},true,false);
+assert(teacherWarn.children.some(function(x){return String(x.attrs.text||'').indexOf('旧版')>=0}),'teacher sees stale-source warning');
+assert.equal(studentBlocked.children.length,1,'old mismatched student geometry is withheld');
+assert.equal(studentBlocked.children[0].tag,'div');
+assert.equal(studentBlocked.children[0].attrs.text.indexOf('暂停展示')>=0,true);
 assert.equal(student.children.length,4);
 assert.equal(teacherStart.children.length,4);
 const original='40,191 146,191 174,105 68,105',rotated='75,79 168,123 168,210 75,166';
