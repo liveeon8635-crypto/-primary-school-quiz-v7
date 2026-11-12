@@ -475,8 +475,8 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
 function cwLesson10Geometry(box,p,view,big,teacher){
   if(!p.figure||p.figure.type!=='shape'||p.figure.shape!=='rectangle')return false;
   var source=[p.title||'',p.problem||'',p.sourceProblem||''].join(' ');
-  var ex17=/(第\\s*17\\s*题|单元知识回顾)/.test(source)&&source.indexOf('正方形')>=0&&source.indexOf('长方形')>=0;
-  var ex20=/(第\\s*20\\s*题|大、小正方形拼图)/.test(source)&&
+  var ex17=/(第\s*17\s*题|单元知识回顾)/.test(source)&&source.indexOf('正方形')>=0&&source.indexOf('长方形')>=0;
+  var ex20=/(第\s*20\s*题|大、小正方形拼图)/.test(source)&&
     source.indexOf('大正方形')>=0&&source.indexOf('小正方形')>=0&&source.indexOf('拼')>=0;
   if(!ex17&&!ex20)return false;
   var last=Math.max(1,(p.steps||[]).length),step=teacher&&!view.previewMode?last:Math.max(0,Math.min(last,view.step||0));
