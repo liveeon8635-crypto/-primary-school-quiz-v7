@@ -731,7 +731,33 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 raise HTTPException(409, "这节课已有教案，请确认覆盖后重新导入。")
             _assert_lesson_not_in_use(db, lesson)
             before = plan_state(db, u, lesson)
-            db.execute(delete(courseware_table).where(courseware_table.c.lesson_id == lesson.id))
+            # Re-import used to delete every reviewed interactive slide, even when
+            # all 23 source questions were unchanged. Preserve ONLY pages whose
+            # complete student-visible text still matches unambiguously.
+            from changying.services.weekend_presentation import lesson_deck
+            from changying.services.weekend_courseware_binding import rebind_unchanged_pages
+            from changying.web.weekend_courseware import items_of
+            old_deck = {"ppt_json": lesson.ppt_json, "examples_json": lesson.examples_json,
+                        "reading_plan": lesson.reading_plan}
+            new_deck = {k: fields[k] for k in ("ppt_json", "examples_json", "reading_plan")}
+            before_pages = {stage: lesson_deck(old_deck, stage) for stage in (2, 3)}
+            after_pages = {stage: lesson_deck(new_deck, stage) for stage in (2, 3)}
+            old_courseware = db.execute(select(courseware_table).where(
+                courseware_table.c.school_id == u.school_id,
+                courseware_table.c.lesson_id == lesson.id).with_for_update()).first()
+            old_items = items_of(old_courseware)
+            kept = rebind_unchanged_pages(old_items, before_pages, after_pages)
+            if old_courseware is not None:
+                if kept:
+                    approved = [[int(i["stage"]), i.get("page")] for i in kept if i.get("approved") is not None]
+                    db.execute(update(courseware_table).where(courseware_table.c.id == old_courseware.id).values(
+                        kind="multi", stage_no=int(kept[0]["stage"]),
+                        status="approved" if approved else "draft", approved_stage=None, template_id=None,
+                        params_json=json.dumps({"version": 2, "items": kept}, ensure_ascii=False),
+                        approved_json=json.dumps(approved) if approved else None,
+                        live_json="{}"))
+                else:
+                    db.execute(delete(courseware_table).where(courseware_table.c.id == old_courseware.id))
             for k, v in fields.items():
                 setattr(lesson, k, v)
             db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False)))
