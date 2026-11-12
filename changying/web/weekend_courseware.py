@@ -139,6 +139,13 @@ def required_visual_type(page_text: Any) -> str:
     for quote in ("'", '"', "“", "”", "‘", "’", "「", "」", "『", "』"):
         compact = compact.replace(quote, "")
 
+    # The original grade-five exercise has four DIFFERENT pictured cut/move/
+    # rotate options. Without those four panels the question cannot be solved.
+    if ("平行四边形" in text and
+            ("四种转化方法" in text or
+             (all(symbol in text for symbol in "①②③④") and "面积公式" in text))):
+        return "parallelogram_methods"
+
     # More specific patterns must be checked before the general calendar cases.
     if "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
         return "calendar_compare"
@@ -176,6 +183,8 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
     """Return stable, data-only visual parameters for known questions."""
     text = str(page_text or "")
     kind = required_visual_type(text)
+    if kind == "parallelogram_methods":
+        return {"type": "parallelogram_methods"}
     if kind == "calendar_compare":
         return {"type": "calendar_compare"}
     if kind == "table":
@@ -789,6 +798,9 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 raise HTTPException(400, "月历判断表直接显示了正确/错误，请先改为不泄露答案的图示")
         if required_figure and not saved_figure.get("type"):
             raise HTTPException(400, "请先补充本题的教学图示，再审核")
+        if required_figure == "parallelogram_methods" and re.search(
+                r"待教师确认|原题未提供|图示缺失|看不到图|无法判断", str(params.get("answer") or "")):
+            raise HTTPException(400, "原题四种转化图已补齐，请先对照①②③④核实并填写答案，再审核通过")
         template_id = item.get("templateId")
         if item.get("writtenTask"):
             try:
