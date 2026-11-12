@@ -729,7 +729,7 @@ function cwPlan(box,lessonId,refresh){
     }
     var rows=el('div'),editor=el('div');box.appendChild(rows);box.appendChild(editor);editorBox=editor;notes={};rowEls={};
     list.forEach(function(x){
-      var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
+      var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='stale'?['warn','待同步·题目已变']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
       var line=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:(x.page==null?'':'第'+(x.page+1)+'页：')+x.text}),
         el('div',{class:'row'},el('span',{class:'tag '+tag[0],text:tag[1]}),it?el('span',{class:'muted',text:d.kindLabels[it.kind]+(it.writtenTask?' · 含学生作答题':'')}):null)));
       if(stageNo==='3'&&d.qualityAudit&&x.page!=null){
