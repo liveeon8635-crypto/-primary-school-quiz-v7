@@ -169,6 +169,7 @@ function cwRunningTrack(box,f,view,big,teacher,stepCount){
   wrap.appendChild(svg);
   wrap.appendChild(el('div',{style:'font-weight:700;color:#17449b;font-size:'+(big?'2.3vh':'16px'),text:'\u7b2c '+shown+' \u5206\u949f\uff1a\u5feb\u8005\u591a\u8dd1 '+gap+' \u7c73\uff1b\u6bcf\u5206\u949f\u8def\u7a0b\u5dee '+f.fastSpeed+' - '+f.slowSpeed+' = '+(f.fastSpeed-f.slowSpeed)+' \u7c73'}));
   if(step>=stepCount)wrap.appendChild(el('div',{style:'margin-top:8px;color:#b42318;font-weight:700',text:'\u8def\u7a0b\u5dee\u8fbe\u5230\u4e00\u5708 '+f.distanceSymbol+' \u7c73\u65f6\u8ffd\u4e0a\uff1a'+f.distanceSymbol+' \u00f7 ('+f.fastSpeed+' - '+f.slowSpeed+') = '+f.distanceSymbol+' / '+(f.fastSpeed-f.slowSpeed)+' \u5206\u949f'}));
+  box.appendChild(wrap);
 }
 function cwTilePattern(box,f,view,big,teacher,stepCount){
   var finalStep=Math.max(4,stepCount||4),step=teacher&&!view.previewMode?finalStep:Math.max(1,view.step||0),wrap=el('div',{style:'max-width:840px;margin:10px auto;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#fff'});
@@ -301,6 +302,7 @@ function cwTriangularNumbers(box,f,view,big,teacher,stepCount){
     formula.appendChild(el('div',{style:'padding:8px 10px;border-radius:8px;background:#fff7ed;color:#9a3412;font-weight:700;text-align:center',text:'\u7b2c '+f.targetTerm+' \u9879 = '+f.targetTerm+' \u00d7 '+(f.targetTerm+1)+' \u00f7 2 = '+(f.targetTerm*(f.targetTerm+1)/2)}));
     wrap.appendChild(formula);
   }
+  box.appendChild(wrap);
 }
 function cwNineGrid(box,f,view,big,teacher,stepCount){
   var finalStep=Math.max(4,stepCount||4),step=teacher&&!view.previewMode?finalStep:Math.max(1,view.step||0),rows=f.rows||[];
