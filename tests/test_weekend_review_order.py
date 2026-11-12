@@ -51,7 +51,7 @@ async function settle(){for(let i=0;i<20;i++)await Promise.resolve()}
  all(root,'button').filter(n=>n.attrs.role==='tab')[1].attrs.onclick();
  const review=all(root,'div').find(n=>n.attrs['data-review-list']==='true');
  assert(review,'the combined review list must be rendered');
- assert.deepEqual(review.children.map(n=>n.attrs['data-review-number']||n.attrs['data-review-group']),['1','3','4','']);
+ assert.deepEqual(review.children.map(n=>n.attrs['data-review-group']||n.attrs['data-review-number']||''),['1','3','4','']);
  const group=review.children[0];
  assert.equal(group.tag,'section');
  assert.deepEqual(group.children.slice(1).map(n=>n.attrs['data-review-number']),['1','1']);
