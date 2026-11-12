@@ -637,6 +637,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             pages = stage_pages(lesson, int(i.get("stage") or 0))
             page_index = i.get("page")
             page_text = pages[int(page_index)] if page_index is not None and 0 <= int(page_index) < len(pages) else ""
+            if i.get("approved") is not None and str(i.get("approvedPageText") or "") != page_text:
+                i["status"] = "stale"  # display-only: do not modify teacher authorization in storage
             visual_text = _courseware_visual_text(i, i.get("params"), page_text)
             for key in ("params", "approved"):
                 current = i.get(key)
