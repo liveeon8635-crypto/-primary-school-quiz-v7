@@ -398,16 +398,16 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/weekend": [
-      "e8cf1a61daa3dc10c1f0442a6c7a9e432e8f7b83a7b7a58e9056341eb1cedd4d"
+      "f6699a65eb1ef91083d3859ed2e3007f61ec2497c3900391303ce7667607a719"
     ],
     "/v1/weekend-board": [
-      "84d7aee57f117db027b5338e8052668dab8b9dbbdf8b2d6e4005f75e2753e099"
+      "330f4a9a81245b515aa311efd2994bd46c8f384f8efe1e0ce727334c8105656d"
     ],
     "/v1/weekend-brief": [
       "e86f7c0621509469f5f6795ec3d9efcb520623ec8440adbe5b89b3ed16197ee7"
     ],
     "/v1/weekend-plan": [
-      "abd244faa08edf4fcfb0b1e3b0f9b96ae616410ffa2c6fe4e6293eb9f48c4328"
+      "0d499ac3c81ce4c8df3ccd4ae842655d6f93e2ef386bc2520b6a2d2687b58a7b"
     ],
     "/v1/weekend-practice": [
       "beb8fffd39a0ad154f1f6b12e0592451ebd84f9726f27a6e0406e021c9d103ce"
@@ -701,25 +701,25 @@
       "sourceBytes": 63737,
       "compiledBytes": 67440
     },
-    "e8cf1a61daa3dc10c1f0442a6c7a9e432e8f7b83a7b7a58e9056341eb1cedd4d": {
+    "f6699a65eb1ef91083d3859ed2e3007f61ec2497c3900391303ce7667607a719": {
       "unchanged": true,
-      "sourceBytes": 117900,
-      "compiledBytes": 117900
+      "sourceBytes": 120538,
+      "compiledBytes": 120538
     },
-    "84d7aee57f117db027b5338e8052668dab8b9dbbdf8b2d6e4005f75e2753e099": {
+    "330f4a9a81245b515aa311efd2994bd46c8f384f8efe1e0ce727334c8105656d": {
       "unchanged": true,
-      "sourceBytes": 70607,
-      "compiledBytes": 70607
+      "sourceBytes": 73245,
+      "compiledBytes": 73245
     },
     "e86f7c0621509469f5f6795ec3d9efcb520623ec8440adbe5b89b3ed16197ee7": {
       "unchanged": true,
       "sourceBytes": 12808,
       "compiledBytes": 12808
     },
-    "abd244faa08edf4fcfb0b1e3b0f9b96ae616410ffa2c6fe4e6293eb9f48c4328": {
+    "0d499ac3c81ce4c8df3ccd4ae842655d6f93e2ef386bc2520b6a2d2687b58a7b": {
       "unchanged": true,
-      "sourceBytes": 122686,
-      "compiledBytes": 122686
+      "sourceBytes": 125324,
+      "compiledBytes": 125324
     },
     "beb8fffd39a0ad154f1f6b12e0592451ebd84f9726f27a6e0406e021c9d103ce": {
       "unchanged": true,
