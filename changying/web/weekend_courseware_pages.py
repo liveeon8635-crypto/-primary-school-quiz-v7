@@ -420,7 +420,7 @@ function cwParallelogramMethods(box,view,big,teacher){
     if(i===0){
       // Option ①: a left triangle relocates to the opposite side.
       poly(g,'55,64 151,64 151,160 55,160');
-      path(g,'M 23 160 L 55 64 L 23 64',' #87919d','5 4');
+      path(g,'M 23 160 L 55 64 L 23 64','#87919d','5 4');
       path(g,'M 55 64 L 55 160','#283949','',2.3);
       path(g,'M 120 64 L 90 160','#283949','',2.3);
       path(g,'M 55 149 L 66 149 L 66 160','#283949','',1.7);
