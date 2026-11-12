@@ -258,6 +258,46 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
             for row in (original_figure.get("rows") or [])
         )
     )
+    # Targeted display-time repair of the already-reviewed example 15.
+    # Older saved 3×3 tables can show a dot instead of a+1/a+11 and lack
+    # the progressive-grid metadata. Do not touch other examples or DB rows.
+    lesson15_grid = (
+        figure.get("nineGrid") is True
+        and figure.get("targetSum") == 2016
+        and figure.get("center") == 224
+        and ("第15题" in visual_text or "第 15 题" in visual_text)
+        and original_figure.get("type") in ("table", None, "")
+    )
+    if lesson15_grid:
+        rows15 = original_figure.get("rows") or []
+        grid15 = (
+            isinstance(rows15, list) and len(rows15) == 3
+            and all(isinstance(row, list) and len(row) == 3 for row in rows15)
+            and str(rows15[1][1]).strip() == "a"
+        )
+        outdated_six_steps = (
+            len(original_steps) == 6
+            and ("在3×3方框中定位中心数" in str(original_steps[0])
+                 or "第1步：在3×3" in str(original_steps[0]))
+        )
+        missing_right_cells = grid15 and (
+            str(rows15[1][2]).strip() in ("", ".", "·", "?", "？")
+            or str(rows15[2][2]).strip() in ("", ".", "·", "?", "？")
+        )
+        # Fully completed teacher-authored grids and other custom explanations
+        # remain unchanged; only the photographed legacy state is repaired.
+        if missing_right_cells or (grid15 and outdated_six_steps) or not original_figure.get("type"):
+            result["figure"] = figure
+            if outdated_six_steps or not original_steps:
+                result["steps"] = [
+                    "第1步：观察每行10个数的数表，先把3×3方框中间的数设为a。",
+                    "第2步：同一行左右相邻数差1，所以左右分别是a−1、a+1。",
+                    "第3步：同一列上下相邻数差10，所以上下分别是a−10、a+10。",
+                    "第4步：再结合横向差1、纵向差10，补齐四角a−11、a−9、a+9、a+11。",
+                    "第5步：把九个数相加，对称的加减抵消，九数和为9a。",
+                    "第6步：若九数和为2016，则9a=2016，求得中心数a=224。",
+                ]
+            return result
     if original_figure.get("type") and not legacy_calendar_answer_table:
         return result
     if result.get("figure") != figure:

@@ -304,6 +304,37 @@ function cwTriangularNumbers(box,f,view,big,teacher,stepCount){
 }
 function cwNineGrid(box,f,view,big,teacher,stepCount){
   var finalStep=Math.max(4,stepCount||4),step=teacher&&!view.previewMode?finalStep:Math.max(1,view.step||0),rows=f.rows||[];
+  // Example 15: keep the existing 3×3 visual style, but synchronize
+  // all nine labels with its six classroom steps. Other grids are unchanged.
+  var lesson15=f.nineGrid===true && Number(f.targetSum)===2016
+      && Number(f.center)===224 && stepCount===6;
+  if(lesson15){
+    var step15=teacher&&!view.previewMode?6:Math.max(0,Math.min(6,view.step||0));
+    var cells15=[['a−11','a−10','a−9'],['a−1','a','a+1'],['a+9','a+10','a+11']];
+    var appearAt=[[4,3,4],[2,1,2],[4,3,4]];
+    var wrap15=el('div',{style:'max-width:640px;margin:10px auto;padding:14px 16px 12px;border:1px solid #d0d5dd;border-radius:16px;background:linear-gradient(180deg,#fff,#f8fafc);box-shadow:0 8px 22px #10182810'});
+    wrap15.appendChild(el('div',{style:'text-align:center;color:#667085;font-size:'+(big?'1.4vh':'12px')+';font-weight:600',text:step15>=3?'每行10个数：横向相邻差1，纵向相邻差10':'观察每行10个数的数表，逐步填写九宫格'}));
+    var grid15=el('div',{style:'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-width:'+(big?'480px':'360px')+';margin:8px auto'});
+    cells15.forEach(function(row,i){row.forEach(function(val,j){
+      var rank=appearAt[i][j],visible=step15>=rank,center=i===1&&j===1,
+          newCell=visible&&step15===rank,finalCenter=center&&step15>=6,
+          bg=finalCenter?'#1f6feb':newCell?'#dbeafe':visible?'#eff6ff':'#fff',
+          bd=finalCenter?'#1f6feb':newCell?'#2563eb':'#d0d5dd',
+          fg=finalCenter?'#fff':visible?'#173b70':'#98a2b3',
+          label=visible?(finalCenter?'224':val):'？';
+      grid15.appendChild(el('div',{style:'min-height:'+(big?'94px':'78px')+';display:flex;align-items:center;justify-content:center;border:2px solid '+bd+';border-radius:12px;background:'+bg+';color:'+fg+';font-weight:800;font-size:'+(big?'3vh':'22px')+';transition:background .18s,border-color .18s,color .18s',text:label}));
+    })});
+    wrap15.appendChild(grid15);
+    var tip15=step15>=6?'九数和为 2016：9a = 2016，a = 224':
+              step15>=5?'九个数相加，对称数相互抵消：九数和 = 9a':
+              step15>=4?'四个角已补齐：上下移动10，左右移动1':
+              step15>=3?'上面是 a−10，下面是 a+10':
+              step15>=2?'左边是 a−1，右边是 a+1':
+              step15>=1?'先把九宫格中心数设为 a':'先观察题目，再逐步揭示数量关系';
+    wrap15.appendChild(el('div',{style:'margin-top:10px;text-align:center;font-weight:700;color:'+(step15>=5?'#17449b':'#475467')+';font-size:'+(big?'2.1vh':'15px'),text:tip15}));
+    box.appendChild(wrap15);
+    return;
+  }
   var pairs=[[[0,0],[2,2]],[[0,1],[2,1]],[[0,2],[2,0]],[[1,0],[1,2]]],
       colors=[['#e0f2fe','#0284c7'],['#dcfce7','#15803d'],['#fef3c7','#b45309'],['#fae8ff','#a21caf']],pairAt={};
   pairs.forEach(function(p,k){p.forEach(function(q){pairAt[q[0]+','+q[1]]=k})});
