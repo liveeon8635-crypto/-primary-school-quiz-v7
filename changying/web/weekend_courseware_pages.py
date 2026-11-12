@@ -862,7 +862,7 @@ function cwPlan(box,lessonId,refresh){
     }).catch(function(e){listBox.appendChild(el('div',{class:'notice error',text:e.message}))});
   }
   function run(todo,call,label){
-    if(busy){msg.className='notice warn';msg.textContent='已有一项'+label+'操作正在处理中，请等页面显示结果后再试。';return}busy=true;var failed=[],i=0,last=null;
+    if(busy)return;busy=true;var failed=[],i=0,last=null;
     function next(){
       if(i>=todo.length){busy=false;if(last)paint(last);else load();msg.textContent=label+'完成 '+(todo.length-failed.length)+'/'+todo.length+' 页'+(failed.length?'。未完成：\n'+failed.join('\n'):'');if(refresh)refresh();
         return}
