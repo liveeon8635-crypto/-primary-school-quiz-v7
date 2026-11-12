@@ -65,6 +65,10 @@ def numbered_student_stem(source: str, stem: str) -> str:
     material, separator, question = raw.rpartition("\n\n")
     if not separator:
         question = raw
+    # A printed main number already present after reading material must not
+    # be prepended again when only the question line, not its material, matches.
+    if re.match(r"^\s*第\s*\d{1,3}\s*题", question):
+        return raw
     if number["partNumber"] is not None:
         question = re.sub(r"^\s*[（(]\s*" + str(number["partNumber"]) + r"\s*[）)]\s*", "", question)
     return (material + separator if separator else "") + label + "　" + question
