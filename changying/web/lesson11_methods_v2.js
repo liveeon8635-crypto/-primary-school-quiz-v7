@@ -474,7 +474,7 @@
       return;
     }
   }
-  document.addEventListener('click',function(event){
+  if(document&&document.addEventListener)document.addEventListener('click',function(event){
     var button=event.target;
     while(button&&button.tagName!=='BUTTON')button=button.parentNode;
     if(!button||cleanText(button.textContent)!=='审核通过')return;
