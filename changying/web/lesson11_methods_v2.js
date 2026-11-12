@@ -141,6 +141,7 @@
   var svg=cwNode('svg',{viewBox:q10?'0 0 700 360':q19?'0 0 900 370':q22?'0 0 1400 380':q23?'0 0 1000 390':q21?'0 0 1000 390':q20?'0 0 1000 390':q18?'0 0 1000 360':q6?'0 0 860 350':(q15?'0 0 940 340':(q16?'0 0 1040 350':(q17?'0 0 1000 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q10?'底边三等分且中间部分高不变的平行四边形':q19?'钝角三角形，7厘米底边、15厘米腰及延长线上的7.5厘米高':q22?'三角形剪切、移动拼成长方形及任意三角形倍拼验证':q23?'原三角形与等面积长方形的割补前后对照':q21?'底边三等分且阴影三角形占一份的平行四边形':q20?'标出缺口的45度直角三角形玻璃残片及面积计算过程':q18?'半厘米方格三角形与标出直角的三角形':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':q16?'等底等高面积关系与等底等面积高的关系':q17?'方格中的平行四边形和两个等面积三角形作图区':'两组对应底和高'});
   function line(x1,y1,x2,y2,color,w,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color||'#c7d7e5','stroke-width':w||1,'stroke-dasharray':dash||''}))}
   function text(x,y,t,color,size,anchor){svg.appendChild(cwNode('text',{x:x,y:y,fill:color||'#344054','font-size':size||17,'font-weight':700,'text-anchor':anchor||'middle'},t))}
+  function finish(){wrap.appendChild(svg);box.appendChild(wrap);return true;}
   function panel(x,y,cell,cols,rows,base,height,caption,showHigh){
     var w=cell*cols,h=cell*rows;
     for(var i=0;i<=cols;i++)line(x+i*cell,y,x+i*cell,y+h,'#c5d8e8',1);
@@ -201,7 +202,7 @@
     text(160,282,'底 a','#1d4ed8',14);text(169,120,'高 h','#1d4ed8',14,'start');
     text(160,184,'中点连线','#b42318',13);
     arrow22(300,350,170);
-    if(step22<2){text(160,315,'第1步：先观察原三角形、底a和高h','#475467',13);return true;}
+    if(step22<2){text(160,315,'第1步：先观察原三角形、底a和高h','#475467',13);return finish();}
     text(505,28,'② 上部三角形沿高再剪成两块','#344054',15);
     tri22('365,250 525,250 485,160 405,160','#60a5fa');
     text(445,275,'下方梯形','#475467',13);
@@ -209,7 +210,7 @@
     tri22('610,160 655,160 610,100','#a78bfa');
     text(598,190,'剪下的两块','#475467',13);
     arrow22(665,710,170);
-    if(step22<3){text(505,315,'第2步：沿中点连线剪开，再分割上部三角形','#475467',13);return true;}
+    if(step22<3){text(505,315,'第2步：沿中点连线剪开，再分割上部三角形','#475467',13);return finish();}
     text(860,28,'③ 旋转180°补在两侧，拼成长方形','#344054',15);
     svg.appendChild(cwNode('rect',{x:725,y:145,width:300,height:105,fill:'#fff','fill-opacity':0,stroke:'#1d4ed8','stroke-width':3}));
     // The lower trapezoid and the two rotated top pieces tile the rectangle.
@@ -221,7 +222,7 @@
     text(875,280,'长 a','#1d4ed8',14);
     text(734,205,'宽 h÷2','#b42318',13,'start');
     arrow22(1035,1080,170);
-    if(step22<4){text(860,315,'第3步：把剪下的部分旋转补到两侧','#475467',13);return true;}
+    if(step22<4){text(860,315,'第3步：把剪下的部分旋转补到两侧','#475467',13);return finish();}
     text(1230,28,'④ 任意三角形：两张全等拼平行四边形','#344054',15);
     tri22('1080,250 1220,250 1320,150','#60a5fa');
     tri22('1080,250 1320,150 1180,150','#a78bfa');
@@ -241,7 +242,7 @@
     line(C[0],A[1]-14,C[0]+14,A[1]-14,'#b42318',2);line(C[0]+14,A[1]-14,C[0]+14,A[1],'#b42318',2);
     text(220,294,'底 a=8 cm','#1d4ed8',16);
     text(C[0]+10,170,showSolutions?'高 h=10 cm':'高 h=?','#b42318',16,'start');
-    if(step23<2){text(250,330,'第1步：指出原三角形的底边与对应高','#475467',14);return true;}
+    if(step23<2){text(250,330,'第1步：指出原三角形的底边与对应高','#475467',14);return finish();}
     text(515,120,'割补','#344054',16);
     line(430,165,590,165,'#667085',3);
     svg.appendChild(cwNode('polygon',{points:'590,165 574,156 574,174',fill:'#667085'}));
@@ -250,9 +251,9 @@
     svg.appendChild(cwNode('rect',{x:650,y:90,width:280,height:175,fill:'#a78bfa','fill-opacity':.2,stroke:'#6941c6','stroke-width':3}));
     text(790,78,'长=原三角形底=8 cm','#1d4ed8',15);
     text(790,290,step23>=3?'宽=原三角形高的一半=5 cm':'宽=原三角形高的一半=？','#6941c6',15);
-    if(step23<3){text(790,325,'第2步：说明割补后长方形与原三角形的对应关系','#475467',14);return true;}
-    if(step23<4){text(500,330,'由长方形面积反推三角形面积','#475467',15);return true;}
-    if(step23<5){text(500,330,'用三角形面积公式求原三角形的高','#475467',15);return true;}
+    if(step23<3){text(790,325,'第2步：说明割补后长方形与原三角形的对应关系','#475467',14);return finish();}
+    if(step23<4){text(500,330,'由长方形面积反推三角形面积','#475467',15);return finish();}
+    if(step23<5){text(500,330,'用三角形面积公式求原三角形的高','#475467',15);return finish();}
     if(showSolutions){
       text(500,330,'面积：8×5=40 cm²；原三角形高：5×2=10 cm','#344054',16);
     }else{
