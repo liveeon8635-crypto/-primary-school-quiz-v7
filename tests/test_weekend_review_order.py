@@ -20,8 +20,8 @@ var root=new Element('div'),location={href:''};
 function growTextarea(){}function boot(){}function confirm(){return true}
 const row={lessonId:11,lessonNo:11,hasPlan:true,approvedQuestions:0,draftQuestions:5};
 const stems=[
- '将平行四边形沿一条高剪开，把剪下的三角形平移到另一侧，拼成一个长方形。',
- '观察两个平行四边形的底与高，说明为什么底和高需要一一对应。',
+ '（1）将平行四边形沿一条高剪开，把剪下的三角形平移到另一侧，拼成一个长方形。',
+ '（2）观察两个平行四边形的底与高，说明为什么底和高需要一一对应。',
  '把两个完全相同的三角形拼成平行四边形，解释面积公式中的除以二。',
  '没有原文对应序号的补充题目'
 ];
@@ -31,7 +31,7 @@ function api(path,opts){
  if(path.startsWith('/teacher/weekend/schedule'))return Promise.resolve({items:[row]});
  if(path==='/teacher/weekend/lessons/11')return Promise.resolve({
   title:'多边形的面积',coreTarget:'面积推导',teacherPlan:'转化',ppt:[],examples:[],closureTraining:'',
-  sourceText:'第1题 4分\n'+stems[0]+'\n第2题 4分\n'+stems[1]+'\n第3题 4分\n'+stems[2]+'\n第4题 4分\n面积单位选择题。'
+  sourceText:'第1题 4分\n'+stems[0]+'\n'+stems[1]+'\n第3题 4分\n'+stems[2]+'\n第4题 4分\n面积单位选择题。'
  });
  if(path.endsWith('/written/questions')){
   if(opts){posts++;return Promise.resolve({...row,approvedQuestions:posts})}
@@ -51,7 +51,14 @@ async function settle(){for(let i=0;i<20;i++)await Promise.resolve()}
  all(root,'button').filter(n=>n.attrs.role==='tab')[1].attrs.onclick();
  const review=all(root,'div').find(n=>n.attrs['data-review-list']==='true');
  assert(review,'the combined review list must be rendered');
- assert.deepEqual(review.children.map(n=>n.attrs['data-review-number']),['1','2','3','4','']);
+ assert.deepEqual(review.children.map(n=>n.attrs['data-review-number']||n.attrs['data-review-group']),['1','3','4','']);
+ const group=review.children[0];
+ assert.equal(group.tag,'section');
+ assert.deepEqual(group.children.slice(1).map(n=>n.attrs['data-review-number']),['1','1']);
+ assert(group.children[0].textContent.includes('第 1 题'));
+ assert(group.children[1].children[0].textContent.includes('第 1 题（1）'));
+ assert(group.children[2].children[0].textContent.includes('第 1 题（2）'));
+ assert(!group.children[1].children[1].textContent.includes('（1）'), 'subpart number is only in the header');
  const note=all(root,'p').find(n=>n.textContent.includes('未能可靠识别原文序号'));
  assert(note && note.textContent.includes('1道题'),'unknown order must be marked rather than guessed');
  const cards=review.children.slice();
