@@ -546,10 +546,11 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
   var q5=/第\s*5\s*题/.test(source)&&source.indexOf('方格测量')>=0;
   var q6=/第\s*6\s*题/.test(source)&&source.indexOf('两组对应底高')>=0;
   var q8=/第\s*8\s*题/.test(source)&&source.indexOf('面积累加')>=0;
+  var q15=/第\s*15\s*题/.test(source)&&source.indexOf('倍拼')>=0;
   var q14=/第\s*14\s*题/.test(source)&&source.indexOf('200 m')>=0&&source.indexOf('40000')>=0;
-  if(!q5&&!q6&&!q8&&!q14)return false;
+  if(!q5&&!q6&&!q8&&!q14&&!q15)return false;
   var wrap=el('div',{style:'max-width:900px;margin:10px auto;padding:10px;background:#fff;border:1px solid #d0d5dd;border-radius:10px'});
-  var svg=cwNode('svg',{viewBox:q6?'0 0 860 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310')),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':'两组对应底和高'});
+  var svg=cwNode('svg',{viewBox:q6?'0 0 860 350':(q15?'0 0 900 340':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':'两组对应底和高'});
   function line(x1,y1,x2,y2,color,w,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color||'#c7d7e5','stroke-width':w||1,'stroke-dasharray':dash||''}))}
   function text(x,y,t,color,size,anchor){svg.appendChild(cwNode('text',{x:x,y:y,fill:color||'#344054','font-size':size||17,'font-weight':700,'text-anchor':anchor||'middle'},t))}
   function panel(x,y,cell,cols,rows,base,height,caption,showHigh){
@@ -574,6 +575,28 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
     panel(70,45,40,8,5,6,3,'每小格1 dm；底6格、高3格',true);
     text(300,145,'高3格','#b42318',17,'start');
     text(300,245,'底6格','#1d4ed8',17);
+  }else if(q15){
+    function tri(points,fill){svg.appendChild(cwNode('polygon',{points:points,fill:fill,'fill-opacity':.7,stroke:'#225e7a','stroke-width':3}))}
+    function arrow(x1,y1,x2,y2){line(x1,y1,x2,y2,'#667085',3);svg.appendChild(cwNode('polygon',{points:(x2-12)+','+(y2-8)+' '+x2+','+y2+' '+(x2-12)+','+(y2+8),fill:'#667085'}))}
+    text(135,28,'① 两张完全相同的三角形纸片','#344054',16);
+    tri('45,215 120,75 195,215','#60a5fa');
+    tri('205,215 280,75 355,215','#a78bfa');
+    text(200,250,'全等三角形','#475467',15);
+    arrow(365,150,430,150);
+    text(500,28,'② 旋转或平移其中一块','#344054',16);
+    tri('435,215 500,75 575,215','#60a5fa');
+    tri('545,75 620,215 695,75','#a78bfa');
+    arrow(700,150,735,150);
+    text(815,28,'③ 拼成平行四边形','#344054',16);
+    var A=[735,220],B=[865,220],C=[900,120],D=[770,120];
+    tri(A.join(',')+' '+B.join(',')+' '+C.join(','),'#60a5fa');
+    tri(A.join(',')+' '+C.join(',')+' '+D.join(','),'#a78bfa');
+    line(A[0],A[1],C[0],C[1],'#fff',2,'6 4');
+    line(A[0],A[1]+14,B[0],B[1]+14,'#1d4ed8',2);
+    text(800,255,'底 a','#1d4ed8',15);
+    line(D[0],D[1],D[0],A[1],'#b42318',2,'6 4');
+    text(D[0]+9,175,'高 h','#b42318',15,'start');
+    text(800,300,'S平行四边形=a×h=2×S三角形','#344054',15);
   }else if(q14){
     text(280,30,'第（3）问：面积至少3公顷，对应高至少150 m','#344054',17);
     var left=65,top=75,bottom=255,right=455,shift=90;
