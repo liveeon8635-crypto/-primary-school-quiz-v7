@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, Text, delete, insert, select, update
 
 from changying.services import weekend_courseware as cw
+from changying.services.weekend_courseware_quality import audit_example_pages
 from changying.services.weekend_stages import STAGE_COUNT
 
 AI_FEATURE = "weekend_courseware"
@@ -140,10 +141,12 @@ def required_visual_type(page_text: Any) -> str:
 
     # More specific patterns must be checked before the general calendar cases.
     if "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
-        return "table"
+        return "calendar_compare"
     if ("3×3" in text or "3x3" in text or "3＊3" in text) and ("九数和" in text or "中心数" in text):
         return "table"
     if "a＋b²" in compact or "a+b²" in compact or ("小明算成" in text and "平方" in text):
+        return "flow"
+    if ("计算小程序" in text or "程序输入" in text) and all(token in text for token in ("4", "9", "15", "11", "26", "44")):
         return "flow"
     if "大正方形" in text and "小正方形" in text and "长方形" in text and "周长" in text:
         return "table"
@@ -173,6 +176,8 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
     """Return stable, data-only visual parameters for known questions."""
     text = str(page_text or "")
     kind = required_visual_type(text)
+    if kind == "calendar_compare":
+        return {"type": "calendar_compare"}
     if kind == "table":
         compact = _normalize_text(text)
         if ("3×3" in text or "3x3" in text or "3＊3" in text) and ("九数和" in text or "中心数" in text):
@@ -182,14 +187,14 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
             return {"type": "table", "reveal": False, "nineGrid": True, "targetSum": total,
                     "center": total // 9 if total and total % 9 == 0 else None,
                     "rows": [["a−11", "a−10", "a−9"], ["a−1", "a", "a+1"], ["a+9", "a+10", "a+11"]]}
-        if "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
-            return {"type": "table", "rows": [["框形", "月历关系", "判断"], ["A", "横向差1", "正确"], ["B", "横差1竖差7", "正确"], ["C", "竖列差10", "错误"], ["D", "中心对称", "正确"]]}
         if "大正方形" in text and "小正方形" in text and "长方形" in text:
-            return {"type": "table", "rows": [["拼接排", "正方形数", "总宽"], ["上排", "3个小正方形", "3n"], ["下排", "2个大正方形", "2m"], ["同一长方形", "两排等宽", "2m=3n"]]}
+            return {"type": "table", "rows": [["拼接排", "正方形数", "总宽"], ["上排", "2个大正方形", "2m"], ["下排", "3个小正方形", "3n"], ["同一长方形", "两排等宽", "2m=3n"]]}
         if "正方形边长" in text and "长方形长" in text:
             return {"type": "table", "rows": [["图形", "周长", "面积"], ["正方形a", "4a", "a²"], ["长方形a,b", "2(a+b)", "ab"]]}
     if kind == "flow" and ("a＋b²" in text or "a+b²" in text or "小明算成" in text):
-        return {"type": "flow", "boxes": ["代入 a=5,b=3", "先算 b²=9", "再加 a=5", "结果=14"], "branches": []}
+        return {"type": "flow", "boxes": ["原式 a+b²", "代入 a=5、b=3", "先求平方", "再做加法"], "branches": []}
+    if kind == "flow" and ("计算小程序" in text or "程序输入" in text):
+        return {"type": "flow", "boxes": ["输入 a", "×3", "−1", "输出 b"], "branches": []}
     if kind == "calendar_cross":
         total_match = re.search(r"五数和\s*(?:是|为)\s*(\d+)", text)
         total = int(total_match.group(1)) if total_match else 90
@@ -241,51 +246,83 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
     figure = required_visual_figure(visual_text)
     if not figure:
         return result
-    # A correct figure is deterministic from the source question. Keep sourceFigure as the folded original comparison.
+    # Saved courseware is the authority: never silently replace a teacher's valid
+    # diagram or their hand-tuned steps with a deterministic fallback.
+    original_figure = result.get("figure") if isinstance(result.get("figure"), dict) else {}
+    original_steps = result.get("steps") if isinstance(result.get("steps"), list) else []
+    legacy_calendar_answer_table = (
+        figure.get("type") == "calendar_compare"
+        and original_figure.get("type") == "table"
+        and any(
+            isinstance(row, list) and any("月历关系" in str(cell) or "竖列差10" in str(cell) for cell in row)
+            for row in (original_figure.get("rows") or [])
+        )
+    )
+    if original_figure.get("type") and not legacy_calendar_answer_table:
+        return result
     if result.get("figure") != figure:
         result["figure"] = figure
+    # Even if an old slide lacks a figure, retain its existing explanation.
+    # Only replace clearly empty or scaffold text.
+    placeholder_steps = len(original_steps) < 2 or all(
+        not str(step).strip() or "点下一步显示" in str(step) or "第1步" in str(step)
+        for step in original_steps
+    ) or (
+        figure.get("type") in (
+            "calendar_compare", "calendar_cross", "seating_pattern",
+            "alternating_triangle", "running_track", "triangular_numbers",
+            "tile_pattern", "square_sticks_pattern", "hundred_chart_square",
+        ) and len(original_steps) < 4
+    )
+    if not placeholder_steps and not (
+        legacy_calendar_answer_table and
+        any("选项C写成" in str(step) or "因此C错误" in str(step) for step in original_steps)
+    ):
+        return result
     text = str(visual_text or "")
     compact = _normalize_text(text)
     steps: list[str] | None = None
     if ("3×3" in text or "3x3" in text or "3＊3" in text) and ("九数和" in text or "中心数" in text):
         steps = [
-            "百数表中横向相邻数相差1，纵向相邻数相差10；九个数按3行3列排列。",
+            "先观察九宫格：同一行和同一列相邻数如何变化？试着找出中心格。",
             "设中心数为a，中心周围两两对称：a−11与a+11、a−10与a+10、a−9与a+9、a−1与a+1。",
             "四组对称数各相加都是2a，再加中心a，九数和为9a。",
-            "九数和为2016时，中心数a=2016÷9=224。",
+            (f"九数和为{figure['targetSum']}时，中心数={figure['targetSum']}÷9={figure['center']}。"
+             if figure.get("targetSum") is not None and figure.get("center") is not None
+             else "如果题目给出九数和，请自己用总和÷9求中心数，并检验是否为整数。"),
         ]
     elif "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
         steps = [
-            "月历同一行从左到右每格相差1，同一列从上到下每格相差7。",
-            "横向四格连续时可写成x−3、x−2、x−1、x；2×2方格横差1、竖差7。",
-            "竖列三格应相差7，所以可写成x−14、x−7、x。",
-            "选项C写成相差10，把百数表的规律误套到月历，因此C错误。",
+            "观察月历：同一行相邻两格的日期有什么变化？同一列呢？先说出你的发现。",
+            "选择A和B，对照蓝色日期格：题目中的横向、纵向关系能成立吗？说说理由。",
+            "重点检查C：从下往上数三格，若最下格是x，另外两格该怎样表示？先自己写。",
+            "比较D的中心对称日期，再回看四个选项：你认为哪项有误？说明依据。",
         ]
     elif "正方形边长" in text and "长方形长" in text:
         steps = [
-            "正方形边长为a，四条边相等，所以周长4a、面积a×a=a²。",
+            "观察正方形和长方形：哪些边相等？周长与面积分别要求什么？",
             "长方形长a、宽b，对边相等，所以周长2(a+b)、面积ab。",
-            "由m=n+20且m=37，代入得37=n+20。",
-            "等式两边同时减20，得到n=17。",
+            "根据原题给出的边长或字母关系，代入相应的周长、面积公式。",
+            "自己检查结果的单位，并说明周长与面积的区别。",
         ]
     elif "a＋b²" in text or "a+b²" in text or "小明算成" in text:
         steps = [
-            "代入a=5、b=3，原式是a+b²；平方只作用在b上。",
+            "观察a+b²：平方究竟作用于哪个数？你准备先算哪一步？",
             "先算乘方：b²=3²=9，不是3×2。",
             "再加a：5+9=14；不能把a+b改成(a+b)²。",
             "所以正确结果是14。",
         ]
     elif "大正方形" in text and "小正方形" in text and "长方形" in text:
         steps = [
-            "长方形上排由3个边长为n的小正方形组成，总宽3n。",
-            "下排由2个边长为m的大正方形组成，总宽2m；两排拼成同一长方形，所以2m=3n。",
+            "观察大小正方形拼成的长方形：上下两排的宽度有什么关系？",
+            "上排2个大正方形的总宽为2m，下排3个小正方形的总宽为3n；所以2m=3n。",
             "长方形的长是2m，宽是m+n，周长C=2[2m+(m+n)]=6m+2n。",
             "由2m=3n得6m=9n，所以C=9n+2n=11n。",
-            "当m=3时，2m=3n，6=3n，n=2。",
+            "如果题目提供m的数值，再代入2m=3n计算n，并检查拼接宽度相等。",
         ]
     elif figure["type"] == "hundred_chart_square":
         steps = [
-            "百数表中，同一行向右相邻数相差1，同一列向下相邻数相差10。",
+            "观察百数表田字格：向右和向下移动一格，数字分别怎么变化？",
             "设田字格左上角为n，则右上是n+1，左下是n+10，右下是n+11。",
             "四数相加：n+(n+1)+(n+10)+(n+11)=4n+22。",
             "若右下角为m，则左上m−11，右上m−10，左下m−1。",
@@ -293,7 +330,7 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
         ]
     elif figure["type"] == "square_sticks_pattern":
         steps = [
-            "观察：摆1个正方形用4根；摆2个共用一条边，只需新增3根，共7根；摆3个再新增3根，共10根。",
+            "观察连续正方形：从1个摆到2个、3个，共用边在哪里？小棒数如何变化？",
             "发现：每增加1个正方形，都会和前一个共用一条边，所以只增加3根小棒。",
             "列式：摆m个，先用4根，后面m−1个各增加3根，n=4+3(m−1)=3m+1。",
             "代入：m=8时n=25；m=60时n=181。",
@@ -304,12 +341,12 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
     elif figure["type"] == "calendar_cross":
         if re.search(r"五数和\s*(?:是|为)\s*\d+", text):
             total, center = int(figure["total"]), int(figure["center"])
-            result["steps"] = ["月历中左右相邻两数相差1，上下相邻两数相差7。",
+            result["steps"] = ["观察月历十字框：左右、上下移动一格，日期怎样变化？",
                                "若中心数为a，四周依次是a−7、a−1、a+1、a+7。",
                                "五数相加：(a−7)+(a−1)+a+(a+1)+(a+7)=5a。",
                                f"五数和为{total}，所以a={total}÷5={center}，最小{center-7}，最大{center+7}。"]
         else:
-            result["steps"] = ["设十字框中心数为a。", "最上面和最下面分别是a−7、a+7，两数相加等于2a。",
+            result["steps"] = ["先观察十字框：如果用a表示中心数，四周日期如何表示？", "最上面和最下面分别是a−7、a+7，两数相加等于2a。",
                                "最左面和最右面分别是a−1、a+1，两数相加也等于2a。",
                                "所以两组相对数的和相等，都是中心数的2倍。"]
     elif figure["type"] == "tile_pattern":
@@ -319,24 +356,24 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
         white_n = white[0] + (target_n - 1) * white_step
         blue_n = blue[0] + (target_n - 1) * blue_step
         reverse_n = (target_blue - blue[0] + blue_step - 1) // blue_step + 1
-        result["steps"] = [f"第1幅白砖{white[0]}块、蓝砖{blue[0]}块；第2幅白砖{white[1]}块、蓝砖{blue[1]}块。",
+        result["steps"] = ["先观察前两幅地砖：白砖与蓝砖的数量分别怎样变化？",
                            f"两种颜色每增加一幅分别增加{white_step}块和{blue_step}块。",
                            f"第n幅白砖为{white[0]}+{white_step}(n−1)，蓝砖为{blue[0]}+{blue_step}(n−1)。",
                            f"第{target_n}幅白砖{white_n}块；蓝砖为{target_blue}块时对应第{reverse_n}幅。"]
     elif figure["type"] == "running_track":
         fast, slow, symbol = figure["fastSpeed"], figure["slowSpeed"], figure["distanceSymbol"]
-        result["steps"] = [f"同向出发后，快者追上一整圈时比慢者多跑一圈{symbol}米。",
+        result["steps"] = ["观察同向跑步：快者追上一整圈时，两人累计路程相差多少？",
                            f"快者每分钟跑{fast}米，慢者每分钟跑{slow}米。",
                            f"每分钟路程差为{fast}−{slow}={fast-slow}米。",
                            f"追上一整圈所需时间={symbol}÷{fast-slow}分钟。"]
     elif figure["type"] == "triangular_numbers":
         target = figure["targetTerm"]
-        result["steps"] = ["点阵每一层依次增加1、2、3、4……个点，前几项是1、3、6、10、15。",
+        result["steps"] = ["观察三角形点阵：每增加一层，新增点数遵循什么规律？",
                            "第n个三角形数是1+2+…+n。",
                            "两份同样的点阵可拼成n行、每行n+1个点的长方形，共n(n+1)个点。",
                            f"原点阵为一半，所以第n个是n(n+1)÷2；第{target}个为{target*(target+1)//2}。"]
     elif figure["type"] == "alternating_triangle":
-        result["steps"] = ["从顶层开始，白、黑两种颜色按层交替排列。", "每两层一组，黑层比白层多1颗棋子。", "黑棋子比白棋子多m颗，说明有m组这样的两层。", "总层数为2m层。"]
+        result["steps"] = ["观察三角形棋子图：黑白棋子是怎样分层排列的？", "每两层一组，黑层比白层多1颗棋子。", "黑棋子比白棋子多m颗，说明有m组这样的两层。", "总层数为2m层。"]
     elif figure["type"] == "seating_pattern":
         result["steps"] = ["1张方桌外周有8个座位；方桌是正方形，座位沿外周排列。", "每增加1张方桌，与前一张共用一条边，内部共用边不坐人，所以外周座位增加4人。", "m张方桌可坐8+4(m−1)人。", "化简得到4m+4人。"]
     return result
@@ -538,7 +575,12 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 if isinstance(current, dict):
                     i[key] = _repair_courseware_visual(current, visual_text)
             items.append({**i, "kindLabel": cw.KIND_LABEL.get(i["kind"], i["kind"]), "writtenTaskPreview": task(i, i["params"])})
+        quality_audit = audit_example_pages(
+            stage_pages(lesson, 3), items_of(row_for(db, lesson)),
+            globals()["required_visual_type"], stage=3,
+        )
         return {"lessonId": lesson.id, "subject": lesson.subject, "templates": list(cw.TEMPLATES[lesson.subject]), "kindLabels": cw.KIND_LABEL,
+                "qualityAudit": quality_audit,
                 "hasSource": bool((lesson.reading_plan or "").strip()), "items": items,
                 "pages": {str(n): [_short(x, 80) for x in stage_pages(lesson, n)] for n in (2, 3)}}
 
@@ -665,7 +707,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         pages = stage_pages(lesson, b.stageNo)
         page_text = pages[page] if page is not None else ""
         fallback_figure = required_visual_figure(page_text)
-        if fallback_figure and (params.get("figure") or {}).get("type") != fallback_figure["type"]:
+        if fallback_figure and not (params.get("figure") or {}).get("type"):
             params = cw.clean(b.kind, {**params, "figure": fallback_figure}, lesson.reading_plan or "")
         upsert(db, u, lesson, b.stageNo, page, b.kind, params, b.writtenTask, page_text)
         return payload(db, lesson)
@@ -690,13 +732,23 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         except ValueError as e:
             raise HTTPException(400, str(e))
         required_figure = required_visual_type(item.get("pageText") or "")
-        if required_figure and (params.get("figure") or {}).get("type") != required_figure:
+        saved_figure = params.get("figure") or {}
+        if required_figure and not saved_figure.get("type"):
             fallback_figure = required_visual_figure(item.get("pageText") or "")
             if fallback_figure:
                 params = cw.clean(item["kind"], {**params, "figure": fallback_figure}, lesson.reading_plan or "")
-        if required_figure and (params.get("figure") or {}).get("type") != required_figure:
-            labels = {"calendar_cross": "月历十字框", "seating_pattern": "方桌人数规律", "alternating_triangle": "黑白棋子三角形", "running_track": "环形跑道追及", "tile_pattern": "地砖排列规律", "square_sticks_pattern": "连续正方形小棒规律"}
-            raise HTTPException(400, "请先补全本题的" + labels.get(required_figure, "专用") + "课件图示，再审核")
+                saved_figure = params.get("figure") or {}
+        # A reviewed custom diagram may be better than our generic fallback.
+        # Prevent approval of the known old solved-answer calendar table, but
+        # never silently overwrite any teacher-authored drawing.
+        if required_figure == "calendar_compare" and saved_figure.get("type") == "table":
+            if any(
+                isinstance(row, list) and any(str(cell).strip() in ("正确", "错误") for cell in row)
+                for row in saved_figure.get("rows", [])
+            ):
+                raise HTTPException(400, "月历判断表直接显示了正确/错误，请先改为不泄露答案的图示")
+        if required_figure and not saved_figure.get("type"):
+            raise HTTPException(400, "请先补充本题的教学图示，再审核")
         template_id = item.get("templateId")
         if item.get("writtenTask"):
             try:
