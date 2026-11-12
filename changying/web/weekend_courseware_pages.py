@@ -687,7 +687,8 @@ function cwSteps(box,p,view,big,teacher){
   var shown=teacher?(view.previewMode?Math.max(1,view.step||0):p.steps.length):(view.step||0),list=el('ol',{style:'padding-left:1.6em;margin:12px 0'});
   p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?(i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:0 4px':''):'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
   wrap.appendChild(list);
-  if(view.showAnswer||teacher)wrap.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
+  var answerVisible=!!view.showAnswer||(teacher&&!view.previewMode)||(teacher&&view.previewMode&&shown>=p.steps.length);
+  if(answerVisible)wrap.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
 }
 function cwClock(box,p,view,big){
   var wrap=el('div',{style:'background:#fff;color:#111;border-radius:12px;padding:8px'});box.appendChild(wrap);
@@ -895,6 +896,15 @@ function cwPlan(box,lessonId,refresh){
         }
       }
       var sourceText=String(x.text||'')+' '+String(p.problem||'')+' '+String(p.sourceProblem||''),normalizedSource=sourceText.replace(/[\s"'“”‘’「」『』]/g,''),required=null;
+      // Repair the known equal-base/equal-height visuals from visible source text, including legacy drafts.
+      if(sourceText.indexOf('平行四边形')>=0&&sourceText.indexOf('三个图形')>=0&&sourceText.indexOf('底均为')>=0&&sourceText.indexOf('平行线间距')>=0){
+        var baseMatch=sourceText.match(/底(?:均)?\\s*(?:为|是)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:cm|厘米)/i);
+        var heightMatch=sourceText.match(/平行线间距(?:离)?(?:为|是)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:cm|厘米)/i);
+        p.figure={type:'equal_base_height',base:baseMatch?Number(baseMatch[1]):3,height:heightMatch?Number(heightMatch[1]):7};
+      }else if(sourceText.indexOf('平行四边形')>=0&&sourceText.indexOf('底被平均分成')>=0&&sourceText.indexOf('中间涂色')>=0&&sourceText.indexOf('高不变')>=0){
+        var totalMatch=sourceText.match(/(?:原图面积|面积)\\s*(?:为|是)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:平方厘米|cm²|cm2)/i);
+        p.figure={type:'parallelogram_thirds',parts:3,totalArea:totalMatch?Number(totalMatch[1]):36};
+      }
       if(normalizedSource.indexOf('田字形')>=0&&normalizedSource.indexOf('百数表')>=0){required={type:'hundred_chart_square',topLeftNumber:45};}
       else if(sourceText.indexOf('地砖')>=0&&(sourceText.indexOf('排列')>=0||sourceText.indexOf('白地砖')>=0)){
         function values(re){var out=[],m;re.lastIndex=0;while((m=re.exec(sourceText))!==null)out.push(Number(m[1]));return out}
