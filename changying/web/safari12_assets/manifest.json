@@ -407,7 +407,7 @@
       "e86f7c0621509469f5f6795ec3d9efcb520623ec8440adbe5b89b3ed16197ee7"
     ],
     "/v1/weekend-plan": [
-      "2a1132658b309bbaaeb223c5b4ea04f78aaa964c4b7032fd7a0e670ce5c51bb7"
+      "572a2a6cdb9ed763ed359fc7741abe65ddc3c261bde305287a3ca724b2708fc1"
     ],
     "/v1/weekend-practice": [
       "465b1ff198406938b835c64fde5e60293af6935e4ad3130bfdc0263333a59352"
@@ -741,13 +741,13 @@
       "sourceBytes": 45735,
       "compiledBytes": 45735
     },
-    "2a1132658b309bbaaeb223c5b4ea04f78aaa964c4b7032fd7a0e670ce5c51bb7": {
-      "unchanged": true
-    },
     "bff8e30f447adb40564945c58e2a95c2f12c9e814283c1ca14b1fc7e266a9fa3": {
       "unchanged": true
     },
     "d3c5472f8f47d5f5832abb038f409cb4f830c431e94ef899d634a1f586cdf8ed": {
+      "unchanged": true
+    },
+    "572a2a6cdb9ed763ed359fc7741abe65ddc3c261bde305287a3ca724b2708fc1": {
       "unchanged": true
     }
   }
