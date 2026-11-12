@@ -715,13 +715,6 @@ function cwPlan(box,lessonId,refresh){
     }});
     box.appendChild(el('div',{class:'row'},stageSel,all,el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})),approveAll));
     box.appendChild(msg);
-    var coverage=d.coursewareCoverage&&d.coursewareCoverage[stageNo];
-    if(coverage&&coverage.total){
-      var complete=coverage.approved===coverage.total;
-      box.appendChild(el('div',{class:'notice '+(complete?'ok':'warn'),
-        text:'互动课件准备：共 '+coverage.total+' 页；已审核 '+coverage.approved+' 页，待审核 '+coverage.draft+' 页，未生成 '+coverage.missing+' 页。'+
-          (complete?'本环节课件审核齐全。':'习题审核不等于课件审核；未完成页面不得视为可授课。')}));
-    }
     if(stageNo==='3'&&d.qualityAudit){
       var audit=d.qualityAudit;
       box.appendChild(el('div',{class:'notice warn',style:'margin:10px 0;white-space:normal',
@@ -729,7 +722,7 @@ function cwPlan(box,lessonId,refresh){
     }
     var rows=el('div'),editor=el('div');box.appendChild(rows);box.appendChild(editor);editorBox=editor;notes={};rowEls={};
     list.forEach(function(x){
-      var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='stale'?['warn','待同步·题目已变']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
+      var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
       var line=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:(x.page==null?'':'第'+(x.page+1)+'页：')+x.text}),
         el('div',{class:'row'},el('span',{class:'tag '+tag[0],text:tag[1]}),it?el('span',{class:'muted',text:d.kindLabels[it.kind]+(it.writtenTask?' · 含学生作答题':'')}):null)));
       if(stageNo==='3'&&d.qualityAudit&&x.page!=null){
