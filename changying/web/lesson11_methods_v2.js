@@ -452,14 +452,14 @@
 }());
 
 (function(){
-  function cleanText(value){return String(value||'').replace(/\\s+/g,' ').replace(/^ | $/g,'');}
+  function cleanText(value){return String(value||'').trim();}
   function classHas(node,name){return !!(node&&(' '+String(node.className||'')+' ').indexOf(' '+name+' ')>=0);}
   function activity(scope){
     if(!scope||!scope.querySelectorAll)return '';
     var nodes=scope.querySelectorAll('div');
     for(var i=0;i<nodes.length;i++){
       var n=nodes[i],t=cleanText(n.textContent||'');
-      if(n.children&&n.children.length===0&&(/^(?:正在审核第|审核完成 \\d+\\/\\d+ 页)/.test(t)))return t;
+      if(n.children&&n.children.length===0&&(t.indexOf('正在审核第')===0||t.indexOf('审核完成 ')===0))return t;
     }
     return '';
   }
