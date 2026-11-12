@@ -55,6 +55,8 @@ function cwFigureText(f){
   if(f.type==='segment')return '线段上的点：'+f.points.map(function(q){return q.name}).join(' — ')+(f.marks.length?'；'+f.marks.map(function(m){return m.from+m.to+'＝'+m.label}).join('，'):'');
   if(f.type==='flow')return '程序：'+f.boxes.join(' → ')+(f.branches.length?'；'+f.branches.map(function(b){return b.when+'：'+b.boxes.join(' → ')}).join('；'):'');
   if(f.type==='shape')return CW_SHAPES[f.shape]+'：'+Object.keys(f.labels).map(function(k){return f.labels[k]}).join('，');
+  if(f.type==='equal_base_height')return '三个平行四边形：底均为 '+f.base+' cm，高均为 '+f.height+' cm';
+  if(f.type==='parallelogram_thirds')return '平行四边形底边三等分，中间部分涂色，高不变，总面积 '+f.totalArea+' cm²';
   if(f.type==='parallelogram_methods')return '平行四边形面积公式：①②③④四种剪拼、平移或旋转方法（示意图，含中点M、N和垂足）';
   if(f.type==='calendar_compare')return '月历四种框形：A一行四格、B两行两列、C一列三格、D三行三列';
   if(f.type==='calendar_cross')return '\u6708\u5386\u5341\u5b57\u6846\uff1a\u4e2d\u5fc3 '+f.center+'\uff0c\u4e94\u6570\u548c '+f.total;
@@ -72,6 +74,8 @@ function cwFigureOk(f){
   if(f.type==='segment'){var at=(f.points||[]).map(function(q){return q.at});return at.length>=2&&at.every(function(a){return isFinite(a)})&&Math.max.apply(null,at)>Math.min.apply(null,at)}
   if(f.type==='flow')return (f.boxes||[]).length>0||(f.branches||[]).length>0;
   if(f.type==='shape')return !!CW_SHAPES[f.shape];
+  if(f.type==='equal_base_height')return isFinite(f.base)&&f.base>0&&isFinite(f.height)&&f.height>0;
+  if(f.type==='parallelogram_thirds')return f.parts===3&&isFinite(f.totalArea)&&f.totalArea>0;
   if(f.type==='parallelogram_methods')return true;
   if(f.type==='calendar_compare')return true;
   if(f.type==='calendar_cross')return isFinite(f.center)&&isFinite(f.daysInMonth)&&isFinite(f.firstWeekday)&&isFinite(f.total)&&f.center===f.total/5;
@@ -454,6 +458,59 @@ function cwParallelogramMethods(box,view,big,teacher){
   wrap.appendChild(el('p',{class:'muted',style:'margin:4px 0;font-size:12px',text:'依据原练习①②③④重绘的操作示意图；观察剪拼与旋转方向，先讨论，再判断。'}));
 }
 
+function cwEqualBaseHeight(box,f,big){
+  var wrap=el('div',{style:'max-width:900px;margin:8px auto;padding:10px;border:1px solid #d0d5dd;border-radius:10px;background:#fff'});
+  box.appendChild(wrap);
+  var svg=cwNode('svg',{viewBox:'0 0 780 260',width:'100%',style:'display:block;max-height:'+(big?'34vh':'280px'),role:'img','aria-label':cwFigureText(f)});
+  var shifts=[20,45,0],starts=[25,280,535];
+  function line(x1,y1,x2,y2,color,width,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color,'stroke-width':width,'stroke-dasharray':dash||''}))}
+  function txt(x,y,s,size,color,weight,anchor){svg.appendChild(cwNode('text',{x:x,y:y,'font-size':size,fill:color,'font-weight':weight||400,'text-anchor':anchor||'middle'},s))}
+  for(var i=0;i<3;i++){
+    var x=starts[i],shift=shifts[i],left=x+35,bottomY=205,topY=45,width=68;
+    svg.appendChild(cwNode('text',{x:x+100,y:28,'text-anchor':'middle','font-size':20,'font-weight':700,fill:'#17449b'},['①','②','③'][i]));
+    svg.appendChild(cwNode('polygon',{points:(left+shift)+','+topY+' '+(left+shift+width)+','+topY+' '+(left+width)+','+bottomY+' '+left+','+bottomY,fill:'#eaf3ff',stroke:'#2563eb','stroke-width':3}));
+    line(x+12,topY,x+195,topY,'#98a2b3',1.3,'4 4');
+    line(x+12,bottomY,x+195,bottomY,'#98a2b3',1.3,'4 4');
+    line(left,bottomY+18,left+width,bottomY+18,'#c2410c',2);
+    line(left,bottomY+13,left,bottomY+23,'#c2410c',2);
+    line(left+width,bottomY+13,left+width,bottomY+23,'#c2410c',2);
+    txt(left+width/2,bottomY+43,'底 = '+f.base+' cm',16,'#344054',600);
+    var hx=x+170;
+    line(hx,bottomY,hx,topY,'#c2410c',2);
+    line(hx,bottomY,hx-5,bottomY-8,'#c2410c',2);line(hx,bottomY,hx+5,bottomY-8,'#c2410c',2);
+    line(hx,topY,hx-5,topY+8,'#c2410c',2);line(hx,topY,hx+5,topY+8,'#c2410c',2);
+    txt(hx+28,130,'高 = '+f.height+' cm',15,'#344054',600,'start');
+  }
+  wrap.appendChild(svg);
+  wrap.appendChild(el('div',{style:'text-align:center;color:#475467;font-size:13px',text:'形状不同，底和对应的高相同'}));
+}
+function cwParallelogramThirds(box,f,big){
+  var wrap=el('div',{style:'max-width:760px;margin:8px auto;padding:10px;border:1px solid #d0d5dd;border-radius:10px;background:#fff'});
+  box.appendChild(wrap);
+  var svg=cwNode('svg',{viewBox:'0 0 720 300',width:'100%',style:'display:block;max-height:'+(big?'38vh':'320px'),role:'img','aria-label':cwFigureText(f)});
+  function line(x1,y1,x2,y2,color,width,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color,'stroke-width':width,'stroke-dasharray':dash||''}))}
+  function txt(x,y,s,size,color,weight,anchor){svg.appendChild(cwNode('text',{x:x,y:y,'font-size':size,fill:color,'font-weight':weight||400,'text-anchor':anchor||'middle'},s))}
+  var yTop=65,yBottom=220,baseLeft=90,baseWidth=390,slant=65,part=baseWidth/3;
+  txt(285,34,'底边平均分成 3 份，高不变；原面积 '+f.totalArea+' cm²',20,'#17449b',700);
+  svg.appendChild(cwNode('polygon',{points:(baseLeft+slant)+','+yTop+' '+(baseLeft+slant+baseWidth)+','+yTop+' '+(baseLeft+baseWidth)+','+yBottom+' '+baseLeft+','+yBottom,fill:'#eaf3ff',stroke:'#2563eb','stroke-width':3}));
+  svg.appendChild(cwNode('polygon',{points:(baseLeft+slant+part)+','+yTop+' '+(baseLeft+slant+2*part)+','+yTop+' '+(baseLeft+2*part)+','+yBottom+' '+(baseLeft+part)+','+yBottom,fill:'#ffdf87',stroke:'none'}));
+  line(baseLeft+part,yBottom,baseLeft+slant+part,yTop,'#2563eb',3);
+  line(baseLeft+2*part,yBottom,baseLeft+slant+2*part,yTop,'#2563eb',3);
+  line(baseLeft+slant,yTop,baseLeft+slant+baseWidth,yTop,'#2563eb',3);
+  line(baseLeft,yBottom,baseLeft+baseWidth,yBottom,'#2563eb',3);
+  var hx=baseLeft+slant+part+8;
+  line(hx,yTop,hx,yBottom,'#c2410c',2,'5 4');
+  line(hx,yTop,hx-5,yTop+8,'#c2410c',2);line(hx,yTop,hx+5,yTop+8,'#c2410c',2);
+  line(hx,yBottom,hx-5,yBottom-8,'#c2410c',2);line(hx,yBottom,hx+5,yBottom-8,'#c2410c',2);
+  txt(hx+16,150,'高不变',15,'#9a3412',700,'start');
+  for(var i=0;i<3;i++){
+    var cx=baseLeft+part*(i+.5);
+    txt(cx,yBottom+25,'1 份',15,'#475467',600);
+    if(i===1)txt(cx,yBottom+52,'中间涂色部分',15,'#9a3412',700);
+  }
+  wrap.appendChild(svg);
+}
+
 function cwFigure(wrap,f,big,view,teacher,stepCount){
   view=view||{};
   if(!f||!f.type)return;
@@ -463,6 +520,8 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
     box.appendChild(el('img',{src:f.data_url,alt:f.alt||'原卷插图',style:'display:block;max-width:100%;max-height:'+(big?'40vh':'300px')+';object-fit:contain;margin:0 auto;border:1px solid #e5e8f0;border-radius:8px'}));
     return;
   }
+  if(f.type==='equal_base_height'){cwEqualBaseHeight(box,f,big);return}
+  if(f.type==='parallelogram_thirds'){cwParallelogramThirds(box,f,big);return}
   if(f.type==='parallelogram_methods'){cwParallelogramMethods(box,view,big,teacher);return}
   if(f.type==='calendar_compare'){cwCalendarCompare(box,f,view,big,teacher);return}
   if(f.type==='calendar_cross'){cwCalendarCross(box,f,view,big,teacher);return}
@@ -616,7 +675,12 @@ function cwLesson10RemainingFigure(wrap,p,view,big,teacher){
 function cwSteps(box,p,view,big,teacher){
   var wrap=el('div',{style:'max-width:980px;margin:0 auto;background:#fff;color:#111;border-radius:12px;padding:12px;line-height:1.75;'+(big?'font-size:2.8vh':'')});box.appendChild(wrap);
   wrap.appendChild(el('b',{text:p.title}));
-  if(p.sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:p.sourceProblem}));
+  var sourceProblem=String(p.sourceProblem||'');
+  if(p.figure&&p.figure.type==='table'&&sourceProblem.indexOf('对应面积')>=0&&sourceProblem.indexOf('平方千米')>=0&&sourceProblem.indexOf('公顷')>=0){
+    var tableHeader=sourceProblem.lastIndexOf('正方形边长',sourceProblem.indexOf('对应面积'));
+    if(tableHeader>0)sourceProblem=sourceProblem.slice(0,tableHeader).trim();
+  }
+  if(sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:sourceProblem}));
   if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
   if(!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
   if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));

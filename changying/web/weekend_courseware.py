@@ -180,6 +180,17 @@ def required_visual_type(page_text: Any) -> str:
              (all(symbol in text for symbol in "①②③④") and "面积公式" in text))):
         return "parallelogram_methods"
 
+    # Deterministic visuals for the three grade-five questions that were rendering
+    # without their required diagrams or with an incomplete unit table.
+    if ("平行四边形" in text and "三个图形" in text and "底均为" in text
+            and "平行线间距" in text):
+        return "equal_base_height"
+    if ("平行四边形" in text and "底被平均分成" in text
+            and "中间涂色" in text and "高不变" in text):
+        return "parallelogram_thirds"
+    if "正方形边长" in text and "平方千米" in text and "公顷" in text:
+        return "table"
+
     # More specific patterns must be checked before the general calendar cases.
     if "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
         return "calendar_compare"
@@ -217,12 +228,29 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
     """Return stable, data-only visual parameters for known questions."""
     text = str(page_text or "")
     kind = required_visual_type(text)
+    if kind == "equal_base_height":
+        height = re.search(r"平行线间距(?:离)?(?:为|是)?\s*(\d+(?:\.\d+)?)\s*(?:cm|厘米)", text, re.I)
+        base = re.search(r"底(?:均)?\s*(?:为|是)?\s*(\d+(?:\.\d+)?)\s*(?:cm|厘米)", text, re.I)
+        return {"type": kind, "base": float(base.group(1)) if base else 3,
+                "height": float(height.group(1)) if height else 7}
+    if kind == "parallelogram_thirds":
+        total = re.search(r"(?:原图面积|面积)\s*(?:为|是)?\s*(\d+(?:\.\d+)?)\s*(?:平方厘米|cm²|cm2)", text, re.I)
+        return {"type": kind, "parts": 3, "totalArea": float(total.group(1)) if total else 36}
     if kind == "parallelogram_methods":
         return {"type": "parallelogram_methods"}
     if kind == "calendar_compare":
         return {"type": "calendar_compare"}
     if kind == "table":
         compact = _normalize_text(text)
+        if "正方形边长" in text and "平方千米" in text and "公顷" in text:
+            return {"type": "table", "rows": [
+                ["正方形边长", "对应面积"],
+                ["1厘米", "（　　　）"],
+                ["（　　　）", "1平方分米"],
+                ["1米", "（　　　）"],
+                ["（　　　）米", "1公顷"],
+                ["（　　　）米", "1平方千米"],
+            ]}
         if ("3×3" in text or "3x3" in text or "3＊3" in text) and ("九数和" in text or "中心数" in text):
             # 九宫格本身是题目条件：九个数一次看全，并按讲解步骤高亮对称数对/中心数。
             total = re.search(r"九数和\s*(?:为|是)?\s*(\d+)(?!\s*[A-Za-z])", text)
@@ -341,6 +369,20 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
                     "第6步：若九数和为2016，则9a=2016，求得中心数a=224。",
                 ]
             return result
+    targeted_equal_area_figure = figure.get("type") in ("equal_base_height", "parallelogram_thirds")
+    targeted_unit_table = (
+        figure.get("type") == "table" and "正方形边长" in visual_text
+        and "平方千米" in visual_text and "公顷" in visual_text
+    )
+    if targeted_equal_area_figure:
+        if original_figure.get("type") != figure.get("type"):
+            result["figure"] = figure
+        return result
+    if targeted_unit_table:
+        rows = original_figure.get("rows") if original_figure.get("type") == "table" else None
+        if rows != figure.get("rows"):
+            result["figure"] = figure
+        return result
     if original_figure.get("type") and not legacy_calendar_answer_table:
         return result
     if result.get("figure") != figure:
