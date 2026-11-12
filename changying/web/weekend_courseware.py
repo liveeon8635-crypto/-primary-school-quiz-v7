@@ -468,6 +468,8 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
     c = db.execute(select(t).where(t.c.school_id == row.school_id, t.c.lesson_id == row.lesson_id,
                                    t.c.approved_json.isnot(None))).first()
     stage = int(row.current_stage or 0)
+    if stage == 3 and source_page_mismatch(db.get(implementation.TeachingLesson, row.lesson_id))[1]:
+        return None, "原文题号与例题页数不符，互动课件已暂停显示，请返回备课页检查。"
     approved = [i for i in items_of(c) if i.get("approved") is not None and int(i["stage"]) == stage]
     if not approved:
         return None, ""
@@ -838,6 +840,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     def approve(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Teacher review done for one page: classrooms show it on that page; optional written task for pupils."""
         lesson = my_lesson(db, u, lid)
+        if b.stageNo == 3 and source_page_mismatch(lesson)[1]:
+            raise HTTPException(409, "原文题号与例题页数不符，已禁止审核或展示错误页。")
         page = checked_page(lesson, b.stageNo, b.page)
         items = items_of(row_for(db, lesson))
         item = find(items, b.stageNo, page)
