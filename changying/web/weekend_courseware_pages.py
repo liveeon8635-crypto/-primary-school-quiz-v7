@@ -539,6 +539,63 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
   }
   box.appendChild(svg);
 }
+// Lesson 11 parallelogram figures: render grids and both base-height pairs
+// explicitly; the generic shape renderer cannot represent these tasks.
+function cwLesson11Parallelogram(box,p,view,big,teacher){
+  var source=[p.title||'',p.problem||'',p.sourceProblem||''].join(' ');
+  var q5=/第\s*5\s*题/.test(source)&&source.indexOf('方格测量')>=0;
+  var q6=/第\s*6\s*题/.test(source)&&source.indexOf('两组对应底高')>=0;
+  var q8=/第\s*8\s*题/.test(source)&&source.indexOf('面积累加')>=0;
+  if(!q5&&!q6&&!q8)return false;
+  var wrap=el('div',{style:'max-width:900px;margin:10px auto;padding:10px;background:#fff;border:1px solid #d0d5dd;border-radius:10px'});
+  var svg=cwNode('svg',{viewBox:q6?'0 0 860 350':'0 0 560 310',width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':'两组对应底和高'});
+  function line(x1,y1,x2,y2,color,w,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color||'#c7d7e5','stroke-width':w||1,'stroke-dasharray':dash||''}))}
+  function text(x,y,t,color,size,anchor){svg.appendChild(cwNode('text',{x:x,y:y,fill:color||'#344054','font-size':size||17,'font-weight':700,'text-anchor':anchor||'middle'},t))}
+  function panel(x,y,cell,cols,rows,base,height,caption,showHigh){
+    var w=cell*cols,h=cell*rows;
+    for(var i=0;i<=cols;i++)line(x+i*cell,y,x+i*cell,y+h,'#c5d8e8',1);
+    for(var j=0;j<=rows;j++)line(x,y+j*cell,x+w,y+j*cell,'#c5d8e8',1);
+    var shift=cell*2,top=y+cell,bottom=top+h;
+    svg.appendChild(cwNode('polygon',{points:(x+shift)+','+top+' '+(x+shift+base*cell)+','+top+' '+(x+shift+base*cell-cell)+','+bottom+' '+x+','+bottom,fill:'#3da9bd','fill-opacity':.18,stroke:'#225e7a','stroke-width':3}));
+    text(x+w/2,y+h+25,caption,'#344054',16);
+    if(showHigh){
+      line(x+shift,top,x+shift,bottom,'#b42318',2,'6 4');
+      line(x+shift,top+10,x+shift+10,top+10,'#b42318',2);
+      line(x+shift+10,top+10,x+shift+10,top,'#b42318',2);
+    }
+    return {x:x+shift+base*cell/2,y:top+22};
+  }
+  if(q5){
+    panel(45,35,40,10,6,8,5,'每小格0.5 cm；底8格、高5格',!!(teacher||view.showAnswer));
+    if(teacher||view.showAnswer)text(365,150,'高5格','#b42318',17,'start');
+    text(280,285,'底8格','#1d4ed8',17);
+  }else if(q8){
+    panel(70,45,40,8,5,6,3,'每小格1 dm；底6格、高3格',true);
+    text(300,145,'高3格','#b42318',17,'start');
+    text(300,245,'底6格','#1d4ed8',17);
+  }else{
+    // Side-by-side diagrams make each altitude visibly belong to its base.
+    function pair(x,label,base,height,color,slanted){
+      text(x+170,28,label,'#344054',16);
+      var top=70,bottom=225,left=x+35,right=x+305;
+      svg.appendChild(cwNode('polygon',{points:left+','+bottom+' '+(left+70)+','+top+' '+right+','+top+' '+(right-70)+','+bottom,fill:'#3da9bd','fill-opacity':.14,stroke:'#225e7a','stroke-width':3}));
+      if(!slanted){
+        line(left+70,top,left+70,bottom,color,3,'7 4');
+        text(x+160,155,height+' m',color,18);
+        text(x+170,255,base+' m 底','#1d4ed8',17);
+        text(x+190,56,'高垂直于水平底','#475467',14);
+      }else{
+        line(left+35,top+115,right-70,bottom,color,3,'7 4');
+        text(x+190,150,height+' m',color,18);
+        text(left+24,155,base+' m','#1d4ed8',17);
+        text(x+175,255,'高垂直于斜边所在直线','#475467',14);
+      }
+    }
+    pair(15,'8 m 底 ↔ 5.4 m 高',8,5.4,'#d97706',false);
+    pair(435,'6 m 底 ↔ 7.2 m 高',6,7.2,'#7c3aed',true);
+  }
+  wrap.appendChild(svg);box.appendChild(wrap);return true;
+}
 // Lesson 10 examples 17 and 20: display-time correction for the two
 // legacy *single rectangle* diagrams only. Teacher-authored data is unchanged.
 function cwLesson10Geometry(box,p,view,big,teacher){
@@ -618,7 +675,7 @@ function cwSteps(box,p,view,big,teacher){
   wrap.appendChild(el('b',{text:p.title}));
   if(p.sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:p.sourceProblem}));
   if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
-  if(!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
+  if(!cwLesson11Parallelogram(wrap,p,view,big,teacher)&&!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
   if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
   var shown=teacher?(view.previewMode?Math.max(1,view.step||0):p.steps.length):(view.step||0),list=el('ol',{style:'padding-left:1.6em;margin:12px 0'});
   p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?(i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:0 4px':''):'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
