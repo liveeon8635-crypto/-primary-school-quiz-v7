@@ -548,7 +548,7 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
   var q8=/第\s*8\s*题/.test(source)&&source.indexOf('面积累加')>=0;
   if(!q5&&!q6&&!q8)return false;
   var wrap=el('div',{style:'max-width:900px;margin:10px auto;padding:10px;background:#fff;border:1px solid #d0d5dd;border-radius:10px'});
-  var svg=cwNode('svg',{viewBox:q6?'0 0 860 350':'0 0 560 310',width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':'两组对应底和高'});
+  var svg=cwNode('svg',{viewBox:q6?'0 0 860 350':(q5?'0 0 560 360':'0 0 560 310'),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':'两组对应底和高'});
   function line(x1,y1,x2,y2,color,w,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color||'#c7d7e5','stroke-width':w||1,'stroke-dasharray':dash||''}))}
   function text(x,y,t,color,size,anchor){svg.appendChild(cwNode('text',{x:x,y:y,fill:color||'#344054','font-size':size||17,'font-weight':700,'text-anchor':anchor||'middle'},t))}
   function panel(x,y,cell,cols,rows,base,height,caption,showHigh){
@@ -577,16 +577,16 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
     // Side-by-side diagrams make each altitude visibly belong to its base.
     function pair(x,label,base,height,color,slanted){
       text(x+170,28,label,'#344054',16);
-      var top=70,bottom=225,left=x+35,right=x+305;
-      svg.appendChild(cwNode('polygon',{points:left+','+bottom+' '+(left+70)+','+top+' '+right+','+top+' '+(right-70)+','+bottom,fill:'#3da9bd','fill-opacity':.14,stroke:'#225e7a','stroke-width':3}));
+      var top=90,bottom=225,left=x+35,right=left+265,shift=65;
+      svg.appendChild(cwNode('polygon',{points:left+','+bottom+' '+(left+shift)+','+top+' '+right+','+top+' '+(right-shift)+','+bottom,fill:'#3da9bd','fill-opacity':.14,stroke:'#225e7a','stroke-width':3}));
       if(!slanted){
         line(left+70,top,left+70,bottom,color,3,'7 4');
         text(x+160,155,height+' m',color,18);
         text(x+170,255,base+' m 底','#1d4ed8',17);
         text(x+190,56,'高垂直于水平底','#475467',14);
       }else{
-        line(left+35,top+115,right-70,bottom,color,3,'7 4');
-        text(x+190,150,height+' m',color,18);
+        line(left+32,158,left+194,236,color,3,'7 4');
+        text(x+185,190,height+' m',color,18);
         text(left+24,155,base+' m','#1d4ed8',17);
         text(x+175,255,'高垂直于斜边所在直线','#475467',14);
       }
