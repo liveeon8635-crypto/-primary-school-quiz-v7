@@ -461,21 +461,21 @@ function cwParallelogramMethods(box,view,big,teacher){
 function cwEqualBaseHeight(box,f,big){
   var wrap=el('div',{style:'max-width:900px;margin:8px auto;padding:10px;border:1px solid #d0d5dd;border-radius:10px;background:#fff'});
   box.appendChild(wrap);
-  var svg=cwNode('svg',{viewBox:'0 0 780 250',width:'100%',style:'display:block;max-height:'+(big?'34vh':'280px'),role:'img','aria-label':cwFigureText(f)});
-  var shifts=[28,56,3],starts=[25,280,535];
+  var svg=cwNode('svg',{viewBox:'0 0 780 260',width:'100%',style:'display:block;max-height:'+(big?'34vh':'280px'),role:'img','aria-label':cwFigureText(f)});
+  var shifts=[20,45,0],starts=[25,280,535];
   function line(x1,y1,x2,y2,color,width,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color,'stroke-width':width,'stroke-dasharray':dash||''}))}
   function txt(x,y,s,size,color,weight,anchor){svg.appendChild(cwNode('text',{x:x,y:y,'font-size':size,fill:color,'font-weight':weight||400,'text-anchor':anchor||'middle'},s))}
   for(var i=0;i<3;i++){
-    var x=starts[i],shift=shifts[i],left=x+35,bottomY=185,topY=65,width=100;
+    var x=starts[i],shift=shifts[i],left=x+35,bottomY=205,topY=45,width=68;
     svg.appendChild(cwNode('text',{x:x+100,y:28,'text-anchor':'middle','font-size':20,'font-weight':700,fill:'#17449b'},['①','②','③'][i]));
     svg.appendChild(cwNode('polygon',{points:(left+shift)+','+topY+' '+(left+shift+width)+','+topY+' '+(left+width)+','+bottomY+' '+left+','+bottomY,fill:'#eaf3ff',stroke:'#2563eb','stroke-width':3}));
-    line(x+12,topY,x+180,topY,'#98a2b3',1.3,'4 4');
-    line(x+12,bottomY,x+180,bottomY,'#98a2b3',1.3,'4 4');
+    line(x+12,topY,x+195,topY,'#98a2b3',1.3,'4 4');
+    line(x+12,bottomY,x+195,bottomY,'#98a2b3',1.3,'4 4');
     line(left,bottomY+18,left+width,bottomY+18,'#c2410c',2);
     line(left,bottomY+13,left,bottomY+23,'#c2410c',2);
     line(left+width,bottomY+13,left+width,bottomY+23,'#c2410c',2);
     txt(left+width/2,bottomY+43,'底 = '+f.base+' cm',16,'#344054',600);
-    var hx=x+200;
+    var hx=x+170;
     line(hx,bottomY,hx,topY,'#c2410c',2);
     line(hx,bottomY,hx-5,bottomY-8,'#c2410c',2);line(hx,bottomY,hx+5,bottomY-8,'#c2410c',2);
     line(hx,topY,hx-5,topY+8,'#c2410c',2);line(hx,topY,hx+5,topY+8,'#c2410c',2);
