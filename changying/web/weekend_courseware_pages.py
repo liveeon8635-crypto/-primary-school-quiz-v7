@@ -552,16 +552,7 @@ function cwSteps(box,p,view,big,teacher){
   if(p.sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:p.sourceProblem}));
   if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
   if(!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
-  // Teacher always sees the source next to the instructional rendering, not behind a collapsed detail.
-  var needsOriginal=/平行四边形|三角形|梯形|多边形/.test(p.sourceProblem||p.problem||'') && /图上|下图|下面各个|画高|量出|测量/.test(p.sourceProblem||p.problem||'');
-  if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image'){
-    var comparison=el('section',{style:'margin:12px 0;padding:10px;border:1px solid #b9c9e5;border-radius:8px'});
-    comparison.appendChild(el('b',{text:'原题图片（核对教学图、底和对应高）'}));
-    comparison.appendChild(el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'原题图片',style:'display:block;max-width:100%;max-height:'+(big?'42vh':'420px')+';object-fit:contain;margin:8px auto'}));
-    wrap.appendChild(comparison);
-  }else if(needsOriginal){
-    wrap.appendChild(el('div',{class:'notice warn',text:'原图缺失：本题需要对照原卷测量。上方只是教学示意图，不能据此读取实际长度；请重新关联原卷图片，审核前必须核对。'}));
-  }
+  if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
   var shown=teacher?(view.previewMode?Math.max(1,view.step||0):p.steps.length):(view.step||0),list=el('ol',{style:'padding-left:1.6em;margin:12px 0'});
   p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?(i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:0 4px':''):'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
   wrap.appendChild(list);
