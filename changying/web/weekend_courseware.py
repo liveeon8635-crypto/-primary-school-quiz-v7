@@ -275,13 +275,20 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
             and all(isinstance(row, list) and len(row) == 3 for row in rows15)
             and str(rows15[1][1]).strip() == "a"
         )
-        if grid15 or not original_figure.get("type"):
+        outdated_six_steps = (
+            len(original_steps) == 6
+            and ("在3×3方框中定位中心数" in str(original_steps[0])
+                 or "第1步：在3×3" in str(original_steps[0]))
+        )
+        missing_right_cells = grid15 and (
+            str(rows15[1][2]).strip() in ("", ".", "·", "?", "？")
+            or str(rows15[2][2]).strip() in ("", ".", "·", "?", "？")
+        )
+        # Fully completed teacher-authored grids and other custom explanations
+        # remain unchanged; only the photographed legacy state is repaired.
+        if missing_right_cells or (grid15 and outdated_six_steps) or not original_figure.get("type"):
             result["figure"] = figure
-            if (
-                len(original_steps) == 6
-                and ("在3×3方框中定位中心数" in str(original_steps[0])
-                     or "第1步：在3×3" in str(original_steps[0]))
-            ) or not original_steps:
+            if outdated_six_steps or not original_steps:
                 result["steps"] = [
                     "第1步：观察每行10个数的数表，先把3×3方框中间的数设为a。",
                     "第2步：同一行左右相邻数差1，所以左右分别是a−1、a+1。",
