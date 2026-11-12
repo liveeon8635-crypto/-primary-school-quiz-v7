@@ -96,6 +96,8 @@ def audit_example_pages(
                 problems.append("图示中含直接判断结论，可能提前泄露选择题答案")
             if not figure_type and expected:
                 problems.append("此题需要图示，但当前课件没有可核对的教学图示")
+            elif not figure_type and re.search(r"如图|下图|图中|图上|看图|观察.{0,12}图|①②③④", source):
+                problems.append("原题要求观察图形，但课件无图；请对照原练习补绘后再审核")
             elif figure_type == "uploaded_image":
                 warnings.append("当前只有原卷图片，尚需独立教学图示")
             elif expected and figure_type != expected:
@@ -108,6 +110,9 @@ def audit_example_pages(
                 warnings.append("九宫格仍使用普通表格，需核对是否缺少分步高亮")
             if figure_type == "table" and any(word in source for word in ("大小正方形", "大正方形", "长方形拼", "拼成长方形")):
                 warnings.append("空间拼接题仅有数表，建议核对是否缺少实际拼接图")
+            if expected == "parallelogram_methods" and re.search(
+                    r"待教师确认|原题未提供|图示缺失|看不到图|无法判断", answer):
+                problems.append("四种方法图已补绘，但教师答案仍为待确认；请对照原题逐项核实")
             if item.get("kind") == "steps":
                 if expected and len(steps) < 4:
                     warnings.append("此规律/图形题分步不足四步，可核对是否缺少观察、探索或验证")

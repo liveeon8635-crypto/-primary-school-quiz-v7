@@ -55,6 +55,7 @@ function cwFigureText(f){
   if(f.type==='segment')return '线段上的点：'+f.points.map(function(q){return q.name}).join(' — ')+(f.marks.length?'；'+f.marks.map(function(m){return m.from+m.to+'＝'+m.label}).join('，'):'');
   if(f.type==='flow')return '程序：'+f.boxes.join(' → ')+(f.branches.length?'；'+f.branches.map(function(b){return b.when+'：'+b.boxes.join(' → ')}).join('；'):'');
   if(f.type==='shape')return CW_SHAPES[f.shape]+'：'+Object.keys(f.labels).map(function(k){return f.labels[k]}).join('，');
+  if(f.type==='parallelogram_methods')return '平行四边形面积公式：①②③④四种剪拼、平移或旋转方法（示意图，含中点M、N和垂足）';
   if(f.type==='calendar_compare')return '月历四种框形：A一行四格、B两行两列、C一列三格、D三行三列';
   if(f.type==='calendar_cross')return '\u6708\u5386\u5341\u5b57\u6846\uff1a\u4e2d\u5fc3 '+f.center+'\uff0c\u4e94\u6570\u548c '+f.total;
   if(f.type==='seating_pattern')return '\u65b9\u684c\u4eba\u6570\u89c4\u5f8b\uff1a'+f.sampleCounts.join('\u3001');
@@ -71,6 +72,7 @@ function cwFigureOk(f){
   if(f.type==='segment'){var at=(f.points||[]).map(function(q){return q.at});return at.length>=2&&at.every(function(a){return isFinite(a)})&&Math.max.apply(null,at)>Math.min.apply(null,at)}
   if(f.type==='flow')return (f.boxes||[]).length>0||(f.branches||[]).length>0;
   if(f.type==='shape')return !!CW_SHAPES[f.shape];
+  if(f.type==='parallelogram_methods')return true;
   if(f.type==='calendar_compare')return true;
   if(f.type==='calendar_cross')return isFinite(f.center)&&isFinite(f.daysInMonth)&&isFinite(f.firstWeekday)&&isFinite(f.total)&&f.center===f.total/5;
   if(f.type==='seating_pattern')return (f.sampleCounts||[]).length>=2&&f.sampleCounts.length<=4&&f.sampleCounts[0]===8&&f.sampleCounts.every(function(n,i){return isFinite(n)&&n===8+i*4});
@@ -388,6 +390,70 @@ function cwCalendarCompare(box,f,view,big,teacher){
   }
   box.appendChild(wrap);
 }
+
+function cwParallelogramMethods(box,view,big,teacher){
+  // Four distinct panels redrawn from the supplied lesson 11 exercise (not
+  // a fabricated solution key). One highlighted method per teacher step.
+  var wrap=el('div',{style:'max-width:980px;margin:6px auto;padding:8px;border:1px solid #d0d5dd;border-radius:10px;background:#fff'});
+  box.appendChild(wrap);
+  if(!document.createElementNS||!cwNode('svg',{}).createSVGRect){
+    wrap.appendChild(el('p',{text:'原题图示：① 剪下的三角形平移补成长方形；② 平移后仍需判断目标图形；③ 经过两边中点M、N的剪拼和旋转；④ 利用高进行旋转割补。'}));
+    return;
+  }
+  var svg=cwNode('svg',{viewBox:'0 0 760 210',width:'100%',style:'display:block;max-height:'+(big?'43vh':'330px'),role:'img','aria-label':cwFigureText({type:'parallelogram_methods'})});
+  var focused=teacher&&view.previewMode?Math.max(1,Math.min(4,view.step||1)):0;
+  function node(g,t,attrs,value){var n=cwNode(t,attrs,value);g.appendChild(n);return n}
+  function path(g,d,stroke,dash,width){return node(g,'path',{d:d,fill:'none',stroke:stroke||'#283949','stroke-width':width||2.3,'stroke-dasharray':dash||''})}
+  function poly(g,points,fill,dash){return node(g,'polygon',{points:points,fill:fill||'#e5f2fc',stroke:'#263647','stroke-width':2.2,'stroke-dasharray':dash||''})}
+  function label(g,x,y,value,size){return node(g,'text',{x:x,y:y,'font-size':size||16,fill:'#253647','text-anchor':'middle','font-weight':600},value)}
+  function arrow(g,d,x,y,orientation){
+    path(g,d,'#235e97','',2.5);
+    if(orientation==='up')poly(g,(x-5)+','+(y+8)+' '+x+','+y+' '+(x+5)+','+(y+8),'#235e97');
+    else if(orientation==='left')poly(g,(x+8)+','+(y-5)+' '+x+','+y+' '+(x+8)+','+(y+5),'#235e97');
+    else poly(g,(x-8)+','+(y-5)+' '+x+','+y+' '+(x-8)+','+(y+5),'#235e97');
+  }
+  var labels=['①','②','③','④'];
+  for(var i=0;i<4;i++){
+    var g=node(svg,'g',{transform:'translate('+(i*190)+',0)'});
+    node(g,'rect',{x:4,y:36,width:181,height:145,rx:9,fill:focused===i+1?'#fff7df':'#fff',stroke:focused===i+1?'#d97706':'#cbd5e1','stroke-width':focused===i+1?3:1.5});
+    label(g,94,25,labels[i],25);
+    if(i===0){
+      // Option ①: a left triangle relocates to the opposite side.
+      poly(g,'55,64 151,64 151,160 55,160');
+      path(g,'M 23 160 L 55 64 L 23 64','#87919d','5 4');
+      path(g,'M 55 64 L 55 160','#283949','',2.3);
+      path(g,'M 120 64 L 90 160','#283949','',2.3);
+      path(g,'M 55 149 L 66 149 L 66 160','#283949','',1.7);
+      arrow(g,'M 43 111 L 140 111',140,111,'right');
+    }else if(i===1){
+      // Option ②: the illustrated transfer does not by itself make a rectangle.
+      poly(g,'60,64 141,64 169,160 88,160');
+      path(g,'M 28 160 L 60 64','#87919d','5 4');
+      path(g,'M 141 64 L 113 160','#283949','',2.3);
+      arrow(g,'M 35 112 L 158 112',158,112,'right');
+    }else if(i===2){
+      // Option ③: both side midpoints M,N and two rotating end parts.
+      poly(g,'48,66 151,66 151,159 48,159','#f4f9fd');
+      path(g,'M 28 159 L 53 66 L 172 66 L 151 159','#8d99a8','5 4',1.8);
+      path(g,'M 48 112 L 151 112','#235e97','5 3',1.8);
+      label(g,50,104,'N',16);label(g,149,104,'M',16);
+      path(g,'M 49 148 L 61 148 L 61 159','#283949','',1.5);
+      arrow(g,'M 38 77 Q 18 108 42 135',42,135,'right');
+      arrow(g,'M 159 76 Q 183 113 154 142',154,142,'left');
+    }else{
+      // Option ④: triangle pivots about an edge; base and altitude marked.
+      path(g,'M 21 68 L 151 68 L 151 159 L 21 159 Z','#8995a5','5 4',2);
+      poly(g,'21,159 79,102 180,102 151,159');
+      path(g,'M 79 102 L 79 159','#263647','',2.2);
+      path(g,'M 79 149 L 89 149 L 89 159','#263647','',1.6);
+      label(g,93,133,'高',15);
+      arrow(g,'M 152 45 Q 180 35 177 75',177,75,'right');
+    }
+  }
+  wrap.appendChild(svg);
+  wrap.appendChild(el('p',{class:'muted',style:'margin:4px 0;font-size:12px',text:'依据原练习①②③④重绘的操作示意图；观察剪拼与旋转方向，先讨论，再判断。'}));
+}
+
 function cwFigure(wrap,f,big,view,teacher,stepCount){
   view=view||{};
   if(!f||!f.type)return;
@@ -397,6 +463,7 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
     box.appendChild(el('img',{src:f.data_url,alt:f.alt||'原卷插图',style:'display:block;max-width:100%;max-height:'+(big?'40vh':'300px')+';object-fit:contain;margin:0 auto;border:1px solid #e5e8f0;border-radius:8px'}));
     return;
   }
+  if(f.type==='parallelogram_methods'){cwParallelogramMethods(box,view,big,teacher);return}
   if(f.type==='calendar_compare'){cwCalendarCompare(box,f,view,big,teacher);return}
   if(f.type==='calendar_cross'){cwCalendarCross(box,f,view,big,teacher);return}
   if(f.type==='seating_pattern'){cwSeatingPattern(box,f,view,big,teacher,stepCount);return}
@@ -806,8 +873,8 @@ function cwPlan(box,lessonId,refresh){
       }else if(kind==='steps'){
         field('problem','题目原文（不含答案，生成学生作答题时使用）',area(p.problem));
         field('steps','讲解步骤（每行一步，2—6 步）',area((p.steps||[]).join('\n')));field('answer','答案',input(p.answer));
-        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['calendar_compare','月历框形辨析'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律'],['tile_pattern','地砖排列规律'],['square_sticks_pattern','连续正方形小棒规律'],['hundred_chart_square','百数表田字形四数规律']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
-        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='calendar_compare'?{type:ft.value}:ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:ft.value==='tile_pattern'?{type:ft.value,whiteCounts:[5,8],blueCounts:[4,7],targetTerm:10,targetBlue:100}:ft.value==='square_sticks_pattern'?{type:ft.value,sampleCounts:[4,7,10],targetSquares:[8,60],targetSticks:100}:ft.value==='hundred_chart_square'?{type:ft.value,topLeftNumber:45}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
+        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['parallelogram_methods','平行四边形四种转化方法'],['calendar_compare','月历框形辨析'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律'],['tile_pattern','地砖排列规律'],['square_sticks_pattern','连续正方形小棒规律'],['hundred_chart_square','百数表田字形四数规律']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
+        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='parallelogram_methods'?{type:ft.value}:ft.value==='calendar_compare'?{type:ft.value}:ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:ft.value==='tile_pattern'?{type:ft.value,whiteCounts:[5,8],blueCounts:[4,7],targetTerm:10,targetBlue:100}:ft.value==='square_sticks_pattern'?{type:ft.value,sampleCounts:[4,7,10],targetSquares:[8,60],targetSticks:100}:ft.value==='hundred_chart_square'?{type:ft.value,topLeftNumber:45}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
         if(f.type==='segment'){
           field('figA','线段上的点（名称:位置，分号隔开，如 A:0; C:3; B:6; D:10）',input((f.points||[]).map(function(q){return q.name+':'+q.at}).join('; ')));
           field('figB','标注（如 A-D:L; A-B:x，可留空）',input((f.marks||[]).map(function(m){return m.from+'-'+m.to+':'+m.label}).join('; ')));
@@ -854,6 +921,7 @@ function cwPlan(box,lessonId,refresh){
     function parts(v,sep){return String(v||'').split(sep).map(function(x){return x.trim()}).filter(Boolean)}
     function figure(){
       var t=fields.figType?fields.figType.value:'';if(!t)return {};if(t==='uploaded_image')return p.figure||{};
+      if(t==='parallelogram_methods')return {type:t};
       if(t==='calendar_compare')return {type:t};
       if(t==='calendar_cross')return {type:t,center:Number(fields.figCenter.value),daysInMonth:Number(fields.figDays.value),firstWeekday:Number(fields.figWeekday.value),total:Number(fields.figTotal.value)};
       if(t==='seating_pattern')return {type:t,sampleCounts:parts(fields.figCounts.value,/,/).map(function(x){return Number(x)})};
