@@ -637,8 +637,12 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             pages = stage_pages(lesson, int(i.get("stage") or 0))
             page_index = i.get("page")
             page_text = pages[int(page_index)] if page_index is not None and 0 <= int(page_index) < len(pages) else ""
-            if i.get("approved") is not None and str(i.get("approvedPageText") or "") != page_text:
-                i["status"] = "stale"  # display-only: do not modify teacher authorization in storage
+            if (i.get("approved") is not None and i.get("approvedPageText")
+                    and str(i.get("approvedPageText")) != page_text):
+                # Display old authorization as an unapproved draft. The stored
+                # record is unchanged; regeneration is required before approval.
+                i["status"] = "draft"
+                i["approved"] = None
             visual_text = _courseware_visual_text(i, i.get("params"), page_text)
             for key in ("params", "approved"):
                 current = i.get(key)
@@ -822,12 +826,6 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         item = find(items, b.stageNo, page)
         if item is None:
             raise HTTPException(404, "这一页还没有课件，请先生成或填写")
-        # A teacher may edit the lesson after a courseware draft was generated.
-        # Never approve that stale draft against an unrelated or revised question.
-        current_pages = stage_pages(lesson, b.stageNo)
-        current_text = current_pages[page] if page is not None else ""
-        if str(item.get("pageText") or "") != current_text:
-            raise HTTPException(409, "题目或教案页面已更新，请重新生成本页课件并复核，不能直接审核旧图")
         try:
             params = cw.clean(item["kind"], item["params"], lesson.reading_plan or "")
         except ValueError as e:
@@ -865,6 +863,12 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         if required_figure == "parallelogram_methods" and re.search(
                 r"待教师确认|原题未提供|图示缺失|看不到图|无法判断", str(params.get("answer") or "")):
             raise HTTPException(400, "原题四种转化图已补齐，请先对照①②③④核实并填写答案，再审核通过")
+        # A teacher may edit the lesson after a courseware draft was generated.
+        # Never approve that stale draft against an unrelated or revised question.
+        current_pages = stage_pages(lesson, b.stageNo)
+        current_text = current_pages[page] if page is not None else ""
+        if str(item.get("pageText") or "") != current_text:
+            raise HTTPException(409, "题目或教案页面已更新，请重新生成本页课件并复核，不能直接审核旧图")
         template_id = item.get("templateId")
         if item.get("writtenTask"):
             try:
