@@ -62,10 +62,12 @@ def numbered_student_stem(source: str, stem: str) -> str:
     if main is None or re.match(r"^\s*第\s*\d{1,3}\s*题", raw):
         return raw
     label = f"第{main}题" + (f"（{number['partNumber']}）" if number["partNumber"] else "")
-    if "\n\n" in raw:
-        material, question = raw.rsplit("\n\n", 1)
-        return material + "\n\n" + label + "　" + question
-    return label + "　" + raw
+    material, separator, question = raw.rpartition("\n\n")
+    if not separator:
+        question = raw
+    if number["partNumber"] is not None:
+        question = re.sub(r"^\s*[（(]\s*" + str(number["partNumber"]) + r"\s*[）)]\s*", "", question)
+    return (material + separator if separator else "") + label + "　" + question
 
 def template_meta(row: Any) -> dict[str, Any]:
     data = json.loads(row.hints_json or '{}')
