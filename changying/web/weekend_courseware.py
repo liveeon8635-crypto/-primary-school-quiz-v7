@@ -867,7 +867,9 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         pages = stage_pages(lesson, b.stageNo)
         page_text = pages[page] if page is not None else ""
         fallback_figure = required_visual_figure(page_text)
-        if fallback_figure and (params.get("figure") or {}).get("type") != fallback_figure.get("type"):
+        if fallback_figure and not (params.get("figure") or {}).get("type"):
+            params = cw.clean(b.kind, {**params, "figure": fallback_figure}, lesson.reading_plan or "")
+        elif fallback_figure and (params.get("figure") or {}).get("type") != fallback_figure.get("type"):
             # These question types have fixed, source-derived diagrams; repair stale legacy figure kinds.
             if fallback_figure.get("type") in ("equal_base_height", "parallelogram_thirds", "table"):
                 params = cw.clean(b.kind, {**params, "figure": fallback_figure}, lesson.reading_plan or "")
