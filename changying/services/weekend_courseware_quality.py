@@ -125,7 +125,7 @@ def audit_example_pages(
             else:
                 warnings.append("非通用分步课件，应人工核对专用交互是否完整")
             if not expected and figure_type:
-                warnings.append("此题未配置专用图示规则，保留现有课件并按原题核对")
+                warnings.append("此题未配置专用图示规则；该提示不阻止审核，但请按原题核对")
 
         # A check with zero machine-detectable issues still needs content review.
         reports.append({
