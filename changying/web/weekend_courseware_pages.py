@@ -550,10 +550,11 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
   var q16=/第\s*16\s*题/.test(source)&&source.indexOf('面积关系')>=0;
   var q17=/第\s*17\s*题/.test(source)&&source.indexOf('等面积三角形')>=0;
   var q18=/第\s*18\s*题/.test(source)&&source.indexOf('直角三角形')>=0;
+  var q20=/第\s*20\s*题/.test(source)&&source.indexOf('破损玻璃')>=0;
   var q14=/第\s*14\s*题/.test(source)&&source.indexOf('200 m')>=0&&source.indexOf('40000')>=0;
-  if(!q5&&!q6&&!q8&&!q14&&!q15&&!q16&&!q17&&!q18)return false;
+  if(!q5&&!q6&&!q8&&!q14&&!q15&&!q16&&!q17&&!q18&&!q20)return false;
   var wrap=el('div',{style:'max-width:900px;margin:10px auto;padding:10px;background:#fff;border:1px solid #d0d5dd;border-radius:10px'});
-  var svg=cwNode('svg',{viewBox:q18?'0 0 1000 360':q6?'0 0 860 350':(q15?'0 0 940 340':(q16?'0 0 1040 350':(q17?'0 0 1000 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q18?'半厘米方格三角形与标出直角的三角形':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':q16?'等底等高面积关系与等底等面积高的关系':q17?'方格中的平行四边形和两个等面积三角形作图区':'两组对应底和高'});
+  var svg=cwNode('svg',{viewBox:q20?'0 0 1000 390':q18?'0 0 1000 360':q6?'0 0 860 350':(q15?'0 0 940 340':(q16?'0 0 1040 350':(q17?'0 0 1000 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q20?'标出缺口的45度直角三角形玻璃残片及面积计算过程':q18?'半厘米方格三角形与标出直角的三角形':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':q16?'等底等高面积关系与等底等面积高的关系':q17?'方格中的平行四边形和两个等面积三角形作图区':'两组对应底和高'});
   function line(x1,y1,x2,y2,color,w,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color||'#c7d7e5','stroke-width':w||1,'stroke-dasharray':dash||''}))}
   function text(x,y,t,color,size,anchor){svg.appendChild(cwNode('text',{x:x,y:y,fill:color||'#344054','font-size':size||17,'font-weight':700,'text-anchor':anchor||'middle'},t))}
   function panel(x,y,cell,cols,rows,base,height,caption,showHigh){
@@ -578,6 +579,35 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
     panel(70,45,40,8,5,6,3,'每小格1 dm；底6格、高3格',true);
     text(300,145,'高3格','#b42318',17,'start');
     text(300,245,'底6格','#1d4ed8',17);
+  }else if(q20){
+    var showSolutions=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=6)));
+    text(250,28,'玻璃残片：保留一条直角边12 dm和一个45°锐角','#344054',15);
+    var A=[65,285],B=[65,125],C=[225,285],P=[145,205],Q=[165,285];
+    svg.appendChild(cwNode('polygon',{points:A.join(',')+' '+B.join(',')+' '+P.join(',')+' '+Q.join(','),fill:'#60a5fa','fill-opacity':.42,stroke:'#225e7a','stroke-width':3}));
+    line(B[0],B[1],C[0],C[1],'#667085',2,'7 5');
+    line(A[0],A[1],C[0],C[1],'#667085',2,'7 5');
+    svg.appendChild(cwNode('polyline',{points:P.join(',')+' 152,218 162,226 153,237 '+Q.join(','),fill:'none',stroke:'#b42318','stroke-width':3}));
+    line(A[0]+18,A[1],A[0]+18,A[1]-18,'#1d4ed8',2);line(A[0]+18,A[1]-18,A[0],A[1]-18,'#1d4ed8',2);
+    text(82,210,'12 dm','#1d4ed8',16,'start');
+    text(82,139,'45°','#344054',16,'start');
+    text(150,251,'破损断口','#b42318',13);
+    text(250,308,'虚线：原玻璃轮廓；红线：破损边','#475467',14);
+    line(500,40,500,340,'#d0d5dd',1);
+    text(750,28,'面积与价钱的推导','#344054',17);
+    svg.appendChild(cwNode('polygon',{points:'585,275 585,105 755,275',fill:'#a78bfa','fill-opacity':.2,stroke:'#225e7a','stroke-width':3}));
+    line(585,255,605,255,'#b42318',2);line(605,255,605,275,'#b42318',2);
+    text(585,190,'1.2 m','#1d4ed8',15,'start');
+    text(670,296,'1.2 m','#1d4ed8',15);
+    text(655,90,'45°','#344054',15);
+    if(showSolutions){
+      text(820,100,'另一个锐角也是45°','#344054',15);
+      text(820,135,'两直角边相等：12 dm=1.2 m','#344054',15);
+      text(820,180,'面积=1.2×1.2÷2=0.72 m²','#344054',15);
+      text(820,225,'价钱=0.72×80=57.6元','#344054',15);
+    }else{
+      text(820,140,'先由45°判断两直角边关系','#344054',15);
+      text(820,185,'再求原玻璃面积和价钱','#344054',15);
+    }
   }else if(q18){
     var showSolutions=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
     text(250,25,'（1）每格0.5 cm：在三角形上画底和高并数格','#344054',15);
