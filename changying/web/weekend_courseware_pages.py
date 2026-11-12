@@ -827,7 +827,7 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
         text(x+170,255,base+' m 底','#1d4ed8',17);
         text(x+190,56,'高垂直于水平底','#475467',14);
       }else{
-        var sideStart=[left,bottom],sideEnd=[left+shift,top],opposite=[right,top];
+        var sideStart=[left,bottom],sideEnd=[left+shift,top],opposite=[right-shift,bottom];
         var dx=sideEnd[0]-sideStart[0],dy=sideEnd[1]-sideStart[1];
         var ratio=((opposite[0]-sideStart[0])*dx+(opposite[1]-sideStart[1])*dy)/(dx*dx+dy*dy);
         var foot=[sideStart[0]+ratio*dx,sideStart[1]+ratio*dy];
