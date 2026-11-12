@@ -647,8 +647,29 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             stage_pages(lesson, 3), items_of(row_for(db, lesson)),
             globals()["required_visual_type"], stage=3,
         )
+        # Imported questions are not the same as reviewed interactive pages.
+        # Report coverage and do not count stale approvals after edits.
+        coverage = {}
+        for stage in (2, 3):
+            pages = stage_pages(lesson, stage)
+            current = [i for i in items if int(i.get("stage") or 0) == stage]
+            approved_count = 0
+            draft_count = 0
+            for page_index, source in enumerate(pages):
+                item = next((it for it in current if it.get("page") == page_index), None)
+                if item is None:
+                    continue
+                if (item.get("approved") is not None
+                        and str(item.get("approvedPageText") or "") == source):
+                    approved_count += 1
+                else:
+                    draft_count += 1
+            coverage[str(stage)] = {
+                "total": len(pages), "approved": approved_count, "draft": draft_count,
+                "missing": len(pages) - approved_count - draft_count,
+            }
         return {"lessonId": lesson.id, "subject": lesson.subject, "templates": list(cw.TEMPLATES[lesson.subject]), "kindLabels": cw.KIND_LABEL,
-                "qualityAudit": quality_audit,
+                "qualityAudit": quality_audit, "coursewareCoverage": coverage,
                 "hasSource": bool((lesson.reading_plan or "").strip()), "items": items,
                 "pages": {str(n): [_short(x, 80) for x in stage_pages(lesson, n)] for n in (2, 3)}}
 
