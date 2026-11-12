@@ -551,10 +551,11 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
   var q17=/第\s*17\s*题/.test(source)&&source.indexOf('等面积三角形')>=0;
   var q18=/第\s*18\s*题/.test(source)&&source.indexOf('直角三角形')>=0;
   var q20=/第\s*20\s*题/.test(source)&&source.indexOf('破损玻璃')>=0;
+  var q21=/第\s*21\s*题/.test(source)&&source.indexOf('阴影面积')>=0;
   var q14=/第\s*14\s*题/.test(source)&&source.indexOf('200 m')>=0&&source.indexOf('40000')>=0;
-  if(!q5&&!q6&&!q8&&!q14&&!q15&&!q16&&!q17&&!q18&&!q20)return false;
+  if(!q5&&!q6&&!q8&&!q14&&!q15&&!q16&&!q17&&!q18&&!q20&&!q21)return false;
   var wrap=el('div',{style:'max-width:900px;margin:10px auto;padding:10px;background:#fff;border:1px solid #d0d5dd;border-radius:10px'});
-  var svg=cwNode('svg',{viewBox:q20?'0 0 1000 390':q18?'0 0 1000 360':q6?'0 0 860 350':(q15?'0 0 940 340':(q16?'0 0 1040 350':(q17?'0 0 1000 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q20?'标出缺口的45度直角三角形玻璃残片及面积计算过程':q18?'半厘米方格三角形与标出直角的三角形':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':q16?'等底等高面积关系与等底等面积高的关系':q17?'方格中的平行四边形和两个等面积三角形作图区':'两组对应底和高'});
+  var svg=cwNode('svg',{viewBox:q21?'0 0 1000 390':q20?'0 0 1000 390':q18?'0 0 1000 360':q6?'0 0 860 350':(q15?'0 0 940 340':(q16?'0 0 1040 350':(q17?'0 0 1000 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q21?'底边三等分且阴影三角形占一份的平行四边形':q20?'标出缺口的45度直角三角形玻璃残片及面积计算过程':q18?'半厘米方格三角形与标出直角的三角形':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':q16?'等底等高面积关系与等底等面积高的关系':q17?'方格中的平行四边形和两个等面积三角形作图区':'两组对应底和高'});
   function line(x1,y1,x2,y2,color,w,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color||'#c7d7e5','stroke-width':w||1,'stroke-dasharray':dash||''}))}
   function text(x,y,t,color,size,anchor){svg.appendChild(cwNode('text',{x:x,y:y,fill:color||'#344054','font-size':size||17,'font-weight':700,'text-anchor':anchor||'middle'},t))}
   function panel(x,y,cell,cols,rows,base,height,caption,showHigh){
@@ -579,6 +580,27 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
     panel(70,45,40,8,5,6,3,'每小格1 dm；底6格、高3格',true);
     text(300,145,'高3格','#b42318',17,'start');
     text(300,245,'底6格','#1d4ed8',17);
+  }else if(q21){
+    var showSolutions=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
+    text(300,28,'底边平均分成3份；阴影三角形占1份，且与大图等高','#344054',16);
+    var A=[80,265],M=[200,265],B=[440,265],D=[152,70],C=[512,70];
+    svg.appendChild(cwNode('polygon',{points:A.join(',')+' '+B.join(',')+' '+C.join(',')+' '+D.join(','),fill:'#60a5fa','fill-opacity':.12,stroke:'#1d4ed8','stroke-width':3}));
+    svg.appendChild(cwNode('polygon',{points:A.join(',')+' '+M.join(',')+' '+D.join(','),fill:'#f59e0b','fill-opacity':.58,stroke:'#b45309','stroke-width':3}));
+    line(D[0],D[1],D[0],A[1],'#b42318',2,'6 4');
+    line(D[0],A[1]-15,D[0]+15,A[1]-15,'#b42318',2);line(D[0]+15,A[1]-15,D[0]+15,A[1],'#b42318',2);
+    line(A[0],A[1],B[0],B[1],'#1d4ed8',3);
+    [140,260,380].forEach(function(x){line(x,A[1]-7,x,A[1]+7,'#1d4ed8',2)});
+    text(140,292,'1份','#1d4ed8',14);text(260,292,'1份','#1d4ed8',14);text(380,292,'1份','#1d4ed8',14);
+    text(114,190,'阴影三角形','#92400e',15);
+    text(173,166,'共同的高','#b42318',14,'start');
+    text(385,58,'平行四边形','#1d4ed8',15);
+    text(300,325,'阴影三角形面积12 m² → 同底同高平行四边形24 m² → 大图72 m²','#344054',15);
+    if(showSolutions){
+      text(790,110,'三角形底占大图底边的1/3','#344054',15);
+      text(790,150,'12×2=24 m²；24×3=72 m²','#344054',15);
+      text(790,190,'72×100=7200 m²','#344054',15);
+      text(790,230,'7200÷10000=0.72 公顷','#344054',15);
+    }
   }else if(q20){
     var showSolutions=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=6)));
     text(250,28,'玻璃残片：保留一条直角边12 dm和一个45°锐角','#344054',15);
