@@ -141,6 +141,7 @@ with TestClient(app) as client:
     params = dict(title="原图题",problem="题目",steps=["步骤一","步骤二"],answer="4",figure=figure)
     saved = client.put(url+"/courseware",headers=th,json=dict(stageNo=3,page=0,kind="steps",params=params))
     assert saved.status_code == 200, saved.text
+    assert client.post(url+"/courseware/approve",headers=th,json=dict(stageNo=3,page=0)).status_code == 200
     with legacy.SessionLocal() as db:
         question = db.scalar(select(legacy.TeachingQuestion).where(legacy.TeachingQuestion.lesson_id == lid,
             legacy.TeachingQuestion.stem == "原版选择"))
@@ -152,13 +153,27 @@ with TestClient(app) as client:
     assert put("新版") == lid
     current = read()
     version = current[0]["previousImportId"]
-    assert version and current[0]["title"] == "新版" and current[3]["items"] == []
+    assert version and current[0]["title"] == "新版"
+    assert len(current[3]["items"]) == 1  # old reviewable courseware survives overwrite
+    old = current[3]["items"][0]
+    assert old["status"] == "draft" and old["needsSync"] is True and old["approved"] is None
+    assert old["params"]["title"] == "原图题"
+    assert client.post(url+"/courseware/approve",headers=th,json=dict(stageNo=3,page=0)).status_code == 409
     undo = url + "/import-history/" + str(version) + "/restore"
     assert client.post(undo,headers=sh).status_code == 403
     response = client.post(undo,headers=th)
     assert response.status_code == 200, response.text
     assert read() == before
     assert client.post(undo,headers=th).status_code == 409
+    # Even when text is identical, a DOCX picture can have changed.
+    # Reimport must revoke old approval and demand an explicit new save.
+    assert put("原版") == lid
+    same = read()[3]["items"][0]
+    assert same["needsSync"] is True and same["status"] == "draft"
+    assert client.post(url+"/courseware/approve",headers=th,json=dict(stageNo=3,page=0)).status_code == 409
+    new_draft = client.put(url+"/courseware",headers=th,json=dict(stageNo=3,page=0,kind="steps",params=params))
+    assert new_draft.status_code == 200 and not new_draft.json()["items"][0]["needsSync"]
+    assert client.post(url+"/courseware/approve",headers=th,json=dict(stageNo=3,page=0)).status_code == 200
     put("再次导入")
     undo = url + "/import-history/" + str(read()[0]["previousImportId"]) + "/restore"
     with legacy.SessionLocal() as db:

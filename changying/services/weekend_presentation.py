@@ -9,39 +9,64 @@ PAGE_PARAGRAPHS=5
 
 
 def literal_numbered_questions(source: str) -> list[str]:
-    """Extract question text only where explicit, unique question headings exist."""
-    # A PDF can put each glyph on its own line, even in ordinary teacher commentary.
-    # Only accept a standalone heading (optionally followed by the printed score).
-    heading = re.compile(r'(?m)^[^\S\n]*第[^\S\n]*(\d{1,2})[^\S\n]*题'
-                         r'[^\S\n]*(?:[（(]?[^\S\n]*\d+(?:\.\d+)?[^\S\n]*分[^\S\n]*[）)]?)?[^\S\n]*$')
+    """Recover individual exercise pages from revised student/teacher handouts.
+
+    Supports plain headings and level/score/type metadata, while treating
+    teacher solutions as private. Ambiguous duplicate numbering fails closed.
+    """
+    heading = re.compile(
+        r'(?m)^[^\S\n]*第[^\S\n]*(\d{1,2})[^\S\n]*题'
+        r'(?:[^\S\n]*[（(【\[][^\S\n]*(?:基础|进阶|提升)[^\S\n]*[）)】\]])?'
+        r'(?:[^\S\n]*[（(]?[^\S\n]*\d+(?:\.\d+)?[^\S\n]*分[^\S\n]*[）)]?)?'
+        r'(?:[^\S\n]*[·•｜|—－-][^\n]{1,60})?[^\S\n]*$'
+    )
     body = source or ''
     marks = list(heading.finditer(body))
     numbers = [int(m.group(1)) for m in marks]
     if len(marks) >= 2 and len(set(numbers)) != len(numbers):
-        # A printed teacher lesson can first contain a two-column question
-        # provenance table ("第1题" / "第1课时·...") and then the actual
-        # numbered exercises. Never use the table as screen content.
-        # Limit this recovery to clearly labelled multi-part lesson bodies;
-        # unstructured repeated headings continue to fail closed.
-        part = re.search(r'(?m)^[^\S\n]*第一部分(?:[^\S\n：:、]|[：:、]|$)', body)
-        if part:
-            body = body[part.start():]
-            stop = re.search(r'(?m)^[^\S\n]*(?:课堂小结与板书|课后作业|自检表)(?:[^\S\n]|$)', body)
-            if stop:
-                body = body[:stop.start()]
+        # A DOCX source-correspondence table can repeat each real question
+        # number. Start at the first actual teaching section, not the table.
+        # Without an unambiguous boundary do not guess which copy is genuine.
+        section = re.search(
+            r'(?m)^[^\S\n]*(?:第[一二三四五六七八九十]+部分[^\n]{0,60}'
+            r'|[一二三四五六七八九十]+[、.．][^\n]{2,60})$',
+            body,
+        )
+        if section:
+            body = body[section.start():]
+            # Printed appendices can repeat question numbers: they are not
+            # worked-example pages and must be excluded before de-duplicating.
+            end_of_paper = re.search(
+                r'(?m)^[^\S\n]*(?:课堂小结与板书|课堂小结|课后作业|作答检查'
+                r'|自检表|附录[AB一二三四五六]|验收表)(?:[^\S\n]|[｜：:]|$)',
+                body,
+            )
+            if end_of_paper:
+                body = body[:end_of_paper.start()]
             marks = list(heading.finditer(body))
             numbers = [int(m.group(1)) for m in marks]
     if len(marks) < 2 or len(set(numbers)) != len(numbers):
         return []
+    # Keep the student task, never teacher-only answers, reasoning, scoring,
+    # staged reveal instructions, appendices or a following homework section.
+    private_line = re.compile(
+        r'(?m)^[^\S\n]*(?:考点提醒|答案|解析|参考答案|评分要点|评分标准'
+        r'|【(?:参考答案|解析与错因|分步赋分|课件分镜|教师[^】]*|评分[^】]*|讲解[^】]*)】'
+        r'|课堂小结与板书|课堂小结|课后作业|作答检查|附录[AB一二三四五六]'
+        r'|自检表|验收表|阶段反馈)[^\n]*$'
+    )
     out = []
     for i, mark in enumerate(marks):
         end = marks[i + 1].start() if i + 1 < len(marks) else len(body)
         chunk = body[mark.start():end]
-        stop = re.search(r'(?m)^\s*(?:考点提醒|答案|解析|参考答案|评分要点)\s*[：:]', chunk)
+        stop = private_line.search(chunk)
         if stop:
             chunk = chunk[:stop.start()]
         chunk = chunk.strip()
-        if '\n' not in chunk or re.search(r'(?:答案|解析|评分要点)\s*[：:]', chunk):
+        if '\n' not in chunk or re.search(
+            r'(?:答案|解析|评分要点)\s*[：:]|【(?:参考答案|解析与错因|分步赋分)',
+            chunk,
+        ):
             return []
         out.append(chunk)
     return out
@@ -109,7 +134,11 @@ def lesson_deck(lesson: dict[str, Any], stage_no: int) -> list[str]:
     if stage_no == 3:
         originals = literal_numbered_questions(source)
         if originals:
-            return presentation_pages(originals, preserve_pages=True)
+            # One reviewed exercise maps to exactly one interaction slot,
+            # even when its full stem exceeds the generic slide text limit.
+            # Splitting a long stem moves later question/page indices and
+            # mismatches attached diagrams and approved courseware.
+            return originals
     return presentation_pages(raw, preserve_pages=stage_no == 2 and source.startswith("第1页："),
                               source=source if stage_no == 2 else "", example_mode=stage_no == 3)
 

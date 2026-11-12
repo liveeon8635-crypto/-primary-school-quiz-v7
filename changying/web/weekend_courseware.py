@@ -132,6 +132,40 @@ def items_of(row: Any) -> list[dict[str, Any]]:
     return items
 
 
+def invalidate_courseware_on_reimport(db: Any, table: Table, lesson_id: int) -> int:
+    """Keep prepared visuals as drafts but revoke approval after reimport.
+
+    An embedded image can change without changing the extracted problem text.
+    The enclosing import transaction owns the commit/rollback.
+    """
+    row = db.execute(select(table).where(table.c.lesson_id == lesson_id).with_for_update()).first()
+    if row is None:
+        return 0
+    items = items_of(row)
+    for item in items:
+        item["status"] = "draft"
+        item["approved"] = None
+        item["reimportReviewRequired"] = True
+        item.pop("approvedPageText", None)
+    db.execute(update(table).where(table.c.id == row.id).values(
+        kind="multi", stage_no=int(items[0]["stage"]) if items else 3,
+        status="draft", approved_json=None, approved_stage=None, template_id=None,
+        params_json=json.dumps({"version": 2, "items": items}, ensure_ascii=False),
+        live_json="{}", updated_at=datetime.utcnow(),
+    ))
+    return len(items)
+
+
+def source_page_mismatch(lesson: Any) -> tuple[int, bool]:
+    """Independent heading count catches the dangerous 23-to-1 fallback."""
+    numbers = {int(n) for n in re.findall(
+        r'(?m)^[^\S\n]*第[^\S\n]*(\d{1,2})[^\S\n]*题',
+        lesson.reading_plan or "",
+    )}
+    count = len(numbers) if lesson.subject == "数学" and len(numbers) >= 5 else 0
+    return count, bool(count and len(stage_pages(lesson, 3)) < count)
+
+
 def required_visual_type(page_text: Any) -> str:
     """Known lesson types whose saved courseware must include a matching visual."""
     text = str(page_text or "")
@@ -434,6 +468,8 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
     c = db.execute(select(t).where(t.c.school_id == row.school_id, t.c.lesson_id == row.lesson_id,
                                    t.c.approved_json.isnot(None))).first()
     stage = int(row.current_stage or 0)
+    if stage == 3 and source_page_mismatch(db.get(implementation.TeachingLesson, row.lesson_id))[1]:
+        return None, "原文题号与例题页数不符，互动课件已暂停显示，请返回备课页检查。"
     approved = [i for i in items_of(c) if i.get("approved") is not None and int(i["stage"]) == stage]
     if not approved:
         return None, ""
@@ -525,8 +561,10 @@ def lesson_figures(implementation: Any, db: Any, lesson: Any, written_table: Any
 
 
 def requires_original_geometry_image(page_text: Any) -> bool:
-    """Figure-dependent geometry questions cannot be verified from a text table or guessed SVG."""
+    """Measurement diagrams require a source scan; reviewed transformation-method diagrams use their own verified four-panel figure."""
     text = str(page_text or "")
+    if required_visual_type(text) == "parallelogram_methods":
+        return False  # teacher must still verify all four panels and supply a real answer
     return (
         any(term in text for term in ("平行四边形", "三角形", "梯形", "多边形"))
         and any(term in text for term in ("图上", "下图", "右图", "下面各个", "画高", "量出", "测量", "涂色", "①②③", "三个图形", "相邻点"))
@@ -642,12 +680,19 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 current = i.get(key)
                 if isinstance(current, dict):
                     i[key] = _repair_courseware_visual(current, visual_text)
-            items.append({**i, "kindLabel": cw.KIND_LABEL.get(i["kind"], i["kind"]), "writtenTaskPreview": task(i, i["params"])})
+            needs_sync = bool(i.get("reimportReviewRequired"))
+            if page_index is not None:
+                needs_sync = needs_sync or not 0 <= int(page_index) < len(pages) or i.get("pageText", "") != page_text
+            items.append({**i, "needsSync": needs_sync,
+                          "kindLabel": cw.KIND_LABEL.get(i["kind"], i["kind"]),
+                          "writtenTaskPreview": task(i, i["params"])})
         quality_audit = audit_example_pages(
             stage_pages(lesson, 3), items_of(row_for(db, lesson)),
             globals()["required_visual_type"], stage=3,
         )
+        source_count, mismatch = source_page_mismatch(lesson)
         return {"lessonId": lesson.id, "subject": lesson.subject, "templates": list(cw.TEMPLATES[lesson.subject]), "kindLabels": cw.KIND_LABEL,
+                "sourceQuestionCount": source_count, "sourcePageMismatch": mismatch,
                 "qualityAudit": quality_audit,
                 "hasSource": bool((lesson.reading_plan or "").strip()), "items": items,
                 "pages": {str(n): [_short(x, 80) for x in stage_pages(lesson, n)] for n in (2, 3)}}
@@ -665,6 +710,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 raise HTTPException(409, '已审核的课件不能直接更换模板类型，请先核对后处理原课件')
             old['previousDraft'] = {k: old.get(k) for k in ('kind', 'params', 'writtenTask', 'pageText')}
             old.update(kind=kind, status="draft", params=params, pageText=page_text or old.get("pageText", ""))
+            old.pop("reimportReviewRequired", None)
             if written_task is not None:
                 old["writtenTask"] = bool(written_task)
         target = find(items, stage, page)
@@ -700,6 +746,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     def generate(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Preparation only: for one page, AI picks a reviewed template and fills it; validated, saved as a draft."""
         lesson = my_lesson(db, u, lid)
+        if b.stageNo == 3 and source_page_mismatch(lesson)[1]:
+            raise HTTPException(409, "导入原题数量与例题课件页数不符，已暂停生成；请检查教案题号识别。")
         page = checked_page(lesson, b.stageNo, b.page)
         pages = stage_pages(lesson, b.stageNo)
         page_text = pages[page] if page is not None else ""
@@ -794,11 +842,19 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     def approve(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Teacher review done for one page: classrooms show it on that page; optional written task for pupils."""
         lesson = my_lesson(db, u, lid)
+        if b.stageNo == 3 and source_page_mismatch(lesson)[1]:
+            raise HTTPException(409, "原文题号与例题页数不符，已禁止审核或展示错误页。")
         page = checked_page(lesson, b.stageNo, b.page)
         items = items_of(row_for(db, lesson))
         item = find(items, b.stageNo, page)
         if item is None:
             raise HTTPException(404, "这一页还没有课件，请先生成或填写")
+        if item.get("reimportReviewRequired"):
+            raise HTTPException(409, "教案已重新导入，图片可能变化；请重新生成或保存课件草稿，再逐页审核。")
+        pages = stage_pages(lesson, b.stageNo)
+        current_text = pages[page] if page is not None else ""
+        if item.get("pageText", "") != current_text:
+            raise HTTPException(409, "教案原题已变化，旧课件不可直接审核；请重新生成或保存与本页一致的讲解。")
         try:
             params = cw.clean(item["kind"], item["params"], lesson.reading_plan or "")
         except ValueError as e:
@@ -853,7 +909,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         else:
             drop_template(db, u, lesson, template_id)
             template_id = None
-        item.update(status="approved", params=params, approved=params, approvedPageText=item.get('pageText', ''), templateId=template_id)
+        item.update(status="approved", params=params, approved=params, approvedPageText=current_text, templateId=template_id)
+        item.pop("reimportReviewRequired", None)
         write(db, u, lesson, items)
         implementation.audit(db, u, "weekend.courseware.approve", f"lesson={lid}:stage={b.stageNo}:page={page}:template={template_id}")
         db.commit()
