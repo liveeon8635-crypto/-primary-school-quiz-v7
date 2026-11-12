@@ -576,13 +576,14 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
     return {x:x+shift+base*cell/2,y:top+22};
   }
   if(q5){
-    panel(45,35,40,10,6,8,5,'每小格0.5 cm；底8格、高5格',!!(teacher||view.showAnswer));
-    if(teacher||view.showAnswer)text(365,150,'高5格','#b42318',17,'start');
-    text(280,285,'底8格','#1d4ed8',17);
+    var revealGrid=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
+    panel(45,35,40,10,6,8,5,revealGrid?'每小格0.5 cm；底8格、高5格':'每小格0.5 cm',revealGrid);
+    if(revealGrid)text(365,150,'高5格','#b42318',17,'start');
+    if(revealGrid)text(280,285,'底8格','#1d4ed8',17);
   }else if(q8){
-    panel(70,45,40,8,5,6,3,'每小格1 dm；底6格、高3格',true);
-    text(300,145,'高3格','#b42318',17,'start');
-    text(300,245,'底6格','#1d4ed8',17);
+    var revealGrid8=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
+    panel(70,45,40,8,5,6,3,revealGrid8?'每小格1 dm；底6格、高3格':'每小格1 dm；请数底和高',revealGrid8);
+    if(revealGrid8){text(300,145,'高3格','#b42318',17,'start');text(300,245,'底6格','#1d4ed8',17);}
   }else if(q10){
     var reveal=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
     text(350,28,'底边平均分成3份，高不变','#344054',17);
@@ -801,15 +802,16 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
     text(D[0]+9,175,'高 h','#b42318',15,'start');
     text(800,300,'S平行四边形=a×h=2×S三角形','#344054',15);
   }else if(q14){
-    text(280,30,'第（3）问：面积至少3公顷，对应高至少150 m','#344054',17);
+    var reveal14=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=6)));
+    text(280,30,reveal14?'第（3）问：面积至少3公顷，对应高至少150 m':'第（3）问：底200 m，求对应高','#344054',17);
     var left=65,top=75,bottom=255,right=455,shift=90;
     svg.appendChild(cwNode('polygon',{points:left+','+bottom+' '+(left+shift)+','+top+' '+right+','+top+' '+(right-shift)+','+bottom,fill:'#3da9bd','fill-opacity':.16,stroke:'#225e7a','stroke-width':3}));
     line(left+shift,top,left+shift,bottom,'#b42318',3,'7 4');
     line(left+shift,bottom-14,left+shift+14,bottom-14,'#b42318',2);
     line(left+shift+14,bottom-14,left+shift+14,bottom,'#b42318',2);
     text(285,60,'底 200 m','#1d4ed8',19);
-    text(left+shift+12,170,'高 ≥150 m','#b42318',18,'start');
-    text(280,300,'3公顷＝30,000 m²；30,000÷200＝150 m','#344054',17);
+    text(left+shift+12,170,reveal14?'高 ≥150 m':'高 ? m','#b42318',18,'start');
+    if(reveal14)text(280,300,'3公顷＝30,000 m²；30,000÷200＝150 m','#344054',17);
   }else{
     // Side-by-side diagrams make each altitude visibly belong to its base.
     function pair(x,label,base,height,color,slanted){
