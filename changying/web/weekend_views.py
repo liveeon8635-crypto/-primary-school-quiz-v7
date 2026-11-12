@@ -15,10 +15,11 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, desc, insert, select, update
 
@@ -226,6 +227,15 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         out["stages"] = stages
         out["lesson"] = {"title": lesson["title"], "subject": lesson["subject"], "unit": lesson["unit"]}
         return out
+
+    @router.get("/v1/lesson11-methods-v2.js", include_in_schema=False)
+    def lesson11_methods_script():
+        # External ES5-only diagram patch keeps existing Safari12 compiled inline
+        # scripts unchanged. This contains no student or teacher data.
+        return Response(
+            Path(__file__).with_name("lesson11_methods_v2.js").read_text(encoding="utf-8"),
+            media_type="application/javascript", headers={"Cache-Control": "public, max-age=3600"},
+        )
 
     @router.get("/v1/weekend", include_in_schema=False)
     def control_page():
