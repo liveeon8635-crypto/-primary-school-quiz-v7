@@ -803,12 +803,53 @@ function plan(){
         }});
         editPane.appendChild(undo);
       }
-      var qbox=el('div'),wbox=el('div');questionPane.appendChild(el('h2',{text:'习题审核'}));questionPane.appendChild(el('p',{text:'选择题自动判分；填答案、阅读简答与写作支持文字／拍照提交，由老师批改。至少通过一道题即可进入课堂。'}));questionPane.appendChild(qbox);questionPane.appendChild(wbox);
+      var qbox=el('div'),wbox=el('div'),reviewList=el('div',{'data-review-list':'true'}),reviewNote=el('p',{class:'muted'}),choiceCards=[],writtenCards=[];
+      questionPane.appendChild(el('h2',{text:'习题审核'}));
+      questionPane.appendChild(el('p',{text:'按教案原题顺序审核。选择题自动判分；填答案、阅读简答与写作支持文字／拍照提交，由老师批改。至少通过一道题即可进入课堂。'}));
+      questionPane.appendChild(qbox);questionPane.appendChild(wbox);questionPane.appendChild(reviewNote);questionPane.appendChild(reviewList);
+      // The two APIs keep different question types in separate tables. Recover only
+      // reliable source positions; never infer a cross-type order from database IDs.
+      function reviewOrder(stem){
+        var title=String(stem||''),direct=/^\s*第\s*(\d{1,3})\s*题/.exec(title);
+        if(direct)return parseInt(direct[1],10);
+        var source=String(L.sourceText||'').replace(/\s+/g,''),tail=title.split('\n').pop().replace(/\s+/g,'');
+        if(!source||tail.length<14)return null;
+        var hits={},segment,at,before,heading,no,offset;
+        // Several unique 14-character matches guard against matching a generic
+        // phrase in another question. Never guess when the source is ambiguous.
+        for(offset=0;offset+14<=tail.length&&offset<120;offset+=7){
+          segment=tail.slice(offset,offset+18);
+          if(segment.length<14)continue;
+          at=source.indexOf(segment);
+          if(at<0||source.indexOf(segment,at+1)>=0)continue;
+          before=source.slice(0,at);
+          var re=/第(\d{1,3})题/g;
+          no=null;
+          while((heading=re.exec(before))!==null)no=parseInt(heading[1],10);
+          if(no!==null)hits[no]=(hits[no]||0)+1;
+        }
+        var keys=Object.keys(hits).sort(function(a,b){return hits[b]-hits[a]});
+        if(keys.length===1||(keys.length>1&&hits[keys[0]]>hits[keys[1]]))return Number(keys[0]);
+        return null;
+      }
+      function renderReview(){
+        var cards=choiceCards.concat(writtenCards);
+        cards.sort(function(a,b){
+          if(a.order!==null&&b.order!==null&&a.order!==b.order)return a.order-b.order;
+          if(a.order!==null&&b.order===null)return -1;
+          if(a.order===null&&b.order!==null)return 1;
+          return a.seq-b.seq;
+        });
+        reviewList.textContent='';
+        cards.forEach(function(item){reviewList.appendChild(item.node)});
+        var unknown=cards.filter(function(item){return item.order===null}).length;
+        reviewNote.textContent=unknown?'按原教案题号排序；'+unknown+'道题未能可靠识别原文序号，暂排在末尾，请教师核对。':'按原教案题号顺序展示（题型不改变教学顺序）。';
+      }
       function loadQ(){
-        qbox.textContent='';
+        qbox.textContent='';choiceCards=[];
         api('/teacher/weekend/lessons/'+r.lessonId+'/questions').then(function(d){
-          if(!d.items.length){qbox.appendChild(el('div',{class:'muted',text:'暂无选择题，请查看下方简答／写作题。'}));return}
-          d.items.forEach(function(q){
+          if(!d.items.length){renderReview();return}
+          d.items.forEach(function(q,i){
             var opts=q.options.map(function(o,i){return 'ABCD'[i]+'. '+o+(i===q.correctIndex?' ✓':'')}).join('　');
             var levelTag=q.level?el('span',{class:'tag'+(q.level==='提高'?' warn':''),text:q.level}):null,
                 checkTag=q.verified?el('span',{class:'tag ok',text:'已验算'}):(q.level&&SUBJ==='数学'?el('span',{class:'tag warn',text:'答案待核对'}):null);
@@ -820,12 +861,15 @@ function plan(){
               act.appendChild(approve);
               act.appendChild(el('button',{text:'删除',onclick:function(){api('/teacher/weekend/lessons/'+r.lessonId+'/questions',{json:{remove:[q.id]}}).then(function(st){refreshStatus(st);loadQ()})}}));
             }
-            qbox.appendChild(row);qbox.appendChild(act);qbox.appendChild(feedback);
+            var order=reviewOrder(q.stem),choiceCard=el('div',{class:'card','data-review-number':order===null?'':String(order)});
+            choiceCard.appendChild(row);choiceCard.appendChild(act);choiceCard.appendChild(feedback);
+            choiceCards.push({node:choiceCard,order:order,seq:i});
           });
-        });
+          renderReview();
+        }).catch(function(e){qbox.appendChild(el('div',{class:'notice error',text:e.message}));renderReview()});
       }
       function loadWritten(){
-        wbox.textContent='';
+        wbox.textContent='';writtenCards=[];
         api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions').then(function(d){
           wbox.appendChild(el('h2',{text:'填答案、阅读简答与写作（'+d.items.length+' 题）'}));
           var todo=d.items.filter(function(q){return !q.knowledge&&q.suggestedKnowledge});
@@ -836,8 +880,9 @@ function plan(){
             chain.then(loadWritten).catch(function(e){alert(e.message);all.disabled=false});
           }});wbox.appendChild(all)}
           if(!d.items.length)wbox.appendChild(el('p',{class:'muted',text:'还没有此类题目。重新导入原教案可提取原有简答／写作题，或使用 AI 出习题。'}));
-          d.items.forEach(function(q){
-            var labels={short_answer:'阅读简答／过程题',final_answer:'填最终答案',composition:'写作／复述'},card=el('div',{class:'card'});
+          d.items.forEach(function(q,i){
+            var order=reviewOrder(q.stem);
+            var labels={short_answer:'阅读简答／过程题',final_answer:'填最终答案',composition:'写作／复述'},card=el('div',{class:'card','data-review-number':order===null?'':String(order)});
             var badge=el('span',{class:'tag '+(q.approved?'ok':'warn'),text:q.approved?'已通过':'草稿'});
             card.appendChild(el('div',{class:'row'},el('b',{text:labels[q.type]||'简答题'}),q.level?el('span',{class:'tag'+(q.level==='提高'?' warn':''),text:q.level}):null,q.verified?el('span',{class:'tag ok',text:'已验算'}):(SUBJ==='数学'&&q.level&&q.type!=='composition'?el('span',{class:'tag warn',text:'答案待核对'}):null),badge));
             var parts=q.stem.split('\n'),questionLine=parts.pop();
@@ -861,9 +906,11 @@ function plan(){
               api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',{json:{remove:[q.id]}}).then(function(st){refreshStatus(st);loadWritten()}).catch(function(e){feedback.textContent=e.message;b.disabled=false});
             }});actions.appendChild(b)})}
             card.appendChild(markBox(r.lessonId,{templateId:q.id,knowledge:q.knowledge,afterClass:q.afterClass,suggestedKnowledge:q.suggestedKnowledge},d.goals));
-            card.appendChild(actions);card.appendChild(feedback);wbox.appendChild(card);
+            card.appendChild(actions);card.appendChild(feedback);
+            writtenCards.push({node:card,order:order,seq:10000+i});
           });
-        }).catch(function(e){wbox.appendChild(el('div',{class:'notice error',text:e.message}))});
+          renderReview();
+        }).catch(function(e){wbox.appendChild(el('div',{class:'notice error',text:e.message}));renderReview()});
       }
       loadQ();loadWritten();
     }).catch(function(e){box.appendChild(el('div',{class:'notice error',text:e.message}))});
