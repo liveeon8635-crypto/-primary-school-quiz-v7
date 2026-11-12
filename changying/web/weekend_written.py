@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from changying.services.weekend_answers import answers_published, practice_release
+from changying.services.lesson_written import numbered_student_stem
 from changying.services.weekend_submissions import submission_attempts, record_submission, require_unsettled
 
 import json
@@ -129,6 +130,8 @@ def install_weekend_written(implementation: Any) -> APIRouter:
     @router.get("/teacher/weekend/sessions/{sid}/written")
     def teacher_list(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = teacher_session(db, u, sid)
+        lesson = db.get(implementation.TeachingLesson, row.lesson_id)
+        source = lesson.reading_plan if lesson is not None else ""
         qs = question_rows(db, row)
         ans = db.execute(select(submissions).where(submissions.c.session_id == sid, submissions.c.school_id == u.school_id)).all()
         names = dict(db.execute(select(User.id, User.name).where(User.school_id == u.school_id)).all())
@@ -139,7 +142,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         ans = [a for a in ans if a.student_id in roster]
         total = len(qs) * len(roster | {a.student_id for a in ans})
         return {"status": row.status, "students": [{"id":i,"name":n} for i,n in names.items()], "total": total, "submissionRate": round(100 * len(ans) / total) if total else 0,
-                "questions": [{"id": q.id, "stem": q.stem, "reference": q.reference} for q in qs],
+                "questions": [{"id": q.id, "stem": numbered_student_stem(source, q.stem), "reference": q.reference} for q in qs],
                 "items": [{**submission_dict(a), "name": names.get(a.student_id, "学生"),
                            "precheck": prechecks.view(db, a) if a.result == "pending" else None} for a in ans],
                 "submitted": len(ans), "reviewed": sum(a.result != "pending" for a in ans),
@@ -154,6 +157,8 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             return {"questions": [], "canSubmit": False, "status": row.status, "stage": row.current_stage}
         ans = {a.question_id: a for a in db.execute(select(submissions).where(submissions.c.session_id == sid,
             submissions.c.student_id == u.id, submissions.c.school_id == u.school_id)).all()}
+        lesson = db.get(implementation.TeachingLesson, row.lesson_id)
+        source = lesson.reading_plan if lesson is not None else ""
         used = dict(db.execute(select(hint_log.c.question_id, func.max(hint_log.c.level)).where(
             hint_log.c.session_id == sid, hint_log.c.student_id == u.id).group_by(hint_log.c.question_id)).all())
         release_items, release_count, _ = practice_release(implementation, db, row)
@@ -161,7 +166,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         all_released = bool(release_items) and release_count == len(release_items)
         return {"status": row.status, "stage": row.current_stage, "canSubmit": row.status == "running" and row.current_stage == 4 and not all_released,
                 "answersPublished": all_released,
-                "questions": [{"id": q.id, "answersPublished": q.id in released, "canSubmit": row.status == "running" and row.current_stage == 4 and q.id not in released, "stem": q.stem, "hasHints": bool(json.loads(q.hints_json)), "hintUsed": used.get(q.id, 0),
+                "questions": [{"id": q.id, "answersPublished": q.id in released, "canSubmit": row.status == "running" and row.current_stage == 4 and q.id not in released, "stem": numbered_student_stem(source, q.stem), "hasHints": bool(json.loads(q.hints_json)), "hintUsed": used.get(q.id, 0),
                                "hintTexts": json.loads(q.hints_json)[:used.get(q.id, 0)],
                                "submission": ({**submission_dict(ans[q.id]), 'attempts':submission_attempts(implementation,db,u,sid,'written',q.id,True), **({} if q.id in released else {"result": "pending", "comment": ""})}) if q.id in ans else None} for q in question_rows(db, row)]}
 
