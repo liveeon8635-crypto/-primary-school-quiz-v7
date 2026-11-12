@@ -116,3 +116,15 @@ def test_failed_source_extraction_is_detected_before_generating_wrong_one_page()
                              examples_json=json.dumps(["一页旧版AI摘要"]), ppt_json="[]")
     assert source_page_mismatch(lesson) == (23, True)
     assert len(lesson_deck({"reading_plan": source, "examples_json": lesson.examples_json}, 3)) == 1
+
+
+def test_long_numbered_question_stays_one_slot_for_figure_and_review_binding():
+    source = "\n".join(
+        f"第{i}题  [提升]  8分  ·  推导\n"
+        + ("说明割补前后面积为什么保持不变，独立画图并标出底和高。" * 18)
+        for i in range(1, 24)
+    )
+    pages = lesson_deck({"reading_plan": source, "examples_json": "[]"}, 3)
+    assert len(pages) == 23
+    assert all(page.startswith(f"第{i}题") for i, page in enumerate(pages, 1))
+    assert all(len(page) > 360 for page in pages)
