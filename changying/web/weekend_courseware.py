@@ -515,6 +515,25 @@ def lesson_figures(implementation: Any, db: Any, lesson: Any, written_table: Any
     return out
 
 
+def requires_original_geometry_image(page_text: Any) -> bool:
+    """Figure-dependent geometry questions cannot be verified from a text table or guessed SVG."""
+    text = str(page_text or "")
+    return (
+        any(term in text for term in ("平行四边形", "三角形", "梯形", "多边形"))
+        and any(term in text for term in ("图上", "下图", "右图", "下面各个", "画高", "量出", "测量", "涂色", "①②③", "三个图形", "相邻点"))
+    )
+
+
+def attach_original_figure(params: dict[str, Any], figures: list[dict[str, Any]], page_text: Any) -> dict[str, Any]:
+    """Recover a source scan on edit/review, without replacing any teacher-authored figure."""
+    if (params.get("sourceFigure") or {}).get("type") == "uploaded_image":
+        return params
+    original = match_figure(figures, page_text)
+    if not original:
+        return params
+    return {**params, "sourceFigure": original}
+
+
 def match_figure(figures: list[dict[str, Any]], page_text: Any) -> dict[str, Any]:
     """Return an unambiguous original figure or leave the page without a picture."""
     text = _normalize_text(page_text)
@@ -723,6 +742,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                         notice += "；原题图片保留为对照，可在预览中展开"
                     else:
                         notice = "只匹配到原题图片，尚无课件演示图；请在预览/修改中补充图示"
+            elif kind == "steps" and requires_original_geometry_image(page_text) and not original:
+                notice = "本题需要原题图进行测量核对，但没有找到可唯一匹配的原图；已保留草稿，禁止直接审核"
             elif kind == "steps" and not params.get("figure") and not notice:
                 notice = "未生成可视化图示；课件保留为草稿，请在预览/修改中补图后再审核"
         except ValueError as e:
@@ -749,6 +770,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         fallback_figure = required_visual_figure(page_text)
         if fallback_figure and not (params.get("figure") or {}).get("type"):
             params = cw.clean(b.kind, {**params, "figure": fallback_figure}, lesson.reading_plan or "")
+        if b.kind == "steps":
+            params = attach_original_figure(params, lesson_figures(implementation, db, lesson, written), page_text)
         upsert(db, u, lesson, b.stageNo, page, b.kind, params, b.writtenTask, page_text)
         return payload(db, lesson)
 
@@ -771,6 +794,18 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             params = cw.clean(item["kind"], item["params"], lesson.reading_plan or "")
         except ValueError as e:
             raise HTTPException(400, str(e))
+        if item["kind"] == "steps":
+            params = attach_original_figure(
+                params, lesson_figures(implementation, db, lesson, written), item.get("pageText") or ""
+            )
+            if requires_original_geometry_image(item.get("pageText") or "") and (
+                (params.get("sourceFigure") or {}).get("type") != "uploaded_image"
+            ):
+                raise HTTPException(400, "本题需要对照原题图片测量，但尚未找到匹配的原图；请重新导入原卷图并核对后审核")
+        if requires_original_geometry_image(item.get("pageText") or "") and (
+            (params.get("figure") or {}).get("type") in (None, "", "table")
+        ):
+            raise HTTPException(400, "本题依赖原图中的几何关系，文字表格不能代替①②③题图；请补充与原图一致的教学图后再审核")
         required_figure = required_visual_type(item.get("pageText") or "")
         saved_figure = params.get("figure") or {}
         if required_figure and not saved_figure.get("type"):
