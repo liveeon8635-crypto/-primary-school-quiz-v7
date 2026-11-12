@@ -28,7 +28,7 @@ def test_safari12_asset_regeneration_diagnostic():
              for k in changed if k in new["scripts"] and not new["scripts"][k]["unchanged"]},
           "oldKeys":sorted(set(old["scripts"])-set(new["scripts"])),
           "newKeys":sorted(set(new["scripts"])-set(old["scripts"]))}
-    payload=base64.b64encode(gzip.compress(json.dumps(data,separators=(",",":")).encode(),compresslevel=9)).decode()
+    payload=json.dumps(data,ensure_ascii=True,separators=(",",":"))
     chunks=[payload[i:i+3500] for i in range(0,len(payload),3500)]
     raise AssertionError("GENERATED_SAFARI_ASSETS_START\n"+
         "\n".join("SAFARI_CHUNK_%03d=%s"%(i,c) for i,c in enumerate(chunks))+
