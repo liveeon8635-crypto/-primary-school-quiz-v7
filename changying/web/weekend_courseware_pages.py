@@ -715,6 +715,13 @@ function cwPlan(box,lessonId,refresh){
     }});
     box.appendChild(el('div',{class:'row'},stageSel,all,el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})),approveAll));
     box.appendChild(msg);
+    var coverage=d.coursewareCoverage&&d.coursewareCoverage[stageNo];
+    if(coverage&&coverage.total){
+      var complete=coverage.approved===coverage.total;
+      box.appendChild(el('div',{class:'notice '+(complete?'ok':'warn'),
+        text:'互动课件准备：共 '+coverage.total+' 页；已审核 '+coverage.approved+' 页，待审核 '+coverage.draft+' 页，未生成 '+coverage.missing+' 页。'+
+          (complete?'本环节课件审核齐全。':'习题审核不等于课件审核；未完成页面不得视为可授课。')}));
+    }
     if(stageNo==='3'&&d.qualityAudit){
       var audit=d.qualityAudit;
       box.appendChild(el('div',{class:'notice warn',style:'margin:10px 0;white-space:normal',
