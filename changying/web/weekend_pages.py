@@ -810,9 +810,9 @@ function plan(){
       // The two APIs keep different question types in separate tables. Recover only
       // reliable source positions; never infer a cross-type order from database IDs.
       function reviewOrder(stem){
-        var title=String(stem||''),direct=/^\\s*第\\s*(\\d{1,3})\\s*题/.exec(title);
+        var title=String(stem||''),direct=/^\s*第\s*(\d{1,3})\s*题/.exec(title);
         if(direct)return parseInt(direct[1],10);
-        var source=String(L.sourceText||'').replace(/\\s+/g,''),tail=title.split('\\n').pop().replace(/\\s+/g,'');
+        var source=String(L.sourceText||'').replace(/\s+/g,''),tail=title.split('\n').pop().replace(/\s+/g,'');
         if(!source||tail.length<14)return null;
         var hits={},segment,at,before,heading,no,offset;
         // Several unique 14-character matches guard against matching a generic
@@ -823,7 +823,7 @@ function plan(){
           at=source.indexOf(segment);
           if(at<0||source.indexOf(segment,at+1)>=0)continue;
           before=source.slice(0,at);
-          var re=/第(\\d{1,3})题/g;
+          var re=/第(\d{1,3})题/g;
           no=null;
           while((heading=re.exec(before))!==null)no=parseInt(heading[1],10);
           if(no!==null)hits[no]=(hits[no]||0)+1;
