@@ -546,9 +546,10 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
   var q5=/第\s*5\s*题/.test(source)&&source.indexOf('方格测量')>=0;
   var q6=/第\s*6\s*题/.test(source)&&source.indexOf('两组对应底高')>=0;
   var q8=/第\s*8\s*题/.test(source)&&source.indexOf('面积累加')>=0;
-  if(!q5&&!q6&&!q8)return false;
+  var q14=/第\s*14\s*题/.test(source)&&source.indexOf('200 m')>=0&&source.indexOf('40000')>=0;
+  if(!q5&&!q6&&!q8&&!q14)return false;
   var wrap=el('div',{style:'max-width:900px;margin:10px auto;padding:10px;background:#fff;border:1px solid #d0d5dd;border-radius:10px'});
-  var svg=cwNode('svg',{viewBox:q6?'0 0 860 350':(q5?'0 0 560 360':'0 0 560 310'),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':'两组对应底和高'});
+  var svg=cwNode('svg',{viewBox:q6?'0 0 860 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310')),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':'两组对应底和高'});
   function line(x1,y1,x2,y2,color,w,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color||'#c7d7e5','stroke-width':w||1,'stroke-dasharray':dash||''}))}
   function text(x,y,t,color,size,anchor){svg.appendChild(cwNode('text',{x:x,y:y,fill:color||'#344054','font-size':size||17,'font-weight':700,'text-anchor':anchor||'middle'},t))}
   function panel(x,y,cell,cols,rows,base,height,caption,showHigh){
@@ -573,6 +574,16 @@ function cwLesson11Parallelogram(box,p,view,big,teacher){
     panel(70,45,40,8,5,6,3,'每小格1 dm；底6格、高3格',true);
     text(300,145,'高3格','#b42318',17,'start');
     text(300,245,'底6格','#1d4ed8',17);
+  }else if(q14){
+    text(280,30,'第（3）问：面积至少3公顷，对应高至少150 m','#344054',17);
+    var left=65,top=75,bottom=255,right=455,shift=90;
+    svg.appendChild(cwNode('polygon',{points:left+','+bottom+' '+(left+shift)+','+top+' '+right+','+top+' '+(right-shift)+','+bottom,fill:'#3da9bd','fill-opacity':.16,stroke:'#225e7a','stroke-width':3}));
+    line(left+shift,top,left+shift,bottom,'#b42318',3,'7 4');
+    line(left+shift,bottom-14,left+shift+14,bottom-14,'#b42318',2);
+    line(left+shift+14,bottom-14,left+shift+14,bottom,'#b42318',2);
+    text(285,60,'底 200 m','#1d4ed8',19);
+    text(left+shift+12,170,'高 ≥150 m','#b42318',18,'start');
+    text(280,300,'3公顷＝30,000 m²；30,000÷200＝150 m','#344054',17);
   }else{
     // Side-by-side diagrams make each altitude visibly belong to its base.
     function pair(x,label,base,height,color,slanted){
