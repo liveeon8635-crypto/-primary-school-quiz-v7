@@ -229,12 +229,12 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
     text = str(page_text or "")
     kind = required_visual_type(text)
     if kind == "equal_base_height":
-        height = re.search(r"平行线间距(?:离)?(?:为|是)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:cm|厘米)", text, re.I)
-        base = re.search(r"底(?:均)?\\s*(?:为|是)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:cm|厘米)", text, re.I)
+        height = re.search(r"平行线间距(?:离)?(?:为|是)?\s*(\d+(?:\.\d+)?)\s*(?:cm|厘米)", text, re.I)
+        base = re.search(r"底(?:均)?\s*(?:为|是)?\s*(\d+(?:\.\d+)?)\s*(?:cm|厘米)", text, re.I)
         return {"type": kind, "base": float(base.group(1)) if base else 3,
                 "height": float(height.group(1)) if height else 7}
     if kind == "parallelogram_thirds":
-        total = re.search(r"(?:原图面积|面积)\\s*(?:为|是)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:平方厘米|cm²|cm2)", text, re.I)
+        total = re.search(r"(?:原图面积|面积)\s*(?:为|是)?\s*(\d+(?:\.\d+)?)\s*(?:平方厘米|cm²|cm2)", text, re.I)
         return {"type": kind, "parts": 3, "totalArea": float(total.group(1)) if total else 36}
     if kind == "parallelogram_methods":
         return {"type": "parallelogram_methods"}
