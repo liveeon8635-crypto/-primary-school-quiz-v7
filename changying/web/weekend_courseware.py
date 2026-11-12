@@ -843,6 +843,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         item = find(items, b.stageNo, page)
         if item is None:
             raise HTTPException(404, "这一页还没有课件，请先生成或填写")
+        if item.get("reimportReviewRequired"):
+            raise HTTPException(409, "教案已重新导入，图片可能变化；请重新生成或保存课件草稿，再逐页审核。")
         pages = stage_pages(lesson, b.stageNo)
         current_text = pages[page] if page is not None else ""
         if item.get("pageText", "") != current_text:
