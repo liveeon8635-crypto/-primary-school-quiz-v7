@@ -295,11 +295,11 @@ def test_printed_options_carry_one_letter_each():
 
 def test_word_handouts_embed_original_question_images_and_keep_student_answers_isolated(tmp_path):
     helpers.run_isolated(tmp_path, COMMON+r'''
-import base64, json
+import base64, json, shutil, subprocess, tempfile
 from xml.etree import ElementTree as ET
 
-JPEG_CHOICE = b'\xff\xd8\xff\xe0' + b'\x00' * 32 + b'\xff\xd9'
-JPEG_WRITTEN = b'\xff\xd8\xff\xe0' + b'\x01' * 32 + b'\xff\xd9'
+JPEG_CHOICE = base64.b64decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAFA3PEY8MlBGQUZaVVBfeMiCeG5uePWvuZHI////////////////////////////////////////////////////2wBDAVVaWnhpeOuCguv/////////////////////////////////////////////////////////////////////////wAARCACgAUADASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAP/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFgEBAQEAAAAAAAAAAAAAAAAAAAME/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AkAm2AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/2Q==')
+JPEG_WRITTEN = JPEG_CHOICE[:-2] + b'\xff\xfe\x00\x05ALT' + JPEG_CHOICE[-2:]
 URL_CHOICE = 'data:image/jpeg;base64,' + base64.b64encode(JPEG_CHOICE).decode()
 URL_WRITTEN = 'data:image/jpeg;base64,' + base64.b64encode(JPEG_WRITTEN).decode()
 REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -343,10 +343,32 @@ with TestClient(app) as client:
             assert 'SECRET_CHOICE' not in text and 'SECRET_WRITTEN' not in text
         return names
 
+    documents={}
     for role in ('teacher','student'):
         response=client.get(base+'/backup.docx?audience='+role,headers=th)
         assert response.status_code==200,response.text
         inspect_docx(response.content,role)
+        documents[role]=response.content
+
+    # If LibreOffice is available, render the actual generated handouts to PDF and
+    # verify that both embedded pictures survive conversion without network access.
+    converter=shutil.which('libreoffice') or shutil.which('soffice')
+    if converter:
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);out=root/'pdf';out.mkdir()
+            for role,raw in documents.items():
+                source=root/(role+'.docx');source.write_bytes(raw)
+                profile=root/(role+'-profile')
+                result=subprocess.run([converter,'-env:UserInstallation='+profile.as_uri(),'--headless',
+                    '--convert-to','pdf','--outdir',str(out),str(source)],capture_output=True,text=True,timeout=60)
+                assert result.returncode==0,result.stdout+result.stderr
+                pdf=out/(role+'.pdf')
+                assert pdf.exists() and pdf.stat().st_size>1000,role
+                pdfimages=shutil.which('pdfimages')
+                if pdfimages:
+                    listing=subprocess.run([pdfimages,'-list',str(pdf)],capture_output=True,text=True,timeout=30)
+                    image_rows=[line for line in listing.stdout.splitlines() if re.match(r'^\s*\\d+\\s+\\d+\\s+image\\b',line)]
+                    assert listing.returncode==0 and len(image_rows)>=2,(role,listing.stdout,listing.stderr)
 
     zipped=client.get(base+'/backup.zip',headers=th)
     assert zipped.status_code==200,zipped.text
