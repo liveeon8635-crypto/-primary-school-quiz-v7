@@ -400,7 +400,10 @@ function board(){
       var text=String(line||'').replace(/\s+/g,'');
       if(!text)return false;
       return !keys.some(function(key){
-        return text===key||(text.length>=16&&key.indexOf(text)>=0)||(key.length>=16&&text.indexOf(key)>=0);
+        if(text===key)return true;
+        if(text.length<16||key.length<16)return false;
+        var shorter=Math.min(text.length,key.length),longer=Math.max(text.length,key.length);
+        return shorter/longer>=0.72&&(key.indexOf(text)>=0||text.indexOf(key)>=0);
       });
     });
   }
