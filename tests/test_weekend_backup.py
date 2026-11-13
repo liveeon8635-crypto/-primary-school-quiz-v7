@@ -291,3 +291,68 @@ def test_printed_options_carry_one_letter_each():
         xml = _zip.ZipFile(_io.BytesIO(question_document(material, audience))).read("word/document.xml").decode()
         assert "A. 8ab" in xml and "B. ab8" in xml and "A．" not in xml and "B．" not in xml, audience
     assert "答案：A. 8ab" in _zip.ZipFile(_io.BytesIO(question_document(material, "teacher"))).read("word/document.xml").decode()
+
+
+def test_word_handouts_embed_original_question_images_and_keep_student_answers_isolated(tmp_path):
+    helpers.run_isolated(tmp_path, COMMON+r'''
+import base64, json
+from xml.etree import ElementTree as ET
+
+JPEG_CHOICE = base64.b64decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDACgcHiMeGSgjISMtKygwPGRBPDc3PHtYXUlkkYCZlo+AjIqgtObDoKrarYqMyP/L2u71////m8H////6/+b9//j/2wBDASstLTw1PHZBQXb4pYyl+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj/wAARCAABAAIDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAT/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCUAdYf/9k=')
+JPEG_WRITTEN = base64.b64decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDACgcHiMeGSgjISMtKygwPGRBPDc3PHtYXUlkkYCZlo+AjIqgtObDoKrarYqMyP/L2u71////m8H////6/+b9//j/2wBDASstLTw1PHZBQXb4pYyl+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj/wAARCAACAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAwX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCWAsDf/9k=')
+URL_CHOICE = 'data:image/jpeg;base64,' + base64.b64encode(JPEG_CHOICE).decode()
+URL_WRITTEN = 'data:image/jpeg;base64,' + base64.b64encode(JPEG_WRITTEN).decode()
+REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+
+with TestClient(app) as client:
+    th,sh,student,school,lid,qid,wid,sid,base,body=prepare(client)
+    with legacy.SessionLocal() as db:
+        teacher_id=db.scalar(select(legacy.User.id).where(legacy.User.username=='teacher1'))
+        choice=db.get(legacy.TeachingQuestion,qid)
+        choice.figure_json=json.dumps({'type':'uploaded_image','data_url':URL_CHOICE,'alt':'选择题原图'})
+        wt=register_written_tables(legacy)['questions']
+        # The active classroom copy is text-only; the original preparation row still owns its imported image.
+        db.execute(update(wt).where(wt.c.id==wid).values(stem='第2题 原图匹配\\n\\n解释旋转中心'))
+        db.execute(wt.insert().values(school_id=school,lesson_id=lid,session_id=0,teacher_id=teacher_id,
+            stem='第2题 备课原题图片',reference='原始参考答案',
+            hints_json=json.dumps({'hints':[],'figure':{'type':'uploaded_image','data_url':URL_WRITTEN,'alt':'备课原图','question_no':2}})))
+        db.commit()
+
+    def inspect_docx(raw, role):
+        package=zipfile.ZipFile(io.BytesIO(raw))
+        names=set(package.namelist())
+        assert {'word/media/image1.jpg','word/media/image2.jpg'} <= names
+        assert package.read('word/media/image1.jpg')==JPEG_CHOICE
+        assert package.read('word/media/image2.jpg')==JPEG_WRITTEN
+        xml=ET.fromstring(package.read('word/document.xml'))
+        blips=xml.findall('.//{%s}blip'%A_NS)
+        assert len(blips)==2
+        rels=ET.fromstring(package.read('word/_rels/document.xml.rels'))
+        relations={r.get('Id'):r.get('Target') for r in rels}
+        targets=[relations[b.get('{%s}embed'%REL_NS)] for b in blips]
+        assert targets==['media/image1.jpg','media/image2.jpg']
+        content_types=package.read('[Content_Types].xml').decode()
+        assert 'image/jpeg' in content_types
+        assert 'TargetMode="External"' not in package.read('word/_rels/document.xml.rels').decode()
+        text=''.join(ET.fromstring(package.read('word/document.xml')).itertext())
+        assert '选择正确的旋转方向' in text and '第2题 原图匹配' in text
+        if role=='teacher':
+            assert 'SECRET_CHOICE' in text and 'SECRET_WRITTEN' in text
+        else:
+            assert 'SECRET_CHOICE' not in text and 'SECRET_WRITTEN' not in text
+        return names
+
+    for role in ('teacher','student'):
+        response=client.get(base+'/backup.docx?audience='+role,headers=th)
+        assert response.status_code==200,response.text
+        inspect_docx(response.content,role)
+
+    zipped=client.get(base+'/backup.zip',headers=th)
+    assert zipped.status_code==200,zipped.text
+    outer=zipfile.ZipFile(io.BytesIO(zipped.content))
+    for role,filename in (('teacher','教师版.docx'),('student','学生版.docx')):
+        inspect_docx(outer.read(filename),role)
+    print('OK')
+''')
