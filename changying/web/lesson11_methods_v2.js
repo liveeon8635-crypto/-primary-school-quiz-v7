@@ -415,13 +415,18 @@
     }
     grid18(25,45,22,12,8);
     svg.appendChild(cwNode('polygon',{points:'69,199 245,199 157,89',fill:'#60a5fa','fill-opacity':.18,stroke:'#225e7a','stroke-width':3}));
-    if(showSolutions){
+    var step18=Number(view.step)||0;
+    var solvedAll18=!!(view.showAnswer||(teacher&&!view.previewMode));
+    if((solvedAll18||step18>=2)){
+      line(69,199,245,199,'#1d4ed8',3);
+      text(157,222,'底8格=4 cm','#1d4ed8',14);
+    }
+    if((solvedAll18||step18>=3)){
       line(157,89,157,199,'#b42318',2,'6 4');
       line(157,185,171,185,'#b42318',2);line(171,185,171,199,'#b42318',2);
-      text(157,222,'底8格=4 cm','#1d4ed8',14);
       text(165,145,'高5格=2.5 cm','#b42318',14,'start');
-      text(250,260,'面积=4×2.5÷2=5 cm²','#344054',15);
     }
+    if((solvedAll18||step18>=4))text(250,260,'面积=4×2.5÷2=5 cm²','#344054',15);
     line(500,40,500,320,'#d0d5dd',1);
     text(750,25,'（2）两直角边10 cm、7.5 cm','#344054',15);
     svg.appendChild(cwNode('polygon',{points:'570,250 770,250 570,100',fill:'#a78bfa','fill-opacity':.22,stroke:'#225e7a','stroke-width':3}));
@@ -429,7 +434,7 @@
     text(670,275,'直角边10 cm','#1d4ed8',15);
     text(585,175,'直角边7.5 cm','#1d4ed8',15,'start');
     text(700,158,'斜边12.5 cm','#344054',15);
-    if(showSolutions)text(750,315,'面积=10×7.5÷2=37.5 cm²','#344054',15);
+    if((solvedAll18||step18>=5))text(750,315,'面积=10×7.5÷2=37.5 cm²','#344054',15);
   }else if(q17){
     var showSolutions=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
     function grid(x,y,cell,cols,rows){
@@ -444,15 +449,24 @@
     grid(245,45,22,11,6);
     text(790,25,'作图区B：画形状不同的三角形','#344054',15);
     grid(735,45,20,13,6);
-    if(showSolutions){
+    var step17=Number(view.step)||0;
+    var solvedAll=!!(view.showAnswer||(teacher&&!view.previewMode));
+    var revealA=!!(solvedAll||step17>=2);
+    var revealB=!!(solvedAll||step17>=3);
+    var revealSum=!!(solvedAll||step17>=5);
+    if(revealA){
       svg.appendChild(cwNode('polygon',{points:'267,155 465,155 311,67',fill:'#60a5fa','fill-opacity':.42,stroke:'#1d4ed8','stroke-width':3}));
       line(267,155,465,155,'#1d4ed8',3);
       line(311,67,311,155,'#b42318',2,'6 4');
       text(366,176,'底9格','#1d4ed8',14);text(319,112,'高4格','#b42318',14,'start');
+    }
+    if(revealB){
       svg.appendChild(cwNode('polygon',{points:'755,145 995,145 915,85',fill:'#a78bfa','fill-opacity':.45,stroke:'#6941c6','stroke-width':3}));
       line(755,145,995,145,'#6941c6',3);
       line(915,85,915,145,'#b42318',2,'6 4');
       text(875,166,'底12格','#6941c6',14);text(923,118,'高3格','#b42318',14,'start');
+    }
+    if(revealSum){
       text(500,225,'A：9×4÷2=18 格²；B：12×3÷2=18 格²','#344054',16);
       text(500,255,'两种三角形面积都等于原平行四边形的18格²','#344054',15);
     }else{
