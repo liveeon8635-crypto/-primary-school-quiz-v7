@@ -1,6 +1,7 @@
 """Self-contained paper pack for an existing classroom; no extra student archive."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import json
@@ -24,7 +25,13 @@ def _uploaded_figure(value):
         return {}
     url = str(value.get('data_url') or '')
     if len(url) > 700000 or not re.fullmatch(r'data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}', url):
-        return {}
+        raise HTTPException(409, '原题图片数据无效，请重新上传题图后再生成 Word 备用版')
+    try:
+        image = base64.b64decode(url.split(',', 1)[1], validate=True)
+    except (ValueError, TypeError):
+        raise HTTPException(409, '原题图片数据损坏，请重新上传题图后再生成 Word 备用版')
+    if not image.startswith(b'\xff\xd8\xff') or not image.endswith(b'\xff\xd9'):
+        raise HTTPException(409, '原题图片不是有效 JPEG，请重新上传题图后再生成 Word 备用版')
     return {'type': 'uploaded_image', 'data_url': url, 'alt': str(value.get('alt') or '原卷插图')[:80]}
 
 
@@ -50,7 +57,7 @@ def backup_material(impl, db, session, *, include_files=False):
         item = dict(kind='choice', id=q.id, stem=q.stem, options=options, selected=q.correct_index,
             reference=str(options[q.correct_index]), explanation=q.explanation or '', level=q.level,
             knowledge=q.knowledge or lesson.core_target or '')
-        figure = _uploaded_figure(getattr(q, 'figure_json', '{}')) or match_figure(figures, q.stem)
+        figure = _uploaded_figure(getattr(q, 'figure_json', '{}')) or _uploaded_figure(match_figure(figures, q.stem))
         if figure:
             item['figure'] = figure
         questions.append(item)
@@ -62,7 +69,7 @@ def backup_material(impl, db, session, *, include_files=False):
             metadata = []
         figure = _uploaded_figure(metadata.get('figure')) if isinstance(metadata, dict) else {}
         if not figure:
-            figure = match_figure(figures, q.stem)
+            figure = _uploaded_figure(match_figure(figures, q.stem))
         item = dict(kind='written', id=q.id, stem=q.stem, reference=q.reference,
             explanation='', level='开放作答', knowledge=lesson.core_target or '')
         if figure:
