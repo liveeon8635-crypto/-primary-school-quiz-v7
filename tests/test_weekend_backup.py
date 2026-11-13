@@ -298,8 +298,8 @@ def test_word_handouts_embed_original_question_images_and_keep_student_answers_i
 import base64, json
 from xml.etree import ElementTree as ET
 
-JPEG_CHOICE = base64.b64decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDACgcHiMeGSgjISMtKygwPGRBPDc3PHtYXUlkkYCZlo+AjIqgtObDoKrarYqMyP/L2u71////m8H////6/+b9//j/2wBDASstLTw1PHZBQXb4pYyl+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj/wAARCAABAAIDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAT/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAABAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCUAdYf/9k=')
-JPEG_WRITTEN = base64.b64decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDACgcHiMeGSgjISMtKygwPGRBPDc3PHtYXUlkkYCZlo+AjIqgtObDoKrarYqMyP/L2u71////m8H////6/+b9//j/2wBDASstLTw1PHZBQXb4pYyl+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj4+Pj/wAARCAACAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAwX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCWAsDf/9k=')
+JPEG_CHOICE = base64.b64decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAFA3PEY8MlBGQUZaVVBfeMiCeG5uePWvuZHI////////////////////////////////////////////////////2wBDAVVaWnhpeOuCguv/////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAT/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ALQAf//Z')
+JPEG_WRITTEN = base64.b64decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAFA3PEY8MlBGQUZaVVBfeMiCeG5uePWvuZHI////////////////////////////////////////////////////2wBDAVVaWnhpeOuCguv/////////////////////////////////////////////////////////////////////////wAARCAACAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAT/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAgT/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCUBYL/2Q==')
 URL_CHOICE = 'data:image/jpeg;base64,' + base64.b64encode(JPEG_CHOICE).decode()
 URL_WRITTEN = 'data:image/jpeg;base64,' + base64.b64encode(JPEG_WRITTEN).decode()
 REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -314,7 +314,7 @@ with TestClient(app) as client:
         choice.figure_json=json.dumps({'type':'uploaded_image','data_url':URL_CHOICE,'alt':'选择题原图'})
         wt=register_written_tables(legacy)['questions']
         # The active classroom copy is text-only; the original preparation row still owns its imported image.
-        db.execute(update(wt).where(wt.c.id==wid).values(stem='第2题 原图匹配\\n\\n解释旋转中心'))
+        db.execute(update(wt).where(wt.c.id==wid).values(stem='第2题 原图匹配\n\n解释旋转中心'))
         db.execute(wt.insert().values(school_id=school,lesson_id=lid,session_id=0,teacher_id=teacher_id,
             stem='第2题 备课原题图片',reference='原始参考答案',
             hints_json=json.dumps({'hints':[],'figure':{'type':'uploaded_image','data_url':URL_WRITTEN,'alt':'备课原图','question_no':2}})))
