@@ -154,6 +154,22 @@ with TestClient(app) as client:
     assert v == {"step": 1, "showAnswer": True}
     assert client.get(b1 + "/board", headers=th).json()["courseware"]["view"] == v
     assert client.get(b1, headers=th).json()["courseware"]["view"] == v
+    # An old approved item can be repaired for display with more steps than its saved version.
+    import changying.web.weekend_courseware as courseware_web
+    repair = courseware_web._repair_courseware_visual
+    def expanded(params, text):
+        result = dict(repair(params, text))
+        result["steps"] = list(result["steps"]) + ["额外讲解一", "额外讲解二"]
+        return result
+    courseware_web._repair_courseware_visual = expanded
+    displayed = client.get(b1 + "/board", headers=th).json()["courseware"]
+    last_step = len(displayed["params"]["steps"])
+    assert last_step > len(step_page["params"]["steps"])
+    response = client.post(b1 + "/courseware/view", headers=th, json={"stageNo": 3, "page": 2, "view": {"step": last_step}})
+    assert response.status_code == 200 and response.json()["view"]["step"] == last_step
+    assert client.get(b1 + "/board", headers=th).json()["courseware"]["view"]["step"] == last_step
+    courseware_web._repair_courseware_visual = repair
+    client.post(b1 + "/courseware/view", headers=th, json={"stageNo": 3, "page": 2, "view": v})
     client.post(b1 + "/slide", headers=th, json={"delta": -2})
     assert client.get(b1 + "/board", headers=th).json()["courseware"]["view"]["angle"] == 0                    # page 1 keeps its own state
     stale = client.post(b1 + "/courseware/view", headers=th, json={"stageNo": 3, "page": 2, "view": {"step": 2, "showAnswer": True}})

@@ -1057,9 +1057,9 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             raise HTTPException(409, note or "当前页没有互动课件")
         if b.stageNo is not None and (b.stageNo != int(row.current_stage) or b.page != shown["page"]):
             raise HTTPException(409, "课堂页面已切换，请在当前页重新操作")
-        item = next(i for i in items_of(c) if i.get("approved") is not None and int(i["stage"]) == int(row.current_stage)
-                    and i.get("page") == shown["page"])
-        view = cw.clean_view(item["kind"], item["approved"], b.view)
+        # Clamp against the exact repaired parameters shown on the current page.
+        # Older approved slides may have fewer steps than the repaired visual.
+        view = cw.clean_view(shown["kind"], shown["params"], b.view)
         live = json.loads(c.live_json or "{}")
         live[f"{sid}:{int(row.current_stage)}:{shown['page']}"] = view
         db.execute(update(t).where(t.c.id == c.id).values(live_json=json.dumps(live, ensure_ascii=False)))
