@@ -200,8 +200,10 @@
       text(450,355,'平行四边形面积=底×高=长方形的长×宽','#b42318',17);
     }
   }else if(q19){
-    var show19=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
-    var drawHeight19=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=2)));
+    var step19=Number(view.step)||0;
+    var show19=!!(view.showAnswer||(teacher&&!view.previewMode)||step19>=5);
+    // 分步讲解由老师推进步数，大屏也要跟着展开：不能只在老师端才画高线。
+    var drawHeight19=!!(view.showAnswer||(teacher&&!view.previewMode)||step19>=2);
     text(430,24,'钝角三角形：垂足在底边延长线上','#344054',16);
     text(46,318,'底边延长线','#667085',13,'start');
     var A19=[550,330],B19=[830,330],C19=[30,30],F19=[30,330];
@@ -216,16 +218,19 @@
     text(230,145,'边 AC=15 cm','#344054',16);
     text(440,362,show19?'面积=7×7.5÷2=26.25 cm²':drawHeight19?'垂足落在延长线上；高=7.5 cm':'先识别7 cm底边与15 cm边','#344054',15);
   }else if(q5){
-    var revealGrid=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
+    var step5=Number(view.step)||0;
+    var revealGrid=!!(view.showAnswer||(teacher&&!view.previewMode)||step5>=5);
     var g5=panel(45,35,40,10,6,8,5,'每小格0.5 cm',revealGrid);
     if(revealGrid)text(365,150,'高5格','#b42318',17,'start');
     if(revealGrid)text(g5.center,g5.bottom+17,'底8格','#1d4ed8',17);
   }else if(q8){
-    var revealGrid8=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
+    var step8=Number(view.step)||0;
+    var revealGrid8=!!(view.showAnswer||(teacher&&!view.previewMode)||step8>=5);
     var g8=panel(70,45,40,8,5,6,3,'每小格1 dm',revealGrid8);
     if(revealGrid8){text(300,145,'高3格','#b42318',17,'start');text(g8.center,g8.bottom+17,'底6格','#1d4ed8',17);}
   }else if(q10){
-    var reveal=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
+    var step10=Number(view.step)||0;
+    var reveal=!!(view.showAnswer||(teacher&&!view.previewMode)||step10>=5);
     text(350,28,'底边平均分成3份，高不变','#344054',17);
     var b0=[100,260],b1=[200,260],b2=[300,260],b3=[400,260],t0=[160,100],t1=[260,100],t2=[360,100],t3=[460,100];
     svg.appendChild(cwNode('polygon',{points:b0.join(',')+' '+b1.join(',')+' '+t1.join(',')+' '+t0.join(','),fill:'#60a5fa','fill-opacity':.18,stroke:'#1d4ed8','stroke-width':3}));
@@ -514,7 +519,8 @@
       if(doublingStep>=5)text(800,300,'S平行四边形=a×h=2×S三角形','#344054',15);
     }
   }else if(q14){
-    var reveal14=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=6)));
+    var step14=Number(view.step)||0;
+    var reveal14=!!(view.showAnswer||(teacher&&!view.previewMode)||step14>=6);
     text(280,30,reveal14?'第（3）问：面积至少3公顷，对应高至少150 m':'第（3）问：底200 m，求对应高','#344054',17);
     var left=65,top=75,bottom=255,right=455,shift=90;
     svg.appendChild(cwNode('polygon',{points:left+','+bottom+' '+(left+shift)+','+top+' '+right+','+top+' '+(right-shift)+','+bottom,fill:'#3da9bd','fill-opacity':.16,stroke:'#225e7a','stroke-width':3}));
@@ -582,8 +588,10 @@
   if(sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:sourceProblem}));
     cwLesson11Parallelogram(wrap,p,view,big,teacher);
     if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'查看原题图片（对照）'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'原题图片',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
-    var shown=teacher?Math.max(1,Math.min(p.steps.length,Number(view.step)||1)):(view.step||0),list=el('ol',{style:'padding-left:1.6em;margin:12px 0'});
-    p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?(i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:0 4px':''):'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
+    var shown=teacher?(view.previewMode?(view.step||0):p.steps.length):(view.step||0);
+    shown=Math.max(0,Math.min(p.steps.length,shown));
+    var list=el('ol',{style:'padding-left:1.6em;margin:12px 0'});
+    p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?(i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:0 4px':''):'color:#98a2b3',text:i<shown?s:'第 '+(i+1)+' 步'}))});
     wrap.appendChild(list);
     var answerVisible=!!view.showAnswer||(teacher&&shown>=p.steps.length);
   if(answerVisible)wrap.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
