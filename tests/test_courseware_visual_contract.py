@@ -152,3 +152,48 @@ def test_tile_figure_without_counts_is_marked_unverified():
     assert issue
     repaired = _repair_courseware_visual({"figure": {"type": "tile_pattern"}, "steps": []}, page)
     assert repaired["figureUnverified"] is True
+
+
+REAL_FIVE_STEPS = [
+    "先观察：哪条边是 7 cm 的底？高应从哪个顶点向哪条直线作？",
+    "比较垂线与底边所在直线的位置，判断垂足会落在底边上还是其延长线上。",
+    "过顶点向 7 cm 底边所在直线作垂线，用直角符号标出垂足，并标出 7.5 cm 的高。",
+    "面积用底×高÷2，代入 7 和 7.5，注意高要与 7 cm 底边对应。",
+    "检查垂线是否垂直、垂足位置是否正确，面积单位写成 cm²。",
+]
+
+
+def test_saved_legacy_figure_is_replaced_by_the_standard_one():
+    """存量课件里存的是旧的 generic 三角形图，显示时要以标准钝角图画高为准。"""
+    params = {"steps": REAL_FIVE_STEPS, "figure": {"type": "shape", "shape": "triangle", "labels": {}}}
+    repaired = _repair_courseware_visual(params, OBTUSE)
+    assert repaired["figure"]["type"] == "obtuse_triangle_height"
+    assert repaired["figure"]["height"] == 7.5
+    assert "请老师核对后确认" in (repaired.get("figureNotice") or "")
+    assert not repaired.get("figureUnverified")
+
+
+def test_replaced_scan_is_kept_as_comparison():
+    """老师上传过的扫描图被标准图取代时，原图仍然保留在“对照”里。"""
+    photo = {"type": "uploaded_image", "data_url": "data:image/png;base64,AAAA", "alt": "原卷插图"}
+    repaired = _repair_courseware_visual({"steps": REAL_FIVE_STEPS, "figure": photo}, OBTUSE)
+    assert repaired["figure"]["type"] == "obtuse_triangle_height"
+    assert repaired["sourceFigure"]["data_url"] == photo["data_url"]
+
+
+def test_standard_figure_is_not_redrawn_again():
+    """已经是标准图时不再重复覆盖，也不再提示重画。"""
+    repaired = _repair_courseware_visual({"steps": REAL_FIVE_STEPS, "figure": obtuse_figure()}, OBTUSE)
+    assert repaired["figure"]["type"] == "obtuse_triangle_height"
+    assert "figureNotice" not in repaired
+    assert "figureUnverified" not in repaired
+
+
+def test_seating_page_with_a_wrong_saved_figure_is_redrawn():
+    """方桌题存的是线段图时，改成方桌拼接图，避免“方桌画成线段/圆桌”。"""
+    page = "1张方桌可坐8人，2张方桌可坐12人，3张方桌可坐16人。"
+    params = {"steps": ["看一张桌子坐几人。", "两张拼起来多了几个座位？", "三张再多数一数。", "写出 4m+4。"],
+              "figure": {"type": "segment", "rows": []}}
+    repaired = _repair_courseware_visual(params, page)
+    assert repaired["figure"]["type"] == "seating_pattern"
+    assert repaired["figure"]["sampleCounts"] == [8, 12, 16]

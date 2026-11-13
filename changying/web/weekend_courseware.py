@@ -362,6 +362,15 @@ _FOUR_STEP_FIGURE_TYPES = frozenset({
 
 _NEED_FIGURE_WORDS = ("如图", "下图", "右图", "原题图", "方格纸", "百数表")
 
+# 这些图完全由题干数据算出（张数、块数、速度、三角形边长），旧课件里存的模型图
+# 既不随步骤变化，数值也常被画错；显示时以标准图为准，原图留作对照。
+_AUTHORITATIVE_FIGURE_TYPES = frozenset({
+    "seating_pattern", "square_sticks_pattern", "hundred_chart_square",
+    "tile_pattern", "running_track", "alternating_triangle",
+    "obtuse_triangle_height",
+})
+_REDRAWN_NOTICE = "系统按题干数据重画了这张图，请老师核对后确认。"
+
 
 def _same_number(left: Any, right: Any) -> bool:
     try:
@@ -669,6 +678,27 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
         if rows != figure.get("rows"):
             result["figure"] = figure
         return _apply_figure_notice(result, result.get("figure"), visual_text)
+    # 存量课件：题目要的是数据图（方桌/小棒/百数表/砖块/跑道/钝角三角形画高），
+    # 存的却是别的图或旧模型图时，旧的图不会随步骤变化、数值也常对不上。
+    # 这类页面改成标准图，原图（含老师上传的扫描图）保留成对照，并提示老师核对。
+    stale_authoritative = (
+        figure.get("type") in _AUTHORITATIVE_FIGURE_TYPES
+        and str(original_figure.get("type") or "") != figure.get("type")
+    )
+    if stale_authoritative:
+        result["figure"] = figure
+        if original_figure.get("type") == "uploaded_image" and original_figure.get("data_url"):
+            if not (result.get("sourceFigure") or {}).get("data_url"):
+                result["sourceFigure"] = dict(original_figure)
+        result.pop("figureUnverified", None)
+        if _steps_are_placeholder(original_steps, figure):
+            # 图已经换成标准图，步骤还是占位：继续往下走，由后面的补步骤逻辑处理。
+            original_figure = {}
+        else:
+            _apply_figure_notice(result, figure, visual_text)
+            if not result.get("figureUnverified"):
+                result["figureNotice"] = _REDRAWN_NOTICE
+            return result
     # Even if an old slide lacks a figure, retain its existing explanation.
     # Only replace clearly empty or scaffold text.
     placeholder_steps = _steps_are_placeholder(original_steps, figure)
