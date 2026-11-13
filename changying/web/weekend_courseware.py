@@ -193,6 +193,11 @@ def required_visual_type(page_text: Any) -> str:
     if "正方形边长" in text and "平方千米" in text and "公顷" in text:
         return "table"
 
+    # 钝角三角形画高：高落在底边的延长线上，必须画延长线和垂足，普通的三角形图讲不清。
+    if "钝角三角形" in text and any(word in text for word in
+                                  ("画高", "作高", "高线", "底边上的高", "延长线")):
+        return "obtuse_triangle_height"
+
     # More specific patterns must be checked before the general calendar cases.
     if "月历" in text and ("框形辨析" in text or "哪一种错误" in text or "哪种错误" in text):
         return "calendar_compare"
@@ -212,14 +217,16 @@ def required_visual_type(page_text: Any) -> str:
         return "seating_pattern"
     if "黑白棋子" in text and "三角形" in text:
         return "alternating_triangle"
-    if "地砖" in text and ("排列" in text or "白地砖" in text):
+    if ("地砖" in text or ("白砖" in text and "蓝砖" in text)) and (
+            "排列" in text or "白地砖" in text or ("白砖" in text and "蓝砖" in text)):
         return "tile_pattern"
     if ("正方形" in text and "小棒" in text and ("摆" in text or "根" in text)
             and re.search(r"4\s*根", text) and re.search(r"7\s*根", text) and re.search(r"10\s*根", text)):
         return "square_sticks_pattern"
     if "田字形" in compact and "百数表" in compact and ("四数和" in compact or "四数之和" in compact or "四个数" in compact):
         return "hundred_chart_square"
-    if "跑道" in text and ("追上" in text or "超过" in text or "多跑一圈" in text):
+    if "跑道" in text and any(word in text for word in
+                            ("追上", "超过", "多跑一圈", "再次相遇", "领先一整圈", "多跑")):
         return "running_track"
     if "三角形数" in compact or re.search(r"1[,，、]3[,，、]6[,，、]10[,，、]15", text):
         return "triangular_numbers"
@@ -240,6 +247,31 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
         return {"type": kind, "parts": 3, "totalArea": float(total.group(1)) if total else 36}
     if kind == "parallelogram_methods":
         return {"type": "parallelogram_methods"}
+    if kind == "obtuse_triangle_height":
+        def number_after(pattern: str) -> float | None:
+            found = re.search(pattern, text, re.I)
+            if not found:
+                return None
+            try:
+                return float(found.group(1))
+            except (TypeError, ValueError):
+                return None
+        base = number_after(r"底(?:边)?\s*(?:为|是|长)?\s*(\d+(?:\.\d+)?)\s*(?:cm|厘米)")
+        side = number_after(r"(?:斜边|最长边)\s*(?:为|是|长)?\s*(\d+(?:\.\d+)?)\s*(?:cm|厘米)")
+        height = number_after(r"高\s*(?:为|是)?\s*(\d+(?:\.\d+)?)\s*(?:cm|厘米)")
+        if side is None:
+            # 有的题目只写“底7cm，15cm”，把除底和高以外的第一个长度当斜边。
+            for value in re.findall(r"(\d+(?:\.\d+)?)\s*(?:cm|厘米)", text, re.I):
+                try:
+                    candidate = float(value)
+                except ValueError:
+                    continue
+                if candidate not in (base, height):
+                    side = candidate
+                    break
+        return {"type": kind, "base": float(base if base is not None else 7),
+                "side": float(side if side is not None else 15),
+                "height": float(height if height is not None else 7.5), "unit": "cm"}
     if kind == "calendar_compare":
         return {"type": "calendar_compare"}
     if kind == "table":
@@ -275,7 +307,7 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
     if kind == "hundred_chart_square":
         return {"type": kind, "topLeftNumber": 45}
     if kind == "running_track":
-        speeds = [int(x) for x in re.findall(r"每分钟\s*跑\s*(\d+)\s*米", text)]
+        speeds = _track_speeds(text)
         distance = re.search(r"(?:跑道)?(?:周长|长)\s*(?:为|是)?\s*([A-Za-z])\s*米", text)
         if len(speeds) >= 2:
             symbol = distance.group(1) if distance else "s"
@@ -289,19 +321,270 @@ def required_visual_figure(page_text: Any) -> dict[str, Any]:
         return {"type": kind, "sampleCounts": [4, 7, 10], "targetSquares": targets[:2] if len(targets) >= 2 else [8, 60],
                 "targetSticks": int(target_sticks.group(1)) if target_sticks else 100}
     if kind == "tile_pattern":
-        white = [int(x) for x in re.findall(r"(\d+)\s*块白地砖", text)]
-        blue = [int(x) for x in re.findall(r"(\d+)\s*块蓝地砖", text)]
+        white, blue = _tile_counts(text)
+        if len(white) < 2 or len(blue) < 2:
+            # 题目没写清每幅的数量，不能硬套一组数字当成“正确图”，交给上层标记待确认。
+            return {}
         term = re.search(r"当\s*n\s*[=＝]\s*(\d+)", text)
         target = re.search(r"(?:用了|用)\s*(\d+)\s*块蓝(?:色)?砖", text)
-        return {"type": kind, "whiteCounts": white[:2] if len(white) >= 2 else [5, 8],
-                "blueCounts": blue[:2] if len(blue) >= 2 else [4, 7], "targetTerm": int(term.group(1)) if term else 10,
+        return {"type": kind, "whiteCounts": white[:2], "blueCounts": blue[:2],
+                "targetTerm": int(term.group(1)) if term else 10,
                 "targetBlue": int(target.group(1)) if target else 100}
     if kind == "alternating_triangle":
         symbol = re.search(r"黑(?:棋子)?比白(?:棋子)?多\s*([A-Za-z])", text)
         return {"type": kind, "rows": 6, "differenceSymbol": symbol.group(1) if symbol else "m"}
     if kind == "seating_pattern":
-        return {"type": kind, "sampleCounts": [8, 12, 16]}
+        # 从题目里读“1张…8人、2张…12人、3张…16人”，不再写死一组数字。
+        counts = [int(people) for _tables, people in re.findall(
+            r"(\d+)\s*张[^。；\n]{0,12}?(\d+)\s*人", text)]
+        if len(counts) < 3:
+            counts = [8, 12, 16]
+        return {"type": kind, "sampleCounts": counts[:3]}
     return {}
+
+
+_KNOWN_FIGURE_TYPES = frozenset({
+    "uploaded_image", "segment", "flow", "shape", "rotation", "clock",
+    "equal_base_height", "parallelogram_thirds", "parallelogram_methods",
+    "calendar_compare", "table", "seating_pattern", "alternating_triangle",
+    "running_track", "triangular_numbers", "hundred_chart_square",
+    "square_sticks_pattern", "tile_pattern", "calendar_cross",
+    "obtuse_triangle_height",
+})
+
+# 这些规律图必须配至少 4 步真实讲解，2 步讲不完规律。
+_FOUR_STEP_FIGURE_TYPES = frozenset({
+    "calendar_compare", "calendar_cross", "seating_pattern",
+    "alternating_triangle", "running_track", "triangular_numbers",
+    "tile_pattern", "square_sticks_pattern", "hundred_chart_square",
+    "obtuse_triangle_height",
+})
+
+_NEED_FIGURE_WORDS = ("如图", "下图", "右图", "原题图", "方格纸", "百数表")
+
+
+def _same_number(left: Any, right: Any) -> bool:
+    try:
+        return abs(float(left) - float(right)) < 1e-6
+    except (TypeError, ValueError):
+        return False
+
+
+def _short_numbers(values: list[Any]) -> str:
+    return "、".join(f"{float(value):g}" for value in values)
+
+
+_TILE_WHITE = re.compile(r"白地砖|白砖|白色的?砖")
+_TILE_BLUE = re.compile(r"蓝地砖|蓝砖|蓝色的?砖")
+_TILE_STOP = re.compile(r"白地砖|白砖|白色的?砖|蓝地砖|蓝砖|蓝色的?砖|。|；|;|\n")
+
+
+def _tile_counts(text: str) -> tuple[list[int], list[int]]:
+    """读出白砖、蓝砖每幅各多少块；支持“白砖5块、8块”和“5块白砖”两种写法。"""
+
+    def collect(color: re.Pattern[str]) -> list[int]:
+        found: list[int] = []
+        for match in color.finditer(text):
+            # 写法一：数字在颜色词前面——“5块白砖”。
+            back = re.search(r"(\d+)\s*块\s*$", text[max(0, match.start() - 6):match.start()])
+            if back:
+                number = int(back.group(1))
+                if number not in found:
+                    found.append(number)
+                continue
+            # 写法二：数字在颜色词后面——“白砖每边依次是5块、8块”，遇到另一种颜色就停。
+            segment = _TILE_STOP.split(text[match.end():match.end() + 24])[0]
+            for value in re.findall(r"(\d+)\s*块", segment):
+                number = int(value)
+                if number not in found:
+                    found.append(number)
+        return found
+
+    return collect(_TILE_WHITE), collect(_TILE_BLUE)
+
+
+# 追及题常写“每分钟跑180米”“每分行180米”“180米/分”，都要能读到速度。
+_TRACK_SPEED_RE = re.compile(
+    r"(?:每分钟|每分|分钟)\s*(?:跑|行|骑|走|行驶|走|行驶)?\s*(\d+(?:\.\d+)?)\s*米"
+    r"|(\d+(?:\.\d+)?)\s*米\s*/\s*分"
+)
+
+
+def _track_speeds(text: str) -> list[int]:
+    speeds: list[int] = []
+    for first, second in _TRACK_SPEED_RE.findall(text):
+        value = first or second
+        try:
+            number = int(float(value))
+        except (TypeError, ValueError):
+            continue
+        if number not in speeds:
+            speeds.append(number)
+    return speeds
+
+
+def figure_semantic_issue(figure: Any, page_text: Any) -> str:
+    """图示和题干数据对不上时返回一句老师能看懂的原因，一致时返回空字符串。"""
+    fig = figure if isinstance(figure, dict) else {}
+    kind = str(fig.get("type") or "")
+    text = str(page_text or "")
+    if not kind:
+        return ""
+
+    if kind == "seating_pattern":
+        if "圆桌" in text:
+            return "题干说的是圆桌，方桌人数规律图不能用，请换成圆桌的图或改回方桌题。"
+        counts = []
+        for value in fig.get("sampleCounts") or []:
+            try:
+                counts.append(int(value))
+            except (TypeError, ValueError):
+                return "图示里的座位数不是整数，没法核对。"
+        if counts:
+            if counts[0] != 8:
+                return f"图示第一档是{counts[0]}人，方桌人数规律图应该从8人开始。"
+            for before, after in zip(counts, counts[1:]):
+                if after - before != 4:
+                    return f"图示人数每多1张方桌应增加4人，现在从{before}人变成{after}人，差不是4。"
+            parsed = [int(people) for _tables, people in re.findall(
+                r"(\d+)\s*张[^。；\n]{0,12}?(\d+)\s*人", text)]
+            if len(parsed) >= 2 and counts:
+                for want, got in zip(parsed[:3], counts[:3]):
+                    if want != got:
+                        return f"题干人数是{_short_numbers(parsed[:3])}人，图示人数是{_short_numbers(counts)}人，两边对不上。"
+        return ""
+
+    if kind == "tile_pattern":
+        white, blue = _tile_counts(text)
+        fig_white = [int(x) for x in (fig.get("whiteCounts") or [])]
+        fig_blue = [int(x) for x in (fig.get("blueCounts") or [])]
+        if len(fig_white) < 2 or len(fig_blue) < 2:
+            return "图示没有写清白砖、蓝砖每幅各是多少块，画不出递增排列，请老师核对。"
+        if len(white) >= 2:
+            for want, got in zip(white[:2], fig_white[:2]):
+                if want != got:
+                    return f"题干白地砖是{_short_numbers(white[:2])}块，图示是{_short_numbers(fig_white[:2])}块，两边对不上。"
+        if len(blue) >= 2:
+            for want, got in zip(blue[:2], fig_blue[:2]):
+                if want != got:
+                    return f"题干蓝地砖是{_short_numbers(blue[:2])}块，图示是{_short_numbers(fig_blue[:2])}块，两边对不上。"
+        if re.search(r"只画(?:出)?一排|排成一排|横向排列", text) and fig.get("singleRow") is not True:
+            return "题干要求把地砖画成一排，但图示不是一排。"
+        return ""
+
+    if kind == "square_sticks_pattern":
+        sticks = [int(x) for x in re.findall(r"(\d+)\s*根", text)]
+        counts = []
+        for value in fig.get("sampleCounts") or []:
+            try:
+                counts.append(int(value))
+            except (TypeError, ValueError):
+                return "图示里的小棒数不是整数，没法核对。"
+        if len(sticks) >= 3 and counts and counts[:3] != sticks[:3]:
+            return f"题干小棒数是{_short_numbers(sticks[:3])}根，图示是{_short_numbers(counts)}根，两边对不上。"
+        return ""
+
+    if kind == "hundred_chart_square":
+        if "百数表" not in text:
+            return "题干没有提到百数表，不能用百数表田字格图。"
+        try:
+            top = int(fig.get("topLeftNumber"))
+        except (TypeError, ValueError):
+            return "图示没写田字格左上角是哪个数，没法核对。"
+        if not 1 <= top <= 89:
+            return f"左上角{top}超出1—89的范围，2×2方格会画到百数表外面。"
+        column = top % 10
+        if column == 0 or column > 8:
+            return f"左上角是{top}，它在第{column or 10}列，2×2方格会跨行，画不出田字格。"
+        return ""
+
+    if kind == "running_track":
+        speeds = _track_speeds(text)
+        try:
+            fast, slow = int(fig.get("fastSpeed")), int(fig.get("slowSpeed"))
+        except (TypeError, ValueError):
+            return "图示没有写清快者、慢者每分钟各跑多少米。"
+        if fast <= slow:
+            return f"图示快者每分钟{fast}米，不比慢者{slow}米快，算不出追击时间。"
+        if len(speeds) >= 2 and {speeds[0], speeds[1]} != {fast, slow}:
+            return f"题干速度是每分钟{_short_numbers(speeds[:2])}米，图示是每分钟{fast}米和{slow}米，两边对不上。"
+        return ""
+
+    if kind == "obtuse_triangle_height":
+        if "钝角三角形" not in text:
+            return "题干不是钝角三角形画高题，不能用这张钝角三角形图。"
+        expected = required_visual_figure(text)
+        if expected.get("type") != kind:
+            return "题干数据不足以画出钝角三角形的高，请老师核对。"
+        for key, label in (("base", "底"), ("side", "斜边"), ("height", "高")):
+            try:
+                got = float(fig.get(key))
+            except (TypeError, ValueError):
+                return f"图示没有写{label}的长度。"
+            want = float(expected.get(key))
+            if not _same_number(got, want):
+                return f"题干{label}是{want:g}厘米，图示是{got:g}厘米，两边对不上。"
+        return ""
+
+    return ""
+
+
+def missing_visual_reason(page_text: Any, figure: Any) -> str:
+    """题干明显要看图、但这一页没有可用图示时，返回一句给老师看的提醒。"""
+    text = str(page_text or "")
+    fig = figure if isinstance(figure, dict) else {}
+    kind = str(fig.get("type") or "")
+    needs_figure = bool(required_visual_type(text)) or any(word in text for word in _NEED_FIGURE_WORDS)
+    if not needs_figure:
+        return ""
+    if kind in _KNOWN_FIGURE_TYPES:
+        return ""
+    if kind:
+        return "缺少配图：题目需要图示，但现在的图示类型系统不认识，请老师补一张能看懂的图。"
+    return "缺少配图：题目要求看图作答，但这一页还没有配图，请老师补上再审核。"
+
+
+_PLACEHOLDER_STEP_RE = re.compile(r"^第\s*[0-9一二三四五六七八九十]+\s*步[：:、，,]?$")
+
+
+def _is_placeholder_step(step: Any) -> bool:
+    """“第1步”“第1步……”“点下一步显示”这类没有正文的步骤算占位。"""
+    text = " ".join(str(step or "").split())
+    if not text:
+        return True
+    if "点下一步显示" in text:
+        return True
+    core = text.strip("。，,、；;：:.… \t")
+    if _PLACEHOLDER_STEP_RE.match(core):
+        return True
+    return bool(re.fullmatch(r"第\s*\d+\s*步\s*(?:……|…|\.{3,})", text))
+
+
+def _steps_are_placeholder(steps: Any, figure: Any) -> bool:
+    values = [str(step) for step in (steps or []) if str(step).strip()]
+    if len(values) < 2:
+        return True
+    if all(_is_placeholder_step(step) for step in values):
+        return True
+    kind = str((figure or {}).get("type") or "")
+    return kind in _FOUR_STEP_FIGURE_TYPES and len(values) < 4
+
+
+def _apply_figure_notice(result: dict[str, Any], figure: Any, visual_text: str) -> dict[str, Any]:
+    """把图示与题干的核对结果写进参数，供前端显示“图示待确认”。"""
+    issue = figure_semantic_issue(figure, visual_text)
+    if issue:
+        result["figureUnverified"] = True
+        result["figureNotice"] = "图示待确认：" + issue
+        return result
+    reason = missing_visual_reason(visual_text, figure)
+    if reason:
+        result["figureUnverified"] = True
+        result["figureNotice"] = reason
+        return result
+    result.pop("figureUnverified", None)
+    result.pop("figureNotice", None)
+    return result
 
 
 def _courseware_visual_text(item: dict[str, Any], params: dict[str, Any] | None = None, page_text: str = "") -> str:
@@ -318,7 +601,8 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
     result = dict(params or {})
     figure = required_visual_figure(visual_text)
     if not figure:
-        return result
+        # 没有可用的标准图示时，仍要告诉老师“这页缺图/图不能用”。
+        return _apply_figure_notice(result, result.get("figure"), visual_text)
     # Saved courseware is the authority: never silently replace a teacher's valid
     # diagram or their hand-tuned steps with a deterministic fallback.
     original_figure = result.get("figure") if isinstance(result.get("figure"), dict) else {}
@@ -379,33 +663,26 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
     if targeted_equal_area_figure:
         if original_figure.get("type") != figure.get("type"):
             result["figure"] = figure
-        return result
+        return _apply_figure_notice(result, result.get("figure"), visual_text)
     if targeted_unit_table:
         rows = original_figure.get("rows") if original_figure.get("type") == "table" else None
         if rows != figure.get("rows"):
             result["figure"] = figure
-        return result
-    if original_figure.get("type") and not legacy_calendar_answer_table:
-        return result
-    if result.get("figure") != figure:
-        result["figure"] = figure
+        return _apply_figure_notice(result, result.get("figure"), visual_text)
     # Even if an old slide lacks a figure, retain its existing explanation.
     # Only replace clearly empty or scaffold text.
-    placeholder_steps = len(original_steps) < 2 or all(
-        not str(step).strip() or "点下一步显示" in str(step) or "第1步" in str(step)
-        for step in original_steps
-    ) or (
-        figure.get("type") in (
-            "calendar_compare", "calendar_cross", "seating_pattern",
-            "alternating_triangle", "running_track", "triangular_numbers",
-            "tile_pattern", "square_sticks_pattern", "hundred_chart_square",
-        ) and len(original_steps) < 4
-    )
+    placeholder_steps = _steps_are_placeholder(original_steps, figure)
+    keep_original_figure = bool(original_figure.get("type")) and not legacy_calendar_answer_table
+    if keep_original_figure and not placeholder_steps:
+        # 老师已有图示：只核对，不用标准图覆盖；占位步骤仍要补。
+        return _apply_figure_notice(result, original_figure, visual_text)
+    if not keep_original_figure and result.get("figure") != figure:
+        result["figure"] = figure
     if not placeholder_steps and not (
         legacy_calendar_answer_table and
         any("选项C写成" in str(step) or "因此C错误" in str(step) for step in original_steps)
     ):
-        return result
+        return _apply_figure_notice(result, result.get("figure"), visual_text)
     text = str(visual_text or "")
     compact = _normalize_text(text)
     steps: list[str] | None = None
@@ -503,7 +780,19 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
         result["steps"] = ["观察三角形棋子图：黑白棋子是怎样分层排列的？", "每两层一组，黑层比白层多1颗棋子。", "黑棋子比白棋子多m颗，说明有m组这样的两层。", "总层数为2m层。"]
     elif figure["type"] == "seating_pattern":
         result["steps"] = ["1张方桌外周有8个座位；方桌是正方形，座位沿外周排列。", "每增加1张方桌，与前一张共用一条边，内部共用边不坐人，所以外周座位增加4人。", "m张方桌可坐8+4(m−1)人。", "化简得到4m+4人。"]
-    return result
+    elif figure["type"] == "obtuse_triangle_height":
+        base = float(figure["base"])
+        side = float(figure["side"])
+        height = float(figure["height"])
+        area = base * height / 2
+        result["steps"] = [
+            f"先画一个钝角三角形：底边{base:g}厘米，最长边（斜边）{side:g}厘米。",
+            "把底边向钝角的一侧延长，延长线用虚线画出来。",
+            "从钝角的顶点向底边的延长线作垂线，垂足落在延长线上。",
+            f"标出垂足和直角符号：这条垂线就是底边上的高，高{height:g}厘米。",
+            f"求面积用底×高÷2：{base:g}×{height:g}÷2={area:g}平方厘米。",
+        ]
+    return _apply_figure_notice(result, result.get("figure"), visual_text)
 
 
 def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: int | None) -> tuple[dict[str, Any] | None, str]:
@@ -702,7 +991,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                       .order_by(Program.active.desc(), Program.id.desc()).limit(1))
         return int(getattr(p, "grade", 0) or 0) if p is not None else 0
 
-    def write(db: Any, u: Any, lesson: Any, items: list[dict[str, Any]]) -> None:
+    def write(db: Any, u: Any, lesson: Any, items: list[dict[str, Any]],
+              reset_pages: list[tuple[int, int | None]] | None = None) -> None:
         c = row_for(db, lesson, lock=True)
         items = sorted(items, key=lambda i: (int(i["stage"]), -1 if i.get("page") is None else int(i["page"])))
         approved = [[int(i["stage"]), i.get("page")] for i in items if i.get("approved") is not None]
@@ -710,6 +1000,21 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                       params_json=json.dumps({"version": 2, "items": items}, ensure_ascii=False),
                       approved_json=json.dumps(approved) if approved else None, approved_stage=None, template_id=None,
                       updated_at=datetime.utcnow())
+        if c is not None and reset_pages:
+            # 重新生成或重新审核同一页时，旧课件上的“第几步”不能套到新内容上。
+            targets = {(int(stage), None if page is None else int(page)) for stage, page in reset_pages}
+            live = json.loads(c.live_json or "{}")
+            for key in list(live):
+                parts = str(key).rsplit(":", 2)
+                if len(parts) != 3:
+                    continue
+                try:
+                    stamp = (int(parts[1]), int(parts[2]))
+                except (TypeError, ValueError):
+                    continue
+                if stamp in targets:
+                    live.pop(key, None)
+            values["live_json"] = json.dumps(live, ensure_ascii=False)
         if c is None:
             db.execute(insert(t).values(school_id=u.school_id, lesson_id=lesson.id, teacher_id=u.id, live_json="{}", **values))
         else:
@@ -768,7 +1073,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 old["writtenTask"] = bool(written_task)
         target = find(items, stage, page)
         target["updatedAt"] = datetime.now(implementation.SCHOOL_TZ).strftime("%Y-%m-%d %H:%M")
-        write(db, u, lesson, items)
+        write(db, u, lesson, items, reset_pages=[(stage, page)])
 
     @router.get("/teacher/weekend/lessons/{lid}/courseware")
     def get_courseware(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -860,6 +1165,18 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             raise HTTPException(502, f"第 {(page or 0) + 1} 页：AI 生成的课件未通过校验（{e}），已有课件未改动，可重试或手动填写")
         except HTTPException as e:
             raise HTTPException(502, f"第 {(page or 0) + 1} 页：生成失败（{e.detail}），已有课件未改动，可重试或手动填写")
+        # 保存前再核对一次图示与题干，避免把对不上的图当成正确图展示。
+        generated_figure = params.get("figure") or {}
+        generate_missing = missing_visual_reason(page_text, generated_figure)
+        generate_issue = figure_semantic_issue(generated_figure, _courseware_visual_text({"pageText": page_text}, params, page_text))
+        if generate_missing:
+            params["figureUnverified"] = True
+            params["figureNotice"] = generate_missing
+            notice = notice or generate_missing
+        elif generate_issue:
+            params["figureUnverified"] = True
+            params["figureNotice"] = "图示待确认：" + generate_issue
+            notice = notice or params["figureNotice"]
         upsert(db, u, lesson, b.stageNo, page, kind, params, None, page_text)
         implementation.audit(db, u, "weekend.courseware.generate", f"lesson={lid}:stage={b.stageNo}:page={page}:kind={kind}")
         db.commit()
@@ -938,6 +1255,14 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 for row in saved_figure.get("rows", [])
             ):
                 raise HTTPException(400, "月历判断表直接显示了正确/错误，请先改为不泄露答案的图示")
+        # 图示必须和题干对得上：缺图、图与数据不一致都不许通过审核。
+        visual_text = _courseware_visual_text(item, params, item.get("pageText") or "")
+        missing_reason = missing_visual_reason(item.get("pageText") or "", saved_figure)
+        if missing_reason:
+            raise HTTPException(400, missing_reason)
+        visual_issue = figure_semantic_issue(saved_figure, visual_text)
+        if visual_issue:
+            raise HTTPException(400, "图示与题目数据不一致，不能通过审核：" + visual_issue)
         if required_figure and not saved_figure.get("type"):
             raise HTTPException(400, "请先补充本题的教学图示，再审核")
         if required_figure == "parallelogram_methods" and re.search(
@@ -962,7 +1287,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             template_id = None
         item.update(status="approved", params=params, approved=params, approvedPageText=current_text, templateId=template_id)
         item.pop("reimportReviewRequired", None)
-        write(db, u, lesson, items)
+        write(db, u, lesson, items, reset_pages=[(b.stageNo, page)])
         implementation.audit(db, u, "weekend.courseware.approve", f"lesson={lid}:stage={b.stageNo}:page={page}:template={template_id}")
         db.commit()
         return payload(db, lesson)

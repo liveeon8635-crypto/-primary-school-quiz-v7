@@ -51,23 +51,30 @@ function cwReading(box,p,view,big,teacher,onTap){
   if(view.showPrompt||teacher)wrap.appendChild(el('p',{text:'书面解释：'+p.writingPrompt}));
 }
 var CW_SHAPES={rectangle:'长方形',square:'正方形',triangle:'三角形',parallelogram:'平行四边形',trapezoid:'梯形'};
+// 图示的文字描述：任何字段缺失时都只给一句读得懂的话，绝不抛异常（老师看到的不能是白屏）。
 function cwFigureText(f){
-  if(f.type==='segment')return '线段上的点：'+f.points.map(function(q){return q.name}).join(' — ')+(f.marks.length?'；'+f.marks.map(function(m){return m.from+m.to+'＝'+m.label}).join('，'):'');
-  if(f.type==='flow')return '程序：'+f.boxes.join(' → ')+(f.branches.length?'；'+f.branches.map(function(b){return b.when+'：'+b.boxes.join(' → ')}).join('；'):'');
-  if(f.type==='shape')return CW_SHAPES[f.shape]+'：'+Object.keys(f.labels).map(function(k){return f.labels[k]}).join('，');
+  f=f||{};
+  var points=f.points||[],marks=f.marks||[],boxes=f.boxes||[],branches=f.branches||[],sampleCounts=f.sampleCounts||[],
+      whiteCounts=f.whiteCounts||[],blueCounts=f.blueCounts||[],terms=f.terms||[],rows=f.rows||[],labels=f.labels||{},
+      unit=f.unit||'',missing='（数据不全）';
+  if(f.type==='segment')return '线段上的点：'+(points.length?points.map(function(q){return q.name}).join(' — '):'还没有标点')+(marks.length?'；'+marks.map(function(m){return m.from+m.to+'＝'+m.label}).join('，'):'');
+  if(f.type==='flow')return '程序：'+(boxes.length?boxes.join(' → '):'还没有方框')+(branches.length?'；'+branches.map(function(b){return b.when+'：'+((b.boxes||[]).join(' → '))}).join('；'):'');
+  if(f.type==='shape')return (CW_SHAPES[f.shape]||'图形')+'：'+Object.keys(labels).map(function(k){return labels[k]}).join('，');
   if(f.type==='equal_base_height')return '三个平行四边形：底均为 '+f.base+' cm，高均为 '+f.height+' cm';
   if(f.type==='parallelogram_thirds')return '平行四边形底边三等分，中间部分涂色，高不变，总面积 '+f.totalArea+' cm²';
   if(f.type==='parallelogram_methods')return '平行四边形面积公式：①②③④四种剪拼、平移或旋转方法（示意图，含中点M、N和垂足）';
   if(f.type==='calendar_compare')return '月历四种框形：A一行四格、B两行两列、C一列三格、D三行三列';
   if(f.type==='calendar_cross')return '\u6708\u5386\u5341\u5b57\u6846\uff1a\u4e2d\u5fc3 '+f.center+'\uff0c\u4e94\u6570\u548c '+f.total;
-  if(f.type==='seating_pattern')return '\u65b9\u684c\u4eba\u6570\u89c4\u5f8b\uff1a'+f.sampleCounts.join('\u3001');
+  if(f.type==='seating_pattern')return '\u65b9\u684c\u4eba\u6570\u89c4\u5f8b\uff1a'+(sampleCounts.length?sampleCounts.join('\u3001'):missing);
   if(f.type==='alternating_triangle')return '\u9ed1\u767d\u68cb\u5b50\u4e09\u89d2\u5f62\uff1a'+f.rows+'\u5c42\uff0c\u5dee\u503c '+f.differenceSymbol;
   if(f.type==='running_track')return '\u540c\u5411\u73af\u5f62\u8dd1\u9053\uff1a'+f.fastSpeed+'\u7c73/\u5206\u949f\u548c '+f.slowSpeed+'\u7c73/\u5206\u949f\uff0c\u8dd1\u9053\u5468\u957f '+f.distanceSymbol;
-  if(f.type==='triangular_numbers')return '\u4e09\u89d2\u5f62\u6570\uff1a'+f.terms.join('\u3001')+'\uff0c\u6c42\u7b2c '+f.targetTerm+' \u9879';
-  if(f.type==='tile_pattern')return '\u5730\u7816\u6392\u5217\u89c4\u5f8b\uff1a\u767d\u7816 '+f.whiteCounts.join('\u3001')+'\uff0c\u84dd\u7816 '+f.blueCounts.join('\u3001');
-  if(f.type==='square_sticks_pattern')return '\u8fde\u7eed\u6b63\u65b9\u5f62\u4e0e\u5c0f\u68d2\uff1a'+f.sampleCounts.join('\u3001')+'\u6839\uff1b\u5171\u7528\u8fb9\u53ea\u7b97\u4e00\u6839';
+  if(f.type==='triangular_numbers')return '\u4e09\u89d2\u5f62\u6570\uff1a'+(terms.length?terms.join('\u3001'):missing)+'\uff0c\u6c42\u7b2c '+f.targetTerm+' \u9879';
+  if(f.type==='tile_pattern')return '\u5730\u7816\u6392\u5217\u89c4\u5f8b\uff1a\u767d\u7816 '+(whiteCounts.length?whiteCounts.join('\u3001'):missing)+'\uff0c\u84dd\u7816 '+(blueCounts.length?blueCounts.join('\u3001'):missing);
+  if(f.type==='square_sticks_pattern')return '\u8fde\u7eed\u6b63\u65b9\u5f62\u4e0e\u5c0f\u68d2\uff1a'+(sampleCounts.length?sampleCounts.join('\u3001'):missing)+'\u6839\uff1b\u5171\u7528\u8fb9\u53ea\u7b97\u4e00\u6839';
   if(f.type==='hundred_chart_square')return '\u767e\u6570\u8868\u7530\u5b57\u683c\uff1a'+f.topLeftNumber+'\uff1b\u6a2a\u5411\u76f8\u5dee1\uff0c\u7eb5\u5411\u76f8\u5dee10';
-  return f.rows.map(function(r){return r.join(' | ')}).join('\n');
+  if(f.type==='obtuse_triangle_height')return '\u949d\u89d2\u4e09\u89d2\u5f62\uff1a\u5e95 BC='+(f.base==null?missing:f.base+unit)+'\uff0c\u659c\u8fb9 AC='+(f.side==null?missing:f.side+unit)+'\uff0c\u5e95\u8fb9\u5ef6\u957f\u7ebf\u4e0a\u7684\u9ad8='+(f.height==null?missing:f.height+unit);
+  if(rows.length)return rows.map(function(r){return (r||[]).join(' | ')}).join('\n');
+  return '\u56fe\u793a\uff1a'+((f.type&&CW_SHAPES[f.type])||f.type||'\u672a\u77e5\u7c7b\u578b')+missing;
 }
 function cwFigureOk(f){
   if(f.type==='uploaded_image')return /^data:image\/jpeg;base64,/.test(String(f.data_url||''));
@@ -86,6 +93,8 @@ function cwFigureOk(f){
   if(f.type==='tile_pattern')return (f.whiteCounts||[]).length===2&&(f.blueCounts||[]).length===2&&f.whiteCounts[1]>f.whiteCounts[0]&&f.blueCounts[1]>f.blueCounts[0]&&f.targetTerm>=1&&f.targetTerm<=100&&f.targetBlue>=1;
   if(f.type==='square_sticks_pattern')return (f.sampleCounts||[]).join(',')==='4,7,10'&&(f.targetSquares||[]).length===2&&f.targetSquares.every(function(n){return n>=1&&n<=1000})&&f.targetSticks>=4&&f.targetSticks<=10000;
   if(f.type==='hundred_chart_square')return f.topLeftNumber>=1&&f.topLeftNumber<=89&&f.topLeftNumber%10!==0;
+  // 钝角三角形的高：底、斜边、高都必须是正数，否则不画（走“图示还没填完整”）。
+  if(f.type==='obtuse_triangle_height')return isFinite(f.base)&&f.base>0&&isFinite(f.side)&&f.side>0&&isFinite(f.height)&&f.height>0&&f.side>=f.base;
   return (f.rows||[]).length>0;
 }
 function cwCalendarCross(box,f,view,big,teacher){
@@ -170,10 +179,13 @@ function cwRunningTrack(box,f,view,big,teacher,stepCount){
   svg.appendChild(cwNode('text',{x:340,y:137,'text-anchor':'middle','font-size':23,'font-weight':700,fill:'#344054'},'\u591a\u8dd1\u4e00\u5708 = '+f.distanceSymbol+' \u7c73'));
   svg.appendChild(cwNode('text',{x:340,y:169,'text-anchor':'middle','font-size':17,fill:'#475467'},'\u540c\u4e00\u5730\u70b9\u51fa\u53d1\uff0c\u540c\u65b9\u5411\u8ffd\u53ca\uff08\u56fe\u793a\u975e\u6309\u6bd4\u4f8b\uff09'));
   var angleFast=(-90+shown*19)*Math.PI/180,angleSlow=(-90+shown*19*(f.slowSpeed/f.fastSpeed))*Math.PI/180;
+  // A、B 两点：A 是同一起点，B 是快者多跑一整圈的位置，方便学生指着图说理。
+  function point(x,y,name){svg.appendChild(cwNode('rect',{x:x-9,y:y-9,width:18,height:18,rx:4,fill:'#fff',stroke:'#1d2939','stroke-width':3}));svg.appendChild(cwNode('text',{x:x,y:y+6,'text-anchor':'middle','font-size':14,'font-weight':700,fill:'#111'},name))}
+  point(95,145,'A');point(585,145,'B');
   function runner(a,color,label,speed){var x=340+245*Math.cos(a),y=145+92*Math.sin(a);svg.appendChild(cwNode('circle',{cx:x,cy:y,r:16,fill:color,stroke:'#fff','stroke-width':3}));svg.appendChild(cwNode('text',{x:x,y:y+5,'text-anchor':'middle','font-size':14,'font-weight':700,fill:'#fff'},label));svg.appendChild(cwNode('text',{x:x,y:y+34,'text-anchor':'middle','font-size':15,'font-weight':700,fill:color},speed+'\u7c73/\u5206'))}
   runner(angleFast,'#dc2626','\u5feb',f.fastSpeed);runner(angleSlow,'#2563eb','\u6162',f.slowSpeed);
   wrap.appendChild(svg);
-  wrap.appendChild(el('div',{style:'font-weight:700;color:#17449b;font-size:'+(big?'2.3vh':'16px'),text:'\u7b2c '+shown+' \u5206\u949f\uff1a\u5feb\u8005\u591a\u8dd1 '+gap+' \u7c73\uff1b\u6bcf\u5206\u949f\u8def\u7a0b\u5dee '+f.fastSpeed+' - '+f.slowSpeed+' = '+(f.fastSpeed-f.slowSpeed)+' \u7c73'}));
+  wrap.appendChild(el('div',{style:'font-weight:700;color:#17449b;font-size:'+(big?'2.3vh':'16px'),text:'\u7b2c '+shown+' \u5206\u949f\uff1a\u5feb\u8005\u591a\u8dd1 '+gap+' \u7c73\uff1b\u6bcf\u5206\u949f\u8def\u7a0b\u5dee '+f.fastSpeed+' - '+f.slowSpeed+' = '+(f.fastSpeed-f.slowSpeed)+' \u7c73\uff08\u6bcf\u5206\u949f\u591a\u8dd1 '+(f.fastSpeed-f.slowSpeed)+' \u7c73\uff09'}));
   if(step>=stepCount)wrap.appendChild(el('div',{style:'margin-top:8px;color:#b42318;font-weight:700',text:'\u8def\u7a0b\u5dee\u8fbe\u5230\u4e00\u5708 '+f.distanceSymbol+' \u7c73\u65f6\u8ffd\u4e0a\uff1a'+f.distanceSymbol+' \u00f7 ('+f.fastSpeed+' - '+f.slowSpeed+') = '+f.distanceSymbol+' / '+(f.fastSpeed-f.slowSpeed)+' \u5206\u949f'}));
   box.appendChild(wrap);
 }
@@ -512,6 +524,46 @@ function cwParallelogramThirds(box,f,big){
   }
   wrap.appendChild(svg);
 }
+// 钝角三角形在底边延长线上的高：底边水平，顶点在底边左上方，所以高落在延长线上。
+function cwObtuseTriangleHeight(box,f,view,big,teacher,stepCount){
+  var unit=f.unit||'',base=Number(f.base),side=Number(f.side),height=Number(f.height);
+  var steps=Math.max(5,stepCount||5);
+  // 课堂大屏（老师、非预览）一次看全；预览和学生端跟着 step 走，第 0 步只画三角形本身。
+  var step=teacher&&!view.previewMode?steps:(view.step||0);
+  var wrap=el('div',{style:'max-width:760px;margin:10px auto;padding:10px;background:#fff;border:1px solid #d0d5dd;border-radius:12px'});box.appendChild(wrap);
+  if(!document.createElementNS||!cwNode('svg',{}).createSVGRect){wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:cwFigureText(f)}));return}
+  var svg=cwNode('svg',{viewBox:'0 0 720 360',width:'100%',style:'display:block;max-height:'+(big?'46vh':'360px'),role:'img','aria-label':cwFigureText(f)});
+  wrap.appendChild(svg);
+  // 顶点：底边 BC 水平，A 在 B 的左上方，这样高就落在底边的延长线上，一眼能看出是钝角。
+  var A={x:150,y:110},B={x:330,y:270},C={x:570,y:270},F={x:150,y:270};
+  function line(o){svg.appendChild(cwNode('line',o))}
+  function txt(x,y,t,size,anchor,color){svg.appendChild(cwNode('text',{x:x,y:y,'font-size':size||20,'text-anchor':anchor||'middle','font-weight':700,fill:color||'#111'},t))}
+  svg.appendChild(cwNode('polygon',{points:[A,B,C].map(function(q){return q.x+','+q.y}).join(' '),fill:'#eff6ff',stroke:'#1d4ed8','stroke-width':3}));
+  // 第 1 步只有三角形；第 2 步才画底边向左的虚线延长线。
+  if(step>=2){
+    line({x1:110,y1:B.y,x2:B.x,y2:B.y,stroke:'#667085','stroke-width':2,'stroke-dasharray':'8 6'});
+    txt(112,B.y+24,'底边延长线',15,'start','#475467');
+  }
+  if(step>=3){
+    line({x1:A.x,y1:A.y,x2:F.x,y2:F.y,stroke:'#b42318','stroke-width':2,'stroke-dasharray':'7 5'});
+    // 垂足处的直角小方块，让学生看清“高和底边垂直”。
+    svg.appendChild(cwNode('path',{d:'M'+(F.x+14)+' '+F.y+' L'+(F.x+14)+' '+(F.y-14)+' L'+F.x+' '+(F.y-14),fill:'none',stroke:'#b42318','stroke-width':2}));
+    svg.appendChild(cwNode('circle',{cx:F.x,cy:F.y,r:4,fill:'#b42318'}));
+    txt(F.x-8,F.y+24,'垂足',15,'end','#b42318');
+  }
+  if(step>=4){
+    txt(A.x,A.y-14,'A',22);txt(B.x-4,B.y+34,'B',22);txt(C.x+16,C.y+34,'C',22);
+    txt((B.x+C.x)/2,B.y+30,'底 BC = '+base+unit,20);
+    txt((A.x+C.x)/2+26,(A.y+C.y)/2-6,'边 AC = '+side+unit,20,'start','#1d4ed8');
+    txt(A.x-14,(A.y+F.y)/2,'高 = '+height+unit,20,'end','#b42318');
+  }
+  if(step>=5){
+    var area=base*height/2;
+    wrap.appendChild(el('div',{style:'margin-top:8px;text-align:center;font-weight:700;color:#17449b;font-size:'+(big?'2.4vh':'16px'),text:'面积 = 底 × 高 ÷ 2 = '+base+' × '+height+' ÷ 2 = '+area+' '+unit+'²'}));
+  }else{
+    wrap.appendChild(el('div',{style:'margin-top:6px;color:#475467',text:'提示：高在底边的延长线上，所以要把底边用虚线接着画出去。'}));
+  }
+}
 
 function cwFigure(wrap,f,big,view,teacher,stepCount){
   view=view||{};
@@ -534,6 +586,7 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
   if(f.type==='tile_pattern'){cwTilePattern(box,f,view,big,teacher,stepCount);return}
   if(f.type==='square_sticks_pattern'){cwSquareSticksPattern(box,f,view,big,teacher,stepCount);return}
   if(f.type==='hundred_chart_square'){cwHundredChartSquare(box,f,view,big,teacher,stepCount);return}
+  if(f.type==='obtuse_triangle_height'){cwObtuseTriangleHeight(box,f,view,big,teacher,stepCount);return}
   f={type:f.type,reveal:f.reveal,nineGrid:f.nineGrid,targetSum:f.targetSum,center:f.center,points:(f.points||[]).slice().sort(function(a,b){return a.at-b.at}),marks:(f.marks||[]).filter(function(m){return m.from&&m.to}),
     boxes:f.boxes||[],branches:f.branches||[],shape:f.shape,labels:f.labels||{},rows:f.rows||[]};
   var visualStep=teacher&&!view.previewMode?(stepCount||1):(view.step||0),visualSteps=Math.max(1,stepCount||1);
@@ -675,8 +728,10 @@ function cwLesson10RemainingFigure(wrap,p,view,big,teacher){
   return false;
 }
 function cwSteps(box,p,view,big,teacher){
+  p=p||{};view=view||{};
+  var steps=Array.isArray(p.steps)?p.steps:[];
   var wrap=el('div',{style:'max-width:980px;margin:0 auto;background:#fff;color:#111;border-radius:12px;padding:12px;line-height:1.75;'+(big?'font-size:2.8vh':'')});box.appendChild(wrap);
-  wrap.appendChild(el('b',{text:p.title}));
+  wrap.appendChild(el('b',{text:p.title||'分步讲解'}));
   var sourceProblem=String(p.sourceProblem||'');
   if(p.figure&&p.figure.type==='table'&&sourceProblem.indexOf('对应面积')>=0&&sourceProblem.indexOf('平方千米')>=0&&sourceProblem.indexOf('公顷')>=0){
     var tableHeader=sourceProblem.lastIndexOf('正方形边长',sourceProblem.indexOf('对应面积'));
@@ -684,13 +739,26 @@ function cwSteps(box,p,view,big,teacher){
   }
   if(sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:sourceProblem}));
   if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
-  if(!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
+  if(p.figureUnverified){
+    // 图示和题干数据对不上时不能当正确图展示，改成黄底提示让老师先核对。
+    wrap.appendChild(el('div',{style:'margin:10px 0 0;padding:10px 12px;border-radius:10px;background:#fff7ed;border:1px solid #f59e0b;color:#92400e;font-weight:700',text:'本题需要老师确认配图'}));
+    wrap.appendChild(el('div',{style:'margin:6px 0 10px;padding:12px;border-radius:10px;background:#fef3c7;border:1px solid #f59e0b;color:#78350f',text:p.figureNotice||'图示待确认：题干与图示不一致，请老师核对'}));
+  }else if(!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
   if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
-  var shown=teacher?(view.previewMode?Math.max(1,view.step||0):p.steps.length):(view.step||0),list=el('ol',{style:'padding-left:1.6em;margin:12px 0'});
-  p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?(i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:0 4px':''):'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
+  // 预览和课堂用同一套展开规则：新题从 0 步开始，点一下“下一步”只多展开 1 步。
+  var shown=teacher?(view.previewMode?(view.step||0):steps.length):(view.step||0);
+  shown=Math.max(0,Math.min(steps.length,shown));
+  wrap.appendChild(el('div',{style:'margin:12px 0 2px;color:#475467;font-weight:600',text:'已展开 '+shown+' / '+steps.length+' 步'}));
+  wrap.appendChild(el('div',{class:'muted',text:'点“下一步”只多展开 1 步'}));
+  var list=el('ol',{style:'padding-left:1.6em;margin:8px 0'});
+  steps.forEach(function(s,i){
+    if(i<shown)list.appendChild(el('li',{style:i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:0 4px':'',text:s}));
+    else list.appendChild(el('li',{style:'color:#98a2b3',text:'第 '+(i+1)+' 步'}));
+  });
   wrap.appendChild(list);
-  var answerVisible=!!view.showAnswer||(teacher&&!view.previewMode)||(teacher&&view.previewMode&&shown>=p.steps.length);
-  if(answerVisible)wrap.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
+  // 答案和步骤分开：只有点了“显示答案”（或老师整题全展开）才出现，不跟 step 联动。
+  var answerVisible=!!view.showAnswer||(teacher&&!view.previewMode);
+  if(answerVisible&&p.answer)wrap.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
 }
 function cwClock(box,p,view,big){
   var wrap=el('div',{style:'background:#fff;color:#111;border-radius:12px;padding:8px'});box.appendChild(wrap);
@@ -710,17 +778,28 @@ function cwClock(box,p,view,big){
   var steps=el('ol',{style:big?'font-size:2.6vh':''});p.steps.forEach(function(s,k){steps.appendChild(el('li',{style:k<(view.step||0)?'font-weight:700;color:#b42318':'opacity:.7',text:s}))});wrap.appendChild(steps);
   wrap.appendChild(el('div',{style:'opacity:.8',text:'当前转过 '+(view.angle||0)+'° / '+p.angle+'°'+(view.showResult?' · 指向数字 '+p.end:'')}));
 }
-function cwRender(box,c,view,big,teacher,onTap){box.textContent='';view=view||{};
-  if(c.kind==='rotation')cwRotation(box,c.params,view,big);else if(c.kind==='clock')cwClock(box,c.params,view,big);
-  else if(c.kind==='steps')cwSteps(box,c.params,view,big,teacher);else cwReading(box,c.params,view,big,teacher,onTap)}
+function cwRender(box,c,view,big,teacher,onTap){
+  box.textContent='';view=view||{};c=c||{};
+  try{
+    if(c.kind==='rotation')cwRotation(box,c.params,view,big);else if(c.kind==='clock')cwClock(box,c.params,view,big);
+    else if(c.kind==='steps')cwSteps(box,c.params,view,big,teacher);else cwReading(box,c.params,view,big,teacher,onTap);
+  }catch(err){
+    // 单个图示画坏了也不能整页白屏：清空后给一句老师看得懂的话，再给“重试”按钮。
+    var reason=err&&err.message?err.message:String(err||'未知原因');
+    if(typeof console!=='undefined'&&console.error)console.error('图示渲染失败',err);
+    box.textContent='';
+    box.appendChild(el('div',{class:'notice error',text:'图示渲染失败：'+reason}));
+    box.appendChild(el('button',{type:'button',text:'重试',style:'min-height:44px',onclick:function(){cwRender(box,c,view,big,teacher,onTap)}}));
+  }
+}
 var CW_PENDING=0,CW_VERSION=0;
 function cwControl(box,c,sid){
   var view=JSON.parse(JSON.stringify(c.view||{})),stage=el('div'),bar=el('div',{class:'row'}),msg=el('div',{role:'status'});
   box.textContent='';box.appendChild(el('h2',{text:'互动课件：'+c.kindLabel+'（大屏同步，约3秒）'}));box.appendChild(bar);box.appendChild(stage);box.appendChild(msg);
-  var pending=Promise.resolve(),revision=0;
+  var pending=Promise.resolve(),revision=0,syncSteps=null;
   function send(){var publicState={};Object.keys(view).forEach(function(k){if(k.charAt(0)!=='_')publicState[k]=view[k]});publicState=JSON.parse(JSON.stringify(publicState));var seq=++revision;CW_PENDING++;CW_VERSION++;
     pending=pending.then(function(){return api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:publicState,stageNo:c.stageNo,page:c.page}})}).then(function(r){if(seq===revision){view=r.view;msg.textContent='';draw()}}).catch(function(e){msg.textContent=e.message}).then(function(){CW_PENDING--});}
-  function draw(){if(c.kind==='steps'&&c.params.figure&&c.params.figure.type==='calendar_compare')view._calendarOnChange=send;cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
+  function draw(){if(syncSteps)syncSteps();if(c.kind==='steps'&&c.params.figure&&c.params.figure.type==='calendar_compare')view._calendarOnChange=send;cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
   function button(text,fn){bar.appendChild(el('button',{text:text,style:'min-height:44px;min-width:44px',onclick:function(){fn();draw();send()}}))}
   if(c.kind==='rotation'){
     var p=c.params,range=el('input',{type:'range',min:0,max:p.angle,step:15,value:view.angle||0,style:'width:220px;min-height:44px','aria-label':'旋转角度'});
@@ -743,10 +822,21 @@ function cwControl(box,c,sid){
     button('下一步讲解',function(){view.step=Math.min(q.steps.length,(view.step||0)+1)});
     button('重来',function(){view.angle=0;view.step=0;view.showResult=false;dial.value=0});
   }else if(c.kind==='steps'){
-    button('上一步',function(){view.step=Math.max(0,(view.step||0)-1)});
-    button('下一步',function(){view.step=Math.min(c.params.steps.length,(view.step||0)+1)});
-    button('显示/隐藏答案',function(){view.showAnswer=!view.showAnswer});
-    button('重来',function(){view.step=0;view.showAnswer=false});
+    var sp=c.params||{},slen=(sp.steps||[]).length;
+    // 四个按钮各管一件事：上一步/下一步只动 step，答案只动 showAnswer，重来把两样都归零。
+    function stepNow(){return Math.max(0,Math.min(slen,view.step||0))}
+    function stepBtn(text,fn){var b=el('button',{text:text,style:'min-height:44px;min-width:44px',onclick:function(){fn();draw();send()}});bar.appendChild(b);return b}
+    var prevBtn=stepBtn('上一步',function(){view.step=Math.max(0,stepNow()-1)});
+    var nextBtn=stepBtn('下一步',function(){view.step=Math.min(slen,stepNow()+1)});
+    var answerBtn=stepBtn('显示/隐藏答案',function(){view.showAnswer=!view.showAnswer});
+    var resetBtn=stepBtn('重来',function(){view.step=0;view.showAnswer=false});
+    syncSteps=function(){
+      var s=stepNow();
+      prevBtn.textContent='上一步（'+(s>0?s-1:0)+'）';prevBtn.disabled=s<=0;
+      nextBtn.textContent='下一步（'+Math.min(slen,s+1)+'/'+slen+'）';nextBtn.disabled=s>=slen;
+      answerBtn.textContent=view.showAnswer?'隐藏答案':'显示答案';answerBtn.disabled=false;
+      resetBtn.textContent='重来';resetBtn.disabled=(s===0&&!view.showAnswer);
+    };
   }else{
     bar.appendChild(el('span',{class:'muted',text:'点句子＝在大屏上高亮为同学们找到的依据'}));
     button('显示/隐藏补充资料',function(){view.showMaterial=!view.showMaterial});
@@ -765,6 +855,9 @@ function cwPlan(box,lessonId,refresh){
   function load(){api('/teacher/weekend/lessons/'+lessonId+'/courseware').then(paint).catch(function(e){box.textContent='';box.appendChild(el('div',{class:'notice error',text:e.message}))})}
   function itemAt(page){return (data.items||[]).filter(function(i){return String(i.stage)===stageNo&&i.page===page})[0]}
   function paint(d){
+    d=d||{};
+    // AI 或网络偶尔会回一个空对象：先把缺的字段补齐再画，避免 Cannot convert undefined or null to object。
+    d.templates=d.templates||[];d.kindLabels=d.kindLabels||{};d.pages=d.pages||{};d.items=d.items||[];
     data=d;rowEls={};box.textContent='';
     box.appendChild(el('p',{class:'muted',text:'每一页讲解／例题可配一个互动课件。AI 从审核过的模板（'+d.templates.map(function(k){return d.kindLabels[k]}).join('、')+'）中为每页选一个并填写参数；你逐页预览、修改、审核后才会在大屏那一页出现。上课翻页和操作不调用 AI。'}));
     var stageSel=el('select',{'aria-label':'环节'});CW_STAGES.forEach(function(x,i){stageSel.appendChild(el('option',{value:i+1,text:'第'+(i+1)+'环节：'+x+((d.pages[String(i+1)]||[]).length?'（'+d.pages[String(i+1)].length+' 页）':'')}))});
@@ -794,7 +887,7 @@ function cwPlan(box,lessonId,refresh){
     list.forEach(function(x){
       var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
       var line=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:(x.page==null?'':'第'+(x.page+1)+'页：')+x.text}),
-        el('div',{class:'row'},el('span',{class:'tag '+tag[0],text:tag[1]}),it?el('span',{class:'muted',text:d.kindLabels[it.kind]+(it.writtenTask?' · 含学生作答题':'')}):null)));
+        el('div',{class:'row'},el('span',{class:'tag '+tag[0],text:tag[1]}),it?el('span',{class:'muted',text:(d.kindLabels[it.kind]||'课件')+(it.writtenTask?' · 含学生作答题':'')}):null)));
       if(stageNo==='3'&&d.qualityAudit&&x.page!=null){
         var auditRow=(d.qualityAudit.pages||[])[x.page];
         if(auditRow){
@@ -841,8 +934,17 @@ function cwPlan(box,lessonId,refresh){
       if(target&&target.parentNode)target.parentNode.insertBefore(editorBox,target.nextSibling);
       if(editorBox&&editorBox.scrollIntoView)editorBox.scrollIntoView({block:'start',behavior:'smooth'});
     }catch(err){
-      var note=notes[String(x.page)];
-      if(note){note.className='notice error';note.textContent='预览打开失败：'+(err&&err.message?err.message:'页面脚本异常')}
+      // 预览失败时不能只在行里写一句英文报错：给原因，也给一个能再试一次的按钮。
+      var note=notes[String(x.page)],why=err&&err.message?err.message:'页面脚本异常';
+      if(typeof console!=='undefined'&&console.error)console.error('课件预览打开失败',err);
+      if(editorBox){
+        editorBox.textContent='';
+        var failCard=el('div',{class:'card'});
+        failCard.appendChild(el('div',{class:'notice error',text:'预览失败：'+why}));
+        failCard.appendChild(el('button',{type:'button',text:'重试',onclick:function(){openEditor(x,it)}}));
+        editorBox.appendChild(failCard);
+      }
+      if(note){note.className='notice error';note.textContent='预览失败：'+why}
     }
   }
   function pickTemplate(x){
@@ -877,7 +979,15 @@ function cwPlan(box,lessonId,refresh){
     next();
   }
   function edit(box2,x,it){
-    box2.textContent='';var card=el('div',{class:'card'}),fields={},kinds=data.templates,kind=it&&it.kind?it.kind:kinds[kinds.length-1],p=JSON.parse(JSON.stringify(it&&it.params?it.params:{})),previewState={step:1,previewMode:true},preview=el('div',{class:'card',style:'max-height:76vh;overflow:auto;box-shadow:0 8px 24px #10182822'});
+    data=data||{};data.templates=data.templates||[];data.kindLabels=data.kindLabels||{};
+    var kinds=data.templates;
+    if(!kinds.length){
+      // 模板列表也可能是空的（比如页面数据没加载完），先给一句人话，不要让预览直接抛异常。
+      box2.textContent='';
+      box2.appendChild(el('div',{class:'notice error',text:'预览失败：这一课还没有可用的课件模板，请刷新页面后再试。'}));
+      return;
+    }
+    box2.textContent='';var card=el('div',{class:'card'}),fields={},kind=it&&it.kind?it.kind:kinds[kinds.length-1],p=JSON.parse(JSON.stringify(it&&it.params?it.params:{})),previewState={step:0,previewMode:true},preview=el('div',{class:'card',style:'max-height:76vh;overflow:auto;box-shadow:0 8px 24px #10182822'});
     if(kind==='steps'){
       if(!p || typeof p!=='object')p={};
       if(!Array.isArray(p.steps))p.steps=[];
@@ -952,8 +1062,8 @@ function cwPlan(box,lessonId,refresh){
       }else if(kind==='steps'){
         field('problem','题目原文（不含答案，生成学生作答题时使用）',area(p.problem));
         field('steps','讲解步骤（每行一步，2—6 步）',area((p.steps||[]).join('\n')));field('answer','答案',input(p.answer));
-        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['equal_base_height','等底等高平行四边形'],['parallelogram_thirds','平行四边形底三等分'],['parallelogram_methods','平行四边形四种转化方法'],['calendar_compare','月历框形辨析'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律'],['tile_pattern','地砖排列规律'],['square_sticks_pattern','连续正方形小棒规律'],['hundred_chart_square','百数表田字形四数规律']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
-        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='equal_base_height'?{type:ft.value,base:3,height:7}:ft.value==='parallelogram_thirds'?{type:ft.value,parts:3,totalArea:36}:ft.value==='parallelogram_methods'?{type:ft.value}:ft.value==='calendar_compare'?{type:ft.value}:ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:ft.value==='tile_pattern'?{type:ft.value,whiteCounts:[5,8],blueCounts:[4,7],targetTerm:10,targetBlue:100}:ft.value==='square_sticks_pattern'?{type:ft.value,sampleCounts:[4,7,10],targetSquares:[8,60],targetSticks:100}:ft.value==='hundred_chart_square'?{type:ft.value,topLeftNumber:45}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
+        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['equal_base_height','等底等高平行四边形'],['parallelogram_thirds','平行四边形底三等分'],['parallelogram_methods','平行四边形四种转化方法'],['calendar_compare','月历框形辨析'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律'],['tile_pattern','地砖排列规律'],['square_sticks_pattern','连续正方形小棒规律'],['hundred_chart_square','百数表田字形四数规律'],['obtuse_triangle_height','钝角三角形与底边延长线']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
+        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='equal_base_height'?{type:ft.value,base:3,height:7}:ft.value==='parallelogram_thirds'?{type:ft.value,parts:3,totalArea:36}:ft.value==='parallelogram_methods'?{type:ft.value}:ft.value==='calendar_compare'?{type:ft.value}:ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:ft.value==='tile_pattern'?{type:ft.value,whiteCounts:[5,8],blueCounts:[4,7],targetTerm:10,targetBlue:100}:ft.value==='square_sticks_pattern'?{type:ft.value,sampleCounts:[4,7,10],targetSquares:[8,60],targetSticks:100}:ft.value==='hundred_chart_square'?{type:ft.value,topLeftNumber:45}:ft.value==='obtuse_triangle_height'?{type:ft.value,base:7,side:15,height:7.5,unit:'cm'}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
         if(f.type==='equal_base_height'){
           field('figBase','三个图形的底（cm）',input(f.base||3));field('figHeight','平行线间距／高（cm）',input(f.height||7));
         }else if(f.type==='parallelogram_thirds'){
@@ -989,6 +1099,9 @@ function cwPlan(box,lessonId,refresh){
           field('figTargetSticks','题目给出的n值',input(f.targetSticks||100));
         }else if(f.type==='hundred_chart_square'){
           field('figHundredTop','百数表田字格左上角示意数（1—89，不能在整十列）',input(f.topLeftNumber||45));
+        }else if(f.type==='obtuse_triangle_height'){
+          field('figBase','底 BC（正数）',input(f.base==null?7:f.base));field('figSide','斜边 AC（正数，最长边）',input(f.side==null?15:f.side));
+          field('figHeight','底边延长线上的高（正数）',input(f.height==null?7.5:f.height));field('figUnit','单位（如 cm）',input(f.unit||'cm'));
         }else if(f.type==='table'){
           field('figA','数表（每行一行，格子用 | 隔开）',area((f.rows||[]).map(function(r){return r.join(' | ')}).join('\n')));
         }
@@ -1016,6 +1129,7 @@ function cwPlan(box,lessonId,refresh){
       if(t==='tile_pattern')return {type:t,whiteCounts:parts(fields.figWhiteCounts.value,/,/).map(function(x){return Number(x)}),blueCounts:parts(fields.figBlueCounts.value,/,/).map(function(x){return Number(x)}),targetTerm:Number(fields.figTarget.value),targetBlue:Number(fields.figBlueTarget.value)};
       if(t==='square_sticks_pattern')return {type:t,sampleCounts:parts(fields.figSquareCounts.value,/,/).map(function(x){return Number(x)}),targetSquares:parts(fields.figTargets.value,/,/).map(function(x){return Number(x)}),targetSticks:Number(fields.figTargetSticks.value)};
       if(t==='hundred_chart_square')return {type:t,topLeftNumber:Number(fields.figHundredTop.value)};
+      if(t==='obtuse_triangle_height')return {type:t,base:Number(fields.figBase.value),side:Number(fields.figSide.value),height:Number(fields.figHeight.value),unit:fields.figUnit.value||'cm'};
       if(!fields.figA)return {type:t,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};
       if(t==='segment')return {type:t,points:parts(fields.figA.value,/[;；]/).map(function(x){var k=x.split(/[:：]/);return {name:(k[0]||'').trim(),at:Number((k[1]||'').trim())}}),
         marks:parts(fields.figB.value,/[;；]/).map(function(x){var k=x.split(/[:：]/),ab=(k[0]||'').split(/[-－—]/);return {from:(ab[0]||'').trim(),to:(ab[1]||'').trim(),label:(k.slice(1).join(':')||'').trim()}})};
@@ -1043,11 +1157,12 @@ function cwPlan(box,lessonId,refresh){
         v.rotated=v.shape.map(function(q){return cwRotate(q,v.center,v.direction,v.angle)});cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,showCenter:true,step:v.steps.length},false,true)}
       else if(kind==='clock'){var t=v.angle/30*(v.direction==='cw'?1:-1);v.end=((v.start-1+t)%12+12)%12+1;cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,step:v.steps.length},false,true)}
       else if(kind==='steps'){
-        previewState.step=Math.max(1,Math.min(previewState.step,v.steps.length));
+        previewState.step=Math.max(0,Math.min(previewState.step,v.steps.length));
         var nav=el('div',{class:'row',style:'margin:8px 0'});
-        nav.appendChild(el('button',{text:'\u4e0a\u4e00\u6b65',disabled:previewState.step<=1,onclick:function(){previewState.step=Math.max(1,previewState.step-1);show()}}));
-        nav.appendChild(el('button',{text:'\u4e0b\u4e00\u6b65',disabled:previewState.step>=v.steps.length,onclick:function(){previewState.step=Math.min(v.steps.length,previewState.step+1);show()}}));
-        nav.appendChild(el('span',{class:'muted',text:'\u5df2\u663e\u793a '+previewState.step+' / '+v.steps.length+' \u6b65'}));preview.appendChild(nav);
+        nav.appendChild(el('button',{text:'上一步',disabled:previewState.step<=0,onclick:function(){previewState.step=Math.max(0,previewState.step-1);show()}}));
+        nav.appendChild(el('button',{text:'下一步（'+Math.min(v.steps.length,previewState.step+1)+'/'+v.steps.length+'）',disabled:previewState.step>=v.steps.length,onclick:function(){previewState.step=Math.min(v.steps.length,previewState.step+1);show()}}));
+        nav.appendChild(el('button',{text:previewState.showAnswer?'隐藏答案':'显示答案',onclick:function(){previewState.showAnswer=!previewState.showAnswer;show()}}));
+        nav.appendChild(el('span',{class:'muted',text:'已展开 '+previewState.step+' / '+v.steps.length+' 步'}));preview.appendChild(nav);
         if(v.figure&&v.figure.type==='calendar_compare')previewState._calendarOnChange=show;
         cwRender(view,{kind:kind,params:v},previewState,false,true);
       }

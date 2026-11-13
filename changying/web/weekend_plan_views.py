@@ -216,6 +216,69 @@ def _content_lines(items: Any) -> list[str]:
     return out
 
 
+_EXAMPLE_NO = re.compile(r"^\s*例\s*题?\s*([0-9]{1,3})")
+
+
+def example_stems(raw: Any) -> list[dict[str, str]]:
+    """本课例题的题干，形如 [{"label": "例1", "stem": "例1：2.5×4=？"}]。
+
+    例题也要参加查重：随堂练习如果和例题一模一样，学生就只是照抄答案。
+    examples_json 既可能是文字列表，也可能是带 title/answer 的对象列表，两种都认。
+    """
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw or "[]")
+        except (TypeError, ValueError):
+            raw = [x for x in raw.splitlines() if x.strip()]
+    out: list[dict[str, str]] = []
+    for index, item in enumerate(raw if isinstance(raw, list) else [], start=1):
+        title = ""
+        if isinstance(item, dict):
+            title = str(item.get("title") or item.get("label") or "").strip()
+            text = next((str(item.get(k) or "").strip() for k in ("stem", "question", "text", "content")
+                         if str(item.get(k) or "").strip()), "")
+            if not text:
+                # 只有 title + answer 的旧例题：把两段合起来当题干，至少能挡住同名例题。
+                text = " ".join(x for x in (title, str(item.get("answer") or "").strip()) if x)
+        else:
+            text = str(item or "").strip()
+        text = " ".join(text.split())
+        if not text:
+            continue
+        found = _EXAMPLE_NO.match(text) or _EXAMPLE_NO.match(title)
+        label = f"例{int(found.group(1))}" if found else f"例{index}"
+        out.append({"label": label, "stem": text})
+    return out
+
+
+def merge_example_stems(stems: list[str], lesson: Any) -> list[str]:
+    """把例题题干并入已有题干，生成新题时不再重复例题。"""
+    raw = lesson.get("examples_json") if isinstance(lesson, dict) else getattr(lesson, "examples_json", "")
+    return list(stems) + [e["stem"] for e in example_stems(raw)]
+
+
+def question_options(row: Any) -> list[str]:
+    """读取一道题的选项文本；坏数据按没有选项处理，不让审核接口报 500。"""
+    raw = row.get("options_json") if isinstance(row, dict) else getattr(row, "options_json", "")
+    try:
+        data = json.loads(raw or "[]")
+    except (TypeError, ValueError):
+        return []
+    return [str(x).strip() for x in data if str(x).strip()] if isinstance(data, list) else []
+
+
+def duplicate_of(stem: str, options: list[str], examples: list[dict[str, str]],
+                 others: list[tuple[str, list[str]]]) -> str:
+    """这道题重复了谁：返回 "例3" / "本课习题" / ""（不重复），只用于页面提示。"""
+    for example in examples:
+        if qg.same_question(stem, example["stem"]):
+            return example["label"]
+    for other_stem, other_options in others:
+        if qg.same_question(stem, other_stem) or qg.same_options(options, other_options):
+            return "本课习题"
+    return ""
+
+
 def _homework_from_source(text: str, fallback: str) -> str:
     """A literal homework section wins over the model's abbreviated version."""
     heading = re.compile(r"(?m)^[ \t]*(?:[一二三四五六七八九十0-9]+[.．、][ \t]*)?(?:课后练习|课后作业|家庭作业|课后训练|作业)(?:[：:][ \t]*|[ \t]+|(?=\n|$|《))")
@@ -491,10 +554,10 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         return out[:3]
 
     def existing_stems(db: Any, u: Any, lesson: Any) -> list[str]:
-        """Approved questions of the lesson: new drafts must not repeat them."""
+        """Approved questions of the lesson plus its examples: new drafts must not repeat either."""
         stems = [q.stem for q in db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(True)))]
         stems += [q.stem.split("\n")[-1] for q in written_templates(db, written, u.school_id, u.id, lesson.id) if template_meta(q).get("approved")]
-        return stems
+        return merge_example_stems(stems, lesson)
 
     def generate_questions(db: Any, u: Any, lesson: Any, count: int) -> dict[str, Any]:
         """Questions only, to type and difficulty quotas; maths answers verified; one follow-up asks for what is missing."""
@@ -1169,14 +1232,15 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     def lesson_questions(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         lesson = my_lesson(db, u, lid)
+        rows = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE).order_by(TQ.id)).all()
+        examples = example_stems(lesson.examples_json)
         out = []
-        for q in db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE).order_by(TQ.id)).all():
-            try:
-                opts = json.loads(q.options_json or "[]")
-            except Exception:  # noqa: BLE001
-                opts = []
+        for q in rows:
+            opts = question_options(q)
+            others = [(o.stem, question_options(o)) for o in rows if o.id != q.id]
             out.append({"id": q.id, "stem": q.stem, "options": opts, "correctIndex": q.correct_index, "explanation": q.explanation, "knowledge": q.knowledge,
-                        "figure": _stored_figure(q), **lesson_question_number(lesson.reading_plan or "", q.stem), "active": bool(q.active), "level": qg.CODE_LEVEL.get(q.level, ""), "verified": str(q.explanation or "").startswith("验算：")})
+                        "figure": _stored_figure(q), **lesson_question_number(lesson.reading_plan or "", q.stem), "active": bool(q.active), "level": qg.CODE_LEVEL.get(q.level, ""), "verified": str(q.explanation or "").startswith("验算："),
+                        "duplicateOf": duplicate_of(q.stem, opts, examples, others)})
         return {"items": out}
 
     @router.post("/teacher/weekend/lessons/{lid}/questions")
@@ -1184,6 +1248,18 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         need(u, "teacher")
         lesson = my_lesson(db, u, lid)
         if b.approve:
+            targets = list(db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.id.in_(b.approve))))
+            examples = example_stems(lesson.examples_json)
+            approved = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE,
+                                                 TQ.active.is_(True), TQ.id.notin_(b.approve))).all()
+            seen = [(q.stem, question_options(q)) for q in approved]
+            for q in targets:
+                dup = duplicate_of(q.stem, question_options(q), examples, seen)
+                if dup.startswith("例"):
+                    raise HTTPException(409, f"这道随堂练习与本课例题重复（来源：{dup}），请换一道同考点新题后再通过")
+                if dup:
+                    raise HTTPException(409, "这道随堂练习与本课已通过的习题重复（来源：本课习题），请换一道同考点新题后再通过")
+                seen.append((q.stem, question_options(q)))
             db.execute(update(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.id.in_(b.approve)).values(active=True))
         if b.remove:
             db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.id.in_(b.remove), TQ.active.is_(False)))   # an approved question is never deleted here

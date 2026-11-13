@@ -27,7 +27,13 @@ LETTERS = "ABCDEF"
 
 
 def _text(value: Any, limit: int) -> str:
-    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", str(value or "")).strip()[:limit]
+    text = str(value or "")
+    # 模型有时会把中文写成字面量转义（白砖），先还原成真正的中文。
+    # 只定向替换 \uXXXX，不能对整串用 unicode_escape，否则正常中文会被破坏。
+    # 双重转义（\\u84dd）先去掉一层反斜杠，再走同一套还原。
+    text = text.replace("\\\\u", "\\u")
+    text = re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), text)
+    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text).strip()[:limit]
 
 
 def _int(value: Any) -> int:
@@ -226,6 +232,23 @@ def clean_figure(raw: Any) -> dict[str, Any]:
             raise ValueError("图形只能是长方形、正方形、三角形、平行四边形或梯形")
         labels = raw.get("labels") if isinstance(raw.get("labels"), dict) else {}
         return {"type": "shape", "shape": shape, "labels": {k: _text(labels.get(k), 12) for k in SHAPE_SIDES if _text(labels.get(k), 12)}}
+    if kind == "obtuse_triangle_height":
+        # 钝角三角形画高：高落在底边的延长线上，图上要标垂足。
+        values = []
+        for key in ("base", "side", "height"):
+            value = raw.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("钝角三角形画高图的底、斜边和高必须是数字")
+            values.append(float(value))
+        base, side, height = values
+        if not 0 < base <= 100 or not 0 < side <= 100 or not 0 < height <= 100:
+            raise ValueError("钝角三角形画高图的底、斜边和高都要大于0且不超过100")
+        if side <= base / 2:
+            raise ValueError("钝角三角形画高图的斜边要比底边的一半长，否则画不出这个三角形")
+        unit = _text(raw.get("unit", "cm"), 4) or "cm"
+        if unit not in ("cm", "厘米"):
+            raise ValueError("钝角三角形画高图的单位只能写 cm 或 厘米")
+        return {"type": "obtuse_triangle_height", "base": base, "side": side, "height": height, "unit": unit}
     if kind == "equal_base_height":
         try:
             base, height = float(raw.get("base")), float(raw.get("height"))
@@ -376,20 +399,37 @@ def clean_figure(raw: Any) -> dict[str, Any]:
             raise ValueError("十字框中心不能位于星期日或星期六")
         return {"type": "calendar_cross", "center": center, "daysInMonth": days,
                 "firstWeekday": first_weekday, "total": total}
-    raise ValueError("图示类型无效，请选择线段图、程序图、图形、表格、方桌人数规律图、连续正方形小棒图或其他专用规律图")
+    raise ValueError("图示类型无效，请选择线段图、程序图、图形、表格、方桌人数规律图、连续正方形小棒图、钝角三角形画高图或其他专用规律图")
 
 
 def clean_steps(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("课件参数格式不正确")
-    steps = [_text(s, 120) for s in (raw.get("steps") or []) if _text(s, 120)]
-    if not 2 <= len(steps) <= 6:
+    steps, dropped = [], 0
+    for value in raw.get("steps") or []:
+        step = _text(value, 120)
+        # 去掉“（第2步，点下一步显示）”这类模板尾巴，只留下真正的讲解内容。
+        step = re.sub(r"[（(]\s*第\s*\d+\s*步\s*[，,、:：]?\s*点下一步显示\s*[）)]", "", step).strip()
+        if not step or "点下一步显示" in step:
+            dropped += 1
+            continue
+        # 只有“第1步”“第1步……”这类没有正文的步骤是占位，不能算真实讲解。
+        core = step.strip(" \t\r\n。，,、；;：:.…")
+        if not core or re.fullmatch(r"第\s*\d+\s*步", core):
+            dropped += 1
+            continue
+        steps.append(step)
+    if len(steps) < 2 and dropped:
+        raise ValueError("分步讲解需要真实的讲解步骤，不能只写“第1步”“第2步”这样的占位")
+    if len(steps) < 2:
+        raise ValueError("分步讲解需要 2—6 步")
+    if len(steps) > 6:
         raise ValueError("分步讲解需要 2—6 步")
     answer = _text(raw.get("answer"), 200)
     if not answer:
         raise ValueError("请填写例题答案")
     figure = clean_figure(raw.get("figure"))
-    if figure.get("type") in ("calendar_compare", "calendar_cross", "seating_pattern", "alternating_triangle", "running_track", "triangular_numbers", "tile_pattern", "square_sticks_pattern", "hundred_chart_square") and len(steps) < 4:
+    if figure.get("type") in ("calendar_compare", "calendar_cross", "seating_pattern", "alternating_triangle", "running_track", "triangular_numbers", "tile_pattern", "square_sticks_pattern", "hundred_chart_square", "obtuse_triangle_height") and len(steps) < 4:
         raise ValueError("这类规律题的互动图示需要至少 4 步，才能逐步展示规律和结论")
     return {"title": _text(raw.get("title"), 40) or "分步讲解", "steps": steps, "answer": answer,
             "problem": _text(raw.get("problem"), 600),        # the example's own question, without its answer (pupils' task)
@@ -498,8 +538,8 @@ def generation_prompt(subject: str, lesson: dict[str, Any]) -> str:
                  '"angle":120,"steps":["讲解步骤"],"question":"","reference":""}；一道例题有多个小问时，选第一个小问的数据。',
         "reading": '阅读找文本依据：{"template":"reading","title":"","passage":"从本课原文原样摘取的连续段落（40—600字）","question":"",'
                    '"evidence":[作为依据的句子序号，从0开始],"material":"不超过150字的确定常识，可留空","writingPrompt":"","reference":""}',
-        "steps": '分步讲解（任何例题都可用）：{"template":"steps","title":"","problem":"这一页例题的题目原文，不含答案","steps":["第1步……","第2步……"],'
-                 '"answer":"本题答案","figure":{},"question":"学生书面作答的要求","reference":""}；2—6 步，每步不超过60字，严格按这一页的题目和数据讲解。'
+        "steps": '分步讲解（任何例题都可用）：{"template":"steps","title":"","problem":"这一页例题的题目原文，不含答案","steps":["先观察哪些条件？","怎样比较/操作？","怎样表示规律？","怎样检验结果？"],'
+                 '"answer":"本题答案","figure":{},"question":"学生书面作答的要求","reference":""}；必须写真实讲解内容，禁止只写“第1步”“第2步”这类占位；2—6 步，每步不超过60字，严格按这一页的题目和数据讲解。'
                  '题目里有线段和点、计算程序、图形或数表时，必须用 figure 画出题目给出的条件（只画已知条件，不画答案）：'
                  '线段图 {"type":"segment","points":[{"name":"A","at":0},{"name":"C","at":3},{"name":"B","at":6}],"marks":[{"from":"A","to":"B","label":"x"}]}'
                  '（at 是点在线段上的位置，按题意取大致比例）；'
@@ -518,6 +558,7 @@ def generation_prompt(subject: str, lesson: dict[str, Any]) -> str:
                       '地砖颜色/数量规律必须用 {"type":"tile_pattern","whiteCounts":[5,8],"blueCounts":[4,7],"targetTerm":10,"targetBlue":100}；将前两幅按白砖和蓝砖分别画成方块阵列，逐步展示每幅增加的数量、通项和代入/反推结果，不能只显示表格或原题图片。'
                       '连续正方形与小棒规律必须用 {"type":"square_sticks_pattern","sampleCounts":[4,7,10],"targetSquares":[8,60],"targetSticks":100}；必须画1、2、3个边长为1的正方形首尾相连图，两个相邻正方形只画一条共用边，逐次高亮新增的3根小棒，并展示4+3(m−1)=3m+1与题目代入结果，不能只显示数表或原题图片。'
                       '百数表田字形方格题必须用 {"type":"hundred_chart_square","topLeftNumber":45}；画出1—100百数表并高亮一个2×2田字格，明确右边相邻数加1、下边相邻数加10。逐步标出左上角n时四格为n、n+1、n+10、n+11，推导四数和4n+22；再改以右下角m为已知，标出左上m−11、右上m−10、左下m−1、右下m，推导4m−22。不得只显示数表、原题图片或空占位步骤。'
+                      '钝角三角形画高题必须用 {"type":"obtuse_triangle_height","base":7,"side":15,"height":7.5,"unit":"cm"}；高落在底边的延长线上，要标出垂足，并标清底边、斜边和高的位置。'
                       '所有步骤预览打开后默认显示第1步及对应图示状态；不得把每一步都留作“点下一步显示”的空占位。对长方形周长/面积题用标注边长的图形，并逐步突出对应边、周长路径或面积区域。')
     text = (f"你是小学{subject}教师，为大屏上的一页例题选择一个互动课件模板并填写参数。只输出 JSON，不要 HTML、代码或 Markdown。\n"
             f"课题：{lesson['title']}\n教学目标：{lesson['coreTarget']}\n"

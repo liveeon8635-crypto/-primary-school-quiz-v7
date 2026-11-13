@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import re
+import unicodedata
 from fractions import Fraction
 from typing import Any
 
@@ -160,9 +161,49 @@ def agrees(value: Fraction, answer: Fraction, stem: str, answer_text: str) -> bo
     return round(value, digits) == answer
 
 
+# 题号不是题目本身：第4题 / 4、 / 4. / （1） / 例3 在比较前统一去掉。
+_QUESTION_PREFIX = re.compile(
+    r"^\s*(?:"
+    r"第\s*[0-9一二三四五六七八九十百]{1,4}\s*题(?:\s*[0-9]+(?:\.[0-9]+)?\s*分)?\s*[|]?"
+    r"|例\s*[0-9]{1,3}"
+    r"|[0-9]{1,3}\s*[.,、:：)](?![0-9])"
+    r"|[(]\s*[0-9]{1,3}\s*[)]"
+    r")\s*"
+)
+# 选项标签（A. / A、/（A））和选项标点也不是题目内容；选项文字另外单独比较。
+_OPTION_PREFIX = re.compile(r"(?:[(]\s*[A-Da-d]\s*[)]|(?<![A-Za-z0-9])[A-Da-d]\s*[.,、:：)](?![A-Za-z0-9]))")
+_STANDALONE_OPTION = re.compile(r"(?<![A-Za-z0-9])[A-D](?![A-Za-z0-9])")
+_STRIP = re.compile(r"[\s,，。、;；:：!！?？.．()（）\[\]【】{}｛｝<>《》〈〉\"'“”‘’`~～·…—–_/\\|｜]+")
+
+
 def _norm(text: str) -> str:
-    """Same question apart from spacing and punctuation. Numbers count: a calculation with other numbers is new practice."""
-    return re.sub(r"[\s，。,、：:；;！!？?（）()“”\"'　]+", "", str(text or ""))
+    """去掉题号、选项标签、空白和标点后的题干，用来判断是不是同一道题。
+
+    题干里的数字要保留：换了数字就是一道新计算题，不能算重复。
+    """
+    s = unicodedata.normalize("NFKC", str(text or ""))       # 全角数字、字母、标点先转成半角
+    s = _QUESTION_PREFIX.sub("", s, count=1)
+    labelled = _OPTION_PREFIX.findall(s)
+    s = _OPTION_PREFIX.sub("", s)
+    # 只有题干里确实带了一组选项（A. / B、…）时，才把零散的 A–D 当选项标签去掉；
+    # 否则“三角形ABC中……”的顶点名会被误删，两道不同的几何题会被判成同一道。
+    if len(labelled) >= 2:
+        s = _STANDALONE_OPTION.sub("", s)
+    return _STRIP.sub("", s).lower()
+
+
+def same_question(a: Any, b: Any) -> bool:
+    """两道题只是题号、选项、空白或标点不同时，返回 True。"""
+    left, right = _norm(a), _norm(b)
+    return bool(left) and left == right
+
+
+def same_options(a: Any, b: Any) -> bool:
+    """两道选择题的选项文字完全一样、只是顺序变了，也返回 True。"""
+    def key(options: Any) -> list[str]:
+        return sorted(x for x in (_norm(o) for o in options) if x) if isinstance(options, (list, tuple)) else []
+    left, right = key(a), key(b)
+    return bool(left) and left == right
 
 
 def check(row: Any, subject: str) -> tuple[dict[str, Any] | None, str]:
@@ -253,4 +294,4 @@ def reference_text(q: dict[str, Any]) -> str:
 
 
 __all__ = ["CODE_LEVEL", "COUNTS", "LEVELS", "LEVEL_CODE", "TYPES", "TYPE_NAMES", "agrees", "check", "evaluate", "missing", "number",
-           "prompt", "quotas", "reference_text", "select"]
+           "prompt", "quotas", "reference_text", "same_options", "same_question", "select"]

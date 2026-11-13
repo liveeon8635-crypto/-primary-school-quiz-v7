@@ -938,11 +938,18 @@ function plan(){
             var opts=q.options.map(function(o,i){return 'ABCD'[i]+'. '+o+(i===q.correctIndex?' ✓':'')}).join('　');
             var levelTag=q.level?el('span',{class:'tag'+(q.level==='提高'?' warn':''),text:q.level}):null,
                 checkTag=q.verified?el('span',{class:'tag ok',text:'已验算'}):(q.level&&SUBJ==='数学'?el('span',{class:'tag warn',text:'答案待核对'}):null);
+            // 和例题或已通过习题重复的题不能直接通过：先给老师一个看得懂的红色提示。
+            var dupTag=q.duplicateOf?el('span',{class:'tag',style:'background:#fef3f2;color:#b42318;border:1px solid #fda29b',text:'⚠ 与'+q.duplicateOf+'重复'}):null;
             var fig=typeof questionFigureImg==='function'?questionFigureImg(q.figure):null;
-            var row=el('div',{class:'item'},el('span',{class:'t'},levelTag,checkTag,el('b',{text:reviewLine(q.stem,meta)}),fig,el('div',{class:'muted',text:opts}),el('div',{class:'muted',text:q.explanation||''})));
+            var row=el('div',{class:'item'},el('span',{class:'t'},levelTag,checkTag,dupTag,el('b',{text:reviewLine(q.stem,meta)}),fig,el('div',{class:'muted',text:opts}),el('div',{class:'muted',text:q.explanation||''})));
             var badge=el('span',{class:'tag '+(q.active?'ok':'warn'),text:q.active?'已通过':'草稿'}),act=el('div',{class:'row'},badge),feedback=el('div',{role:'status','aria-live':'polite'});
             if(!q.active){
-              var approve=el('button',{text:'通过',onclick:function(){approveQuestionInPlace('/teacher/weekend/lessons/'+r.lessonId+'/questions',q,approve,act,badge,feedback,refreshStatus)}});
+              var approve=el('button',{text:q.duplicateOf?'不能通过（重复）':'通过',disabled:!!q.duplicateOf,
+                title:q.duplicateOf?'这道题与'+q.duplicateOf+'重复，请换一道同考点新题后再通过':'',
+                onclick:function(){
+                  if(q.duplicateOf){feedback.textContent='这道题与'+q.duplicateOf+'重复，请换一道同考点新题后再通过';return}
+                  approveQuestionInPlace('/teacher/weekend/lessons/'+r.lessonId+'/questions',q,approve,act,badge,feedback,refreshStatus);
+                }});
               act.appendChild(approve);
               act.appendChild(el('button',{text:'删除',onclick:function(){api('/teacher/weekend/lessons/'+r.lessonId+'/questions',{json:{remove:[q.id]}}).then(function(st){refreshStatus(st);loadQ()})}}));
             }
