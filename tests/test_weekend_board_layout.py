@@ -198,8 +198,8 @@ const window={innerWidth:1200,innerHeight:800,addEventListener:(name,fn)=>{handl
 const document={body:bodyElement,getElementById:id=>find(root,n=>n.attrs.id===id)};
 const data={
  id:1,title:'数学课',status:'running',covered:false,currentStage:3,stageName:'例题讲解',goal:'观察原题',
- remainingSeconds:60,deck:{index:0,total:2},content:['第1题：原题题干'],
- courseware:{id:7,kind:'steps',params:{title:'第1题：原题题干',sourceProblem:'第1题：原题题干',steps:['先观察图形'],figure:{}},view:{step:1}}
+ remainingSeconds:60,deck:{index:0,total:2},content:['第1题：请根据图示判断图形旋转后的方向和角度'],
+ courseware:{id:7,kind:'steps',params:{title:'第1题：请根据图示判断图形旋转后的方向和角度',sourceProblem:'第1题：请根据图示判断图形旋转后的方向和角度',steps:['先观察图形'],figure:{}},view:{step:1}}
 };
 let seconds=60;
 function api(){return Promise.resolve(Object.assign({},data,{remainingSeconds:seconds--}))}
@@ -235,11 +235,11 @@ async function flush(){await new Promise(resolve=>setImmediate(resolve))}
  handlers.resize();
  const resizedBody=scrollBody();
  assert.equal(resizedBody.scrollTop,123,'resizing must preserve the same page scroll position');
- data.deck={index:1,total:2};data.content=['第2题：新页面内容'];
+ data.deck={index:1,total:2};data.content=['第2题：请根据新页面图示判断图形变化'];
  intervals.find(x=>x.ms===3000).fn();
  await flush();
  assert.equal(scrollBody().scrollTop,0,'moving to another slide must start at the top');
- assert.deepEqual(layoutCalls[layoutCalls.length-1],['第2题：新页面内容']);
+ assert.deepEqual(layoutCalls[layoutCalls.length-1],['第2题：请根据新页面图示判断图形变化']);
  assert(coursewareCalls.length>=3);
  console.log('OK');
 })().catch(error=>{console.error(error);process.exitCode=1});
