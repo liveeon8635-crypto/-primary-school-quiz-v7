@@ -295,7 +295,7 @@ def test_printed_options_carry_one_letter_each():
 
 def test_word_handouts_embed_original_question_images_and_keep_student_answers_isolated(tmp_path):
     helpers.run_isolated(tmp_path, COMMON+r'''
-import base64, json, shutil, subprocess, tempfile
+import base64, json, re, shutil, subprocess, tempfile
 from xml.etree import ElementTree as ET
 
 JPEG_CHOICE = base64.b64decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAFA3PEY8MlBGQUZaVVBfeMiCeG5uePWvuZHI////////////////////////////////////////////////////2wBDAVVaWnhpeOuCguv/////////////////////////////////////////////////////////////////////////wAARCACgAUADASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAP/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFgEBAQEAAAAAAAAAAAAAAAAAAAME/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AkAm2AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/2Q==')
@@ -367,7 +367,7 @@ with TestClient(app) as client:
                 pdfimages=shutil.which('pdfimages')
                 if pdfimages:
                     listing=subprocess.run([pdfimages,'-list',str(pdf)],capture_output=True,text=True,timeout=30)
-                    image_rows=[line for line in listing.stdout.splitlines() if re.match(r'^\s*\\d+\\s+\\d+\\s+image\\b',line)]
+                    image_rows=[line for line in listing.stdout.splitlines() if re.match(r'^\s*\d+\s+\d+\s+image\b',line)]
                     assert listing.returncode==0 and len(image_rows)>=2,(role,listing.stdout,listing.stderr)
 
     zipped=client.get(base+'/backup.zip',headers=th)
