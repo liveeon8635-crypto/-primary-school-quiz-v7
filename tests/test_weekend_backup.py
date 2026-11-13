@@ -308,15 +308,16 @@ A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 with TestClient(app) as client:
     th,sh,student,school,lid,qid,wid,sid,base,body=prepare(client)
     with legacy.SessionLocal() as db:
-        teacher_id=db.scalar(select(legacy.User.id).where(legacy.User.username=='teacher1'))
         choice=db.get(legacy.TeachingQuestion,qid)
         choice.figure_json=json.dumps({'type':'uploaded_image','data_url':URL_CHOICE,'alt':'选择题原图'})
         wt=register_written_tables(legacy)['questions']
-        # The active classroom copy is text-only; the original preparation row still owns its imported image.
+        # The active classroom copy is text-only; the original preparation TeachingQuestion still owns the image.
         db.execute(update(wt).where(wt.c.id==wid).values(stem='第2题 原图匹配\n\n解释旋转中心'))
-        db.execute(wt.insert().values(school_id=school,lesson_id=lid,session_id=0,teacher_id=teacher_id,
-            stem='第2题 备课原题图片',reference='原始参考答案',
-            hints_json=json.dumps({'hints':[],'figure':{'type':'uploaded_image','data_url':URL_WRITTEN,'alt':'备课原图','question_no':2}})))
+        source=legacy.TeachingQuestion(school_id=school,program_id=choice.program_id,lesson_id=lid,subject='数学',
+            stage='lesson',level='B',knowledge='旋转中心',stem='第2题 备课原题图片',
+            options_json='["甲","乙"]',correct_index=0,explanation='',active=False)
+        source.figure_json=json.dumps({'type':'uploaded_image','data_url':URL_WRITTEN,'alt':'备课原图','question_no':2})
+        db.add(source)
         db.commit()
 
     def inspect_docx(raw, role):
