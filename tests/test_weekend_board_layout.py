@@ -41,7 +41,7 @@ def test_board_layout_separates_points_rules_examples_and_warnings():
 
 
 def test_board_page_uses_the_layout_and_draws_text_only():
-    assert "boardLayout(body,d.content" in BOARD_JS and "boardLayout(top,d.content" in BOARD_JS
+    assert "boardLayout(body,d.content" in BOARD_JS and "boardLayout(top,topContent,false)" in BOARD_JS
     assert "innerHTML" not in BOARD_LAYOUT_JS and "insertAdjacentHTML" not in BOARD_LAYOUT_JS
     html = board_page_html()
     assert "function boardLayout(" in html and html.index("function boardLayout(") < html.index("function board(")
@@ -180,3 +180,71 @@ def test_imported_option_letters_are_not_doubled():
     from changying.services.weekend_answers import option_text as _option
     assert [_option(x) for x in ("A．8ab", "b. ab8", "C、8ba", "D) a8b", "8ab", "Apple")] == ["8ab", "ab8", "8ba", "a8b", "8ab", "Apple"]
     assert "BL_COVER=d.currentStage===2||d.currentStage===3" in BOARD_JS
+
+
+def test_board_poll_preserves_scroll_and_suppresses_duplicate_courseware_question(tmp_path):
+    harness = r'''
+const assert=require('assert');
+class E{
+  constructor(tag,attrs){this.tag=tag;this.attrs=attrs||{};this.children=[];this.style={};this.scrollTop=0;this.scrollHeight=900;this.clientHeight=300;this.scrollWidth=800;this.clientWidth=800}
+  appendChild(node){this.children.push(node);return node}
+  set textContent(value){this._text=String(value||'');this.children=[]}
+  get textContent(){return this._text||''}
+}
+function el(tag,attrs,...children){const node=new E(tag,attrs);children.forEach(child=>node.appendChild(child));return node}
+function find(node,predicate){if(predicate(node))return node;for(const child of node.children){const got=find(child,predicate);if(got)return got}return null}
+const root=new E('div'),bodyElement=new E('body'),intervals=[],handlers={},layoutCalls=[],coursewareCalls=[];
+const window={innerWidth:1200,innerHeight:800,addEventListener:(name,fn)=>{handlers[name]=fn}};
+const document={body:bodyElement,getElementById:id=>find(root,n=>n.attrs.id===id)};
+const data={
+ id:1,title:'数学课',status:'running',covered:false,currentStage:3,stageName:'例题讲解',goal:'观察原题',
+ remainingSeconds:60,deck:{index:0,total:2},content:['第1题：原题题干'],
+ courseware:{id:7,kind:'steps',params:{title:'第1题：原题题干',sourceProblem:'第1题：原题题干',steps:['先观察图形'],figure:{}},view:{step:1}}
+};
+let seconds=60;
+function api(){return Promise.resolve(Object.assign({},data,{remainingSeconds:seconds--}))}
+function setInterval(fn,ms){intervals.push({fn,ms});return intervals.length}
+function requestAnimationFrame(fn){fn()}
+function boot(fn){fn()}
+function fmt(value){return String(value)}
+function msg(value){root.textContent=value}
+function boardLayout(box,content){layoutCalls.push((content||[]).slice());box.appendChild(el('div',{text:(content||[]).join('|')}))}
+function cwRender(box){coursewareCalls.push(1);box.appendChild(el('div',{text:'互动图示'}))}
+const source=__BOARD_JS__;
+const makeBoard=new Function('URLSearchParams','location','document','window','el','root','api','setInterval','requestAnimationFrame','boot','fmt','boardLayout','cwRender','msg',source+';return board;');
+makeBoard(URLSearchParams,{search:'?s=1'},document,window,el,root,api,setInterval,requestAnimationFrame,boot,fmt,boardLayout,cwRender,msg);
+function scrollBody(){return find(root,n=>n.attrs.style&&String(n.attrs.style).indexOf('overflow:auto')>=0)}
+async function flush(){await new Promise(resolve=>setImmediate(resolve))}
+(async()=>{
+ await flush();
+ const wrap=root.children[0],firstBody=scrollBody();
+ assert(firstBody,'courseware body must be scrollable');
+ assert.equal(layoutCalls.length,0,'the same question stem must not be printed above the courseware twice');
+ firstBody.scrollTop=123;
+ intervals.find(x=>x.ms===3000).fn();
+ await flush();
+ assert.strictEqual(root.children[0],wrap,'the 3-second poll must not replace the screen wrapper');
+ assert.strictEqual(scrollBody(),firstBody,'clock-only refresh must not recreate the scroll container');
+ assert.equal(firstBody.scrollTop,123,'clock-only refresh must preserve the exact scroll position');
+ data.courseware.view={step:2};
+ intervals.find(x=>x.ms===3000).fn();
+ await flush();
+ const secondBody=scrollBody();
+ assert.notStrictEqual(secondBody,firstBody,'a real courseware change should repaint');
+ assert.equal(secondBody.scrollTop,123,'repainting the same page must preserve its scroll position');
+ handlers.resize();
+ const resizedBody=scrollBody();
+ assert.equal(resizedBody.scrollTop,123,'resizing must preserve the same page scroll position');
+ data.deck={index:1,total:2};data.content=['第2题：新页面内容'];
+ intervals.find(x=>x.ms===3000).fn();
+ await flush();
+ assert.equal(scrollBody().scrollTop,0,'moving to another slide must start at the top');
+ assert.deepEqual(layoutCalls[layoutCalls.length-1],['第2题：新页面内容']);
+ assert(coursewareCalls.length>=3);
+ console.log('OK');
+})().catch(error=>{console.error(error);process.exitCode=1});
+'''
+    harness = harness.replace('__BOARD_JS__', json.dumps(BOARD_JS, ensure_ascii=False))
+    out = subprocess.run(["node", "-e", harness], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert "OK" in out.stdout
