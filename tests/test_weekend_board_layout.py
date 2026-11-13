@@ -244,6 +244,12 @@ async function flush(){await new Promise(resolve=>setImmediate(resolve))}
  intervals.find(x=>x.ms===3000).fn();
  await flush();
  assert.equal(layoutCalls.length,1,'an exact short question line must also be deduplicated');
+ const reading='阅读材料：'+('请认真阅读这段材料并结合图示进行观察。'.repeat(20))+'请根据材料回答下面的问题';
+ data.deck={index:3,total:4};data.courseware.params.title='阅读题';data.courseware.params.question='请根据材料回答下面的问题';data.courseware.params.sourceProblem='';data.content=[reading];
+ intervals.find(x=>x.ms===3000).fn();
+ await flush();
+ assert.equal(layoutCalls.length,2,'a long reading passage containing the question must remain visible');
+ assert.equal(layoutCalls[1][0],reading);
  assert(coursewareCalls.length>=3);
  console.log('OK');
 })().catch(error=>{console.error(error);process.exitCode=1});
