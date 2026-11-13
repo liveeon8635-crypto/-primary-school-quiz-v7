@@ -102,9 +102,12 @@ def presentation_pages(raw: Any, *, preserve_pages: bool = False, source: str = 
         if text:pages.append(text)
     line_deck=not preserve_pages and len(pages)>=10 and sum(len(p)<120 and '\n' not in p for p in pages)>=len(pages)*.7
     if line_deck and example_mode:
-        joined='\n'.join(pages)
+        joined='\\n'.join(pages)
         if '学生随堂试卷' in joined:
-            joined=joined.split('学生随堂试卷',1)[1]
+            # A student practice paper is a separate teaching stage, never
+            # a source of worked-example slides. Keep only material before
+            # its heading; the old code selected everything AFTER it.
+            joined=joined.split('学生随堂试卷',1)[0]
             joined=re.split(r'(?m)^.*(?:教师参考答案|教师用答案|教师专用答案|参考答案与采分点|参考答案及评分).*$' ,joined,maxsplit=1)[0]
             pages=[p.strip() for p in joined.splitlines() if p.strip()]
     if line_deck and '单元高频考点讲解' in source and '学生随堂试卷' in source:
