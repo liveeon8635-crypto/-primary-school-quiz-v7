@@ -909,14 +909,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             params = attach_original_figure(
                 params, lesson_figures(implementation, db, lesson, written), item.get("pageText") or ""
             )
-            if requires_original_geometry_image(item.get("pageText") or "") and (
-                (params.get("sourceFigure") or {}).get("type") != "uploaded_image"
-            ):
-                raise HTTPException(400, "本题需要对照原题图片测量，但尚未找到匹配的原图；请重新导入原卷图并核对后审核")
-        if requires_original_geometry_image(item.get("pageText") or "") and (
-            (params.get("figure") or {}).get("type") in (None, "", "table")
-        ):
-            raise HTTPException(400, "本题依赖原图中的几何关系，文字表格不能代替①②③题图；请补充与原图一致的教学图后再审核")
+            # Source scans are attached when available. Their absence is a teacher-review warning,
+            # not a server-side approval lock; the page audit still flags missing known diagrams.
         required_figure = required_visual_type(item.get("pageText") or "")
         saved_figure = params.get("figure") or {}
         if required_figure in ("equal_base_height", "parallelogram_thirds", "table") and saved_figure.get("type") != required_figure:

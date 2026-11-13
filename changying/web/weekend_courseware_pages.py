@@ -864,7 +864,7 @@ function cwPlan(box,lessonId,refresh){
   function run(todo,call,label){
     if(busy)return;busy=true;var failed=[],i=0,last=null;
     function next(){
-      if(i>=todo.length){busy=false;if(last)paint(last);else load();msg.textContent=label+'完成 '+(todo.length-failed.length)+'/'+todo.length+' 页'+(failed.length?'。未完成：\n'+failed.join('\n'):'');if(refresh)refresh();
+      if(i>=todo.length){busy=false;if(last)paint(last);msg.textContent=label+'完成 '+(todo.length-failed.length)+'/'+todo.length+' 页'+(failed.length?'。未完成：\n'+failed.join('\n'):'');if(refresh)refresh();
         return}
       var x=todo[i++];msg.textContent='正在'+label+'第 '+i+'/'+todo.length+' 页…';
       call(x).then(function(d){last=d}).catch(function(e){failed.push(e.message)}).then(next);
@@ -947,9 +947,13 @@ function cwPlan(box,lessonId,refresh){
       }else if(kind==='steps'){
         field('problem','题目原文（不含答案，生成学生作答题时使用）',area(p.problem));
         field('steps','讲解步骤（每行一步，2—6 步）',area((p.steps||[]).join('\n')));field('answer','答案',input(p.answer));
-        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['parallelogram_methods','平行四边形四种转化方法'],['calendar_compare','月历框形辨析'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律'],['tile_pattern','地砖排列规律'],['square_sticks_pattern','连续正方形小棒规律'],['hundred_chart_square','百数表田字形四数规律']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
-        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='parallelogram_methods'?{type:ft.value}:ft.value==='calendar_compare'?{type:ft.value}:ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:ft.value==='tile_pattern'?{type:ft.value,whiteCounts:[5,8],blueCounts:[4,7],targetTerm:10,targetBlue:100}:ft.value==='square_sticks_pattern'?{type:ft.value,sampleCounts:[4,7,10],targetSquares:[8,60],targetSticks:100}:ft.value==='hundred_chart_square'?{type:ft.value,topLeftNumber:45}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
-        if(f.type==='segment'){
+        var f=p.figure||{},choices=[['','不画图'],['segment','线段和点'],['flow','计算程序图'],['shape','图形'],['table','数表'],['equal_base_height','等底等高平行四边形'],['parallelogram_thirds','平行四边形底三等分'],['parallelogram_methods','平行四边形四种转化方法'],['calendar_compare','月历框形辨析'],['calendar_cross','\u6708\u5386\u5341\u5b57\u6846'],['seating_pattern','方桌人数规律'],['alternating_triangle','黑白棋子三角形'],['running_track','环形跑道追及'],['triangular_numbers','三角形数规律'],['tile_pattern','地砖排列规律'],['square_sticks_pattern','连续正方形小棒规律'],['hundred_chart_square','百数表田字形四数规律']];if(f.type==='uploaded_image')choices.unshift(['uploaded_image','原卷图片']);var ft=sel(choices,f.type||'');
+        field('figType','图示（大屏上画出题目条件）',ft);ft.onchange=function(){var keep=collect();keep.figure=ft.value==='equal_base_height'?{type:ft.value,base:3,height:7}:ft.value==='parallelogram_thirds'?{type:ft.value,parts:3,totalArea:36}:ft.value==='parallelogram_methods'?{type:ft.value}:ft.value==='calendar_compare'?{type:ft.value}:ft.value==='calendar_cross'?{type:ft.value,center:18,daysInMonth:31,firstWeekday:0,total:90}:ft.value==='seating_pattern'?{type:ft.value,sampleCounts:[8,12,16]}:ft.value==='alternating_triangle'?{type:ft.value,rows:6,differenceSymbol:'m'}:ft.value==='running_track'?{type:ft.value,fastSpeed:180,slowSpeed:140,distanceSymbol:'s'}:ft.value==='triangular_numbers'?{type:ft.value,terms:[1,3,6,10,15],targetTerm:10}:ft.value==='tile_pattern'?{type:ft.value,whiteCounts:[5,8],blueCounts:[4,7],targetTerm:10,targetBlue:100}:ft.value==='square_sticks_pattern'?{type:ft.value,sampleCounts:[4,7,10],targetSquares:[8,60],targetSticks:100}:ft.value==='hundred_chart_square'?{type:ft.value,topLeftNumber:45}:{type:ft.value,points:[],marks:[],boxes:[],branches:[],labels:{},rows:[],shape:'rectangle'};p=keep;build()};
+        if(f.type==='equal_base_height'){
+          field('figBase','三个图形的底（cm）',input(f.base||3));field('figHeight','平行线间距／高（cm）',input(f.height||7));
+        }else if(f.type==='parallelogram_thirds'){
+          field('figTotalArea','原平行四边形面积（平方厘米）',input(f.totalArea||36));
+        }else if(f.type==='segment'){
           field('figA','线段上的点（名称:位置，分号隔开，如 A:0; C:3; B:6; D:10）',input((f.points||[]).map(function(q){return q.name+':'+q.at}).join('; ')));
           field('figB','标注（如 A-D:L; A-B:x，可留空）',input((f.marks||[]).map(function(m){return m.from+'-'+m.to+':'+m.label}).join('; ')));
         }else if(f.type==='flow'){
@@ -995,6 +999,8 @@ function cwPlan(box,lessonId,refresh){
     function parts(v,sep){return String(v||'').split(sep).map(function(x){return x.trim()}).filter(Boolean)}
     function figure(){
       var t=fields.figType?fields.figType.value:'';if(!t)return {};if(t==='uploaded_image')return p.figure||{};
+      if(t==='equal_base_height')return {type:t,base:Number(fields.figBase.value),height:Number(fields.figHeight.value)};
+      if(t==='parallelogram_thirds')return {type:t,parts:3,totalArea:Number(fields.figTotalArea.value)};
       if(t==='parallelogram_methods')return {type:t};
       if(t==='calendar_compare')return {type:t};
       if(t==='calendar_cross')return {type:t,center:Number(fields.figCenter.value),daysInMonth:Number(fields.figDays.value),firstWeekday:Number(fields.figWeekday.value),total:Number(fields.figTotal.value)};
