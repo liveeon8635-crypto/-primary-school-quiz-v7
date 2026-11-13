@@ -138,7 +138,7 @@
   var q14=/第\s*14\s*题/.test(source)&&source.indexOf('200 m')>=0&&source.indexOf('40000')>=0;
   if(!q5&&!q6&&!q8&&!q10&&!q14&&!q15&&!q16&&!q17&&!q18&&!q19&&!q20&&!q21&&!q22&&!q23)return false;
   var wrap=el('div',{style:'max-width:900px;margin:10px auto;padding:10px;background:#fff;border:1px solid #d0d5dd;border-radius:10px'});
-  var svg=cwNode('svg',{viewBox:q10?'0 0 700 360':q19?'0 0 900 370':q22?'0 0 1400 380':q23?'0 0 1000 390':q21?'0 0 1000 390':q20?'0 0 1000 390':q18?'0 0 1000 360':q6?'0 0 860 350':(q15?'0 0 940 340':(q16?'0 0 1040 350':(q17?'0 0 1000 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q10?'底边三等分且中间部分高不变的平行四边形':q19?'钝角三角形，7厘米底边、15厘米腰及延长线上的7.5厘米高':q22?'三角形剪切、移动拼成长方形及任意三角形倍拼验证':q23?'原三角形与等面积长方形的割补前后对照':q21?'底边三等分且阴影三角形占一份的平行四边形':q20?'标出缺口的45度直角三角形玻璃残片及面积计算过程':q18?'半厘米方格三角形与标出直角的三角形':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':q16?'等底等高面积关系与等底等面积高的关系':q17?'方格中的平行四边形和两个等面积三角形作图区':'两组对应底和高'});
+  var svg=cwNode('svg',{viewBox:q10?'0 0 700 360':q19?'0 0 900 370':q22?'0 0 1400 380':q23?'0 0 1000 390':q21?'0 0 1000 390':q20?'0 0 1000 390':q18?'0 0 1000 360':q6?'0 0 860 350':(q15?'0 0 940 340':(q16?'0 0 1040 350':(q17?'0 0 1000 350':(q5?'0 0 560 360':(q14?'0 0 560 350':'0 0 560 310'))))),width:'100%',style:'display:block;max-height:'+(big?'44vh':'360px'),role:'img','aria-label':q10?'底边三等分且中间部分高不变的平行四边形':q19?'钝角三角形，7厘米底边、15厘米边长及延长线上的7.5厘米高':q22?'三角形剪切、移动拼成长方形及任意三角形倍拼验证':q23?'原三角形与等面积长方形的割补前后对照':q21?'底边三等分且阴影三角形占一份的平行四边形':q20?'标出缺口的45度直角三角形玻璃残片及面积计算过程':q18?'半厘米方格三角形与标出直角的三角形':q5?'方格中的平行四边形，边长0.5厘米':q8?'单位方格中的平行四边形':q14?'底200米、面积至少3公顷的平行四边形':q15?'两张全等三角形旋转平移拼成平行四边形':q16?'等底等高面积关系与等底等面积高的关系':q17?'方格中的平行四边形和两个等面积三角形作图区':'两组对应底和高'});
   function line(x1,y1,x2,y2,color,w,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color||'#c7d7e5','stroke-width':w||1,'stroke-dasharray':dash||''}))}
   function text(x,y,t,color,size,anchor){svg.appendChild(cwNode('text',{x:x,y:y,fill:color||'#344054','font-size':size||17,'font-weight':700,'text-anchor':anchor||'middle'},t))}
   function finish(){wrap.appendChild(svg);box.appendChild(wrap);return true;}
@@ -160,6 +160,7 @@
     var show19=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
     var drawHeight19=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=2)));
     text(430,24,'钝角三角形：垂足在底边延长线上','#344054',16);
+    text(46,318,'底边延长线','#667085',13,'start');
     var A19=[550,330],B19=[830,330],C19=[30,30],F19=[30,330];
     svg.appendChild(cwNode('polygon',{points:A19.join(',')+' '+B19.join(',')+' '+C19.join(','),fill:'#60a5fa','fill-opacity':.2,stroke:'#225e7a','stroke-width':3}));
     if(drawHeight19){
@@ -169,8 +170,8 @@
       text(42,205,'高 7.5 cm','#b42318',15,'start');
     }
     text(690,354,'底 7 cm','#1d4ed8',16);
-    text(290,175,'另一腰 15 cm','#344054',16);
-    text(440,362,show19?'面积=7×7.5÷2=26.25 cm²':drawHeight19?'垂足落在延长线上；高=7.5 cm':'先识别7 cm底边与15 cm腰','#344054',15);
+    text(230,145,'边 AC=15 cm','#344054',16);
+    text(440,362,show19?'面积=7×7.5÷2=26.25 cm²':drawHeight19?'垂足落在延长线上；高=7.5 cm':'先识别7 cm底边与15 cm边','#344054',15);
   }else if(q5){
     var revealGrid=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
     var g5=panel(45,35,40,10,6,8,5,'每小格0.5 cm',revealGrid);
@@ -191,94 +192,142 @@
     text(250,292,'底边 1份','#1d4ed8',14);text(350,292,'中间1份','#b45309',14);text(450,292,'底边 1份','#1d4ed8',14);
     if(reveal)text(350,330,'中间涂色面积=36÷3=12 cm²','#344054',16);
   }else if(q22){
-    var reveal=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
-    var step22=view.previewMode?Math.max(1,Number(view.step)||1):Number.MAX_VALUE;
-    function tri22(points,fill,stroke){svg.appendChild(cwNode('polygon',{points:points,fill:fill,'fill-opacity':.55,stroke:stroke||'#225e7a','stroke-width':3}))}
-    function arrow22(x1,x2,y){line(x1,y,x2,y,'#667085',3);svg.appendChild(cwNode('polygon',{points:(x2-12)+','+(y-8)+' '+x2+','+y+' '+(x2-12)+','+(y+8),fill:'#667085'}))}
-    text(160,28,'① 原三角形：沿两腰中点连线剪开','#344054',15);
-    tri22('40,250 280,250 160,70','#60a5fa');
-    line(100,160,220,160,'#b42318',3,'7 5');
-    line(160,70,160,250,'#1d4ed8',2,'6 4');
-    text(160,282,'底 a','#1d4ed8',14);text(169,120,'高 h','#1d4ed8',14,'start');
-    text(160,184,'中点连线','#b42318',13);
-    arrow22(300,350,170);
-    if(step22<2){text(160,315,'第1步：先观察原三角形、底a和高h','#475467',13);return finish();}
-    text(505,28,'② 上部三角形沿高再剪成两块','#344054',15);
-    tri22('365,250 525,250 485,160 405,160','#60a5fa');
-    text(445,275,'下方梯形','#475467',13);
-    tri22('540,160 585,160 585,100','#a78bfa');
-    tri22('610,160 655,160 610,100','#a78bfa');
-    text(598,190,'剪下的两块','#475467',13);
-    arrow22(665,710,170);
-    if(step22<3){text(505,315,'第2步：沿中点连线剪开，再分割上部三角形','#475467',13);return finish();}
-    text(860,28,'③ 旋转180°补在两侧，拼成长方形','#344054',15);
-    svg.appendChild(cwNode('rect',{x:725,y:145,width:300,height:105,fill:'#fff','fill-opacity':0,stroke:'#1d4ed8','stroke-width':3}));
-    // The lower trapezoid and the two rotated top pieces tile the rectangle.
-    tri22('725,250 1025,250 950,145 800,145','#60a5fa');
-    tri22('725,145 800,145 725,250','#a78bfa');
-    tri22('1025,145 950,145 1025,250','#a78bfa');
-    line(725,145,1025,145,'#1d4ed8',3);line(725,250,1025,250,'#1d4ed8',3);
-    line(725,145,725,250,'#b42318',2,'6 4');
-    text(875,280,'长 a','#1d4ed8',14);
-    text(734,205,'宽 h÷2','#b42318',13,'start');
-    arrow22(1035,1080,170);
-    if(step22<4){text(860,315,'第3步：把剪下的部分旋转补到两侧','#475467',13);return finish();}
-    text(1230,28,'④ 任意三角形：两张全等拼平行四边形','#344054',15);
-    tri22('1080,250 1220,250 1320,150','#60a5fa');
-    tri22('1080,250 1320,150 1180,150','#a78bfa');
-    line(1080,250,1320,150,'#fff',2,'6 4');
-    line(1080,250,1220,250,'#1d4ed8',2);
-    line(1180,150,1180,250,'#b42318',2,'6 4');
-    text(1150,280,'底 a','#1d4ed8',13);text(1188,205,'高 h','#b42318',13,'start');
-    text(1220,315,'两倍面积；单个三角形为一半','#475467',13);
-    if(reveal)text(700,335,'长方形面积 a×(h÷2)=ah÷2；任意三角形均可用两全等副本验证','#344054',15);
-  }else if(q23){
-    var showSolutions=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
-    var step23=view.previewMode?Math.max(1,Number(view.step)||1):Number.MAX_VALUE;
-    text(250,28,'割补前：原三角形','#344054',17);
-    var A=[70,265],B=[370,265],C=[150,65];
-    svg.appendChild(cwNode('polygon',{points:A.join(',')+' '+B.join(',')+' '+C.join(','),fill:'#60a5fa','fill-opacity':.22,stroke:'#225e7a','stroke-width':3}));
-    line(C[0],C[1],C[0],A[1],'#b42318',2,'6 4');
-    line(C[0],A[1]-14,C[0]+14,A[1]-14,'#b42318',2);line(C[0]+14,A[1]-14,C[0]+14,A[1],'#b42318',2);
-    text(220,294,'底 a=8 cm','#1d4ed8',16);
-    text(C[0]+10,170,showSolutions?'高 h=10 cm':'高 h=?','#b42318',16,'start');
-    if(step23<2){text(250,330,'第1步：指出原三角形的底边与对应高','#475467',14);return finish();}
-    text(515,120,'割补','#344054',16);
-    line(430,165,590,165,'#667085',3);
-    svg.appendChild(cwNode('polygon',{points:'590,165 574,156 574,174',fill:'#667085'}));
-    text(510,205,'面积不变','#475467',14);
-    text(790,28,'割补后：等面积长方形','#344054',17);
-    svg.appendChild(cwNode('rect',{x:650,y:90,width:280,height:175,fill:'#a78bfa','fill-opacity':.2,stroke:'#6941c6','stroke-width':3}));
-    text(790,78,'长=原三角形底=8 cm','#1d4ed8',15);
-    text(790,290,step23>=3?'宽=原三角形高的一半=5 cm':'宽=原三角形高的一半=？','#6941c6',15);
-    if(step23<3){text(790,325,'第2步：说明割补后长方形与原三角形的对应关系','#475467',14);return finish();}
-    if(step23<4){text(500,330,'由长方形面积反推三角形面积','#475467',15);return finish();}
-    if(step23<5){text(500,330,'用三角形面积公式求原三角形的高','#475467',15);return finish();}
-    if(showSolutions){
-      text(500,330,'面积：8×5=40 cm²；原三角形高：5×2=10 cm','#344054',16);
+    var step22=view.showAnswer?5:Math.max(1,Math.min(5,Number(view.step)||1));
+    function tri22(points,fill,stroke){svg.appendChild(cwNode('polygon',{points:points,fill:fill,'fill-opacity':.58,stroke:stroke||'#225e7a','stroke-width':3}))}
+    function arrow22(x1,y1,x2,y2,color){
+      line(x1,y1,x2,y2,color||'#667085',3);
+      svg.appendChild(cwNode('polygon',{points:(x2-12)+','+(y2-8)+' '+x2+','+y2+' '+(x2-12)+','+(y2+8),fill:color||'#667085'}));
+    }
+    if(step22===1){
+      text(700,28,'第1步：先看原三角形和底 a、对应高 h','#344054',17);
+      tri22('430,280 770,280 600,55','#60a5fa');
+      line(430,280,770,280,'#1d4ed8',3);
+      line(515,167.5,685,167.5,'#b42318',3,'7 5');
+      line(600,55,600,280,'#1d4ed8',2,'6 4');
+      text(600,307,'底 a','#1d4ed8',15);text(613,125,'高 h','#1d4ed8',15,'start');
+      text(600,350,'虚线表示沿两腰中点连线剪开','#475467',15);
+    }else if(step22===2){
+      text(700,28,'第2步：沿中点连线剪开，分成上部三角形和下方梯形','#344054',17);
+      tri22('430,280 770,280 685,167.5 515,167.5','#60a5fa');
+      tri22('515,137.5 685,137.5 600,25','#a78bfa');
+      text(600,318,'下方梯形','#475467',15);
+      text(600,145,'剪下的小三角形','#6941c6',15);
+      text(600,350,'先剪开，观察两块的位置与形状','#475467',15);
+    }else if(step22===3){
+      text(700,28,'第3步：把上部小三角形再沿高剪成两块','#344054',17);
+      tri22('430,280 770,280 685,167.5 515,167.5','#60a5fa');
+      tri22('515,137.5 600,137.5 600,25','#a78bfa');
+      tri22('600,137.5 685,137.5 600,25','#a78bfa');
+      line(600,25,600,137.5,'#b42318',2,'6 4');
+      arrow22(500,200,430,200,'#6941c6');
+      arrow22(700,200,770,200,'#6941c6');
+      text(600,318,'梯形保持不动，两块小三角形准备旋转平移','#475467',15);
+    }else if(step22===4){
+      text(700,28,'第4步：旋转、平移两块小三角形，补成长方形','#344054',17);
+      tri22('430,280 770,280 685,167.5 515,167.5','#60a5fa');
+      tri22('430,167.5 515,167.5 430,280','#a78bfa');
+      tri22('770,167.5 685,167.5 770,280','#a78bfa');
+      line(430,167.5,770,167.5,'#1d4ed8',3);line(430,280,770,280,'#1d4ed8',3);
+      line(515,167.5,430,280,'#fff',2,'6 4');line(685,167.5,770,280,'#fff',2,'6 4');
+      line(430,167.5,430,280,'#b42318',2,'6 4');
+      text(600,310,'长 a','#1d4ed8',15);text(445,205,'宽 h÷2','#b42318',14,'start');
+      text(600,350,'三块拼合，面积没有改变','#475467',15);
     }else{
-      text(500,330,'根据长方形长、宽反推三角形的底、高和面积','#475467',15);
+      text(700,28,'第5步：用两张全等三角形验证任意三角形','#344054',17);
+      tri22('470,270 730,270 830,130','#60a5fa');
+      tri22('470,270 830,130 570,130','#a78bfa');
+      line(470,270,830,130,'#fff',2,'7 5');
+      line(470,270,730,270,'#1d4ed8',3);
+      line(570,130,570,270,'#b42318',2,'6 4');
+      text(600,300,'底 a','#1d4ed8',15);text(582,205,'高 h','#b42318',14,'start');
+      text(600,335,'平行四边形面积=a×h，是两个相同三角形面积之和','#475467',14);
+      text(600,365,'所以 S△=a×h÷2','#b42318',17);
+    }
+  }else if(q23){
+    var step23=view.showAnswer?5:Math.max(1,Math.min(5,Number(view.step)||1));
+    var showSolutions=step23>=5&&(view.showAnswer||teacher);
+    function tri23(points,fill,stroke){svg.appendChild(cwNode('polygon',{points:points,fill:fill,'fill-opacity':.58,stroke:stroke||'#225e7a','stroke-width':3}))}
+    function arrow23(x1,y1,x2,y2,color){
+      line(x1,y1,x2,y2,color||'#667085',3);
+      svg.appendChild(cwNode('polygon',{points:(x2-12)+','+(y2-8)+' '+x2+','+y2+' '+(x2-12)+','+(y2+8),fill:color||'#667085'}));
+    }
+    if(step23===1){
+      text(500,28,'第1步：标出原三角形的底和对应高','#344054',17);
+      tri23('300,280 700,280 420,40','#60a5fa');
+      line(300,280,700,280,'#1d4ed8',3);
+      line(360,160,560,160,'#b42318',3,'7 5');
+      line(420,40,420,280,'#1d4ed8',2,'6 4');
+      line(420,266,434,266,'#b42318',2);line(434,266,434,280,'#b42318',2);
+      text(500,308,'底 a=8 cm','#1d4ed8',16);text(432,110,'高 h=?','#b42318',15,'start');
+      text(500,350,'红色虚线：沿两腰中点的切线','#475467',15);
+    }else if(step23===2){
+      text(500,28,'第2步：沿中点连线剪开，分离梯形与上部三角形','#344054',17);
+      tri23('300,280 700,280 560,180 360,180','#60a5fa');
+      tri23('360,130 560,130 420,10','#a78bfa');
+      text(500,310,'下方梯形','#475467',15);text(500,145,'上部小三角形','#6941c6',15);
+      text(500,350,'剪切后面积不变，保留两块的颜色标记','#475467',15);
+    }else if(step23===3){
+      text(500,28,'第3步：再沿小三角形的高剪开，旋转两块补到梯形两侧','#344054',17);
+      tri23('300,280 700,280 560,160 360,160','#60a5fa');
+      tri23('360,130 420,130 420,10','#a78bfa');
+      tri23('420,130 560,130 420,10','#c4b5fd');
+      line(420,10,420,130,'#b42318',2,'6 4');
+      arrow23(350,192,315,192,'#6941c6');
+      arrow23(650,192,685,192,'#6941c6');
+      text(500,310,'左、右两块分别旋转180°并平移','#475467',15);
+      text(500,350,'两块颜色与下一步补入的角块对应','#475467',14);
+    }else if(step23===4){
+      text(500,28,'第4步：把两块补到梯形两角，拼成 8 cm×5 cm 长方形','#344054',17);
+      tri23('300,280 700,280 560,160 360,160','#60a5fa');
+      tri23('300,160 360,160 300,280','#a78bfa');
+      tri23('700,160 560,160 700,280','#c4b5fd');
+      line(300,160,700,160,'#6941c6',3);line(300,280,700,280,'#6941c6',3);
+      line(360,160,300,280,'#fff',2,'6 4');line(560,160,700,280,'#fff',2,'6 4');
+      line(300,160,300,280,'#b42318',2,'6 4');
+      text(500,310,'长=底 a=8 cm','#1d4ed8',16);text(315,215,'宽=h÷2=5 cm','#b42318',14,'start');
+      text(500,350,'三块拼成完整长方形：没有重叠，也没有空隙','#475467',15);
+    }else{
+      text(500,28,'第5步：由等面积长方形反推三角形面积与高','#344054',17);
+      tri23('300,280 700,280 560,160 360,160','#60a5fa');
+      tri23('300,160 360,160 300,280','#a78bfa');
+      tri23('700,160 560,160 700,280','#c4b5fd');
+      line(300,160,700,160,'#6941c6',3);line(300,280,700,280,'#6941c6',3);
+      line(360,160,300,280,'#fff',2,'6 4');line(560,160,700,280,'#fff',2,'6 4');
+      line(300,160,300,280,'#b42318',2,'6 4');
+      text(500,310,'长方形面积=8×5=40 cm²，所以原三角形面积=40 cm²','#344054',15);
+      text(500,350,'5 cm是原高的一半，因此原三角形高=5×2=10 cm','#b42318',15);
     }
   }else if(q21){
-    var showSolutions=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=5)));
-    text(300,28,'底边平均分成3份；阴影三角形占1份，且与大图等高','#344054',16);
-    var A=[80,265],M=[200,265],B=[440,265],D=[152,70],C=[512,70];
+    var step21=view.showAnswer?5:Math.max(1,Math.min(5,Number(view.step)||1));
+    var showSolutions=step21>=5&&(view.showAnswer||teacher);
+    text(300,28,'平行四边形与阴影三角形','#344054',16);
+    var A=[80,265],B=[440,265],D=[152,70],C=[512,70],part=(B[0]-A[0])/3;
+    var M1=[A[0]+part,A[1]],M2=[A[0]+2*part,A[1]];
+    var topM1=[M1[0]+D[0]-A[0],D[1]],topM2=[M2[0]+D[0]-A[0],D[1]];
     svg.appendChild(cwNode('polygon',{points:A.join(',')+' '+B.join(',')+' '+C.join(',')+' '+D.join(','),fill:'#60a5fa','fill-opacity':.12,stroke:'#1d4ed8','stroke-width':3}));
-    svg.appendChild(cwNode('polygon',{points:A.join(',')+' '+M.join(',')+' '+D.join(','),fill:'#f59e0b','fill-opacity':.58,stroke:'#b45309','stroke-width':3}));
-    line(D[0],D[1],D[0],A[1],'#b42318',2,'6 4');
-    line(D[0],A[1]-15,D[0]+15,A[1]-15,'#b42318',2);line(D[0]+15,A[1]-15,D[0]+15,A[1],'#b42318',2);
+    if(step21>=3){
+      line(M1[0],M1[1],topM1[0],topM1[1],'#667085',2,'6 5');
+      line(M2[0],M2[1],topM2[0],topM2[1],'#667085',2,'6 5');
+    }
+    svg.appendChild(cwNode('polygon',{points:A.join(',')+' '+M1.join(',')+' '+D.join(','),fill:'#f59e0b','fill-opacity':.58,stroke:'#b45309','stroke-width':3}));
     line(A[0],A[1],B[0],B[1],'#1d4ed8',3);
-    [200,320].forEach(function(x){line(x,A[1]-7,x,A[1]+7,'#1d4ed8',2)});
-    text(140,292,'1份','#1d4ed8',14);text(260,292,'1份','#1d4ed8',14);text(380,292,'1份','#1d4ed8',14);
-    text(114,190,'阴影三角形','#92400e',15);
-    text(173,166,'共同的高','#b42318',14,'start');
-    text(385,58,'平行四边形','#1d4ed8',15);
-    text(300,325,'阴影三角形面积12 m² → 同底同高平行四边形24 m² → 大图72 m²','#344054',15);
+    if(step21>=2){
+      line(D[0],D[1],D[0],A[1],'#b42318',2,'6 4');
+      line(D[0],A[1]-15,D[0]+15,A[1]-15,'#b42318',2);line(D[0]+15,A[1]-15,D[0]+15,A[1],'#b42318',2);
+      text(173,166,'共同的高','#b42318',14,'start');
+    }
+    if(step21>=3){
+      [M1[0],M2[0]].forEach(function(x){line(x,A[1]-8,x,A[1]+8,'#1d4ed8',2)});
+      text(A[0]+part/2,292,'1份','#1d4ed8',14);
+      text(A[0]+part*1.5,292,'1份','#1d4ed8',14);
+      text(A[0]+part*2.5,292,'1份','#1d4ed8',14);
+      text(300,325,'三段等长；阴影三角形的底正好占第一份','#344054',15);
+    }
+    if(step21>=4)text(300,350,'12×2=24 m²（一份底对应的平行四边形）；24×3=72 m²','#344054',15);
     if(showSolutions){
-      text(790,110,'三角形底占大图底边的1/3','#344054',15);
-      text(790,150,'12×2=24 m²；24×3=72 m²','#344054',15);
-      text(790,190,'72×100=7200 m²','#344054',15);
-      text(790,230,'7200÷10000=0.72 公顷','#344054',15);
+      text(790,110,'大平行四边形面积：72 m²','#344054',15);
+      text(790,150,'100块：72×100=7200 m²','#344054',15);
+      text(790,190,'7200÷10000=0.72 公顷','#b42318',16);
     }
   }else if(q20){
     var showSolutions=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=6)));
@@ -468,7 +517,7 @@
   var wrap=el('div',{style:'max-width:980px;margin:0 auto;background:#fff;color:#111;border-radius:12px;padding:12px;line-height:1.75;'+(big?'font-size:2.8vh':'')});box.appendChild(wrap);
   wrap.appendChild(el('b',{text:p.title}));
   var sourceProblem=String(p.sourceProblem||'');
-  if(/第\s*19\s*题/.test([p.title,sourceProblem].join(' '))&&sourceProblem.indexOf('钝角三角形')>=0){sourceProblem='第19题：钝角三角形选定的底边长7 cm，另一腰长15 cm，顶点到底边所在直线的垂直距离为7.5 cm。①画出与7 cm底边对应的高并标出垂足；②求三角形面积。注意：垂足落在底边的延长线上。'}
+  if(/第\s*19\s*题/.test([p.title,sourceProblem].join(' '))&&sourceProblem.indexOf('钝角三角形')>=0){sourceProblem='第19题：钝角三角形选定的底边长7 cm，另一边长15 cm，顶点到底边所在直线的垂直距离为7.5 cm。①画出与7 cm底边对应的高并标出垂足；②求三角形面积。注意：垂足落在底边的延长线上。'}
   if(sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:sourceProblem}));
   if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
   if(!cwLesson11Parallelogram(wrap,p,view,big,teacher)&&!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
@@ -477,14 +526,16 @@
   p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?(i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:0 4px':''):'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
   wrap.appendChild(list);
   var answerVisible=!!view.showAnswer||(teacher&&!view.previewMode)||(teacher&&view.previewMode&&shown>=p.steps.length);
-  if(answerVisible)wrap.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
+  var answerText=String(p.answer||'');
+    if(/第\s*22\s*题/.test([p.title,sourceProblem].join(' '))){answerText=answerText.replace('长方形的长为a÷2，宽为h','长方形的长为a，宽为h÷2').replace('(a÷2)×h','a×(h÷2)');}
+    if(answerVisible)wrap.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+answerText}));
 }
   window.cwSteps=function(box,p,view,big,teacher){
     if(!lesson11Figure(p))return previousSteps(box,p,view,big,teacher);
     var wrap=el('div',{style:'max-width:980px;margin:0 auto;background:#fff;color:#111;border-radius:12px;padding:12px;line-height:1.75;'+(big?'font-size:2.8vh':'')});
     box.appendChild(wrap);wrap.appendChild(el('b',{text:p.title}));
     var sourceProblem=String(p.sourceProblem||'');
-  if(/第\s*19\s*题/.test([p.title,sourceProblem].join(' '))&&sourceProblem.indexOf('钝角三角形')>=0){sourceProblem='第19题：钝角三角形选定的底边长7 cm，另一腰长15 cm，顶点到底边所在直线的垂直距离为7.5 cm。①画出与7 cm底边对应的高并标出垂足；②求三角形面积。注意：垂足落在底边的延长线上。'}
+  if(/第\s*19\s*题/.test([p.title,sourceProblem].join(' '))&&sourceProblem.indexOf('钝角三角形')>=0){sourceProblem='第19题：钝角三角形选定的底边长7 cm，另一边长15 cm，顶点到底边所在直线的垂直距离为7.5 cm。①画出与7 cm底边对应的高并标出垂足；②求三角形面积。注意：垂足落在底边的延长线上。'}
   if(sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:sourceProblem}));
     cwLesson11Parallelogram(wrap,p,view,big,teacher);
     if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'查看原题图片（对照）'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'原题图片',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
