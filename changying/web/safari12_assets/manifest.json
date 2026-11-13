@@ -398,16 +398,16 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/weekend": [
-      "345cba861e3a80652165eaa783a6cddd191a25cd22e56c8c748f6b8ba1301c40"
+      "70fcd660660fbd89b5eac2065a3e0adf096c0d7c5eebae8ba20fe850af5dfb8d"
     ],
     "/v1/weekend-board": [
-      "0dae081c123f215cf3dbd2185fca86e50c48299fbe41a7588af8f3f58da896a1"
+      "ab2c3ea06a5a0a3a6acb1c30e5916d36beea7e17e9d6b0c5ce937fb86c018a16"
     ],
     "/v1/weekend-brief": [
       "e86f7c0621509469f5f6795ec3d9efcb520623ec8440adbe5b89b3ed16197ee7"
     ],
     "/v1/weekend-plan": [
-      "64f67519dcfd5419588f0a297985a39013661e898975a25d418d9f434bc0a7f9"
+      "eddb8a05099414701a260dcc755085c577b25025ab501b4c7bcd0c5a1cb02738"
     ],
     "/v1/weekend-practice": [
       "465b1ff198406938b835c64fde5e60293af6935e4ad3130bfdc0263333a59352"
@@ -701,25 +701,25 @@
       "sourceBytes": 63737,
       "compiledBytes": 67440
     },
-    "345cba861e3a80652165eaa783a6cddd191a25cd22e56c8c748f6b8ba1301c40": {
+    "70fcd660660fbd89b5eac2065a3e0adf096c0d7c5eebae8ba20fe850af5dfb8d": {
       "unchanged": true,
-      "sourceBytes": 135562,
-      "compiledBytes": 135562
+      "sourceBytes": 135778,
+      "compiledBytes": 135778
     },
-    "0dae081c123f215cf3dbd2185fca86e50c48299fbe41a7588af8f3f58da896a1": {
+    "ab2c3ea06a5a0a3a6acb1c30e5916d36beea7e17e9d6b0c5ce937fb86c018a16": {
       "unchanged": true,
-      "sourceBytes": 90605,
-      "compiledBytes": 90605
+      "sourceBytes": 90745,
+      "compiledBytes": 90745
     },
     "e86f7c0621509469f5f6795ec3d9efcb520623ec8440adbe5b89b3ed16197ee7": {
       "unchanged": true,
       "sourceBytes": 12808,
       "compiledBytes": 12808
     },
-    "64f67519dcfd5419588f0a297985a39013661e898975a25d418d9f434bc0a7f9": {
+    "eddb8a05099414701a260dcc755085c577b25025ab501b4c7bcd0c5a1cb02738": {
       "unchanged": true,
-      "sourceBytes": 147673,
-      "compiledBytes": 147673
+      "sourceBytes": 147813,
+      "compiledBytes": 147813
     },
     "465b1ff198406938b835c64fde5e60293af6935e4ad3130bfdc0263333a59352": {
       "unchanged": true,

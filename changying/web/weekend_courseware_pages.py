@@ -713,12 +713,13 @@ function cwClock(box,p,view,big){
 function cwRender(box,c,view,big,teacher,onTap){box.textContent='';view=view||{};
   if(c.kind==='rotation')cwRotation(box,c.params,view,big);else if(c.kind==='clock')cwClock(box,c.params,view,big);
   else if(c.kind==='steps')cwSteps(box,c.params,view,big,teacher);else cwReading(box,c.params,view,big,teacher,onTap)}
+var CW_PENDING=0,CW_VERSION=0;
 function cwControl(box,c,sid){
   var view=JSON.parse(JSON.stringify(c.view||{})),stage=el('div'),bar=el('div',{class:'row'}),msg=el('div',{role:'status'});
   box.textContent='';box.appendChild(el('h2',{text:'互动课件：'+c.kindLabel+'（大屏同步，约3秒）'}));box.appendChild(bar);box.appendChild(stage);box.appendChild(msg);
   var pending=Promise.resolve(),revision=0;
-  function send(){var publicState={};Object.keys(view).forEach(function(k){if(k.charAt(0)!=='_')publicState[k]=view[k]});var seq=++revision;
-    pending=pending.then(function(){return api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:publicState,stageNo:c.stageNo,page:c.page}})}).then(function(r){if(seq===revision){view=r.view;msg.textContent='';draw()}}).catch(function(e){msg.textContent=e.message});}
+  function send(){var publicState={};Object.keys(view).forEach(function(k){if(k.charAt(0)!=='_')publicState[k]=view[k]});publicState=JSON.parse(JSON.stringify(publicState));var seq=++revision;CW_PENDING++;CW_VERSION++;
+    pending=pending.then(function(){return api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:publicState,stageNo:c.stageNo,page:c.page}})}).then(function(r){if(seq===revision){view=r.view;msg.textContent='';draw()}}).catch(function(e){msg.textContent=e.message}).then(function(){CW_PENDING--});}
   function draw(){if(c.kind==='steps'&&c.params.figure&&c.params.figure.type==='calendar_compare')view._calendarOnChange=send;cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
   function button(text,fn){bar.appendChild(el('button',{text:text,style:'min-height:44px;min-width:44px',onclick:function(){fn();draw();send()}}))}
   if(c.kind==='rotation'){
