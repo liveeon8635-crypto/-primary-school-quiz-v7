@@ -199,7 +199,7 @@ const document={body:bodyElement,getElementById:id=>find(root,n=>n.attrs.id===id
 const data={
  id:1,title:'数学课',status:'running',covered:false,currentStage:3,stageName:'例题讲解',goal:'观察原题',
  remainingSeconds:60,deck:{index:0,total:2},content:['第1题：请根据图示判断图形旋转后的方向和角度'],
- courseware:{id:7,kind:'steps',params:{title:'第1题：请根据图示判断图形旋转后的方向和角度',sourceProblem:'第1题：请根据图示判断图形旋转后的方向和角度',steps:['先观察图形'],figure:{}},view:{step:1}}
+ courseware:{id:7,kind:'steps',params:{title:'第1题：请根据图示判断图形旋转后的方向和角度',sourceProblem:'第1题：请根据图示判断图形旋转后的方向和角度',question:'第1题：请根据图示判断图形旋转后的方向和角度',steps:['先观察图形'],figure:{}},view:{step:1}}
 };
 let seconds=60;
 function api(){return Promise.resolve(Object.assign({},data,{remainingSeconds:seconds--}))}
