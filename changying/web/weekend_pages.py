@@ -374,7 +374,7 @@ function board(){
   if(!SID){msg('缺少课堂编号');return}
   document.body.style.background='#0f172a';document.body.style.overflow='hidden';
   var wrap=el('div',{style:'color:#fff;padding:2vh 4vw;height:100vh;box-sizing:border-box;display:flex;flex-direction:column;gap:1vh;overflow:hidden'});root.textContent='';root.style.maxWidth='none';root.style.margin='0';root.style.padding='0';document.body.style.margin='0';root.appendChild(wrap);
-  var remain=null,lastRenderKey='',lastViewKey='',scrollBody=null;
+  var remain=null,lastRenderKey='',lastViewKey='',scrollBody=null,clockNode=null;
   function renderKey(d){
     return JSON.stringify({
       title:d.title||'',status:d.status||'',covered:!!d.covered,
@@ -388,8 +388,7 @@ function board(){
     return JSON.stringify([d.status||'',d.currentStage||0,d.deck?d.deck.index:null,title]);
   }
   function updateClock(){
-    var clock=document.getElementById('bclock');
-    if(clock&&remain!=null)clock.textContent=fmt(remain);
+    if(clockNode&&remain!=null)clockNode.textContent=fmt(remain);
   }
   function boardCoursewareContent(d){
     var lines=Array.isArray(d.content)?d.content.slice():[];
@@ -416,14 +415,14 @@ function board(){
     if(!force&&nextKey===lastRenderKey){updateClock();return}
     var keepScroll=!!scrollBody&&viewKey(d)===lastViewKey;
     var oldScroll=keepScroll?scrollBody.scrollTop:0;
-    wrap.textContent='';scrollBody=null;
+    wrap.textContent='';scrollBody=null;clockNode=null;
     wrap.appendChild(el('div',{style:'opacity:.7;font-size:2.4vh',text:d.title}));
     if(d.status==='planned'){wrap.appendChild(el('div',{style:'font-size:6vh;margin-top:20vh;text-align:center',text:'马上开始上课'}));lastRenderKey=nextKey;lastViewKey=viewKey(d);return}
     if(d.status==='finished'){wrap.appendChild(el('div',{style:'font-size:6vh;margin-top:20vh;text-align:center',text:'下课了，谢谢大家'}));lastRenderKey=nextKey;lastViewKey=viewKey(d);return}
     if(d.covered){wrap.appendChild(el('div',{style:'font-size:6vh;margin-top:20vh;text-align:center',text:'请看老师'}));lastRenderKey=nextKey;lastViewKey=viewKey(d);return}
+    clockNode=el('div',{id:'bclock',style:'font-size:6vh;font-weight:700',text:remain==null?'':fmt(remain)});
     wrap.appendChild(el('div',{style:'display:flex;justify-content:space-between;align-items:baseline'},
-      el('div',{style:'font-size:6vh;font-weight:700',text:d.currentStage+'. '+d.stageName}),
-      el('div',{id:'bclock',style:'font-size:6vh;font-weight:700',text:remain==null?'':fmt(remain)})));
+      el('div',{style:'font-size:6vh;font-weight:700',text:d.currentStage+'. '+d.stageName}),clockNode));
     wrap.appendChild(el('div',{style:'font-size:3vh;opacity:.8;margin:1vh 0 3vh',text:d.goal}));
     if(d.deck)wrap.appendChild(el('div',{style:'opacity:.6;font-size:2.4vh',text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}));
     var body=el('div',{style:'flex:1;min-height:0;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45'});wrap.appendChild(body);
