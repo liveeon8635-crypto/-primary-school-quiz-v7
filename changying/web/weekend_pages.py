@@ -548,7 +548,7 @@ def _page(title: str, js: str, with_header: bool, back: tuple[str, str] = ("/v1"
         # An ordinary external ES5 file does not change any of the precompiled
         # Safari12 inline script fingerprints. It overrides only the known-bad
         # four-method lesson 11 drawing, not generic geometry.
-        rendered = rendered.replace("</body>", '<script src="/v1/lesson11-methods-v2.js?v=20261113-lesson11-diagrams"></script></body>')
+        rendered = rendered.replace("</body>", '<script src="/v1/lesson11-methods-v2.js?v=20261113-lesson11-diagrams-r2-r2"></script></body>')
     return rendered
 
 

@@ -607,6 +607,15 @@ def requires_original_geometry_image(page_text: Any) -> bool:
     text = str(page_text or "")
     if required_visual_type(text) == "parallelogram_methods":
         return False  # teacher must still verify all four panels and supply a real answer
+    # These lesson-11 constructions have complete deterministic diagrams drawn
+    # from their printed data; requiring an attached scan incorrectly blocks approval.
+    if (re.search(r"第\s*17\s*题", text) and "等面积三角形" in text and "底6格" in text):
+        return False
+    if (re.search(r"第\s*18\s*题", text) and "直角三角形" in text and
+            ("每格0.5" in text or "12.5" in text)):
+        return False
+    if (re.search(r"第\s*19\s*题", text) and "钝角三角形" in text and "7.5" in text):
+        return False
     return (
         any(term in text for term in ("平行四边形", "三角形", "梯形", "多边形"))
         and any(term in text for term in ("图上", "下图", "右图", "下面各个", "画高", "量出", "测量", "涂色", "①②③", "三个图形", "相邻点"))
