@@ -9,8 +9,8 @@ from changying.web.weekend_pages import plan_page_html, control_page_html, board
 
 def test_geometry_v2_on_all_three_views_without_changing_inline_scripts():
     for page in (plan_page_html(), control_page_html(), board_page_html()):
-        assert '<script src="/v1/lesson11-methods-v2.js?v=20261113-lesson11-diagrams-r2"></script>' in page
-        assert page.count('<script src="/v1/lesson11-methods-v2.js?v=20261113-lesson11-diagrams-r2"></script>') == 1
+        assert '<script src="/v1/lesson11-methods-v2.js?v=20261113-lesson11-diagrams-r2-r2"></script>' in page
+        assert page.count('<script src="/v1/lesson11-methods-v2.js?v=20261113-lesson11-diagrams-r2-r2"></script>') == 1
     code = (Path(__file__).parents[1] / "changying/web/lesson11_methods_v2.js").read_text()
     assert 'window.cwParallelogramMethods=' in code
     assert "view.showAnswer" in code
