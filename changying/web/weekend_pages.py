@@ -913,7 +913,13 @@ function plan(){
           if(a.sourcePos!==null&&b.sourcePos!==null&&a.sourcePos!==b.sourcePos)return a.sourcePos-b.sourcePos;
           return a.seq-b.seq;
         });
+        var dups=cards.filter(function(item){return item.duplicateOf});
         reviewList.textContent='';
+        // 已有课件里如果例题和随堂练习是同一道题，这里先汇总成一条，老师不用逐条翻。
+        if(dups.length){
+          reviewList.appendChild(el('div',{class:'notice error','data-review-duplicates':String(dups.length),
+            text:'本课有 '+dups.length+' 道随堂练习与例题或已通过的习题重复，不能当新题用：请在下面标红“⚠ 与…重复”的题上换一道同考点新题后再点通过。'}));
+        }
         var totals={},groups={};
         cards.forEach(function(item){if(item.order!==null)totals[item.order]=(totals[item.order]||0)+1});
         cards.forEach(function(item){
@@ -956,7 +962,7 @@ function plan(){
             var order=meta.order,choiceCard=el('div',{class:'card','data-review-number':order===null?'':String(order)});
             choiceCard.appendChild(el('div',{class:'row'},el('b',{text:reviewLabel(meta,q.stem)})));
             choiceCard.appendChild(row);choiceCard.appendChild(act);choiceCard.appendChild(feedback);
-            choiceCards.push({node:choiceCard,order:order,part:meta.part,sourcePos:meta.sourcePos,seq:i});
+            choiceCards.push({node:choiceCard,order:order,part:meta.part,sourcePos:meta.sourcePos,seq:i,duplicateOf:q.duplicateOf||''});
           });
           renderReview();
         }).catch(function(e){qbox.appendChild(el('div',{class:'notice error',text:e.message}));renderReview()});
@@ -1000,7 +1006,7 @@ function plan(){
             }});actions.appendChild(b)})}
             card.appendChild(markBox(r.lessonId,{templateId:q.id,knowledge:q.knowledge,afterClass:q.afterClass,suggestedKnowledge:q.suggestedKnowledge},d.goals));
             card.appendChild(actions);card.appendChild(feedback);
-            writtenCards.push({node:card,order:order,part:meta.part,sourcePos:meta.sourcePos,seq:10000+i});
+            writtenCards.push({node:card,order:order,part:meta.part,sourcePos:meta.sourcePos,seq:10000+i,duplicateOf:q.duplicateOf||''});
           });
           renderReview();
         }).catch(function(e){wbox.appendChild(el('div',{class:'notice error',text:e.message}));renderReview()});

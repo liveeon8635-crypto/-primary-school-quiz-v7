@@ -126,3 +126,13 @@ print("OK")
 
 def test_decide_questions_blocks_example_and_practice_duplicates(tmp_path):
     helpers.run_isolated(tmp_path, helpers.COMMON + FLOW, {})
+
+
+def test_review_panel_summarises_existing_duplicate_questions():
+    """审核页顶部要把“例题和练习重复”汇总成一条，老师不用逐条翻才看得到。"""
+    src = (ROOT / "changying" / "web" / "weekend_pages.py").read_text(encoding="utf-8")
+    assert "data-review-duplicates" in src
+    assert "与例题或已通过的习题重复" in src
+    assert "duplicateOf:q.duplicateOf||''" in src
+    head = src.split("var dups=cards.filter")[1][:200]
+    assert "=>" not in head and "const " not in head and "let " not in head

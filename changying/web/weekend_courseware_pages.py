@@ -744,6 +744,7 @@ function cwSteps(box,p,view,big,teacher){
     wrap.appendChild(el('div',{style:'margin:10px 0 0;padding:10px 12px;border-radius:10px;background:#fff7ed;border:1px solid #f59e0b;color:#92400e;font-weight:700',text:'本题需要老师确认配图'}));
     wrap.appendChild(el('div',{style:'margin:6px 0 10px;padding:12px;border-radius:10px;background:#fef3c7;border:1px solid #f59e0b;color:#78350f',text:p.figureNotice||'图示待确认：题干与图示不一致，请老师核对'}));
   }else if(!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
+  if(p.figureNotice&&!p.figureUnverified)wrap.appendChild(el('div',{class:'muted',style:'margin-top:6px',text:p.figureNotice}));
   if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
   // 预览和课堂用同一套展开规则：新题从 0 步开始，点一下“下一步”只多展开 1 步。
   var shown=teacher?(view.previewMode?(view.step||0):steps.length):(view.step||0);
