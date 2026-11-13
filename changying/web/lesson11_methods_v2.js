@@ -335,53 +335,65 @@
       text(500,225,'请在A、B网格中分别作图并标出底和高','#475467',15);
     }
   }else if(q16){
+    var relationStep=Math.max(1,Math.min(5,Number(view.step)||1));
     text(245,28,'（1）平行四边形与三角形：同底、等高','#344054',16);
     svg.appendChild(cwNode('polygon',{points:'65,220 125,95 405,95 345,220',fill:'#60a5fa','fill-opacity':.3,stroke:'#225e7a','stroke-width':3}));
     line(65,220,345,220,'#1d4ed8',3);
-    line(125,95,125,220,'#b42318',2,'6 4');
-    line(125,206,139,206,'#b42318',2);line(139,206,139,220,'#b42318',2);
-    text(205,243,'平行四边形底','#1d4ed8',14);
-    text(133,158,'共同的高','#b42318',13,'start');
-    svg.appendChild(cwNode('polygon',{points:'65,220 345,220 185,95',fill:'#a78bfa','fill-opacity':.5,stroke:'#6941c6','stroke-width':3}));
-    line(65,220,345,220,'#1d4ed8',3);
-    line(185,95,185,220,'#b42318',2,'6 4');
-    line(185,206,199,206,'#b42318',2);line(199,206,199,220,'#b42318',2);
-    text(230,278,'三角形面积=15 m²；平行四边形面积=30 m²','#344054',14);
-    line(520,35,520,325,'#d0d5dd',1);
-    text(780,28,'（2）等底、等面积','#344054',17);
-    svg.appendChild(cwNode('polygon',{points:'560,230 720,230 560,100',fill:'#60a5fa','fill-opacity':.55,stroke:'#225e7a','stroke-width':3}));
-    line(560,100,560,230,'#b42318',2,'6 4');
-    line(560,216,574,216,'#b42318',2);line(574,216,574,230,'#b42318',2);
-    text(640,258,'底 a','#1d4ed8',15);text(568,165,'高 h','#b42318',14,'start');
-    svg.appendChild(cwNode('polygon',{points:'785,230 945,230 975,165 815,165',fill:'#a78bfa','fill-opacity':.55,stroke:'#225e7a','stroke-width':3}));
-    line(815,165,815,230,'#b42318',2,'6 4');
-    line(815,216,829,216,'#b42318',2);line(829,216,829,230,'#b42318',2);
-    text(865,258,'底 a','#1d4ed8',15);text(823,205,'高 h/2','#b42318',14,'start');
-    text(780,300,'a×h÷2=a×H，所以 H=h/2','#344054',16);
+    if(relationStep>=2){
+      svg.appendChild(cwNode('polygon',{points:'65,220 345,220 185,95',fill:'#a78bfa','fill-opacity':.5,stroke:'#6941c6','stroke-width':3}));
+      line(125,95,125,220,'#b42318',2,'6 4');
+      line(125,206,139,206,'#b42318',2);line(139,206,139,220,'#b42318',2);
+      line(185,95,185,220,'#b42318',2,'6 4');
+      line(185,206,199,206,'#b42318',2);line(199,206,199,220,'#b42318',2);
+      text(205,243,'相同的底','#1d4ed8',14);
+      text(133,158,'共同的高','#b42318',13,'start');
+    }
+    if(relationStep>=3)text(230,278,'三角形面积=15 m²；平行四边形面积=30 m²','#344054',14);
+    if(relationStep>=4){
+      line(520,35,520,325,'#d0d5dd',1);
+      text(780,28,'（2）等底、等面积','#344054',17);
+      svg.appendChild(cwNode('polygon',{points:'560,230 720,230 560,100',fill:'#60a5fa','fill-opacity':.55,stroke:'#225e7a','stroke-width':3}));
+      line(560,100,560,230,'#b42318',2,'6 4');
+      line(560,216,574,216,'#b42318',2);line(574,216,574,230,'#b42318',2);
+      text(640,258,'底 a','#1d4ed8',15);text(568,165,'高 h','#b42318',14,'start');
+      svg.appendChild(cwNode('polygon',{points:'785,230 945,230 975,165 815,165',fill:'#a78bfa','fill-opacity':.55,stroke:'#225e7a','stroke-width':3}));
+      line(815,165,815,230,'#b42318',2,'6 4');
+      line(815,216,829,216,'#b42318',2);line(829,216,829,230,'#b42318',2);
+      text(865,258,'底 a','#1d4ed8',15);
+      text(823,205,relationStep>=5?'高 h/2':'高 H','#b42318',14,'start');
+    }
+    if(relationStep>=5)text(780,300,'a×h÷2=a×H，所以 H=h/2','#344054',16);
   }else if(q15){
+    var doublingStep=Math.max(1,Math.min(5,Number(view.step)||1));
     function tri(points,fill){svg.appendChild(cwNode('polygon',{points:points,fill:fill,'fill-opacity':.7,stroke:'#225e7a','stroke-width':3}))}
     function arrow(x1,y1,x2,y2){line(x1,y1,x2,y2,'#667085',3);svg.appendChild(cwNode('polygon',{points:(x2-12)+','+(y2-8)+' '+x2+','+y2+' '+(x2-12)+','+(y2+8),fill:'#667085'}))}
     text(135,28,'① 两张完全相同的三角形纸片','#344054',16);
     tri('45,215 120,75 195,215','#60a5fa');
     tri('205,215 280,75 355,215','#a78bfa');
     text(200,250,'全等三角形','#475467',15);
-    arrow(365,150,430,150);
-    text(500,28,'② 旋转或平移其中一块','#344054',16);
-    tri('435,215 500,75 575,215','#60a5fa');
-    tri('545,75 620,215 695,75','#a78bfa');
-    arrow(700,150,735,150);
-    text(815,28,'③ 拼成平行四边形','#344054',16);
-    var A=[735,220],B=[865,220],C=[900,120],D=[770,120];
-    tri(A.join(',')+' '+B.join(',')+' '+C.join(','),'#60a5fa');
-    tri(A.join(',')+' '+C.join(',')+' '+D.join(','),'#a78bfa');
-    line(A[0],A[1],C[0],C[1],'#fff',2,'6 4');
-    line(A[0],A[1]+14,B[0],B[1]+14,'#1d4ed8',2);
-    text(800,255,'底 a','#1d4ed8',15);
-    line(D[0],D[1],D[0],A[1],'#b42318',2,'6 4');
-    line(D[0],A[1]-14,D[0]+14,A[1]-14,'#b42318',2);
-    line(D[0]+14,A[1]-14,D[0]+14,A[1],'#b42318',2);
-    text(D[0]+9,175,'高 h','#b42318',15,'start');
-    text(800,300,'S平行四边形=a×h=2×S三角形','#344054',15);
+    if(doublingStep>=2){
+      arrow(365,150,430,150);
+      text(500,28,'② 旋转或平移其中一块','#344054',16);
+      tri('435,215 500,75 575,215','#60a5fa');
+      tri('545,75 620,215 695,75','#a78bfa');
+    }
+    if(doublingStep>=3){
+      arrow(700,150,735,150);
+      text(815,28,'③ 拼成平行四边形','#344054',16);
+      var A=[735,220],B=[865,220],C=[900,120],D=[770,120];
+      tri(A.join(',')+' '+B.join(',')+' '+C.join(','),'#60a5fa');
+      tri(A.join(',')+' '+C.join(',')+' '+D.join(','),'#a78bfa');
+      line(A[0],A[1],C[0],C[1],'#fff',2,'6 4');
+      if(doublingStep>=4){
+        line(A[0],A[1]+14,B[0],B[1]+14,'#1d4ed8',2);
+        text(800,255,'底 a','#1d4ed8',15);
+        line(D[0],D[1],D[0],A[1],'#b42318',2,'6 4');
+        line(D[0],A[1]-14,D[0]+14,A[1]-14,'#b42318',2);
+        line(D[0]+14,A[1]-14,D[0]+14,A[1],'#b42318',2);
+        text(D[0]+9,175,'高 h','#b42318',15,'start');
+      }
+      if(doublingStep>=5)text(800,300,'S平行四边形=a×h=2×S三角形','#344054',15);
+    }
   }else if(q14){
     var reveal14=!!(view.showAnswer||(teacher&&(!view.previewMode||Number(view.step)>=6)));
     text(280,30,reveal14?'第（3）问：面积至少3公顷，对应高至少150 m':'第（3）问：底200 m，求对应高','#344054',17);
@@ -444,10 +456,10 @@
     if(p.sourceProblem)wrap.appendChild(el('p',{style:'white-space:pre-wrap',text:p.sourceProblem}));
     cwLesson11Parallelogram(wrap,p,view,big,teacher);
     if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'查看原题图片（对照）'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'原题图片',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
-    var shown=teacher?(view.previewMode?Math.max(1,view.step||0):p.steps.length):(view.step||0),list=el('ol',{style:'padding-left:1.6em;margin:12px 0'});
+    var shown=teacher?Math.max(1,Math.min(p.steps.length,Number(view.step)||1)):(view.step||0),list=el('ol',{style:'padding-left:1.6em;margin:12px 0'});
     p.steps.forEach(function(s,i){list.appendChild(el('li',{style:i<shown?(i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:0 4px':''):'color:#98a2b3',text:i<shown?s:'（第 '+(i+1)+' 步，点“下一步”显示）'}))});
     wrap.appendChild(list);
-    if(view.showAnswer||teacher)wrap.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
+    if(view.showAnswer||(teacher&&shown>=p.steps.length))wrap.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
   };
 }());
 
