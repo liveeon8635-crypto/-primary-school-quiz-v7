@@ -213,7 +213,7 @@ function cwRender(box){coursewareCalls.push(1);box.appendChild(el('div',{text:'ä
 const source=__BOARD_JS__;
 const makeBoard=new Function('URLSearchParams','location','document','window','el','root','api','setInterval','requestAnimationFrame','boot','fmt','boardLayout','cwRender','msg',source+';return board;');
 makeBoard(URLSearchParams,{search:'?s=1'},document,window,el,root,api,setInterval,requestAnimationFrame,boot,fmt,boardLayout,cwRender,msg);
-function scrollBody(){return find(root,n=>n.attrs.style&&String(n.attrs.style).indexOf('overflow:auto')>=0)}
+function scrollBody(){return find(root,n=>n.style&&n.style.overflow==='auto')}
 async function flush(){await new Promise(resolve=>setImmediate(resolve))}
 (async()=>{
  await flush();
