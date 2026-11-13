@@ -240,6 +240,10 @@ async function flush(){await new Promise(resolve=>setImmediate(resolve))}
  await flush();
  assert.equal(scrollBody().scrollTop,0,'moving to another slide must start at the top');
  assert.deepEqual(layoutCalls[layoutCalls.length-1],['第2题：请根据新页面图示判断图形变化']);
+ data.deck={index:2,total:3};data.courseware.params.title='为什么？';data.courseware.params.question='为什么？';data.content=['为什么？'];
+ intervals.find(x=>x.ms===3000).fn();
+ await flush();
+ assert.equal(layoutCalls.length,1,'an exact short question line must also be deduplicated');
  assert(coursewareCalls.length>=3);
  console.log('OK');
 })().catch(error=>{console.error(error);process.exitCode=1});
