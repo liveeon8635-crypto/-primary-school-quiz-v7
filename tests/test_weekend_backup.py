@@ -291,3 +291,90 @@ def test_printed_options_carry_one_letter_each():
         xml = _zip.ZipFile(_io.BytesIO(question_document(material, audience))).read("word/document.xml").decode()
         assert "A. 8ab" in xml and "B. ab8" in xml and "A．" not in xml and "B．" not in xml, audience
     assert "答案：A. 8ab" in _zip.ZipFile(_io.BytesIO(question_document(material, "teacher"))).read("word/document.xml").decode()
+
+
+def test_word_handouts_embed_original_question_images_and_keep_student_answers_isolated(tmp_path):
+    helpers.run_isolated(tmp_path, COMMON+r'''
+import base64, json, re, shutil, subprocess, tempfile
+from xml.etree import ElementTree as ET
+
+JPEG_CHOICE = base64.b64decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAFA3PEY8MlBGQUZaVVBfeMiCeG5uePWvuZHI////////////////////////////////////////////////////2wBDAVVaWnhpeOuCguv/////////////////////////////////////////////////////////////////////////wAARCACgAUADASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAP/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFgEBAQEAAAAAAAAAAAAAAAAAAAME/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AkAm2AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP/2Q==')
+JPEG_WRITTEN = JPEG_CHOICE[:-2] + b'\xff\xfe\x00\x05ALT' + JPEG_CHOICE[-2:]
+URL_CHOICE = 'data:image/jpeg;base64,' + base64.b64encode(JPEG_CHOICE).decode()
+URL_WRITTEN = 'data:image/jpeg;base64,' + base64.b64encode(JPEG_WRITTEN).decode()
+REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+
+with TestClient(app) as client:
+    th,sh,student,school,lid,qid,wid,sid,base,body=prepare(client)
+    with legacy.SessionLocal() as db:
+        choice=db.get(legacy.TeachingQuestion,qid)
+        choice.figure_json=json.dumps({'type':'uploaded_image','data_url':URL_CHOICE,'alt':'选择题原图'})
+        wt=register_written_tables(legacy)['questions']
+        # The active classroom copy is text-only; the original preparation TeachingQuestion still owns the image.
+        db.execute(update(wt).where(wt.c.id==wid).values(stem='第2题 原图匹配\n\n解释旋转中心'))
+        source=legacy.TeachingQuestion(school_id=school,program_id=choice.program_id,lesson_id=lid,subject='数学',
+            stage='lesson',level='B',knowledge='旋转中心',stem='第2题 备课原题图片',
+            options_json='["甲","乙"]',correct_index=0,explanation='',active=False)
+        source.figure_json=json.dumps({'type':'uploaded_image','data_url':URL_WRITTEN,'alt':'备课原图','question_no':2})
+        db.add(source)
+        db.commit()
+
+    def inspect_docx(raw, role):
+        package=zipfile.ZipFile(io.BytesIO(raw))
+        names=set(package.namelist())
+        assert {'word/media/image1.jpg','word/media/image2.jpg'} <= names
+        assert package.read('word/media/image1.jpg')==JPEG_CHOICE
+        assert package.read('word/media/image2.jpg')==JPEG_WRITTEN
+        xml=ET.fromstring(package.read('word/document.xml'))
+        blips=xml.findall('.//{%s}blip'%A_NS)
+        assert len(blips)==2
+        rels=ET.fromstring(package.read('word/_rels/document.xml.rels'))
+        relations={r.get('Id'):r.get('Target') for r in rels}
+        targets=[relations[b.get('{%s}embed'%REL_NS)] for b in blips]
+        assert targets==['media/image1.jpg','media/image2.jpg']
+        content_types=package.read('[Content_Types].xml').decode()
+        assert 'image/jpeg' in content_types
+        assert 'TargetMode="External"' not in package.read('word/_rels/document.xml.rels').decode()
+        text=''.join(ET.fromstring(package.read('word/document.xml')).itertext())
+        assert '选择正确的旋转方向' in text and '第2题 原图匹配' in text
+        if role=='teacher':
+            assert 'SECRET_CHOICE' in text and 'SECRET_WRITTEN' in text
+        else:
+            assert 'SECRET_CHOICE' not in text and 'SECRET_WRITTEN' not in text
+        return names
+
+    documents={}
+    for role in ('teacher','student'):
+        response=client.get(base+'/backup.docx?audience='+role,headers=th)
+        assert response.status_code==200,response.text
+        inspect_docx(response.content,role)
+        documents[role]=response.content
+
+    # If LibreOffice is available, render the actual generated handouts to PDF and
+    # verify that both embedded pictures survive conversion without network access.
+    converter=shutil.which('libreoffice') or shutil.which('soffice')
+    if converter:
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);out=root/'pdf';out.mkdir()
+            for role,raw in documents.items():
+                source=root/(role+'.docx');source.write_bytes(raw)
+                profile=root/(role+'-profile')
+                result=subprocess.run([converter,'-env:UserInstallation='+profile.as_uri(),'--headless',
+                    '--convert-to','pdf','--outdir',str(out),str(source)],capture_output=True,text=True,timeout=60)
+                assert result.returncode==0,result.stdout+result.stderr
+                pdf=out/(role+'.pdf')
+                assert pdf.exists() and pdf.stat().st_size>1000,role
+                pdfimages=shutil.which('pdfimages')
+                if pdfimages:
+                    listing=subprocess.run([pdfimages,'-list',str(pdf)],capture_output=True,text=True,timeout=30)
+                    image_rows=[line for line in listing.stdout.splitlines() if re.match(r'^\s*\d+\s+\d+\s+image\b',line)]
+                    assert listing.returncode==0 and len(image_rows)>=2,(role,listing.stdout,listing.stderr)
+
+    zipped=client.get(base+'/backup.zip',headers=th)
+    assert zipped.status_code==200,zipped.text
+    outer=zipfile.ZipFile(io.BytesIO(zipped.content))
+    for role,filename in (('teacher','教师版.docx'),('student','学生版.docx')):
+        inspect_docx(outer.read(filename),role)
+    print('OK')
+''')
