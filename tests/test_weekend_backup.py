@@ -298,12 +298,11 @@ def test_word_handouts_embed_original_question_images_and_keep_student_answers_i
 import base64, json
 from xml.etree import ElementTree as ET
 
-JPEG_CHOICE = base64.b64decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAFA3PEY8MlBGQUZaVVBfeMiCeG5uePWvuZHI////////////////////////////////////////////////////2wBDAVVaWnhpeOuCguv/////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAT/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ALQAf//Z')
-JPEG_WRITTEN = base64.b64decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAFA3PEY8MlBGQUZaVVBfeMiCeG5uePWvuZHI////////////////////////////////////////////////////2wBDAVVaWnhpeOuCguv/////////////////////////////////////////////////////////////////////////wAARCAACAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAT/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAgT/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCUBYL/2Q==')
+JPEG_CHOICE = b'\xff\xd8\xff\xe0' + b'\x00' * 32 + b'\xff\xd9'
+JPEG_WRITTEN = b'\xff\xd8\xff\xe0' + b'\x01' * 32 + b'\xff\xd9'
 URL_CHOICE = 'data:image/jpeg;base64,' + base64.b64encode(JPEG_CHOICE).decode()
 URL_WRITTEN = 'data:image/jpeg;base64,' + base64.b64encode(JPEG_WRITTEN).decode()
 REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
-W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 
 with TestClient(app) as client:
