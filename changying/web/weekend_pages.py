@@ -395,7 +395,7 @@ function board(){
     var lines=Array.isArray(d.content)?d.content.slice():[];
     var params=d.courseware&&d.courseware.params||{};
     var keys=[params.sourceProblem,params.question,params.title].map(function(x){return String(x||'').replace(/\s+/g,'')})
-      .filter(function(x){return x.length>=16});
+      .filter(function(x){return x.length>0});
     return lines.filter(function(line){
       var text=String(line||'').replace(/\s+/g,'');
       if(!text)return false;
