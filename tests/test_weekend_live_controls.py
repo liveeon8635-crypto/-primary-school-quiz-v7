@@ -23,6 +23,18 @@ function cwRender(){}
   assert.equal(requests.length,2); assert.equal(requests[1].view.step,2);
   assert.equal(requests[1].stageNo,3); assert.equal(requests[1].page,2);
   resolvers.shift()({view:{step:2,showAnswer:false}});
+  for(let i=0;i<5;i++) await Promise.resolve();
+  let back=buttons.find(x=>x.attrs.text==='上一步'),answer=buttons.find(x=>x.attrs.text==='显示/隐藏答案'),reset=buttons.find(x=>x.attrs.text==='重来');
+  back.attrs.onclick(); await Promise.resolve();
+  assert.equal(requests[2].view.step,1); resolvers.shift()({view:{step:1,showAnswer:false}});
+  for(let i=0;i<5;i++) await Promise.resolve();
+  answer.attrs.onclick(); await Promise.resolve();
+  assert.equal(requests[3].view.step,1); assert.equal(requests[3].view.showAnswer,true);
+  resolvers.shift()({view:{step:1,showAnswer:true}});
+  for(let i=0;i<5;i++) await Promise.resolve();
+  reset.attrs.onclick(); await Promise.resolve();
+  assert.deepStrictEqual(requests[4].view,{step:0,showAnswer:false});
+  resolvers.shift()({view:{step:0,showAnswer:false}});
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
     result = subprocess.run(['node', '-e', script], text=True, capture_output=True, encoding='utf-8', timeout=20)
