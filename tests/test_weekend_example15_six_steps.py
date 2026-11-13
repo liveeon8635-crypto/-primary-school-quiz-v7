@@ -83,7 +83,7 @@ var document={createElement:function(tag){return new E(tag,{})}};
 function all(e){return [e].concat(e.children.reduce(function(a,c){return a.concat(c instanceof E?all(c):[])},[]))}
 var f={type:'table',nineGrid:true,reveal:false,targetSum:2016,center:224,
   rows:[['a−11','a−10','a−9'],['a−1','a','a+1'],['a+9','a+10','a+11']]};
-function render(n,teacher,preview){var box=new E('div');cwFigure(box,f,false,{step:n,previewMode:preview,showAnswer:false},teacher,6);return box}
+function render(n,teacher,preview,answer){var box=new E('div');cwFigure(box,f,false,{step:n,previewMode:preview,showAnswer:!!answer},teacher,6);return box}
 function cells(box){return all(box).filter(function(x){return x.style&&x.style.indexOf('min-height:')>=0})}
 function words(box){return all(box).map(function(x){return x.textContent}).join('|')}
 var expected=[
@@ -101,7 +101,9 @@ var fifth=render(5,false,true),sixth=render(6,false,true);
 assert.strictEqual(cells(fifth)[4].textContent,'a','step 5 still hides numeric answer');
 assert(words(fifth).includes('九数和 = 9a'),'step 5 displays symbolic sum');
 assert(!words(fifth).includes('224'),'student cannot see 224 before step 6');
-assert.strictEqual(cells(sixth)[4].textContent,'224','step 6 reveals centre value');
+assert.strictEqual(cells(sixth)[4].textContent,'a','step 6 keeps the answer hidden');
+assert(!words(sixth).includes('224'),'step alone does not reveal numeric answer');
+assert.strictEqual(cells(render(6,false,true,true))[4].textContent,'224','show answer reveals centre value');
 assert(words(sixth).includes('9a = 2016'),'step 6 shows equation');
 assert.strictEqual(cells(render(2,true,true))[5].textContent,'a+1','teacher preview follows current step');
 assert.strictEqual(cells(render(1,true,false))[4].textContent,'224','teacher full view has answer');

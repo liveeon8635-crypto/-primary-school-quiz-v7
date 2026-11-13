@@ -126,7 +126,7 @@ def test_known_example_repairs_do_not_invent_other_question_answers():
 def test_live_view_sync_omits_private_preview_objects():
     from changying.web.weekend_courseware_pages import COURSEWARE_JS
     assert "if(k.charAt(0)!=='_')publicState[k]=view[k]" in COURSEWARE_JS
-    assert "json:{view:publicState}" in COURSEWARE_JS
+    assert "json:{view:publicState,stageNo:c.stageNo,page:c.page}" in COURSEWARE_JS
 
 
 def test_saved_teacher_courseware_is_never_replaced_by_default_diagram():

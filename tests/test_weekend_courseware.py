@@ -145,22 +145,38 @@ with TestClient(app) as client:
     for i in range(3):
         board = client.get(b1 + "/board", headers=th).json()
         seen.append((board["deck"]["index"], board["courseware"]["kind"], board["courseware"]["page"]))
+        assert board["courseware"]["view"]["step"] == 0
+        assert client.get(b1, headers=th).json()["courseware"]["view"] == board["courseware"]["view"]
         assert examples[i]["question"][:6] in board["content"][0]
         client.post(b1 + "/slide", headers=th, json={"delta": 1})
     assert seen == [(0, "clock", 0), (1, "rotation", 1), (2, "steps", 2)] and len(calls) == ai_calls
     v = client.post(b1 + "/courseware/view", headers=th, json={"view": {"step": 1, "showAnswer": True}}).json()["view"]
     assert v == {"step": 1, "showAnswer": True}
+    assert client.get(b1 + "/board", headers=th).json()["courseware"]["view"] == v
+    assert client.get(b1, headers=th).json()["courseware"]["view"] == v
     client.post(b1 + "/slide", headers=th, json={"delta": -2})
     assert client.get(b1 + "/board", headers=th).json()["courseware"]["view"]["angle"] == 0                    # page 1 keeps its own state
+    stale = client.post(b1 + "/courseware/view", headers=th, json={"stageNo": 3, "page": 2, "view": {"step": 2, "showAnswer": True}})
+    assert stale.status_code == 409
+    assert client.get(b1 + "/board", headers=th).json()["courseware"]["view"]["angle"] == 0
     assert client.post(b1 + "/courseware/view", headers=th, json={"view": {"angle": 999}}).json()["view"]["angle"] == 120
     client.post(b1 + "/slide", headers=th, json={"delta": 2})
     assert client.get(b1 + "/board", headers=th).json()["courseware"]["view"]["showAnswer"] is True
+    reset = client.post(b1 + "/courseware/view", headers=th, json={"stageNo": 3, "page": 2, "view": {"step": 0, "showAnswer": False}})
+    assert reset.json()["view"] == {"step": 0, "showAnswer": False}
+    assert client.get(b1 + "/board", headers=th).json()["courseware"]["view"] == reset.json()["view"]
     client.post(b1 + "/goto", headers=th, json={"stage": 4})
     mine = client.get(f"/student/weekend/sessions/{s1}/written", headers=sh).json()
     task = next(q for q in mine["questions"] if "风车每分钟转4圈" in q["stem"])
     assert "15秒" not in json.dumps(mine, ensure_ascii=False)
     assert client.post(f"/student/weekend/sessions/{s1}/written/{task['id']}", headers=sh, data={"text": "60÷4=15秒", "revision": "0"}).status_code == 200
     client.post(b1 + "/finish", headers=th)
+
+    # A new classroom never reuses the prior session's screen state.
+    new_session, new_base = classroom()
+    client.post(new_base + "/slide", headers=th, json={"delta": 2})
+    assert client.get(new_base + "/board", headers=th).json()["courseware"]["view"] == {"step": 0, "showAnswer": False}
+    client.post(new_base + "/finish", headers=th)
 
     # ---- removing a page's courseware hides it; the other pages stay
     client.post(base + "/remove", headers=th, json={"stageNo": 3, "page": 1})

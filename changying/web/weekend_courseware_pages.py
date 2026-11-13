@@ -318,6 +318,7 @@ function cwNineGrid(box,f,view,big,teacher,stepCount){
       && Number(f.center)===224 && stepCount===6;
   if(lesson15){
     var step15=teacher&&!view.previewMode?6:Math.max(0,Math.min(6,view.step||0));
+    var answer15=!!view.showAnswer||(teacher&&(!view.previewMode||step15>=6));
     var cells15=[['a−11','a−10','a−9'],['a−1','a','a+1'],['a+9','a+10','a+11']];
     var appearAt=[[4,3,4],[2,1,2],[4,3,4]];
     var wrap15=el('div',{style:'max-width:640px;margin:10px auto;padding:14px 16px 12px;border:1px solid #d0d5dd;border-radius:16px;background:linear-gradient(180deg,#fff,#f8fafc);box-shadow:0 8px 22px #10182810'});
@@ -325,7 +326,7 @@ function cwNineGrid(box,f,view,big,teacher,stepCount){
     var grid15=el('div',{style:'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-width:'+(big?'480px':'360px')+';margin:8px auto'});
     cells15.forEach(function(row,i){row.forEach(function(val,j){
       var rank=appearAt[i][j],visible=step15>=rank,center=i===1&&j===1,
-          newCell=visible&&step15===rank,finalCenter=center&&step15>=6,
+          newCell=visible&&step15===rank,finalCenter=center&&step15>=6&&answer15,
           bg=finalCenter?'#1f6feb':newCell?'#dbeafe':visible?'#eff6ff':'#fff',
           bd=finalCenter?'#1f6feb':newCell?'#2563eb':'#d0d5dd',
           fg=finalCenter?'#fff':visible?'#173b70':'#98a2b3',
@@ -333,7 +334,8 @@ function cwNineGrid(box,f,view,big,teacher,stepCount){
       grid15.appendChild(el('div',{style:'min-height:'+(big?'94px':'78px')+';display:flex;align-items:center;justify-content:center;border:2px solid '+bd+';border-radius:12px;background:'+bg+';color:'+fg+';font-weight:800;font-size:'+(big?'3vh':'22px')+';transition:background .18s,border-color .18s,color .18s',text:label}));
     })});
     wrap15.appendChild(grid15);
-    var tip15=step15>=6?'九数和为 2016：9a = 2016，a = 224':
+    var tip15=step15>=6&&answer15?'九数和为 2016：9a = 2016，a = 224':
+              step15>=6?'九数和为 2016：9a = 2016':
               step15>=5?'九个数相加，对称数相互抵消：九数和 = 9a':
               step15>=4?'四个角已补齐：上下移动10，左右移动1':
               step15>=3?'上面是 a−10，下面是 a+10':
@@ -714,7 +716,9 @@ function cwRender(box,c,view,big,teacher,onTap){box.textContent='';view=view||{}
 function cwControl(box,c,sid){
   var view=JSON.parse(JSON.stringify(c.view||{})),stage=el('div'),bar=el('div',{class:'row'}),msg=el('div',{role:'status'});
   box.textContent='';box.appendChild(el('h2',{text:'互动课件：'+c.kindLabel+'（大屏同步，约3秒）'}));box.appendChild(bar);box.appendChild(stage);box.appendChild(msg);
-  function send(){var publicState={};Object.keys(view).forEach(function(k){if(k.charAt(0)!=='_')publicState[k]=view[k]});api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:publicState}}).then(function(r){view=r.view;draw()}).catch(function(e){msg.textContent=e.message})}
+  var pending=Promise.resolve(),revision=0;
+  function send(){var publicState={};Object.keys(view).forEach(function(k){if(k.charAt(0)!=='_')publicState[k]=view[k]});var seq=++revision;
+    pending=pending.then(function(){return api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:publicState,stageNo:c.stageNo,page:c.page}})}).then(function(r){if(seq===revision){view=r.view;msg.textContent='';draw()}}).catch(function(e){msg.textContent=e.message});}
   function draw(){if(c.kind==='steps'&&c.params.figure&&c.params.figure.type==='calendar_compare')view._calendarOnChange=send;cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
   function button(text,fn){bar.appendChild(el('button',{text:text,style:'min-height:44px;min-width:44px',onclick:function(){fn();draw();send()}}))}
   if(c.kind==='rotation'){

@@ -52,6 +52,8 @@ class ApplyTemplateBody(PageBody):
 
 class ViewBody(BaseModel):
     view: dict[str, Any]
+    stageNo: int | None = Field(default=None, ge=1, le=STAGE_COUNT)
+    page: int | None = Field(default=None, ge=0)
 
 
 def register_courseware_table(implementation: Any) -> Table:
@@ -536,7 +538,7 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
     visual_text = _courseware_visual_text(item, params, page_text)
     params = _repair_courseware_visual(params, visual_text)
     key = f"{row.id}:{stage}:{item.get('page')}"
-    view = json.loads(c.live_json or "{}").get(key) or cw.clean_view(item["kind"], params, {})
+    view = cw.clean_view(item["kind"], params, json.loads(c.live_json or "{}").get(key))
     return {"id": c.id, "kind": item["kind"], "kindLabel": cw.KIND_LABEL[item["kind"]], "stageNo": stage, "page": item.get("page"),
             "params": cw.public_params(item["kind"], params), "view": view}, ""
 
@@ -1053,6 +1055,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         shown, note = courseware_for_session(implementation, db, row, index)
         if shown is None or c is None:
             raise HTTPException(409, note or "当前页没有互动课件")
+        if b.stageNo is not None and (b.stageNo != int(row.current_stage) or b.page != shown["page"]):
+            raise HTTPException(409, "课堂页面已切换，请在当前页重新操作")
         item = next(i for i in items_of(c) if i.get("approved") is not None and int(i["stage"]) == int(row.current_stage)
                     and i.get("page") == shown["page"])
         view = cw.clean_view(item["kind"], item["approved"], b.view)
