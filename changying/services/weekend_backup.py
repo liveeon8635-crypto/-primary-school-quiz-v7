@@ -4,12 +4,28 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 import zipfile
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
 
 from changying.services.weekend_roster import session_class, session_roster
+
+
+def _uploaded_figure(value):
+    """Keep only a bounded, embedded JPEG figure already attached to a question."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value or '{}')
+        except (TypeError, ValueError):
+            return {}
+    if not isinstance(value, dict) or value.get('type') != 'uploaded_image':
+        return {}
+    url = str(value.get('data_url') or '')
+    if len(url) > 700000 or not re.fullmatch(r'data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}', url):
+        return {}
+    return {'type': 'uploaded_image', 'data_url': url, 'alt': str(value.get('alt') or '原卷插图')[:80]}
 
 
 def backup_material(impl, db, session, *, include_files=False):
@@ -19,20 +35,39 @@ def backup_material(impl, db, session, *, include_files=False):
     lesson = db.get(impl.TeachingLesson, session.lesson_id)
     if lesson is None or lesson.school_id != session.school_id:
         raise HTTPException(404, '没有找到原教案')
+    from changying.web.weekend_courseware import lesson_figures, match_figure
+    wq = register_written_tables(impl)['questions']
+    # Imported figures may live on the original preparation question even when the
+    # classroom's copied written-question row contains text only. Reuse the existing
+    # unambiguous question-number/source-text matcher; never guess between candidates.
+    figures = lesson_figures(impl, db, lesson, wq)
     questions = []
     for q in db.scalars(select(impl.TeachingQuestion).where(impl.TeachingQuestion.school_id == session.school_id,
             impl.TeachingQuestion.lesson_id == session.lesson_id, impl.TeachingQuestion.active.is_(True)).order_by(impl.TeachingQuestion.id)):
         options = json.loads(q.options_json or '[]')
         if not isinstance(options, list) or not 0 <= q.correct_index < len(options):
             raise HTTPException(409, '有题目的选项或答案不完整，请先审核')
-        questions.append(dict(kind='choice', id=q.id, stem=q.stem, options=options, selected=q.correct_index,
+        item = dict(kind='choice', id=q.id, stem=q.stem, options=options, selected=q.correct_index,
             reference=str(options[q.correct_index]), explanation=q.explanation or '', level=q.level,
-            knowledge=q.knowledge or lesson.core_target or ''))
-    wq = register_written_tables(impl)['questions']
+            knowledge=q.knowledge or lesson.core_target or '')
+        figure = _uploaded_figure(getattr(q, 'figure_json', '{}')) or match_figure(figures, q.stem)
+        if figure:
+            item['figure'] = figure
+        questions.append(item)
     for q in db.execute(select(wq).where(wq.c.school_id == session.school_id, wq.c.session_id == session.id,
             wq.c.teacher_id == session.teacher_id).order_by(wq.c.id)):
-        questions.append(dict(kind='written', id=q.id, stem=q.stem, reference=q.reference,
-            explanation='', level='开放作答', knowledge=lesson.core_target or ''))
+        try:
+            metadata = json.loads(q.hints_json or '[]')
+        except (TypeError, ValueError):
+            metadata = []
+        figure = _uploaded_figure(metadata.get('figure')) if isinstance(metadata, dict) else {}
+        if not figure:
+            figure = match_figure(figures, q.stem)
+        item = dict(kind='written', id=q.id, stem=q.stem, reference=q.reference,
+            explanation='', level='开放作答', knowledge=lesson.core_target or '')
+        if figure:
+            item['figure'] = figure
+        questions.append(item)
     if not questions:
         raise HTTPException(409, '请先审核或添加本节课题目')
     roster = [dict(id=i, name=n) for i, (n, _) in sorted(session_roster(impl, db, session).items())]
@@ -48,6 +83,9 @@ def backup_material(impl, db, session, *, include_files=False):
                  ('pdf','docx','pptx','txt','md','png','jpg','jpeg')]
     if len(resources)>20 or sum(int(r.bytes or 0) for r in resources)>30*1024*1024:
         raise HTTPException(413, '关联原文件超过20份或30MB，请先整理本课资源')
+    figure_chars = sum(len(str((q.get('figure') or {}).get('data_url') or '')) for q in questions)
+    if figure_chars > 20_000_000:
+        raise HTTPException(413, '本节题目图片超过20MB，请先整理原题图片后再生成纸质备用版')
     files = []
     for r in resources:
         item = dict(id=r.id,name=r.file_name,extension=str(r.file_ext).lower().lstrip('.'),sha256=r.sha256)
