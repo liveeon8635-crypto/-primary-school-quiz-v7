@@ -1,6 +1,8 @@
 """Two printable Word question sheets, generated without a runtime dependency."""
 from __future__ import annotations
 
+import base64
+import hashlib
 import io
 import re
 import zipfile
@@ -30,6 +32,111 @@ NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 
 
+
+WP_NS = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing'
+A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+PIC_NS = 'http://schemas.openxmlformats.org/drawingml/2006/picture'
+
+
+def _jpeg_dimensions(data):
+    """Read JPEG dimensions without adding a runtime imaging dependency."""
+    sof = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+    if not data.startswith(b'\\xff\\xd8'):
+        return None
+    pos = 2
+    while pos + 4 <= len(data):
+        if data[pos] != 0xFF:
+            pos += 1
+            continue
+        while pos < len(data) and data[pos] == 0xFF:
+            pos += 1
+        if pos >= len(data):
+            break
+        marker = data[pos]
+        pos += 1
+        if marker == 0xDA:
+            break
+        if marker in (0xD8, 0xD9, 0x01) or 0xD0 <= marker <= 0xD7:
+            continue
+        if pos + 2 > len(data):
+            break
+        length = int.from_bytes(data[pos:pos + 2], 'big')
+        if length < 2 or pos + length > len(data):
+            break
+        if marker in sof and length >= 7:
+            height = int.from_bytes(data[pos + 3:pos + 5], 'big')
+            width = int.from_bytes(data[pos + 5:pos + 7], 'big')
+            if width > 0 and height > 0:
+                return width, height
+        pos += length
+    return None
+
+
+def _figure_image(figure):
+    """Decode only validated embedded JPEG data; never put an external image URL in Word."""
+    if not isinstance(figure, dict) or figure.get('type') != 'uploaded_image':
+        return None
+    data_url = str(figure.get('data_url') or '')
+    if len(data_url) > 700000:
+        return None
+    match = re.fullmatch(r'data:image/jpeg;base64,([A-Za-z0-9+/]+={0,2})', data_url)
+    if not match:
+        return None
+    try:
+        data = base64.b64decode(match.group(1), validate=True)
+    except (ValueError, TypeError):
+        return None
+    if not data.startswith(b'\\xff\\xd8\\xff') or not data.endswith(b'\\xff\\xd9'):
+        return None
+    dimensions = _jpeg_dimensions(data)
+    if dimensions:
+        width, height = dimensions
+        cx, cy = width * 9525, height * 9525
+        scale = min(1.0, 5669280 / cx, 3840480 / cy)
+        cx, cy = max(1, int(cx * scale)), max(1, int(cy * scale))
+    else:
+        # Keep an image visible even if a nonstandard JPEG omits a readable SOF segment.
+        cx, cy = 4572000, 2743200
+    return {'data': data, 'alt': str(figure.get('alt') or '题目插图')[:80], 'cx': cx, 'cy': cy}
+
+
+def _image_paragraph(parent, image, drawing_id):
+    """Add a centered, aspect-preserving DrawingML picture paragraph."""
+    p = _node(parent, 'p')
+    props = _node(p, 'pPr')
+    _node(props, 'jc', {'val': 'center'})
+    _node(props, 'spacing', {'after': 100, 'before': 40})
+    run = _node(p, 'r')
+    drawing = _node(run, 'drawing')
+    inline = ET.SubElement(drawing, '{' + WP_NS + '}inline',
+                           {'distT': '0', 'distB': '0', 'distL': '0', 'distR': '0'})
+    ET.SubElement(inline, '{' + WP_NS + '}extent', {'cx': str(image['cx']), 'cy': str(image['cy'])})
+    ET.SubElement(inline, '{' + WP_NS + '}effectExtent', {'l': '0', 't': '0', 'r': '0', 'b': '0'})
+    ET.SubElement(inline, '{' + WP_NS + '}docPr',
+                  {'id': str(drawing_id), 'name': image['filename'], 'descr': image['alt']})
+    frame = ET.SubElement(inline, '{' + WP_NS + '}cNvGraphicFramePr')
+    ET.SubElement(frame, '{' + A_NS + '}graphicFrameLocks', {'noChangeAspect': '1'})
+    graphic = ET.SubElement(inline, '{' + A_NS + '}graphic')
+    graphic_data = ET.SubElement(graphic, '{' + A_NS + '}graphicData', {'uri': PIC_NS})
+    picture = ET.SubElement(graphic_data, '{' + PIC_NS + '}pic')
+    non_visual = ET.SubElement(picture, '{' + PIC_NS + '}nvPicPr')
+    ET.SubElement(non_visual, '{' + PIC_NS + '}cNvPr',
+                  {'id': str(drawing_id), 'name': image['filename'], 'descr': image['alt']})
+    picture_props = ET.SubElement(non_visual, '{' + PIC_NS + '}cNvPicPr')
+    ET.SubElement(picture_props, '{' + A_NS + '}picLocks', {'noChangeAspect': '1'})
+    fill = ET.SubElement(picture, '{' + PIC_NS + '}blipFill')
+    ET.SubElement(fill, '{' + A_NS + '}blip', {'{' + REL_NS + '}embed': image['rid']})
+    stretch = ET.SubElement(fill, '{' + A_NS + '}stretch')
+    ET.SubElement(stretch, '{' + A_NS + '}fillRect')
+    shape = ET.SubElement(picture, '{' + PIC_NS + '}spPr')
+    transform = ET.SubElement(shape, '{' + A_NS + '}xfrm')
+    ET.SubElement(transform, '{' + A_NS + '}off', {'x': '0', 'y': '0'})
+    ET.SubElement(transform, '{' + A_NS + '}ext', {'cx': str(image['cx']), 'cy': str(image['cy'])})
+    geometry = ET.SubElement(shape, '{' + A_NS + '}prstGeom', {'prst': 'rect'})
+    ET.SubElement(geometry, '{' + A_NS + '}avLst')
+    return p
+
+
 def _node(parent, name, attrs=None):
     return ET.SubElement(parent, '{'+NS+'}'+name, {'{'+NS+'}'+k:str(v) for k,v in (attrs or {}).items()})
 
@@ -57,44 +164,64 @@ def _a4(body, footer=False):
     _node(section,'pgMar',{'top':1020,'right':1020,'bottom':1020,'left':1020,'header':400,'footer':400})
 
 
-def _package(document, footer=None):
-    """Zip one body, the shared black-on-white styles and an optional footer into a .docx."""
-    ET.register_namespace('w', NS)
-    ET.register_namespace('r', REL_NS)
-    styles = ET.Element('{'+NS+'}styles')
-    defaults = _node(styles,'docDefaults');run_props = _node(_node(defaults,'rPrDefault'),'rPr')
-    _node(run_props,'rFonts',{'ascii':'Arial','hAnsi':'Arial','eastAsia':'宋体'})
-    _node(run_props,'sz',{'val':24});_node(run_props,'color',{'val':'000000'})
-    _node(run_props,'lang',{'val':'zh-CN','eastAsia':'zh-CN'})
-    for sid, size, bold in [('Normal',24,False),('Title',32,True),('Heading1',24,True),('TeacherNote',22,False)]:
-        style = _node(styles,'style',{'type':'paragraph','styleId':sid})
-        if sid == 'Normal': style.set('{'+NS+'}default','1')
-        _node(style,'name',{'val':sid});_node(style,'basedOn',{'val':'Normal'}) if sid != 'Normal' else None
-        props = _node(style,'rPr');_node(props,'sz',{'val':size});_node(props,'color',{'val':'000000'})
-        if bold: _node(props,'b')
+def _package(document, footer=None, images=None):
+    """Zip one body, styles, optional footer and embedded local JPEGs into a .docx."""
+    images = list(images or [])
+    for prefix, uri in (('w', NS), ('r', REL_NS), ('wp', WP_NS), ('a', A_NS), ('pic', PIC_NS)):
+        ET.register_namespace(prefix, uri)
+    styles = ET.Element('{' + NS + '}styles')
+    defaults = _node(styles, 'docDefaults')
+    run_props = _node(_node(defaults, 'rPrDefault'), 'rPr')
+    _node(run_props, 'rFonts', {'ascii': 'Arial', 'hAnsi': 'Arial', 'eastAsia': '宋体'})
+    _node(run_props, 'sz', {'val': 24})
+    _node(run_props, 'color', {'val': '000000'})
+    _node(run_props, 'lang', {'val': 'zh-CN', 'eastAsia': 'zh-CN'})
+    for sid, size, bold in [('Normal', 24, False), ('Title', 32, True), ('Heading1', 24, True), ('TeacherNote', 22, False)]:
+        style = _node(styles, 'style', {'type': 'paragraph', 'styleId': sid})
+        if sid == 'Normal':
+            style.set('{' + NS + '}default', '1')
+        _node(style, 'name', {'val': sid})
+        if sid != 'Normal':
+            _node(style, 'basedOn', {'val': 'Normal'})
+        props = _node(style, 'rPr')
+        _node(props, 'sz', {'val': size})
+        _node(props, 'color', {'val': '000000'})
+        if bold:
+            _node(props, 'b')
 
     def xml(element):
-        return ET.tostring(element,encoding='utf-8',xml_declaration=True)
+        return ET.tostring(element, encoding='utf-8', xml_declaration=True)
 
     has_footer = footer is not None
+    image_type = '<Default Extension="jpg" ContentType="image/jpeg"/>' if images else ''
     types = ('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
         '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
         '<Default Extension="xml" ContentType="application/xml"/>'
+        + image_type +
         '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
         '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
-        + ('<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' if has_footer else '')+'</Types>')
-    root_rels = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="document" Type="'+REL_NS+'/officeDocument" Target="word/document.xml"/></Relationships>'
-    doc_rels = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="styles" Type="'+REL_NS+'/styles" Target="styles.xml"/>'
-    if has_footer: doc_rels += '<Relationship Id="footer" Type="'+REL_NS+'/footer" Target="footer1.xml"/>'
+        + ('<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' if has_footer else '') + '</Types>')
+    root_rels = ('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="document" Type="' + REL_NS + '/officeDocument" Target="word/document.xml"/></Relationships>')
+    doc_rels = ('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="styles" Type="' + REL_NS + '/styles" Target="styles.xml"/>')
+    if has_footer:
+        doc_rels += '<Relationship Id="footer" Type="' + REL_NS + '/footer" Target="footer1.xml"/>'
+    for image in images:
+        doc_rels += ('<Relationship Id="' + image['rid'] + '" Type="' + REL_NS +
+                     '/image" Target="media/' + image['filename'] + '"/>')
     doc_rels += '</Relationships>'
     out = io.BytesIO()
-    with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as package:
-        package.writestr('[Content_Types].xml',types)
-        package.writestr('_rels/.rels',root_rels)
-        package.writestr('word/document.xml',xml(document))
-        package.writestr('word/styles.xml',xml(styles))
-        package.writestr('word/_rels/document.xml.rels',doc_rels)
-        if has_footer: package.writestr('word/footer1.xml',xml(footer))
+    with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as package:
+        package.writestr('[Content_Types].xml', types)
+        package.writestr('_rels/.rels', root_rels)
+        package.writestr('word/document.xml', xml(document))
+        package.writestr('word/styles.xml', xml(styles))
+        package.writestr('word/_rels/document.xml.rels', doc_rels)
+        if has_footer:
+            package.writestr('word/footer1.xml', xml(footer))
+        for image in images:
+            package.writestr('word/media/' + image['filename'], image['data'])
     return out.getvalue()
 
 
@@ -110,6 +237,25 @@ def question_document(material, audience):
     total = sum(Decimal(paper_points(q)) for q in material['questions'])
     paragraph(body, '共'+str(len(material['questions']))+'题　满分'+format(total.normalize(),'f')+'分',keep=True)
     if not teacher: paragraph(body,'姓名：____________　日期：____________',after=180)
+    images = []
+    image_by_hash = {}
+    drawing_count = 0
+
+    def add_question_image(figure):
+        nonlocal drawing_count
+        image = _figure_image(figure)
+        if image is None:
+            return
+        digest = hashlib.sha256(image['data']).hexdigest()
+        if digest not in image_by_hash:
+            index = len(images) + 1
+            image['rid'] = 'rIdImage' + str(index)
+            image['filename'] = 'image' + str(index) + '.jpg'
+            images.append(image)
+            image_by_hash[digest] = image
+        drawing_count += 1
+        _image_paragraph(body, image_by_hash[digest], drawing_count)
+
     last_material = ''
     for number, q in enumerate(material['questions'], 1):
         stem = q['stem']
@@ -122,6 +268,7 @@ def question_document(material, audience):
             last_material = ''
         paragraph(body,'第'+str(number)+'题　'+paper_points(q)+'分','Heading1',keep=True,before=160)
         paragraph(body,stem,keep=bool(q.get('options')))
+        add_question_image(q.get('figure'))
         for index, option in enumerate(q.get('options', [])):
             paragraph(body,chr(65+index)+'. '+option_text(option),after=50)
         if teacher:
@@ -140,7 +287,7 @@ def question_document(material, audience):
         # The only operational metadata needed to match the paper to the original class.
         footer = ET.Element('{'+NS+'}ftr')
         paragraph(footer,'原课堂 '+str(material['sessionId'])+'　版本 '+material['version'],'TeacherNote',after=0)
-    return _package(document, footer)
+    return _package(document, footer, images)
 
 
 def report_document(report):
