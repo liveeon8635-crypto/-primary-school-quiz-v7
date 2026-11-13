@@ -394,10 +394,10 @@ function board(){
   function boardCoursewareContent(d){
     var lines=Array.isArray(d.content)?d.content.slice():[];
     var params=d.courseware&&d.courseware.params||{};
-    var keys=[params.sourceProblem,params.title].map(function(x){return String(x||'').replace(/\\s+/g,'')})
+    var keys=[params.sourceProblem,params.title].map(function(x){return String(x||'').replace(/\s+/g,'')})
       .filter(function(x){return x.length>=16});
     return lines.filter(function(line){
-      var text=String(line||'').replace(/\\s+/g,'');
+      var text=String(line||'').replace(/\s+/g,'');
       if(!text)return false;
       return !keys.some(function(key){
         return text===key||(text.length>=16&&key.indexOf(text)>=0)||(key.length>=16&&text.indexOf(key)>=0);
