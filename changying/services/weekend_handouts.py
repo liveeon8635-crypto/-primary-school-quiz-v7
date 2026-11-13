@@ -41,7 +41,7 @@ PIC_NS = 'http://schemas.openxmlformats.org/drawingml/2006/picture'
 def _jpeg_dimensions(data):
     """Read JPEG dimensions without adding a runtime imaging dependency."""
     sof = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
-    if not data.startswith(b'\\xff\\xd8'):
+    if not data.startswith(b'\xff\xd8'):
         return None
     pos = 2
     while pos + 4 <= len(data):
@@ -86,7 +86,7 @@ def _figure_image(figure):
         data = base64.b64decode(match.group(1), validate=True)
     except (ValueError, TypeError):
         return None
-    if not data.startswith(b'\\xff\\xd8\\xff') or not data.endswith(b'\\xff\\xd9'):
+    if not data.startswith(b'\xff\xd8\xff') or not data.endswith(b'\xff\xd9'):
         return None
     dimensions = _jpeg_dimensions(data)
     if dimensions:
