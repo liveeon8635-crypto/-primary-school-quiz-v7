@@ -114,7 +114,7 @@ function control(){
     if(d.coursewareNotice)content.appendChild(el('div',{class:'notice warn',text:d.coursewareNotice}));
     if(d.courseware){var cwBox=el('div');content.appendChild(cwBox);cwControl(cwBox,d.courseware,SID)}
   }
-  function load(){api('/teacher/weekend/sessions/'+SID).then(paint).catch(function(e){msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
+  function load(){var version=CW_VERSION;api('/teacher/weekend/sessions/'+SID).then(function(d){if(!CW_PENDING&&version===CW_VERSION)paint(d)}).catch(function(e){msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
   load();
   if(tick)clearInterval(tick);
   tick=setInterval(function(){if(remain!=null){remain-=1;var c=document.getElementById('clock');if(c)c.textContent=fmt(remain)}},1000);
