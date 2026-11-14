@@ -78,3 +78,7 @@
 2. 新增/移动/删除文档时，**同步更新本 INDEX**。
 3. 受保护路径（`.github/**`、`GOVERNANCE.md`、`docs/adr/**`、`render.yaml`、`Dockerfile`、数据库迁移、环境变量）不适用上面的约定，按 [`AGENTS.md`](../AGENTS.md) §7.5 处理。
 4. 文档里引用代码位置时，写清楚 `文件:行号`；引用事实时区分"已核实"和"未确认"。
+
+## 8. UI/UX 施工
+
+- [页面资产](ui-ux/INVENTORY.md)、[依赖](ui-ux/DEPENDENCY_MAP.md)、[风险](ui-ux/RISK_REGISTER.md)、[基线](ui-ux/BASELINE.md)、[实施](ui-ux/IMPLEMENTATION_PLAN.md)、[设计决策](ui-ux/DESIGN_DECISIONS.md)。

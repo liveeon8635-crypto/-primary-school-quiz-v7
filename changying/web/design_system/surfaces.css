@@ -1,0 +1,170 @@
+html[data-cy-ui] {
+  --cy-brand: #a8101c;
+  --cy-brand-dark: #86101a;
+  --cy-canvas: #faf6f1;
+  --cy-border: #e6d8ce;
+  --cy-ink: #242026;
+  --cy-muted: #65595a;
+  --cy-focus: #1557a5;
+  --cy-radius: 12px;
+}
+
+[data-cy-ui] a:focus,
+[data-cy-ui] button:focus,
+[data-cy-ui] input:focus,
+[data-cy-ui] select:focus,
+[data-cy-ui] textarea:focus,
+[data-cy-ui] summary:focus {
+  outline: 2px solid var(--cy-focus);
+  outline-offset: 2px;
+}
+
+[data-cy-ui] .card,
+[data-cy-ui="product"] .panel {
+  border-radius: var(--cy-radius);
+}
+
+html[data-cy-ui="homework"],
+html[data-cy-ui="weekend"] {
+  --bg: var(--cy-canvas);
+  --brand: var(--cy-brand);
+  --line: var(--cy-border);
+  --muted: var(--cy-muted);
+}
+
+[data-cy-ui="homework"] button.on,
+[data-cy-ui="weekend"] button.on {
+  background: #faeae7;
+}
+
+[data-cy-ui="homework"] main > .card,
+[data-cy-ui="weekend"] main > .card {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+[data-cy-ui="homework"] main img,
+[data-cy-ui="weekend"] main img {
+  max-width: 100%;
+}
+
+html[data-cy-ui="tools"],
+html[data-cy-ui="hub"] {
+  --navy: var(--cy-brand);
+  --line: var(--cy-border);
+  --soft: var(--cy-canvas);
+}
+
+[data-cy-ui="tools"] .frame-wrap {
+  height: calc(100vh - 125px);
+  height: calc(100dvh - 125px);
+}
+
+[data-cy-ui="tools"] .picker {
+  max-width: 100%;
+}
+
+[data-cy-ui="hub"] #grid .tool {
+  min-height: 48px;
+  border-radius: var(--cy-radius);
+}
+
+html[data-cy-ui="product"] {
+  --brand: var(--cy-brand);
+  --soft: var(--cy-canvas);
+  --line: var(--cy-border);
+}
+
+[data-cy-ui="shell"] #loginForm {
+  width: 100%;
+  max-width: 470px;
+}
+
+[data-cy-ui="shell"] .login .btn {
+  min-height: 44px;
+}
+
+[data-cy-ui="board"] main > .card {
+  border-color: var(--cy-border);
+}
+
+@media (max-width: 720px) {
+  [data-cy-ui="homework"] main,
+  [data-cy-ui="weekend"] main {
+    padding: 12px;
+  }
+
+  [data-cy-ui="homework"] .item > .t {
+    min-width: 0;
+  }
+
+  [data-cy-ui="homework"] .edit {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  [data-cy-ui="homework"] select,
+  [data-cy-ui="weekend"] select {
+    max-width: 100%;
+  }
+
+  [data-cy-ui="tools"] .frame-wrap {
+    height: calc(100vh - 165px);
+    height: calc(100dvh - 165px);
+  }
+
+  [data-cy-ui="shell"] .login-wrap {
+    padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-cy-ui] {
+    scroll-behavior: auto;
+  }
+}
+
+@media print {
+  [data-cy-ui] .card {
+    box-shadow: none;
+  }
+}
+
+[data-cy-ui="classic"] .page-head {
+  overflow-wrap: break-word;
+}
+
+[data-cy-ui="classic"] .page-head .actions {
+  flex-wrap: wrap;
+}
+
+[data-cy-ui="board"] .tools:focus-within {
+  opacity: 1;
+}
+
+[data-cy-ui="personal"] .tile {
+  border-color: var(--cy-border);
+  border-radius: var(--cy-radius);
+}
+
+[data-cy-ui="board"] [role="region"]:focus {
+  outline: 2px solid #93c5fd;
+  outline-offset: -2px;
+}
+
+[data-cy-ui="shell"] .login .field {
+  min-width: 0;
+}
+
+[data-cy-ui="shell"] .login [role="alert"] {
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 390px) {
+  [data-cy-ui="hub"] #grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-cy-ui="shell"] #loginForm {
+    padding: 20px;
+  }
+}

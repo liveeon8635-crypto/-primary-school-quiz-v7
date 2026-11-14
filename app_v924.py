@@ -17,6 +17,7 @@ from sqlalchemy import create_engine, String, Integer, ForeignKey, Text, DateTim
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
 from cryptography.fernet import Fernet, InvalidToken
+from changying.web.design_system import apply_surface
 from changying.services.assignments import student_assignment_rows, teacher_assignment_rows
 from changying.services.assessment_feedback import (
     archive_objective_assessment_wrong_answers,
@@ -4936,7 +4937,7 @@ def personal_start(request:Request,authorization:Optional[str]=Header(default=No
         except HTTPException:
             pass
     html=Template(PERSONAL_START_HTML).substitute(**values).replace("</body>",PERSONAL_START_SCRIPT+"</body>")
-    return HTMLResponse(html)
+    return HTMLResponse(apply_surface(html, "personal"))
 
 PERSONAL_START_BLANK=dict(
     title="我的工作室",subtitle="个人免费版 · 一个账号就是一间工作室",

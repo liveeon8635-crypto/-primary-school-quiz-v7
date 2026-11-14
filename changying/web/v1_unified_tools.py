@@ -8,6 +8,8 @@ permission, or write semantics change.
 
 from __future__ import annotations
 
+from changying.web.design_system import apply_surface
+
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse
 
@@ -108,7 +110,7 @@ _TOOL_HTML = r'''<!doctype html>
 
 
 def unified_tool_html() -> str:
-    return _TOOL_HTML
+    return apply_surface(_TOOL_HTML, "tools")
 
 
 def install_v1_unified_tool_route(app: FastAPI) -> None:

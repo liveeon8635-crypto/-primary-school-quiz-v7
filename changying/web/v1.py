@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from changying.web.design_system import apply_surface
+
 import json
 import os
 import subprocess
@@ -46,7 +48,7 @@ def v1_html() -> str:
 
     tool_pages = json.dumps(sorted(_ALLOWED_TOOL_PAGES - {"__hub__"}))
     build_id = json.dumps(current_v1_build_id())
-    return f'''<!doctype html>
+    return apply_surface(f'''<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -179,7 +181,7 @@ def v1_html() -> str:
     }}
     function shell(content,active='workspace'){{const nav=roleQuickNav();const viewAll=location.pathname==='/v1/workspace'&&new URLSearchParams(location.search).get('view')==='all';const segOf={{students:'workspace',history:'tools',transition:'tools'}};const base=segOf[active]||active;const cur=base==='workspace'&&viewAll?'tools':base;const idx=Math.max(0,nav.findIndex(n=>n[0]===cur));const item=n=>`<a href="${{n[3]}}" data-seg="${{n[0]}}" ${{n[3].startsWith('/v1/tool')?'': 'data-nav'}} class="${{cur===n[0]?'active':''}}">${{n[2]}}</a>`;return `<div class="layout"><nav class="cy-seg" id="cy-seg" style="--n:${{nav.length}};--i:${{idx}}"><span class="cy-seg-thumb"></span>${{nav.map(item).join('')}}</nav><main>${{content}}</main></div>`}}
     function bindNav(){{document.querySelectorAll('[data-nav]').forEach(a=>a.onclick=e=>{{e.preventDefault();navigate(a.getAttribute('href'))}})}}
-    function loginView(message=''){{identityButton.hidden=true;chip.textContent='尚未登录';screen.innerHTML=`<div class="login-wrap"><form class="login" id="loginForm"><span class="tag">长缨辅学 V1</span><h1>登录教学系统</h1><p class="subtitle">登录后识别身份，进入账号已授权的教学视图。</p>${{message?`<div class="notice error">${{esc(message)}}</div>`:''}}<div class="field"><label>账号</label><input name="username" autocomplete="username" required></div><div class="field"><label>密码</label><input name="password" type="password" autocomplete="current-password" required></div><label class="field" style="display:flex;grid-template-columns:auto 1fr;align-items:center"><input name="remember" type="checkbox" style="width:auto">记住登录</label><button class="btn primary" type="submit">登录并继续</button><button class="btn" id="demoButton" type="button">查看演示流程</button><div class="login-help">演示流程使用明确标注的浏览器占位数据，不写入数据库；真实账号继续使用现有权限和数据。</div></form></div>`;document.getElementById('demoButton').onclick=()=>{{token='demo';session={{userID:900001,name:'演示教师',role:'teacher',demo:true}};pendingIdentityReturnPath=identityReturnPath();chooseIdentity()}};document.getElementById('loginForm').onsubmit=async e=>{{e.preventDefault();const btn=e.submitter;btn.disabled=true;try{{const data=Object.fromEntries(new FormData(e.target)),remember=data.remember==='on';const result=await api('/login',{{method:'POST',body:JSON.stringify({{username:data.username,password:data.password,remember}})}});token=result.token;persistAuth(result,remember);session=result;if(result.mustChangePassword){{toast('请先修改初始密码');await openClassic('/v1/tool?page=account');return}}pendingIdentityReturnPath=identityReturnPath();chooseIdentity()}}catch(err){{loginView(err.message)}}}}}}
+    function loginView(message=''){{identityButton.hidden=true;chip.textContent='尚未登录';screen.innerHTML=`<div class="login-wrap"><form class="login" id="loginForm"><span class="tag">长缨辅学 V1</span><h1>登录教学系统</h1><p class="subtitle">登录后识别身份，进入账号已授权的教学视图。</p>${{message?`<div class="notice error" role="alert">${{esc(message)}}</div>`:''}}<div class="field"><label for="cyLoginUsername">账号</label><input id="cyLoginUsername" name="username" autocomplete="username" required></div><div class="field"><label for="cyLoginPassword">密码</label><input id="cyLoginPassword" name="password" type="password" autocomplete="current-password" required></div><label class="field" style="display:flex;grid-template-columns:auto 1fr;align-items:center"><input name="remember" type="checkbox" style="width:auto">记住登录</label><button class="btn primary" type="submit">登录并继续</button><button class="btn" id="demoButton" type="button">查看演示流程</button><div class="login-help">演示流程使用明确标注的浏览器占位数据，不写入数据库；真实账号继续使用现有权限和数据。</div></form></div>`;document.getElementById('demoButton').onclick=()=>{{token='demo';session={{userID:900001,name:'演示教师',role:'teacher',demo:true}};pendingIdentityReturnPath=identityReturnPath();chooseIdentity()}};document.getElementById('loginForm').onsubmit=async e=>{{e.preventDefault();const btn=e.submitter;btn.disabled=true;try{{const data=Object.fromEntries(new FormData(e.target)),remember=data.remember==='on';const result=await api('/login',{{method:'POST',body:JSON.stringify({{username:data.username,password:data.password,remember}})}});token=result.token;persistAuth(result,remember);session=result;if(result.mustChangePassword){{toast('请先修改初始密码');await openClassic('/v1/tool?page=account');return}}pendingIdentityReturnPath=identityReturnPath();chooseIdentity()}}catch(err){{loginView(err.message)}}}}}}
     function chooseIdentity(){{const choices=identitiesFor(session);identity=null;localStorage.removeItem(IDENTITY_KEY);chip.textContent=session?.name||'当前账号';identityButton.hidden=true;screen.innerHTML=`<div class="login-wrap"><section class="login" style="width:min(650px,100%)"><span class="tag">已识别账号：${{esc(session?.name||'')}}</span><h1>选择本次使用身份</h1><p class="subtitle">${{session?.demo?'演示流程可切换机构与学校模式。':'现有账号按原权限接入培训机构数据；学校数据域建立后再开放对应真实身份。'}}</p><div class="identities">${{choices.map(x=>`<button class="identity" data-key="${{x.key}}"><span style="font-size:25px">${{x.icon}}</span><strong>${{x.label}}</strong><small>${{x.mode==='school'?'进入学校教学工作台':'进入'+(x.mode==='institution'?'培训机构教学工作台':'个人教学视图')}}</small></button>`).join('')}}</div></section></div>`;document.querySelectorAll('[data-key]').forEach(btn=>btn.onclick=()=>{{identity=choices.find(x=>x.key===btn.dataset.key);localStorage.setItem(IDENTITY_KEY,identity.key);const fallback=identity.mode==='family'||identity.mode==='student'?'/v1/student':'/v1/workspace?mode='+identity.mode,target=pendingIdentityReturnPath||fallback;pendingIdentityReturnPath='';navigate(target)}})}}
     function heading(title,desc,extra=''){{return `<header class="page-head"><div><h1>${{title}}</h1>${{desc?`<p class="subtitle">${{desc}}</p>`:''}}</div>${{extra}}</header>`}}
     async function loadPeople(){{if(session.role==='admin'){{const users=await api('/admin/users');return users.filter(x=>x.role==='student')}}if(session.role==='teacher'){{const classes=await api('/teacher/classes');let people=[];for(const c of classes.slice(0,8)){{try{{const rows=await api('/teacher/classes/'+c.id+'/students');people.push(...rows.map(x=>({{...x,className:c.name,classID:c.id}})))}}catch{{}}}}return [...new Map(people.map(x=>[x.id,x])).values()]}}if(session.role==='parent')return await api('/parent/children');return[{{id:session.userID||session.id,name:session.name,grade:session.grade,role:'student'}}]}}
@@ -289,7 +291,7 @@ def v1_html() -> str:
   </script>
   <script src="/v1/personal-home.js"></script>
 </body>
-</html>'''
+</html>''', "shell")
 
 
 def install_v1_routes(app: FastAPI) -> None:

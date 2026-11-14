@@ -19,6 +19,8 @@ page is the existing one-time auth handoff).
 
 from __future__ import annotations
 
+from changying.web.design_system import apply_surface
+
 from datetime import datetime
 import json
 import re
@@ -124,11 +126,12 @@ def handout_excerpt(content: str, key: str, limit: int = 1500) -> str:
 
 
 def board_html(sid: int) -> str:
-    return (
+    return apply_surface(
         BOARD_HTML.replace("__PAGE_AUTH__", PAGE_AUTH_JS)
         .replace("__SID__", str(int(sid)))
         .replace("__POLL_MS__", str(LIVE_BOARD_POLL_MS))
-        .replace("__MARKER__", V1_CLASSROOM_LIVE_BOARD_MARKER)
+        .replace("__MARKER__", V1_CLASSROOM_LIVE_BOARD_MARKER),
+        "board",
     )
 
 

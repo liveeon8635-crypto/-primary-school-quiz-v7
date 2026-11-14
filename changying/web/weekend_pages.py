@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from changying.web.design_system import apply_surface
+
 from changying.web.classroom_window_handoff import OPEN_WINDOW_JS, PAGE_AUTH_JS
 from changying.web.homework_assistant_pages import PAGE_CSS
 from changying.web.weekend_written_pages import WRITTEN_JS
@@ -415,6 +417,7 @@ function board(){
     if(!force&&nextKey===lastRenderKey){updateClock();return}
     var keepScroll=!!scrollBody&&viewKey(d)===lastViewKey;
     var oldScroll=keepScroll?scrollBody.scrollTop:0;
+    var keepFocus=keepScroll&&document.activeElement===scrollBody;
     wrap.textContent='';scrollBody=null;clockNode=null;
     wrap.appendChild(el('div',{style:'opacity:.7;font-size:2.4vh',text:d.title}));
     if(d.status==='planned'){wrap.appendChild(el('div',{style:'font-size:6vh;margin-top:20vh;text-align:center',text:'马上开始上课'}));lastRenderKey=nextKey;lastViewKey=viewKey(d);return}
@@ -425,17 +428,19 @@ function board(){
       el('div',{style:'font-size:6vh;font-weight:700',text:d.currentStage+'. '+d.stageName}),clockNode));
     wrap.appendChild(el('div',{style:'font-size:3vh;opacity:.8;margin:1vh 0 3vh',text:d.goal}));
     if(d.deck)wrap.appendChild(el('div',{style:'opacity:.6;font-size:2.4vh',text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}));
-    var body=el('div',{style:'flex:1;min-height:0;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45'});wrap.appendChild(body);
+    var body=el('div',{tabindex:'0',role:'region','aria-label':'课堂投影内容',style:'flex:1;min-height:0;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere;line-height:1.45'});
+    body.style.overflow='auto';
+    wrap.appendChild(body);
+    if(keepFocus)body.focus();
     BL_COVER=d.currentStage===2||d.currentStage===3;   // practice answers appear only once the teacher has released them
     if(d.courseware){
       // The approved courseware already prints its title and source problem. Suppress an identical
       // slide line so the question is not repeated and the diagram stays above the fold.
-      body.style.overflow='auto';
       var topContent=boardCoursewareContent(d);
       if(topContent.length){var top=el('div',{style:'font-size:2.6vh'});body.appendChild(top);boardLayout(top,topContent,false)}
       var cwBox=el('div');body.appendChild(cwBox);cwRender(cwBox,d.courseware,d.courseware.view,true,false);
       scrollBody=body;lastRenderKey=nextKey;lastViewKey=viewKey(d);
-      if(keepScroll)requestAnimationFrame(function(){body.scrollTop=oldScroll});
+      if(keepScroll)body.scrollTop=oldScroll;
       updateClock();return;
     }
     // Side by side when it fits; when the two columns would make the text smaller, stack them (the larger text wins).
@@ -596,7 +601,7 @@ def _page(title: str, js: str, with_header: bool, back: tuple[str, str] = ("/v1"
         # Safari12 inline script fingerprints. It overrides only the known-bad
         # four-method lesson 11 drawing, not generic geometry.
         rendered = rendered.replace("</body>", '<script src="/v1/lesson11-methods-v2.js?v=20261113-lesson11-diagrams-r5"></script></body>')
-    return rendered
+    return apply_surface(rendered, "weekend" if with_header else "board")
 
 
 PLAN_JS = MARK_JS + r"""

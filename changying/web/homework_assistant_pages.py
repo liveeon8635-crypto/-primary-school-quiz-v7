@@ -5,6 +5,8 @@ student 作业 page (v1_classic_unified_top)."""
 
 from __future__ import annotations
 
+from changying.web.design_system import apply_surface
+
 from changying.web.classroom_window_handoff import PAGE_AUTH_JS
 from changying.web.homework_circle_support_pages import CIRCLE_SUPPORT_JS
 
@@ -860,7 +862,7 @@ def homework_page_html() -> str:
     js = PAGE_JS.replace("__PAGE_AUTH__", PAGE_AUTH_JS)
     for key, value in SLOTS.items():
         js = js.replace(key, value)
-    return PAGE_HTML.replace("__CSS__", PAGE_CSS).replace("__JS__", js)
+    return apply_surface(PAGE_HTML.replace("__CSS__", PAGE_CSS).replace("__JS__", js), "homework")
 
 
 __all__ = ["homework_page_html"]
