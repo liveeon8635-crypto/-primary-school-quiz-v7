@@ -19,7 +19,32 @@ _IMPORTED_QUESTION_PREFIX = re.compile(
 )
 
 
-def _question_key(value) -> str:\n    """Normalize question text so different database IDs cannot bypass role separation."""\n    text = display_stem(value)\n    return re.sub(r"[\\s\\u3000，。,、：:；;！!？?（）()“”\\\"'「」『』]+", "", text).lower()\n\n\ndef _lesson_example_keys(db, implementation, session) -> set[str]:\n    lesson = db.get(implementation.TeachingLesson, int(session.lesson_id))\n    if lesson is None:\n        return set()\n    raw = getattr(lesson, "examples_json", "") or ""\n    try:\n        parsed = json.loads(raw) if isinstance(raw, str) else raw\n    except (TypeError, ValueError):\n        parsed = []\n    if not isinstance(parsed, list):\n        return set()\n    out = set()\n    for item in parsed:\n        value = (item.get("stem") or item.get("question") or item.get("text") or item.get("title")) if isinstance(item, dict) else item\n        if value:\n            out.add(_question_key(value))\n    return out\n\n\ndef display_stem(value):
+def _question_key(value) -> str:
+    """Normalize question text so different database IDs cannot bypass role separation."""
+    text = display_stem(value)
+    return re.sub(r"[\\s\\u3000，。,、:：;；!！?？（）()“”\\\"'「」『』]+", "", text).lower()
+
+
+def _lesson_example_keys(db, implementation, session) -> set[str]:
+    lesson = db.get(implementation.TeachingLesson, int(session.lesson_id))
+    if lesson is None:
+        return set()
+    raw = getattr(lesson, "examples_json", "") or ""
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        parsed = []
+    if not isinstance(parsed, list):
+        return set()
+    out = set()
+    for item in parsed:
+        value = (item.get("stem") or item.get("question") or item.get("text") or item.get("title")) if isinstance(item, dict) else item
+        if value:
+            out.add(_question_key(value))
+    return out
+
+
+def display_stem(value):
     """Remove an imported paper number before adding the classroom-local number."""
     return _IMPORTED_QUESTION_PREFIX.sub('', str(value or ''), count=1).strip()
 
@@ -36,9 +61,12 @@ CURSOR_PAGES = 10_000
 def practice_items(implementation, db, session):
     from changying.web.weekend_written import register_written_tables
     question = implementation.TeachingQuestion
+    example_keys = _lesson_example_keys(db, implementation, session)
     items = []
-    for index, q in enumerate(db.scalars(select(question).where(question.school_id == session.school_id,
-            question.lesson_id == session.lesson_id, question.active.is_(True)).order_by(question.id).limit(30)), 1):
+    reviewed_choices = list(db.scalars(select(question).where(question.school_id == session.school_id,
+            question.lesson_id == session.lesson_id, question.active.is_(True)).order_by(question.id).limit(30)))
+    reviewed_choices = [q for q in reviewed_choices if _question_key(q.stem) not in example_keys]
+    for index, q in enumerate(reviewed_choices, 1):
         options = json.loads(q.options_json or '[]')
         stem = f'选择题 {index}：{display_stem(q.stem)}\n' + '\n'.join(f'{chr(65+i)}. {option_text(value)}' for i, value in enumerate(options))
         correct = int(q.correct_index)
@@ -46,8 +74,10 @@ def practice_items(implementation, db, session):
         items.append({'kind': 'choice', 'id': q.id, 'source': 'reviewed_question', 'question': stem,
             'answer': stem + f'\n正确答案：{answer}\n解析：{q.explanation or "请听老师讲解"}'})
     written = register_written_tables(implementation)['questions']
-    for index, q in enumerate(db.execute(select(written).where(written.c.session_id == session.id,
-            written.c.school_id == session.school_id, written.c.teacher_id == session.teacher_id).order_by(written.c.id)), 1):
+    reviewed_written = list(db.execute(select(written).where(written.c.session_id == session.id,
+            written.c.school_id == session.school_id, written.c.teacher_id == session.teacher_id).order_by(written.c.id)))
+    reviewed_written = [q for q in reviewed_written if _question_key(q.stem.split(chr(10)+chr(10))[-1]) not in example_keys]
+    for index, q in enumerate(reviewed_written, 1):
         stem = f'文字／照片题 {index}：{display_stem(q.stem.split(chr(10)+chr(10))[-1])}'
         items.append({'kind': 'written', 'id': q.id, 'source': 'reviewed_question', 'question': stem,
             'answer': stem + '\n参考答案／评分要点：' + (q.reference.strip() or '本题未填写参考答案，请听老师讲评。')})
