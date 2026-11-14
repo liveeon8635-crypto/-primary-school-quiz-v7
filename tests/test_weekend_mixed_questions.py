@@ -111,7 +111,7 @@ with TestClient(app) as client:
 
 
 def test_plan_tabs_and_written_approval_enable_classroom_without_erasing_edits():
-    import subprocess
+    from test_node_script import run_node
     from changying.web.weekend_pages import PLAN_JS
     script = r'''
 const assert=require('node:assert/strict');
@@ -153,5 +153,6 @@ async function settle(){for(let i=0;i<15;i++)await Promise.resolve()}
  console.log('OK');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
-    result = subprocess.run(['node', '-e', script], text=True, capture_output=True, timeout=20)
+    # 页面脚本加上这些功能后超过了 Windows 32k 命令行上限，用仓库统一的临时文件执行器。
+    result = run_node(script, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr

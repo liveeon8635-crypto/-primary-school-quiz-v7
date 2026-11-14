@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 
 from changying.web.weekend_courseware_pages import COURSEWARE_PLAN_JS
+from test_node_script import run_node
 
 
 def test_courseware_plan_saves_and_applies_school_templates():
@@ -68,5 +69,5 @@ function settle(){return new Promise(r=>setTimeout(r,0))}
  console.log('OK');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
-    result = subprocess.run(["node", "-e", script], text=True, capture_output=True, timeout=30)
+    result = run_node(script, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr

@@ -8,6 +8,8 @@ import json
 import re
 from sqlalchemy import select
 
+from changying.services.weekend_question_gen import question_key
+
 _LABEL = re.compile(r'^\s*[A-Da-d]\s*[．.、:：)）]\s*')
 
 _IMPORTED_QUESTION_PREFIX = re.compile(
@@ -20,9 +22,12 @@ _IMPORTED_QUESTION_PREFIX = re.compile(
 
 
 def _question_key(value) -> str:
-    """Normalize question text so different database IDs cannot bypass role separation."""
-    text = display_stem(value)
-    return re.sub(r"[\s\u3000，。,、:：;；!！?？（）()“”\"'「」『』]+", "", text).lower()
+    """Normalize question text so different database IDs cannot bypass role separation.
+
+    与“习题审核”的查重共用同一套归一化（weekend_question_gen.question_key），
+    这样同一道题不会出现“审核说重复、大屏又发出去”或反过来的情况。
+    """
+    return question_key(display_stem(value))
 
 
 def _lesson_example_keys(db, implementation, session) -> set[str]:
