@@ -491,9 +491,14 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         return out[:3]
 
     def existing_stems(db: Any, u: Any, lesson: Any) -> list[str]:
-        """Approved questions of the lesson: new drafts must not repeat them."""
+        """All lesson-local material that a new practice draft must not repeat.
+
+        Worked examples live in ``examples_json`` rather than TeachingQuestion,
+        so they must be part of the same exclusion set as reviewed questions.
+        """
         stems = [q.stem for q in db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(True)))]
         stems += [q.stem.split("\n")[-1] for q in written_templates(db, written, u.school_id, u.id, lesson.id) if template_meta(q).get("approved")]
+        stems += _lines(lesson.examples_json)
         return stems
 
     def generate_questions(db: Any, u: Any, lesson: Any, count: int) -> dict[str, Any]:
@@ -1277,5 +1282,6 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
 
 
 __all__ = ["install_weekend_plan", "register_plan_tables"]
+
 
 
