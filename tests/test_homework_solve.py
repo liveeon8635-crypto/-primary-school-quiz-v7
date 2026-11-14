@@ -420,6 +420,9 @@ with TestClient(app) as client:
     done = client.post(f"/student/homework/help/{hid2}/solve", headers=sh)
     assert done.status_code == 200 and done.json()["state"] == "escalated"
     assert row_of(hid2)["state"] == "escalated" and row_of(hid2)["escalate_reason"] == "student_request"
+    knowledge = legacy.Base.metadata.tables["homework_ai_knowledge"]
+    with legacy.SessionLocal() as db:
+        assert db.execute(select(knowledge.c.id).where(knowledge.c.help_id == hid2)).first() is None
 print("OK")
 ''',
     )
