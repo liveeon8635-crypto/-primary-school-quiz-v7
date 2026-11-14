@@ -556,7 +556,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     def existing_stems(db: Any, u: Any, lesson: Any) -> list[str]:
         """Approved questions of the lesson plus its examples: new drafts must not repeat either."""
         stems = [q.stem for q in db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(True)))]
-        stems += [q.stem.split("\n")[-1] for q in written_templates(db, written, u.school_id, u.id, lesson.id) if template_meta(q).get("approved")]\n        stems += _lines(lesson.examples_json)
+        stems += [q.stem.split("\n")[-1] for q in written_templates(db, written, u.school_id, u.id, lesson.id) if template_meta(q).get("approved")]
+        stems += _lines(lesson.examples_json)\n        stems += _lines(lesson.examples_json)
         return merge_example_stems(stems, lesson)
 
     def generate_questions(db: Any, u: Any, lesson: Any, count: int) -> dict[str, Any]:
