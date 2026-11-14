@@ -267,6 +267,17 @@ def question_options(row: Any) -> list[str]:
     return [str(x).strip() for x in data if str(x).strip()] if isinstance(data, list) else []
 
 
+def lesson_worked_examples(lesson: Any) -> list[dict[str, str]]:
+    """Return the same example pages shown in stage 3, including source questions from reading_plan."""
+    from changying.services.weekend_presentation import lesson_deck
+
+    pages = lesson_deck({
+        "reading_plan": str(getattr(lesson, "reading_plan", "") or ""),
+        "examples_json": str(getattr(lesson, "examples_json", "") or ""),
+    }, 3)
+    return [{"label": f"例{i}", "stem": str(page)} for i, page in enumerate(pages, start=1) if str(page).strip()]
+
+
 def duplicate_of(stem: str, options: list[str], examples: list[dict[str, str]],
                  others: list[tuple[str, list[str]]]) -> str:
     """这道题重复了谁：返回 "例3" / "本课习题" / ""（不重复），只用于页面提示。"""
@@ -1238,7 +1249,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         need(u, "teacher")
         lesson = my_lesson(db, u, lid)
         rows = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE).order_by(TQ.id)).all()
-        examples = example_stems(lesson.examples_json)
+        examples = lesson_worked_examples(lesson)
         out = []
         for q in rows:
             opts = question_options(q)
@@ -1254,7 +1265,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         lesson = my_lesson(db, u, lid)
         if b.approve:
             targets = list(db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.id.in_(b.approve))))
-            examples = example_stems(lesson.examples_json)
+            examples = lesson_worked_examples(lesson)
             approved = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE,
                                                  TQ.active.is_(True), TQ.id.notin_(b.approve))).all()
             seen = [(q.stem, question_options(q)) for q in approved]
