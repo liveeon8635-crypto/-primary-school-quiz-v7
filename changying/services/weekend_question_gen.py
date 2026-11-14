@@ -175,6 +175,8 @@ _OPTION_PREFIX = re.compile(r"(?:[(]\s*[A-Da-d]\s*[)]|(?<![A-Za-z0-9])[A-Da-d]\s
 _STANDALONE_OPTION = re.compile(r"(?<![A-Za-z0-9])[A-D](?![A-Za-z0-9])")
 # 小数点不能当句号删掉：2.5×4 和 25×4 是两道不同的计算题，删掉小数点会把它们判成重复。
 _DECIMAL_POINT = re.compile(r"(?<=[0-9])[.](?=[0-9])")
+# 分数线同样是题目内容：1/2+1/3 和 12+13 是两道题，去掉斜杠会把它们判成同一道。
+_FRACTION_SLASH = re.compile(r"(?<=[0-9])[/](?=[0-9])")
 _STRIP = re.compile(r"[\s,，。、;；:：!！?？.()（）\[\]【】{}｛｝<>《》〈〉\"'“”‘’`~～·…—–_/\\|｜]+")
 
 
@@ -193,7 +195,8 @@ def _norm(text: str) -> str:
     if len(labelled) >= 2:
         s = _STANDALONE_OPTION.sub("", s)
     s = _DECIMAL_POINT.sub("\0", s)                          # 先把小数点占住，再去掉标点
-    return _STRIP.sub("", s).replace("\0", ".").lower()
+    s = _FRACTION_SLASH.sub("\1", s)                         # 分数线的斜杠也不能当标点删掉
+    return _STRIP.sub("", s).replace("\0", ".").replace("\1", "/").lower()
 
 
 def question_key(text: Any) -> str:

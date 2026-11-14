@@ -328,6 +328,16 @@ def lesson_worked_examples(lesson: Any) -> list[dict[str, str]]:
     return [{"label": f"例{i}", "stem": _worked_example_match_text(page)} for i, page in enumerate(pages, start=1) if _worked_example_match_text(page)]
 
 
+def _options_are_telling(options: list[str]) -> bool:
+    """选项本身能不能证明是同一道题。
+
+    判断题的“√／×”、只差一位的“3／4／5／6”这类短选项，在互不相干的题里天天出现，
+    拿它们判重会把不同的题当成重复、悄悄略过，所以只有够长够多的选项才参与判重。
+    """
+    cleaned = [qg.question_key(option) for option in options or []]
+    return len(cleaned) >= 3 and any(len(option) > 1 for option in cleaned)
+
+
 def duplicate_of(stem: str, options: list[str], examples: list[dict[str, str]],
                  others: list[tuple[str, list[str]]]) -> str:
     """这道题重复了谁：返回 "例3" / "本课习题" / ""（不重复），只用于页面提示。"""
@@ -335,7 +345,10 @@ def duplicate_of(stem: str, options: list[str], examples: list[dict[str, str]],
         if qg.same_question(stem, example["stem"]):
             return example["label"]
     for other_stem, other_options in others:
-        if qg.same_question(stem, other_stem) or qg.same_options(options, other_options):
+        if qg.same_question(stem, other_stem):
+            return "本课习题"
+        if (_options_are_telling(options) and _options_are_telling(other_options)
+                and qg.same_options(options, other_options)):
             return "本课习题"
     return ""
 
@@ -1448,7 +1461,13 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 seen.append((q.stem, question_options(q)))
             db.execute(update(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.id.in_(b.approve)).values(active=True))
         if b.retract:
-            # 撤回通过：题留在备课里，但不再进入课堂；已上过的课和学生作答都不动。
+            # 撤回通过：题留在备课里，但不再进入课堂。第4环节的选择题是每次现查“已通过”的题，
+            # 所以正在上的课会当场少一道题、后面题号和已公布答案的序号一起前移；这种情况必须先拦下。
+            live = db.scalar(select(sessions.c.id).where(sessions.c.lesson_id == lesson.id,
+                                                         sessions.c.status == "running").limit(1))
+            if live:
+                raise HTTPException(409, "这节课正在上课，撤回会让题目当场从第4环节消失、并打乱已公布答案的顺序。"
+                                         "请下课后在审改页撤回，正在上课时请先不要改动已通过的题。")
             db.execute(update(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.id.in_(b.retract)).values(active=False))
         if b.remove:
             db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.id.in_(b.remove), TQ.active.is_(False)))   # an approved question is never deleted here

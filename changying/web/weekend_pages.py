@@ -998,7 +998,7 @@ function plan(){
         // 已有课件里如果例题和随堂练习是同一道题，这里先汇总成一条，老师不用逐条翻。
         if(dups.length){
           reviewList.appendChild(el('div',{class:'notice error','data-review-duplicates':String(dups.length),
-            text:'本课有 '+dups.length+' 道随堂练习与例题或已通过的习题重复，不能当新题用：请在下面标红“⚠ 与…重复”的题上换一道同考点新题后再点通过；已经通过的旧题可以点“撤回通过（课堂记录保留）”。'}));
+            text:'本课有 '+dups.length+' 道随堂练习与例题或已通过的习题重复，不能当新题用：请在下面标红“⚠ 与…重复”的题上换一道同考点新题后再点通过；已经通过的旧题可以点“撤回通过（已上过的课不动）”。'}));
         }
         var totals={},groups={};
         cards.forEach(function(item){if(item.order!==null)totals[item.order]=(totals[item.order]||0)+1});
@@ -1042,7 +1042,8 @@ function plan(){
             }
             if(q.active&&q.duplicateOf){
               // 旧课里已经通过的重复题：给一条退路，撤回后不再发放，但已上过的课和学生作答都保留。
-              var retractChoice=el('button',{text:'撤回通过（课堂记录保留）',onclick:function(){
+              // 正在上课的课不给撤回：第4环节现查“已通过”的题，撤回会当场少一道题、打乱已公布答案的序号。
+              var retractChoice=el('button',{text:'撤回通过（已上过的课不动）',onclick:function(){
                 retractChoice.disabled=true;
                 api('/teacher/weekend/lessons/'+r.lessonId+'/questions',{json:{retract:[q.id]}}).then(function(st){refreshStatus(st);loadQ()}).catch(function(e){feedback.textContent=e.message;retractChoice.disabled=false});
               }});
@@ -1105,7 +1106,7 @@ function plan(){
             }
             if(q.approved&&q.duplicateOf){
               // 与例题重复的旧题已经通过：撤回后不再发给学生，已建好的课堂副本和学生作答都保留。
-              var retractWritten=el('button',{text:'撤回通过（课堂记录保留）',onclick:function(){
+              var retractWritten=el('button',{text:'撤回通过（已上过的课不动）',onclick:function(){
                 retractWritten.disabled=true;
                 api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',{json:{retract:[q.id]}}).then(function(st){refreshStatus(st);loadWritten()}).catch(function(e){feedback.textContent=e.message;retractWritten.disabled=false});
               }});

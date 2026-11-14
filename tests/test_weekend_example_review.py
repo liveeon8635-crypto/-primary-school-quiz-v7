@@ -188,3 +188,49 @@ assert '没有可用的随堂练习' in text,text
 assert '单独导入随堂练习' in text,text
 print('OK')
 ''')
+
+
+def test_duplicate_guard_is_not_fooled_by_short_options_or_fraction(tmp_path):
+    helpers.run_isolated(tmp_path, COMMON+r"""
+th,lid,ok_id,dup_id,decimal_id,class_id = prepare(client)
+base='/teacher/weekend/lessons/'+str(lid)
+import changying.services.weekend_question_gen as qg
+from changying.web.weekend_plan_views import _worked_example_match_text
+from changying.services.weekend_answers import _question_key
+
+# 分数线是题目内容，不是标点：1/2+1/3 与 12+13 是两道不同的题。
+assert qg.question_key('计算 1/2+1/3=')!=qg.question_key('计算 12+13=')
+assert qg.question_key('计算 1/2+1/3=')==qg.question_key('计算 1／2+1／3=')
+
+# 审核页与第4环节必须用同一段文字比对：版面头“第3题（基础）（4分）”“原题｜”不能留在键里，
+# 否则审核页说“与例3重复”，课堂照样把这道题发给学生。
+page='第3题（基础）（4分）\n原题｜计算 2.5×4=？'
+assert _question_key(_worked_example_match_text(page))==qg.question_key('计算 2.5×4=？')
+
+with legacy.SessionLocal() as db:
+    program_id=db.get(legacy.TeachingLesson,lid).program_id
+    for stem,opts in (('判断：平行四边形的对边相等。',['√','×']),('判断：长方形也是平行四边形。',['√','×']),
+                      ('下面哪个数是偶数？',['3','4','5','6'])):
+        db.add(legacy.TeachingQuestion(school_id=db.get(legacy.TeachingLesson,lid).school_id,program_id=program_id,lesson_id=lid,subject='数学',
+            stage='lesson',level='B',knowledge='图形的认识',stem=stem,options_json=json.dumps(opts,ensure_ascii=False),
+            correct_index=0,explanation='解析',active=False))
+    db.commit()
+
+# 短选项（√／×、只差一位的数字）在互不相干的题里天天出现，不能拿来判重。
+items=client.get(base+'/questions',headers=th).json()['items']
+judge=[i for i in items if i['stem'].startswith('判断')]
+assert len(judge)==2 and all(i['duplicateOf']=='' for i in judge),judge
+assert all(i['duplicateOf']=='' for i in items if i['stem'].startswith('下面哪个数')),items
+ids=[i['id'] for i in judge]
+r=client.post(base+'/questions',headers=th,json={'approve':ids})
+assert r.status_code==200,r.text
+assert r.json()['practiceReady']>=2,r.json()
+
+# 正在上课时撤回已通过的题必须被拦下：第4环节现查“已通过”的题，撤回会当场少一道题、打乱答案序号。
+sid=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid,'classId':class_id}).json()['id']
+assert client.post('/teacher/weekend/sessions/'+str(sid)+'/start',headers=th).status_code==200
+r=client.post(base+'/questions',headers=th,json={'retract':[ids[0]]})
+assert r.status_code==409,r.text
+assert '正在上课' in r.json()['detail'],r.json()
+print('OK')
+""")

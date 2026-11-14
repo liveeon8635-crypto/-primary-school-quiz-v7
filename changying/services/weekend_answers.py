@@ -34,14 +34,11 @@ def _lesson_example_keys(db, implementation, session) -> set[str]:
     lesson = db.get(implementation.TeachingLesson, int(session.lesson_id))
     if lesson is None:
         return set()
-    # Stage 3 uses numbered exercises from reading_plan when available;
-    # using examples_json alone misses the actual worked examples shown.
-    from changying.services.weekend_presentation import lesson_deck
-    pages = lesson_deck({
-        "reading_plan": getattr(lesson, "reading_plan", "") or "",
-        "examples_json": getattr(lesson, "examples_json", "") or "",
-    }, 3)
-    return {_question_key(page) for page in pages if _question_key(page)}
+    # 第3环节的页面带着“第3题（基础）（4分）”“原题｜”这类版面信息。审核页比对前由
+    # lesson_worked_examples 去掉，课堂这边也必须走同一个函数，否则会出现
+    # “审核页说与例3重复、第4环节又把这道题发给学生”。
+    from changying.web.weekend_plan_views import lesson_worked_examples
+    return {_question_key(item["stem"]) for item in lesson_worked_examples(lesson) if _question_key(item["stem"])}
 
 
 def display_stem(value):
