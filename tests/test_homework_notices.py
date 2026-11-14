@@ -1660,3 +1660,20 @@ with TestClient(app) as client:
     assert state()['completedAt'] and state()['startedAt'] == started
 print('OK')
 ''', {'HOMEWORK_ASSISTANT': '1'})
+
+
+def test_old_notice_is_visible_after_new_recipient_is_added(tmp_path):
+    run_isolated(tmp_path, COMMON + r'''
+from datetime import datetime, timedelta
+from sqlalchemy import text
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    nid = client.post('/teacher/homework/notices', headers=th, json=json.loads(NOTICE_JSON)).json()['id']
+    assert client.post(f'/teacher/homework/notices/{nid}/publish', headers=th, json={'studentIDs': [sid]}).status_code == 200
+    with legacy.SessionLocal() as db:
+        db.execute(text('UPDATE homework_notices SET published_at=:old WHERE id=:nid'),
+                   {'old': datetime.utcnow() - timedelta(days=4), 'nid': nid})
+        db.commit()
+    assert any(n['noticeID'] == nid for n in client.get('/student/homework/today', headers=sh).json())
+print('OK')
+''', {'HOMEWORK_ASSISTANT': '1'})
