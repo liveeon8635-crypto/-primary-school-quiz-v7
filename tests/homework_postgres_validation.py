@@ -18,6 +18,16 @@ with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
     nid = client.post('/teacher/homework/notices',headers=th,json=json.loads(NOTICE_JSON)).json()['id']
     assert client.post(f'/teacher/homework/notices/{nid}/publish',headers=th,json={'studentIDs':[sid]}).status_code == 200
+    from sqlalchemy import event
+    write_barrier = threading.Barrier(2)
+    first_update = threading.local()
+    def pause_first_update(conn, cursor, statement, parameters, context, executemany):
+        if (threading.current_thread().name != 'MainThread'
+                and statement.startswith('UPDATE homework_recipients SET done_json=')
+                and getattr(first_update, 'iteration', None) != iteration):
+            first_update.iteration = iteration
+            write_barrier.wait(timeout=15)
+    event.listen(legacy.engine, 'before_cursor_execute', pause_first_update)
     for iteration in range(30):
         with legacy.SessionLocal() as db:
             db.execute(text("UPDATE homework_recipients SET done_json='[]',started_at=NULL,completed_at=NULL WHERE notice_id=:n"),{'n':nid})
@@ -32,6 +42,7 @@ with TestClient(app) as client:
         assert all(x[0]==200 for x in results), results
         row=client.get('/student/homework/today',headers=sh).json()[0]
         assert all(item['done'] for item in row['items']), row
+    event.remove(legacy.engine, 'before_cursor_execute', pause_first_update)
     nid2 = client.post('/teacher/homework/notices',headers=th,json=json.loads(NOTICE_JSON)).json()['id']
     barrier = threading.Barrier(2)
     def publish(_):
