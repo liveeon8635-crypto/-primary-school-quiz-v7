@@ -60,9 +60,35 @@ def collect():
 if __name__ == '__main__':
     if not os.environ.get('DATABASE_URL','').startswith('sqlite:'):
         raise SystemExit('Use an isolated SQLite DATABASE_URL')
-    if sys.argv[1] == '--collect':
+    if len(sys.argv) > 1 and sys.argv[1] == '--collect':
         sources, coverage = collect_variant()
         print(json.dumps({'scripts': sources, 'routes': coverage}))
         raise SystemExit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == '--check':
+        # Report drift without compiling: exit 1 when any inline script is missing
+        # from, or stale in, the committed manifest.
+        sources, coverage = collect()
+        manifest_path = Path(__file__).resolve().parents[1] / 'web' / 'safari12_assets' / 'manifest.json'
+        manifest = json.loads(manifest_path.read_text())
+        missing = sorted(set(sources) - set(manifest['scripts']))
+        extra = sorted(set(manifest['scripts']) - set(sources))
+        print(json.dumps({'scripts': len(sources), 'routes': len(coverage), 'missing': missing, 'extra': extra}))
+        raise SystemExit(1 if missing or extra else 0)
+    # The toolchain directory stays outside the repository so a stale working copy
+    # never has to reinstall it: pass it as argv[1], set SAFARI12_NODE_MODULES, or
+    # rely on the per-user default below (created once by the npm command).
+    modules = os.environ.get('SAFARI12_NODE_MODULES') or (sys.argv[1] if len(sys.argv) > 1 else '')
+    if not modules:
+        for candidate in (Path(os.environ.get('LOCALAPPDATA','/tmp')) / 'ios12-build' / 'node_modules', Path('/tmp/ios12-build/node_modules')):
+            if (candidate / '@babel' / 'core').exists():
+                modules = str(candidate)
+                break
+        else:
+            modules = str(Path(os.environ.get('LOCALAPPDATA','/tmp')) / 'ios12-build' / 'node_modules')
+    if not (Path(modules) / '@babel' / 'core').exists():
+        raise SystemExit(
+            'Safari 12 toolchain missing at {0}. Install it once: npm install --prefix "{1}" '
+            '--no-audit --no-fund @babel/core@7.28.5 @babel/preset-env@7.28.5 acorn@8.15.0'.format(modules, Path(modules).parent)
+        )
     sources, coverage = collect()
-    subprocess.run(['node',str(Path(__file__).with_name('compile_safari12.cjs')),sys.argv[1]],input=json.dumps({'scripts':sources,'routes':coverage}),text=True,check=True)
+    subprocess.run(['node',str(Path(__file__).with_name('compile_safari12.cjs')),modules],input=json.dumps({'scripts':sources,'routes':coverage}),text=True,check=True)
