@@ -458,40 +458,51 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
         notice_id: int, seq: int, b: DoneBody, u: Any = Depends(current_user), db: Any = Depends(get_db)
     ):
         need(u, "student")
-        row = db.execute(
-            select(recipients.c.id, recipients.c.done_json, notices.c.items_json)
-            .join(notices, notices.c.id == recipients.c.notice_id)
-            .where(
-                recipients.c.notice_id == notice_id,
-                recipients.c.student_id == u.id,
-                recipients.c.school_id == u.school_id,
-                notices.c.status == "published",
+        for _ in range(10):
+            row = db.execute(
+                select(recipients.c.id, recipients.c.done_json, recipients.c.started_at,
+                       recipients.c.completed_at, notices.c.items_json)
+                .join(notices, notices.c.id == recipients.c.notice_id)
+                .where(
+                    recipients.c.notice_id == notice_id,
+                    recipients.c.student_id == u.id,
+                    recipients.c.school_id == u.school_id,
+                    notices.c.status == "published",
+                )
+            ).first()
+            if row is None:
+                raise HTTPException(404, "没有这份作业")
+            valid = {int(item.get("seq", 0)) for item in _json_list(row.items_json)}
+            if seq not in valid:
+                raise HTTPException(404, "没有这条作业")
+            done = set(_ints(row.done_json))
+            was_complete = bool(valid) and done >= valid
+            if b.done:
+                done.add(seq)
+            else:
+                done.discard(seq)
+            now = datetime.utcnow()
+            values = {"done_json": json.dumps(sorted(done))}
+            if b.done and row.started_at is None:
+                values["started_at"] = now
+            if done >= valid and not was_complete:
+                values["completed_at"] = now
+            elif done < valid:
+                values["completed_at"] = None
+            result = db.execute(
+                update(recipients).where(
+                    recipients.c.id == row.id,
+                    recipients.c.done_json == row.done_json,
+                    recipients.c.started_at == row.started_at,
+                    recipients.c.completed_at == row.completed_at,
+                ).values(**values)
             )
-        ).first()
-        if row is None:
-            raise HTTPException(404, "没有这份作业")
-        valid = {int(item.get("seq", 0)) for item in _json_list(row.items_json)}
-        if seq not in valid:
-            raise HTTPException(404, "没有这条作业")
-        done = set(_ints(row.done_json))
-        if b.done:
-            done.add(seq)
+            if result.rowcount == 1:
+                db.commit()
+                break
+            db.rollback()
         else:
-            done.discard(seq)
-        now = datetime.utcnow()
-        values = {"done_json": json.dumps(sorted(done))}
-        # 第一次勾选就是这次作业的开始时间；之后刷新、换设备都不重置。
-        current = db.execute(select(recipients.c.started_at, recipients.c.completed_at)
-                             .where(recipients.c.id == row.id)).first()
-        if current is not None and current.started_at is None:
-            values["started_at"] = now
-        everything = {int(item.get("seq", 0)) for item in _json_list(row.items_json)}
-        if everything and done >= everything:
-            values["completed_at"] = now
-        else:
-            values["completed_at"] = None
-        db.execute(update(recipients).where(recipients.c.id == row.id).values(**values))
-        db.commit()
+            raise HTTPException(409, "作业进度更新繁忙，请重试")
         return {"noticeID": notice_id, "seq": seq, "done": bool(b.done)}
 
     app.include_router(router)
