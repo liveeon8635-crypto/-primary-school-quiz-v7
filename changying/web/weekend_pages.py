@@ -908,8 +908,11 @@ function plan(){
           var item=el('div',{class:'item','data-example-index':String(example.pageIndex)},
             el('b',{text:example.label+'（讲解用）'}),el('span',{class:'tag '+cls,'data-example-status':example.status,text:example.statusText}),
             el('p',{text:example.stem}),act,fb);
-          if(example.status==='approved'||example.status==='legacy'){
+          if(example.status==='approved'){
             act.appendChild(el('button',{text:'撤回审核',onclick:function(){reviewExamples({retract:[example.pageIndex]},null,fb)}}));
+          }else if(example.status==='legacy'){
+            // 旧课没有审核记录可撤回：撤回会变回“历史·已通过”，按钮会像没反应，所以只说明。
+            act.appendChild(el('span',{class:'muted',text:'这节课在上线前就在，例题按“历史·已通过”显示；改动例题内容会要求重新审核。'}));
           }else{
             act.appendChild(el('button',{class:'primary',text:'核对通过',onclick:function(){reviewExamples({approve:[example.pageIndex]},null,fb)}}));
             if(example.status==='changed')act.appendChild(el('span',{class:'muted',text:'内容改过了，请重新核对题干、答案和配图'}));
