@@ -232,5 +232,23 @@ assert client.post('/teacher/weekend/sessions/'+str(sid)+'/start',headers=th).st
 r=client.post(base+'/questions',headers=th,json={'retract':[ids[0]]})
 assert r.status_code==409,r.text
 assert '正在上课' in r.json()['detail'],r.json()
+# 审核页直接归一化题干，第4环节先 display_stem 再归一化：两边必须得到同一个键，
+# 否则会出现“审核页不报重复，课堂却把这道题藏掉”。
+assert qg.question_key('第3题（基础）（4分）计算 2.5×4=？')==qg.question_key('计算 2.5×4=？')
+assert qg.question_key('选择题 3：计算 2.5×4=？')==qg.question_key('计算 2.5×4=？')
+# 分子分母之间带不带空格是同一道题。
+assert qg.question_key('计算 1 / 2 + 1/3=')==qg.question_key('计算 1/2+1/3=')
+
+# 纯数字选项（12/15/18/20）在互不相干的题里也会撞，不能拿来判重。
+with legacy.SessionLocal() as db:
+    program_id=db.get(legacy.TeachingLesson,lid).program_id
+    for stem,opts in (('一个数比 12 大，比 15 小，可能是几？',['13','14','16','20']),
+                      ('下面哪个数最大？',['13','14','16','20'])):
+        db.add(legacy.TeachingQuestion(school_id=db.get(legacy.TeachingLesson,lid).school_id,program_id=program_id,
+            lesson_id=lid,subject='数学',stage='lesson',level='B',knowledge='数的大小',stem=stem,
+            options_json=json.dumps(opts,ensure_ascii=False),correct_index=0,explanation='解析',active=False))
+    db.commit()
+pairs=[i for i in client.get(base+'/questions',headers=th).json()['items'] if i['stem'].startswith(('一个数比','下面哪个数最大'))]
+assert len(pairs)==2 and all(i['duplicateOf']=='' for i in pairs),pairs
 print('OK')
 """)

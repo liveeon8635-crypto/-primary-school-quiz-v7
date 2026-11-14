@@ -1041,9 +1041,10 @@ function plan(){
               act.appendChild(el('button',{text:'删除',onclick:function(){api('/teacher/weekend/lessons/'+r.lessonId+'/questions',{json:{remove:[q.id]}}).then(function(st){refreshStatus(st);loadQ()})}}));
             }
             if(q.active&&q.duplicateOf){
-              // 旧课里已经通过的重复题：给一条退路，撤回后不再发放，但已上过的课和学生作答都保留。
-              // 正在上课的课不给撤回：第4环节现查“已通过”的题，撤回会当场少一道题、打乱已公布答案的序号。
-              var retractChoice=el('button',{text:'撤回通过（已上过的课不动）',onclick:function(){
+              // 旧课里已经通过的重复题：给一条退路，撤回后不再发放。选择题是每次现查“已通过”的题，
+              // 所以已经上过的课的报告和成绩会按剩下的题重算；正在上课的课直接不给撤回。
+              var retractChoice=el('button',{text:'撤回通过',onclick:function(){
+                if(!window.confirm('撤回后这节课不再向学生发放这道题。选择题是每次现查已通过的题，已经上过的课如果用过这道题，报告和成绩会按剩下的题重算；正在上课的课不能撤回。'))return;
                 retractChoice.disabled=true;
                 api('/teacher/weekend/lessons/'+r.lessonId+'/questions',{json:{retract:[q.id]}}).then(function(st){refreshStatus(st);loadQ()}).catch(function(e){feedback.textContent=e.message;retractChoice.disabled=false});
               }});
@@ -1105,8 +1106,10 @@ function plan(){
               actions.appendChild(removeWritten);
             }
             if(q.approved&&q.duplicateOf){
-              // 与例题重复的旧题已经通过：撤回后不再发给学生，已建好的课堂副本和学生作答都保留。
-              var retractWritten=el('button',{text:'撤回通过（已上过的课不动）',onclick:function(){
+              // 与例题重复的旧题已经通过：撤回后不再发给学生。文字题在开课时复制一份进课堂，
+              // 已上过的课用的是当时那份副本，不受撤回影响。
+              var retractWritten=el('button',{text:'撤回通过',onclick:function(){
+                if(!window.confirm('撤回后这节课不再向学生发放这道题。已经上过的课用的是开课时复制的那份，不受影响。'))return;
                 retractWritten.disabled=true;
                 api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',{json:{retract:[q.id]}}).then(function(st){refreshStatus(st);loadWritten()}).catch(function(e){feedback.textContent=e.message;retractWritten.disabled=false});
               }});

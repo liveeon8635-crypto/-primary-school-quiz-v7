@@ -331,11 +331,12 @@ def lesson_worked_examples(lesson: Any) -> list[dict[str, str]]:
 def _options_are_telling(options: list[str]) -> bool:
     """选项本身能不能证明是同一道题。
 
-    判断题的“√／×”、只差一位的“3／4／5／6”这类短选项，在互不相干的题里天天出现，
-    拿它们判重会把不同的题当成重复、悄悄略过，所以只有够长够多的选项才参与判重。
+    判断题的“√／×”、只差一位的“3／4／5／6”“12／15／18／20”这类纯数字或单字选项，
+    在互不相干的题里天天出现，拿它们判重会把不同的题当成重复、悄悄略过，
+    所以只有“至少 3 个选项、且其中有一个不是纯数字”的选项组才参与判重。
     """
     cleaned = [qg.question_key(option) for option in options or []]
-    return len(cleaned) >= 3 and any(len(option) > 1 for option in cleaned)
+    return len(cleaned) >= 3 and any(not option.isdigit() for option in cleaned)
 
 
 def duplicate_of(stem: str, options: list[str], examples: list[dict[str, str]],
