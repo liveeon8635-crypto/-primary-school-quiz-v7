@@ -22,7 +22,7 @@ _IMPORTED_QUESTION_PREFIX = re.compile(
 def _question_key(value) -> str:
     """Normalize question text so different database IDs cannot bypass role separation."""
     text = display_stem(value)
-    return re.sub(r"[\\s\\u3000，。,、:：;；!！?？（）()“”\\\"'「」『』]+", "", text).lower()
+    return re.sub(r"[\s\u3000，。,、:：;；!！?？（）()“”\"'「」『』]+", "", text).lower()
 
 
 def _lesson_example_keys(db, implementation, session) -> set[str]:
