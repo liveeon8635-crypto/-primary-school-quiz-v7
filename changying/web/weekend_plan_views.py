@@ -267,6 +267,19 @@ def question_options(row: Any) -> list[str]:
     return [str(x).strip() for x in data if str(x).strip()] if isinstance(data, list) else []
 
 
+def _worked_example_match_text(page: Any) -> str:
+    """Remove the slide-only numbered metadata header before comparing with a reviewed question stem."""
+    lines = str(page or "").splitlines()
+    if len(lines) > 1 and re.match(r"^\s*第\s*[0-9一二三四五六七八九十百]+\s*题", lines[0]):
+        lines = lines[1:]
+    cleaned = []
+    for line in lines:
+        line = re.sub(r"^\s*原题\s*[|｜:：]\s*", "", line)
+        if line.strip():
+            cleaned.append(line.strip())
+    return "\n".join(cleaned)
+
+
 def lesson_worked_examples(lesson: Any) -> list[dict[str, str]]:
     """Return the same example pages shown in stage 3, including source questions from reading_plan."""
     from changying.services.weekend_presentation import lesson_deck
@@ -275,7 +288,7 @@ def lesson_worked_examples(lesson: Any) -> list[dict[str, str]]:
         "reading_plan": str(getattr(lesson, "reading_plan", "") or ""),
         "examples_json": str(getattr(lesson, "examples_json", "") or ""),
     }, 3)
-    return [{"label": f"例{i}", "stem": str(page)} for i, page in enumerate(pages, start=1) if str(page).strip()]
+    return [{"label": f"例{i}", "stem": _worked_example_match_text(page)} for i, page in enumerate(pages, start=1) if _worked_example_match_text(page)]
 
 
 def duplicate_of(stem: str, options: list[str], examples: list[dict[str, str]],
