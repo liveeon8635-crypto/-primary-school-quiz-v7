@@ -297,17 +297,23 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
         items = clean_items(b.items)
         if not items:
             raise HTTPException(400, "至少需要一条作业")
-        db.execute(
+        result = db.execute(
             update(notices)
-            .where(notices.c.id == notice_id)
+            .where(notices.c.id == notice_id, notices.c.status == "draft")
             .values(group_label=(b.groupLabel or "").strip()[:120], items_json=json.dumps(items, ensure_ascii=False))
         )
+        if result.rowcount != 1:
+            db.rollback()
+            raise HTTPException(409, "已发布的清单不能再修改条目")
         db.commit()
         return notice_json(own_notice(db, u, notice_id))
 
     @router.post("/teacher/homework/notices/{notice_id}/publish")
     def publish_notice(notice_id: int, b: PublishBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
+        own_notice(db, u, notice_id)
+        # Serialize publishing for the same notice before inspecting recipients.
+        db.execute(update(notices).where(notices.c.id == notice_id).values(status=notices.c.status))
         row = own_notice(db, u, notice_id)
         if not _json_list(row["items_json"]):
             raise HTTPException(400, "清单里没有作业条目")
@@ -427,7 +433,7 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
                 recipients.c.student_id == u.id,
                 recipients.c.school_id == u.school_id,
                 notices.c.status == "published",
-                notices.c.published_at >= since,
+                recipients.c.created_at >= since,
             )
             .order_by(notices.c.published_at.desc(), notices.c.id.desc())
         ).all()
