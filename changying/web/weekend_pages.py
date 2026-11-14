@@ -856,9 +856,12 @@ function plan(){
         }});
         editPane.appendChild(undo);
       }
-      var qbox=el('div'),wbox=el('div'),reviewList=el('div',{'data-review-list':'true'}),reviewNote=el('p',{class:'muted'}),choiceCards=[],writtenCards=[];
+      var qbox=el('div'),wbox=el('div'),exampleBox=el('div',{class:'card'}),reviewList=el('div',{'data-review-list':'true'}),reviewNote=el('p',{class:'muted'}),choiceCards=[],writtenCards=[];
       questionPane.appendChild(el('h2',{text:'习题审核'}));
-      questionPane.appendChild(el('p',{text:'按教案原题顺序审核。选择题自动判分；填答案、阅读简答与写作支持文字／拍照提交，由老师批改。至少通过一道题即可进入课堂。'}));
+      questionPane.appendChild(el('p',{text:'例题讲解只用于老师讲解；随堂练习由学生独立作答。只有“随堂练习候选”审核通过后，才会进入课堂第4环节。'}));
+      questionPane.appendChild(el('h3',{text:'例题讲解（第3环节，只讲不发题）'}));
+      questionPane.appendChild(exampleBox);
+      questionPane.appendChild(el('h3',{text:'随堂练习候选（审核通过后进入第4环节）'}));
       questionPane.appendChild(qbox);questionPane.appendChild(wbox);questionPane.appendChild(reviewNote);questionPane.appendChild(reviewList);
       // The two APIs keep different question types in separate tables. Recover only
       // reliable source positions; never infer a cross-type order from database IDs.
@@ -938,7 +941,15 @@ function plan(){
       function loadQ(){
         qbox.textContent='';choiceCards=[];
         api('/teacher/weekend/lessons/'+r.lessonId+'/questions').then(function(d){
-          if(!d.items.length){renderReview();return}
+          exampleBox.textContent='';
+          if(!d.workedExamples||!d.workedExamples.length){
+            exampleBox.appendChild(el('p',{class:'muted',text:'第3环节没有可识别的例题页。'}));
+          }else{
+            d.workedExamples.forEach(function(example){
+              exampleBox.appendChild(el('div',{class:'item'},el('b',{text:example.label+'（讲解用）'}),el('p',{text:example.stem})));
+            });
+          }
+          if(!d.items.length){qbox.appendChild(el('p',{class:'muted',text:'暂时没有选择题候选；下方也可能有文字题。'}));renderReview();return}
           d.items.forEach(function(q,i){
             var meta=reviewIdentity(q);
             var opts=q.options.map(function(o,i){return 'ABCD'[i]+'. '+o+(i===q.correctIndex?' ✓':'')}).join('　');
@@ -982,8 +993,9 @@ function plan(){
           d.items.forEach(function(q,i){
             var meta=reviewIdentity(q),order=meta.order;
             var labels={short_answer:'阅读简答／过程题',final_answer:'填最终答案',composition:'写作／复述'},card=el('div',{class:'card','data-review-number':order===null?'':String(order)});
-            var badge=el('span',{class:'tag '+(q.approved?'ok':'warn'),text:q.approved?'已通过':'草稿'});
-            card.appendChild(el('div',{class:'row'},el('b',{text:reviewLabel(meta,q.stem)}),el('span',{class:'tag',text:labels[q.type]||'简答题'}),q.level?el('span',{class:'tag'+(q.level==='提高'?' warn':''),text:q.level}):null,q.verified?el('span',{class:'tag ok',text:'已验算'}):(SUBJ==='数学'&&q.level&&q.type!=='composition'?el('span',{class:'tag warn',text:'答案待核对'}):null),badge));
+            var badge=el('span',{class:'tag '+(q.approved?'ok':'warn'),text:q.approved?'已通过':'草稿'}),
+                dupTag=q.duplicateOf?el('span',{class:'tag',style:'background:#fef3f2;color:#b42318;border:1px solid #fda29b',text:'⚠ 与'+q.duplicateOf+'重复'}):null;
+            card.appendChild(el('div',{class:'row'},el('b',{text:reviewLabel(meta,q.stem)}),el('span',{class:'tag',text:labels[q.type]||'简答题'}),q.level?el('span',{class:'tag'+(q.level==='提高'?' warn':''),text:q.level}):null,q.verified?el('span',{class:'tag ok',text:'已验算'}):(SUBJ==='数学'&&q.level&&q.type!=='composition'?el('span',{class:'tag warn',text:'答案待核对'}):null),dupTag,badge));
             var parts=q.stem.split('\n'),questionLine=parts.pop();
             card.appendChild(el('p',{style:'white-space:pre-wrap;font-weight:600',text:reviewLine(questionLine,meta)}));
             var wfig=typeof questionFigureImg==='function'?questionFigureImg(q.figure):null;if(wfig)card.appendChild(wfig);
@@ -999,11 +1011,20 @@ function plan(){
               api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions/'+q.id,{method:'PUT',json:{stem:stem.value,reference:ref.value,type:q.type,hints:hints.some(Boolean)?hints:[]}}).then(function(st){refreshStatus(st);loadWritten()}).catch(function(e){state.textContent=e.message;save.disabled=false});
             }});edit.appendChild(save);edit.appendChild(state);card.appendChild(edit);
             var feedback=el('div',{role:'status','aria-live':'polite'}),actions=el('div',{class:'row'});
-            if(!q.approved){['通过','删除草稿'].forEach(function(label,i){var b=el('button',{text:label,onclick:function(){
-              if(!i)return approveQuestionInPlace('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',q,b,actions,badge,feedback,refreshStatus);
-              b.disabled=true;
-              api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',{json:{remove:[q.id]}}).then(function(st){refreshStatus(st);loadWritten()}).catch(function(e){feedback.textContent=e.message;b.disabled=false});
-            }});actions.appendChild(b)})}
+            if(!q.approved){
+              var approveWritten=el('button',{text:q.duplicateOf?'不能通过（重复）':'通过',disabled:!!q.duplicateOf,
+                title:q.duplicateOf?'这道题与'+q.duplicateOf+'重复，请换一道新题后再通过':'',
+                onclick:function(){
+                  if(q.duplicateOf){feedback.textContent='这道题与'+q.duplicateOf+'重复，请换一道新题后再通过';return}
+                  approveQuestionInPlace('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',q,approveWritten,actions,badge,feedback,refreshStatus);
+                }});
+              actions.appendChild(approveWritten);
+              var removeWritten=el('button',{text:'删除草稿',onclick:function(){
+                removeWritten.disabled=true;
+                api('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',{json:{remove:[q.id]}}).then(function(st){refreshStatus(st);loadWritten()}).catch(function(e){feedback.textContent=e.message;removeWritten.disabled=false});
+              }});
+              actions.appendChild(removeWritten);
+            }
             card.appendChild(markBox(r.lessonId,{templateId:q.id,knowledge:q.knowledge,afterClass:q.afterClass,suggestedKnowledge:q.suggestedKnowledge},d.goals));
             card.appendChild(actions);card.appendChild(feedback);
             writtenCards.push({node:card,order:order,part:meta.part,sourcePos:meta.sourcePos,seq:10000+i,duplicateOf:q.duplicateOf||''});

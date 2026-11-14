@@ -1270,7 +1270,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             out.append({"id": q.id, "stem": q.stem, "options": opts, "correctIndex": q.correct_index, "explanation": q.explanation, "knowledge": q.knowledge,
                         "figure": _stored_figure(q), **lesson_question_number(lesson.reading_plan or "", q.stem), "active": bool(q.active), "level": qg.CODE_LEVEL.get(q.level, ""), "verified": str(q.explanation or "").startswith("验算："),
                         "duplicateOf": duplicate_of(q.stem, opts, examples, others)})
-        return {"items": out}
+        return {"items": out, "workedExamples": examples}
 
     @router.post("/teacher/weekend/lessons/{lid}/questions")
     def decide_questions(lid: int, b: ApproveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1299,9 +1299,20 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     def lesson_written(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         lesson = my_lesson(db, u, lid)
-        return {"goals": lesson_goals(lesson.core_target or ""),
-                "items": [{"id": q.id, "stem": q.stem, "reference": q.reference, **lesson_question_number(lesson.reading_plan or "", q.stem), "suggestedKnowledge": suggest_knowledge(q.stem),
-                 **template_meta(q)} for q in written_templates(db, written, u.school_id, u.id, lid)]}
+        examples = lesson_worked_examples(lesson)
+        choices = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE,
+                                               TQ.active.is_(True))).all()
+        seen = [(q.stem, question_options(q)) for q in choices]
+        items = []
+        for q in written_templates(db, written, u.school_id, u.id, lid):
+            stem = q.stem.split("\n\n")[-1].strip()
+            duplicate = duplicate_of(stem, [], examples, seen)
+            items.append({"id": q.id, "stem": q.stem, "reference": q.reference,
+                          **lesson_question_number(lesson.reading_plan or "", q.stem),
+                          "suggestedKnowledge": suggest_knowledge(q.stem), "duplicateOf": duplicate,
+                          **template_meta(q)})
+            seen.append((stem, []))
+        return {"goals": lesson_goals(lesson.core_target or ""), "workedExamples": examples, "items": items}
 
     @router.put("/teacher/weekend/lessons/{lid}/written/questions/{qid}/marks")
     def mark_written(lid: int, qid: int, b: WrittenMarkBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1338,7 +1349,25 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     def decide_written(lid: int, b: ApproveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         lesson = my_lesson(db, u, lid)
-        for q in written_templates(db, written, u.school_id, u.id, lid):
+        templates = written_templates(db, written, u.school_id, u.id, lid)
+        if b.approve:
+            examples = lesson_worked_examples(lesson)
+            choices = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE,
+                                                   TQ.active.is_(True))).all()
+            seen = [(q.stem, question_options(q)) for q in choices]
+            seen += [(q.stem.split("\n\n")[-1].strip(), [])
+                     for q in templates if q.id not in b.approve and template_meta(q).get("approved")]
+            for q in templates:
+                if q.id not in b.approve:
+                    continue
+                stem = q.stem.split("\n\n")[-1].strip()
+                duplicate = duplicate_of(stem, [], examples, seen)
+                if duplicate.startswith("例"):
+                    raise HTTPException(409, f"这道随堂练习与本课例题重复（来源：{duplicate}），请换一道同考点新题后再通过")
+                if duplicate:
+                    raise HTTPException(409, "这道随堂练习与本课已通过的题目重复，请换一道同考点新题后再通过")
+                seen.append((stem, []))
+        for q in templates:
             meta = template_meta(q)
             if q.id in b.approve:
                 meta["approved"] = True
