@@ -29,19 +29,14 @@ def _lesson_example_keys(db, implementation, session) -> set[str]:
     lesson = db.get(implementation.TeachingLesson, int(session.lesson_id))
     if lesson is None:
         return set()
-    raw = getattr(lesson, "examples_json", "") or ""
-    try:
-        parsed = json.loads(raw) if isinstance(raw, str) else raw
-    except (TypeError, ValueError):
-        parsed = []
-    if not isinstance(parsed, list):
-        return set()
-    out = set()
-    for item in parsed:
-        value = (item.get("stem") or item.get("question") or item.get("text") or item.get("title")) if isinstance(item, dict) else item
-        if value:
-            out.add(_question_key(value))
-    return out
+    # Stage 3 prefers numbered questions extracted from reading_plan; only
+    # falling back to examples_json misses the actual worked examples shown.
+    from changying.services.weekend_presentation import lesson_deck
+    pages = lesson_deck({
+        "reading_plan": getattr(lesson, "reading_plan", "") or "",
+        "examples_json": getattr(lesson, "examples_json", "") or "",
+    }, 3)
+    return {_question_key(page) for page in pages if _question_key(page)}
 
 
 def display_stem(value):
