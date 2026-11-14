@@ -19,7 +19,7 @@ _IMPORTED_QUESTION_PREFIX = re.compile(
 )
 
 
-def display_stem(value):
+def _question_key(value) -> str:\n    """Normalize question text so different database IDs cannot bypass role separation."""\n    text = display_stem(value)\n    return re.sub(r"[\\s\\u3000，。,、：:；;！!？?（）()“”\\\"'「」『』]+", "", text).lower()\n\n\ndef _lesson_example_keys(db, implementation, session) -> set[str]:\n    lesson = db.get(implementation.TeachingLesson, int(session.lesson_id))\n    if lesson is None:\n        return set()\n    raw = getattr(lesson, "examples_json", "") or ""\n    try:\n        parsed = json.loads(raw) if isinstance(raw, str) else raw\n    except (TypeError, ValueError):\n        parsed = []\n    if not isinstance(parsed, list):\n        return set()\n    out = set()\n    for item in parsed:\n        value = (item.get("stem") or item.get("question") or item.get("text") or item.get("title")) if isinstance(item, dict) else item\n        if value:\n            out.add(_question_key(value))\n    return out\n\n\ndef display_stem(value):
     """Remove an imported paper number before adding the classroom-local number."""
     return _IMPORTED_QUESTION_PREFIX.sub('', str(value or ''), count=1).strip()
 
@@ -43,13 +43,13 @@ def practice_items(implementation, db, session):
         stem = f'选择题 {index}：{display_stem(q.stem)}\n' + '\n'.join(f'{chr(65+i)}. {option_text(value)}' for i, value in enumerate(options))
         correct = int(q.correct_index)
         answer = f'{chr(65+correct)}. {option_text(options[correct])}' if 0 <= correct < len(options) else '请老师核对参考答案'
-        items.append({'kind': 'choice', 'id': q.id, 'question': stem,
+        items.append({'kind': 'choice', 'id': q.id, 'source': 'reviewed_question', 'question': stem,
             'answer': stem + f'\n正确答案：{answer}\n解析：{q.explanation or "请听老师讲解"}'})
     written = register_written_tables(implementation)['questions']
     for index, q in enumerate(db.execute(select(written).where(written.c.session_id == session.id,
             written.c.school_id == session.school_id, written.c.teacher_id == session.teacher_id).order_by(written.c.id)), 1):
         stem = f'文字／照片题 {index}：{display_stem(q.stem.split(chr(10)+chr(10))[-1])}'
-        items.append({'kind': 'written', 'id': q.id, 'question': stem,
+        items.append({'kind': 'written', 'id': q.id, 'source': 'reviewed_question', 'question': stem,
             'answer': stem + '\n参考答案／评分要点：' + (q.reference.strip() or '本题未填写参考答案，请听老师讲评。')})
     return items
 
