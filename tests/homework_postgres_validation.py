@@ -1,9 +1,12 @@
 import os, runpy, threading
+from urllib.parse import urlsplit
 from concurrent.futures import ThreadPoolExecutor
 # Run against a newly created isolated PostgreSQL database.
 url = os.environ.get('TEST_HOMEWORK_POSTGRES_URL')
 if not url:
     raise RuntimeError('Set TEST_HOMEWORK_POSTGRES_URL to an empty isolated PostgreSQL database')
+if urlsplit(url.replace('postgresql+psycopg://', 'postgresql://', 1)).hostname not in ('127.0.0.1', 'localhost', '::1'):
+    raise RuntimeError('Use a local isolated PostgreSQL database')
 os.environ['DATABASE_URL'] = url
 os.environ['HOMEWORK_ASSISTANT']='1'
 os.environ['ENABLE_DEMO_SEED']='1'
