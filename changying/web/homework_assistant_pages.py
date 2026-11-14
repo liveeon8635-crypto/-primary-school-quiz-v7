@@ -661,7 +661,7 @@ function helpView(body){
     }).catch(function(e){list.textContent='';list.appendChild(notice('error',e.message))});
   }
   function helpCard(it){
-    var detail=el('div'),note=el('textarea',{placeholder:'给学生的说明（选填）',style:'min-height:70px'});
+    var detail=el('div'),note=el('textarea',{placeholder:'老师内部处理备注（选填）',style:'min-height:70px'});
     var card=el('div',{class:'card'},
       el('div',{class:'row'},el('b',{text:(it.studentName||'学生')+' · '+(it.grade?it.grade+'年级':'')}),el('span',{class:'tag',text:it.reasonLabel}),
         el('span',{class:'muted',text:it.state==='resolved'?'已处理 '+it.resolvedAt:'已等 '+it.waitMinutes+' 分钟'})),

@@ -465,15 +465,15 @@ def install_homework_help(implementation: Any) -> APIRouter:
             db.commit()
             raise
         # Only finish a request that is still ours: if the student asked the teacher meanwhile, that wins.
-        db.execute(update(helps).where(helps.c.id == help_id, helps.c.state == "solving").values(**values))
+        result = db.execute(update(helps).where(helps.c.id == help_id, helps.c.state == "solving").values(**values))
         db.commit()
-        # The AI really helped with this knowledge point: keep that fact permanently (the conversation expires).
-        record_ai_help(
-            implementation, db,
-            school_id=int(u.school_id), student_id=int(u.id), help_id=int(help_id), grade=row["grade"],
-            knowledge_point=recorded.get("knowledge", ""), question_text=row["question_text"],
-            verify_status=recorded.get("verify", "skipped"),
-        )
+        if result.rowcount == 1:
+            record_ai_help(
+                implementation, db,
+                school_id=int(u.school_id), student_id=int(u.id), help_id=int(help_id), grade=row["grade"],
+                knowledge_point=recorded.get("knowledge", ""), question_text=row["question_text"],
+                verify_status=recorded.get("verify", "skipped"),
+            )
         return student_help_json(own_help(db, u, help_id))
 
     @router.get("/student/homework/help/{help_id}")
@@ -1144,11 +1144,14 @@ def install_homework_help(implementation: Any) -> APIRouter:
         data = teacher_item(db, u, help_id)
         if data["state"] != "escalated":
             raise HTTPException(409, "这条求助现在不需要处理")
-        db.execute(
+        result = db.execute(
             update(helps)
-            .where(helps.c.id == help_id)
+            .where(helps.c.id == help_id, helps.c.state == "escalated")
             .values(state="resolved", teacher_note=(b.note or "").strip()[:500], resolved_at=datetime.utcnow())
         )
+        if result.rowcount != 1:
+            db.rollback()
+            raise HTTPException(409, "这条求助现在不需要处理")
         implementation.audit(db, u, "homework.help.resolve", f"help={help_id}")
         db.commit()
         return summary(teacher_item(db, u, help_id))

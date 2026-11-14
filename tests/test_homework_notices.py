@@ -1631,3 +1631,49 @@ print("OK")
     )
 
 
+
+
+def test_completion_retries_preserve_timing(tmp_path):
+    run_isolated(tmp_path, COMMON + r'''
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    nid = client.post('/teacher/homework/notices', headers=th, json=json.loads(NOTICE_JSON)).json()['id']
+    assert client.post(f'/teacher/homework/notices/{nid}/publish', headers=th,
+                       json={'studentIDs': [sid], 'timeLimitMinutes': 90}).status_code == 200
+    def mark(seq, done):
+        response = client.post(f'/student/homework/items/{nid}/{seq}/done', headers=sh, json={'done': done})
+        assert response.status_code == 200, response.text
+    def state():
+        return client.get('/student/homework/today', headers=sh).json()[0]
+    mark(1, False)
+    assert not state()['startedAt']
+    mark(1, True)
+    started = state()['startedAt']
+    mark(2, True)
+    completed = state()['completedAt']
+    assert completed
+    mark(2, True)
+    assert state()['startedAt'] == started and state()['completedAt'] == completed
+    mark(2, False)
+    assert not state()['completedAt']
+    mark(2, True)
+    assert state()['completedAt'] and state()['startedAt'] == started
+print('OK')
+''', {'HOMEWORK_ASSISTANT': '1'})
+
+
+def test_old_notice_is_visible_after_new_recipient_is_added(tmp_path):
+    run_isolated(tmp_path, COMMON + r'''
+from datetime import datetime, timedelta
+from sqlalchemy import text
+with TestClient(app) as client:
+    th, sh, sid = teacher_student_headers(client)
+    nid = client.post('/teacher/homework/notices', headers=th, json=json.loads(NOTICE_JSON)).json()['id']
+    assert client.post(f'/teacher/homework/notices/{nid}/publish', headers=th, json={'studentIDs': [sid]}).status_code == 200
+    with legacy.SessionLocal() as db:
+        db.execute(text('UPDATE homework_notices SET published_at=:old WHERE id=:nid'),
+                   {'old': datetime.utcnow() - timedelta(days=4), 'nid': nid})
+        db.commit()
+    assert any(n['noticeID'] == nid for n in client.get('/student/homework/today', headers=sh).json())
+print('OK')
+''', {'HOMEWORK_ASSISTANT': '1'})
