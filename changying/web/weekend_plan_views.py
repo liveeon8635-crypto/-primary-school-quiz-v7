@@ -557,7 +557,11 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         """Approved questions of the lesson plus its examples: new drafts must not repeat either."""
         stems = [q.stem for q in db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(True)))]
         stems += [q.stem.split("\n")[-1] for q in written_templates(db, written, u.school_id, u.id, lesson.id) if template_meta(q).get("approved")]
-        stems += _lines(lesson.examples_json)
+        from changying.services.weekend_presentation import lesson_deck
+        stems += lesson_deck({
+            "reading_plan": lesson.reading_plan or "",
+            "examples_json": lesson.examples_json or "",
+        }, 3)
         return merge_example_stems(stems, lesson)
 
     def generate_questions(db: Any, u: Any, lesson: Any, count: int) -> dict[str, Any]:
