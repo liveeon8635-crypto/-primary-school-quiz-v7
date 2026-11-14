@@ -19,6 +19,38 @@ _IMPORTED_QUESTION_PREFIX = re.compile(
 )
 
 
+def _question_key(value) -> str:
+    """Normalize a question for the example/practice role boundary.
+
+    IDs are deliberately not part of this key: an imported copy and a lesson
+    example with different database rows are still the same classroom question.
+    """
+    text = display_stem(value)
+    return re.sub(r"[\s\u3000，。,、：:；;！!？?（）()“”\"'「」『』]+", "", text).lower()
+
+
+def _lesson_example_keys(db, implementation, session) -> set[str]:
+    lesson = db.get(implementation.TeachingLesson, int(session.lesson_id))
+    if lesson is None:
+        return set()
+    raw = getattr(lesson, "examples_json", "") or ""
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        parsed = []
+    if not isinstance(parsed, list):
+        return set()
+    keys = set()
+    for item in parsed:
+        if isinstance(item, dict):
+            value = item.get("stem") or item.get("question") or item.get("text") or item.get("title")
+        else:
+            value = item
+        if value:
+            keys.add(_question_key(value))
+    return keys
+
+
 def display_stem(value):
     """Remove an imported paper number before adding the classroom-local number."""
     return _IMPORTED_QUESTION_PREFIX.sub('', str(value or ''), count=1).strip()
@@ -37,19 +69,30 @@ def practice_items(implementation, db, session):
     from changying.web.weekend_written import register_written_tables
     question = implementation.TeachingQuestion
     items = []
-    for index, q in enumerate(db.scalars(select(question).where(question.school_id == session.school_id,
-            question.lesson_id == session.lesson_id, question.active.is_(True)).order_by(question.id).limit(30)), 1):
+    example_keys = _lesson_example_keys(db, implementation, session)
+    for q in db.scalars(select(question).where(question.school_id == session.school_id,
+            question.lesson_id == session.lesson_id, question.active.is_(True)).order_by(question.id).limit(30)):
+        # The practice stage must test transfer, not replay the worked example.
+        # Keep the reviewed question untouched in the bank; only exclude it from
+        # this classroom deck. The reviewed bank row itself is not modified.
+        if _question_key(q.stem) in example_keys:
+            continue
         options = json.loads(q.options_json or '[]')
+        index = len(items) + 1
         stem = f'选择题 {index}：{display_stem(q.stem)}\n' + '\n'.join(f'{chr(65+i)}. {option_text(value)}' for i, value in enumerate(options))
         correct = int(q.correct_index)
         answer = f'{chr(65+correct)}. {option_text(options[correct])}' if 0 <= correct < len(options) else '请老师核对参考答案'
-        items.append({'kind': 'choice', 'id': q.id, 'question': stem,
+        items.append({'kind': 'choice', 'id': q.id, 'source': 'reviewed_question', 'question': stem,
             'answer': stem + f'\n正确答案：{answer}\n解析：{q.explanation or "请听老师讲解"}'})
     written = register_written_tables(implementation)['questions']
-    for index, q in enumerate(db.execute(select(written).where(written.c.session_id == session.id,
-            written.c.school_id == session.school_id, written.c.teacher_id == session.teacher_id).order_by(written.c.id)), 1):
-        stem = f'文字／照片题 {index}：{display_stem(q.stem.split(chr(10)+chr(10))[-1])}'
-        items.append({'kind': 'written', 'id': q.id, 'question': stem,
+    for q in db.execute(select(written).where(written.c.session_id == session.id,
+            written.c.school_id == session.school_id, written.c.teacher_id == session.teacher_id).order_by(written.c.id)):
+        raw_stem = q.stem.split(chr(10)+chr(10))[-1]
+        if _question_key(raw_stem) in example_keys:
+            continue
+        index = len(items) + 1
+        stem = f'文字／照片题 {index}：{display_stem(raw_stem)}'
+        items.append({'kind': 'written', 'id': q.id, 'source': 'reviewed_question', 'question': stem,
             'answer': stem + '\n参考答案／评分要点：' + (q.reference.strip() or '本题未填写参考答案，请听老师讲评。')})
     return items
 
@@ -92,3 +135,4 @@ def practice_deck(implementation, db, session):
         for text in presentation_pages([item['answer'] if index < count else item['question']], preserve_pages=True):
             deck.append({'text': text, 'question': index+1, 'published': index < count})
     return deck, count, min(page, max(0, len(deck)-1)), len(items)
+
