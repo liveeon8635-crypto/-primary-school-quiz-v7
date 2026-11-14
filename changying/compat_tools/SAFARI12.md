@@ -33,6 +33,31 @@ DATABASE_URL=sqlite:////tmp/ios12-build.sqlite3 python -m changying.compat_tools
 pytest -q tests/test_safari12_compat.py tests/test_v1_html_etag.py tests/test_v1_auth_storage_contract.py tests/test_v1_cross_context_auth_handoff.py tests/test_student_wrong_practice.py
 ```
 
+The pinned toolchain is host state, not repository state. Install it once into a
+directory that survives branch switches and keep it there; the builder then finds
+it on its own, so no path argument and no reinstall per rebuild:
+
+```sh
+# once per host (Windows: %LOCALAPPDATA%\ios12-build, Linux/macOS: /tmp/ios12-build)
+npm install --prefix "$LOCALAPPDATA/ios12-build" --no-audit --no-fund @babel/core@7.28.5 @babel/preset-env@7.28.5 acorn@8.15.0
+
+# every rebuild: argv, SAFARI12_NODE_MODULES, or the detected default
+DATABASE_URL=sqlite:////tmp/ios12-build.sqlite3 python -m changying.compat_tools.build_safari12
+```
+
+Check for drift before committing, without running Babel or writing assets
+(`--check` exits 1 when a route's inline script is missing from the manifest or the
+manifest holds a script no route renders any more, which is exactly what the smoke
+test reports):
+
+```sh
+DATABASE_URL=sqlite:////tmp/ios12-build.sqlite3 python -m changying.compat_tools.build_safari12 --check
+```
+
+`--check` still renders every route, so it costs one crawl per flag combination;
+the saving is the Babel pass and the asset write. A missing toolchain stops the
+builder with the exact `npm install` command instead of failing inside Node.
+
 Optional DOM simulation (mock API, not an actual login/data acceptance):
 
 ```sh
