@@ -146,6 +146,48 @@ html[data-cy-ui="product"] {
   border-radius: var(--cy-radius);
 }
 
+html[data-cy-ui="personal"] {
+  --brand: var(--cy-brand);
+  --line: var(--cy-border);
+  --ink: var(--cy-ink);
+  --muted: var(--cy-muted);
+}
+
+[data-cy-ui="personal"] body {
+  background: var(--cy-canvas);
+  color: var(--cy-ink);
+}
+
+[data-cy-ui="personal"] .card {
+  border-color: var(--cy-border);
+  border-radius: var(--cy-radius);
+}
+
+[data-cy-ui="personal"] input,
+[data-cy-ui="personal"] select,
+[data-cy-ui="personal"] textarea {
+  max-width: 100%;
+}
+
+[data-cy-ui="personal"] button {
+  min-height: 44px;
+}
+
+[data-cy-ui="personal"] .row {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+[data-cy-ui="personal"] .tile:hover {
+  border-color: var(--cy-brand);
+}
+
+[data-cy-ui="personal"] .back {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
 [data-cy-ui="board"] [role="region"]:focus {
   outline: 2px solid #93c5fd;
   outline-offset: -2px;

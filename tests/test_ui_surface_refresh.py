@@ -11,6 +11,8 @@ from app import app
     [
         ("/new", "product"),
         ("/start", "personal"),
+        ("/parent-accounts", "personal"),
+        ("/teacher/ai-settings", "personal"),
         ("/v1", "shell"),
         ("/v1/workspace", "shell"),
         ("/v1/student", "shell"),

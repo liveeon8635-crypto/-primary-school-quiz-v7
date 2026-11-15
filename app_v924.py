@@ -5180,7 +5180,7 @@ def personal_parent_accounts_page():
     uses the same endpoints the school console uses, and stays outside INDEX_HTML
     so the shared Safari 12 asset manifest never changes.
     """
-    return HTMLResponse(PERSONAL_PARENTS_HTML,headers={"Cache-Control":"no-store, no-cache, must-revalidate, max-age=0"})
+    return HTMLResponse(apply_surface(PERSONAL_PARENTS_HTML, "personal"),headers={"Cache-Control":"no-store, no-cache, must-revalidate, max-age=0"})
 
 PERSONAL_AI_HTML = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -5288,11 +5288,11 @@ def personal_ai_settings_page():
     Kept outside INDEX_HTML on purpose: the shared Safari 12 asset manifest never
     changes because this page is not part of the classic shell.
     """
-    return HTMLResponse(PERSONAL_AI_HTML,headers={"Cache-Control":"no-store, no-cache, must-revalidate, max-age=0"})
+    return HTMLResponse(apply_surface(PERSONAL_AI_HTML, "personal"),headers={"Cache-Control":"no-store, no-cache, must-revalidate, max-age=0"})
 
 @app.get("/signup",include_in_schema=False)
 def personal_signup_page():
-    _signup_require_enabled();return HTMLResponse(SIGNUP_HTML)
+    _signup_require_enabled();return HTMLResponse(apply_surface(SIGNUP_HTML, "personal"))
 
 @app.post("/operator/schools/create")
 def operator_create_school(b:OperatorSchoolCreateBody,_ok:bool=Depends(commercial_operator),db:Session=Depends(get_db)):

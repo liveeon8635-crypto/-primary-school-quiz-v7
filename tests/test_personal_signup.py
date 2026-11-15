@@ -114,6 +114,8 @@ def test_signup_inline_script_is_valid_and_quote_safe(client):
 def test_signup_page_and_challenge_are_public(client):
     page = client.get("/signup")
     assert page.status_code == 200
+    assert 'data-cy-ui="personal"' in page.text
+    assert 'id="cy-ui-surfaces"' in page.text
     assert "免费注册个人工作台" in page.text
     assert 'fetch("/signup/challenge")' in page.text
 
