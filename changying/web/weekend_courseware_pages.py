@@ -419,7 +419,7 @@ function cwParallelogramMethods(box,view,big,teacher){
     return;
   }
   var svg=cwNode('svg',{viewBox:'0 0 760 210',width:'100%',style:'display:block;max-height:'+(big?'43vh':'330px'),role:'img','aria-label':cwFigureText({type:'parallelogram_methods'})});
-  var focused=teacher&&view.previewMode?Math.max(1,Math.min(4,view.step||1)):0;
+  var focused=(view&&view.step>0)?Math.max(1,Math.min(4,view.step)):(teacher&&view&&view.previewMode?1:0);
   function node(g,t,attrs,value){var n=cwNode(t,attrs,value);g.appendChild(n);return n}
   function path(g,d,stroke,dash,width){return node(g,'path',{d:d,fill:'none',stroke:stroke||'#283949','stroke-width':width||2.3,'stroke-dasharray':dash||''})}
   function poly(g,points,fill,dash){return node(g,'polygon',{points:points,fill:fill||'#e5f2fc',stroke:'#263647','stroke-width':2.2,'stroke-dasharray':dash||''})}
@@ -469,12 +469,24 @@ function cwParallelogramMethods(box,view,big,teacher){
     }
   }
   wrap.appendChild(svg);
-  wrap.appendChild(el('p',{class:'muted',style:'margin:4px 0;font-size:12px',text:'依据原练习①②③④重绘的操作示意图；观察剪拼与旋转方向，先讨论，再判断。'}));
+  var methodHints=[
+    '第 1 步看图①：沿高剪下左边的直角三角形，向右平移拼成长方形。',
+    '第 2 步看图②：沿斜边剪下并平移后，拼出的图形还是平行四边形还是长方形？',
+    '第 3 步看图③：经过两边中点 M、N 剪下两个小三角形并旋转，拼成什么图形？',
+    '第 4 步看图④：以高为界旋转割补，观察面积有没有变化。'
+  ];
+  wrap.appendChild(el('p',{class:'muted',style:'margin:4px 0;font-size:12px',text:focused?methodHints[focused-1]:'依据原练习①②③④重绘的操作示意图；观察剪拼与旋转方向，先讨论，再判断。'}));
 }
 
-function cwEqualBaseHeight(box,f,big){
+function cwEqualBaseHeight(box,f,view,big,teacher,stepCount){
+  view=view||{};
+  var steps=Math.max(4,stepCount||4),step=teacher&&!view.previewMode?steps:(view.step||0);
   var wrap=el('div',{style:'max-width:900px;margin:8px auto;padding:10px;border:1px solid #d0d5dd;border-radius:10px;background:#fff'});
   box.appendChild(wrap);
+  if(!document.createElementNS||!cwNode('svg',{}).createSVGRect){
+    wrap.appendChild(el('p',{text:cwFigureText(f)+(step>=4?'；等底等高，面积相等 = '+(Number(f.base)*Number(f.height))+' cm²':'')}));
+    return;
+  }
   var svg=cwNode('svg',{viewBox:'0 0 780 260',width:'100%',style:'display:block;max-height:'+(big?'34vh':'280px'),role:'img','aria-label':cwFigureText(f)});
   var shifts=[20,45,0],starts=[25,280,535];
   function line(x1,y1,x2,y2,color,width,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color,'stroke-width':width,'stroke-dasharray':dash||''}))}
@@ -485,44 +497,60 @@ function cwEqualBaseHeight(box,f,big){
     svg.appendChild(cwNode('polygon',{points:(left+shift)+','+topY+' '+(left+shift+width)+','+topY+' '+(left+width)+','+bottomY+' '+left+','+bottomY,fill:'#eaf3ff',stroke:'#2563eb','stroke-width':3}));
     line(x+12,topY,x+195,topY,'#98a2b3',1.3,'4 4');
     line(x+12,bottomY,x+195,bottomY,'#98a2b3',1.3,'4 4');
-    line(left,bottomY+18,left+width,bottomY+18,'#c2410c',2);
-    line(left,bottomY+13,left,bottomY+23,'#c2410c',2);
-    line(left+width,bottomY+13,left+width,bottomY+23,'#c2410c',2);
-    txt(left+width/2,bottomY+43,'底 = '+f.base+' cm',16,'#344054',600);
-    var hx=x+170;
-    line(hx,bottomY,hx,topY,'#c2410c',2);
-    line(hx,bottomY,hx-5,bottomY-8,'#c2410c',2);line(hx,bottomY,hx+5,bottomY-8,'#c2410c',2);
-    line(hx,topY,hx-5,topY+8,'#c2410c',2);line(hx,topY,hx+5,topY+8,'#c2410c',2);
-    txt(hx+28,130,'高 = '+f.height+' cm',15,'#344054',600,'start');
+    if(step>=2){
+      line(left,bottomY+18,left+width,bottomY+18,'#c2410c',2);
+      line(left,bottomY+13,left,bottomY+23,'#c2410c',2);
+      line(left+width,bottomY+13,left+width,bottomY+23,'#c2410c',2);
+      txt(left+width/2,bottomY+43,'底 = '+f.base+' cm',16,'#344054',600);
+    }
+    if(step>=3){
+      var hx=x+170;
+      line(hx,bottomY,hx,topY,'#c2410c',2);
+      line(hx,bottomY,hx-5,bottomY-8,'#c2410c',2);line(hx,bottomY,hx+5,bottomY-8,'#c2410c',2);
+      line(hx,topY,hx-5,topY+8,'#c2410c',2);line(hx,topY,hx+5,topY+8,'#c2410c',2);
+      txt(hx+28,130,'高 = '+f.height+' cm',15,'#344054',600,'start');
+    }
   }
   wrap.appendChild(svg);
-  wrap.appendChild(el('div',{style:'text-align:center;color:#475467;font-size:13px',text:'形状不同，底和对应的高相同'}));
+  var msgText=step>=4?'等底等高，三个平行四边形面积相等 = '+f.base+' × '+f.height+' = '+(Number(f.base)*Number(f.height))+' cm²':'先观察三条平行线之间的三个平行四边形，再逐步比较底和高';
+  wrap.appendChild(el('div',{style:'text-align:center;color:'+(step>=4?'#17449b':'#475467')+';font-weight:'+(step>=4?700:400)+';font-size:13px',text:msgText}));
 }
-function cwParallelogramThirds(box,f,big){
+function cwParallelogramThirds(box,f,view,big,teacher,stepCount){
+  view=view||{};
+  var steps=Math.max(3,stepCount||3),step=teacher&&!view.previewMode?steps:(view.step||0);
   var wrap=el('div',{style:'max-width:760px;margin:8px auto;padding:10px;border:1px solid #d0d5dd;border-radius:10px;background:#fff'});
   box.appendChild(wrap);
+  if(!document.createElementNS||!cwNode('svg',{}).createSVGRect){
+    wrap.appendChild(el('p',{text:cwFigureText(f)+(step>=3?'；中间涂色部分面积 = '+(Math.round(Number(f.totalArea)*100/3)/100)+' cm²':'')}));
+    return;
+  }
   var svg=cwNode('svg',{viewBox:'0 0 720 300',width:'100%',style:'display:block;max-height:'+(big?'38vh':'320px'),role:'img','aria-label':cwFigureText(f)});
   function line(x1,y1,x2,y2,color,width,dash){svg.appendChild(cwNode('line',{x1:x1,y1:y1,x2:x2,y2:y2,stroke:color,'stroke-width':width,'stroke-dasharray':dash||''}))}
   function txt(x,y,s,size,color,weight,anchor){svg.appendChild(cwNode('text',{x:x,y:y,'font-size':size,fill:color,'font-weight':weight||400,'text-anchor':anchor||'middle'},s))}
   var yTop=65,yBottom=220,baseLeft=90,baseWidth=390,slant=65,part=baseWidth/3;
-  txt(285,34,'底边平均分成 3 份，高不变；原面积 '+f.totalArea+' cm²',20,'#17449b',700);
+  txt(285,34,'底边平均分成 3 份，原总面积 '+f.totalArea+' cm²',20,'#17449b',700);
   svg.appendChild(cwNode('polygon',{points:(baseLeft+slant)+','+yTop+' '+(baseLeft+slant+baseWidth)+','+yTop+' '+(baseLeft+baseWidth)+','+yBottom+' '+baseLeft+','+yBottom,fill:'#eaf3ff',stroke:'#2563eb','stroke-width':3}));
-  svg.appendChild(cwNode('polygon',{points:(baseLeft+slant+part)+','+yTop+' '+(baseLeft+slant+2*part)+','+yTop+' '+(baseLeft+2*part)+','+yBottom+' '+(baseLeft+part)+','+yBottom,fill:'#ffdf87',stroke:'none'}));
+  svg.appendChild(cwNode('polygon',{points:(baseLeft+slant+part)+','+yTop+' '+(baseLeft+slant+2*part)+','+yTop+' '+(baseLeft+2*part)+','+yBottom+' '+(baseLeft+part)+','+yBottom,fill:step>=3?'#ffdf87':'#dbeafe',stroke:'none'}));
   line(baseLeft+part,yBottom,baseLeft+slant+part,yTop,'#2563eb',3);
   line(baseLeft+2*part,yBottom,baseLeft+slant+2*part,yTop,'#2563eb',3);
   line(baseLeft+slant,yTop,baseLeft+slant+baseWidth,yTop,'#2563eb',3);
   line(baseLeft,yBottom,baseLeft+baseWidth,yBottom,'#2563eb',3);
-  var hx=baseLeft+slant+part+8;
-  line(hx,yTop,hx,yBottom,'#c2410c',2,'5 4');
-  line(hx,yTop,hx-5,yTop+8,'#c2410c',2);line(hx,yTop,hx+5,yTop+8,'#c2410c',2);
-  line(hx,yBottom,hx-5,yBottom-8,'#c2410c',2);line(hx,yBottom,hx+5,yBottom-8,'#c2410c',2);
-  txt(hx+16,150,'高不变',15,'#9a3412',700,'start');
+  if(step>=2){
+    var hx=baseLeft+slant+part+8;
+    line(hx,yTop,hx,yBottom,'#c2410c',2,'5 4');
+    line(hx,yTop,hx-5,yTop+8,'#c2410c',2);line(hx,yTop,hx+5,yTop+8,'#c2410c',2);
+    line(hx,yBottom,hx-5,yBottom-8,'#c2410c',2);line(hx,yBottom,hx+5,yBottom-8,'#c2410c',2);
+    txt(hx+16,150,'高不变',15,'#9a3412',700,'start');
+  }
   for(var i=0;i<3;i++){
     var cx=baseLeft+part*(i+.5);
     txt(cx,yBottom+25,'1 份',15,'#475467',600);
-    if(i===1)txt(cx,yBottom+52,'中间涂色部分',15,'#9a3412',700);
+    if(i===1&&step>=3)txt(cx,yBottom+52,'中间涂色部分占 1/3',15,'#9a3412',700);
   }
   wrap.appendChild(svg);
+  if(step>=3){
+    wrap.appendChild(el('div',{style:'text-align:center;color:#9a3412;font-weight:700;font-size:13px',text:'等底等高的 3 份各占总面积的 1/3：'+f.totalArea+' ÷ 3 = '+(Math.round(Number(f.totalArea)*100/3)/100)+' cm²'}));
+  }
 }
 // 钝角三角形在底边延长线上的高：底边水平，顶点在底边左上方，所以高落在延长线上。
 function cwObtuseTriangleHeight(box,f,view,big,teacher,stepCount){
@@ -574,8 +602,8 @@ function cwFigure(wrap,f,big,view,teacher,stepCount){
     box.appendChild(el('img',{src:f.data_url,alt:f.alt||'原卷插图',style:'display:block;max-width:100%;max-height:'+(big?'40vh':'300px')+';object-fit:contain;margin:0 auto;border:1px solid #e5e8f0;border-radius:8px'}));
     return;
   }
-  if(f.type==='equal_base_height'){cwEqualBaseHeight(box,f,big);return}
-  if(f.type==='parallelogram_thirds'){cwParallelogramThirds(box,f,big);return}
+  if(f.type==='equal_base_height'){cwEqualBaseHeight(box,f,view,big,teacher,stepCount);return}
+  if(f.type==='parallelogram_thirds'){cwParallelogramThirds(box,f,view,big,teacher,stepCount);return}
   if(f.type==='parallelogram_methods'){cwParallelogramMethods(box,view,big,teacher);return}
   if(f.type==='calendar_compare'){cwCalendarCompare(box,f,view,big,teacher);return}
   if(f.type==='calendar_cross'){cwCalendarCross(box,f,view,big,teacher);return}
