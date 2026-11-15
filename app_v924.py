@@ -5470,7 +5470,7 @@ def health_db(db:Session=Depends(get_db)):
 
 @app.get("/operator-console",response_class=HTMLResponse)
 def operator_console():
-    return HTMLResponse(OPERATOR_HTML,headers={"Cache-Control":"no-store, no-cache, must-revalidate, max-age=0"})
+    return HTMLResponse(apply_surface(OPERATOR_HTML, "operator"),headers={"Cache-Control":"no-store, no-cache, must-revalidate, max-age=0"})
 
 @app.post("/login")
 def login(b:LoginBody,request:Request,response:Response,db:Session=Depends(get_db)):

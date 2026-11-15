@@ -188,6 +188,29 @@ html[data-cy-ui="personal"] {
   align-items: center;
 }
 
+html[data-cy-ui="operator"] {
+  --p: var(--cy-brand);
+  --bg: var(--cy-canvas);
+  --line: var(--cy-border);
+  --text: var(--cy-ink);
+  --muted: var(--cy-muted);
+}
+
+[data-cy-ui="operator"] .card {
+  border-color: var(--cy-border);
+  border-radius: var(--cy-radius);
+}
+
+[data-cy-ui="operator"] button {
+  min-height: 44px;
+}
+
+[data-cy-ui="operator"] input,
+[data-cy-ui="operator"] select,
+[data-cy-ui="operator"] textarea {
+  max-width: 100%;
+}
+
 [data-cy-ui="board"] [role="region"]:focus {
   outline: 2px solid #93c5fd;
   outline-offset: -2px;

@@ -120,3 +120,34 @@ def test_weekend_board_scroll_and_focus_survive_poll_in_chrome(tmp_path):
         "?s=1",
     )
     assert 'data-browser-acceptance="board"' in dom
+
+@pytest.mark.parametrize(("width", "height"), [(390, 844), (768, 1024), (1440, 900)])
+def test_login_labels_focus_and_width_with_playwright(tmp_path, width, height):
+    playwright = pytest.importorskip("playwright.sync_api")
+    from playwright.sync_api import sync_playwright
+
+    with TestClient(app) as client:
+        response = client.get("/v1")
+    assert response.status_code == 200
+
+    with sync_playwright() as runtime:
+        browser = runtime.chromium.launch(
+            executable_path=shutil.which("chromium") or shutil.which("google-chrome"),
+            args=["--no-sandbox"],
+        )
+        try:
+            page = browser.new_page(viewport={"width": width, "height": height})
+            page.set_content(response.text, wait_until="domcontentloaded")
+            user = page.locator("#cyLoginUsername")
+            password = page.locator("#cyLoginPassword")
+            assert user.count() == password.count() == 1
+            assert user.evaluate("(element) => element.labels.length") == 1
+            assert password.evaluate("(element) => element.labels.length") == 1
+            user.focus()
+            assert page.evaluate("innerWidth") == width
+            assert user.evaluate("getComputedStyle(element).outlineWidth") == "2px"
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            bounds = user.evaluate("(element) => element.form.getBoundingClientRect().toJSON()")
+            assert bounds["left"] >= 0 and bounds["right"] <= width
+        finally:
+            browser.close()

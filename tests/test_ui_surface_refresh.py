@@ -13,6 +13,7 @@ from app import app
         ("/start", "personal"),
         ("/parent-accounts", "personal"),
         ("/teacher/ai-settings", "personal"),
+        ("/operator-console", "operator"),
         ("/v1", "shell"),
         ("/v1/workspace", "shell"),
         ("/v1/student", "shell"),
