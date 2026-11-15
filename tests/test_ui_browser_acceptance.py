@@ -37,10 +37,12 @@ def render_dom(tmp_path, html, size, query=""):
     return result.stdout
 
 
-@pytest.mark.parametrize("size", ["390,844", "768,1024", "1440,900"])
-def test_login_labels_focus_and_width_in_chrome(tmp_path, size):
+@pytest.mark.parametrize(("width", "height"), [(390, 844), (768, 1024), (1440, 900)])
+def test_login_labels_focus_and_width_in_chrome(tmp_path, width, height):
     with TestClient(app) as client:
-        html = client.get("/v1").text
+        response = client.get("/v1")
+    assert response.status_code == 200
+    html = response.text
     script = """
     const watch = setInterval(() => {
       const user = document.querySelector('#cyLoginUsername');
@@ -53,17 +55,33 @@ def test_login_labels_focus_and_width_in_chrome(tmp_path, size):
           document.activeElement === user && getComputedStyle(user).outlineWidth === '2px' &&
           box.left >= 0 && box.right <= innerWidth &&
           document.documentElement.scrollWidth <= innerWidth) {
-        document.body.dataset.browserAcceptance = 'login';
+        window.parent.postMessage({kind: 'login', width: innerWidth, height: innerHeight}, '*');
       }
     }, 40);
     """
-    dom = render_dom(tmp_path, html.replace("</body>", f"<script>{script}</script></body>"), size)
+    fixture = tmp_path / "login.html"
+    fixture.write_text(html.replace("</body>", f"<script>{script}</script></body>"), encoding="utf-8")
+    harness = f"""<!doctype html><body>
+    <script>
+    window.addEventListener('message', event => {{
+      const frame = document.querySelector('iframe');
+      if (event.source === frame.contentWindow && event.data.kind === 'login' &&
+          event.data.width === {width} && event.data.height === {height}) {{
+        document.body.dataset.browserAcceptance = 'login';
+      }}
+    }});
+    </script>
+    <iframe src="{fixture.name}" style="width:{width}px;height:{height}px;border:0"></iframe>
+    </body>"""
+    dom = render_dom(tmp_path, harness, "1920,1200")
     assert 'data-browser-acceptance="login"' in dom
 
 
 def test_weekend_board_scroll_and_focus_survive_poll_in_chrome(tmp_path):
     with TestClient(app) as client:
-        html = client.get("/v1/weekend-board").text
+        response = client.get("/v1/weekend-board")
+    assert response.status_code == 200
+    html = response.text
     fixture = """
     sessionStorage.setItem('v717Token', 'synthetic-teacher');
     const slide = {
@@ -86,13 +104,11 @@ def test_weekend_board_scroll_and_focus_survive_poll_in_chrome(tmp_path):
         region.focus();
         region.scrollTop = 80;
         slide.content.push('补充观察');
-      } else if (initial && region !== initial) {
+      } else if (initial && region !== initial && region.scrollTop === 80 &&
+                 document.activeElement === region && getComputedStyle(region).overflowY === 'auto' &&
+                 region.textContent.includes('补充观察')) {
         clearInterval(watch);
-        if (region.scrollTop === 80 && document.activeElement === region &&
-            getComputedStyle(region).overflowY === 'auto' &&
-            region.textContent.includes('补充观察')) {
-          document.body.dataset.browserAcceptance = 'board';
-        }
+        document.body.dataset.browserAcceptance = 'board';
       }
     }, 50);
     """
