@@ -214,6 +214,51 @@ def same_question(a: Any, b: Any) -> bool:
     return bool(left) and left == right
 
 
+_SHARED_PROBE = 12      # 先找 12 个字一模一样的片段，再往两边尽量接长
+_SHARED_FLOOR = 16      # 公共片段短于 16 个字不算重复（“面积是多少平方厘米”这类模板句天天出现）
+_SHARED_RATIO = 0.6     # 公共片段还得占较短那道题的六成，避免大题里带了一句小题就判重
+
+
+def _longest_shared(left: str, right: str) -> int:
+    """两道题里最长的一段一模一样的话有多长（只看连续片段，允许两边各有引言/讲解）。"""
+    probe = _SHARED_PROBE
+    if len(left) < probe or len(right) < probe:
+        return 0
+    positions = {right[i:i + probe] for i in range(len(right) - probe + 1)}
+    best, start, size = 0, 0, len(left)
+    while start <= size - probe:
+        if left[start:start + probe] not in positions:
+            start += 1
+            continue
+        at = right.find(left[start:start + probe])
+        length = probe
+        while (start + length < size and at + length < len(right)
+                and left[start + length] == right[at + length]):
+            length += 1
+        best, start = max(best, length), start + length
+    return best
+
+
+def same_question_text(a: Any, b: Any) -> bool:
+    """旧教案里的同一道题，差在版面元信息上，也算同一道题。
+
+    第3环节的例题页常带「例23（讲解用）」这种小标题，也有整段讲解；第4环节的文字题
+    题干里则留着「[基础] 2分 · 填空·土地单位」这类标注。两边归一化后并不相等，
+    但主体是一致的：只要有一大段（≥16 字、且占较短那道题六成以上）完全相同，就算同一道题。
+    严格相等的题一定满足这个条件，所以这个判断包含 same_question 的结论。
+    """
+    left, right = _norm(a), _norm(b)
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    shortest = min(len(left), len(right))
+    if shortest < _SHARED_FLOOR:
+        return False
+    shared = _longest_shared(left, right)
+    return shared >= _SHARED_FLOOR and shared >= shortest * _SHARED_RATIO
+
+
 def same_options(a: Any, b: Any) -> bool:
     """两道选择题的选项文字完全一样、只是顺序变了，也返回 True。"""
     def key(options: Any) -> list[str]:
@@ -310,4 +355,4 @@ def reference_text(q: dict[str, Any]) -> str:
 
 
 __all__ = ["CODE_LEVEL", "COUNTS", "LEVELS", "LEVEL_CODE", "TYPES", "TYPE_NAMES", "agrees", "check", "evaluate", "missing", "number",
-           "prompt", "quotas", "reference_text", "same_options", "same_question", "select"]
+           "prompt", "quotas", "reference_text", "same_options", "same_question", "same_question_text", "select"]

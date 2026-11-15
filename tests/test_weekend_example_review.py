@@ -252,3 +252,57 @@ pairs=[i for i in client.get(base+'/questions',headers=th).json()['items'] if i[
 assert len(pairs)==2 and all(i['duplicateOf']=='' for i in pairs),pairs
 print('OK')
 """)
+
+
+def test_legacy_example_pages_are_not_released_as_practice(tmp_path):
+    """旧课：例题页头带「例23（讲解用）」，文字题题干带「[基础] 2分 · 填空·土地单位」。
+
+    这两边归一化后并不相等，但它们就是同一道题。以前只按严格相等判重，结果整套例题
+    仍算“已通过的随堂练习”，第4环节把例题又发了一遍。
+    """
+    helpers.run_isolated(tmp_path, COMMON+r"""
+from datetime import datetime
+BODY='一个三角形经过不改变面积的割补后，恰好拼成一块长8厘米、宽5厘米的长方形。（1）原三角形面积是多少平方厘米？（2）原三角形的高是多少厘米？'
+PAGE='例23（讲解用）\n'+BODY+'\n讲解：割补前后面积不变，长×宽就是原三角形的面积。'
+th,lid,ok_id,dup_id,decimal_id,class_id=prepare(client)
+with legacy.SessionLocal() as db:
+    lesson=db.get(legacy.TeachingLesson,lid)
+    lesson.examples_json=json.dumps([PAGE],ensure_ascii=False)
+    lesson.updated_at=datetime(2026,11,10,9,0)
+    teacher_id=db.scalar(select(legacy.User.id).where(legacy.User.username=='teacher1'))
+    written=register_written_tables(legacy)['questions']
+    written_ids=[]
+    for head in ('[基础] 2分 · 填空·土地单位','第7题（4分）'):
+        written_ids.append(db.execute(written.insert().values(school_id=1,teacher_id=teacher_id,lesson_id=lid,
+            session_id=0,stem=head+'\n\n'+BODY,reference='见教师答案',
+            hints_json=json.dumps({'approved':True,'type':'short_answer','hints':[]},ensure_ascii=False)
+            )).inserted_primary_key[0])
+    db.commit()
+
+base='/teacher/weekend/lessons/'+str(lid)
+d=client.get(base+'/questions',headers=th).json()
+assert [e['status'] for e in d['workedExamples']]==['legacy'],d['workedExamples']
+assert d['summary']['practiceReady']==0,d['summary']
+labels={item['id']:item['duplicateOf'] for item in client.get(base+'/written/questions',headers=th).json()['items']}
+for qid in written_ids:
+    assert labels[qid]=='例1',labels
+
+# 上课到第4环节：一道题都不发，并明确告诉老师去哪儿补题。
+sid=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid,'classId':class_id}).json()['id']
+assert client.post('/teacher/weekend/sessions/'+str(sid)+'/start',headers=th).status_code==200
+assert client.post('/teacher/weekend/sessions/'+str(sid)+'/goto',headers=th,json={'stage':4}).status_code==200
+state=client.get('/teacher/weekend/sessions/'+str(sid)+'/board',headers=th).json()
+assert 'deck' not in state,state
+assert state['answerRelease']['total']==0,state['answerRelease']
+assert any('没有可用的随堂练习' in line for line in state['content']),state['content']
+
+# 判重本身：严格相等判不出来（这就是线上那节课的样子），放宽后必须判成同一道题，
+# 但模板句、只差数字的两道题不能被误判。
+from changying.services import weekend_question_gen as loose
+assert not loose.same_question(BODY,PAGE)
+assert loose.same_question_text(BODY,PAGE)
+assert not loose.same_question_text(BODY,'计量土地面积，常用（ ）作单位；计量较大的区域面积，常用（ ）作单位。')
+assert not loose.same_question_text('平行四边形的面积是多少平方厘米','长方形的面积是多少平方厘米')
+assert not loose.same_question_text('计算 1/2+1/3=','计算 12+13=')
+print('OK')
+""")
