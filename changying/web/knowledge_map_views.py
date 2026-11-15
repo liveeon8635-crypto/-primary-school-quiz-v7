@@ -583,11 +583,13 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         if row.published_json is None:
             raise HTTPException(409, "知识地图还没有发布，发布后才能查看全班掌握情况")
         from changying.web.knowledge_map_student import register_knowledge_map_run_table
+        from changying.services.knowledge_map_evidence import collect_cross_scene_evidence
         runs = register_knowledge_map_run_table(implementation)
         m = json.loads(row.published_json)
         kids = pupils(db, u, cls.id)
         ids = [k.id for k in kids]
         answers = answers_of(db, u, ids)
+        evidence_by_student = collect_cross_scene_evidence(db, implementation, row, m, ids)
         diag = {r.student_id: r for r in db.execute(select(runs).where(runs.c.map_id == row.id, runs.c.school_id == u.school_id,
                                                                          runs.c.student_id.in_(ids)))} if ids else {}
         students = []
@@ -595,6 +597,7 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
             node_m, unit_m = km.mastery_view(m, km.first_attempts(answers[k.id]))
             r = diag.get(k.id)
             students.append({"id": k.id, "name": k.name, "nodes": node_m, "units": unit_m,
+                             "evidence": evidence_by_student.get(k.id, []),
                              "diagnosis": {"status": "new"} if r is None else {"status": r.status, "count": len(json.loads(r.items_json)),
                                                                                  "correct": r.correct}})
         nodes = [{"key": n["key"], "unit": n["unit"], "name": n["name"]} for n in m["nodes"] if km.assessed(m, n)]
@@ -621,7 +624,8 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
             st["ratings"] = rated.get(st["id"], {})
         return {"agreement": agreement, "classId": cls.id, "className": cls.name, "title": row.title, "publishedRevision": int(row.published_revision),
                 "units": [x for x in m["units"] if any(n["unit"] == x["key"] for n in nodes)], "nodes": nodes, "tally": tally,
-                "students": students, "masteryLabels": km.MASTERY_LABELS, "confidenceLabels": km.CONFIDENCE_LABELS}
+                "students": students, "masteryLabels": km.MASTERY_LABELS, "confidenceLabels": km.CONFIDENCE_LABELS,
+                "evidenceDisclaimer": "跨场景学习证据按原始来源分别展示（含时间、数量、批改状态与受助/提示状态），不直接合并或修改掌握度结论；无法区分是否受助的记录标注为“未知”。"}
 
     @router.post("/teacher/knowledge-maps/{mid}/classes/{cid}/reinforce")
     def reinforce(mid: int, cid: int, b: ReinforceBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
