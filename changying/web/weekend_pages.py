@@ -265,7 +265,7 @@ function picker(){
     if(!d.items.length){rlist.appendChild(el('div',{class:'muted',text:'还没有。'}));return}
     d.items.forEach(function(s){rlist.appendChild(el('div',{class:'row'},el('a',{href:'/v1/weekend?s='+s.id,text:s.title}),el('span',{class:'muted',text:s.createdAt+' · '+(s.status==='finished'?'已结束':s.status==='running'?'进行中':'未开始')}),
       s.status==='planned'?null:el('a',{class:'btn',href:'/v1/weekend-report?s='+s.id,text:'课后总结与家长反馈'})))});
-  });
+  }).catch(function(e){rlist.appendChild(el('div',{class:'notice error',text:e.message||'加载失败'}))});
   recent.appendChild(el('hr'));
   recent.appendChild(el('div',{class:'row'},el('a',{class:'btn',href:'/v1/weekend-plan',text:'18 次课进度表与备课'}),el('a',{class:'btn',href:'/v1/knowledge',text:'知识点讲解卡片（学生搜索、错题讲解）'})));
 }
@@ -470,6 +470,7 @@ function board(){
     window.blRefit=function(){fitText(body)};          // a shown answer makes the page longer: fit it again
     boardLayout(body,d.content,false);
     scrollBody=body;lastRenderKey=nextKey;lastViewKey=viewKey(d);
+    if(keepScroll)body.scrollTop=oldScroll;
     requestAnimationFrame(function(){
       if(window.innerWidth<1000)fitText(body);
       else{var two=laid(true),one=laid(false);if(two>=one)laid(true)}
@@ -622,7 +623,7 @@ def _page(title: str, js: str, with_header: bool, back: tuple[str, str] = ("/v1"
         # An ordinary external ES5 file does not change any of the precompiled
         # Safari12 inline script fingerprints. It overrides only the known-bad
         # four-method lesson 11 drawing, not generic geometry.
-        rendered = rendered.replace("</body>", '<script src="/v1/lesson11-methods-v2.js?v=20261113-lesson11-diagrams-r5"></script></body>')
+        rendered = rendered.replace("</body>", '<script src="/v1/lesson11-methods-v2.js?v=20261115-lesson11-diagrams-r6"></script></body>')
     return apply_surface(rendered, "weekend" if with_header else "board")
 
 

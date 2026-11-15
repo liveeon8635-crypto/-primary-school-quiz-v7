@@ -9,8 +9,8 @@ from changying.web.weekend_pages import plan_page_html, control_page_html, board
 
 def test_geometry_v2_on_all_three_views_without_changing_inline_scripts():
     for page in (plan_page_html(), control_page_html(), board_page_html()):
-        assert '<script src="/v1/lesson11-methods-v2.js?v=20261113-lesson11-diagrams-r5"></script>' in page
-        assert page.count('<script src="/v1/lesson11-methods-v2.js?v=20261113-lesson11-diagrams-r5"></script>') == 1
+        assert '<script src="/v1/lesson11-methods-v2.js?v=20261115-lesson11-diagrams-r6"></script>' in page
+        assert page.count('<script src="/v1/lesson11-methods-v2.js?v=20261115-lesson11-diagrams-r6"></script>') == 1
     code = (Path(__file__).parents[1] / "changying/web/lesson11_methods_v2.js").read_text()
     assert 'window.cwParallelogramMethods=' in code
     assert "view.showAnswer" in code
@@ -37,6 +37,17 @@ function render(view,teacher){var box=new E('div');cwParallelogramMethods(box,vi
 function polygonPoints(g){return g.children.filter(function(c){return c.tag==='polygon'}).map(function(c){return c.attrs.points})}
 var student=render({step:5},false),teacherStart=render({step:1,previewMode:true},true);
 var teacherEnd=render({step:5,previewMode:true},true);
+function highlighted(svg){
+ return svg.children.map((panel,index)=>panel.children[0].attrs.stroke==='#cb7616'?index+1:0).filter(Boolean);
+}
+assert.deepEqual(highlighted(render({step:0},false)),[]);
+for(var step=1;step<=4;step++){
+ var board=render({step:step,showAnswer:false},false);
+ assert.deepEqual(highlighted(board),[step]);
+ assert.deepEqual(board.children.map(polygonPoints),student.children.map(polygonPoints),'focus must not expose solved geometry');
+}
+assert.deepEqual(highlighted(render({step:4,showAnswer:true},false)),[]);
+
 var legacy={figure:{type:'parallelogram_methods'},problem:'点M、N是所在边中点'};
 var teacherWarn=new E('div'),studentBlocked=new E('div');
 cwSteps(teacherWarn,legacy,{step:1},false,true);

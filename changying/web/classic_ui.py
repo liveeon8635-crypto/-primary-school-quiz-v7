@@ -174,6 +174,15 @@ def patch_classic_toast_in_dialog(html: str) -> str:
     return html.replace(before, after, 1)
 
 
+def patch_classic_grading_confirmation_notice(html: str) -> str:
+    """Show the outcome returned by grading confirmation, including archive choice."""
+    return html.replace(
+        'toast("教师确认已保存，错题已归档");draw()',
+        'toast(x.notice||"教师确认已保存");draw()',
+        1,
+    )
+
+
 def patch_classic_local_due_dates(html: str) -> str:
     """Keep assignment default dates in the browser/school local calendar day."""
 
@@ -416,6 +425,7 @@ def inject_classic_ui(html: str) -> str:
     html = patch_classic_catalog_find_imported(html)
     html = patch_classic_catalog_edit_unit(html)
     html = patch_classic_toast_in_dialog(html)
+    html = patch_classic_grading_confirmation_notice(html)
     html = patch_cube_figures(html)
     html = apply_surface(html, "classic")
     if CLASSIC_UI_MARKER in html:

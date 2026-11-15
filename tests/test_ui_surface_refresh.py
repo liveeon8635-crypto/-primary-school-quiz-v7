@@ -30,6 +30,7 @@ from app import app
         ("/v1/weekend-board", "board"),
         ("/v1/weekend-practice", "weekend"),
         ("/v1/classroom-board/1", "board"),
+        ("/v1/feedback", "personal"),
     ],
 )
 def test_production_route_renders_scoped_styles_without_changing_scripts(
@@ -57,3 +58,17 @@ def test_weekend_board_exposes_a_scrollable_keyboard_region():
     assert "tabindex:'0',role:'region','aria-label':'课堂投影内容'" in response.text
     assert "body.style.overflow='auto'" in response.text
     assert "if(keepScroll)body.scrollTop=oldScroll" in response.text
+
+
+def test_weekend_picker_catches_session_list_errors():
+    response = TestClient(app).get("/v1/weekend")
+    assert response.status_code == 200
+    assert "rlist.appendChild(el('div',{class:'notice error',text:e.message||'加载失败'}))" in response.text
+
+
+def test_touch_targets_for_account_and_feedback_actions():
+    response = TestClient(app).get("/v1/feedback")
+    assert response.status_code == 200
+    assert "#cy-v1-switch-account" in response.text
+    assert "#cy-fc-new" in response.text
+    assert "min-height: 44px;" in response.text

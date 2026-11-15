@@ -27,7 +27,9 @@
   window.cwParallelogramMethods=function(box,view,big,teacher){
     view=view||{};
     var answer=!!view.showAnswer||!!(teacher&&view.previewMode&&Number(view.step)>=5);
-    var focused=teacher&&view.previewMode&&!answer?Math.max(1,Math.min(4,Number(view.step)||1)):0;
+    // On the classroom board, focus follows the explanation without revealing the solved figures.
+    var step=Number(view.step)||0;
+    var focused=answer?0:Math.min(4,Math.max(0,step||(teacher&&view.previewMode?1:0)));
     var outer=el('div',{style:'max-width:1000px;margin:6px auto;padding:8px;border:1px solid #d0d5dd;border-radius:10px;background:#fff'});
     box.appendChild(outer);
     if(!document.createElementNS||!cwNode('svg',{}).createSVGRect){

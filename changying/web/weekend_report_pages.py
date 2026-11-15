@@ -399,7 +399,7 @@ function paintChildren(list){
     api('/parent/children/'+id+'/weekend-briefs').then(function(d){
       var reports=d.reports||[];
       if(!reports.length&&!d.items.length){box.appendChild(el('div',{class:'muted',text:'老师发布后会显示在这里。还没有反馈不代表孩子没有交作业。'}));return}
-      var subject=el('select'),date=el('select'),out=el('div');
+      var subject=el('select',{'aria-label':'科目'}),date=el('select',{'aria-label':'日期'}),out=el('div');
       [['','全部科目'],['语文','语文'],['数学','数学']].forEach(function(x){subject.appendChild(el('option',{value:x[0],text:x[1]}))});
       date.appendChild(el('option',{value:'',text:'全部日期'}));
       reports.map(function(r){return r.date}).filter(function(x,i,a){return a.indexOf(x)===i}).forEach(function(x){date.appendChild(el('option',{value:x,text:x}))});
@@ -416,7 +416,7 @@ function paintChildren(list){
         });
         if(!shown&&reports.length)out.appendChild(el('div',{class:'muted',text:'所选日期或科目还没有已发布的反馈。'}));
       }
-      if(reports.length){box.appendChild(el('div',{class:'row'},subject,date));subject.onchange=date.onchange=paint;box.appendChild(out);paint()}
+      if(reports.length){box.appendChild(el('div',{class:'row'},el('label',{},el('span',{text:'科目 '}),subject),el('label',{},el('span',{text:'日期 '}),date)));subject.onchange=date.onchange=paint;box.appendChild(out);paint()}
       if(d.items.length){
         var old=el('details',{open:!reports.length},el('summary',{text:'此前的课堂简报'}));
         d.items.forEach(function(b){old.appendChild(el('div',{class:'item'},el('span',{class:'t'},el('b',{text:b.title+' · '+b.at}),el('div',{text:b.text}))))});
