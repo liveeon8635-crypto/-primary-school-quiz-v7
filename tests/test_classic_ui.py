@@ -191,3 +191,12 @@ def test_production_classic_student_sync_exposes_presenter_invitations():
     assert 'document.querySelectorAll(".openClassroomInvitation").forEach' in response.text
     assert 'document.querySelectorAll(".cy-classic-invite-accept").forEach' in response.text
     assert 'document.querySelectorAll(".cy-classic-invite-decline").forEach' in response.text
+
+
+
+def test_grading_confirmation_displays_the_server_outcome():
+    html = '<html><body><script>toast("教师确认已保存，错题已归档");draw()</script></body></html>'
+    patched = inject_classic_ui(html)
+    assert 'toast(x.notice||"教师确认已保存");draw()' in patched
+    assert 'toast("教师确认已保存，错题已归档")' not in patched
+    assert inject_classic_ui(patched) == patched
