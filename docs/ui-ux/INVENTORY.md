@@ -1,72 +1,29 @@
 # 页面资产清单
 
-基线 `d9b56caff452abfc57b9378df9051738ffae57ad`。启动生产入口，使用隔离 SQLite，通过注册路由和真实 HTTP 响应盘点。参数化路由和开关关闭的页面需结合对应身份与夹具核对。
+基线 main 与生产 revision 为 `d9b56caff452abfc57b9378df9051738ffae57ad`。注册 574 个路由项。排除参数化 API、健康检查及 9 个 /fresh-v* 历史页面别名后，应用生产入口通过隔离 SQLite 返回 37 个可直接访问的 HTML 页面入口。这里按页面模板族去重，同时保留实际别名。
 
-| 页面 | 路由 | 注册来源 | 基线 HTTP | 样式 / 脚本标签 | 依赖 |
+| 页面族 | 已核实路由 | 最终页面来源 | 用户操作与角色 | API、权限和依赖 | 现有回归 |
 |---|---|---|---|---|---|
-| 我的工作室 · 长缨辅学 | `/start` | `app_v924.py:4918` | 200 | 1 / 1 | get_db |
-| 家长账号 · 长缨辅学 | `/parent-accounts` | `app_v924.py:5173` | 200 | 1 / 1 | 由模板脚本加载会话或公开 |
-| 我的 AI 设置 · 长缨辅学 | `/teacher/ai-settings` | `app_v924.py:5281` | 200 | 1 / 1 | 由模板脚本加载会话或公开 |
-| 免费注册 · 长缨辅学 | `/signup` | `app_v924.py:5292` | 200 | 1 / 1 | 由模板脚本加载会话或公开 |
-| 长缨辅学｜商业运营控制台 | `/operator-console` | `app_v924.py:5470` | 200 | 1 / 1 | 由模板脚本加载会话或公开 |
-| 隐私政策 - 长缨辅学 | `/legal/privacy` | `app_v924.py:5547` | 200 | 1 / — | 由模板脚本加载会话或公开 |
-| 用户协议 - 长缨辅学 | `/legal/terms` | `app_v924.py:5550` | 200 | 1 / — | 由模板脚本加载会话或公开 |
-| 长缨辅学 · 离线模式 | `/offline` | `app_v924.py:9104` | 200 | 1 / — | 由模板脚本加载会话或公开 |
-| 长缨辅学 V10.7 | `/fresh-v820` | `app_v924.py:9431` | 200 | 2 / 4 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V10.7 | `/fresh-v770` | `app_v924.py:9434` | 200 | 2 / 4 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V10.7 | `/fresh-v761` | `app_v924.py:9437` | 200 | 2 / 4 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V10.7 | `/fresh-v760` | `app_v924.py:9440` | 200 | 2 / 4 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V10.7 | `/fresh-v752` | `app_v924.py:9443` | 200 | 2 / 4 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V10.7 | `/fresh-v751` | `app_v924.py:9446` | 200 | 2 / 4 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V10.7 | `/fresh-v750` | `app_v924.py:9449` | 200 | 2 / 4 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V10.7 | `/fresh-v740` | `app_v924.py:9452` | 200 | 2 / 4 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V10.7 | `/fresh-v730` | `app_v924.py:9455` | 200 | 2 / 4 | 由模板脚本加载会话或公开 |
-| 经典版入口 | `/classic` | `app_v924.py:9428` | 307 | — / — | 由模板脚本加载会话或公开 |
-| 产品首页入口 | `/` | `changying/web/product_shell.py:178` | 307 | — / — | 由模板脚本加载会话或公开 |
-| 长缨辅学｜小学托管与教学 | `/new` | `changying/compat/legacy.py:201` | 200 | 1 / 1 | 由模板脚本加载会话或公开 |
-| 长缨辅学｜小学托管与教学 | `/workbench` | `changying/compat/legacy.py:201` | 200 | 1 / 1 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V1 | `/v1/classroom-review` | `changying/web/v1_classroom_review.py:665` | 200 | 19 / 27 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V1 | `/v1/classroom-execution` | `changying/web/v1_classroom_execution.py:1056` | 200 | 19 / 27 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V1 | `/v1/classroom-invitations` | `changying/web/v1_classroom_execution.py:1056` | 200 | 19 / 27 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V1 | `/v1/classroom-quick-checks` | `changying/web/v1_classroom_quick_check.py:939` | 200 | 19 / 27 | 由模板脚本加载会话或公开 |
-| 互动课堂实时大屏 | `/v1/classroom-board/{sid}` | `changying/web/v1_classroom_live_board.py:414` | 参数化 | — / — | 由模板脚本加载会话或公开 |
-| 知识点讲解 | `/v1/knowledge` | `changying/web/kp_cards_views.py:123` | 200 | 1 / 2 | 由模板脚本加载会话或公开 |
-| 周末课 | `/v1/weekend` | `changying/web/weekend_views.py:240` | 200 | 1 / 3 | 由模板脚本加载会话或公开 |
-| 课堂大屏 | `/v1/weekend-board` | `changying/web/weekend_views.py:244` | 200 | 1 / 3 | 由模板脚本加载会话或公开 |
-| 课堂练习 | `/v1/weekend-practice` | `changying/web/weekend_practice.py:265` | 200 | 1 / 2 | 由模板脚本加载会话或公开 |
-| 周末课学情反馈 | `/v1/weekend-brief` | `changying/web/weekend_scoring_views.py:570` | 200 | 1 / 2 | 由模板脚本加载会话或公开 |
-| 课后总结与家长反馈 | `/v1/weekend-report` | `changying/web/weekend_report_views.py:222` | 200 | 1 / 2 | 由模板脚本加载会话或公开 |
-| 周末课备课 | `/v1/weekend-plan` | `changying/web/weekend_plan_views.py:483` | 200 | 1 / 3 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V1 | `/v1/classroom-handouts` | `changying/web/v1_classroom_handout_release.py:591` | 200 | 19 / 27 | 由模板脚本加载会话或公开 |
-| 长缨辅学 · 角色实操沙盒 | `/v1/training` | `changying/web/v1_training_workbench.py:468` | 200 | 1 / 2 | 由模板脚本加载会话或公开 |
-| 我的反馈记录 · 长缨辅学 | `/v1/feedback` | `changying/web/v1_product_assistant.py:1039` | 200 | 1 / 3 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V1 | `/v1` | `changying/web/v1.py:336` | 200 | 19 / 27 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V1 | `/v1/workspace` | `changying/web/v1.py:302` | 200 | 19 / 27 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V1 | `/v1/student` | `changying/web/v1.py:302` | 200 | 19 / 27 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V1 | `/v1/history` | `changying/web/v1.py:302` | 200 | 19 / 27 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V1 | `/v1/transition` | `changying/web/v1.py:302` | 200 | 19 / 27 | 由模板脚本加载会话或公开 |
-| 长缨辅学 V1 | `/v1/guide` | `changying/web/v1.py:302` | 200 | 19 / 27 | 由模板脚本加载会话或公开 |
-| 全部功能 · 长缨辅学 | `/v1/tool` | `changying/web/v1_classic_gzip_embed.py:104` | 200 | 2 / 3 | 由模板脚本加载会话或公开 |
+| 产品首页与独立教师工作台 | /、/new、/workbench | product_shell.py:teacher_workbench_html; legacy.py:install_product_visibility_routes | 访客，介绍产品；教师，读取本人工作台事实 | 会话查询与工作台读取；不写教学业务数据 | tests/test_individual_workspace.py, tests/test_product_shell.py |
+| V1 登录、工作台、档案、历史、衔接、导览 | /v1、/v1/workspace、/v1/student、/v1/history、/v1/transition、/v1/guide | v1.py:v1_html; legacy.py 多层补丁及 gzip 兼容桥 | 教师查看当前教学与学生连续档案；学生进入本人学习；家长看授权孩子；管理员使用管理入口 | 现有角色会话及各自 API。/v1 页面共用最终拼装 HTML，不代表操作页相同 | tests/test_v1_shell_router_contract.py, tests/test_v1_mobile_real_data_layout.py, tests/test_student_continuity.py |
+| 全部功能与 Classic 工具 | /v1/tool、/classic?legacy=1&unified=1&from=v1&page=... | v1_classic_gzip_embed.py、v1_tool_hub.py、v1_unified_tools.py | 四种角色按菜单进入保留的 Classic 教学及管理功能 | /session、单次认证交接、工具页面授权列表及已有 Classic API | tests/test_v1_classic_embed_bootstrap.py, tests/test_v1_cross_context_auth_handoff.py, tests/test_v1_unified_tools_session_bridge.py |
+| 晚托作业助手 | /v1/homework | homework_assistant.py:homework_page → homework_assistant_pages.py | 教师建立与审阅作业；学生处理作业、提示与求助 | HOMEWORK_ASSISTANT=1；角色会话及作业/求助 API | tests/test_homework_teacher_help.py, tests/test_homework_assistant_tables.py, tests/test_homework_help.py, tests/test_homework_guided_help.py |
+| 周末课备课与课件 | /v1/weekend-plan | weekend_plan_views.py:plan_page_html → weekend_pages.py | 教师导入教案、审核题目、编排课件和逐步图示 | 教师会话、现有周末课程和课件 API | tests/test_weekend_import_integrity.py, tests/test_weekend_review_flow.py, tests/test_weekend_example_practice_separation.py |
+| 周末课教师控制 | /v1/weekend | weekend_views.py:control_page_html → weekend_pages.py | 教师开课、推进环节、操作提示、批改及结束课堂 | 教师会话、班级及课堂 session API | tests/test_weekend_views.py, tests/test_weekend_live_controls.py |
+| 课堂大屏 | /v1/weekend-board?s=...、/v1/classroom-board/{sid} | weekend_views.py:board_page_html、v1_classroom_live_board.py:board_html | 教师控制；投影设备显示当前环节、批准课件与已公开答案 | 当前课堂数据、答案公布状态、课堂遮挡/冻结状态 | tests/test_weekend_board_layout.py, tests/test_classroom_live_board.py, tests/test_classroom_board_lock.py |
+| 课堂学生练习与周末课家长反馈 | /v1/weekend-practice、/v1/weekend-brief、/v1/weekend-report | weekend_practice.py、weekend_scoring_views.py、weekend_report_views.py | 学生按课堂环节作答；教师生成反馈；关联家长只读孩子已发布报告 | 学生/教师会话、课堂及关系授权 | tests/test_weekend_written.py, tests/test_weekend_reports.py, tests/test_weekend_feedback_upgrade.py |
+| 知识点讲解与知识地图 | /v1/knowledge、/v1/knowledge-map、/v1/my-knowledge-map | kp_cards_views.py、knowledge_map_views.py、knowledge_map_student.py | 教师查看知识点及诊断并布置；学生只读本人知识进展 | KNOWLEDGE_MAP=1（地图）；既有题库、作答和会话 API | tests/test_knowledge_map_draft_note_ui.py, tests/test_v1_student_practice.py |
+| 应试专项、模拟卷、报告 | /v1/exam-prep、/v1/exam-paper、/v1/exam-report | exam_prep_views.py → exam_prep_pages.py | 教师准备专项与测验；学生完成模拟；学生/家长按发布授权查看报告 | 题库、现有测验记录和角色范围 API | tests/test_question_type_fit_and_quiz_navigation.py, tests/test_student_quiz_learning_points_ui.py |
+| 课堂审核、执行、邀课和随堂测验 | /v1/classroom-review、/v1/classroom-execution、/v1/classroom-invitations、/v1/classroom-quick-checks | v1_classroom_review.py、v1_classroom_execution.py、v1_classroom_quick_check.py | 教师审核讲义、执行课堂、邀请学生；学生参与邀请与随堂测验 | 角色授权、课堂 session、发布版讲义及原有答题 API | tests/test_classroom_quick_login.py, tests/test_classroom_quick_check_phase_c.py, tests/test_classroom_live_board.py |
+| 课堂讲义发布与学生读取 | /v1/classroom-handouts | v1_classroom_handout_release.py → 共享 V1 shell | 教师发布冻结讲义；学生只读本人作为接收人的当前发布版本 | 课堂归属、作业接收人及当前讲义版本校验 | tests/test_classroom_handout_release.py |
+| 角色实操沙盒 | /v1/training、/v1/training-sandbox/{session_id} | v1_training_workbench.py、v1_training_sandbox.py | 老师、学生、家长或管理员在隔离虚拟业务数据中按角色完成流程 | 沙盒 session，不向正式学生教学记录写入 | tests/test_v1_training_sandbox.py |
+| 产品反馈与审核记录 | /v1/feedback、/v1/product-feedback/... | v1_product_assistant.py | 反馈提交者查看本人反馈；维护者查看授权的审核及处理上下文 | 当前账号角色、反馈记录所有权 | tests/test_v1_product_assistant.py, tests/test_product_assistant_feedback_records_navigation.py |
+| 个人工作室与账号辅助页 | /start、/parent-accounts、/teacher/ai-settings、/signup | app_v924.py | 独立教师注册和工作台；教师管理家长绑定及本人 AI 设置 | 登录、所属工作室与角色检查 | tests/test_personal_start.py, tests/test_personal_parent_accounts.py, tests/test_personal_ai_settings.py, tests/test_personal_signup.py |
+| 法律、离线与运营支持页 | /legal/privacy、/legal/terms、/offline、/operator-console | app_v924.py | 访客阅读政策、离线说明；运维人员进入运营控制台 | 政策公开；运营功能依现有密钥与管理员校验 | tests/test_prelaunch_legal_readiness.py, tests/test_offline_page.py, tests/test_operator_console_route.py |
 
-## 角色、操作与验证
 
-| 入口 | 角色与操作 | 运行依赖与现有测试 |
-|---|---|---|
-| V1 工作台、学生档案、往期、衔接 | 教师工作模式切换，查看班级与连续档案 | `v1.py` 与兼容补丁，`/session`、`/teacher/students/{id}/growth-profile`。固定导航、移动真实数据、学生连续档案测试。 |
-| 全部功能与旧版 | 四种角色按可用入口进入。原生功能列表由 gzip 兼容桥送达，具体工具经同页跳转进入 Classic，历史 iframe 路径继续存在 | `v1_tool_hub.py`、`v1_unified_tools.py`、Classic 会话桥。已有 iframe bootstrap、跨窗口交接和授权契约测试。 |
-| 晚托 | 教师发清单、审阅求助，学生处理作业与求助 | `homework_assistant.py` 与 `homework_assistant_pages.py`，`/session` 与晚托业务路由。已有清单、权限、引导和教师求助测试。 |
-| 周末备课、控制、大屏、练习、报告 | 教师备课审核、开课、推进与发布，学生练习和家长读取授权报告 | `weekend_pages.py` 与课程课件、纸质备用、作答和报告模块。已有周末课课程、班级绑定、作答、报告与直播大屏测试。 |
-| 学生、家长、管理 | 学生作答与复习、家长按授权查看、管理员账号维护 | V1 shell 与 Classic 功能工作区，角色与数据范围由对应 API 判断。已有家长可见性、学生练习和账号权限测试。 |
+## 需要单独梳理的辅助入口
 
-## 功能开关开启时的入口
-
-隔离环境启用 `HOMEWORK_ASSISTANT=1` 与 `KNOWLEDGE_MAP=1`。
-
-| 页面 | 路由 | 注册来源 | HTTP |
-|---|---|---|---|
-| 晚托作业助手 | `/v1/homework` | `changying/web/homework_assistant.py:202` | 200 |
-| 知识地图 | `/v1/knowledge-map` | `changying/web/knowledge_map_views.py:240` | 200 |
-| 我的知识地图 | `/v1/my-knowledge-map` | `changying/web/knowledge_map_student.py:155` | 200 |
-| 应试专项 | `/v1/exam-prep` | `changying/web/exam_prep_views.py:361` | 200 |
-| 限时模拟卷 | `/v1/exam-paper` | `changying/web/exam_prep_views.py:367` | 200 |
-| 考试提分报告 | `/v1/exam-report` | `changying/web/exam_prep_views.py:373` | 200 |
+- `/operator-console` 页面测试为 `tests/test_operator_console_route.py`；运营鉴权还由应用现有密钥与管理员校验执行。
+- `/parent-accounts`、`/teacher/ai-settings`、`/signup` 是根应用内嵌模板；对应测试分别为 `tests/test_personal_parent_accounts.py`、`tests/test_personal_ai_settings.py`、`tests/test_personal_signup.py`。
+- `/offline` 是静态提示页。9 个 `/fresh-v*` 版本入口共用旧版包，需继续按兼容用途检查链接及调用关系。
