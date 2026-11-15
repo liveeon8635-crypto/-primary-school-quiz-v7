@@ -289,6 +289,8 @@ with TestClient(app) as client:
         assert text in html, text
     parent = client.get("/v1/weekend-brief").text
     assert "周末课学情反馈" in parent and "d.reports" in parent and "老师发布后会显示在这里" in parent
+    assert "el('select',{'aria-label':'科目'})" in parent
+    assert "el('select',{'aria-label':'日期'})" in parent
     top = client.get("/classic?legacy=1&unified=1&page=childProgress").text
     assert "cy-wkr-band" in top and "/v1/weekend-brief?child=" in top
     print("OK")
