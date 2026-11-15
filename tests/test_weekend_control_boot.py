@@ -158,7 +158,7 @@ fetch=(path,opts)=>{
 (async()=>{
  await settle();createWeekendClassroom(99);await settle();assert.equal(created,null,'No all-teacher default roster');
  const choice=nodes(document.body).find(n=>n.tag==='button'&&n.textContent==='乙班（3人）');assert(choice);
- choice.onclick();await settle();assert.deepEqual(created,{lessonId:99,classId:202});
+ choice.onclick();await settle();assert.deepEqual(created,{lessonId:99,classId:202,requireReady:true});
  assert.equal(location.href,'/v1/weekend?s=77');
 })().catch(e=>{console.error(e);process.exitCode=1});
 """

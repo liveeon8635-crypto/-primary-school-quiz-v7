@@ -176,6 +176,95 @@ class ApproveBody(BaseModel):
     approve: list[int] = []
     remove: list[int] = []
     retract: list[int] = []          # 撤回通过：题不再进入课堂，但已上过的课和学生作答都保留
+    confirmMissingFigure: bool = False
+
+
+class MaterialItemBody(BaseModel):
+    text: str
+    role: Literal["example", "practice", "pending"]
+    options: list[str] = Field(default_factory=list)
+    correctIndex: int | None = None
+    explanation: str = ""
+    knowledge: str = ""
+    reference: str = ""
+
+
+class MaterialApplyBody(BaseModel):
+    items: list[MaterialItemBody] = Field(default_factory=list, max_length=100)
+
+
+_MENTIONS_FIGURE_RE = re.compile(r"如图|图中的|如下图所示|如下图所示|见图|右图|左图|上图|下图|图中|看图")
+_SECTION_EXAMPLE_RE = re.compile(r"^(?:[一二三四五六七八九十0-9]+[、.．\s]*)?(?:典型例题|例题讲解|例题|典例精讲|典例|讲解示例)\s*[：:]*$")
+_SECTION_PRACTICE_RE = re.compile(r"^(?:[一二三四五六七八九十0-9]+[、.．\s]*)?(?:随堂练习|课堂练习|巩固练习|课后练习|练一练|试一试|达标检测|习题)\s*[：:]*$")
+_EXAMPLE_ITEM_RE = re.compile(r"^(?:【?\s*例\s*[0-9一二三四五六七八九十]+|例题\s*[0-9一二三四五六七八九十]+)")
+_PRACTICE_ITEM_RE = re.compile(r"^(?:练习\s*[0-9一二三四五六七八九十]+|随堂练习\s*[0-9一二三四五六七八九十]+|练\s*[0-9一二三四五六七八九十]+)")
+_NUMBERED_ITEM_RE = re.compile(r"^(?:第\s*[0-9一二三四五六七八九十]+\s*题|[0-9]{1,2}\s*[.．、)）]|[（(][0-9]{1,2}[）)])")
+
+
+def mentions_figure(text: Any) -> bool:
+    return bool(_MENTIONS_FIGURE_RE.search(str(text or "")))
+
+
+def has_figure(fig: Any) -> bool:
+    if not isinstance(fig, dict):
+        return False
+    return fig.get("type") == "uploaded_image" and bool(str(fig.get("data_url") or "").strip())
+
+
+def suggest_material_groups(text: str) -> list[dict[str, Any]]:
+    """按标题与题号拆分混合资料并提出用途建议；不确定的条目标为待定（pending）。"""
+    lines = [line.rstrip() for line in str(text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")]
+    section_role: str | None = None
+    chunks: list[tuple[str | None, list[str]]] = []
+    cur_lines: list[str] = []
+    cur_section: str | None = None
+
+    def flush():
+        nonlocal cur_lines
+        joined = "\n".join(x for x in cur_lines).strip()
+        if joined:
+            chunks.append((cur_section, [joined]))
+        cur_lines = []
+
+    for raw in lines:
+        s = raw.strip()
+        if not s:
+            if cur_lines:
+                flush()
+            continue
+        if _SECTION_EXAMPLE_RE.match(s):
+            flush()
+            section_role = "example"
+            cur_section = section_role
+            continue
+        if _SECTION_PRACTICE_RE.match(s):
+            flush()
+            section_role = "practice"
+            cur_section = section_role
+            continue
+        is_new_item = bool(_EXAMPLE_ITEM_RE.match(s) or _PRACTICE_ITEM_RE.match(s) or _NUMBERED_ITEM_RE.match(s))
+        if is_new_item and cur_lines:
+            flush()
+        if not cur_lines:
+            cur_section = section_role
+        cur_lines.append(s)
+    flush()
+
+    items: list[dict[str, Any]] = []
+    for idx, (sec, block) in enumerate(chunks, start=1):
+        body = block[0]
+        first = body.split("\n", 1)[0].strip()
+        if _EXAMPLE_ITEM_RE.match(first):
+            role, reason = "example", "题号以“例/例题”开头，建议归入例题讲解"
+        elif _PRACTICE_ITEM_RE.match(first):
+            role, reason = "practice", "题号以“练习/练”开头，建议归入随堂练习"
+        elif sec in ("example", "practice"):
+            role = sec
+            reason = "位于“例题”分区下，建议归入例题讲解" if sec == "example" else "位于“练习”分区下，建议归入随堂练习"
+        else:
+            role, reason = "pending", "标题或题号未明确归属，暂标为待定，请老师确认用途"
+        items.append({"index": idx, "text": body, "role": role, "reason": reason})
+    return items
 
 
 class ExampleReviewBody(BaseModel):
@@ -581,10 +670,13 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         ran = db.scalar(select(func.count()).select_from(sessions).where(sessions.c.lesson_id == lesson.id, sessions.c.teacher_id == u.id, sessions.c.status != "planned")) or 0
         examples = example_items(db, lesson)
         example_approved = sum(1 for e in examples if e["status"] in ("approved", "legacy"))
+        cw = db.execute(select(courseware_table).where(courseware_table.c.lesson_id == lesson.id)).first()
+        cw_status = str(cw.status or "") if cw is not None else ""
         return {"lessonId": lesson.id, "title": lesson.title, "hasPlan": has_real_plan(lesson),
                 "approvedQuestions": int(approved), "draftQuestions": int(draft), "taught": bool(ran),
                 "exampleCount": len(examples), "exampleApproved": example_approved,
-                "examplePending": len(examples) - example_approved, "practiceReady": practice_ready(db, u, lesson)}
+                "examplePending": len(examples) - example_approved, "practiceReady": practice_ready(db, u, lesson),
+                "coursewareStatus": cw_status, "coursewareApproved": cw_status == "approved"}
 
 
     @router.get("/v1/weekend-plan", include_in_schema=False)
@@ -601,7 +693,10 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         for n in range(1, LESSONS + 1):
             r, l = rows.get(n), lessons.get(n)
             item = {"lessonNo": n, "schoolWeek": r.school_week if r else None, "schoolUnit": r.school_unit if r else "", "plannedDate": r.planned_date if r else "", "note": r.note if r else ""}
-            item.update(lesson_status(db, u, l) if l else {"lessonId": None, "title": "", "hasPlan": False, "approvedQuestions": 0, "draftQuestions": 0, "taught": False})
+            item.update(lesson_status(db, u, l) if l else {
+                "lessonId": None, "title": "", "hasPlan": False, "approvedQuestions": 0, "draftQuestions": 0,
+                "taught": False, "practiceReady": 0, "coursewareStatus": "", "coursewareApproved": False,
+            })
             out.append(item)
         return {"subject": subject, "items": out}
 
@@ -1086,6 +1181,98 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 "droppedDuplicate": dropped + written_dropped, "attachedFigures": attached,
                 "status": lesson_status(db, u, lesson), "summary": practice_summary(db, u, lesson)}
 
+    @router.post("/teacher/weekend/lessons/{lid}/materials/preview")
+    def preview_materials(lid: int, text: str = Form(""), file: UploadFile | None = File(None),
+                          u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """识别混合资料并按标题/题号提出例题或随堂练习分组建议；不确定条目标为待定，不写入数据库。"""
+        need(u, "teacher")
+        my_lesson(db, u, lid)
+        extracted = _extract_upload(file, text)
+        items = suggest_material_groups(extracted["text"])
+        if not items:
+            raise HTTPException(400, "没有从材料里拆出可识别的条目，请检查内容是否为空")
+        counts = {role: sum(1 for item in items if item["role"] == role) for role in ("example", "practice", "pending")}
+        return {"items": items, "counts": counts}
+
+    @router.post("/teacher/weekend/lessons/{lid}/materials/apply")
+    def apply_materials(lid: int, b: MaterialApplyBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """确认分组后分别写入例题讲解或随堂练习草稿；待定条目绝不默默塞入练习或直接过审。"""
+        need(u, "teacher")
+        lesson = my_lesson(db, u, lid)
+        existing_examples = _lines(lesson.examples_json)
+        example_keys = {qg.question_key(x) for x in existing_examples if qg.question_key(x)}
+        examples_list = lesson_worked_examples(lesson)
+        existing_tq = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE)).all()
+        seen_tq = [(q.stem, question_options(q)) for q in existing_tq]
+        written_stems = {str(q.stem) for q in written_templates(db, written, u.school_id, u.id, lesson.id)}
+        added_examples = added_choices = added_written = dropped_dup = skipped_pending = 0
+        for item in b.items:
+            txt = str(item.text or "").strip()
+            if not txt:
+                continue
+            if item.role == "pending":
+                skipped_pending += 1
+                continue
+            if item.role == "example":
+                key = qg.question_key(txt)
+                if key and key in example_keys:
+                    dropped_dup += 1
+                    continue
+                if key:
+                    example_keys.add(key)
+                existing_examples.append(txt)
+                examples_list.append({"label": f"例{len(existing_examples)}", "stem": _worked_example_match_text(txt)})
+                added_examples += 1
+                continue
+            opts = [str(o).strip() for o in (item.options or []) if str(o).strip()]
+            if len(opts) >= 2 and item.correctIndex is not None and 0 <= int(item.correctIndex) < len(opts):
+                if duplicate_of(txt, opts, examples_list, seen_tq):
+                    dropped_dup += 1
+                    continue
+                seen_tq.append((txt, opts))
+                db.add(TQ(
+                    school_id=u.school_id, program_id=lesson.program_id, lesson_id=lesson.id,
+                    stage="lesson", subject=lesson.subject, level=LEVELS[min(added_choices, len(LEVELS) - 1)],
+                    knowledge=(item.knowledge or suggest_knowledge(txt))[:120], stem=txt[:300],
+                    options_json=json.dumps(opts, ensure_ascii=False), correct_index=int(item.correctIndex),
+                    explanation=item.explanation or "", active=False, figure_json="{}",
+                ))
+                added_choices += 1
+            else:
+                if txt in written_stems or duplicate_of(txt.split("\n\n")[-1].strip(), [], examples_list, []):
+                    dropped_dup += 1
+                    continue
+                written_stems.add(txt)
+                db.execute(insert(written).values(
+                    school_id=u.school_id, teacher_id=u.id, lesson_id=lesson.id, session_id=0,
+                    stem=txt, reference=item.reference or "",
+                    hints_json=json.dumps({"approved": False, "type": "short_answer", "hints": [], "figure": {}}, ensure_ascii=False),
+                ))
+                added_written += 1
+        if added_examples:
+            lesson.examples_json = json.dumps(existing_examples, ensure_ascii=False)
+            lesson.updated_at = datetime.utcnow()
+        db.commit()
+        parts = []
+        if added_examples:
+            parts.append(f"加入例题讲解 {added_examples} 道（待逐题核对通过）")
+        if added_choices + added_written:
+            parts.append(f"加入随堂练习草稿 {added_choices + added_written} 道（待逐题审核通过）")
+        if skipped_pending:
+            parts.append(f"保留待定 {skipped_pending} 条（未写入练习或例题）")
+        if dropped_dup:
+            parts.append(f"跳过重复 {dropped_dup} 条")
+        return {
+            "message": "；".join(parts) or "没有可导入的条目。",
+            "addedExamples": added_examples,
+            "addedChoices": added_choices,
+            "addedWritten": added_written,
+            "skippedPending": skipped_pending,
+            "droppedDuplicate": dropped_dup,
+            "status": lesson_status(db, u, lesson),
+            "summary": practice_summary(db, u, lesson),
+        }
+
     @router.post("/teacher/weekend/lessons/import/preview")
     def import_preview(subject: str = Form(""), files: list[UploadFile] = File(...),
                             u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1314,7 +1501,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         # Lock before checking evidence. Student submissions use the same session lock.
         rows = db.execute(select(sessions).where(sessions.c.lesson_id == lid)
                           .order_by(sessions.c.id).with_for_update()).all()
-        disposable = {"weekend_stage_log", "weekend_slide_state", "weekend_class_rosters", "weekend_written_questions"}
+        disposable = {"weekend_stage_log", "weekend_slide_state", "weekend_class_rosters", "weekend_written_questions", "weekend_session_questions"}
         md = implementation.Base.metadata
         for row in rows:
             if row.school_id != u.school_id or row.teacher_id != u.id:
@@ -1365,7 +1552,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 snapshot["coursewareLive"] = {"id": cw.id, "removed": removed}
                 db.execute(update(courseware).where(courseware.c.id == cw.id).values(
                     live_json=json.dumps({key: value for key, value in live.items() if key not in removed}, ensure_ascii=False)))
-        for name in ("weekend_stage_log", "weekend_slide_state", "weekend_class_rosters", "weekend_written_questions"):
+        for name in ("weekend_stage_log", "weekend_slide_state", "weekend_class_rosters", "weekend_written_questions", "weekend_session_questions"):
             table = implementation.Base.metadata.tables.get(name)
             if table is not None:
                 snapshot["related"][name] = [dict(r._mapping) for r in db.execute(select(table).where(table.c.session_id.in_(ids)))]
@@ -1442,8 +1629,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         for q in rows:
             opts = question_options(q)
             others = [(o.stem, question_options(o)) for o in rows if o.id != q.id]
+            fig = _stored_figure(q)
             out.append({"id": q.id, "stem": q.stem, "options": opts, "correctIndex": q.correct_index, "explanation": q.explanation, "knowledge": q.knowledge,
-                        "figure": _stored_figure(q), **lesson_question_number(lesson.reading_plan or "", q.stem), "active": bool(q.active), "level": qg.CODE_LEVEL.get(q.level, ""), "verified": str(q.explanation or "").startswith("验算："),
+                        "figure": fig, "mentionsFigure": mentions_figure(q.stem), **lesson_question_number(lesson.reading_plan or "", q.stem), "active": bool(q.active), "level": qg.CODE_LEVEL.get(q.level, ""), "verified": str(q.explanation or "").startswith("验算："),
                         "duplicateOf": duplicate_of(q.stem, opts, examples, others)})
         return {"items": out, "workedExamples": example_items(db, lesson), "summary": practice_summary(db, u, lesson)}
 
@@ -1458,6 +1646,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                                                  TQ.active.is_(True), TQ.id.notin_(b.approve))).all()
             seen = [(q.stem, question_options(q)) for q in approved]
             for q in targets:
+                if mentions_figure(q.stem) and not has_figure(_stored_figure(q)) and not b.confirmMissingFigure:
+                    raise HTTPException(409, "这道题题干提到了图示（如“如图”），但目前没有配图。请先核对/补充配图，或勾选“确认无配图仍通过”后再通过。")
                 dup = duplicate_of(q.stem, question_options(q), examples, seen)
                 if dup.startswith("例"):
                     raise HTTPException(409, f"这道随堂练习与本课例题重复（来源：{dup}），请换一道同考点新题后再通过")
@@ -1518,10 +1708,12 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         for q in written_templates(db, written, u.school_id, u.id, lid):
             stem = q.stem.split("\n\n")[-1].strip()
             duplicate = duplicate_of(stem, [], examples, seen)
+            meta = template_meta(q)
             items.append({"id": q.id, "stem": q.stem, "reference": q.reference,
                           **lesson_question_number(lesson.reading_plan or "", q.stem),
+                          "mentionsFigure": mentions_figure(q.stem),
                           "suggestedKnowledge": suggest_knowledge(q.stem), "duplicateOf": duplicate,
-                          **template_meta(q)})
+                          **meta})
             seen.append((stem, []))
         return {"goals": lesson_goals(lesson.core_target or ""), "workedExamples": examples, "items": items}
 
@@ -1571,6 +1763,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             for q in templates:
                 if q.id not in b.approve:
                     continue
+                meta = template_meta(q)
+                if mentions_figure(q.stem) and not has_figure(meta.get("figure")) and not b.confirmMissingFigure:
+                    raise HTTPException(409, "这道题题干提到了图示（如“如图”），但目前没有配图。请先核对/补充配图，或勾选“确认无配图仍通过”后再通过。")
                 stem = q.stem.split("\n\n")[-1].strip()
                 duplicate = duplicate_of(stem, [], examples, seen)
                 if duplicate.startswith("例"):
@@ -1608,7 +1803,10 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 out.append({"subject": subject, "done": True})
                 continue
             r, l = rows.get(nxt), lessons.get(nxt)
-            st = lesson_status(db, u, l) if l else {"lessonId": None, "title": "", "hasPlan": False, "approvedQuestions": 0, "draftQuestions": 0, "taught": False}
+            st = lesson_status(db, u, l) if l else {
+                "lessonId": None, "title": "", "hasPlan": False, "approvedQuestions": 0, "draftQuestions": 0,
+                "taught": False, "practiceReady": 0, "coursewareStatus": "", "coursewareApproved": False,
+            }
             tips = []
             if not st["hasPlan"]:
                 tips.append("还没有教案：可以用 AI 备课草稿")

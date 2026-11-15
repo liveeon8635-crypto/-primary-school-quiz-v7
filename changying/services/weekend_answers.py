@@ -61,13 +61,51 @@ CURSOR_VERSION = 1_000_000
 CURSOR_PAGES = 10_000
 
 
+def session_question_ids(db, implementation, session_id: int) -> set[int] | None:
+    """Return snapshotted TeachingQuestion IDs for a session, or None for legacy unsnapshotted sessions."""
+    table = implementation.Base.metadata.tables.get("weekend_session_questions")
+    if table is None:
+        return None
+    rows = db.scalars(select(table.c.question_id).where(table.c.session_id == int(session_id))).all()
+    if not rows:
+        return None
+    return {int(qid) for qid in rows if int(qid) > 0}
+
+
+def count_practice_ready(db, implementation, school_id: int, teacher_id: int, lesson) -> int:
+    """第4环节实际能发放的题数：与例题重复的题不发，和大屏/审核页共用同一套判断。"""
+    from changying.services.lesson_written import template_meta, written_templates
+    from changying.web.weekend_plan_views import duplicate_of, lesson_worked_examples, question_options
+    from changying.web.weekend_written import register_written_tables
+
+    examples = lesson_worked_examples(lesson)
+    ready = 0
+    TQ = implementation.TeachingQuestion
+    rows = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != "removed", TQ.active.is_(True))).all()
+    for q in rows:
+        if not duplicate_of(q.stem, question_options(q), examples, []):
+            ready += 1
+    written = register_written_tables(implementation)["questions"]
+    for q in written_templates(db, written, school_id, teacher_id, lesson.id):
+        if template_meta(q).get("approved") and not duplicate_of(str(q.stem).split("\n\n")[-1].strip(), [], examples, []):
+            ready += 1
+    return ready
+
+
 def practice_items(implementation, db, session):
     from changying.web.weekend_written import register_written_tables
     question = implementation.TeachingQuestion
     example_texts = _lesson_example_texts(db, implementation, session)
     items = []
-    reviewed_choices = list(db.scalars(select(question).where(question.school_id == session.school_id,
-            question.lesson_id == session.lesson_id, question.active.is_(True)).order_by(question.id).limit(30)))
+    snap_ids = session_question_ids(db, implementation, session.id)
+    stmt = select(question).where(
+        question.school_id == session.school_id,
+        question.lesson_id == session.lesson_id,
+        question.active.is_(True),
+    )
+    if snap_ids is not None:
+        stmt = stmt.where(question.id.in_(snap_ids)) if snap_ids else stmt.where(question.id == -1)
+    reviewed_choices = list(db.scalars(stmt.order_by(question.id).limit(30)))
     reviewed_choices = [q for q in reviewed_choices if not _duplicates_example(q.stem, example_texts)]
     for index, q in enumerate(reviewed_choices, 1):
         options = json.loads(q.options_json or '[]')
