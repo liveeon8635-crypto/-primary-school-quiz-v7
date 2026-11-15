@@ -398,10 +398,10 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/weekend": [
-      "cc6fbd26e594ba76198502312e348609d2a1191385cdf829bf84b2856fe1ce5e"
+      "1ce46cc19eee58f2b382ff8a3bc232f2125ad1d7609507c85efa0915e5aeb698"
     ],
     "/v1/weekend-board": [
-      "253bd82b7fbae2de5044aa0914d5a3fc7ed036ee2a9b4103af7bd86adc4d7a2f"
+      "4a8ffbbd99cba1d3ac4b7bd92ad55e916c93cc249d2a4ccebd8c02951955c21b"
     ],
     "/v1/weekend-brief": [
       "de337232f11e46e9e8fed00047f5712ca267ba77325ccd29bb67ac50f1961e36"
@@ -486,6 +486,11 @@
       "sourceBytes": 63010,
       "compiledBytes": 63010
     },
+    "1ce46cc19eee58f2b382ff8a3bc232f2125ad1d7609507c85efa0915e5aeb698": {
+      "unchanged": true,
+      "sourceBytes": 146851,
+      "compiledBytes": 146851
+    },
     "1e32b0923e93046f9ee11a0d850060d8e1b6bba5e1e3735dd57a0a5996278070": {
       "unchanged": true,
       "sourceBytes": 73277,
@@ -510,11 +515,6 @@
       "unchanged": true,
       "sourceBytes": 2212,
       "compiledBytes": 2212
-    },
-    "253bd82b7fbae2de5044aa0914d5a3fc7ed036ee2a9b4103af7bd86adc4d7a2f": {
-      "unchanged": true,
-      "sourceBytes": 101022,
-      "compiledBytes": 101022
     },
     "271c4c5a3fc4882ddfa747195de1e8c5794702c3a183250d67a844a264f07b5d": {
       "unchanged": false,
@@ -565,6 +565,11 @@
       "unchanged": true,
       "sourceBytes": 32780,
       "compiledBytes": 32780
+    },
+    "4a8ffbbd99cba1d3ac4b7bd92ad55e916c93cc249d2a4ccebd8c02951955c21b": {
+      "unchanged": true,
+      "sourceBytes": 101066,
+      "compiledBytes": 101066
     },
     "4fe6460e65c04041776d17796a19f34bbd3dd6329bc5461795f3ca73e5706a92": {
       "unchanged": true,
@@ -685,11 +690,6 @@
       "unchanged": false,
       "sourceBytes": 1108,
       "compiledBytes": 1097
-    },
-    "cc6fbd26e594ba76198502312e348609d2a1191385cdf829bf84b2856fe1ce5e": {
-      "unchanged": true,
-      "sourceBytes": 146748,
-      "compiledBytes": 146748
     },
     "cd7c1d37c3ccd484e5fe56615f4969d32a1ba4724f220c160eb9caf014ab2677": {
       "unchanged": true,

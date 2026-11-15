@@ -25,6 +25,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, LargeBinary, String, Table, insert, select, update
 
+from changying.web.design_system import apply_surface
 from changying.web.v1_nezha_icons import AVATAR_PNG_B64
 from changying.web import v1 as v1_module
 from changying.web import v1_classic_gzip_embed as classic_embed_module
@@ -1051,7 +1052,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
 .cy-feedback-page{max-width:960px;margin:0 auto;padding:18px 14px 40px}
 .cy-feedback-page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
 .cy-feedback-page-head h1{margin:0;font-size:24px}.cy-feedback-page-head p{margin:4px 0 0;color:#667085;font-size:13px}
-.cy-feedback-page-back{display:inline-flex;text-decoration:none;border:1px solid #d5deeb;background:#fff;color:#a8101c;border-radius:10px;padding:9px 12px;font-weight:800;font-size:13px}
+.cy-feedback-page-back{display:inline-flex;align-items:center;min-height:44px;text-decoration:none;border:1px solid #d5deeb;background:#fff;color:#a8101c;border-radius:10px;padding:9px 12px;font-weight:800;font-size:13px}
 #cy-feedback-center-backdrop{position:static!important;display:block!important;background:transparent!important;padding:0!important}
 #cy-feedback-center-modal{width:100%!important;max-height:none!important;border-radius:16px!important}
 #cy-fc-close{display:none!important}
@@ -1085,7 +1086,7 @@ if(cyFeedbackWorkspace){
 </body>
 </html>"""
         return HTMLResponse(
-            html,
+            apply_surface(html, "personal"),
             headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
         )
 

@@ -115,6 +115,15 @@ html[data-cy-ui="product"] {
   [data-cy-ui="shell"] .login-wrap {
     padding: 16px;
   }
+
+  [data-cy-ui="shell"] .btn.small {
+    min-height: 44px;
+  }
+}
+
+[data-cy-ui] #cy-v1-switch-account,
+[data-cy-ui] #cy-fc-new {
+  min-height: 44px;
 }
 
 @media (prefers-reduced-motion: reduce) {
