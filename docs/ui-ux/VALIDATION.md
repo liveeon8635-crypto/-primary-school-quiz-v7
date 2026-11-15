@@ -66,7 +66,24 @@ LCP、INP、CLS、设备端截图和课堂大屏实际操作仍待浏览器验�
 ## 2026-11-15 完整本地回归
 
 - 命令：`TZ=UTC PYTHONPATH=. pytest -q --disable-warnings`
-- 结果：1673 passed，2 skipped，8 failed，2485 warnings，670.96 秒。
-- 8 项失败全部未进入页面断言：1 项既有 `tests/test_courseware_original_image_repair.py::test_teacher_restores_previous_lesson_from_review_in_chrome`，以及 7 项 `tests/test_ui_browser_acceptance.py` 新浏览器用例。Chromium 均在启动阶段报 `socket() failed: Operation not permitted`；Playwright 同样返回 `TargetClosedError`。这些是环境阻断证据，不能记为通过，也没有证据表明是页面断言回归。
+- 原始基线：1673 passed，2 skipped，8 failed，2485 warnings，670.96 秒。
+- 该轮 8 项失败全部未进入页面断言：1 项既有 `tests/test_courseware_original_image_repair.py::test_teacher_restores_previous_lesson_from_review_in_chrome`，以及 7 项 `tests/test_ui_browser_acceptance.py` 浏览器用例。Chromium 均在启动阶段报 `socket() failed: Operation not permitted`；Playwright 同样返回 `TargetClosedError`。这些是环境阻断证据，不能记为通过，也没有证据表明是页面断言回归。
 - 当前桌面 Chromium 与隔离测试服务不共享 loopback 网络，访问 `127.0.0.1:8765` 返回连接拒绝；未能以桌面浏览器替代上述自动浏览器运行。
 - 无浏览器回归下，不将页面布局、手机/平板/投影体验或 Web Vitals 标为已验证。需要能启动浏览器且可访问测试服务的运行器重跑这 8 项及真实视觉检查。
+
+
+## 2026-11-15 管理端样式接入和最新复审
+
+- `/operator-console` 接入独立 `operator` CSS 作用域，复用品牌 token、边框与圆角，按钮触控高度至少 44px，表单控件不超出容器；保持原 HTML 内容、脚本、响应头和业务接口不变。
+- 管理端 UI 作用域、运营路由、商业 CRUD、领域权限、登录限流状态及用量计费窗口定向回归：34 passed，110 warnings；`git diff --check` 通过。
+- 独立只读复审基于远端 head `8d1a1964a20d5aa9e44257c849041126f49d55ae`：递归 tree 678 项，没有异常根路径；管理端三处变更与本地工作区 blob 一致；浏览器测试文件包含并匹配 7 个用例。复审未发现管理端样式造成的业务/API/权限变化。
+- 远端该 head 的 `automation-boundary-guard` 已成功分配 runner 并执行，因 `AUTOMATION_MERGE_DENIED: path outside changying/unit-test whitelist` 失败。这是仓库策略门禁拒绝，不是应用测试结果；未修改受保护 CI 配置绕过门禁。
+- PR #1083 保持 draft、未合并；本地桌面浏览器不能访问隔离服务，真实浏览器、多设备、大屏、Safari 12 实机和 Web Vitals 证据仍缺。
+
+
+### 管理端代码加入后的最新完整回归
+
+- 命令：`TZ=UTC PYTHONPATH=. pytest -q --disable-warnings`。
+- 最新结果：1674 passed，2 skipped，8 failed，2485 warnings，670.20 秒。新增通过数来自管理端接入后的完整测试收集；8 个失败与前次相同，均为 Chromium 启动时系统禁止 socket（1 项既有课程浏览器测试、7 项 UI 浏览器测试），没有进入页面断言。
+- 管理端作用域定向回归另行重跑：34 passed，110 warnings；未发现业务/API/权限回归。
+- 当前 blocker：真实浏览器验收仍无可用证据；PR head `8d1a1964a20d5aa9e44257c849041126f49d55ae` 的 automation boundary guard 因 `AUTOMATION_MERGE_DENIED: path outside changying/unit-test whitelist` 失败。
