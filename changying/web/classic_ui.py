@@ -9,6 +9,8 @@ logic.
 
 from __future__ import annotations
 
+from changying.web.design_system import apply_surface
+
 from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
@@ -415,6 +417,7 @@ def inject_classic_ui(html: str) -> str:
     html = patch_classic_catalog_edit_unit(html)
     html = patch_classic_toast_in_dialog(html)
     html = patch_cube_figures(html)
+    html = apply_surface(html, "classic")
     if CLASSIC_UI_MARKER in html:
         return html
     if "</body>" in html:

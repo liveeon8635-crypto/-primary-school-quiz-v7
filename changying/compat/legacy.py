@@ -55,6 +55,7 @@ from changying.services.wrong_questions import WrongQuestionService
 from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_local_iso
 from changying.utils.json_tools import json_list
 from changying.web.classic_ui import install_classic_ui_patch
+from changying.web.design_system import apply_surface
 from changying.web.health_revision import install_health_revision_route
 from changying.web.product_shell import (
     PRODUCT_SHELL_MARKER,
@@ -196,7 +197,7 @@ def install_product_visibility_routes(app: FastAPI) -> None:
             **NO_CACHE_HEADERS,
             "X-Changying-Product-UI": PRODUCT_SHELL_MARKER,
         }
-        return HTMLResponse(teacher_workbench_html(), headers=headers)
+        return HTMLResponse(apply_surface(teacher_workbench_html(), "product"), headers=headers)
 
     @app.get("/workbench", include_in_schema=False)
     @app.get("/new", include_in_schema=False)

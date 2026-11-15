@@ -7,6 +7,8 @@ Classic, because those workflows have not been rebuilt natively yet.
 """
 from __future__ import annotations
 
+from changying.web.design_system import apply_surface
+
 import json
 
 from changying.web.v1_ribbon_banner import BRAND_FONT_B64, RIBBON_SVG
@@ -85,7 +87,7 @@ main{max-width:1080px;margin:0 auto;padding:125px clamp(16px,4vw,40px) 60px}h1{m
 <main>
 <h1>全部功能</h1>
 <p class="lead">按当前身份列出可用功能。点击后进入对应功能页。</p>
-<div class="notice" id="notice"></div>
+<div class="notice" id="notice" role="status"></div>
 <div class="grid" id="grid"></div>
 </main>
 <script id="changying_v1_tool_hub_v1-script">
@@ -119,10 +121,11 @@ main{max-width:1080px;margin:0 auto;padding:125px clamp(16px,4vw,40px) 60px}h1{m
 
 
 def tool_hub_html() -> str:
-    return (
+    return apply_surface(
         _HUB_TEMPLATE.replace("__MENUS__", json.dumps(TOOL_HUB_MENUS, ensure_ascii=False))
         .replace("__BRAND_FONT_B64__", BRAND_FONT_B64)
-        .replace("__RIBBON__", RIBBON_SVG)
+        .replace("__RIBBON__", RIBBON_SVG),
+        "hub",
     )
 
 

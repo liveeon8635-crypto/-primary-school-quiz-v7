@@ -8,6 +8,8 @@ it does not mutate production data.
 
 from __future__ import annotations
 
+from changying.web.design_system import apply_surface
+
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse
 
@@ -177,7 +179,7 @@ def install_product_shell(app: FastAPI) -> None:
 
     @router.get("/", response_class=HTMLResponse, include_in_schema=False)
     def changying_product_home():
-        return HTMLResponse(teacher_workbench_html())
+        return HTMLResponse(apply_surface(teacher_workbench_html(), "product"))
 
     app.include_router(router)
     app.state.product_shell_installed = True

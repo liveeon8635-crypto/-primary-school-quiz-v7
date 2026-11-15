@@ -16,6 +16,8 @@ any      GET  /kp-cards/images/{iid}             image bytes (teacher of the sch
 
 from __future__ import annotations
 
+from changying.web.design_system import apply_surface
+
 import base64
 import json
 import re
@@ -122,7 +124,7 @@ def install_kp_cards_views(implementation: Any) -> APIRouter:
 
     @router.get("/v1/knowledge", include_in_schema=False)
     def kp_page():
-        return HTMLResponse(kp_page_html(), headers={"Cache-Control": "no-store"})
+        return HTMLResponse(apply_surface(kp_page_html(), "weekend"), headers={"Cache-Control": "no-store"})
 
     # ------------------------------------------------------------------ teacher
     @router.get("/teacher/kp-cards")

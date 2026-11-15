@@ -1,0 +1,96 @@
+# 首批施工验证
+
+## 范围
+
+共享设计样式接入产品、个人工作室、V1 角色外壳、全部功能、Classic、晚托、周末课、知识点讲解、知识地图、应试专项和大屏。登录表单绑定可读标签，大屏长内容可滚动，当前投影片的小幅更新尽量保持滚动位置及内容区焦点。独立业务页面仍需逐一改造和验收。
+
+## 性能记录
+
+隔离 SQLite，通过 TestClient 访问应用入口。测量取自首批候选迭代。每种配置请求 12 次，去掉前两次后取中位。gzip 为同一进程对响应进行的可比压缩测量。
+
+| 入口 | gzip 关闭样式 / 启用样式（字节） | 请求中位数（毫秒） |
+|---|---:|---:|
+| V1 | 139760 / 140557 | 66.73 / 69.09 |
+| 全部功能 | 53444 / 54459 | 1.13 / 1.21 |
+| 晚托作业 | 24002 / 24845 | 8.44 / 9.17 |
+| 周末备课 | 49172 / 49989 | 17.50 / 17.67 |
+| 周末大屏 | 32015 / 32834 | 10.73 / 14.05 |
+
+LCP、INP、CLS、设备端截图和课堂大屏实际操作仍待浏览器验证。工作区的 Chromium 创建进程套接字失败，远程浏览器无法连接隔离实例。Safari 12 构建链可静态验证脚本兼容产物，仍需真实 iOS 12 或对应的 Safari 环境。
+
+## 独立审查记录
+
+独立 ChatGPT 上下文核对首批差异，发现登录宽度同时约束身份选择页。已将宽度限定到登录表单。审查还指出设备端和权限关键流程缺少全站验收证据，保留为阻断项。
+
+## 回滚
+
+`CHANGYING_UI_REFRESH=0` 关闭新增共享样式。登录标签和大屏滚动是独立的渲染修复。完整回滚时整体撤回施工提交，包括其 Safari 12 脚本清单与产物。无数据库或生产配置改动。
+
+## 2026-11-15 页面清单与权限补测
+
+- 页面资产表按共享模板族归并开关开启后的 37 个非旧版 HTML 入口；默认开关下是 31 个，9 个 `/fresh-v*` 旧版别名均单独保留。574 是生产应用入口注册的路由总项，含 API 与框架路由，不能等同于页面数。
+- 表中映射的 40 个测试路径均已核对存在。
+- 页面入口、角色权限、家长/学生数据可见性、讲义发布、个人账号辅助页及运营控制台等定向测试：45 passed。
+- 晚托页面模板、晚托求助、政策/离线页与运营控制台测试：31 passed。
+- 本轮共 76 项通过；无新增失败。
+- `git diff --check` 通过。
+
+## 尚未取得的最终验收证据
+
+- PR #1083 当前仍是 draft。最近 GitHub Actions 的 CI 与 Harness Guard 失败在 runner 分配之前，job 为 `runner_id=0` 且没有 steps；不能记为代码测试失败，也不能记为 CI 通过。
+- PR 自动化边界门禁曾拒绝含文档路径的变更，受保护的 `.github/**` 配置不能为绕过门禁而修改。需由仓库策略/执行器恢复后按原规则验证。
+- 本执行容器禁止 Chromium 创建 socket；浏览器验收测试无法在此启动。不能将 CSS 静态视口模拟替代真实浏览器验收。
+- iOS/Safari 12 实机、Android/iPad/桌面/课堂大屏视觉与操作、真实 LCP/INP/CLS 数值仍未验证。
+
+## 2026-11-15 个人账号页面接入与兼容回归
+
+- `/parent-accounts`、`/teacher/ai-settings`、`/signup` 接入个人工作台样式作用域；保留既有 DOM ID、内联脚本和 API。
+- 个人页面样式、登录/注册页面渲染、账号关系业务和 Safari 12 脚本清单回归：41 passed，636 warnings。
+- `git diff --check` 通过。
+- 当前 head `8f48223cfa57484deeee50acc8dc13294efc688b` 的 automation-boundary-guard job 仍在 runner 分配前失败，`runner_id=0`、`steps=[]`；该 head 没有可核验的 CI workflow 结果。此前 CI 同样遇到 runner 未分配。此结果列为受阻，不作为通过。
+
+## 2026-11-15 学生/家长与课堂隔离回归
+
+- 学生练习与学习点、家长授权可见、周末报告/书面作答、课堂大屏锁定与滚动布局相关回归：48 passed，3 warnings。
+- 本轮累计的测试批次保留各自日志口径；不同批次有重复用例，不将批次数量直接相加成独立测试总数。
+- 课堂大屏的真实投影、打印备用和手机/平板设备端操作仍未实际验证。
+- 页面资产与依赖图引用的 49 个主要 API 路径，已逐一对照功能开关开启后的路由快照；49/49 均在该快照中注册。
+
+## 2026-11-15 纸质备用图片与答案隔离
+
+- `tests/test_weekend_backup.py`: 8 passed，1 warning。
+- 测试从真实备用包路由生成教师版和学生版 DOCX，检查原题图像确实写入 Word media、关系目标有效、没有外链图片，且教师答案不进入学生版。
+- 当前环境可用 LibreOffice/soffice 与 `pdfimages`；测试完成 DOCX→PDF 后确认两套成品仍含原图。
+- 实体打印纸张尺寸、图像清晰度及课堂现场使用仍待教师实测。
+
+## 2026-11-15 完整本地回归
+
+- 命令：`TZ=UTC PYTHONPATH=. pytest -q --disable-warnings`
+- 原始基线：1673 passed，2 skipped，8 failed，2485 warnings，670.96 秒。
+- 该轮 8 项失败全部未进入页面断言：1 项既有 `tests/test_courseware_original_image_repair.py::test_teacher_restores_previous_lesson_from_review_in_chrome`，以及 7 项 `tests/test_ui_browser_acceptance.py` 浏览器用例。Chromium 均在启动阶段报 `socket() failed: Operation not permitted`；Playwright 同样返回 `TargetClosedError`。这些是环境阻断证据，不能记为通过，也没有证据表明是页面断言回归。
+- 当前桌面 Chromium 与隔离测试服务不共享 loopback 网络，访问 `127.0.0.1:8765` 返回连接拒绝；未能以桌面浏览器替代上述自动浏览器运行。
+- 无浏览器回归下，不将页面布局、手机/平板/投影体验或 Web Vitals 标为已验证。需要能启动浏览器且可访问测试服务的运行器重跑这 8 项及真实视觉检查。
+
+
+## 2026-11-15 管理端样式接入和最新复审
+
+- `/operator-console` 接入独立 `operator` CSS 作用域，复用品牌 token、边框与圆角，按钮触控高度至少 44px，表单控件不超出容器；保持原 HTML 内容、脚本、响应头和业务接口不变。
+- 管理端 UI 作用域、运营路由、商业 CRUD、领域权限、登录限流状态及用量计费窗口定向回归：34 passed，110 warnings；`git diff --check` 通过。
+- 独立只读复审基于远端 head `8d1a1964a20d5aa9e44257c849041126f49d55ae`：递归 tree 678 项，没有异常根路径；管理端三处变更与本地工作区 blob 一致；浏览器测试文件包含并匹配 7 个用例。复审未发现管理端样式造成的业务/API/权限变化。
+- 远端该 head 的 `automation-boundary-guard` 已成功分配 runner 并执行，因 `AUTOMATION_MERGE_DENIED: path outside changying/unit-test whitelist` 失败。这是仓库策略门禁拒绝，不是应用测试结果；未修改受保护 CI 配置绕过门禁。
+- PR #1083 保持 draft、未合并；本地桌面浏览器不能访问隔离服务，真实浏览器、多设备、大屏、Safari 12 实机和 Web Vitals 证据仍缺。
+
+
+### 管理端代码加入后的最新完整回归
+
+- 命令：`TZ=UTC PYTHONPATH=. pytest -q --disable-warnings`。
+- 最新结果：1674 passed，2 skipped，8 failed，2485 warnings，670.20 秒。新增通过数来自管理端接入后的完整测试收集；8 个失败与前次相同，均为 Chromium 启动时系统禁止 socket（1 项既有课程浏览器测试、7 项 UI 浏览器测试），没有进入页面断言。
+- 管理端作用域定向回归另行重跑：34 passed，110 warnings；未发现业务/API/权限回归。
+- 当前 blocker：真实浏览器验收仍无可用证据；PR head `8d1a1964a20d5aa9e44257c849041126f49d55ae` 的 automation boundary guard 因 `AUTOMATION_MERGE_DENIED: path outside changying/unit-test whitelist` 失败。
+
+## 与 main 更新合并后的浏览器补测
+
+施工分支与 main 的 `46d1bdb0e639f58f1321def7cd014dcb7cd44e2f` 合并时，保留晚托和周末页面两边的改动。用锁定的 Babel 工具链重新生成 Safari 12 兼容清单，覆盖 36 个路由和 60 段脚本。
+
+合并候选的 Safari 12、晚托、周末课、运营控制台和页面样式定向回归共 57 项通过。
+使用 Chromium Headless Shell 和 Playwright 执行浏览器用例，4 项通过。登录页覆盖 390、768、1440 CSS px，检查标签、焦点和横向溢出。大屏覆盖 1920×1080 CSS px，使用合成课堂数据检查轮询更新后焦点和滚动位置。浏览器用例使用本地应用路由生成的 HTML，浏览器端模拟响应和课堂接口。真实设备、生产等价联调及 Web Vitals 仍待核验。
