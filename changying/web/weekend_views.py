@@ -190,7 +190,12 @@ def install_weekend_views(implementation: Any) -> APIRouter:
             deck, count, idx, total = practice_deck(implementation, db, row)
             out["answersPublished"] = bool(total) and count == total
             out["answerRelease"] = {"published": count, "total": total, "nextQuestion": count+1 if count < total else None}
-            out["content"] = ["随堂练习来自“习题审核”；与本节例题重复的题目不会再次发放。", "已公布题目请听老师讲评，其余题目继续作答。" if count else "请先独立作答并提交，等待老师逐题公布答案。"]
+            out["content"] = ["随堂练习来自“习题审核”；与本节例题重复的题目不会再次发放。",
+                              "已公布题目请听老师讲评，其余题目继续作答。" if count else "请先独立作答并提交，等待老师逐题公布答案。"]
+            if not total:
+                # 无题不是“正常空白”：告诉老师缺在哪，以及去哪里补。
+                out["content"] = ["本节课第4环节还没有可用的随堂练习：习题审核里没有已通过、又不与例题重复的题。",
+                                  "请到“周末备课 → 这节课 → 习题审核”里通过几道练习，或点“单独导入随堂练习”。"]
             if deck:
                 out["deck"] = {"total": len(deck), "index": idx}
                 out["answerRelease"].update({"currentQuestion": deck[idx]["question"], "currentPublished": deck[idx]["published"]})

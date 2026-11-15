@@ -175,6 +175,43 @@ class CancelDebugBody(DeleteLessonBody):
 class ApproveBody(BaseModel):
     approve: list[int] = []
     remove: list[int] = []
+    retract: list[int] = []          # 撤回通过：题不再进入课堂，但已上过的课和学生作答都保留
+
+
+class ExampleReviewBody(BaseModel):
+    approve: list[int] = []
+    retract: list[int] = []
+    approveAll: bool = False
+
+
+# 例题逐题审核的上线日：在这之前就已经存在的课，例题按“历史·已通过”显示，
+# 不让正在教的旧课一开课就看到一屏“待审核”。
+# 数据库里的时间列存的是 naive UTC，所以这里也写 UTC：2026-11-14 16:00 UTC = 2026-11-15 00:00 北京时间。
+EXAMPLE_REVIEW_LEGACY_BEFORE = datetime(2026, 11, 14, 16, 0)
+EXAMPLE_REVIEW_STATUS = {"approved": "已通过", "legacy": "历史·已通过", "changed": "已修改，待重新审核", "pending": "待审核"}
+
+
+def example_review_hash(text: Any) -> str:
+    """例题内容指纹：题干一改，指纹就变，审核状态自动回到“待重新审核”。"""
+    return hashlib.sha256(" ".join(str(text or "").split()).encode("utf-8")).hexdigest()[:32]
+
+
+def register_example_review_table(implementation: Any) -> Table:
+    """例题逐题审核记录；启动时 create_all 建表，不改动任何已有表。"""
+    md = implementation.Base.metadata
+    if "weekend_example_reviews" not in md.tables:
+        Table(
+            "weekend_example_reviews", md,
+            Column("id", Integer, primary_key=True),
+            Column("school_id", Integer, nullable=False, index=True),
+            Column("lesson_id", Integer, nullable=False, index=True),
+            Column("teacher_id", Integer, nullable=False),
+            Column("page_index", Integer, nullable=False),
+            Column("stem_hash", String(32), nullable=False),
+            Column("reviewed_at", DateTime, nullable=False),
+            UniqueConstraint("lesson_id", "page_index", name="uq_weekend_example_review"),
+        )
+    return md.tables["weekend_example_reviews"]
 
 
 def register_plan_tables(implementation: Any) -> Table:
@@ -291,6 +328,17 @@ def lesson_worked_examples(lesson: Any) -> list[dict[str, str]]:
     return [{"label": f"例{i}", "stem": _worked_example_match_text(page)} for i, page in enumerate(pages, start=1) if _worked_example_match_text(page)]
 
 
+def _options_are_telling(options: list[str]) -> bool:
+    """选项本身能不能证明是同一道题。
+
+    判断题的“√／×”、只差一位的“3／4／5／6”“12／15／18／20”这类纯数字或单字选项，
+    在互不相干的题里天天出现，拿它们判重会把不同的题当成重复、悄悄略过，
+    所以只有“至少 3 个选项、且其中有一个不是纯数字”的选项组才参与判重。
+    """
+    cleaned = [qg.question_key(option) for option in options or []]
+    return len(cleaned) >= 3 and any(not option.isdigit() for option in cleaned)
+
+
 def duplicate_of(stem: str, options: list[str], examples: list[dict[str, str]],
                  others: list[tuple[str, list[str]]]) -> str:
     """这道题重复了谁：返回 "例3" / "本课习题" / ""（不重复），只用于页面提示。"""
@@ -298,7 +346,10 @@ def duplicate_of(stem: str, options: list[str], examples: list[dict[str, str]],
         if qg.same_question(stem, example["stem"]):
             return example["label"]
     for other_stem, other_options in others:
-        if qg.same_question(stem, other_stem) or qg.same_options(options, other_options):
+        if qg.same_question(stem, other_stem):
+            return "本课习题"
+        if (_options_are_telling(options) and _options_are_telling(other_options)
+                and qg.same_options(options, other_options)):
             return "本课习题"
     return ""
 
@@ -433,6 +484,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     courseware_table = register_courseware_table(implementation)
     versions = history.register_history(implementation.Base.metadata)
     sched = register_plan_tables(implementation)
+    example_reviews = register_example_review_table(implementation)
     Lesson, TQ, Program = implementation.TeachingLesson, implementation.TeachingQuestion, implementation.TeachingProgram
     User, ClassStudent, SchoolClass = implementation.User, implementation.ClassStudent, implementation.SchoolClass
     Wrong = implementation.WrongQuestionRecord
@@ -469,6 +521,52 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(404, "没有找到这节课")
         return row
 
+    def example_rows(db: Any, lesson_id: int) -> dict[int, Any]:
+        rows = db.execute(select(example_reviews).where(example_reviews.c.lesson_id == lesson_id)).all()
+        return {int(r.page_index): r for r in rows}
+
+    def example_items(db: Any, lesson: Any) -> list[dict[str, Any]]:
+        """每道例题 + 审核状态。旧课（上线前就在、一直没审过）按“历史·已通过”显示。"""
+        rows = example_rows(db, lesson.id)
+        legacy = (not rows and lesson.updated_at is not None and lesson.updated_at < EXAMPLE_REVIEW_LEGACY_BEFORE)
+        out = []
+        for index, example in enumerate(lesson_worked_examples(lesson)):
+            row = rows.get(index)
+            if row is None:
+                status = "legacy" if legacy else "pending"
+            elif row.stem_hash == example_review_hash(example["stem"]):
+                status = "approved"
+            else:
+                status = "changed"
+            reviewed = row.reviewed_at if (row is not None and status == "approved") else None
+            out.append({"label": example["label"], "stem": example["stem"], "pageIndex": index,
+                        "status": status, "statusText": EXAMPLE_REVIEW_STATUS[status],
+                        "reviewedAt": reviewed.isoformat() if reviewed else None})
+        return out
+
+    def practice_ready(db: Any, u: Any, lesson: Any) -> int:
+        """第4环节实际能发放的题数：与例题重复的题不发，所以和大屏用同一套判断先算一遍。"""
+        examples = lesson_worked_examples(lesson)
+        ready = 0
+        rows = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(True))).all()
+        for q in rows:
+            if not duplicate_of(q.stem, question_options(q), examples, []):
+                ready += 1
+        for q in written_templates(db, written, u.school_id, u.id, lesson.id):
+            if template_meta(q).get("approved") and not duplicate_of(str(q.stem).split("\n\n")[-1].strip(), [], examples, []):
+                ready += 1
+        return ready
+
+    def practice_summary(db: Any, u: Any, lesson: Any) -> dict[str, Any]:
+        """习题审核页顶部：例题、可用练习、待审核各多少，外加课件审核状态（两套审核分开显示）。"""
+        status = lesson_status(db, u, lesson)
+        cw = db.execute(select(courseware_table).where(courseware_table.c.lesson_id == lesson.id)).first()
+        cw_status = str(cw.status or "") if cw is not None else ""
+        return {"exampleCount": status["exampleCount"], "exampleApproved": status["exampleApproved"],
+                "examplePending": status["examplePending"], "practiceApproved": status["approvedQuestions"],
+                "practiceDraft": status["draftQuestions"], "practiceReady": status["practiceReady"],
+                "coursewareStatus": cw_status, "coursewareApproved": cw_status == "approved"}
+
     def lesson_status(db: Any, u: Any, lesson: Any) -> dict[str, Any]:
         approved = db.scalar(select(func.count()).select_from(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(True))) or 0
         draft = db.scalar(select(func.count()).select_from(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False))) or 0
@@ -477,8 +575,13 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         approved += written_approved
         draft += len(templates) - written_approved
         ran = db.scalar(select(func.count()).select_from(sessions).where(sessions.c.lesson_id == lesson.id, sessions.c.teacher_id == u.id, sessions.c.status != "planned")) or 0
+        examples = example_items(db, lesson)
+        example_approved = sum(1 for e in examples if e["status"] in ("approved", "legacy"))
         return {"lessonId": lesson.id, "title": lesson.title, "hasPlan": has_real_plan(lesson),
-                "approvedQuestions": int(approved), "draftQuestions": int(draft), "taught": bool(ran)}
+                "approvedQuestions": int(approved), "draftQuestions": int(draft), "taught": bool(ran),
+                "exampleCount": len(examples), "exampleApproved": example_approved,
+                "examplePending": len(examples) - example_approved, "practiceReady": practice_ready(db, u, lesson)}
+
 
     @router.get("/v1/weekend-plan", include_in_schema=False)
     def page():
@@ -911,6 +1014,74 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(400, f"课次需要在 1–{LESSONS} 之间")
         return _apply_lesson_extract(db, u, subject, lessonNo, force, _extract_upload(file, text))
 
+    @router.post("/teacher/weekend/lessons/{lid}/practice/import")
+    def import_practice(lid: int, text: str = Form(""), file: UploadFile | None = File(None),
+                        u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """只导入随堂练习：单独上传或粘贴第4环节的题，进“随堂练习候选”，不动教案和例题。"""
+        need(u, "teacher")
+        lesson = my_lesson(db, u, lid)
+        subject = lesson.subject
+        extracted = _extract_upload(file, text)
+        figures = extracted.get("images") or []
+        figure_note = ""
+        if figures:
+            figure_note = f"材料里另外带了 {len(figures)} 张原图，以附图形式一并给你；图片由系统按原题文字匹配，不要猜图片属于哪道题，也不要输出 figureImage 字段。\n"
+        p = program(db, int(u.school_id))
+        prompt = (
+            f"下面是一位小学{p.grade}年级{subject}老师单独发来的随堂练习材料（第4环节用）。请只整理材料里已有的题目，不要编造新题，也不要写成教案。\n"
+            f"---练习材料开始---\n{extracted['text']}\n---练习材料结束---\n" + figure_note +
+            '只输出 JSON：{"questions":[{"stem":"材料里原有的选择题","options":["A","B","C"],"correctIndex":0,"explanation":"解析","knowledge":"知识点名"}],'
+            '"writtenQuestions":[{"type":"short_answer或final_answer或composition","material":"对应完整阅读文章，不含答案","stem":"原有题目，不得改题型或漏题","reference":"参考答案","hints":[]}]}'
+            "（本身是选择题的放 questions；填空、判断、计算、简答、阅读、写作放进 writtenQuestions，不要改题型或漏题。答案只写在 explanation/reference 里，不要写进题干。）"
+        )
+        data = implementation._ai_json(implementation._ai_call(
+            db, u, AI_FEATURE, prompt, images=[f["data_url"] for f in figures] or None,
+            timeout=150 if figures else 90,
+        ))
+        attached = _attach_figures(data, figures)
+        raw = data if isinstance(data, dict) else {}
+        cand = _valid_questions(raw.get("questions"))
+        wcand = valid_written_questions(raw.get("writtenQuestions"))
+        if not cand and not wcand:
+            raise HTTPException(502, "没有从这份材料里识别出题目。请检查文字是否完整，或换一份文件再试。")
+        examples = lesson_worked_examples(lesson)
+        existing = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE)).all()
+        seen = [(q.stem, question_options(q)) for q in existing]
+        dropped, kept = 0, []
+        for i, q in enumerate(cand):
+            if duplicate_of(q["stem"], q["options"], examples, seen):
+                dropped += 1
+                continue
+            seen.append((q["stem"], q["options"]))
+            kept.append((i, q))
+        for i, q in kept:
+            db.add(TQ(school_id=u.school_id, program_id=lesson.program_id, lesson_id=lesson.id, stage="lesson", subject=subject,
+                      level=LEVELS[min(i, len(LEVELS) - 1)], knowledge=q["kp"], stem=q["stem"][:300],
+                      options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"],
+                      active=False, figure_json=json.dumps(q["fig"] or {}, ensure_ascii=False)))
+        written_stems = {str(q.stem) for q in written_templates(db, written, u.school_id, u.id, lesson.id)}
+        written_dropped = written_kept = 0
+        for q in wcand:
+            stem = str(q["stem"])
+            if stem in written_stems or duplicate_of(stem.split("\n\n")[-1].strip(), [], examples, []):
+                written_dropped += 1
+                continue
+            written_stems.add(stem)
+            db.execute(insert(written).values(
+                school_id=u.school_id, teacher_id=u.id, lesson_id=lesson.id, session_id=0, stem=stem, reference=q["reference"],
+                hints_json=json.dumps({**q.get("extra", {}), "approved": False, "type": q["type"], "hints": q["hints"],
+                                       "figure": q.get("figure") or {}}, ensure_ascii=False)))
+            written_kept += 1
+        db.commit()
+        message = f"已导入 {len(kept)} 道选择题、{written_kept} 道填空/简答/写作题，全部是“待审核”，逐题通过后才会在第4环节发放。这节课的教案和例题没有改动。"
+        if dropped + written_dropped:
+            message += f" 有 {dropped + written_dropped} 道与本节例题或已有题目重复，已自动略过。"
+        if figures and attached < len(figures):
+            message += f" 有 {len(figures) - attached} 张原图未能与题目唯一核对，没有自动挂上，请老师复核图示。"
+        return {"message": message, "choices": len(kept), "written": written_kept,
+                "droppedDuplicate": dropped + written_dropped, "attachedFigures": attached,
+                "status": lesson_status(db, u, lesson), "summary": practice_summary(db, u, lesson)}
+
     @router.post("/teacher/weekend/lessons/import/preview")
     def import_preview(subject: str = Form(""), files: list[UploadFile] = File(...),
                             u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1270,7 +1441,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             out.append({"id": q.id, "stem": q.stem, "options": opts, "correctIndex": q.correct_index, "explanation": q.explanation, "knowledge": q.knowledge,
                         "figure": _stored_figure(q), **lesson_question_number(lesson.reading_plan or "", q.stem), "active": bool(q.active), "level": qg.CODE_LEVEL.get(q.level, ""), "verified": str(q.explanation or "").startswith("验算："),
                         "duplicateOf": duplicate_of(q.stem, opts, examples, others)})
-        return {"items": out, "workedExamples": examples}
+        return {"items": out, "workedExamples": example_items(db, lesson), "summary": practice_summary(db, u, lesson)}
 
     @router.post("/teacher/weekend/lessons/{lid}/questions")
     def decide_questions(lid: int, b: ApproveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1290,10 +1461,46 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                     raise HTTPException(409, "这道随堂练习与本课已通过的习题重复（来源：本课习题），请换一道同考点新题后再通过")
                 seen.append((q.stem, question_options(q)))
             db.execute(update(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.id.in_(b.approve)).values(active=True))
+        if b.retract:
+            # 撤回通过：题留在备课里，但不再进入课堂。第4环节的选择题是每次现查“已通过”的题，
+            # 所以正在上的课会当场少一道题、后面题号和已公布答案的序号一起前移；这种情况必须先拦下。
+            live = db.scalar(select(sessions.c.id).where(sessions.c.lesson_id == lesson.id,
+                                                         sessions.c.status == "running").limit(1))
+            if live:
+                raise HTTPException(409, "这节课正在上课，撤回会让题目当场从第4环节消失、并打乱已公布答案的顺序。"
+                                         "请下课后在审改页撤回，正在上课时请先不要改动已通过的题。")
+            db.execute(update(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.id.in_(b.retract)).values(active=False))
         if b.remove:
             db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.id.in_(b.remove), TQ.active.is_(False)))   # an approved question is never deleted here
         db.commit()
         return lesson_status(db, u, lesson)
+
+    @router.post("/teacher/weekend/lessons/{lid}/examples/review")
+    def review_examples(lid: int, b: ExampleReviewBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """例题逐题审核：核对题干、答案、配图后通过；改过内容的题会回到待重新审核。"""
+        need(u, "teacher")
+        lesson = my_lesson(db, u, lid)
+        examples = lesson_worked_examples(lesson)
+        targets = set(range(len(examples))) if b.approveAll else set(b.approve)
+        retract = set(b.retract) - targets
+        if any(not 0 <= int(i) < len(examples) for i in targets | retract):
+            raise HTTPException(400, "例题序号超出范围，请刷新页面后重试")
+        rows = example_rows(db, lesson.id)
+        now = datetime.utcnow()
+        for index in sorted(targets):
+            values = dict(school_id=u.school_id, lesson_id=lesson.id, teacher_id=u.id, page_index=index,
+                          stem_hash=example_review_hash(examples[index]["stem"]), reviewed_at=now)
+            if index in rows:
+                db.execute(update(example_reviews).where(example_reviews.c.id == rows[index].id).values(**values))
+            else:
+                db.execute(insert(example_reviews).values(**values))
+        for index in sorted(retract):
+            if index in rows:
+                db.execute(delete(example_reviews).where(example_reviews.c.id == rows[index].id))
+        db.commit()
+        return {"status": lesson_status(db, u, lesson), "summary": practice_summary(db, u, lesson),
+                "workedExamples": example_items(db, lesson),
+                "message": f"已更新 {len(targets) + len(retract)} 道例题的审核状态；课件审核与例题审核分开记录。"}
 
     @router.get("/teacher/weekend/lessons/{lid}/written/questions")
     def lesson_written(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1372,6 +1579,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             if q.id in b.approve:
                 meta["approved"] = True
                 db.execute(update(written).where(written.c.id == q.id).values(hints_json=json.dumps(meta, ensure_ascii=False)))
+            elif q.id in b.retract and meta.get("approved"):
+                meta["approved"] = False
+                db.execute(update(written).where(written.c.id == q.id).values(hints_json=json.dumps(meta, ensure_ascii=False)))
             elif q.id in b.remove and not meta.get("approved"):
                 db.execute(delete(written).where(written.c.id == q.id))
         db.commit()
@@ -1410,6 +1620,6 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     return router
 
 
-__all__ = ["install_weekend_plan", "register_plan_tables"]
+__all__ = ["install_weekend_plan", "register_plan_tables", "register_example_review_table", "example_review_hash"]
 
 

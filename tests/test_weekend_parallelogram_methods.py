@@ -84,6 +84,7 @@ with TestClient(app) as client:
                      "steps":["观察四幅图","说出剪拼路径","比较面积是否改变","解释底与高"],
                      "answer":"待教师确认（原题未提供图）","figure":{}}}
     before=client.get("/teacher/weekend/lessons/"+str(lid)+"/questions",headers=th).json()
+    before.pop("summary",None)  # 题数汇总会随课件通过而变，这里只比题目本身
     saved=client.put(url,headers=th,json=draft)
     assert saved.status_code==200,saved.text
     assert saved.json()["items"][0]["params"]["figure"]=={"type":"parallelogram_methods"}
@@ -96,7 +97,9 @@ with TestClient(app) as client:
     approved=client.post(url+"/approve",headers=th,json={"stageNo":3,"page":0})
     assert approved.status_code==200,approved.text
     assert approved.json()["items"][0]["approved"]["figure"]["type"]=="parallelogram_methods"
-    assert client.get("/teacher/weekend/lessons/"+str(lid)+"/questions",headers=th).json()==before
+    after=client.get("/teacher/weekend/lessons/"+str(lid)+"/questions",headers=th).json()
+    after.pop("summary",None)
+    assert after==before
     print("OK")
 ''')
 

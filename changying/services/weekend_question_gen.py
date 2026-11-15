@@ -161,11 +161,15 @@ def agrees(value: Fraction, answer: Fraction, stem: str, answer_text: str) -> bo
     return round(value, digits) == answer
 
 
-# 题号不是题目本身：第4题 / 4、 / 4. / （1） / 例3 在比较前统一去掉。
+# 题号不是题目本身：第4题 / 第3题（基础）（4分） / 选择题 3： / 4、 / 4. / （1） / 例3 在比较前统一去掉。
+# 审核页直接拿题干归一化，第4环节先经 display_stem 再归一化，两边必须得到同一个键，
+# 否则会出现“审核页不报重复、课堂却把这道题藏掉”。
 _QUESTION_PREFIX = re.compile(
     r"^\s*(?:"
-    r"第\s*[0-9一二三四五六七八九十百]{1,4}\s*题(?:\s*[0-9]+(?:\.[0-9]+)?\s*分)?\s*[|]?"
+    r"第\s*[0-9一二三四五六七八九十百]{1,4}\s*题(?:\s*[（(][^）)]{0,20}[）)])*(?:\s*[0-9]+(?:\.[0-9]+)?\s*分)?\s*[|]?"
     r"|例\s*[0-9]{1,3}"
+    r"|选择题\s*[0-9]{1,3}\s*[：:]?"
+    r"|文字\s*[／/]\s*照片题\s*[0-9]{1,3}\s*[：:]?"
     r"|[0-9]{1,3}\s*[.,、:：)](?![0-9])"
     r"|[(]\s*[0-9]{1,3}\s*[)]"
     r")\s*"
@@ -173,13 +177,18 @@ _QUESTION_PREFIX = re.compile(
 # 选项标签（A. / A、/（A））和选项标点也不是题目内容；选项文字另外单独比较。
 _OPTION_PREFIX = re.compile(r"(?:[(]\s*[A-Da-d]\s*[)]|(?<![A-Za-z0-9])[A-Da-d]\s*[.,、:：)](?![A-Za-z0-9]))")
 _STANDALONE_OPTION = re.compile(r"(?<![A-Za-z0-9])[A-D](?![A-Za-z0-9])")
-_STRIP = re.compile(r"[\s,，。、;；:：!！?？.．()（）\[\]【】{}｛｝<>《》〈〉\"'“”‘’`~～·…—–_/\\|｜]+")
+# 小数点不能当句号删掉：2.5×4 和 25×4 是两道不同的计算题，删掉小数点会把它们判成重复。
+_DECIMAL_POINT = re.compile(r"(?<=[0-9])[.](?=[0-9])")
+# 分数线同样是题目内容：1/2+1/3 和 12+13 是两道题，去掉斜杠会把它们判成同一道。
+_FRACTION_SLASH = re.compile(r"(?<=[0-9])\s*[/]\s*(?=[0-9])")
+_STRIP = re.compile(r"[\s,，。、;；:：!！?？.()（）\[\]【】{}｛｝<>《》〈〉\"'“”‘’`~～·…—–_/\\|｜]+")
 
 
 def _norm(text: str) -> str:
     """去掉题号、选项标签、空白和标点后的题干，用来判断是不是同一道题。
 
-    题干里的数字要保留：换了数字就是一道新计算题，不能算重复。
+    题干里的数字（含小数点）要保留：换了数字就是一道新计算题，不能算重复。
+    审核页和课堂第4环节都用这里的结果，两处判断才一致。
     """
     s = unicodedata.normalize("NFKC", str(text or ""))       # 全角数字、字母、标点先转成半角
     s = _QUESTION_PREFIX.sub("", s, count=1)
@@ -189,7 +198,14 @@ def _norm(text: str) -> str:
     # 否则“三角形ABC中……”的顶点名会被误删，两道不同的几何题会被判成同一道。
     if len(labelled) >= 2:
         s = _STANDALONE_OPTION.sub("", s)
-    return _STRIP.sub("", s).lower()
+    s = _DECIMAL_POINT.sub("\0", s)                          # 先把小数点占住，再去掉标点
+    s = _FRACTION_SLASH.sub("\1", s)                         # 分数线的斜杠也不能当标点删掉
+    return _STRIP.sub("", s).replace("\0", ".").replace("\1", "/").lower()
+
+
+def question_key(text: Any) -> str:
+    """一道题的归一化键：审核页查重与第4环节取题共用，避免同一道题两边结论不同。"""
+    return _norm(text)
 
 
 def same_question(a: Any, b: Any) -> bool:

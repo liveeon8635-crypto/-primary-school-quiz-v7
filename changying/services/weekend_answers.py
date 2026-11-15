@@ -8,6 +8,8 @@ import json
 import re
 from sqlalchemy import select
 
+from changying.services.weekend_question_gen import question_key
+
 _LABEL = re.compile(r'^\s*[A-Da-d]\s*[．.、:：)）]\s*')
 
 _IMPORTED_QUESTION_PREFIX = re.compile(
@@ -20,23 +22,23 @@ _IMPORTED_QUESTION_PREFIX = re.compile(
 
 
 def _question_key(value) -> str:
-    """Normalize question text so different database IDs cannot bypass role separation."""
-    text = display_stem(value)
-    return re.sub(r"[\s\u3000，。,、:：;；!！?？（）()“”\"'「」『』]+", "", text).lower()
+    """Normalize question text so different database IDs cannot bypass role separation.
+
+    与“习题审核”的查重共用同一套归一化（weekend_question_gen.question_key），
+    这样同一道题不会出现“审核说重复、大屏又发出去”或反过来的情况。
+    """
+    return question_key(display_stem(value))
 
 
 def _lesson_example_keys(db, implementation, session) -> set[str]:
     lesson = db.get(implementation.TeachingLesson, int(session.lesson_id))
     if lesson is None:
         return set()
-    # Stage 3 uses numbered exercises from reading_plan when available;
-    # using examples_json alone misses the actual worked examples shown.
-    from changying.services.weekend_presentation import lesson_deck
-    pages = lesson_deck({
-        "reading_plan": getattr(lesson, "reading_plan", "") or "",
-        "examples_json": getattr(lesson, "examples_json", "") or "",
-    }, 3)
-    return {_question_key(page) for page in pages if _question_key(page)}
+    # 第3环节的页面带着“第3题（基础）（4分）”“原题｜”这类版面信息。审核页比对前由
+    # lesson_worked_examples 去掉，课堂这边也必须走同一个函数，否则会出现
+    # “审核页说与例3重复、第4环节又把这道题发给学生”。
+    from changying.web.weekend_plan_views import lesson_worked_examples
+    return {_question_key(item["stem"]) for item in lesson_worked_examples(lesson) if _question_key(item["stem"])}
 
 
 def display_stem(value):
