@@ -24,6 +24,15 @@ LEARNING_FEEDBACK_SOURCES = {
     "ai_reinforcement": "reinforcement",
     "teacher_ai_practice": "teacher_ai",
 }
+# Ordinary assignments (``AssignmentRecipient.source == "assignment"``) are
+# graded quizzes too: their objective wrong answers belong in the student's
+# wrong-question book exactly like comprehensive/module/AI practice.  The AI
+# reinforcement context keeps the narrower set above so its prompt and
+# candidate selection do not change.
+WRONG_ANSWER_ARCHIVE_SOURCES = {
+    **LEARNING_FEEDBACK_SOURCES,
+    "assignment": "assignment",
+}
 
 
 def _json_list(raw: Any) -> list[Any]:
@@ -88,12 +97,12 @@ def archive_objective_assessment_wrong_answers(
     assignment_id: int,
     answers: list[dict[str, Any]],
 ) -> list[Any]:
-    """Persist objectively wrong answers from supported learning-feedback quizzes.
+    """Persist objectively wrong answers from graded quizzes and ordinary assignments.
 
-    Comprehensive tests, module practice and teacher-approved AI reinforcement
-    all feed the same continuous student record. The helper is idempotent per
-    assignment/question and never touches teacher-confirmed wrong-question
-    records from other workflows.
+    Comprehensive tests, module practice, teacher-approved AI reinforcement and
+    ordinary assignments all feed the same continuous student record. The helper
+    is idempotent per assignment/question and never touches teacher-confirmed
+    wrong-question records from other workflows.
     """
 
     recipient = db.scalar(
@@ -103,7 +112,7 @@ def archive_objective_assessment_wrong_answers(
             AssignmentRecipient.student_id == student_id,
         )
     )
-    if not recipient or recipient.source not in LEARNING_FEEDBACK_SOURCES:
+    if not recipient or recipient.source not in WRONG_ANSWER_ARCHIVE_SOURCES:
         return []
 
     wrong_answers = [
@@ -432,6 +441,7 @@ def assessment_context_notice(context: dict[str, Any]) -> str:
 __all__ = [
     "AUTO_ASSESSMENT_SOURCES",
     "LEARNING_FEEDBACK_SOURCES",
+    "WRONG_ANSWER_ARCHIVE_SOURCES",
     "archive_objective_assessment_wrong_answers",
     "assessment_context_notice",
     "student_assessment_context",
