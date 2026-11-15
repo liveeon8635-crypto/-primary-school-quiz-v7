@@ -307,7 +307,10 @@ def question_options(row: Any) -> list[str]:
 def _worked_example_match_text(page: Any) -> str:
     """Remove the slide-only numbered metadata header before comparing with a reviewed question stem."""
     lines = str(page or "").splitlines()
-    if len(lines) > 1 and re.match(r"^\s*第\s*[0-9一二三四五六七八九十百]+\s*题", lines[0]):
+    # 老教案的例题页头是「例23（讲解用）」，新的是「第3题（基础）（4分）」：都是版面信息，不是题干。
+    if len(lines) > 1 and (
+            re.match(r"^\s*第\s*[0-9一二三四五六七八九十百]+\s*题", lines[0])
+            or re.fullmatch(r"\s*例\s*[0-9]{1,3}\s*(?:[（(][^）)]{0,20}[）)])*\s*", lines[0])):
         lines = lines[1:]
     cleaned = []
     for line in lines:
@@ -343,7 +346,8 @@ def duplicate_of(stem: str, options: list[str], examples: list[dict[str, str]],
                  others: list[tuple[str, list[str]]]) -> str:
     """这道题重复了谁：返回 "例3" / "本课习题" / ""（不重复），只用于页面提示。"""
     for example in examples:
-        if qg.same_question(stem, example["stem"]):
+        # 例题页与审核页的题干只差版面标注时也算同一道题，否则旧课会把整套例题当练习发出去。
+        if qg.same_question_text(stem, example["stem"]):
             return example["label"]
     for other_stem, other_options in others:
         if qg.same_question(stem, other_stem):

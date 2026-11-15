@@ -30,15 +30,21 @@ def _question_key(value) -> str:
     return question_key(display_stem(value))
 
 
-def _lesson_example_keys(db, implementation, session) -> set[str]:
+def _lesson_example_texts(db, implementation, session) -> list[str]:
     lesson = db.get(implementation.TeachingLesson, int(session.lesson_id))
     if lesson is None:
-        return set()
-    # 第3环节的页面带着“第3题（基础）（4分）”“原题｜”这类版面信息。审核页比对前由
+        return []
+    # 第3环节的页面带着“第3题（基础）（4分）”“原题｜”“例23（讲解用）”这类版面信息。审核页比对前由
     # lesson_worked_examples 去掉，课堂这边也必须走同一个函数，否则会出现
     # “审核页说与例3重复、第4环节又把这道题发给学生”。
     from changying.web.weekend_plan_views import lesson_worked_examples
-    return {_question_key(item["stem"]) for item in lesson_worked_examples(lesson) if _question_key(item["stem"])}
+    return [item["stem"] for item in lesson_worked_examples(lesson) if item["stem"]]
+
+
+def _duplicates_example(stem, examples: list[str]) -> bool:
+    """这道练习是不是本节某道例题的翻版（允许两边差一点版面标注、讲解）。"""
+    from changying.services.weekend_question_gen import same_question_text
+    return any(same_question_text(stem, example) for example in examples)
 
 
 def display_stem(value):
@@ -58,11 +64,11 @@ CURSOR_PAGES = 10_000
 def practice_items(implementation, db, session):
     from changying.web.weekend_written import register_written_tables
     question = implementation.TeachingQuestion
-    example_keys = _lesson_example_keys(db, implementation, session)
+    example_texts = _lesson_example_texts(db, implementation, session)
     items = []
     reviewed_choices = list(db.scalars(select(question).where(question.school_id == session.school_id,
             question.lesson_id == session.lesson_id, question.active.is_(True)).order_by(question.id).limit(30)))
-    reviewed_choices = [q for q in reviewed_choices if _question_key(q.stem) not in example_keys]
+    reviewed_choices = [q for q in reviewed_choices if not _duplicates_example(q.stem, example_texts)]
     for index, q in enumerate(reviewed_choices, 1):
         options = json.loads(q.options_json or '[]')
         stem = f'选择题 {index}：{display_stem(q.stem)}\n' + '\n'.join(f'{chr(65+i)}. {option_text(value)}' for i, value in enumerate(options))
@@ -73,7 +79,8 @@ def practice_items(implementation, db, session):
     written = register_written_tables(implementation)['questions']
     reviewed_written = list(db.execute(select(written).where(written.c.session_id == session.id,
             written.c.school_id == session.school_id, written.c.teacher_id == session.teacher_id).order_by(written.c.id)))
-    reviewed_written = [q for q in reviewed_written if _question_key(q.stem.split(chr(10)+chr(10))[-1]) not in example_keys]
+    reviewed_written = [q for q in reviewed_written
+                       if not _duplicates_example(q.stem.split(chr(10)+chr(10))[-1], example_texts)]
     for index, q in enumerate(reviewed_written, 1):
         stem = f'文字／照片题 {index}：{display_stem(q.stem.split(chr(10)+chr(10))[-1])}'
         items.append({'kind': 'written', 'id': q.id, 'source': 'reviewed_question', 'question': stem,
