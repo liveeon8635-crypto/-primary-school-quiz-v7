@@ -48,3 +48,9 @@ LCP、INP、CLS、设备端截图和课堂大屏实际操作仍待浏览器验�
 - 个人页面样式、登录/注册页面渲染、账号关系业务和 Safari 12 脚本清单回归：41 passed，636 warnings。
 - `git diff --check` 通过。
 - 当前 head `8f48223cfa57484deeee50acc8dc13294efc688b` 的 automation-boundary-guard job 仍在 runner 分配前失败，`runner_id=0`、`steps=[]`；该 head 没有可核验的 CI workflow 结果。此前 CI 同样遇到 runner 未分配。此结果列为受阻，不作为通过。
+
+## 2026-11-15 学生/家长与课堂隔离回归
+
+- 学生练习与学习点、家长授权可见、周末报告/书面作答、课堂大屏锁定与滚动布局相关回归：48 passed，3 warnings。
+- 本轮累计的测试批次保留各自日志口径；不同批次有重复用例，不将批次数量直接相加成独立测试总数。
+- 课堂大屏的真实投影、打印备用和手机/平板设备端操作仍未实际验证。
