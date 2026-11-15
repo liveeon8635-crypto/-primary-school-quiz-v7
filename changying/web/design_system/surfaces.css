@@ -121,6 +121,26 @@ html[data-cy-ui="product"] {
   html[data-cy-ui] {
     scroll-behavior: auto;
   }
+
+  [data-cy-ui="product"] .btn,
+  [data-cy-ui="shell"] .toast,
+  [data-cy-ui="classic"] .cy-toast,
+  [data-cy-ui="classic"] body.cy-classic-enhanced button,
+  [data-cy-ui="classic"] body.cy-classic-enhanced .btn,
+  [data-cy-ui="classic"] body.cy-classic-enhanced input[type="button"],
+  [data-cy-ui="classic"] body.cy-classic-enhanced input[type="submit"] {
+    transition: none;
+  }
+
+  [data-cy-ui="product"] .btn:hover,
+  [data-cy-ui="classic"] body.cy-classic-enhanced button:hover,
+  [data-cy-ui="classic"] body.cy-classic-enhanced .btn:hover {
+    transform: none;
+  }
+
+  [data-cy-ui="classic"] .cy-toast.is-visible {
+    transform: translateX(-50%);
+  }
 }
 
 @media print {
