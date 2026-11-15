@@ -195,7 +195,8 @@ function el(tag,attrs,...children){const node=new E(tag,attrs);children.forEach(
 function find(node,predicate){if(predicate(node))return node;for(const child of node.children){const got=find(child,predicate);if(got)return got}return null}
 const root=new E('div'),bodyElement=new E('body'),intervals=[],handlers={},layoutCalls=[],coursewareCalls=[];
 const window={innerWidth:1200,innerHeight:800,addEventListener:(name,fn)=>{handlers[name]=fn}};
-const document={body:bodyElement,getElementById:id=>find(root,n=>n.attrs.id===id)};
+const document={body:bodyElement,activeElement:bodyElement,getElementById:id=>find(root,n=>n.attrs.id===id)};
+E.prototype.focus=function(){document.activeElement=this};
 const data={
  id:1,title:'数学课',status:'running',covered:false,currentStage:3,stageName:'例题讲解',goal:'观察原题',
  remainingSeconds:60,deck:{index:0,total:2},content:['第1题：请根据图示判断图形旋转后的方向和角度'],
@@ -221,6 +222,7 @@ async function flush(){await new Promise(resolve=>setImmediate(resolve))}
  assert(firstBody,'courseware body must be scrollable');
  assert.equal(layoutCalls.length,0,'the same question stem must not be printed above the courseware twice');
  firstBody.scrollTop=123;
+ firstBody.focus();
  intervals.find(x=>x.ms===3000).fn();
  await flush();
  assert.strictEqual(root.children[0],wrap,'the 3-second poll must not replace the screen wrapper');
@@ -232,9 +234,11 @@ async function flush(){await new Promise(resolve=>setImmediate(resolve))}
  const secondBody=scrollBody();
  assert.notStrictEqual(secondBody,firstBody,'a real courseware change should repaint');
  assert.equal(secondBody.scrollTop,123,'repainting the same page must preserve its scroll position');
+ assert.strictEqual(document.activeElement,secondBody,'repainting the same page must restore keyboard focus');
  handlers.resize();
  const resizedBody=scrollBody();
  assert.equal(resizedBody.scrollTop,123,'resizing must preserve the same page scroll position');
+ assert.strictEqual(document.activeElement,resizedBody,'resizing must restore keyboard focus');
  data.deck={index:1,total:2};data.content=['第2题：请根据新页面图示判断图形变化'];
  intervals.find(x=>x.ms===3000).fn();
  await flush();
