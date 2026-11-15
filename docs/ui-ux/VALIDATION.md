@@ -41,3 +41,10 @@ LCP、INP、CLS、设备端截图和课堂大屏实际操作仍待浏览器验�
 - PR 自动化边界门禁曾拒绝含文档路径的变更，受保护的 `.github/**` 配置不能为绕过门禁而修改。需由仓库策略/执行器恢复后按原规则验证。
 - 本执行容器禁止 Chromium 创建 socket；浏览器验收测试无法在此启动。不能将 CSS 静态视口模拟替代真实浏览器验收。
 - iOS/Safari 12 实机、Android/iPad/桌面/课堂大屏视觉与操作、真实 LCP/INP/CLS 数值仍未验证。
+
+## 2026-11-15 个人账号页面接入与兼容回归
+
+- `/parent-accounts`、`/teacher/ai-settings`、`/signup` 接入个人工作台样式作用域；保留既有 DOM ID、内联脚本和 API。
+- 个人页面样式、登录/注册页面渲染、账号关系业务和 Safari 12 脚本清单回归：41 passed，636 warnings。
+- `git diff --check` 通过。
+- 当前 head `8f48223cfa57484deeee50acc8dc13294efc688b` 的 automation-boundary-guard job 仍在 runner 分配前失败，`runner_id=0`、`steps=[]`；该 head 没有可核验的 CI workflow 结果。此前 CI 同样遇到 runner 未分配。此结果列为受阻，不作为通过。
