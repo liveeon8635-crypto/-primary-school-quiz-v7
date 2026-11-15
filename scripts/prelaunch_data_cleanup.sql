@@ -72,6 +72,7 @@ WITH d AS (DELETE FROM weekend_written_submissions RETURNING 1) INSERT INTO _del
 WITH d AS (DELETE FROM weekend_written_hint_log RETURNING 1) INSERT INTO _deleted SELECT 'weekend_written_hint_log', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_stage_log RETURNING 1) INSERT INTO _deleted SELECT 'weekend_stage_log', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_slide_state RETURNING 1) INSERT INTO _deleted SELECT 'weekend_slide_state', COUNT(*) FROM d;
+WITH d AS (DELETE FROM weekend_session_questions RETURNING 1) INSERT INTO _deleted SELECT 'weekend_session_questions', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_sessions RETURNING 1) INSERT INTO _deleted SELECT 'weekend_sessions', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_schedule RETURNING 1) INSERT INTO _deleted SELECT 'weekend_schedule', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_reports RETURNING 1) INSERT INTO _deleted SELECT 'weekend_reports', COUNT(*) FROM d;

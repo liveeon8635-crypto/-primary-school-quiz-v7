@@ -127,8 +127,14 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
             raise HTTPException(404, "没有找到这节课堂")
         return row
 
-    def lesson_questions(db: Any, school_id: int, lesson_id: int) -> list[Any]:
-        return list(db.scalars(select(TQ).where(TQ.school_id == school_id, TQ.lesson_id == lesson_id, TQ.active.is_(True)).order_by(TQ.id).limit(30)).all())
+    def lesson_questions(db: Any, school_id: int, lesson_id: int, session_id: int | None = None) -> list[Any]:
+        from changying.services.weekend_answers import session_question_ids
+        stmt = select(TQ).where(TQ.school_id == school_id, TQ.lesson_id == lesson_id, TQ.stage != "removed", TQ.active.is_(True))
+        if session_id is not None:
+            snap_ids = session_question_ids(db, implementation, session_id)
+            if snap_ids is not None:
+                stmt = stmt.where(TQ.id.in_(snap_ids)) if snap_ids else stmt.where(TQ.id == -1)
+        return list(db.scalars(stmt.order_by(TQ.id).limit(30)).all())
 
     def figure_of(q: Any) -> dict[str, Any]:
         """The picture imported with this question, if any (validated when it was written)."""
@@ -188,7 +194,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         lesson = db.get(implementation.TeachingLesson, row.lesson_id)
         source = lesson.reading_plan if lesson is not None else ""
         out = []
-        for q in lesson_questions(db, int(u.school_id), int(row.lesson_id)):
+        for q in lesson_questions(db, int(u.school_id), int(row.lesson_id), int(row.id)):
             hs = hint_rows(db, int(u.school_id), q.id)
             status = "none" if len(hs) < 3 else ("approved" if all(h.status == "approved" for h in hs.values()) else ("auto" if any(h.status == "auto" for h in hs.values()) else "draft"))
             out.append({"id": q.id, "stem": numbered_student_stem(source, q.stem), "knowledge": q.knowledge, "subject": q.subject, "levelNames": level_names(q.subject),
@@ -223,7 +229,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
     def progress(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         row = my_session(db, u, sid)
-        qs = lesson_questions(db, int(u.school_id), int(row.lesson_id))
+        qs = lesson_questions(db, int(u.school_id), int(row.lesson_id), int(row.id))
         qids = [q.id for q in qs]
         from changying.services.weekend_roster import session_roster
         names = {i: n for i, (n, _) in session_roster(implementation, db, row).items()}
@@ -290,7 +296,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         released_choices = {q["id"] for q in release_items[:release_count] if q["kind"] == "choice"}
         published = bool(release_items) and release_count == len(release_items)
         qs = []
-        for q in lesson_questions(db, int(u.school_id), int(row.lesson_id)):
+        for q in lesson_questions(db, int(u.school_id), int(row.lesson_id), int(row.id)):
             a = mine.get(q.id)
             item = {"id": q.id, "stem": numbered_student_stem(source, q.stem), "options": options(q), "figure": figure_of(q), "answersPublished": q.id in released_choices, "canSubmit": q.id not in released_choices, "hintUsed": used.get(q.id, 0), "levelNames": level_names(q.subject)}
             if used.get(q.id):

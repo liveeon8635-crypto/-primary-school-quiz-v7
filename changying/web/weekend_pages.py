@@ -46,7 +46,19 @@ function chooseWeekendClass(save){
     }});out.appendChild(el('div',{class:'row'},b))});
   }).catch(function(e){feedback.textContent=e.message});
 }
-function createWeekendClassroom(lessonId){chooseWeekendClass(function(classId){return api('/teacher/weekend/sessions',{json:{lessonId:lessonId,classId:classId}}).then(function(d){location.href='/v1/weekend?s='+d.id})})}
+function createWeekendClassroom(lessonId){
+  function openChooser(){
+    chooseWeekendClass(function(classId){return api('/teacher/weekend/sessions',{json:{lessonId:lessonId,classId:classId,requireReady:true}}).then(function(d){location.href='/v1/weekend?s='+d.id})});
+  }
+  api('/teacher/weekend/lessons/'+lessonId+'/questions').then(function(q){
+    var s=q&&q.summary;
+    if(s&&s.coursewareApproved===false){
+      var cwState=s.coursewareStatus?'待审核':'未生成';
+      if(!confirm('本节课的互动课件尚未审核通过（状态：'+cwState+'）。建议先在“审改 → 互动课件”中核对通过后再开课；确定仍要继续开课吗？'))return;
+    }
+    openChooser();
+  },openChooser);
+}
 function fmt(sec){var neg=sec<0,s=Math.abs(sec),m=Math.floor(s/60),r=s%60;return (neg?'超时 ':'')+(m<10?'0':'')+m+':'+(r<10?'0':'')+r}
 function msg(text){root.textContent='';root.appendChild(el('div',{class:'card'},el('h2',{text:text})))}
 function boot(run){
@@ -104,6 +116,16 @@ function control(){
       content.appendChild(el('div',{class:'notice',text:'已公布 '+release.published+' / '+release.total+' 题；只停止已公布题目的提交，其他题继续作答。'}));
       content.appendChild(el('button',{class:'primary',text:release.currentPublished?'第 '+current+' 题答案已公布':'统一公布第 '+current+' 题答案',disabled:!!release.currentPublished||current!==release.nextQuestion,onclick:function(){if(confirm('公布第 '+current+' 题答案后，仅本题停止接收提交，其他题可继续作答。确定公布吗？'))post('publish-answers',{question:current})}}));
       if(release.nextQuestion&&current!==release.nextQuestion)content.appendChild(el('button',{text:'继续第 '+release.nextQuestion+' 题',onclick:function(){post('practice-question',{question:release.nextQuestion})}}));
+    }
+    if(d.pendingPracticeSync>0&&d.status!=='finished'){
+      var syncBtn=el('button',{class:'primary','data-sync-practice':'1',text:'同步新增练习（+'+d.pendingPracticeSync+' 题）',onclick:function(){
+        syncBtn.disabled=true;
+        api('/teacher/weekend/sessions/'+SID+'/sync-practice',{json:{}}).then(function(res){
+          msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice',text:res.message||'已同步新增练习'}));
+          paint(res);
+        }).catch(function(e){syncBtn.disabled=false;msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))});
+      }});
+      content.appendChild(el('div',{class:'row'},syncBtn,el('span',{class:'muted',text:'仅把新通过的练习补进本节课堂，已有作答与记录保持不变'})));
     }
     if(d.deck){
       content.appendChild(el('div',{class:'row'},el('button',{text:'‹ 上一页',disabled:d.deck.index<=0,onclick:function(){post('slide',{delta:-1})}}),
@@ -224,10 +246,10 @@ function picker(){
     stepsBox.appendChild(el('h2',{text:HSUBJ+' 第 '+x.lessonNo+' 次课'}));
     stepsBox.appendChild(el('div',{class:'muted',text:(x.schoolWeek?'学校第 '+x.schoolWeek+' 周 · ':'')+(x.schoolUnit||'学校进度还没填')+(x.plannedDate?' · '+x.plannedDate:'')}));
     var go=function(text){return el('a',{class:'btn',href:'/v1/weekend-plan',text:text})};
-    var ready=x.hasPlan&&x.approvedQuestions>0;
+    var ready=x.hasPlan&&x.practiceReady>0;
     stepsBox.appendChild(step(!!x.schoolUnit,'① 填学校进度','让系统知道这一周学校讲到哪里；学校调课可以一键顺延',go('去填')));
     stepsBox.appendChild(step(x.hasPlan,'② 准备教案','没有教案就点“AI 备课草稿”，生成后你改一改',go('去备课')));
-    stepsBox.appendChild(step(x.approvedQuestions>0,'③ 准备习题（已通过 '+x.approvedQuestions+' 道'+(x.draftQuestions?'，待审核 '+x.draftQuestions+' 道':'')+'）','AI 出的题是草稿，逐题点“通过”后学生才能做',go('去审核')));
+    stepsBox.appendChild(step(x.practiceReady>0,'③ 准备习题（可用练习 '+x.practiceReady+' 道'+(x.draftQuestions?'，待审核 '+x.draftQuestions+' 道':'')+'）','AI 出的题是草稿，逐题点“通过”且不与例题重复后学生才能做',go('去审核')));
     var start=el('button',{class:'primary',text:'④ 开课',disabled:!ready,onclick:function(){
       createWeekendClassroom(x.lessonId);
     }});
@@ -647,12 +669,12 @@ function batchPlanPanel(d,picked,panel,after){
   panel.appendChild(el('div',{class:'row'},go));
   return go;
 }
-function approveQuestionInPlace(path,q,button,actions,badge,feedback,refreshStatus){
+function approveQuestionInPlace(path,q,button,actions,badge,feedback,refreshStatus,confirmMissing){
   if(button.disabled)return Promise.resolve();
   var buttons=actions.querySelectorAll('button');
   Array.prototype.forEach.call(buttons,function(b){b.disabled=true});
   feedback.textContent='';
-  return api(path,{json:{approve:[q.id]}}).then(function(st){
+  return api(path,{json:{approve:[q.id],confirmMissingFigure:!!confirmMissing}}).then(function(st){
     q.active=true;q.approved=true;
     badge.textContent='已通过';badge.className='tag ok';button.textContent='已通过';
     refreshStatus(st);
@@ -775,10 +797,10 @@ function plan(){
         api('/teacher/weekend/lessons/'+r.lessonId+'/questions/generate',{json:{count:+qCount.value}}).then(function(g){note('ok','习题草稿已生成：'+genSummary(g)+' 展开“审改”逐题通过后才会给学生。');load()}).catch(function(e){note('error',e.message);qBtn.disabled=false});
       }}):null;
       var titleLabel=el('span',{class:'muted',text:r.title||''});
-      function refreshRow(st){Object.assign(r,st);titleLabel.textContent=r.title||'';go.disabled=!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0);why.textContent=startReason(r);tag.textContent=r.hasPlan?'有教案 · 例题 '+(r.exampleCount||0)+'（待审 '+(r.examplePending||0)+'）· 可用练习 '+(r.practiceReady||0)+'（待审 '+r.draftQuestions+'）':'未备课'}
+      function refreshRow(st){Object.assign(r,st);titleLabel.textContent=r.title||'';go.disabled=!(r.lessonId&&r.hasPlan&&((r.practiceReady!=null?r.practiceReady:r.approvedQuestions)>0));why.textContent=startReason(r);tag.textContent=r.hasPlan?'有教案 · 例题 '+(r.exampleCount||0)+'（待审 '+(r.examplePending||0)+'）· 可用练习 '+(r.practiceReady||0)+'（待审 '+r.draftQuestions+'）':'未备课'}
       var open=el('button',{text:'审改',disabled:!r.lessonId,onclick:function(){detail.hidden=!detail.hidden;if(!detail.hidden)lessonDetail(r,detail,refreshRow)}});
       var cwBtn=r.hasPlan&&r.lessonId?el('button',{text:'生成互动课件',onclick:function(){detail.hidden=false;lessonDetail(r,detail,refreshRow,3)}}):null;
-      var go=el('button',{class:'primary',text:'开课',title:'需要教案和已通过的习题',disabled:!(r.lessonId&&r.hasPlan&&r.approvedQuestions>0),onclick:function(){
+      var go=el('button',{class:'primary',text:'开课',title:'需要教案和第4环节可用随堂练习',disabled:!(r.lessonId&&r.hasPlan&&((r.practiceReady!=null?r.practiceReady:r.approvedQuestions)>0)),onclick:function(){
         createWeekendClassroom(r.lessonId)}});
       // Say why 开课 is grey right next to it: a tooltip is invisible on tablets and phones.
       var why=el('span',{class:'muted','data-start-reason':'1',style:'color:#b54708',text:startReason(r)});
@@ -813,9 +835,11 @@ function plan(){
   }
   function startReason(r){
     if(!r.lessonId||!r.hasPlan)return '还差：先导入教案或让 AI 写教案，才能开课';
-    if(!(r.approvedQuestions>0))return '还差：在“习题审核”里至少通过 1 道习题'+(r.draftQuestions?'（现有 '+r.draftQuestions+' 道草稿待审）':'，可先点“AI 出习题”');
-    // 题数是新版接口才带的字段：老页面缓存里没有这个字段时不要误报“没有练习”。
-    if(r.practiceReady===0)return '可以开课，但第4环节现在没有可发放的练习：请再通过几道不重复的练习，或单独导入随堂练习';
+    var ready=r.practiceReady!=null?r.practiceReady:r.approvedQuestions;
+    if(!(ready>0)){
+      if(r.approvedQuestions>0)return '不能开课：第4环节实际可用的随堂练习为 0 道（已通过的题都与本课例题重复），请在“习题审核”里通过至少 1 道不重复的练习';
+      return '还差：在“习题审核”里至少通过 1 道习题'+(r.draftQuestions?'（现有 '+r.draftQuestions+' 道草稿待审）':'，可先导入练习或点“AI 出习题”');
+    }
     return '';
   }
   function lessonDetail(r,box,refreshStatus,startTab){
@@ -868,6 +892,7 @@ function plan(){
       questionPane.appendChild(exampleBox);
       questionPane.appendChild(el('h3',{text:'随堂练习候选（审核通过后进入第4环节）'}));
       questionPane.appendChild(practiceImportPanel());
+      questionPane.appendChild(materialGroupPanel());
       questionPane.appendChild(qbox);questionPane.appendChild(wbox);questionPane.appendChild(reviewNote);questionPane.appendChild(reviewList);
       // The two APIs keep different question types in separate tables. Recover only
       // reliable source positions; never infer a cross-type order from database IDs.
@@ -940,6 +965,54 @@ function plan(){
         });
         detail.appendChild(el('p',{class:'muted',text:'第4环节要用的练习可以单独传上来或粘贴进来。识别出的题只进“随堂练习候选”，逐题通过后才发给学生；与本节例题重复的题会自动略过。'}));
         detail.appendChild(text);detail.appendChild(el('div',{class:'row'},file,run));detail.appendChild(out);
+        return detail;
+      }
+      function materialGroupPanel(){
+        var detail=el('details',{class:'card','data-material-group':'1'},el('summary',{text:'导入混合资料并分组（例题讲解／随堂练习）'}));
+        var text=el('textarea',{maxlength:20000,placeholder:'把包含例题和练习的资料粘贴到这里，系统会按标题和题号提出分组建议；不确定条目会标为“待定”。'});
+        var file=el('input',{type:'file',accept:'.docx,.pptx,.pdf,.txt,.md'});
+        var previewBtn=el('button',{text:'识别并提出分组建议'}),applyBtn=el('button',{class:'primary',text:'一键确认当前分组并导入',hidden:true});
+        var previewBox=el('div'),out=el('div',{role:'status','aria-live':'polite'}),grouped=[];
+        detail.addEventListener('toggle',function(){if(detail.open)growTextarea(text)});
+        function paintGrouped(){
+          previewBox.textContent='';
+          if(!grouped.length){applyBtn.hidden=true;return}
+          applyBtn.hidden=false;
+          var roleText={example:'例题讲解',practice:'随堂练习',pending:'待定（不入库）'};
+          grouped.forEach(function(item){
+            var badge=el('span',{class:'tag '+(item.role==='pending'?'warn':item.role==='example'?'ok':''),text:roleText[item.role]||'待定'});
+            var toggle=el('button',{text:item.role==='example'?'改为随堂练习':'改为例题讲解',onclick:function(){
+              item.role=item.role==='example'?'practice':'example';
+              paintGrouped();
+            }});
+            var row=el('div',{class:'item','data-group-index':String(item.index)},
+              el('div',{class:'row'},el('b',{text:'条目 '+item.index}),badge,toggle,el('span',{class:'muted',text:item.reason||''})),
+              el('p',{style:'white-space:pre-wrap',text:item.text}));
+            previewBox.appendChild(row);
+          });
+        }
+        previewBtn.addEventListener('click',function(){
+          if(!text.value.trim()&&!file.files.length){out.className='notice error';out.textContent='请先粘贴资料或选择一个文件。';return}
+          var fd=new FormData();fd.append('text',text.value);
+          if(file.files.length)fd.append('file',file.files[0]);
+          previewBtn.disabled=true;out.className='muted';out.textContent='正在识别分组建议…';
+          api('/teacher/weekend/lessons/'+r.lessonId+'/materials/preview',{method:'POST',body:fd}).then(function(d){
+            grouped=d.items||[];paintGrouped();
+            out.className='notice';out.textContent='已提出分组建议：例题 '+d.counts.example+' 条、练习 '+d.counts.practice+' 条、待定 '+d.counts.pending+' 条（待定条目不会自动塞入练习）。';
+            previewBtn.disabled=false;
+          }).catch(function(e){out.className='notice error';out.textContent=e.message;previewBtn.disabled=false});
+        });
+        applyBtn.addEventListener('click',function(){
+          applyBtn.disabled=true;out.className='muted';out.textContent='正在按当前分组导入…';
+          api('/teacher/weekend/lessons/'+r.lessonId+'/materials/apply',{json:{items:grouped.map(function(x){return {text:x.text,role:x.role}})}}).then(function(d){
+            out.className='notice';out.textContent=d.message;
+            note('ok',d.message);grouped=[];paintGrouped();text.value='';file.value='';applyBtn.disabled=false;
+            if(refreshStatus&&d.status)refreshStatus(d.status);
+            renderSummary(d.summary);loadQ();loadWritten();
+          }).catch(function(e){out.className='notice error';out.textContent=e.message;applyBtn.disabled=false});
+        });
+        detail.appendChild(el('p',{class:'muted',text:'系统按标题、题号提出分组建议，不确定的内容标为“待定”；老师可逐题切换“例题讲解／随堂练习”，再一键确认导入。'}));
+        detail.appendChild(text);detail.appendChild(el('div',{class:'row'},file,previewBtn,applyBtn));detail.appendChild(previewBox);detail.appendChild(out);
         return detail;
       }
       function reviewOrder(stem){
@@ -1031,11 +1104,17 @@ function plan(){
             var row=el('div',{class:'item'},el('span',{class:'t'},levelTag,checkTag,dupTag,el('b',{text:reviewLine(q.stem,meta)}),fig,el('div',{class:'muted',text:opts}),el('div',{class:'muted',text:q.explanation||''})));
             var badge=el('span',{class:'tag '+(q.active?'ok':'warn'),text:q.active?'已通过':'草稿'}),act=el('div',{class:'row'},badge),feedback=el('div',{role:'status','aria-live':'polite'});
             if(!q.active){
+              var needFig=!!(q.mentionsFigure&&!fig),figConfirm=null;
+              if(needFig){
+                figConfirm=el('input',{type:'checkbox'});
+                act.appendChild(el('label',{class:'row'},figConfirm,el('span',{class:'muted',text:'题干提到图示但无配图，确认仍通过'})));
+              }
               var approve=el('button',{text:q.duplicateOf?'不能通过（重复）':'通过',disabled:!!q.duplicateOf,
                 title:q.duplicateOf?'这道题与'+q.duplicateOf+'重复，请换一道同考点新题后再通过':'',
                 onclick:function(){
                   if(q.duplicateOf){feedback.textContent='这道题与'+q.duplicateOf+'重复，请换一道同考点新题后再通过';return}
-                  approveQuestionInPlace('/teacher/weekend/lessons/'+r.lessonId+'/questions',q,approve,act,badge,feedback,refreshStatus);
+                  if(needFig&&!figConfirm.checked){feedback.textContent='题干提到了图示但当前缺少配图，请先补充配图或勾选“确认仍通过”。';return}
+                  approveQuestionInPlace('/teacher/weekend/lessons/'+r.lessonId+'/questions',q,approve,act,badge,feedback,refreshStatus,figConfirm&&figConfirm.checked);
                 }});
               act.appendChild(approve);
               act.appendChild(el('button',{text:'删除',onclick:function(){api('/teacher/weekend/lessons/'+r.lessonId+'/questions',{json:{remove:[q.id]}}).then(function(st){refreshStatus(st);loadQ()})}}));
@@ -1092,11 +1171,17 @@ function plan(){
             }});edit.appendChild(save);edit.appendChild(state);card.appendChild(edit);
             var feedback=el('div',{role:'status','aria-live':'polite'}),actions=el('div',{class:'row'});
             if(!q.approved){
+              var wNeedFig=!!(q.mentionsFigure&&!wfig),wFigConfirm=null;
+              if(wNeedFig){
+                wFigConfirm=el('input',{type:'checkbox'});
+                actions.appendChild(el('label',{class:'row'},wFigConfirm,el('span',{class:'muted',text:'题干提到图示但无配图，确认仍通过'})));
+              }
               var approveWritten=el('button',{text:q.duplicateOf?'不能通过（重复）':'通过',disabled:!!q.duplicateOf,
                 title:q.duplicateOf?'这道题与'+q.duplicateOf+'重复，请换一道新题后再通过':'',
                 onclick:function(){
                   if(q.duplicateOf){feedback.textContent='这道题与'+q.duplicateOf+'重复，请换一道新题后再通过';return}
-                  approveQuestionInPlace('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',q,approveWritten,actions,badge,feedback,refreshStatus);
+                  if(wNeedFig&&!wFigConfirm.checked){feedback.textContent='题干提到了图示但当前缺少配图，请先补充配图或勾选“确认仍通过”。';return}
+                  approveQuestionInPlace('/teacher/weekend/lessons/'+r.lessonId+'/written/questions',q,approveWritten,actions,badge,feedback,refreshStatus,wFigConfirm&&wFigConfirm.checked);
                 }});
               actions.appendChild(approveWritten);
               var removeWritten=el('button',{text:'删除草稿',onclick:function(){
