@@ -87,3 +87,10 @@ LCP、INP、CLS、设备端截图和课堂大屏实际操作仍待浏览器验�
 - 最新结果：1674 passed，2 skipped，8 failed，2485 warnings，670.20 秒。新增通过数来自管理端接入后的完整测试收集；8 个失败与前次相同，均为 Chromium 启动时系统禁止 socket（1 项既有课程浏览器测试、7 项 UI 浏览器测试），没有进入页面断言。
 - 管理端作用域定向回归另行重跑：34 passed，110 warnings；未发现业务/API/权限回归。
 - 当前 blocker：真实浏览器验收仍无可用证据；PR head `8d1a1964a20d5aa9e44257c849041126f49d55ae` 的 automation boundary guard 因 `AUTOMATION_MERGE_DENIED: path outside changying/unit-test whitelist` 失败。
+
+## 与 main 更新合并后的浏览器补测
+
+施工分支与 main 的 `46d1bdb0e639f58f1321def7cd014dcb7cd44e2f` 合并时，保留晚托和周末页面两边的改动。用锁定的 Babel 工具链重新生成 Safari 12 兼容清单，覆盖 36 个路由和 60 段脚本。
+
+合并候选的 Safari 12、晚托、周末课、运营控制台和页面样式定向回归共 57 项通过。
+使用 Chromium Headless Shell 和 Playwright 执行浏览器用例，4 项通过。登录页覆盖 390、768、1440 CSS px，检查标签、焦点和横向溢出。大屏覆盖 1920×1080 CSS px，使用合成课堂数据检查轮询更新后焦点和滚动位置。浏览器用例使用本地应用路由生成的 HTML，浏览器端模拟响应和课堂接口。真实设备、生产等价联调及 Web Vitals 仍待核验。

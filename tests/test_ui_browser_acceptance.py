@@ -77,7 +77,7 @@ def test_login_labels_focus_and_width_in_chrome(tmp_path, width, height):
     assert 'data-browser-acceptance="login"' in dom
 
 
-def test_weekend_board_scroll_and_focus_survive_poll_in_chrome(tmp_path):
+def weekend_board_fixture():
     with TestClient(app) as client:
         response = client.get("/v1/weekend-board")
     assert response.status_code == 200
@@ -113,9 +113,13 @@ def test_weekend_board_scroll_and_focus_survive_poll_in_chrome(tmp_path):
     }, 50);
     """
     html = html.replace("<script>", f"<script>{fixture}</script><script>", 1)
+    return html.replace("</body>", f"<script>{exercise}</script></body>")
+
+
+def test_weekend_board_scroll_and_focus_survive_poll_in_chrome(tmp_path):
     dom = render_dom(
         tmp_path,
-        html.replace("</body>", f"<script>{exercise}</script></body>"),
+        weekend_board_fixture(),
         "1920,1080",
         "?s=1",
     )
@@ -137,7 +141,9 @@ def test_login_labels_focus_and_width_with_playwright(tmp_path, width, height):
         )
         try:
             page = browser.new_page(viewport={"width": width, "height": height})
-            page.set_content(response.text, wait_until="domcontentloaded")
+            url = "https://changying.test/v1"
+            page.route(url, lambda route: route.fulfill(status=200, content_type="text/html; charset=utf-8", body=response.text))
+            page.goto(url, wait_until="domcontentloaded")
             user = page.locator("#cyLoginUsername")
             password = page.locator("#cyLoginPassword")
             assert user.count() == password.count() == 1
@@ -145,9 +151,30 @@ def test_login_labels_focus_and_width_with_playwright(tmp_path, width, height):
             assert password.evaluate("(element) => element.labels.length") == 1
             user.focus()
             assert page.evaluate("innerWidth") == width
-            assert user.evaluate("getComputedStyle(element).outlineWidth") == "2px"
+            assert user.evaluate("(element) => getComputedStyle(element).outlineWidth") == "2px"
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
             bounds = user.evaluate("(element) => element.form.getBoundingClientRect().toJSON()")
             assert bounds["left"] >= 0 and bounds["right"] <= width
+        finally:
+            browser.close()
+
+
+
+def test_weekend_board_scroll_and_focus_survive_poll_with_playwright():
+    playwright = pytest.importorskip("playwright.sync_api")
+    html = weekend_board_fixture()
+    url = "https://changying.test/v1/weekend-board?s=1"
+    with playwright.sync_playwright() as runtime:
+        browser = runtime.chromium.launch(
+            executable_path=shutil.which("chromium") or shutil.which("google-chrome"),
+            args=["--no-sandbox"],
+        )
+        try:
+            page = browser.new_page(viewport={"width": 1920, "height": 1080})
+            page.route(url, lambda route: route.fulfill(
+                status=200, content_type="text/html; charset=utf-8", body=html,
+            ))
+            page.goto(url, wait_until="domcontentloaded")
+            page.locator('body[data-browser-acceptance="board"]').wait_for(timeout=12000)
         finally:
             browser.close()

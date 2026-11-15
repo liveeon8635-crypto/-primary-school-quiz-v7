@@ -8,6 +8,8 @@ import json
 import re
 from sqlalchemy import select
 
+from changying.services.weekend_question_gen import question_key
+
 _LABEL = re.compile(r'^\s*[A-Da-d]\s*[．.、:：)）]\s*')
 
 _IMPORTED_QUESTION_PREFIX = re.compile(
@@ -20,23 +22,29 @@ _IMPORTED_QUESTION_PREFIX = re.compile(
 
 
 def _question_key(value) -> str:
-    """Normalize question text so different database IDs cannot bypass role separation."""
-    text = display_stem(value)
-    return re.sub(r"[\s\u3000，。,、:：;；!！?？（）()“”\"'「」『』]+", "", text).lower()
+    """Normalize question text so different database IDs cannot bypass role separation.
+
+    与“习题审核”的查重共用同一套归一化（weekend_question_gen.question_key），
+    这样同一道题不会出现“审核说重复、大屏又发出去”或反过来的情况。
+    """
+    return question_key(display_stem(value))
 
 
-def _lesson_example_keys(db, implementation, session) -> set[str]:
+def _lesson_example_texts(db, implementation, session) -> list[str]:
     lesson = db.get(implementation.TeachingLesson, int(session.lesson_id))
     if lesson is None:
-        return set()
-    # Stage 3 uses numbered exercises from reading_plan when available;
-    # using examples_json alone misses the actual worked examples shown.
-    from changying.services.weekend_presentation import lesson_deck
-    pages = lesson_deck({
-        "reading_plan": getattr(lesson, "reading_plan", "") or "",
-        "examples_json": getattr(lesson, "examples_json", "") or "",
-    }, 3)
-    return {_question_key(page) for page in pages if _question_key(page)}
+        return []
+    # 第3环节的页面带着“第3题（基础）（4分）”“原题｜”“例23（讲解用）”这类版面信息。审核页比对前由
+    # lesson_worked_examples 去掉，课堂这边也必须走同一个函数，否则会出现
+    # “审核页说与例3重复、第4环节又把这道题发给学生”。
+    from changying.web.weekend_plan_views import lesson_worked_examples
+    return [item["stem"] for item in lesson_worked_examples(lesson) if item["stem"]]
+
+
+def _duplicates_example(stem, examples: list[str]) -> bool:
+    """这道练习是不是本节某道例题的翻版（允许两边差一点版面标注、讲解）。"""
+    from changying.services.weekend_question_gen import same_question_text
+    return any(same_question_text(stem, example) for example in examples)
 
 
 def display_stem(value):
@@ -53,14 +61,52 @@ CURSOR_VERSION = 1_000_000
 CURSOR_PAGES = 10_000
 
 
+def session_question_ids(db, implementation, session_id: int) -> set[int] | None:
+    """Return snapshotted TeachingQuestion IDs for a session, or None for legacy unsnapshotted sessions."""
+    table = implementation.Base.metadata.tables.get("weekend_session_questions")
+    if table is None:
+        return None
+    rows = db.scalars(select(table.c.question_id).where(table.c.session_id == int(session_id))).all()
+    if not rows:
+        return None
+    return {int(qid) for qid in rows if int(qid) > 0}
+
+
+def count_practice_ready(db, implementation, school_id: int, teacher_id: int, lesson) -> int:
+    """第4环节实际能发放的题数：与例题重复的题不发，和大屏/审核页共用同一套判断。"""
+    from changying.services.lesson_written import template_meta, written_templates
+    from changying.web.weekend_plan_views import duplicate_of, lesson_worked_examples, question_options
+    from changying.web.weekend_written import register_written_tables
+
+    examples = lesson_worked_examples(lesson)
+    ready = 0
+    TQ = implementation.TeachingQuestion
+    rows = db.scalars(select(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != "removed", TQ.active.is_(True))).all()
+    for q in rows:
+        if not duplicate_of(q.stem, question_options(q), examples, []):
+            ready += 1
+    written = register_written_tables(implementation)["questions"]
+    for q in written_templates(db, written, school_id, teacher_id, lesson.id):
+        if template_meta(q).get("approved") and not duplicate_of(str(q.stem).split("\n\n")[-1].strip(), [], examples, []):
+            ready += 1
+    return ready
+
+
 def practice_items(implementation, db, session):
     from changying.web.weekend_written import register_written_tables
     question = implementation.TeachingQuestion
-    example_keys = _lesson_example_keys(db, implementation, session)
+    example_texts = _lesson_example_texts(db, implementation, session)
     items = []
-    reviewed_choices = list(db.scalars(select(question).where(question.school_id == session.school_id,
-            question.lesson_id == session.lesson_id, question.active.is_(True)).order_by(question.id).limit(30)))
-    reviewed_choices = [q for q in reviewed_choices if _question_key(q.stem) not in example_keys]
+    snap_ids = session_question_ids(db, implementation, session.id)
+    stmt = select(question).where(
+        question.school_id == session.school_id,
+        question.lesson_id == session.lesson_id,
+        question.active.is_(True),
+    )
+    if snap_ids is not None:
+        stmt = stmt.where(question.id.in_(snap_ids)) if snap_ids else stmt.where(question.id == -1)
+    reviewed_choices = list(db.scalars(stmt.order_by(question.id).limit(30)))
+    reviewed_choices = [q for q in reviewed_choices if not _duplicates_example(q.stem, example_texts)]
     for index, q in enumerate(reviewed_choices, 1):
         options = json.loads(q.options_json or '[]')
         stem = f'选择题 {index}：{display_stem(q.stem)}\n' + '\n'.join(f'{chr(65+i)}. {option_text(value)}' for i, value in enumerate(options))
@@ -71,7 +117,8 @@ def practice_items(implementation, db, session):
     written = register_written_tables(implementation)['questions']
     reviewed_written = list(db.execute(select(written).where(written.c.session_id == session.id,
             written.c.school_id == session.school_id, written.c.teacher_id == session.teacher_id).order_by(written.c.id)))
-    reviewed_written = [q for q in reviewed_written if _question_key(q.stem.split(chr(10)+chr(10))[-1]) not in example_keys]
+    reviewed_written = [q for q in reviewed_written
+                       if not _duplicates_example(q.stem.split(chr(10)+chr(10))[-1], example_texts)]
     for index, q in enumerate(reviewed_written, 1):
         stem = f'文字／照片题 {index}：{display_stem(q.stem.split(chr(10)+chr(10))[-1])}'
         items.append({'kind': 'written', 'id': q.id, 'source': 'reviewed_question', 'question': stem,

@@ -21,12 +21,12 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, desc, insert, select, update
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, UniqueConstraint, desc, insert, select, update
 
 from changying.services.weekend_stages import (
     MAX_EXTEND_MIN, STAGE_COUNT, STAGES, remaining_seconds, stage_by_no, stage_content,
 )
-from changying.services.weekend_answers import practice_deck, practice_cursor
+from changying.services.weekend_answers import count_practice_ready, practice_deck, practice_cursor, session_question_ids
 from changying.web.weekend_pages import board_page_html, control_page_html
 
 NO_CACHE = {"Cache-Control": "no-store"}
@@ -35,6 +35,7 @@ NO_CACHE = {"Cache-Control": "no-store"}
 class CreateBody(BaseModel):
     lessonId: int
     classId: int | None = None
+    requireReady: bool = False
 
 
 class ClassBody(BaseModel):
@@ -105,7 +106,18 @@ def register_weekend_tables(implementation: Any) -> dict[str, Table]:
             Column("stage_no", Integer, nullable=False, default=0),
             Column("idx", Integer, nullable=False, default=0),
         )
-    return {"sessions": sessions, "log": log, "slide": slide}
+    session_q = md.tables.get("weekend_session_questions")
+    if session_q is None:
+        session_q = Table(
+            "weekend_session_questions", md,
+            Column("id", Integer, primary_key=True),
+            Column("school_id", Integer, nullable=False, index=True),
+            Column("session_id", Integer, nullable=False, index=True),
+            Column("question_id", Integer, nullable=False),
+            Column("added_at", DateTime, nullable=False, default=datetime.utcnow),
+            UniqueConstraint("session_id", "question_id", name="uq_weekend_session_question"),
+        )
+    return {"sessions": sessions, "log": log, "slide": slide, "session_questions": session_q}
 
 
 def install_weekend_views(implementation: Any) -> APIRouter:
@@ -113,7 +125,7 @@ def install_weekend_views(implementation: Any) -> APIRouter:
     if getattr(app.state, "weekend_installed", False):
         return app.state.weekend_router
     t = register_weekend_tables(implementation)
-    sessions, log, slide_t = t["sessions"], t["log"], t["slide"]
+    sessions, log, slide_t, session_q = t["sessions"], t["log"], t["slide"], t["session_questions"]
     Lesson = implementation.TeachingLesson
     current_user, get_db, need = implementation.current_user, implementation.get_db, implementation.need
     router = APIRouter()
@@ -145,6 +157,33 @@ def install_weekend_views(implementation: Any) -> APIRouter:
     def deck_for(lesson: dict[str, Any], stage_no: int) -> list[str]:
         from changying.services.weekend_presentation import lesson_deck
         return lesson_deck(lesson, stage_no)
+
+    def pending_sync_items(db: Any, row: Any) -> tuple[list[int], list[Any]]:
+        """Newly approved practice (choice + written) not yet synced into this session."""
+        lesson_obj = db.get(Lesson, int(row.lesson_id))
+        if lesson_obj is None:
+            return [], []
+        from changying.services.lesson_written import template_meta, written_templates
+        from changying.web.weekend_plan_views import duplicate_of, lesson_worked_examples, question_options
+        from changying.web.weekend_written import register_written_tables
+
+        examples = lesson_worked_examples(lesson_obj)
+        TQ = implementation.TeachingQuestion
+        snap_ids = session_question_ids(db, implementation, row.id)
+        new_tqs: list[int] = []
+        if snap_ids is not None:
+            for q in db.scalars(select(TQ).where(TQ.school_id == row.school_id, TQ.lesson_id == row.lesson_id,
+                                                 TQ.stage != "removed", TQ.active.is_(True)).order_by(TQ.id)).all():
+                if int(q.id) not in snap_ids and not duplicate_of(q.stem, question_options(q), examples, []):
+                    new_tqs.append(int(q.id))
+        written = register_written_tables(implementation)["questions"]
+        existing_stems = {str(r.stem) for r in db.execute(select(written.c.stem).where(written.c.session_id == row.id)).all()}
+        new_written: list[Any] = []
+        for w in written_templates(db, written, int(row.school_id), int(row.teacher_id), int(row.lesson_id)):
+            if template_meta(w).get("approved") and str(w.stem) not in existing_stems:
+                if not duplicate_of(str(w.stem).split("\n\n")[-1].strip(), [], examples, []):
+                    new_written.append(w)
+        return new_tqs, new_written
 
     def state(db: Any, row: Any, *, board: bool = False) -> dict[str, Any]:
         now = datetime.utcnow()
@@ -190,7 +229,12 @@ def install_weekend_views(implementation: Any) -> APIRouter:
             deck, count, idx, total = practice_deck(implementation, db, row)
             out["answersPublished"] = bool(total) and count == total
             out["answerRelease"] = {"published": count, "total": total, "nextQuestion": count+1 if count < total else None}
-            out["content"] = ["随堂练习来自“习题审核”；与本节例题重复的题目不会再次发放。", "已公布题目请听老师讲评，其余题目继续作答。" if count else "请先独立作答并提交，等待老师逐题公布答案。"]
+            out["content"] = ["随堂练习来自“习题审核”；与本节例题重复的题目不会再次发放。",
+                              "已公布题目请听老师讲评，其余题目继续作答。" if count else "请先独立作答并提交，等待老师逐题公布答案。"]
+            if not total:
+                # 无题不是“正常空白”：告诉老师缺在哪，以及去哪里补。
+                out["content"] = ["本节课第4环节还没有可用的随堂练习：习题审核里没有已通过、又不与例题重复的题。",
+                                  "请到“周末备课 → 这节课 → 习题审核”里通过几道练习，或点“单独导入随堂练习”。"]
             if deck:
                 out["deck"] = {"total": len(deck), "index": idx}
                 out["answerRelease"].update({"currentQuestion": deck[idx]["question"], "currentPublished": deck[idx]["published"]})
@@ -226,6 +270,11 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         out["class"] = {"id": bound.class_id, "name": bound.class_name, "studentCount": len(session_roster(implementation, db, row))} if bound else None
         out["stages"] = stages
         out["lesson"] = {"title": lesson["title"], "subject": lesson["subject"], "unit": lesson["unit"]}
+        if row.status != "finished":
+            new_tqs, new_written = pending_sync_items(db, row)
+            out["pendingPracticeSync"] = len(new_tqs) + len(new_written)
+        else:
+            out["pendingPracticeSync"] = 0
         return out
 
     @router.get("/v1/lesson11-methods-v2.js", include_in_schema=False)
@@ -258,17 +307,67 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         if b.classId is not None:
             class_members(implementation, db, u, b.classId)
         lesson = lesson_dict(db, int(u.school_id), b.lessonId)
+        lesson_row = db.get(Lesson, b.lessonId)
+        if b.requireReady and count_practice_ready(db, implementation, int(u.school_id), int(u.id), lesson_row) == 0:
+            raise HTTPException(
+                409,
+                "第4环节实际可用的随堂练习为 0 道（可能尚未通过练习，或已通过的题都与本课例题重复），暂时不能开课。"
+                "请先在“习题审核”里通过至少 1 道不与例题重复的随堂练习。",
+            )
         db.execute(select(Lesson.id).where(Lesson.id == b.lessonId).with_for_update()).first()
+        now = datetime.utcnow()
         sid = int(db.execute(insert(sessions).values(
             school_id=u.school_id, teacher_id=u.id, lesson_id=b.lessonId, status="planned", current_stage=0, covered=False,
-            title=f"{lesson['subject']} 第{lesson['lesson_no']}课 {lesson['title']}"[:220], created_at=datetime.utcnow())).inserted_primary_key[0])
+            title=f"{lesson['subject']} 第{lesson['lesson_no']}课 {lesson['title']}"[:220], created_at=now)).inserted_primary_key[0])
         from changying.services.lesson_written import snapshot_written_questions
         from changying.web.weekend_written import register_written_tables
+        from changying.web.weekend_plan_views import duplicate_of, lesson_worked_examples, question_options
+        examples = lesson_worked_examples(lesson_row)
+        db.execute(insert(session_q).values(school_id=u.school_id, session_id=sid, question_id=0, added_at=now))
+        TQ = implementation.TeachingQuestion
+        for q in db.scalars(select(TQ).where(TQ.school_id == u.school_id, TQ.lesson_id == b.lessonId,
+                                             TQ.stage != "removed", TQ.active.is_(True)).order_by(TQ.id)).all():
+            if not duplicate_of(q.stem, question_options(q), examples, []):
+                db.execute(insert(session_q).values(school_id=u.school_id, session_id=sid, question_id=int(q.id), added_at=now))
         snapshot_written_questions(db, register_written_tables(implementation)["questions"], u.school_id, u.id, b.lessonId, sid)
         if b.classId is not None:
             bind_class(implementation, db, mine(db, u, sid), u, b.classId)
         db.commit()
         return state(db, mine(db, u, sid))
+
+    @router.post("/teacher/weekend/sessions/{sid}/sync-practice")
+    def sync_practice(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """手动把课后新通过的随堂练习补进当前课堂，绝不改动已有题目记录与学生作答。"""
+        need(u, "teacher")
+        row = mine(db, u, sid)
+        if row.status == "finished":
+            raise HTTPException(409, "已结束的课堂不能再同步新增练习")
+        new_tqs, new_written = pending_sync_items(db, row)
+        now = datetime.utcnow()
+        if new_tqs:
+            if session_question_ids(db, implementation, row.id) is None:
+                db.execute(insert(session_q).values(school_id=row.school_id, session_id=row.id, question_id=0, added_at=now))
+            for qid in new_tqs:
+                db.execute(insert(session_q).values(school_id=row.school_id, session_id=row.id, question_id=qid, added_at=now))
+        if new_written:
+            from changying.services.lesson_written import template_meta
+            from changying.web.weekend_written import register_written_tables
+            written = register_written_tables(implementation)["questions"]
+            for w in new_written:
+                meta = template_meta(w)
+                db.execute(insert(written).values(
+                    school_id=row.school_id, teacher_id=row.teacher_id, lesson_id=row.lesson_id, session_id=row.id,
+                    stem=w.stem, reference=w.reference, hints_json=json.dumps(meta.get("hints", []), ensure_ascii=False),
+                ))
+        db.commit()
+        added = len(new_tqs) + len(new_written)
+        msg = f"已同步 {added} 道新增随堂练习到本节课堂（选择题 {len(new_tqs)} 道、文字/照片题 {len(new_written)} 道），已有作答与记录保持不变。" if added else "当前没有需要同步的新增练习。"
+        out = state(db, mine(db, u, sid))
+        out["addedChoices"] = len(new_tqs)
+        out["addedWritten"] = len(new_written)
+        out["addedTotal"] = added
+        out["message"] = msg
+        return out
 
     @router.get("/teacher/weekend/classes")
     def classes(u: Any = Depends(current_user), db: Any = Depends(get_db)):

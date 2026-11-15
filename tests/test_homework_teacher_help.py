@@ -270,4 +270,34 @@ def test_page_has_the_help_tab_and_the_ask_teacher_button():
 
     html = homework_page_html()
     assert "求助老师" in html and "求助列表" in html and "/teacher/homework/help" in html
+    assert "老师内部处理备注" in html and "处理说明：" not in html
     assert "innerHTML" not in html
+
+
+def test_teacher_note_is_internal_only_and_resolve_is_first_wins(tmp_path):
+    run_isolated(
+        tmp_path,
+        COMMON
+        + r'''
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    hid = make_help(client, sh)
+    assert client.post(f"/student/homework/help/{hid}/escalate", headers=sh, json={"note": "不太懂"}).status_code == 200
+
+    first = client.post(f"/teacher/homework/help/{hid}/resolve", headers=th, json={"note": "仅老师可见的跟进备注"})
+    assert first.status_code == 200, first.text
+    second = client.post(f"/teacher/homework/help/{hid}/resolve", headers=th, json={"note": "后到覆盖备注"})
+    assert second.status_code == 409, second.text
+
+    teacher_detail = client.get(f"/teacher/homework/help/{hid}", headers=th)
+    assert teacher_detail.status_code == 200, teacher_detail.text
+    assert teacher_detail.json()["teacherNote"] == "仅老师可见的跟进备注"
+
+    student_view = client.get(f"/student/homework/help/{hid}", headers=sh)
+    assert student_view.status_code == 200, student_view.text
+    body = student_view.json()
+    assert "teacherNote" not in body and "teacher_note" not in body
+    assert "仅老师可见的跟进备注" not in json.dumps(body, ensure_ascii=False)
+print("OK")
+''',
+    )
