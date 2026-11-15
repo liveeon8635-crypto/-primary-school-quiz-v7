@@ -62,3 +62,11 @@ LCP、INP、CLS、设备端截图和课堂大屏实际操作仍待浏览器验�
 - 测试从真实备用包路由生成教师版和学生版 DOCX，检查原题图像确实写入 Word media、关系目标有效、没有外链图片，且教师答案不进入学生版。
 - 当前环境可用 LibreOffice/soffice 与 `pdfimages`；测试完成 DOCX→PDF 后确认两套成品仍含原图。
 - 实体打印纸张尺寸、图像清晰度及课堂现场使用仍待教师实测。
+
+## 2026-11-15 完整本地回归
+
+- 命令：`TZ=UTC PYTHONPATH=. pytest -q --disable-warnings`
+- 结果：1673 passed，2 skipped，8 failed，2485 warnings，670.96 秒。
+- 8 项失败全部未进入页面断言：1 项既有 `tests/test_courseware_original_image_repair.py::test_teacher_restores_previous_lesson_from_review_in_chrome`，以及 7 项 `tests/test_ui_browser_acceptance.py` 新浏览器用例。Chromium 均在启动阶段报 `socket() failed: Operation not permitted`；Playwright 同样返回 `TargetClosedError`。这些是环境阻断证据，不能记为通过，也没有证据表明是页面断言回归。
+- 当前桌面 Chromium 与隔离测试服务不共享 loopback 网络，访问 `127.0.0.1:8765` 返回连接拒绝；未能以桌面浏览器替代上述自动浏览器运行。
+- 无浏览器回归下，不将页面布局、手机/平板/投影体验或 Web Vitals 标为已验证。需要能启动浏览器且可访问测试服务的运行器重跑这 8 项及真实视觉检查。
