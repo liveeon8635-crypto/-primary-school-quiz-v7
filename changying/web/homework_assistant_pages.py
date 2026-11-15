@@ -679,7 +679,7 @@ function helpView(body){
       detail.textContent='';
       api('/teacher/homework/help/'+it.id).then(function(d){
         d.conversation.forEach(function(m){
-          detail.appendChild(el('div',{class:'notice '+(m.role==='ai'?'warn':'ok')},el('b',{text:{student:'学生',ai:'AI',teacher:'老师'}[m.role]+'：'}),
+          detail.appendChild(el('div',{class:'notice '+(m.role==='ai'?'warn':'ok')},el('b',{text:{student:'学生',ai:'AI',teacher:'老师内部备注'}[m.role]+'：'}),
             el('span',{style:'white-space:pre-wrap',text:m.text})));
         });
       }).catch(function(e){detail.appendChild(notice('error',e.message))});
@@ -725,12 +725,12 @@ function openHelpTarget(target,tabs,body,show){
     card.appendChild(meta);
     card.appendChild(el('div',{style:'margin:8px 0;font-size:16px;',text:d.questionText||''}));
     if(d.studentNote)card.appendChild(el('div',{class:'muted',text:'学生说：'+d.studentNote}));
-    if(d.teacherNote)card.appendChild(el('div',{class:'muted',text:'处理说明：'+d.teacherNote}));
+    if(d.teacherNote)card.appendChild(el('div',{class:'muted',text:'老师内部处理备注：'+d.teacherNote}));
     var detail=el('div',{style:'margin-top:12px;'});
     if(d.conversation&&d.conversation.length){
       detail.appendChild(el('h3',{text:'AI 对话记录'}));
       d.conversation.forEach(function(m){
-        var roleName=m.role==='student'?'学生':(m.role==='ai'?'AI':'老师');
+        var roleName=m.role==='student'?'学生':(m.role==='ai'?'AI':'老师内部备注');
         detail.appendChild(el('div',{class:'notice '+(m.role==='ai'?'warn':'ok')},
           el('b',{text:roleName+'：'}),
           el('span',{style:'white-space:pre-wrap',text:m.text})));
