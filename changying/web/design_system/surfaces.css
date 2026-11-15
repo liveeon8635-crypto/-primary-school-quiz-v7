@@ -216,6 +216,15 @@ html[data-cy-ui="operator"] {
   outline-offset: -2px;
 }
 
+@media (max-width: 600px) {
+  [data-cy-ui="board"] #bclock {
+    flex-shrink: 0;
+    margin-left: 0.5rem;
+    font-size: 1.25rem !important;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
 [data-cy-ui="shell"] .login .field {
   min-width: 0;
 }
