@@ -46,6 +46,16 @@ function epNewForm(box){
       el('button',{class:'btn',text:'取消',onclick:function(){box.textContent=''}}))));
 }
 function epFocus(x){return x.focus.length?x.focus.map(function(f){return f.name+'（失 '+f.lostMarks+'/'+f.marks+' 分）'}).join('；'):'全对，保持'}
+function epEvidence(x){
+  var ev=x.pointEvidence||{};var keys=Object.keys(ev);
+  if(!keys.length)return '—';
+  return keys.map(function(k){
+    var arr=ev[k]||[];
+    var name=k;
+    (x.focus||[]).forEach(function(f){if(f.key===k)name=f.name});
+    return name+'：'+arr.map(function(it){return it.source+'（'+(it.helpStatus||'未知')+'）'}).join('、');
+  }).join('；');
+}
 function epTime(x){if(x.minutes==null)return '未计时';return x.minutes+' 分钟'+(x.overtime?'（超时 '+x.overtime+' 分钟）':'')}
 function epDrill(x){if(!x.drill)return '—';return x.drill.questionCount+' 题 · '+(x.drill.handedIn?'已交，做对 '+x.drill.correct:'未交')}
 function epReports(gid,p,box){
@@ -76,10 +86,11 @@ function epAnalysis(gid,p,box){
       box.appendChild(epTable(['知识点','全班失分题次','失分率（按分值）'],d.points.map(function(x){return [x.key+' '+x.name,x.lost+' / '+x.asked,x.rate+'%']})))}
     box.appendChild(el('h4',{text:'每个学生'}));
     var retest=d.paper.kind==='retest';
-    var head=['学生','得分','用时','先补这几个知识点','专项练习'];if(retest){head.splice(2,0,'上次');head.push('上次失分点现在')}
+    var head=['学生','得分','用时','先补这几个知识点','失分点跨场景证据','专项练习'];if(retest){head.splice(2,0,'上次');head.push('上次失分点现在')}
+    if(d.evidenceDisclaimer)box.appendChild(el('p',{class:'muted',text:d.evidenceDisclaimer}));
     box.appendChild(epTable(head,d.pupils.map(function(x){
       var row=[x.name,x.handedIn?x.score+' 分':'未交'];if(retest)row.push(x.before!=null?x.before+' 分':'—');
-      row.push(x.handedIn?epTime(x):'—',x.handedIn?epFocus(x):'—',epDrill(x));
+      row.push(x.handedIn?epTime(x):'—',x.handedIn?epFocus(x):'—',x.handedIn?epEvidence(x):'—',epDrill(x));
       if(retest)row.push(x.change?x.change.map(function(c){return c.name+'：'+c.verdict+(c.before!=null&&c.after!=null?'（失分率 '+c.before+'%→'+c.after+'%）':'')}).join('；'):'—');
       return row})));
     var res=el('div',{role:'status'}),per=el('input',{type:'number',min:'1',max:'6',value:'4','aria-label':'每个知识点几题'}),rpt=el('div');

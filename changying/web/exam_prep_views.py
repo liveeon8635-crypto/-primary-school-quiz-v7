@@ -33,6 +33,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
+
+from changying.services.exam_prep_evidence import EVIDENCE_DISCLAIMER, collect_exam_prep_evidence
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, desc, insert, select, update
 
 from changying.services import exam_prep as ep
@@ -327,8 +329,10 @@ def install_exam_prep_views(implementation: Any) -> APIRouter:
         base_marks = marks_of(db, u, [q for _, q in base_plan]) if base else {}
         base_subs = submissions(db, u, base.assignment_id) if base else {}
         drill_rows = {r.student_id: r for r in db.execute(select(drills).where(drills.c.paper_id == p.id)).all()}
+        class_pupils = pupils_of(db, u, g.class_id)
+        ev_map = collect_exam_prep_evidence(db, I, u.school_id, g.map_id, m, [k.id for k in class_pupils])
         out = []
-        for k in pupils_of(db, u, g.class_id):
+        for k in class_pupils:
             item: dict[str, Any] = {"studentId": k.id, "name": k.name, "handedIn": k.id in subs}
             d = drill_rows.get(k.id)
             if d:
@@ -338,6 +342,9 @@ def install_exam_prep_views(implementation: Any) -> APIRouter:
             if k.id in subs:
                 res = pupil_result(plan, correct_map(subs[k.id]), marks, names, order)
                 item["score"], item["focus"] = res["score"], res["focus"]
+                if res["focus"]:
+                    stu_ev = ev_map.get(k.id, {})
+                    item["pointEvidence"] = {f["key"]: stu_ev.get(f["key"], []) for f in res["focus"] if stu_ev.get(f["key"])}
                 if k.id in starts:
                     used = int((subs[k.id].submitted_at - starts[k.id]).total_seconds() // 60)
                     item["minutes"] = max(used, 0)
@@ -355,7 +362,8 @@ def install_exam_prep_views(implementation: Any) -> APIRouter:
                         key=lambda x: (-x["rate"], order.index(x["key"]) if x["key"] in order else 0))
         return {"paper": {"id": p.id, "kind": p.kind, "questionCount": len(plan), "timeLimit": p.time_limit_min,
                           "totalMarks": sum(marks.values()), "basePaperId": base.id if base else None},
-                "pupils": out, "points": points, "handedIn": sum(1 for x in out if x["handedIn"]), "classSize": len(out)}
+                "pupils": out, "points": points, "handedIn": sum(1 for x in out if x["handedIn"]), "classSize": len(out),
+                "evidenceDisclaimer": EVIDENCE_DISCLAIMER}
 
     # ---------------------------------------------------------------- pages
     @router.get("/v1/exam-prep", include_in_schema=False)

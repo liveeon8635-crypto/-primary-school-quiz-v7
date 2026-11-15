@@ -111,7 +111,11 @@ def _local_day() -> str:
     return (datetime.utcnow() + timedelta(hours=8)).strftime("%Y-%m-%d")
 
 
-def follow_up_state(db: Any, teacher: Any) -> dict[str, set[int]]:
+def _item_key(item: dict[str, Any]) -> str:
+    return str(item.get("itemKey") or f"homework:{item['helpID']}")
+
+
+def follow_up_state(db: Any, teacher: Any) -> dict[str, set[Any]]:
     """读这位老师的展示/处理/暂缓记录。
 
     dismissed 永久生效（不限窗口）；shown/snoozed 只看当天。
@@ -120,14 +124,24 @@ def follow_up_state(db: Any, teacher: Any) -> dict[str, set[int]]:
     from app_v924 import AuditLog  # 延迟导入：本模块由 app_v924 装载
 
     day = _local_day()
-    out = {"shown": set(), "dismissed": set(), "snoozed": set(),
-           "shownStudents": set(), "dismissedStudents": set(), "snoozedStudents": set()}
+    out: dict[str, set[Any]] = {
+        "shown": set(), "dismissed": set(), "snoozed": set(),
+        "shownKeys": set(), "dismissedKeys": set(), "snoozedKeys": set(),
+        "shownStudents": set(), "dismissedStudents": set(), "snoozedStudents": set(),
+    }
 
     def load(detail: Any) -> dict[str, Any]:
         try:
             return json.loads(detail or "{}")
         except ValueError:
             return {}
+
+    def key_of(d: dict[str, Any]) -> str | None:
+        if isinstance(d.get("itemKey"), str) and d["itemKey"]:
+            return d["itemKey"]
+        if isinstance(d.get("helpID"), int):
+            return f"homework:{d['helpID']}"
+        return None
 
     # 永久：dismissed 不分窗口
     for (detail,) in db.execute(
@@ -139,10 +153,13 @@ def follow_up_state(db: Any, teacher: Any) -> dict[str, set[int]]:
     ).all():
         d = load(detail)
         hid = d.get("helpID")
+        k = key_of(d)
         if isinstance(hid, int):
             out["dismissed"].add(hid)
-            if d.get("day") == day and isinstance(d.get("studentID"), int):
-                out["dismissedStudents"].add(d["studentID"])
+        if k:
+            out["dismissedKeys"].add(k)
+        if (isinstance(hid, int) or k) and d.get("day") == day and isinstance(d.get("studentID"), int):
+            out["dismissedStudents"].add(d["studentID"])
 
     # 当天：shown / snoozed
     for action, detail in db.execute(
@@ -158,14 +175,21 @@ def follow_up_state(db: Any, teacher: Any) -> dict[str, set[int]]:
             continue
         hid = d.get("helpID")
         sid = d.get("studentID")
-        if not isinstance(hid, int):
+        k = key_of(d)
+        if not isinstance(hid, int) and not k:
             continue
         if action == "follow_up_shown":
-            out["shown"].add(hid)
+            if isinstance(hid, int):
+                out["shown"].add(hid)
+            if k:
+                out["shownKeys"].add(k)
             if isinstance(sid, int):
                 out["shownStudents"].add(sid)
         else:
-            out["snoozed"].add(hid)
+            if isinstance(hid, int):
+                out["snoozed"].add(hid)
+            if k:
+                out["snoozedKeys"].add(k)
             if isinstance(sid, int):
                 out["snoozedStudents"].add(sid)
     return out
@@ -841,22 +865,37 @@ def install_homework_help(implementation: Any) -> APIRouter:
         keep, state = _admit_follow_ups(db, u, items)
         day = _local_day()
         recorded = []
+        recorded_keys = []
         for item in keep:
-            hid = item["helpID"]
-            if hid in state["shown"]:
+            hid = item.get("helpID")
+            ikey = _item_key(item)
+            if ikey in state["shownKeys"]:
                 continue
+            payload: dict[str, Any] = {
+                "itemKey": ikey,
+                "studentID": item["studentID"],
+                "teacherID": u.id,
+                "day": day,
+            }
+            if hid is not None:
+                payload["helpID"] = hid
+            if item.get("peerHelpID") is not None:
+                payload["peerHelpID"] = item["peerHelpID"]
             db.add(implementation.AuditLog(
                 school_id=u.school_id, user_id=u.id, action="follow_up_shown",
-                detail=json.dumps({"helpID": hid, "studentID": item["studentID"],
-                                   "teacherID": u.id, "day": day}, ensure_ascii=False)[:1000],
+                detail=json.dumps(payload, ensure_ascii=False)[:1000],
             ))
-            state["shown"].add(hid)
-            recorded.append(hid)
+            state["shownKeys"].add(ikey)
+            if hid is not None:
+                state["shown"].add(hid)
+                recorded.append(hid)
+            recorded_keys.append(ikey)
         db.commit()
         return {
             "items": keep[:50],
             "shownToday": sorted(state["shown"]),
             "recorded": recorded,
+            "recordedKeys": recorded_keys,
             "dailyLimit": FOLLOW_UP_DAILY_LIMIT,
             "note": "每个班每天最多 %d 条；返回的条目已占用当天的「已确认展示名额」，关闭页面也不返还" % FOLLOW_UP_DAILY_LIMIT,
         }
@@ -935,6 +974,54 @@ def install_homework_help(implementation: Any) -> APIRouter:
         else:
             # 后续练习已达到条件的求助不再需要跟进，从当天列表移出（名额仍不返还）。
             items = [x for x in items if x.get("verification") != "后续练习达到条件"]
+
+        # 合并周末课同桌讲题巩固未达标/未完成条目，共享每日每班 5 条、每生 1 条上限（晚托求助优先）。
+        peer = implementation.Base.metadata.tables.get("weekend_peer_help")
+        if peer is not None:
+            peer_rows = db.execute(
+                select(peer, User.name.label("student_name"))
+                .join(User, User.id == peer.c.tutee_id)
+                .where(
+                    peer.c.school_id == teacher.school_id,
+                    peer.c.tutee_id.in_(mine),
+                    peer.c.followup_json != "",
+                    (peer.c.followup_correct.is_(None)) | (peer.c.followup_correct == False),  # noqa: E712
+                )
+                .order_by(peer.c.created_at.asc(), peer.c.id.asc())
+                .limit(100)
+            ).all()
+            for raw in peer_rows:
+                row = _mapping(raw)
+                stem = ""
+                try:
+                    stem = str(json.loads(row.get("followup_json") or "{}").get("stem") or "")
+                except ValueError:
+                    stem = ""
+                wrong = row.get("followup_correct") is False
+                items.append({
+                    "source": "weekend",
+                    "itemKey": f"weekend:{row['id']}",
+                    "peerHelpID": row["id"],
+                    "helpID": None,
+                    "studentID": row["tutee_id"],
+                    "studentName": row["student_name"],
+                    "reason": "周末课巩固题未做对" if wrong else "周末课巩固题待完成",
+                    "verification": "待周末课巩固",
+                    "evidence": {
+                        "peerHelpID": row["id"],
+                        "state": "followup_wrong" if wrong else "followup_open",
+                        "escalatedAt": _iso(row["created_at"]),
+                        "resolvedAt": "",
+                        "question": stem[:80],
+                    },
+                    "next": {
+                        "label": "去周末课查看",
+                        "route": "/v1/weekend",
+                        "params": {"studentID": row["tutee_id"]},
+                    },
+                    "rank": 3 if wrong else 4,
+                })
+            items.sort(key=lambda x: (x["rank"], x["evidence"]["escalatedAt"] or "", _item_key(x)))
         return items
 
     def _admit_follow_ups(db: Any, teacher: Any, items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -942,12 +1029,13 @@ def install_homework_help(implementation: Any) -> APIRouter:
         # 每天每班最多 5 条：已展示过的继续显示，新的只补到预算内。
         # 预算按当天完整展示历史扣（每班各自 5 条），已处理、暂缓或已验证移出列表都不返还名额。
         state = follow_up_state(db, teacher)
-        shown_today = state["shown"]
+        shown_keys = state["shownKeys"]
         blocked_students = state["dismissedStudents"] | state["snoozedStudents"]
         eligible = []
         for item in items:
-            hid, sid = item["helpID"], item["studentID"]
-            if hid in state["dismissed"] or hid in state["snoozed"]:
+            ikey = _item_key(item)
+            sid = item["studentID"]
+            if ikey in state["dismissedKeys"] or ikey in state["snoozedKeys"]:
                 continue
             if sid in blocked_students:
                 continue  # 该学生今天已处理/暂缓过，当天不再推它的其它求助
@@ -960,7 +1048,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
         kept_students: set[int] = set()
         # 今天已经展示过的先放回；同一学生只保留一条，并占用当天的名额
         for item in eligible:
-            if item["helpID"] not in shown_today:
+            if _item_key(item) not in shown_keys:
                 continue
             student_id = item["studentID"]
             if student_id in kept_students:
@@ -968,7 +1056,7 @@ def install_homework_help(implementation: Any) -> APIRouter:
             kept_students.add(student_id)
             keep.append(item)
         for item in eligible:
-            if item["helpID"] in shown_today:
+            if _item_key(item) in shown_keys:
                 continue
             student_id = item["studentID"]
             if student_id is None or student_id in kept_students or student_id in shown_students:
@@ -1128,6 +1216,34 @@ def install_homework_help(implementation: Any) -> APIRouter:
         db.commit()
         # 明确：只关闭/暂缓这条建议，求助本身的状态没有改变。
         return {"helpID": help_id, "action": action, "helpStateUnchanged": True}
+
+    @router.post("/teacher/homework/follow-ups/weekend/{peer_id}/{action}")
+    def follow_ups_mark_weekend(peer_id: int, action: str, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """dismiss=周末课巩固建议已收起；snooze=当天暂缓。"""
+        need(u, "teacher")
+        if action not in ("dismiss", "snooze"):
+            raise HTTPException(404, "没有这个操作")
+        peer = implementation.Base.metadata.tables.get("weekend_peer_help")
+        if peer is None:
+            raise HTTPException(404, "没有这条跟进建议")
+        mine = teacher_student_ids(db, u)
+        owned = db.execute(
+            select(peer.c.id, peer.c.tutee_id).where(
+                peer.c.id == peer_id, peer.c.school_id == u.school_id,
+                peer.c.tutee_id.in_(mine) if mine else False,
+            )
+        ).first()
+        if owned is None:
+            raise HTTPException(404, "没有这条跟进建议")
+        db.add(implementation.AuditLog(
+            school_id=u.school_id, user_id=u.id,
+            action="follow_up_" + ("dismissed" if action == "dismiss" else "snoozed"),
+            detail=json.dumps({"itemKey": f"weekend:{peer_id}", "peerHelpID": peer_id,
+                               "studentID": owned.tutee_id, "teacherID": u.id, "day": _local_day()},
+                              ensure_ascii=False)[:1000],
+        ))
+        db.commit()
+        return {"peerHelpID": peer_id, "action": action, "helpStateUnchanged": True}
 
     @router.get("/teacher/homework/help/{help_id}")
     def teacher_detail(help_id: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):

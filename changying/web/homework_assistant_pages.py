@@ -151,25 +151,33 @@ function followUpsView(box){
     card.appendChild(el('div',{class:'muted',text:'每个班每天最多 '+(d.dailyLimit||5)+' 条；点「已处理」只收起建议，求助本身仍需你在求助列表确认。'}));
     if(!(d.items||[]).length){card.appendChild(el('div',{class:'muted',text:'今天没有需要跟进的建议。'}));return}
     d.items.forEach(function(it){
+      var isWk=it.source==='weekend';
+      var markBase=isWk?'/teacher/homework/follow-ups/weekend/'+it.peerHelpID:'/teacher/homework/follow-ups/'+it.helpID;
+      var basis=isWk?('周末课巩固 #'+it.peerHelpID):('求助 #'+it.helpID);
       var row=el('div',{class:'row'},el('div',{class:'row-main'},
         el('b',{text:it.studentName+'：'+it.reason}),
-        el('div',{class:'muted',text:'依据：求助 #'+it.helpID+' · '+(it.evidence.escalatedAt||'')+' · '+(it.evidence.question||'')}),
+        el('div',{class:'muted',text:'依据：'+basis+' · '+(it.evidence.escalatedAt||'')+' · '+(it.evidence.question||'')}),
         it.verification?el('div',{class:'tag'+(it.verification==='已独立验证'?' ok':''),text:it.verification}):null));
       var acts=el('div',{class:'row',style:'gap:6px'});
       acts.appendChild(el('button',{class:'primary',text:it.next.label,onclick:function(){
-      var q='?helpID='+encodeURIComponent(it.next.params.helpID);
-      if(it.next.params.studentID)q+='&studentID='+encodeURIComponent(it.next.params.studentID);
+      var q='';
+      if(!isWk&&it.next.params.helpID!=null){
+        q='?helpID='+encodeURIComponent(it.next.params.helpID);
+        if(it.next.params.studentID)q+='&studentID='+encodeURIComponent(it.next.params.studentID);
+      }else if(it.next.params&&it.next.params.studentID){
+        q='?studentID='+encodeURIComponent(it.next.params.studentID);
+      }
       if(typeof navigate==='function')navigate(it.next.route+q);
       else location.href=it.next.route+q;
     }}));
       acts.appendChild(el('button',{text:'已处理',onclick:function(){
-        api('/teacher/homework/follow-ups/'+it.helpID+'/dismiss',{method:'POST'}).then(function(){
+        api(markBase+'/dismiss',{method:'POST'}).then(function(){
           row.remove();
-          alert('这条建议已收起。注意：求助本身还没有处理，需要你到求助列表里确认。');
+          alert('这条建议已收起。注意：原学习记录状态不变。');
         }).catch(function(e){alert(e.message)});
       }}));
       acts.appendChild(el('button',{text:'今天先不提醒',onclick:function(){
-        api('/teacher/homework/follow-ups/'+it.helpID+'/snooze',{method:'POST'}).then(function(){row.remove()}).catch(function(e){alert(e.message)});
+        api(markBase+'/snooze',{method:'POST'}).then(function(){row.remove()}).catch(function(e){alert(e.message)});
       }}));
       row.appendChild(acts);
       card.appendChild(row);
