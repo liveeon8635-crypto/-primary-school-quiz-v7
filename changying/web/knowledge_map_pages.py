@@ -443,7 +443,8 @@ function kmClassLoad(cid,out){
     if(!d.students.length){out.appendChild(el('p',{text:'这个班还没有学生。'}));return}
     var head=el('tr',{},el('th',{text:'学生'}),el('th',{text:'入门诊断'}));
     d.units.forEach(function(u){head.appendChild(el('th',{text:u.name}))});
-    var tb=el('tbody'),changes={};
+    head.appendChild(el('th',{text:'跨场景证据'}));
+    var tb=el('tbody'),changes={},evBox=el('div');
     d.students.forEach(function(st){
       var g=st.diagnosis,tr=el('tr',{},el('td',{text:st.name}),
         el('td',{text:g.status==='submitted'?'已完成 '+g.correct+'/'+g.count:g.status==='open'?'做了一半':'未开始'}));
@@ -454,6 +455,8 @@ function kmClassLoad(cid,out){
         pick.addEventListener('change',function(){changes[st.id+':'+u.key]={studentId:st.id,unitKey:u.key,level:pick.value||null}});
         tr.appendChild(el('td',{},kmMasteryTag(st.units[u.key],L),el('div',{},pick)));
       });
+      var evList=st.evidence||[];
+      tr.appendChild(el('td',{},el('button',{class:'btn','data-evidence-btn':String(st.id),text:'查看证据（'+evList.length+'）',onclick:function(){kmStudentEvidence(st,d,evBox)}})));
       tb.appendChild(tr);
     });
     var ag=d.agreement,agText=ag.compared?'老师判断与系统判断一致 '+ag.agreed+' / '+ag.compared+' 项，一致率 '+Math.round(ag.rate*100)+'%（验收要求不低于 '+Math.round(ag.threshold*100)+'%）'+(ag.passed?'，已达到':'，未达到'):
@@ -469,6 +472,7 @@ function kmClassLoad(cid,out){
       ag.rated>ag.compared?el('span',{class:'muted',text:'（另有 '+(ag.rated-ag.compared)+' 项系统证据不足，未计入）'}):null));
     out.appendChild(el('div',{style:'overflow-x:auto'},el('table',{},el('thead',{},head),tb)));
     out.appendChild(save);
+    out.appendChild(evBox);
     var detail=el('div'),nb=el('tbody');
     d.nodes.forEach(function(n){
       var c=d.tally[n.key],tr=el('tr',{style:'cursor:pointer',tabindex:'0','data-tally':n.key},el('td',{text:n.key+' '+n.name}),
@@ -482,13 +486,38 @@ function kmClassLoad(cid,out){
     out.appendChild(detail);
   }).catch(function(e){out.textContent='';out.appendChild(el('p',{class:'warn',text:e.message}))});
 }
+function kmStudentEvidence(st,d,box){
+  box.textContent='';
+  var items=st.evidence||[],card=el('div',{class:'card','data-student-evidence':String(st.id)});
+  card.appendChild(el('h4',{text:st.name+' · 跨场景学习证据（'+items.length+' 条）'}));
+  if(d.evidenceDisclaimer)card.appendChild(el('p',{class:'muted',text:d.evidenceDisclaimer}));
+  if(!items.length){card.appendChild(el('p',{class:'muted',text:'暂时没有周末课、晚托作业助手、知识地图或应试专项的学习记录。'}));box.appendChild(card);return}
+  var tb=el('tbody');
+  items.forEach(function(ev){
+    tb.appendChild(el('tr',{},
+      el('td',{text:ev.sourceLabel||ev.source}),
+      el('td',{text:ev.time||'未知'}),
+      el('td',{text:String(ev.count||0)}),
+      el('td',{text:ev.gradingStatus||'未知'}),
+      el('td',{text:ev.helpStatus||'未知'}),
+      el('td',{text:ev.summary||''})));
+  });
+  card.appendChild(el('div',{style:'overflow-x:auto'},el('table',{},
+    el('thead',{},el('tr',{},el('th',{text:'来源'}),el('th',{text:'时间'}),el('th',{text:'数量'}),el('th',{text:'批改状态'}),el('th',{text:'受助/提示状态'}),el('th',{text:'内容'}))),
+    tb)));
+  box.appendChild(card);
+}
 function kmNodeStudents(d,n,box){
-  var order={weak:0,pass:1,fluent:2},rows=d.students.map(function(st){return {id:st.id,name:st.name,m:st.nodes[n.key]}});
+  var order={weak:0,pass:1,fluent:2},rows=d.students.map(function(st){
+    var matched=(st.evidence||[]).filter(function(ev){return (ev.nodeKeys||[]).indexOf(n.key)>=0});
+    return {id:st.id,name:st.name,m:st.nodes[n.key],ev:matched};
+  });
   rows.sort(function(a,b){var x=a.m.level?order[a.m.level]:3,y=b.m.level?order[b.m.level]:3;return x-y||b.m.evidence-a.m.evidence});
   var ul=el('ul'),picked={};
   rows.forEach(function(r){var on=r.m.level==='weak';if(on)picked[r.id]=1;
     var cb=el('input',{type:'checkbox',checked:on,'aria-label':'选择 '+r.name,onchange:function(e){if(e.target.checked)picked[r.id]=1;else delete picked[r.id]}});
-    ul.appendChild(el('li',{},cb,' '+r.name+'：',kmMasteryTag(r.m,d.masteryLabels),' 第一次作答 '+r.m.evidence+' 题'))});
+    var evHint=r.ev.length?' · 跨场景证据 '+r.ev.length+' 条（'+r.ev.slice(0,2).map(function(x){return x.sourceLabel+'：'+x.helpStatus}).join('；')+'）':'';
+    ul.appendChild(el('li',{},cb,' '+r.name+'：',kmMasteryTag(r.m,d.masteryLabels),' 第一次作答 '+r.m.evidence+' 题'+evHint))});
   var count=el('select',{'aria-label':'每人题数'});[3,4,5,6].forEach(function(c){var o=el('option',{value:String(c),text:'每人 '+c+' 题'});if(c===4)o.selected=true;count.appendChild(o)});
   var res=el('div');
   var go=el('button',{class:'btn primary',text:'给勾选的学生布置巩固练习',onclick:function(){
