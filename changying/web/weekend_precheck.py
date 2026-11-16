@@ -129,11 +129,10 @@ class WrittenPrechecks:
                         check_student_call(impl, db, user)
                         # Release the pooled connection while the external recognizer runs.
                         # The recognizer opens a short transaction only to record usage later.
-                        actor = SimpleNamespace(id=user.id, school_id=user.school_id)
+                        actor = SimpleNamespace(id=user.id, school_id=user.school_id, role=getattr(user, "role", "student"))
                         db.rollback()
                         read = recognize_image(impl, db, actor, answer.photo,
-                            feature="homework_help_written_precheck_ocr", prompt=rules.transcription_prompt(),
-                            student_ids=(int(user.id),))
+                            feature="homework_help_written_precheck_ocr", prompt=rules.transcription_prompt())
                     truncated = bool(read.get("truncated") or len(read.get("text") or "") >= RECOGNIZED_CHAR_LIMIT)
                     try:
                         parsed = impl._ai_json(read["text"])

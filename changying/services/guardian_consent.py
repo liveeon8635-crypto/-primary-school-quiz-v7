@@ -663,7 +663,7 @@ def require_student_ai_authorized(
         _deny(503, msg, "ai_disabled")
 
     sids = [int(x) for x in dict.fromkeys(student_ids) if x is not None]
-    if not config.allow_student_data and (is_personal or sids or feature in ("homework_notice_parse", "homework_parse", "homework_parse_vision")):
+    if not config.allow_student_data and (is_personal or feature in ("homework_notice_parse", "homework_parse", "homework_parse_vision")):
         msg = (
             "尚未开启发送学生内容授权，请先前往「AI 设置」开启并完成监护人授权"
             if is_personal
@@ -698,7 +698,7 @@ def install_ai_egress_guard(implementation: Any) -> None:
     def guarded_ai_call(db, u, feature, prompt, images=None, timeout=90, rate_check=None, **kwargs):
         student_ids = kwargs.pop("student_ids", ()) or ()
         imgs = images or []
-        is_teaching_only = (feature in TEACHING_ONLY_AI_FEATURES) and not student_ids and not imgs
+        is_teaching_only = (feature in TEACHING_ONLY_AI_FEATURES) and not student_ids and (not imgs or feature == "product_assistant")
         if not is_teaching_only:
             target_sids = tuple(student_ids) or ((int(u.id),) if getattr(u, "role", "") == "student" else ())
             require_student_ai_authorized(
