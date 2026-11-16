@@ -19,6 +19,13 @@ function glanceBox(g,s){
   if(g.compare)box.appendChild(el('div',{class:'muted',text:g.compare}));
   return box;
 }
+function weekWorkBox(w){
+  if(!w||!w.counts||!w.counts.total)return null;
+  var c=w.counts,box=el('div',{class:'card'},el('h2',{text:'本周作业（'+w.weekStart+' 至 '+w.weekEnd+'）'}));
+  box.appendChild(el('div',{class:'notice',text:'应做 '+c.total+' 份 · 已交 '+c.submitted+' 份 · 未交 '+c.unsubmitted+' 份 · 待批改 '+c.pending+' 份'+(w.rate!=null?' · 已批改正确率 '+w.rate+'%':'')}));
+  (w.items||[]).forEach(function(i){box.appendChild(el('div',{class:'notice',text:i.title+(i.due?' · 截止 '+i.due:'')+' · '+i.statusLabel+(i.rate!=null?' · 正确率 '+i.rate+'%':'')}))});
+  return box;
+}
 function reportView(r){
   var box=el('div');
   (r.facts||[]).forEach(function(f,i){
@@ -28,6 +35,7 @@ function reportView(r){
     card.appendChild(el('div',{class:'notice',text:factsLine(f)+(f.points!=null?' · 课堂积分 '+f.points+' 分（积分不是学业成绩）':'')}));
     var g=(r.glance||[])[i];if(g)card.appendChild(glanceBox(g,s));
     REPORT_KEYS.forEach(function(k){if(!s[k])return;card.appendChild(el('b',{text:r.titles[k]}));card.appendChild(el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0 10px',text:s[k]}))});
+    var wk=weekWorkBox(f.weekWork);if(wk)card.appendChild(wk);
     box.appendChild(card);
   });
   if(r.comment)box.appendChild(el('div',{class:'card'},el('b',{text:'老师的话'}),el('p',{style:'white-space:pre-wrap',text:r.comment})));
