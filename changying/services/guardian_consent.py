@@ -70,6 +70,11 @@ _REQUEST_STUDENT_ID: contextvars.ContextVar[int | None] = contextvars.ContextVar
     default=None,
 )
 
+_UNVERIFIED_FREE_TEXT: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "guardian_consent_unverified_free_text",
+    default=False,
+)
+
 FEATURE_TO_SCOPE: dict[str, str] = {
     "grading_assist": "homework_help",
     "homework_parse": "homework_help",
@@ -726,7 +731,7 @@ def install_ai_egress_guard(implementation: Any) -> None:
 
     def guarded_ai_call(db, u, feature, prompt, images=None, timeout=90, rate_check=None, **kwargs):
         student_ids = kwargs.pop("student_ids", ()) or ()
-        unverified_free_text = bool(kwargs.pop("unverified_free_text", False))
+        unverified_free_text = bool(kwargs.pop("unverified_free_text", False)) or bool(_UNVERIFIED_FREE_TEXT.get())
         imgs = images or []
         is_teaching_only = (
             (feature in TEACHING_ONLY_AI_FEATURES)

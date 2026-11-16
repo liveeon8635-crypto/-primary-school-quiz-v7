@@ -429,15 +429,13 @@ def _rich_generate_call(implementation: ModuleType):
         has_unverified_notes = bool(str(b.notes or "").strip())
 
         def run_generation(feature: str, text: str, wanted: int):
-            raw = implementation._ai_json(
-                implementation._ai_call(
-                    db,
-                    u,
-                    feature,
-                    text,
-                    unverified_free_text=has_unverified_notes,
-                )
-            )
+            from changying.services.guardian_consent import _UNVERIFIED_FREE_TEXT
+
+            tok = _UNVERIFIED_FREE_TEXT.set(has_unverified_notes)
+            try:
+                raw = implementation._ai_json(implementation._ai_call(db, u, feature, text))
+            finally:
+                _UNVERIFIED_FREE_TEXT.reset(tok)
             return clean_rich_question_rows(
                 raw,
                 body=b,
