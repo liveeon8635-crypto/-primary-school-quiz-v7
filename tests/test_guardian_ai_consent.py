@@ -778,3 +778,189 @@ def test_v4_independent_acceptance_matrix(client, monkeypatch):
     monkeypatch.setenv("GUARDIAN_CONSENT_MIGRATION_APPROVED", "1")
     register_guardian_consent_tables(fake_pg_impl)
     assert len(create_calls) == 1
+
+
+def test_v5_reinforcement_and_question_gen_notes_isolation(client, monkeypatch):
+    import json
+    from concurrent.futures import ThreadPoolExecutor
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.schema import CreateIndex, CreateTable
+    import app_v924 as legacy
+    from changying.services.guardian_consent import CONSENT_METADATA
+
+    t_headers, p_headers, _s_headers, student_id = _setup_personal_family(client)
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+
+    http_calls = []
+
+    def fake_post(url, *args, **kwargs):
+        http_calls.append(url)
+        payload = kwargs.get("json") or {}
+        text = json.dumps(payload, ensure_ascii=False)
+        if "questions" in text:
+            content = json.dumps({
+                "questions": [{
+                    "question_type": "single_choice",
+                    "knowledge": "分数计算",
+                    "text": "1/2 + 1/3 等于多少？",
+                    "options": ["2/5", "5/6", "1/6", "3/5"],
+                    "correct_index": 1,
+                    "explanation": "通分后相加：3/6 + 2/6 = 5/6。",
+                }]
+            }, ensure_ascii=False)
+        else:
+            content = json.dumps({
+                "items": [{
+                    "question_type": "single_choice",
+                    "grade": 5,
+                    "subject": "数学",
+                    "textbook": "人教版",
+                    "semester": "上册",
+                    "unit": "分数加法",
+                    "knowledge": "分数计算",
+                    "text": "1/4 + 1/2 等于多少？",
+                    "options": ["1/6", "3/4", "2/6", "1/2"],
+                    "correct_index": 1,
+                    "explanation": "通分后相加：1/4 + 2/4 = 3/4。",
+                }]
+            }, ensure_ascii=False)
+        return SimpleNamespace(
+            ok=True,
+            status_code=200,
+            json=lambda: {"choices": [{"message": {"content": content}}]},
+        )
+
+    monkeypatch.setattr(legacy.requests, "post", fake_post)
+
+    # Seed real WrongQuestionRecord for student_id
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, student_id)
+        db.add(legacy.WrongQuestionRecord(
+            school_id=stu.school_id,
+            student_id=student_id,
+            subject="数学",
+            knowledge="分数计算",
+            problem_text="1/2 + 1/4 = ?",
+            wrong_answer="2/6",
+            correct_answer="3/4",
+            analysis="先通分再相加",
+            status="active",
+        ))
+        db.commit()
+
+    # 1. reinforcement_generate: compliance closed (even with allow_student_data=True) -> 403, 0 HTTP
+    monkeypatch.delenv("STUDENT_AI_COMPLIANCE_APPROVED", raising=False)
+    r_closed = client.post(
+        f"/teacher/students/{student_id}/reinforcement/generate",
+        headers=t_headers,
+        json={"count": 1},
+    )
+    assert r_closed.status_code == 403
+    assert len(http_calls) == 0
+
+    # 2. compliance open, NO guardian consent -> 403, 0 HTTP
+    monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
+    r_no_consent = client.post(
+        f"/teacher/students/{student_id}/reinforcement/generate",
+        headers=t_headers,
+        json={"count": 1},
+    )
+    assert r_no_consent.status_code == 403
+    assert len(http_calls) == 0
+
+    # 3. Direct _ai_call("reinforcement_generate") without student_ids -> 403, 0 HTTP
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, student_id)
+        teacher = db.query(legacy.User).filter(legacy.User.school_id == stu.school_id, legacy.User.role == "teacher").first()
+        with pytest.raises(HTTPException) as exc_direct:
+            legacy._ai_call(db, teacher, "reinforcement_generate", "prompt")
+        assert exc_direct.value.status_code == 403
+    assert len(http_calls) == 0
+
+    # 4. Activate guardian consent -> reinforcement_generate succeeds (1 HTTP)
+    tok = client.post(f"/teacher/students/{student_id}/ai-consent/token", headers=t_headers, json={"scope": "exam_prep_ai"}).json()["token"]
+    assert client.post("/parent/ai-consent/confirm", headers=p_headers, json={"token": tok, "student_id": student_id}).status_code == 200
+    r_ok = client.post(
+        f"/teacher/students/{student_id}/reinforcement/generate",
+        headers=t_headers,
+        json={"count": 1},
+    )
+    assert r_ok.status_code == 200, r_ok.text[:300]
+    assert len(http_calls) == 1
+
+    # 5. Revoke consent -> retry & concurrent calls for revoked student -> 403, 0 new HTTP
+    assert client.post(f"/parent/children/{student_id}/ai-consent/revoke", headers=p_headers, json={"reason": "revoke"}).status_code == 200
+    r_rev = client.post(
+        f"/teacher/students/{student_id}/reinforcement/generate",
+        headers=t_headers,
+        json={"count": 1},
+    )
+    assert r_rev.status_code == 403
+    assert len(http_calls) == 1
+
+    def _retry_revoked():
+        return client.post(
+            f"/teacher/students/{student_id}/reinforcement/generate",
+            headers=t_headers,
+            json={"count": 1},
+        ).status_code
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        statuses = list(pool.map(lambda _: _retry_revoked(), range(3)))
+    assert statuses == [403, 403, 403]
+    assert len(http_calls) == 1
+
+    # 6. question_generation & question_generation_repair with teacher notes containing student name & score -> 403, 0 new HTTP
+    r_q_notes = client.post(
+        "/ai/questions/generate",
+        headers=t_headers,
+        json={
+            "grade": 5,
+            "subject": "数学",
+            "textbook": "人教版",
+            "semester": "上册",
+            "count": 1,
+            "notes": "根据张小明最近数学考试58分、分数计算薄弱的情况，生成针对性练习",
+        },
+    )
+    assert r_q_notes.status_code == 403
+    assert len(http_calls) == 1
+
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, student_id)
+        teacher = db.query(legacy.User).filter(legacy.User.school_id == stu.school_id, legacy.User.role == "teacher").first()
+        with pytest.raises(HTTPException) as exc_rep:
+            legacy._ai_call(db, teacher, "question_generation_repair", "repair", unverified_free_text=True)
+        assert exc_rep.value.status_code == 403
+    assert len(http_calls) == 1
+
+    # 7. Pure structured question_generation without notes -> succeeds
+    r_q_pure = client.post(
+        "/ai/questions/generate",
+        headers=t_headers,
+        json={
+            "grade": 5,
+            "subject": "数学",
+            "textbook": "人教版",
+            "semester": "上册",
+            "knowledge": "分数计算",
+            "count": 1,
+            "notes": "",
+        },
+    )
+    assert r_q_pure.status_code == 200, r_q_pure.text[:300]
+    assert len(http_calls) == 2
+
+    # 8. PostgreSQL DDL compilation check for all 3 tables & indexes
+    pg_dialect = postgresql.dialect()
+    ddls = []
+    for tbl in CONSENT_METADATA.sorted_tables:
+        ddls.append(str(CreateTable(tbl).compile(dialect=pg_dialect)))
+        for idx in tbl.indexes:
+            ddls.append(str(CreateIndex(idx).compile(dialect=pg_dialect)))
+    joined_ddl = "\n".join(ddls)
+    assert "CREATE TABLE guardian_ai_consents" in joined_ddl
+    assert "CREATE TABLE guardian_consent_tokens" in joined_ddl
+    assert "CREATE TABLE guardian_consent_audit_logs" in joined_ddl

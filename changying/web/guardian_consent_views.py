@@ -247,6 +247,25 @@ def install_guardian_consent_views(implementation: Any) -> APIRouter:
         implementation.PERSONAL_AI_HTML = PERSONAL_AI_HTML_V2
     install_ai_egress_guard(implementation)
 
+    if not getattr(app.state, "guardian_consent_sid_middleware_installed", False):
+        import re as _re
+        from changying.services.guardian_consent import _REQUEST_STUDENT_ID
+
+        _reinforce_re = _re.compile(r"^/teacher/students/(\d+)/reinforcement/generate$")
+
+        @app.middleware("http")
+        async def _bind_student_id_for_reinforcement(request: Any, call_next: Any):
+            m = _reinforce_re.match(request.url.path)
+            if not m:
+                return await call_next(request)
+            token = _REQUEST_STUDENT_ID.set(int(m.group(1)))
+            try:
+                return await call_next(request)
+            finally:
+                _REQUEST_STUDENT_ID.reset(token)
+
+        app.state.guardian_consent_sid_middleware_installed = True
+
     User = implementation.User
     ParentStudent = implementation.ParentStudent
     SchoolClass = implementation.SchoolClass

@@ -18,6 +18,7 @@ Implements P0-2 safety controls:
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import os
 import secrets
@@ -54,17 +55,20 @@ CONSENT_SCOPES: tuple[str, ...] = (
 
 # Explicit allowlist of strictly structured, non-student-PII teaching/connection-test
 # features that carry NO unverified user/teacher free-text, NO student_ids, and NO images.
-# Features accepting arbitrary pasted/lesson text (e.g. paper_import, weekend_courseware)
-# are intentionally excluded so unverified text cannot bypass authorization.
+# Features carrying student records (e.g. reinforcement_generate) or unverified teacher
+# free-text (e.g. question_generation with notes, lesson_plan, paper_import, weekend_courseware)
+# are excluded or dynamically gated.
 TEACHING_ONLY_AI_FEATURES: frozenset[str] = frozenset({
     "connection_test",
     "question_generation",
     "question_generation_repair",
-    "lesson_plan",
-    "lesson_practice",
-    "reinforcement_generate",
     "weekend_hint",
 })
+
+_REQUEST_STUDENT_ID: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+    "guardian_consent_request_student_id",
+    default=None,
+)
 
 FEATURE_TO_SCOPE: dict[str, str] = {
     "grading_assist": "homework_help",
@@ -76,6 +80,7 @@ FEATURE_TO_SCOPE: dict[str, str] = {
     "homework_help_guide": "homework_help",
     "homework_help_solve": "homework_help",
     "homework_practice_generate": "homework_help",
+    "reinforcement_generate": "exam_prep_ai",
     "weekend_report": "weekend_review",
     "weekend_report_suggest": "weekend_review",
     "weekend_practice": "weekend_review",
@@ -721,10 +726,21 @@ def install_ai_egress_guard(implementation: Any) -> None:
 
     def guarded_ai_call(db, u, feature, prompt, images=None, timeout=90, rate_check=None, **kwargs):
         student_ids = kwargs.pop("student_ids", ()) or ()
+        unverified_free_text = bool(kwargs.pop("unverified_free_text", False))
         imgs = images or []
-        is_teaching_only = (feature in TEACHING_ONLY_AI_FEATURES) and not student_ids and not imgs
+        is_teaching_only = (
+            (feature in TEACHING_ONLY_AI_FEATURES)
+            and not student_ids
+            and not imgs
+            and not unverified_free_text
+        )
         if not is_teaching_only:
-            target_sids = tuple(student_ids) or ((int(u.id),) if getattr(u, "role", "") == "student" else ())
+            ctx_sid = _REQUEST_STUDENT_ID.get() if feature == "reinforcement_generate" else None
+            target_sids = (
+                tuple(student_ids)
+                or ((ctx_sid,) if ctx_sid is not None else ())
+                or ((int(u.id),) if getattr(u, "role", "") == "student" else ())
+            )
             require_student_ai_authorized(
                 db,
                 implementation,

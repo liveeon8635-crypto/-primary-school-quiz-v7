@@ -426,8 +426,18 @@ def _rich_generate_call(implementation: ModuleType):
 
 {refs}"""
 
+        has_unverified_notes = bool(str(b.notes or "").strip())
+
         def run_generation(feature: str, text: str, wanted: int):
-            raw = implementation._ai_json(implementation._ai_call(db, u, feature, text))
+            raw = implementation._ai_json(
+                implementation._ai_call(
+                    db,
+                    u,
+                    feature,
+                    text,
+                    unverified_free_text=has_unverified_notes,
+                )
+            )
             return clean_rich_question_rows(
                 raw,
                 body=b,
