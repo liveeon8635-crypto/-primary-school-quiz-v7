@@ -369,3 +369,11 @@ with TestClient(app) as client:
 ''',
         flag=False,
     )
+
+def test_code_alphabet_avoids_ambiguous_glyphs():
+    """A 0/O/1/I/L in a class code makes both reading and typing it error prone."""
+    from changying.web.classroom_quick_login import CODE_ALPHABET, CODE_LENGTH
+
+    assert CODE_LENGTH == 8
+    assert not set(CODE_ALPHABET) & set("01OIL")
+    assert len(CODE_ALPHABET) == 31
