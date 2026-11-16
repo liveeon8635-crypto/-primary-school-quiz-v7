@@ -177,20 +177,6 @@ def register_guardian_consent_tables(implementation: Any = None) -> dict[str, Ta
     }
 
 
-def migrate_guardian_consent_tables(engine: Any) -> dict[str, Table]:
-    """Explicit controlled migration to create the three guardian consent tables."""
-    tables = register_guardian_consent_tables()
-    CONSENT_METADATA.create_all(bind=engine)
-    return tables
-
-
-def rollback_guardian_consent_tables(engine: Any) -> None:
-    """Explicit rollback to drop only the three guardian consent tables (reverse dependency order)."""
-    tables = register_guardian_consent_tables()
-    for tname in ("audits", "tokens", "consents"):
-        tables[tname].drop(bind=engine, checkfirst=True)
-
-
 def _record_audit(
     db: Any,
     audits_table: Table,
