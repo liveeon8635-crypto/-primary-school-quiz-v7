@@ -195,6 +195,19 @@ def test_server_handoff_cookie_is_secure_on_https() -> None:
     assert "SameSite=strict" in cookie
 
 
+def test_server_handoff_cookie_is_secure_behind_a_tls_terminating_proxy() -> None:
+    """Render forwards plain HTTP to uvicorn; the cookie must still be Secure."""
+    client = TestClient(_handoff_test_app())  # http://testserver, like production's backend hop
+    response = client.post(
+        V1_AUTH_HANDOFF_STAGE_PATH,
+        headers={"Authorization": "Bearer good-token", "X-Forwarded-Proto": "https"},
+    )
+    assert response.status_code == 200
+    cookie = response.headers["set-cookie"]
+    assert "Secure" in cookie
+    assert "HttpOnly" in cookie and "SameSite=strict" in cookie
+
+
 def test_invalid_bearer_never_creates_handoff_cookie() -> None:
     client = TestClient(_handoff_test_app())
     response = client.post(
