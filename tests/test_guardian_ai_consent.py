@@ -654,21 +654,127 @@ def test_personal_weekend_courseware_and_hint_boundaries(client, monkeypatch):
         db.commit()
         lid, qid = lesson.id, tq.id
 
-    # 1. Personal teacher generates pure-teaching courseware & 3-level hints WITHOUT student consent
+    # 1. Unverified teacher free-text courseware (weekend_courseware) is excluded from allowlist -> blocked (0 HTTP)
     r_cw = client.post(f"/teacher/weekend/lessons/{lid}/courseware/generate", headers=t_headers, json={"stageNo": 1})
-    assert r_cw.status_code == 200, r_cw.text[:300]
-    assert len(http_calls) == 1
+    assert r_cw.status_code in (403, 502)
+    assert len(http_calls) == 0
 
+    # 2. Structured pure-teaching hint generation (weekend_hint without student_ids) succeeds
     r_hint = client.post("/teacher/weekend/hints/generate", headers=t_headers, json={"questionId": qid})
     assert r_hint.status_code == 200, r_hint.text[:300]
     assert len(r_hint.json()["hints"]) == 3
-    assert len(http_calls) == 2
+    assert len(http_calls) == 1
 
-    # 2. Student-scoped weekend_hint / weekend_report / weekend_practice without consent MUST be blocked (0 new HTTP calls)
+    # 3. Student-scoped weekend_hint / weekend_report / weekend_practice without consent MUST be blocked (0 new HTTP calls)
     with legacy.SessionLocal() as db:
         student = db.get(legacy.User, student_id)
         for feat in ("weekend_hint", "weekend_report", "weekend_practice"):
             with pytest.raises(HTTPException) as exc:
                 legacy._ai_call(db, student, feat, "prompt", student_ids=(student_id,))
             assert exc.value.status_code == 403
+    assert len(http_calls) == 1
+
+    # 4. After guardian consent + compliance approval, student weekend_hint succeeds; after revocation -> 403, 0 HTTP
+    monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
+    tok = client.post(f"/teacher/students/{student_id}/ai-consent/token", headers=t_headers, json={}).json()["token"]
+    assert client.post("/parent/ai-consent/confirm", headers=p_headers, json={"token": tok, "student_id": student_id}).status_code == 200
+    with legacy.SessionLocal() as db:
+        student = db.get(legacy.User, student_id)
+        assert legacy._ai_call(db, student, "weekend_hint", '{"levels": []}', student_ids=(student_id,))
     assert len(http_calls) == 2
+
+    assert client.post(f"/parent/children/{student_id}/ai-consent/revoke", headers=p_headers, json={"reason": "revoke"}).status_code == 200
+    with legacy.SessionLocal() as db:
+        student = db.get(legacy.User, student_id)
+        with pytest.raises(HTTPException) as exc_rev:
+            legacy._ai_call(db, student, "weekend_hint", '{"levels": []}', student_ids=(student_id,))
+        assert exc_rev.value.status_code == 403
+    assert len(http_calls) == 2
+
+
+def test_v4_independent_acceptance_matrix(client, monkeypatch):
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    import app_v924 as legacy
+    from changying.services.guardian_consent import (
+        CONSENT_METADATA,
+        register_guardian_consent_tables,
+    )
+
+    t_headers, p_headers, _s_headers, student_id = _setup_personal_family(client)
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+    http_calls = []
+    monkeypatch.setattr(
+        legacy.requests,
+        "post",
+        lambda url, *a, **kw: http_calls.append(url) or SimpleNamespace(ok=True, status_code=200, json=lambda: {"choices": [{"message": {"content": "ok"}}]}),
+    )
+
+    # 1. Pure-text paper_import containing student name & score without authorization -> 0 HTTP
+    monkeypatch.delenv("STUDENT_AI_COMPLIANCE_APPROVED", raising=False)
+    r_paper = client.post(
+        "/teacher/papers/import/parse",
+        headers=t_headers,
+        json={"grade": 5, "subject": "数学", "text": "张小明 数学 58分\n1. 1+1=?"},
+    )
+    assert r_paper.status_code in (403, 502)
+    assert len(http_calls) == 0
+
+    # 2. Pure teaching question_generation (no student data) -> succeeds
+    with legacy.SessionLocal() as db:
+        student = db.get(legacy.User, student_id)
+        teacher = db.query(legacy.User).filter(legacy.User.school_id == student.school_id, legacy.User.role == "teacher").first()
+        assert legacy._ai_call(db, teacher, "question_generation", "出1道五年级分数计算题") == "ok"
+    assert len(http_calls) == 1
+
+    # 3. Unregistered AI feature MUST return 403 and 0 HTTP even with student_ai_all consent & compliance open
+    monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
+    tok = client.post(f"/teacher/students/{student_id}/ai-consent/token", headers=t_headers, json={"scope": "student_ai_all"}).json()["token"]
+    assert client.post("/parent/ai-consent/confirm", headers=p_headers, json={"token": tok, "student_id": student_id}).status_code == 200
+    with legacy.SessionLocal() as db:
+        student = db.get(legacy.User, student_id)
+        teacher = db.query(legacy.User).filter(legacy.User.school_id == student.school_id, legacy.User.role == "teacher").first()
+        with pytest.raises(HTTPException) as exc_unreg:
+            legacy._ai_call(db, teacher, "brand_new_unregistered_feature", "hello", student_ids=(student_id,))
+        assert exc_unreg.value.status_code == 403
+    assert len(http_calls) == 1
+
+    # 4. Institutional mode with allow_student_data=True but missing student_ids -> 403, 0 HTTP
+    tag = uuid.uuid4().hex[:8]
+    inst_code = f"inst-v4-{tag}"
+    assert client.post(
+        "/operator/schools/create",
+        headers={"X-Commercial-Key": COMMERCIAL_KEY},
+        json={
+            "school_name": f"机构V4-{tag}",
+            "school_code": inst_code,
+            "admin_name": "刘老师",
+            "admin_username": inst_code,
+            "admin_password": PASSWORD,
+            "individual": False,
+        },
+    ).status_code == 200
+    with legacy.SessionLocal() as db:
+        inst_admin = db.query(legacy.User).filter(legacy.User.username == inst_code).first()
+        cfg = legacy.ai_config_for(db, inst_admin.school_id, True)
+        cfg.enabled = True
+        cfg.allow_student_data = True
+        cfg.provider = "openai_compatible"
+        cfg.base_url = "https://api.deepseek.com/v1"
+        cfg.model = "deepseek-chat"
+        db.commit()
+        with pytest.raises(HTTPException) as exc_inst:
+            legacy._ai_call(db, inst_admin, "homework_help_solve", "missing student owner")
+        assert exc_inst.value.status_code == 403
+    assert len(http_calls) == 1
+
+    # 5. Production non-SQLite DB does NOT auto-run create_all at startup unless migration is approved
+    create_calls = []
+    monkeypatch.setattr(CONSENT_METADATA, "create_all", lambda bind=None: create_calls.append(bind))
+    monkeypatch.delenv("GUARDIAN_CONSENT_MIGRATION_APPROVED", raising=False)
+    fake_pg_impl = SimpleNamespace(engine=SimpleNamespace(dialect=SimpleNamespace(name="postgresql")))
+    register_guardian_consent_tables(fake_pg_impl)
+    assert len(create_calls) == 0
+    monkeypatch.setenv("GUARDIAN_CONSENT_MIGRATION_APPROVED", "1")
+    register_guardian_consent_tables(fake_pg_impl)
+    assert len(create_calls) == 1

@@ -92,7 +92,7 @@ def test_teacher_call_request_shape_and_usage_log_are_unchanged(tmp_path):
 with TestClient(app):
     with legacy.SessionLocal() as db:
         teacher = prepare(db)
-        out = legacy._ai_call(db, teacher, "grading_assist", "hello")
+        out = legacy._ai_call(db, teacher, "grading_assist", "hello", student_ids=(1,))
         assert out == "回复"
         assert len(posts) == 1
         assert posts[0]["url"] == "https://api.deepseek.com/chat/completions"
@@ -104,7 +104,7 @@ with TestClient(app):
             "grading_assist", "ok", 5, 2, 11, 7, "")
         assert row.user_id == teacher.id and row.school_id == teacher.school_id and row.provider == "openai_compatible"
         # Image callers keep working too.
-        legacy._ai_call(db, teacher, "grading_assist", "see", images=["data:image/png;base64,AAAA"], timeout=30)
+        legacy._ai_call(db, teacher, "grading_assist", "see", images=["data:image/png;base64,AAAA"], timeout=30, student_ids=(1,))
         sent = posts[-1]["json"]["messages"][0]["content"]
         assert sent[0] == {"type": "text", "text": "see"} and sent[1]["type"] == "image_url" and posts[-1]["timeout"] == 30
 print("OK")
@@ -124,11 +124,11 @@ with TestClient(app):
         teacher = prepare(db)
         before = log_count(db)
         for i in range(3):
-            legacy._ai_call(db, teacher, "grading_assist", f"p{i}")
+            legacy._ai_call(db, teacher, "grading_assist", f"p{i}", student_ids=(1,))
         assert log_count(db) == before + 3 and len(posts) == 3
         # The fourth call in the hour is refused exactly as before: same status and message, no request, no log row.
         try:
-            legacy._ai_call(db, teacher, "grading_assist", "p4")
+            legacy._ai_call(db, teacher, "grading_assist", "p4", student_ids=(1,))
             raise SystemExit("expected a 429")
         except HTTPException as exc:
             assert exc.status_code == 429
@@ -139,12 +139,12 @@ with TestClient(app):
         db.execute(legacy.AIUsageLog.__table__.delete()); db.commit()
         add_logs(db, teacher.school_id, teacher.id, "grading_assist", 5, age_minutes=61)
         add_logs(db, teacher.school_id + 999, teacher.id, "grading_assist", 5)
-        legacy._ai_call(db, teacher, "grading_assist", "fine")
+        legacy._ai_call(db, teacher, "grading_assist", "fine", student_ids=(1,))
         # Any other (non-student) feature of the same school does count.
         db.execute(legacy.AIUsageLog.__table__.delete()); db.commit()
         add_logs(db, teacher.school_id, teacher.id, "teacher_reinforcement", 3)
         try:
-            legacy._ai_call(db, teacher, "grading_assist", "blocked")
+            legacy._ai_call(db, teacher, "grading_assist", "blocked", student_ids=(1,))
             raise SystemExit("expected a 429")
         except HTTPException as exc:
             assert exc.status_code == 429
@@ -166,9 +166,9 @@ with TestClient(app):
         add_logs(db, teacher.school_id, 4242, "homework_help_solve", 40)
         add_logs(db, teacher.school_id, 4242, "homework_help_vision", 40)
         for i in range(3):
-            legacy._ai_call(db, teacher, "grading_assist", f"p{i}")      # still the full budget of 3
+            legacy._ai_call(db, teacher, "grading_assist", f"p{i}", student_ids=(1,))      # still the full budget of 3
         try:
-            legacy._ai_call(db, teacher, "grading_assist", "p4")
+            legacy._ai_call(db, teacher, "grading_assist", "p4", student_ids=(1,))
             raise SystemExit("expected a 429")
         except HTTPException as exc:
             assert exc.status_code == 429 and exc.detail.startswith("本校 AI 调用已达到每小时 3 次")
@@ -176,7 +176,7 @@ with TestClient(app):
         db.execute(legacy.AIUsageLog.__table__.delete()); db.commit()
         add_logs(db, teacher.school_id, teacher.id, "homework_parse", 3)
         try:
-            legacy._ai_call(db, teacher, "grading_assist", "blocked")
+            legacy._ai_call(db, teacher, "grading_assist", "blocked", student_ids=(1,))
             raise SystemExit("expected a 429")
         except HTTPException as exc:
             assert exc.status_code == 429
@@ -205,12 +205,12 @@ with TestClient(app):
     with legacy.SessionLocal() as db:
         teacher = prepare(db)
         # No argument: the default school-wide check runs, once, with the school id.
-        legacy._ai_call(db, teacher, "grading_assist", "a")
+        legacy._ai_call(db, teacher, "grading_assist", "a", student_ids=(1,))
         assert seen == [("default", teacher.school_id)]
 
         # With an argument: only that check runs; the request and the log row are otherwise identical.
         custom = []
-        legacy._ai_call(db, teacher, "homework_help_solve", "b", rate_check=lambda d, sid: custom.append(sid))
+        legacy._ai_call(db, teacher, "homework_help_solve", "b", rate_check=lambda d, sid: custom.append(sid), student_ids=(1,))
         assert custom == [teacher.school_id] and seen == [("default", teacher.school_id)]
         assert posts[-1]["json"] == {"model": "m", "messages": [{"role": "user", "content": "b"}], "temperature": 0.2}
         assert db.scalars(select(legacy.AIUsageLog)).all()[-1].feature == "homework_help_solve"
@@ -220,7 +220,7 @@ with TestClient(app):
             raise HTTPException(429, "nope")
         n_posts, n_logs = len(posts), log_count(db)
         try:
-            legacy._ai_call(db, teacher, "homework_help_solve", "c", rate_check=refuse)
+            legacy._ai_call(db, teacher, "homework_help_solve", "c", rate_check=refuse, student_ids=(1,))
             raise SystemExit("expected a 429")
         except HTTPException as exc:
             assert exc.status_code == 429 and exc.detail == "nope"

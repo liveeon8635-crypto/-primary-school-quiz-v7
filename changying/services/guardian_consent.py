@@ -52,8 +52,10 @@ CONSENT_SCOPES: tuple[str, ...] = (
     "exam_prep_ai",
 )
 
-# Explicit allowlist of pure teaching-content / connection-test features that carry
-# NO student PII, NO student_ids, and NO images. Everything else is default-denied.
+# Explicit allowlist of strictly structured, non-student-PII teaching/connection-test
+# features that carry NO unverified user/teacher free-text, NO student_ids, and NO images.
+# Features accepting arbitrary pasted/lesson text (e.g. paper_import, weekend_courseware)
+# are intentionally excluded so unverified text cannot bypass authorization.
 TEACHING_ONLY_AI_FEATURES: frozenset[str] = frozenset({
     "connection_test",
     "question_generation",
@@ -61,19 +63,11 @@ TEACHING_ONLY_AI_FEATURES: frozenset[str] = frozenset({
     "lesson_plan",
     "lesson_practice",
     "reinforcement_generate",
-    "kp_card_draft",
-    "kp_card_ai_draft",
-    "paper_import",
-    "weekend_lesson_draft",
-    "weekend_lesson_import",
-    "weekend_question_gen",
-    "weekend_courseware",
     "weekend_hint",
-    "homework_practice",
-    "science_lesson",
 })
 
 FEATURE_TO_SCOPE: dict[str, str] = {
+    "grading_assist": "homework_help",
     "homework_parse": "homework_help",
     "homework_parse_vision": "homework_help",
     "homework_notice_parse": "homework_help",
@@ -169,12 +163,32 @@ def register_guardian_consent_tables(implementation: Any = None) -> dict[str, Ta
             Column("created_at", DateTime, nullable=False, index=True),
         )
     if implementation is not None and getattr(implementation, "engine", None) is not None:
-        md.create_all(bind=implementation.engine)
+        eng = implementation.engine
+        is_sqlite = getattr(getattr(eng, "dialect", None), "name", "") == "sqlite"
+        migration_approved = os.getenv("GUARDIAN_CONSENT_MIGRATION_APPROVED", "").strip().lower() in {"1", "true", "yes", "on"}
+        auto_create_flag = os.getenv("GUARDIAN_CONSENT_AUTO_CREATE_TABLES", "").strip().lower() not in {"0", "false", "no", "off"}
+        # Never auto-create tables on non-SQLite (production) databases at startup unless explicitly approved.
+        if (is_sqlite or migration_approved) and auto_create_flag:
+            md.create_all(bind=eng)
     return {
         "consents": md.tables["guardian_ai_consents"],
         "tokens": md.tables["guardian_consent_tokens"],
         "audits": md.tables["guardian_consent_audit_logs"],
     }
+
+
+def migrate_guardian_consent_tables(engine: Any) -> dict[str, Table]:
+    """Explicit controlled migration to create the three guardian consent tables."""
+    tables = register_guardian_consent_tables()
+    CONSENT_METADATA.create_all(bind=engine)
+    return tables
+
+
+def rollback_guardian_consent_tables(engine: Any) -> None:
+    """Explicit rollback to drop only the three guardian consent tables (reverse dependency order)."""
+    tables = register_guardian_consent_tables()
+    for tname in ("audits", "tokens", "consents"):
+        tables[tname].drop(bind=engine, checkfirst=True)
 
 
 def _record_audit(
@@ -633,7 +647,7 @@ def require_student_ai_authorized(
     require_guardian_for_personal: bool = True,
 ) -> None:
     """Unified default-deny authorization check before ANY external AI HTTP call."""
-    scope = FEATURE_TO_SCOPE.get(feature, "student_ai_all")
+    scope = FEATURE_TO_SCOPE.get(feature)
     is_personal = implementation.is_individual_school(db, int(school_id)) is True
     config = implementation.ai_config_for(db, int(school_id), False)
     tables = register_guardian_consent_tables(implementation)
@@ -648,7 +662,7 @@ def require_student_ai_authorized(
             student_id=sid,
             actor_user_id=actor_user_id,
             action="egress.blocked",
-            scope=scope,
+            scope=scope or "unregistered",
             detail=f"feature={feature}:reason={reason}",
         )
         try:
@@ -656,6 +670,13 @@ def require_student_ai_authorized(
         except Exception:
             db.rollback()
         raise HTTPException(status_code, message)
+
+    if scope is None:
+        _deny(
+            403,
+            "未登记或未证明无学生数据的 AI 功能，默认拒绝向外部 AI 发送数据",
+            "unregistered_ai_feature",
+        )
 
     if is_personal and not compliance_student_ai_enabled():
         _deny(
@@ -677,13 +698,14 @@ def require_student_ai_authorized(
         )
         _deny(403, msg, "allow_student_data_false")
 
+    if not sids:
+        _deny(
+            403,
+            "未指定已获授权的学生对象，禁止向外部 AI 发送缺少归属的数据",
+            "missing_student_consent_target",
+        )
+
     if is_personal and require_guardian_for_personal:
-        if not sids:
-            _deny(
-                403,
-                "未指定已获监护人授权的学生对象，禁止向外部 AI 发送真实学生数据",
-                "missing_student_consent_target",
-            )
         now = datetime.utcnow()
         for sid in sids:
             if not _has_active_consent(db, consents_t, int(school_id), sid, scope, now):
