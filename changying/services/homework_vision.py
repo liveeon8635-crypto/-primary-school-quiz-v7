@@ -160,6 +160,19 @@ def recognize_image(
     started = time.time()
     status, error, out, data = "ok", "", "", {}
     try:
+        if hasattr(implementation, "Base") and hasattr(implementation, "is_individual_school"):
+            from changying.services.guardian_consent import require_student_ai_authorized
+
+            target_sids = (int(user.id),) if getattr(user, "role", "") == "student" else ()
+            require_student_ai_authorized(
+                db,
+                implementation,
+                school_id=int(user.school_id),
+                feature=feature,
+                student_ids=target_sids,
+                actor_user_id=getattr(user, "id", None),
+                require_guardian_for_personal=bool(target_sids),
+            )
         if provider == "openai_responses":
             payload = {
                 "model": model,

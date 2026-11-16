@@ -3551,10 +3551,15 @@ def _ai_rate_check(db,school_id):
     n=db.scalar(select(func.count()).select_from(AIUsageLog).where(AIUsageLog.school_id==school_id,AIUsageLog.created_at>=since,AIUsageLog.feature.notlike("homework_help_%"))) or 0
     if n>=AI_HOURLY_LIMIT:raise HTTPException(429,f"本校 AI 调用已达到每小时 {AI_HOURLY_LIMIT} 次保护上限，请稍后再试")
 
-def _ai_call(db,u,feature,prompt,images=None,timeout=90,rate_check=None):
+def _ai_call(db,u,feature,prompt,images=None,timeout=90,rate_check=None,student_ids=()):
     (rate_check or _ai_rate_check)(db,u.school_id);row,provider,base,model,key=_ai_active_config(db,u.school_id);images=images or []
     started=time.time();status="ok";err="";out="";data={}
     try:
+        import sys
+        from changying.services.guardian_consent import FEATURE_TO_SCOPE, require_student_ai_authorized
+        if feature in FEATURE_TO_SCOPE or student_ids:
+            target_sids=tuple(student_ids) or ((int(u.id),) if getattr(u,"role","")=="student" else ())
+            require_student_ai_authorized(db,sys.modules[__name__],school_id=int(u.school_id),feature=feature,student_ids=target_sids,actor_user_id=getattr(u,"id",None),require_guardian_for_personal=bool(target_sids))
         headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"}
         if provider=="openai_responses":
             content=[{"type":"input_text","text":prompt}]+[{"type":"input_image","image_url":x} for x in images]
@@ -5233,6 +5238,12 @@ a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:no
 <p class="sub">个人免费版：模型由你自己提供，Key 只保存在这间工作室，费用也由你自己承担。</p>
 <div class="card">
 <div id="cy-status" class="status">正在读取当前设置…</div>
+<label for="cy-provider">接口协议</label>
+<select id="cy-provider" style="width:100%;border:1px solid #cfd7e5;border-radius:10px;padding:11px 12px;font:inherit;background:#fff">
+<option value="openai_responses">OpenAI Responses API（/responses）</option>
+<option value="openai_compatible">OpenAI 兼容接口（/chat/completions）</option>
+</select>
+<div class="hint">DeepSeek、通义千问等中转或兼容服务请选择「OpenAI 兼容接口」。</div>
 <label for="cy-base">模型地址</label>
 <input id="cy-base" autocomplete="off" placeholder="https://api.openai.com/v1">
 <div class="hint">一般保持默认；用中转或自建服务时才改。</div>
@@ -5241,6 +5252,10 @@ a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:no
 <label for="cy-key">API Key</label>
 <input id="cy-key" type="password" autocomplete="off" placeholder="粘贴你的 Key">
 <div class="hint">保存后不再显示完整 Key，只显示末四位；留空表示不修改已保存的 Key。</div>
+<label style="display:flex;align-items:center;gap:8px;font-weight:600;margin-top:14px">
+<input id="cy-allow-student" type="checkbox" style="width:auto"> 允许将经监护人授权的学生内容发送给外部 AI
+</label>
+<div class="hint">默认关闭。开启后仍须学生监护人单独确认授权且平台合规开关开放，方可外发真实学生数据。</div>
 <div class="actions">
 <button class="primary" id="cy-save">保存</button>
 <button class="plain" id="cy-test">测试连接</button>
@@ -5267,23 +5282,32 @@ a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:no
     x.send(body?JSON.stringify(body):null);
   }
   var hasKey=false;
+  var currentProvider='openai_responses';
   function apply(d){
     if(!d)return;
+    currentProvider=d.provider||'openai_responses';
+    if(el('cy-provider'))el('cy-provider').value=currentProvider;
     el('cy-base').value=d.baseURL||'';
     el('cy-model').value=d.configuredModel||d.model||'';
+    if(el('cy-allow-student'))el('cy-allow-student').checked=!!d.allowStudentData;
     hasKey=!!d.hasKey;
-    if(hasKey){
+    if(d.configured&&d.enabled){
       el('cy-key').placeholder='已保存，留空表示不修改';
-      setStatus('当前已保存 Key（末四位 '+(d.keyLast4||'****')+'）'+(d.enabled?'，AI 已启用。':'，但还没有启用。'),'ok');
+      setStatus('已配置并启用（协议：'+currentProvider+'，Key 末四位 '+(d.keyLast4||'****')+'），可点「测试连接」。','ok');
+    }else if(hasKey){
+      el('cy-key').placeholder='已保存，留空表示不修改';
+      setStatus('已保存 Key（末四位 '+(d.keyLast4||'****')+'），但尚未启用或缺少模型名。','');
     }else{
-      setStatus('还没有填写 Key，AI 功能暂不可用。','');
+      setStatus('未配置：请填写模型地址、模型名和 API Key。','');
     }
   }
   send('GET','/teacher/ai-config',null,function(s,d){
     if(s===200)apply(d);else setStatus((d&&d.detail)||'读取失败，请刷新重试','err');
   });
   el('cy-save').onclick=function(){
-    var body={provider:'openai_responses',base_url:el('cy-base').value.trim(),model:el('cy-model').value.trim(),api_key:el('cy-key').value.trim(),enabled:true,allow_student_data:false,clear_api_key:false};
+    var prov=(el('cy-provider')?el('cy-provider').value:currentProvider)||currentProvider||'openai_responses';
+    var allowStudent=!!(el('cy-allow-student')&&el('cy-allow-student').checked);
+    var body={provider:prov,base_url:el('cy-base').value.trim(),model:el('cy-model').value.trim(),api_key:el('cy-key').value.trim(),enabled:true,allow_student_data:allowStudent,clear_api_key:false};
     if(!body.model){msg('请先填写模型名','err');return}
     if(!body.api_key&&!hasKey){msg('请填写 API Key','err');return}
     el('cy-save').disabled=true;msg('正在保存…','');

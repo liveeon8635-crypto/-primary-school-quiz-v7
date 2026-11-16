@@ -123,14 +123,19 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
     def require_school_ai_for_notice(db: Any, teacher: Any) -> None:
         """Notices (text or screenshot) can contain student and parent names, phone numbers, chat names.
 
-        They only go to the AI provider when the school has switched AI on AND allowed content to leave
-        (the same switch the student side uses); otherwise nothing is sent and the teacher types the list by hand.
+        They only go to the AI provider when compliance, workspace AI switch, and
+        student-data switch are all enabled; otherwise nothing is sent and the teacher types manually.
         """
-        config = implementation.ai_config_for(db, teacher.school_id, False)
-        if not config or not config.enabled:
-            raise HTTPException(503, "AI 教学助手尚未启用，请联系学校管理员完成 AI 设置")
-        if not config.allow_student_data:
-            raise HTTPException(403, "学校管理员尚未允许把作业通知内容发送到 AI 服务商，请先手动录入作业")
+        from changying.services.guardian_consent import require_student_ai_authorized
+
+        require_student_ai_authorized(
+            db,
+            implementation,
+            school_id=int(teacher.school_id),
+            feature="homework_notice_parse",
+            actor_user_id=int(teacher.id),
+            require_guardian_for_personal=False,
+        )
 
     def teacher_students(db: Any, teacher: Any) -> list[dict[str, Any]]:
         rows = db.execute(

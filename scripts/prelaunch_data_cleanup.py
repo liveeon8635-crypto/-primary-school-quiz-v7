@@ -56,7 +56,7 @@ DELETE_TABLES = (
 KEEP_TABLES = (
     "schools", "users", "user_security", "parent_students", "classes", "class_students", "student_class_history",
     "classroom_groups", "classroom_group_members",
-    "school_ai_configs", "school_subscriptions", "subscription_events",
+    "school_ai_configs", "guardian_ai_consents", "guardian_consent_tokens", "guardian_consent_audit_logs", "school_subscriptions", "subscription_events",
     "commercial_customers", "commercial_followups", "commercial_operation_logs", "commercial_orders",
     "commercial_payments", "commercial_quota_overrides", "commercial_renewals",
     "point_rules", "class_point_rules", "reward_items", "auto_reward_rules",
