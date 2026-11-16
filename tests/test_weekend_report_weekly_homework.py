@@ -36,9 +36,19 @@ with TestClient(app) as client:
         done = legacy.Assignment(school_id=school_id, title="本周作业·已完成", class_id=cls.id, paper_id=paper.id, due_date=due)
         missing = legacy.Assignment(school_id=school_id, title="本周作业·未交", class_id=cls.id, paper_id=paper.id, due_date=due)
         stale = legacy.Assignment(school_id=school_id, title="上周作业", class_id=cls.id, paper_id=paper.id, due_date="2000-01-03")
-        db.add_all([done, missing, stale]); db.flush()
+        media = legacy.Assignment(school_id=school_id, title="本周照片作业", class_id=cls.id, paper_id=paper.id, due_date=due)
+        practice = legacy.Assignment(school_id=school_id, title="知识地图练习", class_id=cls.id, paper_id=paper.id, due_date=due)
+        mixed = legacy.Assignment(school_id=school_id, title="未完成的混合作业", class_id=cls.id, paper_id=paper.id, due_date=due)
+        db.add_all([done, missing, stale, media, practice, mixed]); db.flush()
         for a in (done, missing, stale):
             db.add(legacy.AssignmentRecipient(school_id=school_id, assignment_id=a.id, class_id=cls.id, student_id=sid))
+        db.add(legacy.AssignmentRecipient(school_id=school_id, assignment_id=media.id, class_id=cls.id, student_id=sid, source="assignment"))
+        db.add(legacy.AssignmentRecipient(school_id=school_id, assignment_id=practice.id, class_id=cls.id, student_id=sid, source="knowledge_map"))
+        db.add(legacy.AssignmentRecipient(school_id=school_id, assignment_id=mixed.id, class_id=cls.id, student_id=sid, source="assignment"))
+        db.add(legacy.AssignmentSubmissionSetting(school_id=school_id, assignment_id=media.id, mode="media"))
+        db.add(legacy.AssignmentSubmissionSetting(school_id=school_id, assignment_id=mixed.id, mode="mixed"))
+        db.add(legacy.HomeworkMediaSubmit(school_id=school_id, assignment_id=media.id, student_id=sid))
+        db.add(legacy.Submission(school_id=school_id, assignment_id=mixed.id, student_id=sid, title="混合作业在线部分", score=100, correct=1, total=1, answers_json="[]", completion_actor="student"))
         db.add(legacy.Submission(school_id=school_id, assignment_id=done.id, student_id=sid, title="本周作业·已完成",
                                  score=50, correct=2, total=4, answers_json="[]", completion_actor="student"))
         parent = legacy.User(school_id=school_id, username="parent_a", name="甲家长", role="parent",
@@ -61,10 +71,12 @@ with TestClient(app) as client:
     body = r.json()
     rid = body["id"]
     wk = body["report"]["facts"][0]["weekWork"]
-    assert wk["counts"] == {"total": 2, "submitted": 1, "unsubmitted": 1, "pending": 0}, wk
+    assert wk["counts"] == {"total": 4, "submitted": 2, "unsubmitted": 2, "pending": 1}, wk
     assert wk["rate"] == 50, wk
     items = {i["title"]: i for i in wk["items"]}
-    assert set(items) == {"本周作业·已完成", "本周作业·未交"}, items
+    assert set(items) == {"本周作业·已完成", "本周作业·未交", "本周照片作业", "未完成的混合作业"}, items
+    assert items["本周照片作业"]["status"] == "pending"
+    assert items["未完成的混合作业"]["status"] == "unsubmitted" and items["未完成的混合作业"]["rate"] is None
     assert items["本周作业·已完成"]["status"] == "submitted" and items["本周作业·已完成"]["statusLabel"] == "已交"
     assert items["本周作业·已完成"]["rate"] == 50 and items["本周作业·已完成"]["correct"] == 2
     assert items["本周作业·未交"]["status"] == "unsubmitted" and items["本周作业·未交"]["rate"] is None
@@ -72,7 +84,7 @@ with TestClient(app) as client:
     assert (datetime.strptime(wk["weekEnd"], "%Y-%m-%d").date() - datetime.strptime(wk["weekStart"], "%Y-%m-%d").date()).days == 6
 
     homework = next(s_ for s_ in body["report"]["draft"]["sections"] if s_["sessionId"] == s)["homework"]
-    assert "本周普通作业" in homework and "应做 2 份" in homework, homework
+    assert "本周普通作业" in homework and "应做 4 份" in homework, homework
     assert "未交：「本周作业·未交」" in homework, homework
 
     # The pupil has no homework of his own beyond the two for this week: an unrelated classmate stays at zero.
@@ -85,7 +97,7 @@ with TestClient(app) as client:
     briefs = client.get(f"/parent/children/{sid}/weekend-briefs", headers=ph).json()["reports"]
     assert briefs, "the published report must reach the parent"
     parent_wk = briefs[0]["facts"][0]["weekWork"]
-    assert parent_wk["counts"]["total"] == 2 and parent_wk["rate"] == 50
+    assert parent_wk["counts"]["total"] == 4 and parent_wk["rate"] == 50
     assert set(parent_wk["items"][0]) == {"title", "status", "statusLabel", "rate", "due"}
     assert all("correct" not in i and "total" not in i for i in parent_wk["items"])
     print("OK")

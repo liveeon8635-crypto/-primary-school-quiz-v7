@@ -70,7 +70,7 @@ def week_window(day: str) -> tuple[str, str]:
 
 
 def week_work_map(impl: Any, db: Any, *, school_id: int, student_ids: list[int], day: str) -> dict[int, dict[str, Any]]:
-    """Ordinary assignments each pupil received in the report's week (Mon..Sun); read-only, two queries.
+    """Ordinary assignments each pupil received in the report's week (Mon..Sun); read-only.
 
     An assignment counts when the pupil is a recipient of it and its due date (or, without
     one, its creation date) falls inside the window. The latest submission decides the state:
@@ -89,26 +89,28 @@ def week_work_map(impl: Any, db: Any, *, school_id: int, student_ids: list[int],
                         .where(submission.school_id == school_id, submission.student_id.in_(ids), submission.assignment_id.isnot(None))
                         .order_by(submission.submitted_at, submission.id)):
         latest[(int(s.student_id), int(s.assignment_id))] = s
-    rows = db.execute(select(recipient.student_id, assignment.id, assignment.title, assignment.due_date, assignment.created_at)
+    rows = db.execute(select(recipient.student_id, assignment)
                       .select_from(recipient).join(assignment, assignment.id == recipient.assignment_id)
-                      .where(recipient.school_id == school_id, recipient.student_id.in_(ids))
+                      .where(recipient.school_id == school_id, recipient.student_id.in_(ids), recipient.source == "assignment")
                       .order_by(assignment.due_date, assignment.id))
     for row in rows:
-        due = str(row.due_date or "")[:10]
-        created = local_dt(impl, row.created_at)
+        task = row[1]
+        due = str(task.due_date or "")[:10]
+        created = local_dt(impl, task.created_at)
         day_key = due or (created.strftime("%Y-%m-%d") if created is not None else "")
         if not (start <= day_key <= end):
             continue
         block = out[int(row.student_id)]
-        s = latest.get((int(row.student_id), int(row.id)))
-        total = int(getattr(s, "total", 0) or 0) if s is not None else 0
+        s = latest.get((int(row.student_id), int(task.id)))
+        state = impl.assignment_effective_status(db, task, int(row.student_id))
+        total = int(getattr(s, "total", 0) or 0) if s is not None and state["completed"] else 0
         correct = int(getattr(s, "correct", 0) or 0) if s is not None else 0
-        status = "unsubmitted" if s is None else ("pending" if not total else "submitted")
-        when = local_dt(impl, s.submitted_at) if s is not None else None
-        block["items"].append({"assignmentId": int(row.id), "title": str(row.title or ""), "due": due, "status": status,
+        status = "unsubmitted" if not state["completed"] else ("pending" if not total else "submitted")
+        submitted_at = str(state.get("submittedAt") or "")
+        block["items"].append({"assignmentId": int(task.id), "title": str(task.title or ""), "due": due, "status": status,
                                "statusLabel": WORK_STATUS_LABEL[status], "correct": correct, "total": total,
                                "rate": round(correct * 100 / total) if total else None,
-                               "submittedAt": when.strftime("%m-%d %H:%M") if when is not None else ""})
+                               "submittedAt": submitted_at[5:16].replace("T", " ") if submitted_at else ""})
     for block in out.values():
         items = block["items"]
         block["counts"] = {"total": len(items), "submitted": sum(1 for i in items if i["status"] != "unsubmitted"),
