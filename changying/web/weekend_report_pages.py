@@ -20,8 +20,9 @@ function glanceBox(g,s){
   return box;
 }
 function weekWorkBox(w){
-  if(!w||!w.counts||!w.counts.total)return null;
+  if(!w||!w.counts||(!w.counts.total&&!w.unclassifiedCount))return null;
   var c=w.counts,box=el('div',{class:'card'},el('h2',{text:'本周作业（'+w.weekStart+' 至 '+w.weekEnd+'）'}));
+  if(w.unclassifiedCount)box.appendChild(el('div',{class:'notice',text:'部分历史作业来源待核实，本周普通作业统计不完整，请联系老师确认。'}));
   box.appendChild(el('div',{class:'notice',text:'应做 '+c.total+' 份 · 已交 '+c.submitted+' 份 · 未交 '+c.unsubmitted+' 份 · 待批改 '+c.pending+' 份'+(w.rate!=null?' · 已批改正确率 '+w.rate+'%':'')}));
   (w.items||[]).forEach(function(i){box.appendChild(el('div',{class:'notice',text:i.title+(i.due?' · 截止 '+i.due:'')+' · '+i.statusLabel+(i.rate!=null?' · 正确率 '+i.rate+'%':'')}))});
   return box;
