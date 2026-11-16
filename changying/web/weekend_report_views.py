@@ -7,7 +7,7 @@ teacher  GET  /teacher/weekend/sessions/{sid}/summary      class summary, per-pu
          PUT  /teacher/weekend/reports/{rid}                {revision, sections, comment} save the teacher's edits
          POST /teacher/weekend/reports/{rid}/publish        {revision} release the saved draft to the linked parents
          GET  /teacher/weekend/reports/{rid}/report.docx    ?version=draft|published, A4 Word for printing
-parent   GET  /parent/children/{cid}/weekend-briefs         (weekend_scoring_views) also returns the published reports
+parent   GET  /parent/children/{sid}/weekend-briefs         (weekend_scoring_views) also returns the published reports
 
 Facts come from changying/services/weekend_reports.py. Nothing here settles points, releases answers or
 publishes without the teacher's explicit publish request; original answers and reviews are only read.
