@@ -156,6 +156,7 @@ from changying.web.rubric_review_ui import install_rubric_review_ui
 from changying.web.science_teacher_ai import install_science_teacher_ai_workflow
 from changying.web.student_quiz_navigation import install_student_quiz_navigation
 from changying.web.classroom_quick_login import install_classroom_quick_login
+from changying.web.offline_capability import install_offline_capability
 from changying.services.homework_assistant_tables import register_homework_assistant_tables
 from changying.services.homework_knowledge import register_homework_knowledge_table
 from changying.web.homework_assistant import install_homework_assistant
@@ -502,6 +503,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_classroom_live_board_patch()
     install_v1_classroom_live_board_routes(implementation)
     install_classroom_quick_login(implementation)
+    install_offline_capability(implementation)
     register_homework_assistant_tables(implementation)
     register_homework_knowledge_table(implementation)
     install_homework_assistant(implementation)
