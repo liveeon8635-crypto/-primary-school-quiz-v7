@@ -127,7 +127,8 @@ with TestClient(app) as client:
     assert made.status_code == 200, made.text
     info = made.json()
     code = info["code"]
-    assert len(code) == 6 and code.isdigit()
+    assert len(code) == 8 and code.isalnum() and code == code.upper()
+    assert not set(code) & set("01OIL")                            # ambiguous glyphs are excluded
     assert [s["seat"] for s in info["seats"]] == [1, 2, 3, 4, 5]
     assert info["seats"][0]["studentName"] == "测试姓名01"           # teacher sees the mapping
     assert info["seats"][4]["needsPassword"] is True
@@ -249,6 +250,60 @@ with TestClient(app) as client:
     assert 429 in statuses[20:], statuses
     # Once limited, even the right code is refused for this client until the window passes.
     assert client.post("/classroom-join/lookup", json={"code": real}).status_code == 429
+    print("OK")
+''',
+        flag=True,
+    )
+
+
+def test_a_guessed_string_is_cut_off_and_the_typed_code_is_normalized(tmp_path):
+    run_isolated(
+        tmp_path,
+        SETUP
+        + r'''
+with TestClient(app) as client:
+    th, outsider, ids, sid = build_session(client, None)
+    client.post(f"/teacher/classroom-sessions/{sid}/state", headers=th, json={"status": "active"})
+    real = client.post(f"/teacher/classroom-sessions/{sid}/join-code", headers=th).json()["code"]
+    # Children type the code however they like: lower case, spaces or a dash are fine.
+    messy = " " + real.lower()[:4] + "-" + real.lower()[4:] + " "
+    assert client.post("/classroom-join/lookup", json={"code": messy}).status_code == 200
+    # One candidate string gets its own budget: the sixth attempt is refused outright.
+    guess = "ZZZZ9999" if real != "ZZZZ9999" else "YYYY8888"
+    seen = [client.post("/classroom-join/lookup", json={"code": guess.lower()}).status_code for _ in range(6)]
+    assert seen == [404] * 5 + [429], seen
+    # Another candidate still gets an honest answer, and the live code keeps working.
+    assert client.post("/classroom-join/lookup", json={"code": "QQQQ7777"}).status_code == 404
+    assert client.post("/classroom-join/lookup", json={"code": real}).status_code == 200
+    # The teacher is warned (and can regenerate), but the code is never revoked automatically.
+    info = client.get(f"/teacher/classroom-sessions/{sid}/join-code", headers=th).json()
+    assert info["code"] == real and info["recentFailures"] >= 5
+    print("OK")
+''',
+        flag=True,
+    )
+
+
+def test_seat_mistaps_pause_one_tablet_without_touching_the_class_code(tmp_path):
+    run_isolated(
+        tmp_path,
+        SETUP
+        + r'''
+with TestClient(app) as client:
+    th, outsider, ids, sid = build_session(client, None)
+    client.post(f"/teacher/classroom-sessions/{sid}/state", headers=th, json={"status": "active"})
+    real = client.post(f"/teacher/classroom-sessions/{sid}/join-code", headers=th).json()["code"]
+    clumsy = "device-cccccccc"
+    misses = [
+        client.post("/classroom-join/login", json={"code": real, "seat": 99, "device_id": clumsy}).status_code
+        for _ in range(11)
+    ]
+    assert misses == [404] * 10 + [429], misses
+    # The same tablet is refused, but a classmate's tablet is unaffected and the code still works.
+    assert client.post("/classroom-join/login", json={"code": real, "seat": 3, "device_id": clumsy}).status_code == 429
+    other = client.post("/classroom-join/login", json={"code": real, "seat": 3, "device_id": "device-dddddddd"})
+    assert other.status_code == 200, other.text
+    assert client.post("/classroom-join/lookup", json={"code": real}).status_code == 200
     print("OK")
 ''',
         flag=True,

@@ -7,11 +7,14 @@ routes, no V1 patch, and the normal username/password login is untouched.
 Flow
 ----
 1. A teacher with an active classroom session opens ``/v1/classroom-join-code/{sid}`` which
-   creates a temporary 6-digit class code (valid while the session is active/paused, and for
-   at most ``CODE_TTL_MINUTES``). The code stores a snapshot of seat numbers 1..N for the
-   class (ordered by user id); the seat -> student mapping is visible to the teacher only.
+   creates a temporary 8-character class code (letters and digits, no 0/O/1/I/L; valid while
+   the session is active/paused, and for at most ``CODE_TTL_MINUTES``). The code stores a
+   snapshot of seat numbers 1..N for the class (ordered by user id); the seat -> student
+   mapping is visible to the teacher only.
 2. A student opens ``/join``, types the code and taps a seat number. The seat list contains
-   numbers only (no names). Wrong codes are rate limited per client and globally.
+   numbers only (no names). The code is 8 characters from a 31-symbol alphabet (no ``0/O/1/I/L``),
+   so guessing a live code is out of reach; on top of that each guessed string is rate limited,
+   each tablet gets its own seat-mistap budget, and there are per-client and global limits.
 3. A seat can be held by one device at a time (``UNIQUE(code_id, seat_no)`` row with a device
    hash). The same device may resume; another device gets 409 until the seat is released.
 4. The token is a short-lived JWT (same claims as ``/login`` plus ``qjs``/``qjn``) that expires with
@@ -54,7 +57,12 @@ from changying.web.classroom_window_handoff import PAGE_AUTH_JS, with_open_windo
 
 CLASSROOM_QUICK_LOGIN_MARKER = "changying_classroom_quick_login_v1"
 CODE_TTL_MINUTES = 180
-CODE_LENGTH = 6
+# 8 characters from a 31-symbol alphabet (~8.5e11 combinations) instead of 6 digits (1e6).
+CODE_LENGTH = 8
+CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+CODE_MAX_FAILURES = 5
+CODE_MAX_SEAT_MISSES = 10
+CODE_FAILURE_WINDOW_SECONDS = 600
 QUICK_LOGIN_FLAG = "CLASSROOM_QUICK_LOGIN"
 
 _REFRESH_BUTTON = '<button class="btn" id="cy-session-refresh">刷新状态</button>'
@@ -92,9 +100,9 @@ def device_hash(device_id: str) -> str:
     return hashlib.sha256(str(device_id or "").encode("utf-8")).hexdigest()
 
 
-def new_code_digits(taken: set[str]) -> str:
+def new_class_code(taken: set[str]) -> str:
     for _ in range(50):
-        code = f"{secrets.randbelow(10 ** CODE_LENGTH):0{CODE_LENGTH}d}"
+        code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
         if code not in taken:
             return code
     raise HTTPException(503, "暂时无法生成班级码，请稍后再试")
@@ -188,6 +196,16 @@ def install_classroom_quick_login(implementation: Any) -> bool:
 
     ip_limiter = BoundedLoginRateLimiter(window_seconds=600, max_attempts=20)
     global_limiter = BoundedLoginRateLimiter(window_seconds=600, max_attempts=100)
+    # A guessed string gets its own budget: hammering one candidate is cut off even when the
+    # guesser hops between client IPs (the class code is 8 characters, so a hit is not a risk
+    # of enumeration -- this only stops repeated retries on the same candidate).
+    guess_limiter = BoundedLoginRateLimiter(
+        window_seconds=CODE_FAILURE_WINDOW_SECONDS, max_attempts=CODE_MAX_FAILURES
+    )
+    # Seat mistaps by children are normal: one tablet is paused briefly, the class code is not.
+    seat_limiter = BoundedLoginRateLimiter(
+        window_seconds=CODE_FAILURE_WINDOW_SECONDS, max_attempts=CODE_MAX_SEAT_MISSES
+    )
 
     def rate_check(request: Request) -> str:
         key = implementation._client_ip(request)
@@ -206,8 +224,31 @@ def install_classroom_quick_login(implementation: Any) -> bool:
                 pass
 
     def normalize_code(raw: str) -> str:
-        code = "".join(ch for ch in str(raw or "") if ch.isdigit())
-        return code if len(code) == CODE_LENGTH else ""
+        code = "".join(ch for ch in str(raw or "").upper() if ch.isalnum())
+        if len(code) != CODE_LENGTH or any(ch not in CODE_ALPHABET for ch in code):
+            return ""
+        return code
+
+    def code_attempt_allowed(code: str) -> None:
+        if len(code) != CODE_LENGTH:
+            return
+        try:
+            guess_limiter.check(code)
+        except LoginRateLimitExceeded:
+            raise HTTPException(429, "这个班级码试错次数太多，请过几分钟再试，或请老师重新生成班级码")
+
+    def code_attempt_failed(code: str) -> None:
+        if len(code) == CODE_LENGTH:
+            guess_limiter.failure(code)
+
+    def seat_attempt_allowed(code: str, device: str) -> None:
+        try:
+            seat_limiter.check(f"{code}:{device_hash(device)}")
+        except LoginRateLimitExceeded:
+            raise HTTPException(429, "座号点错次数太多，请等一下再试，或请老师帮忙")
+
+    def seat_attempt_failed(code: str, device: str) -> None:
+        seat_limiter.failure(f"{code}:{device_hash(device)}")
 
     def active_code_row(db: Any, code: str) -> dict[str, Any] | None:
         if not code:
@@ -304,6 +345,10 @@ def install_classroom_quick_login(implementation: Any) -> bool:
             "expiresAt": row["expires_at"].isoformat(sep=" ", timespec="seconds"),
             "expiresInSec": max(0, int((row["expires_at"] - _utcnow()).total_seconds())),
             "sessionStatus": session_row["status"],
+            # Whole-class signal for the teacher: wrong entries (code or seat) in the last window.
+            # It drives a red hint, never an automatic revoke -- a stranger must not be able to
+            # punch out the code of a class that is in session.
+            "recentFailures": global_limiter.count("global"),
             "seats": seats,
         }
 
@@ -351,7 +396,7 @@ def install_classroom_quick_login(implementation: Any) -> bool:
                 class_id=session_row["class_id"],
                 session_id=sid,
                 teacher_id=u.id,
-                code=new_code_digits(taken),
+                code=new_class_code(taken),
                 seats_json=json.dumps(snapshot),
                 created_at=now,
                 expires_at=now + timedelta(minutes=CODE_TTL_MINUTES),
@@ -391,9 +436,12 @@ def install_classroom_quick_login(implementation: Any) -> bool:
     @router.post("/classroom-join/lookup")
     def lookup(body: JoinLookupBody, request: Request, db: Any = Depends(get_db)):
         key = rate_check(request)
-        row = active_code_row(db, normalize_code(body.code))
+        code = normalize_code(body.code)
+        code_attempt_allowed(code)
+        row = active_code_row(db, code)
         if not row:
             rate_failure(key)
+            code_attempt_failed(code)
             raise HTTPException(404, "班级码不对或已经失效，请问老师")
         class_row = db.get(SchoolClass, row["class_id"])
         return {
@@ -409,13 +457,20 @@ def install_classroom_quick_login(implementation: Any) -> bool:
     @router.post("/classroom-join/login")
     def join_login(body: JoinLoginBody, request: Request, db: Any = Depends(get_db)):
         key = rate_check(request)
-        row = active_code_row(db, normalize_code(body.code))
+        code = normalize_code(body.code)
+        code_attempt_allowed(code)
+        row = active_code_row(db, code)
         if not row:
             rate_failure(key)
+            code_attempt_failed(code)
             raise HTTPException(404, "班级码不对或已经失效，请问老师")
         snapshot = {int(x["seat"]): int(x["studentID"]) for x in json.loads(row["seats_json"] or "[]")}
+        seat_attempt_allowed(code, body.device_id)
         student_id = snapshot.get(int(body.seat))
         if not student_id:
+            # Mistaps pause this tablet for a few minutes; the class code itself stays valid.
+            seat_attempt_failed(code, body.device_id)
+            rate_failure(key)
             raise HTTPException(404, "没有这个座号")
         device = device_hash(body.device_id)
         if len(str(body.device_id or "")) < 8:
@@ -660,42 +715,35 @@ body{display:flex;flex-direction:column;align-items:center;justify-content:cente
 h1{margin:0 0 1.5vh;font-size:1.3em}
 .hint{color:#475569;margin-bottom:2vh;min-height:1.4em;text-align:center}
 .err{color:#b91c1c;font-weight:700}
-.slots{display:flex;gap:1.2vw;margin-bottom:2.5vh}
-.slot{width:2.2em;height:2.6em;border-radius:.4em;background:#fff;border:2px solid #c7d2fe;display:flex;align-items:center;justify-content:center;font-size:1.5em;font-weight:700}
-.pad{display:grid;grid-template-columns:repeat(3,minmax(5.5em,1fr));gap:1.2vw;width:min(92vw,27em)}
-.pad button,.seat{min-height:3.4em;border:0;border-radius:.6em;background:#fff;font:inherit;font-weight:700;box-shadow:0 2px 0 #c7d2fe;color:#1e293b}
-.pad button:active,.seat:active{background:#c7d2fe}
+.codeInput{width:min(92vw,20em);min-height:3.4em;padding:.3em .2em;border:2px solid #c7d2fe;border-radius:.5em;background:#fff;color:#0f172a;font:inherit;font-weight:800;font-size:1.5em;letter-spacing:.16em;text-align:center;text-transform:uppercase}
+.codeInput:focus{outline:3px solid #a5b4fc;outline-offset:2px}
+.seat{min-height:3.4em;border:0;border-radius:.6em;background:#fff;font:inherit;font-weight:700;box-shadow:0 2px 0 #c7d2fe;color:#1e293b}
+.seat:active{background:#c7d2fe}
 .seats{display:grid;grid-template-columns:repeat(auto-fit,minmax(4.6em,5.4em));justify-content:center;gap:1.4vw;width:min(94vw,40em)}
 .seat.taken{background:#e2e8f0;color:#94a3b8;box-shadow:none}
 .seat.locked{background:#fef3c7;color:#92400e}
 .link{margin-top:2vh;background:none;border:0;color:#4338ca;font:inherit;text-decoration:underline;min-height:48px}
-@media (orientation:landscape) and (max-height:620px){body{font-size:clamp(16px,2.2vw,26px)}.pad button{min-height:2.6em}}
+@media (orientation:landscape) and (max-height:620px){body{font-size:clamp(16px,2.2vw,26px)}.codeInput{min-height:2.8em;font-size:1.2em}}
 </style>
 </head>
 <body>
 <h1 id="title">输入班级码</h1>
-<div class="hint" id="hint">请输入老师给你的 6 位数字</div>
-<div id="stage1"><div class="slots" id="slots"></div><div class="pad" id="pad"></div></div>
+<div class="hint" id="hint">请输入老师给你的 8 位班级码</div>
+<div id="stage1"><input id="codeInput" class="codeInput" inputmode="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="8" placeholder="8 位班级码"></div>
 <div id="stage2" hidden><div class="seats" id="seats"></div><button class="link" id="back" type="button">重新输入班级码</button></div>
 <script>
 (function(){
-  var code='',seats=[],dev='';
+  var code='',seats=[],dev='',CODE_LEN=8;
   try{dev=localStorage.getItem('cyDeviceId')||''}catch(e){}
   if(!dev){dev='d'+(window.crypto&&crypto.getRandomValues?Array.prototype.map.call(crypto.getRandomValues(new Uint8Array(12)),function(x){return ('0'+x.toString(16)).slice(-2)}).join(''):String(Math.random()).slice(2)+String(Date.now()));try{localStorage.setItem('cyDeviceId',dev)}catch(e){}}
   // Tablets: block pinch zoom (iOS ignores user-scalable=no).
   ['gesturestart','gesturechange','gestureend'].forEach(function(n){document.addEventListener(n,function(e){e.preventDefault()},{passive:false})});
   var $=function(id){return document.getElementById(id)};
   function hint(t,err){var h=$('hint');h.textContent=t;h.className='hint'+(err?' err':'')}
-  function draw(){var s='';for(var i=0;i<6;i++)s+='<div class="slot">'+(code[i]||'')+'</div>';$('slots').innerHTML=s}
-  function pad(){
-    var keys=['1','2','3','4','5','6','7','8','9','清除','0','←'],h='';
-    keys.forEach(function(k){h+='<button type="button" data-k="'+k+'">'+k+'</button>'});$('pad').innerHTML=h;
-    Array.prototype.forEach.call($('pad').querySelectorAll('button'),function(b){b.onclick=function(){key(b.getAttribute('data-k'))}});
-  }
-  function key(k){
-    if(k==='清除')code='';else if(k==='←')code=code.slice(0,-1);else if(code.length<6)code+=k;
-    draw();hint('请输入老师给你的 6 位数字');
-    if(code.length===6)lookup();
+  function sync(){
+    code=String($('codeInput').value||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,CODE_LEN);
+    $('codeInput').value=code;hint('请输入老师给你的 '+CODE_LEN+' 位班级码');
+    if(code.length===CODE_LEN)lookup();
   }
   function post(path,body){return fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store'}).then(function(r){return r.json().catch(function(){return {}}).then(function(d){if(!r.ok){var e=new Error(d.detail||'出错了，请再试一次');e.status=r.status;throw e}return d})})}
   function lookup(){
@@ -705,7 +753,7 @@ h1{margin:0 0 1.5vh;font-size:1.3em}
       var h='';seats.forEach(function(s){var cls='seat'+(s.taken?' taken':'')+(s.needsPassword?' locked':'');h+='<button type="button" class="'+cls+'" data-s="'+s.seat+'"'+((s.taken||s.needsPassword)?' disabled':'')+'>'+s.seat+'</button>'});
       $('seats').innerHTML=h;
       Array.prototype.forEach.call($('seats').querySelectorAll('button'),function(b){b.onclick=function(){login(Number(b.getAttribute('data-s')))}});
-    }).catch(function(e){code='';draw();hint(e.message,true)});
+    }).catch(function(e){code='';$('codeInput').value='';hint(e.message,true)});
   }
   function login(seat){
     hint('正在进入…');
@@ -723,8 +771,9 @@ h1{margin:0 0 1.5vh;font-size:1.3em}
       if(e.status===409||e.status===403){post('/classroom-join/lookup',{code:code}).then(function(d){seats=d.seats||[];var all=$('seats').querySelectorAll('button');Array.prototype.forEach.call(all,function(b){var s=seats.filter(function(x){return x.seat===Number(b.getAttribute('data-s'))})[0];if(s&&(s.taken||s.needsPassword)){b.disabled=true;b.className='seat taken'}})}).catch(function(){})}
     });
   }
-  $('back').onclick=function(){code='';draw();$('stage2').hidden=true;$('stage1').hidden=false;$('title').textContent='输入班级码';hint('请输入老师给你的 6 位数字')};
-  draw();pad();
+  $('back').onclick=function(){code='';$('codeInput').value='';$('stage2').hidden=true;$('stage1').hidden=false;$('title').textContent='输入班级码';hint('请输入老师给你的 '+CODE_LEN+' 位班级码');$('codeInput').focus()};
+  $('codeInput').addEventListener('input',sync);
+  $('codeInput').focus();
 })();
 </script>
 </body>
@@ -742,7 +791,7 @@ TEACHER_CODE_HTML = r"""<!doctype html>
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:#0f172a;color:#f8fafc;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
 body{padding:3vh 4vw;font-size:clamp(18px,2.2vw,34px);text-align:center}
-.code{font-size:5.5em;letter-spacing:.18em;font-weight:800;font-variant-numeric:tabular-nums;margin:2vh 0}
+.code{font-size:4.2em;letter-spacing:.12em;font-weight:800;font-variant-numeric:tabular-nums;margin:2vh 0}
 .sub{color:#94a3b8}
 button{font:inherit;min-height:52px;padding:0 1.2em;border:0;border-radius:.6em;background:#1e293b;color:#f8fafc;margin:.4em}
 button.danger{background:#7f1d1d}
@@ -776,6 +825,7 @@ __PAGE_AUTH__
     var taken=(d.seats||[]).filter(function(s){return s.taken}).length,pw=(d.seats||[]).filter(function(s){return s.needsPassword}).length;
     var h='<div class="sub">学生在平板上打开 <b>/join</b> 输入班级码</div><div class="code">'+esc(d.code)+'</div>'+
       '<div class="sub">还可使用 '+mins(d.expiresInSec)+'；课堂结束后自动失效 · 已登录 '+taken+' / '+(d.seats||[]).length+' 人'+(pw?' · '+pw+' 位同学还需先设置密码':'')+'</div>'+
+      (d.recentFailures>=5?'<div class="sub" style="color:#c62828">最近有人反复输错班级码或座号（'+d.recentFailures+' 次），如果这不是本班学生，请点“重新生成”换一个新码。</div>':'')+
       '<div><button id="regen">重新生成</button><button id="revoke" class="danger">作废班级码</button><button id="toggle">'+(showMap?'隐藏':'显示')+'座号对照表（仅老师看）</button></div>';
     var map='<div id="map" style="display:'+(showMap?'block':'none')+'">';
     (d.seats||[]).forEach(function(s){map+='<div><span>'+s.seat+' 号 · '+esc(s.studentName)+(s.needsPassword?'（需先设置密码）':'')+'</span><span>'+(s.taken?'已登录 <button data-rel="'+s.seat+'">释放</button>':'未登录')+'</span></div>'});
