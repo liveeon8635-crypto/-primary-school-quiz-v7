@@ -19,7 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, select
@@ -54,6 +54,75 @@ def unit_text(unit: str | None) -> str:
     """The lesson unit, without the placeholder new weekend lessons start with."""
     unit = str(unit or "").strip()
     return "" if unit == "待配置单元" else unit
+
+
+WORK_STATUS_LABEL = {"submitted": "已交", "unsubmitted": "未交", "pending": "待批改"}
+
+
+def week_window(day: str) -> tuple[str, str]:
+    """The natural Monday..Sunday window of a report day; the week a lesson belongs to."""
+    try:
+        start = datetime.strptime(str(day or ""), "%Y-%m-%d").date() - timedelta(days=datetime.strptime(str(day or ""), "%Y-%m-%d").weekday())
+    except ValueError:
+        start = datetime.now(timezone.utc).date()
+        start = start - timedelta(days=start.weekday())
+    return start.isoformat(), (start + timedelta(days=6)).isoformat()
+
+
+def week_work_map(impl: Any, db: Any, *, school_id: int, student_ids: list[int], day: str) -> dict[int, dict[str, Any]]:
+    """Ordinary assignments each pupil received in the report's week (Mon..Sun); read-only, two queries.
+
+    An assignment counts when the pupil is a recipient of it and its due date (or, without
+    one, its creation date) falls inside the window. The latest submission decides the state:
+    no submission "未交", a submission with nothing graded "待批改", otherwise "已交" with the
+    share of correct questions. Ordinary homework is never attached to a lesson.
+    """
+    start, end = week_window(day)
+    ids = sorted({int(s) for s in student_ids})
+    out = {sid: {"weekStart": start, "weekEnd": end, "items": [], "counts": {"total": 0, "submitted": 0, "unsubmitted": 0, "pending": 0}, "rate": None}
+           for sid in ids}
+    if not ids:
+        return out
+    recipient, assignment, submission = impl.AssignmentRecipient, impl.Assignment, impl.Submission
+    latest: dict[tuple[int, int], Any] = {}
+    for s in db.execute(select(submission.assignment_id, submission.student_id, submission.correct, submission.total, submission.submitted_at)
+                        .where(submission.school_id == school_id, submission.student_id.in_(ids), submission.assignment_id.isnot(None))
+                        .order_by(submission.submitted_at, submission.id)):
+        latest[(int(s.student_id), int(s.assignment_id))] = s
+    rows = db.execute(select(recipient.student_id, assignment.id, assignment.title, assignment.due_date, assignment.created_at)
+                      .select_from(recipient).join(assignment, assignment.id == recipient.assignment_id)
+                      .where(recipient.school_id == school_id, recipient.student_id.in_(ids))
+                      .order_by(assignment.due_date, assignment.id))
+    for row in rows:
+        due = str(row.due_date or "")[:10]
+        created = local_dt(impl, row.created_at)
+        day_key = due or (created.strftime("%Y-%m-%d") if created is not None else "")
+        if not (start <= day_key <= end):
+            continue
+        block = out[int(row.student_id)]
+        s = latest.get((int(row.student_id), int(row.id)))
+        total = int(getattr(s, "total", 0) or 0) if s is not None else 0
+        correct = int(getattr(s, "correct", 0) or 0) if s is not None else 0
+        status = "unsubmitted" if s is None else ("pending" if not total else "submitted")
+        when = local_dt(impl, s.submitted_at) if s is not None else None
+        block["items"].append({"assignmentId": int(row.id), "title": str(row.title or ""), "due": due, "status": status,
+                               "statusLabel": WORK_STATUS_LABEL[status], "correct": correct, "total": total,
+                               "rate": round(correct * 100 / total) if total else None,
+                               "submittedAt": when.strftime("%m-%d %H:%M") if when is not None else ""})
+    for block in out.values():
+        items = block["items"]
+        block["counts"] = {"total": len(items), "submitted": sum(1 for i in items if i["status"] != "unsubmitted"),
+                           "unsubmitted": sum(1 for i in items if i["status"] == "unsubmitted"),
+                           "pending": sum(1 for i in items if i["status"] == "pending")}
+        graded = [i for i in items if i["rate"] is not None]
+        block["rate"] = round(sum(i["correct"] for i in graded) * 100 / sum(i["total"] for i in graded)) if graded else None
+    return out
+
+
+def parent_week_work(block: dict[str, Any]) -> dict[str, Any]:
+    """What a parent may see of the week's ordinary homework: completion and accuracy, never the questions."""
+    return {"weekStart": block["weekStart"], "weekEnd": block["weekEnd"], "counts": block["counts"], "rate": block["rate"],
+            "items": [{k: i[k] for k in ("title", "status", "statusLabel", "rate", "due")} for i in block["items"]]}
 
 
 def material_title(material: str) -> str:
@@ -146,6 +215,7 @@ def session_facts(impl: Any, db: Any, row: Any) -> dict[str, Any]:
     no_of = {q["key"]: q["no"] for q in questions}
 
     student_ids = set(members) | {s for s, _ in choice} | {s for s, _ in written}
+    week = week_work_map(impl, db, school_id=int(row.school_id), student_ids=[int(s) for s in student_ids], day=local_date(impl, row))
     students: dict[int, dict[str, Any]] = {}
     for sid in sorted(student_ids, key=lambda x: (members.get(x, ("学生",))[0], x)):
         items = []
@@ -188,6 +258,7 @@ def session_facts(impl: Any, db: Any, row: Any) -> dict[str, Any]:
         parts = awards.get(sid, {})
         students[sid] = {"studentId": sid, "name": members.get(sid, ("学生",))[0], "participated": participated, "items": items,
                          "counts": counts, "explained": sorted(explained), "followups": followups,
+                         "weekWork": week.get(sid, {"weekStart": "", "weekEnd": "", "items": [], "counts": {"total": 0, "submitted": 0, "unsubmitted": 0, "pending": 0}, "rate": None}),
                          "points": {"settled": settled, "total": sum(parts.values()), "parts": parts}}
     return {"sessionId": int(row.id), "title": row.title, "status": row.status, "date": local_date(impl, row),
             "subject": lesson.subject if lesson else "", "lessonTitle": lesson.title if lesson else row.title,
@@ -225,7 +296,7 @@ def student_facts(facts: dict[str, Any], student_id: int) -> dict[str, Any] | No
         return None
     return {k: facts[k] for k in ("sessionId", "date", "subject", "lessonTitle", "unit", "coreTarget", "className", "settled", "cutoff")} | {
         "questions": [{k: q[k] for k in ("key", "no", "kind", "stem", "knowledge", "task", "material")} for q in facts["questions"]],
-        **{k: pupil[k] for k in ("studentId", "name", "participated", "counts", "explained", "followups", "points")},
+        **{k: pupil[k] for k in ("studentId", "name", "participated", "counts", "explained", "followups", "points", "weekWork")},
         "items": [{k: i.get(k, "") for k in ("key", "no", "kind", "status", "attempts", "hint", "knowledge", "answer", "comment")} for i in pupil["items"]]}
 
 
@@ -246,6 +317,7 @@ def parent_facts(part: dict[str, Any]) -> dict[str, Any]:
     out = {k: part[k] for k in ("sessionId", "date", "subject", "lessonTitle", "unit", "counts")}
     if part["points"]["settled"]:
         out["points"] = part["points"]["total"]
+    out["weekWork"] = parent_week_work(part["weekWork"])
     return out
 
 
@@ -389,6 +461,16 @@ def draft_section(part: dict[str, Any], evidence: list[dict[str, Any]] | None = 
         homework.append("完成课后题并交给老师：" + "；".join(f"「{tasks[i['key']]}」（第{i['no']}题）" for i in later) + "。")
     if not homework:
         homework.append(f"回顾《{part['lessonTitle']}》课堂例题的方法，下节课前讲给家长听。")
+    week = part.get("weekWork") or {}
+    if week.get("items"):
+        wc = week.get("counts") or {}
+        line = (f"本周普通作业（{week['weekStart']} 至 {week['weekEnd']}）：应做 {wc.get('total', 0)} 份，"
+                f"已交 {wc.get('submitted', 0)} 份，未交 {wc.get('unsubmitted', 0)} 份，待批改 {wc.get('pending', 0)} 份")
+        line += f"，已批改的正确率 {week['rate']}%。" if week.get("rate") is not None else "。"
+        missed = [i for i in week["items"] if i["status"] == "unsubmitted"]
+        if missed:
+            line += "未交：" + "、".join(f"「{i['title']}」" for i in missed[:6]) + ("等" if len(missed) > 6 else "") + "，请在本周内补齐。"
+        homework.insert(max(0, len(homework) - 1), line)
     homework.append("家长配合：请孩子讲一讲订正或解题思路，家长只听和提问，不代写答案。")
     targets = "、".join(g["topic"] for g in groups[:2])
     followup = (f"下节课先用同类题检查{targets}的订正情况。" if targets else "下节课在新内容前用 1 道题回顾本节方法。")
