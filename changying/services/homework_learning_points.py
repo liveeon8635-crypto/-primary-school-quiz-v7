@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from changying.services import homework_points_rule as rule
 
@@ -126,9 +127,20 @@ def award_homework_practice_points(
         note="；".join(note_parts)[:1000],
         source=HOMEWORK_PRACTICE_SOURCE,
         related_id=int(submission.id),
+        idempotency_key=f"{HOMEWORK_PRACTICE_SOURCE}:{int(submission.id)}",
     )
-    db.add(row)
-    db.flush()
+    try:
+        with db.begin_nested():
+            db.add(row)
+            db.flush()
+    except IntegrityError:
+        # Another request settled this same practice between our check and insert.
+        return {
+            "points": 0,
+            "maximum": MAX_POINTS,
+            "source": HOMEWORK_PRACTICE_SOURCE,
+            "alreadySettled": True,
+        }
     if points > 0:
         implementation.reconcile_auto_rewards(
             db,

@@ -683,6 +683,7 @@ class PointLedger(Base):
     note:Mapped[str]=mapped_column(Text,default="")
     source:Mapped[str]=mapped_column(String(30),default="classroom",index=True)
     related_id:Mapped[int|None]=mapped_column(Integer,nullable=True,index=True)
+    idempotency_key:Mapped[str|None]=mapped_column(String(120),nullable=True)
     reversed:Mapped[bool]=mapped_column(Boolean,default=False,index=True)
     reversal_of_id:Mapped[int|None]=mapped_column(ForeignKey("point_ledger.id"),nullable=True,index=True)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,index=True)
@@ -4001,6 +4002,35 @@ def ensure_teaching_question_figure_column():
     with engine.begin() as conn:
         conn.execute(sa_text("ALTER TABLE teaching_questions ADD COLUMN figure_json TEXT NOT NULL DEFAULT '{}'"))
 
+def ensure_point_ledger_idempotency():
+    """Add the nullable idempotency key and its partial unique index.
+
+    Automatic point writes (learning submissions, homework practice, weekend
+    scoring, classroom presentations) fill the key, so a double click or a
+    retried request can never award the same thing twice. Manual adjustments,
+    redemption and refunds stay NULL on purpose: a teacher may legitimately
+    grant or reverse points more than once.
+
+    Historical rows keep NULL, so building the index never rewrites or deletes
+    old ledger entries; duplicates that already exist are only reported.
+    """
+    inspector=sa_inspect(engine)
+    if "point_ledger" not in set(inspector.get_table_names()):
+        return
+    if "idempotency_key" not in {col["name"] for col in inspector.get_columns("point_ledger")}:
+        with engine.begin() as conn:
+            conn.execute(sa_text("ALTER TABLE point_ledger ADD COLUMN idempotency_key VARCHAR(120) NULL"))
+    try:
+        with engine.begin() as conn:
+            conn.execute(sa_text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_point_ledger_idempotency "
+                "ON point_ledger (school_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
+            ))
+    except Exception as error:
+        # The application-level checks still apply; only the database backstop is
+        # missing, so report it instead of blocking startup.
+        print(f"[startup] point ledger idempotency index skipped: {type(error).__name__}")
+
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(engine)
@@ -4008,6 +4038,7 @@ def startup():
     normalize_personal_workspace_accounts()
     ensure_submission_completion_actor_column()
     ensure_teaching_question_figure_column()
+    ensure_point_ledger_idempotency()
     # V7.3.0: keep the V7.2.0 production seeding behavior; never create public demo credentials automatically on PostgreSQL.
     # Existing production users are untouched. Set ENABLE_DEMO_SEED=1 only for an intentional demo.
     if raw_url.startswith("sqlite") or os.getenv("ENABLE_DEMO_SEED","0")=="1":

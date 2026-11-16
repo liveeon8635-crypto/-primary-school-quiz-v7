@@ -23,6 +23,8 @@ import json
 from types import ModuleType
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
+
 from changying.services.homework_learning_points import (
     award_homework_practice_points,
     is_late_care_practice,
@@ -118,9 +120,16 @@ def award_submission_learning_points(
             ),
             source=LEARNING_SUBMISSION_SOURCE,
             related_id=int(submission.id),
+            idempotency_key=f"{LEARNING_SUBMISSION_SOURCE}:{int(submission.id)}",
         )
-        db.add(row)
-        db.flush()
+        try:
+            with db.begin_nested():
+                db.add(row)
+                db.flush()
+        except IntegrityError:
+            # Another request awarded this same submission between our check and
+            # insert. The saved ledger row is the award; do not add it twice.
+            return {"awarded": 0, "maximum": maximum}
         implementation.reconcile_auto_rewards(
             db,
             int(submission.school_id),

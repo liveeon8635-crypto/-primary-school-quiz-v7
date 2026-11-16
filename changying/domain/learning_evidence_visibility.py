@@ -24,43 +24,50 @@ _SHARED_RECENT_KEYS = (
     "score",
 )
 
+# Shared views are built from this allowlist only: a field added later to the
+# teacher-facing evidence must not leak to parents/students by default.
+_SHARED_TOP_LEVEL_KEYS = (
+    "studentId",
+    "state",
+    "sampleCount",
+    "dimensions",
+    "subjects",
+    "knowledge",
+    "recentEvidence",
+    "masteryInferred",
+    "stableMasteryInferred",
+    "contractVersion",
+)
+
+
+def _shared_view(evidence: Mapping[str, Any]) -> dict[str, Any]:
+    result = {
+        key: deepcopy(evidence[key])
+        for key in _SHARED_TOP_LEVEL_KEYS
+        if key in evidence
+    }
+    recent = []
+    for row in evidence.get("recentEvidence") or []:
+        if not isinstance(row, Mapping):
+            continue
+        recent.append({key: deepcopy(row.get(key)) for key in _SHARED_RECENT_KEYS})
+    result["recentEvidence"] = recent
+    return result
+
 
 def learning_evidence_for_role(
     evidence: Mapping[str, Any],
     role: str,
 ) -> dict[str, Any]:
     """Return evidence with role-appropriate detail without changing semantics."""
-    result = deepcopy(dict(evidence))
     if role in FULL_DETAIL_ROLES:
-        return result
+        return deepcopy(dict(evidence))
 
     if role in SHARED_SUMMARY_ROLES:
-        recent = []
-        for row in result.get("recentEvidence") or []:
-            if not isinstance(row, Mapping):
-                continue
-            recent.append(
-                {
-                    key: deepcopy(row.get(key))
-                    for key in _SHARED_RECENT_KEYS
-                }
-            )
-        result["recentEvidence"] = recent
-        return result
+        return _shared_view(evidence)
 
-    # Unknown roles get the conservative shared view.
-    recent = []
-    for row in result.get("recentEvidence") or []:
-        if not isinstance(row, Mapping):
-            continue
-        recent.append(
-            {
-                key: deepcopy(row.get(key))
-                for key in _SHARED_RECENT_KEYS
-            }
-        )
-    result["recentEvidence"] = recent
-    return result
+    # Unknown roles are denied instead of silently receiving the shared view.
+    raise PermissionError(f"unsupported role for learning evidence: {role!r}")
 
 
 __all__ = [

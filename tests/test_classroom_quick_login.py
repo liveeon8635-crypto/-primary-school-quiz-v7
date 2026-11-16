@@ -127,7 +127,8 @@ with TestClient(app) as client:
     assert made.status_code == 200, made.text
     info = made.json()
     code = info["code"]
-    assert len(code) == 6 and code.isdigit()
+    assert len(code) == 8 and code.isalnum() and code == code.upper()
+    assert not set(code) & set("01OIL")                            # ambiguous glyphs are excluded
     assert [s["seat"] for s in info["seats"]] == [1, 2, 3, 4, 5]
     assert info["seats"][0]["studentName"] == "测试姓名01"           # teacher sees the mapping
     assert info["seats"][4]["needsPassword"] is True
@@ -255,6 +256,104 @@ with TestClient(app) as client:
     )
 
 
+def test_a_guessed_string_is_cut_off_and_the_typed_code_is_normalized(tmp_path):
+    run_isolated(
+        tmp_path,
+        SETUP
+        + r'''
+with TestClient(app) as client:
+    th, outsider, ids, sid = build_session(client, None)
+    client.post(f"/teacher/classroom-sessions/{sid}/state", headers=th, json={"status": "active"})
+    real = client.post(f"/teacher/classroom-sessions/{sid}/join-code", headers=th).json()["code"]
+    # Children type the code however they like: lower case, spaces or a dash are fine.
+    messy = " " + real.lower()[:4] + "-" + real.lower()[4:] + " "
+    assert client.post("/classroom-join/lookup", json={"code": messy}).status_code == 200
+    # One candidate string gets its own budget: the sixth attempt is refused outright.
+    guess = "ZZZZ9999" if real != "ZZZZ9999" else "YYYY8888"
+    seen = [client.post("/classroom-join/lookup", json={"code": guess.lower()}).status_code for _ in range(6)]
+    assert seen == [404] * 5 + [429], seen
+    # Another candidate still gets an honest answer, and the live code keeps working.
+    assert client.post("/classroom-join/lookup", json={"code": "QQQQ7777"}).status_code == 404
+    assert client.post("/classroom-join/lookup", json={"code": real}).status_code == 200
+    # The teacher is warned (and can regenerate), but the code is never revoked automatically.
+    info = client.get(f"/teacher/classroom-sessions/{sid}/join-code", headers=th).json()
+    assert info["code"] == real and info["recentFailures"] >= 5
+    print("OK")
+''',
+        flag=True,
+    )
+
+
+def test_seat_mistaps_pause_one_tablet_without_touching_the_class_code(tmp_path):
+    run_isolated(
+        tmp_path,
+        SETUP
+        + r'''
+with TestClient(app) as client:
+    th, outsider, ids, sid = build_session(client, None)
+    client.post(f"/teacher/classroom-sessions/{sid}/state", headers=th, json={"status": "active"})
+    real = client.post(f"/teacher/classroom-sessions/{sid}/join-code", headers=th).json()["code"]
+    clumsy = "device-cccccccc"
+    misses = [
+        client.post("/classroom-join/login", json={"code": real, "seat": 99, "device_id": clumsy}).status_code
+        for _ in range(11)
+    ]
+    assert misses == [404] * 10 + [429], misses
+    # The same tablet is refused, but a classmate's tablet is unaffected and the code still works.
+    assert client.post("/classroom-join/login", json={"code": real, "seat": 3, "device_id": clumsy}).status_code == 429
+    other = client.post("/classroom-join/login", json={"code": real, "seat": 3, "device_id": "device-dddddddd"})
+    assert other.status_code == 200, other.text
+    assert client.post("/classroom-join/lookup", json={"code": real}).status_code == 200
+    print("OK")
+''',
+        flag=True,
+    )
+
+
+def test_logout_only_releases_the_seat_session_it_was_issued_for(tmp_path):
+    run_isolated(
+        tmp_path,
+        SETUP
+        + r'''
+with TestClient(app) as client:
+    th, outsider, ids, sid = build_session(client, None)
+    client.post(f"/teacher/classroom-sessions/{sid}/state", headers=th, json={"status": "active"})
+    first = client.post(f"/teacher/classroom-sessions/{sid}/join-code", headers=th).json()
+    code_one = first["code"]
+    token_one = client.post(
+        "/classroom-join/login",
+        json={"code": code_one, "seat": 1, "device_id": "device-aaaaaaa1"},
+    ).json()["token"]
+
+    # The same child also has a live seat in a second (parallel) class code.
+    with legacy.SessionLocal() as db:
+        codes = legacy.Base.metadata.tables["classroom_join_codes"]
+        row = db.execute(select(codes).where(codes.c.code == code_one)).mappings().first()
+        now = datetime.utcnow()
+        db.execute(codes.insert().values(
+            school_id=row["school_id"], class_id=row["class_id"], session_id=row["session_id"],
+            teacher_id=row["teacher_id"], code="ZZZZ9998", seats_json=row["seats_json"],
+            created_at=now, expires_at=row["expires_at"], revoked_at=None))
+        db.commit()
+
+    token_two = client.post(
+        "/classroom-join/login",
+        json={"code": "ZZZZ9998", "seat": 1, "device_id": "device-bbbbbbb2"},
+    )
+    assert token_two.status_code == 200, token_two.text
+    token_two = token_two.json()["token"]
+    assert client.get("/session", headers={"Authorization": "Bearer " + token_two}).status_code == 200
+
+    out = client.post("/classroom-join/logout", headers={"Authorization": "Bearer " + token_one})
+    assert out.status_code == 200, out.text
+    assert out.json()["released"] == 1, out.text          # only this token's seat, not both
+    assert client.get("/session", headers={"Authorization": "Bearer " + token_two}).status_code == 200
+    print("OK")
+''',
+        flag=True,
+    )
+
+
 def test_pages_and_exit_button_are_tablet_ready_and_inert_until_quick_login(tmp_path):
     run_isolated(
         tmp_path,
@@ -314,3 +413,11 @@ with TestClient(app) as client:
 ''',
         flag=False,
     )
+
+def test_code_alphabet_avoids_ambiguous_glyphs():
+    """A 0/O/1/I/L in a class code makes both reading and typing it error prone."""
+    from changying.web.classroom_quick_login import CODE_ALPHABET, CODE_LENGTH
+
+    assert CODE_LENGTH == 8
+    assert not set(CODE_ALPHABET) & set("01OIL")
+    assert len(CODE_ALPHABET) == 31
