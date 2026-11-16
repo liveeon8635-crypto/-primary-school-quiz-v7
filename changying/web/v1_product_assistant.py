@@ -1462,14 +1462,50 @@ if(cyFeedbackWorkspace){
             + ("\n附图说明：只根据实际可见图片内容回答；看不清时直接说明，不推测文字、人物或答案。"
                if image else "")
         )
+        target_student_ids: tuple[int, ...] = ()
+        assistant_feature = "product_assistant_guidance"
+        if role == "student":
+            assistant_feature = "product_assistant"
+            target_student_ids = (int(user.id),)
+        elif role == "parent":
+            assistant_feature = "product_assistant"
+            linked_children = db.scalars(
+                select(implementation.User)
+                .join(
+                    implementation.ParentStudent,
+                    implementation.ParentStudent.student_id == implementation.User.id,
+                )
+                .where(
+                    implementation.ParentStudent.parent_id == user.id,
+                    implementation.User.school_id == user.school_id,
+                    implementation.User.role == "student",
+                    implementation.User.active.is_(True),
+                )
+                .order_by(implementation.User.id)
+            ).all()
+            if body.child_id is not None:
+                matched = next((c for c in linked_children if int(c.id) == int(body.child_id)), None)
+                if matched is None:
+                    raise HTTPException(403, "无权访问未关联或跨工作室的孩子学习数据")
+                target_student_ids = (int(matched.id),)
+            elif len(linked_children) == 1:
+                target_student_ids = (int(linked_children[0].id),)
+            else:
+                raise HTTPException(403, "未能明确确定关联孩子，请先选择具体孩子后再使用 AI 助手")
+        elif image:
+            # Images from any role may contain student data and must pass unified authorization.
+            assistant_feature = "product_assistant"
+            target_student_ids = ()
+
         try:
             reply = implementation._ai_call(
                 db,
                 user,
-                "product_assistant",
+                assistant_feature,
                 prompt,
                 images=[image] if image else None,
                 timeout=45,
+                student_ids=target_student_ids,
             )
             return {
                 "ok": True,

@@ -64,7 +64,7 @@ TEACHING_ONLY_AI_FEATURES: frozenset[str] = frozenset({
     "kp_card_draft",
     "kp_card_ai_draft",
     "paper_import",
-    "product_assistant",
+    "product_assistant_guidance",
     "weekend_lesson_draft",
     "weekend_lesson_import",
     "weekend_question_gen",
@@ -81,13 +81,18 @@ FEATURE_TO_SCOPE: dict[str, str] = {
     "homework_help_vision": "homework_help",
     "homework_help_guide": "homework_help",
     "homework_help_solve": "homework_help",
+    "homework_practice_generate": "homework_help",
     "weekend_report": "weekend_review",
     "weekend_report_suggest": "weekend_review",
+    "weekend_practice": "weekend_review",
     "weekend_written_score": "weekend_review",
     "weekend_written_precheck": "weekend_review",
     "weekend_written_precheck_ocr": "weekend_review",
     "knowledge_map_student_ai": "knowledge_map_ai",
+    "knowledge_map": "knowledge_map_ai",
     "exam_prep_student_ai": "exam_prep_ai",
+    "exam_prep": "exam_prep_ai",
+    "product_assistant": "student_ai_all",
 }
 
 DEFAULT_VALID_DAYS = 180
@@ -628,7 +633,7 @@ def require_student_ai_authorized(
 ) -> None:
     """Unified default-deny authorization check before ANY external AI HTTP call."""
     scope = FEATURE_TO_SCOPE.get(feature, "student_ai_all")
-    is_personal = bool(implementation.is_individual_school(db, int(school_id)))
+    is_personal = implementation.is_individual_school(db, int(school_id)) is True
     config = implementation.ai_config_for(db, int(school_id), False)
     tables = register_guardian_consent_tables(implementation)
     audits_t = tables["audits"]
@@ -663,7 +668,7 @@ def require_student_ai_authorized(
         _deny(503, msg, "ai_disabled")
 
     sids = [int(x) for x in dict.fromkeys(student_ids) if x is not None]
-    if not config.allow_student_data and (is_personal or feature in ("homework_notice_parse", "homework_parse", "homework_parse_vision")):
+    if not config.allow_student_data:
         msg = (
             "尚未开启发送学生内容授权，请先前往「AI 设置」开启并完成监护人授权"
             if is_personal
@@ -698,7 +703,7 @@ def install_ai_egress_guard(implementation: Any) -> None:
     def guarded_ai_call(db, u, feature, prompt, images=None, timeout=90, rate_check=None, **kwargs):
         student_ids = kwargs.pop("student_ids", ()) or ()
         imgs = images or []
-        is_teaching_only = (feature in TEACHING_ONLY_AI_FEATURES) and not student_ids and (not imgs or feature == "product_assistant")
+        is_teaching_only = (feature in TEACHING_ONLY_AI_FEATURES) and not student_ids and not imgs
         if not is_teaching_only:
             target_sids = tuple(student_ids) or ((int(u.id),) if getattr(u, "role", "") == "student" else ())
             require_student_ai_authorized(

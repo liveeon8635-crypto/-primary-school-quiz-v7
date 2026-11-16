@@ -71,7 +71,7 @@ def log_count(db, **where):
 def prepare(db):
     teacher = db.scalar(select(legacy.User).where(legacy.User.username == "teacher1"))
     row = legacy.ai_config_for(db, teacher.school_id, True)
-    row.enabled = True; row.provider = "openai_compatible"; row.base_url = "https://api.deepseek.com"; row.model = "m"
+    row.enabled = True; row.allow_student_data = True; row.provider = "openai_compatible"; row.base_url = "https://api.deepseek.com"; row.model = "m"
     db.commit()
     return teacher
 

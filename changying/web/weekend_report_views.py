@@ -329,8 +329,9 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
                 if not ai_allowed(db, u):
                     source = "ai_not_allowed"
                 else:
+                    sids = tuple(dict.fromkeys(int(p["studentId"]) for p in parts if p.get("studentId")))
                     data = implementation._ai_json(implementation._ai_call(
-                        db, u, AI_FEATURE, wr.suggestion_prompt(parts, evidence, sources_for(db, u, parts)), timeout=45))
+                        db, u, AI_FEATURE, wr.suggestion_prompt(parts, evidence, sources_for(db, u, parts)), timeout=45, student_ids=sids))
                     wr.apply_suggestions(evidence, data)
                     source = "ai"
             except Exception:  # noqa: BLE001 - the factual template is always usable without AI
@@ -511,7 +512,7 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
         stu = db.get(implementation.User, int(r.student_id))
         grade = int(getattr(stu, "grade", 0) or 5)
         try:
-            data = implementation._ai_json(implementation._ai_call(db, u, PRACTICE_FEATURE, wr.practice_prompt(targets, sources, grade), timeout=90))
+            data = implementation._ai_json(implementation._ai_call(db, u, PRACTICE_FEATURE, wr.practice_prompt(targets, sources, grade), timeout=90, student_ids=(int(r.student_id),)))
             returned = {str(g.get("key")): g for g in (data.get("groups") or []) if isinstance(g, dict)} if isinstance(data, dict) else {}
         except Exception as e:  # noqa: BLE001 - nothing is saved; the existing report and questions stay
             detail = getattr(e, "detail", "") or "AI 服务不可用"

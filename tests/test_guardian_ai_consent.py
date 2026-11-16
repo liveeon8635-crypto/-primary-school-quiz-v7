@@ -363,3 +363,203 @@ def test_migration_tables_exist_and_isolated_rollback_preserves_legacy_tables(cl
     remaining = set(inspect(iso_engine).get_table_names())
     assert not set(new_tables).intersection(remaining)
     assert {"users", "parent_students", "point_ledger"}.issubset(remaining)
+
+
+def test_product_assistant_v3_consent_and_image_boundaries(client, monkeypatch):
+    import base64
+    from types import SimpleNamespace
+    import app_v924 as legacy
+
+    t_headers, p_headers, s_headers, student_id = _setup_personal_family(client)
+    http_calls = []
+
+    def fake_post(url, *args, **kwargs):
+        http_calls.append(url)
+        return SimpleNamespace(
+            ok=True,
+            status_code=200,
+            json=lambda: {"choices": [{"message": {"content": "AI回复内容"}}]},
+        )
+
+    monkeypatch.setattr(legacy.requests, "post", fake_post)
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+    monkeypatch.delenv("STUDENT_AI_COMPLIANCE_APPROVED", raising=False)
+
+    # 1. Student unauthorized & compliance closed -> 0 HTTP calls
+    r1 = client.post("/v1/product-assistant/query", headers=s_headers, json={"question": "这道分数题怎么理解？"})
+    assert r1.status_code == 200
+    assert len(http_calls) == 0
+
+    # 2. Teacher pure product guidance (no image, no child_id) -> allowed even without student consent
+    r_guide = client.post("/v1/product-assistant/query", headers=t_headers, json={"question": "怎么创建班级？"})
+    assert r_guide.status_code == 200
+    assert len(http_calls) == 1
+
+    # 3. Teacher with image and no child_id -> default-denied (0 new HTTP calls)
+    raw_png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"img").decode("ascii")
+    img_payload = {
+        "question": "帮我看这张图",
+        "image_name": "shot.png",
+        "image_type": "image/png",
+        "image_size": len(b"\x89PNG\r\n\x1a\n" + b"img"),
+        "image_data": raw_png,
+    }
+    r_t_img = client.post("/v1/product-assistant/query", headers=t_headers, json=img_payload)
+    assert r_t_img.status_code == 200
+    assert r_t_img.json()["ok"] is False
+    assert len(http_calls) == 1
+
+    # 4. Parent with wrong/unlinked child_id -> 403, 0 new HTTP calls
+    r_p_bad = client.post(
+        "/v1/product-assistant/query",
+        headers=p_headers,
+        json={"question": "孩子最近学得怎么样？", "child_id": 999999},
+    )
+    assert r_p_bad.status_code == 403
+    assert len(http_calls) == 1
+
+    # 5. Parent unauthorized (consent not yet active) -> 0 new HTTP calls
+    monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
+    r_p_unauth = client.post(
+        "/v1/product-assistant/query",
+        headers=p_headers,
+        json={"question": "孩子最近学得怎么样？", "child_id": student_id},
+    )
+    assert r_p_unauth.status_code == 200
+    assert len(http_calls) == 1
+
+    # 6. Activate parent consent -> student text + student image both succeed
+    tok = client.post(f"/teacher/students/{student_id}/ai-consent/token", headers=t_headers, json={}).json()["token"]
+    assert client.post("/parent/ai-consent/confirm", headers=p_headers, json={"token": tok, "student_id": student_id}).status_code == 200
+
+    r_s_auth = client.post("/v1/product-assistant/query", headers=s_headers, json={"question": "这道分数题怎么理解？"})
+    assert r_s_auth.status_code == 200
+    assert len(http_calls) == 2
+
+    r_s_img = client.post("/v1/product-assistant/query", headers=s_headers, json=img_payload)
+    assert r_s_img.status_code == 200
+    assert len(http_calls) == 3
+
+
+def test_institutional_allow_student_data_false_blocks_all_features_and_images(client, monkeypatch):
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    import app_v924 as legacy
+
+    tag = uuid.uuid4().hex[:8]
+    t_code = f"inst-{tag}"
+    assert client.post(
+        "/operator/schools/create",
+        headers={"X-Commercial-Key": COMMERCIAL_KEY},
+        json={
+            "school_name": f"机构学校{tag}",
+            "school_code": t_code,
+            "admin_name": "王老师",
+            "admin_username": t_code,
+            "admin_password": PASSWORD,
+            "individual": False,
+        },
+    ).status_code == 200
+    t_headers = _login_headers(client, t_code, PASSWORD)
+    tr = client.post(
+        "/admin/users",
+        headers=t_headers,
+        json={"name": "机构教师", "username": f"it-{tag}", "password": PASSWORD, "role": "teacher"},
+    )
+    assert tr.status_code == 200, tr.text[:300]
+    teach_id = tr.json()["id"]
+    with legacy.SessionLocal() as db:
+        t_user = db.get(legacy.User, teach_id)
+        cls = legacy.SchoolClass(school_id=t_user.school_id, name="四年级1班", grade=4, teacher_id=teach_id)
+        db.add(cls)
+        db.commit()
+        cls_id = cls.id
+    teach_headers = _login_headers(client, f"it-{tag}", PASSWORD)
+    sr = client.post(
+        "/teacher/students",
+        headers=teach_headers,
+        json={"name": "机构学生", "username": f"is-{tag}", "password": PASSWORD, "grade": 4, "class_id": cls_id},
+    )
+    assert sr.status_code == 200, sr.text[:300]
+    sid = sr.json()["id"]
+    pr = client.post(
+        "/admin/users",
+        headers=t_headers,
+        json={"name": "机构家长", "username": f"ip-{tag}", "password": PASSWORD, "role": "parent"},
+    )
+    assert pr.status_code == 200, pr.text[:300]
+    pid = pr.json()["id"]
+    assert client.post(f"/teacher/students/{sid}/parent", headers=teach_headers, json={"parent_id": pid}).status_code == 200
+    p_headers = _login_headers(client, f"ip-{tag}", PASSWORD)
+
+    # Activate guardian consent, but keep allow_student_data=False
+    tok = client.post(f"/teacher/students/{sid}/ai-consent/token", headers=teach_headers, json={}).json()["token"]
+    assert client.post("/parent/ai-consent/confirm", headers=p_headers, json={"token": tok, "student_id": sid}).status_code == 200
+
+    http_calls = []
+    monkeypatch.setattr(
+        legacy.requests,
+        "post",
+        lambda url, *a, **kw: http_calls.append(url) or SimpleNamespace(ok=True, status_code=200, json=lambda: {"choices": [{"message": {"content": "ok"}}]}),
+    )
+
+    with legacy.SessionLocal() as db:
+        teacher = db.query(legacy.User).filter(legacy.User.username == f"it-{tag}").first()
+        cfg = legacy.ai_config_for(db, teacher.school_id, True)
+        cfg.enabled = True
+        cfg.allow_student_data = False
+        cfg.provider = "openai_compatible"
+        cfg.base_url = "https://api.deepseek.com/v1"
+        cfg.model = "deepseek-chat"
+        db.commit()
+        for feat in (
+            "weekend_report",
+            "weekend_practice",
+            "homework_help_guide",
+            "exam_prep",
+            "knowledge_map",
+            "homework_practice_generate",
+            "unknown_feature",
+        ):
+            with pytest.raises(HTTPException) as exc:
+                legacy._ai_call(db, teacher, feat, "prompt", student_ids=(sid,))
+            assert exc.value.status_code == 403
+        with pytest.raises(HTTPException) as exc_img:
+            legacy._ai_call(db, teacher, "homework_help_solve", "prompt", images=["data:image/png;base64,AAAA"], student_ids=(sid,))
+        assert exc_img.value.status_code == 403
+    assert len(http_calls) == 0
+
+
+def test_personal_homework_practice_and_weekend_report_require_student_consent(client, monkeypatch):
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    import app_v924 as legacy
+
+    t_headers, p_headers, _s_headers, student_id = _setup_personal_family(client)
+    monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+    http_calls = []
+    monkeypatch.setattr(
+        legacy.requests,
+        "post",
+        lambda url, *a, **kw: http_calls.append(url) or SimpleNamespace(ok=True, status_code=200, json=lambda: {"choices": [{"message": {"content": "ok"}}]}),
+    )
+
+    with legacy.SessionLocal() as db:
+        student = db.get(legacy.User, student_id)
+        teacher = db.query(legacy.User).filter(legacy.User.school_id == student.school_id, legacy.User.role == "teacher").first()
+        for feat in ("homework_practice_generate", "weekend_report", "weekend_practice"):
+            with pytest.raises(HTTPException) as exc:
+                legacy._ai_call(db, teacher, feat, "prompt", student_ids=(student_id,))
+            assert exc.value.status_code == 403
+    assert len(http_calls) == 0
+
+    tok = client.post(f"/teacher/students/{student_id}/ai-consent/token", headers=t_headers, json={}).json()["token"]
+    assert client.post("/parent/ai-consent/confirm", headers=p_headers, json={"token": tok, "student_id": student_id}).status_code == 200
+
+    with legacy.SessionLocal() as db:
+        student = db.get(legacy.User, student_id)
+        teacher = db.query(legacy.User).filter(legacy.User.school_id == student.school_id, legacy.User.role == "teacher").first()
+        for feat in ("homework_practice_generate", "weekend_report", "weekend_practice"):
+            assert legacy._ai_call(db, teacher, feat, "prompt", student_ids=(student_id,)) == "ok"
+    assert len(http_calls) == 3

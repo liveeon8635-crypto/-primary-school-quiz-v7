@@ -29,7 +29,7 @@ def _free_port() -> int:
         return int(s.getsockname()[1])
 
 
-def test_real_browser_ai_settings_and_parent_consent_flow(tmp_path):
+def test_real_browser_ai_settings_and_parent_consent_flow(tmp_path, monkeypatch):
     playwright_sync = pytest.importorskip("playwright.sync_api")
 
     db_path = tmp_path / "browser.sqlite3"
@@ -126,6 +126,17 @@ def test_real_browser_ai_settings_and_parent_consent_flow(tmp_path):
 
                 p_page.click("#gc-revoke")
                 p_page.wait_for_function("() => document.getElementById('gc-msg').textContent.includes('已撤回')")
+
+                # Verify that after browser revocation, an AI student-data call triggers 0 HTTP requests
+                http_calls = []
+                monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
+                monkeypatch.setattr(legacy.requests, "post", lambda *a, **kw: http_calls.append(a))
+                with legacy.SessionLocal() as db:
+                    teacher_user = db.query(legacy.User).filter(legacy.User.username == t_code).first()
+                    with pytest.raises(Exception) as exc_info:
+                        legacy._ai_call(db, teacher_user, "homework_help_solve", "test", student_ids=(sid,))
+                    assert getattr(exc_info.value, "status_code", None) == 403
+                assert len(http_calls) == 0
             finally:
                 browser.close()
     finally:
