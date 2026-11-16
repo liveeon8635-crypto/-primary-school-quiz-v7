@@ -211,6 +211,25 @@ html[data-cy-ui="operator"] {
   max-width: 100%;
 }
 
+[data-cy-ui="operator"] .modal {
+  width: 100%;
+  max-width: 760px;
+  max-height: 88vh;
+  max-height: 88dvh;
+}
+
+[data-cy-ui="operator"] .school-head > *,
+[data-cy-ui="operator"] .usage > div {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 480px) {
+  [data-cy-ui="operator"] .usage {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 [data-cy-ui="board"] [role="region"]:focus {
   outline: 2px solid #93c5fd;
   outline-offset: -2px;
