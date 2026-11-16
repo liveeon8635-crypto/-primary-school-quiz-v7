@@ -685,11 +685,21 @@ def require_student_ai_authorized(
         _deny(403, msg, "allow_student_data_false")
 
     if not sids:
-        _deny(
-            403,
-            "未指定已获授权的学生对象，禁止向外部 AI 发送缺少归属的数据",
-            "missing_student_consent_target",
-        )
+        # Class-level homework notice parsing in institutional workspaces (with allow_student_data=True)
+        # is not scoped to a single pupil; all student-specific features and all personal-workspace
+        # calls strictly require explicit student_ids.
+        is_class_notice_inst = (not is_personal) and feature in {
+            "homework_parse",
+            "homework_parse_vision",
+            "homework_notice_parse",
+            "homework_notice_vision",
+        }
+        if not is_class_notice_inst:
+            _deny(
+                403,
+                "未指定已获授权的学生对象，禁止向外部 AI 发送缺少归属的数据",
+                "missing_student_consent_target",
+            )
 
     if is_personal and require_guardian_for_personal:
         now = datetime.utcnow()
