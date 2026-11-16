@@ -48,6 +48,21 @@ class BoundedLoginRateLimiter:
         for key in stale:
             self._hits.pop(key, None)
 
+    def _evict_oldest_unlocked_locked(self) -> bool:
+        """Drop the oldest key that has not hit its limit, so new clients still work."""
+        for key in list(self._hits.keys()):
+            if len(self._hits[key]) < self.max_attempts:
+                self._hits.pop(key, None)
+                return True
+        return False
+
+    def _ensure_capacity_locked(self) -> None:
+        if len(self._hits) < self.max_keys:
+            return
+        if not self._evict_oldest_unlocked_locked():
+            # Every tracked key is currently locked out; refusing is safer than forgetting.
+            raise LoginRateLimitExceeded("login tracker capacity reached")
+
     def check(self, key: str) -> None:
         normalized = str(key or "unknown")[:256]
         now = self._clock()
@@ -59,8 +74,7 @@ class BoundedLoginRateLimiter:
                 if len(hits) >= self.max_attempts:
                     raise LoginRateLimitExceeded("too many login attempts")
                 return
-            if len(self._hits) >= self.max_keys:
-                raise LoginRateLimitExceeded("login tracker capacity reached")
+            self._ensure_capacity_locked()
 
     def failure(self, key: str) -> None:
         normalized = str(key or "unknown")[:256]
@@ -69,8 +83,7 @@ class BoundedLoginRateLimiter:
             self._prune_stale_locked(now)
             hits = self._hits.get(normalized)
             if hits is None:
-                if len(self._hits) >= self.max_keys:
-                    raise LoginRateLimitExceeded("login tracker capacity reached")
+                self._ensure_capacity_locked()
                 hits = []
                 self._hits[normalized] = hits
             hits.append(now)
