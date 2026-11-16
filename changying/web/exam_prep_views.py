@@ -1,4 +1,4 @@
-"""应试专项：考试目标、模拟卷、失分点、专项练习、再测对比、限时作答、家长提分报告.
+﻿"""应试专项：考试目标、模拟卷、失分点、专项练习、再测对比、限时作答、家长提分报告.
 
 teacher  GET  /teacher/exam-goals                                   my exam goals (+ classes, maps, sample papers)
          POST /teacher/exam-goals                                   {mapId, classId, title, examDate, unitKeys}
@@ -14,7 +14,7 @@ teacher  GET  /teacher/exam-goals                                   my exam goal
          POST /teacher/exam-reports/{rid}/publish                   parents see the published copy
 student  GET  /student/exam-papers                                  my mock and retest papers
          POST /student/exam-papers/{aid}/start                      start the clock (first time only)
-parent   GET  /parent/children/{cid}/exam-reports                   published reports for my child
+parent   GET  /parent/children/{sid}/exam-reports                   published reports for my child
 pages    /v1/exam-prep (teacher)  /v1/exam-paper (pupil, timed)  /v1/exam-report (parent)
 
 Built on the published knowledge map: the exam covers some of its units and papers are drawn from the points'
@@ -653,16 +653,16 @@ def install_exam_prep_views(implementation: Any) -> APIRouter:
         return {"startedAt": started.isoformat() + "Z", "timeLimit": mine[aid].time_limit_min, "now": datetime.utcnow().isoformat() + "Z"}
 
     # ---------------------------------------------------------------- parent
-    @router.get("/parent/children/{cid}/exam-reports")
-    def child_reports(cid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    @router.get("/parent/children/{sid}/exam-reports")
+    def child_reports(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         enabled()
         need(u, "parent")
-        if not db.scalar(select(I.ParentStudent.id).where(I.ParentStudent.parent_id == u.id, I.ParentStudent.student_id == cid)):
+        if not db.scalar(select(I.ParentStudent.id).where(I.ParentStudent.parent_id == u.id, I.ParentStudent.student_id == sid)):
             raise HTTPException(404, "没有找到这个孩子")
-        kid = db.get(I.User, cid)
+        kid = db.get(I.User, sid)
         if kid is None or kid.school_id != u.school_id:
             raise HTTPException(404, "没有找到这个孩子")
-        rows = db.execute(select(reports).where(reports.c.student_id == cid, reports.c.school_id == u.school_id,
+        rows = db.execute(select(reports).where(reports.c.student_id == sid, reports.c.school_id == u.school_id,
                                                 reports.c.published_json.is_not(None)).order_by(desc(reports.c.published_at))).all()
         return {"child": {"id": kid.id, "name": kid.name},
                 "items": [{"id": r.id, "publishedAt": I.school_local_iso(r.published_at), **json.loads(r.published_json)} for r in rows]}

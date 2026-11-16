@@ -1594,48 +1594,6 @@ if(cyFeedbackWorkspace){
         synced = _post_feedback_import(proof_token, int(audit_row.id))
         return {"ok": True, "received": True, "freemanSynced": synced}
 
-    @router.get("/v1/product-feedback/history", include_in_schema=False)
-    def product_feedback_history(
-        user=Depends(implementation.current_user),
-        db=Depends(implementation.get_db),
-    ):
-        rows = db.scalars(
-            select(implementation.AuditLog)
-            .where(
-                implementation.AuditLog.action == "product.feedback",
-                implementation.AuditLog.user_id == user.id,
-                implementation.AuditLog.school_id == user.school_id,
-            )
-            .order_by(implementation.AuditLog.id.desc()).limit(50)
-        ).all()
-        audit_ids = [row.id for row in rows]
-        reward_rows = db.execute(
-            select(reward_table.c.audit_id, reward_table.c.points, reward_table.c.status)
-            .where(reward_table.c.audit_id.in_(audit_ids))
-        ).all() if audit_ids else []
-        rewards = {int(r[0]): {"points": int(r[1] or 0), "status": str(r[2] or "pending")} for r in reward_rows}
-        items = []
-        for row in rows:
-            try:
-                payload = json.loads(row.detail or "{}")
-            except Exception:
-                payload = {}
-            reward = rewards.get(row.id, {"points": 0, "status": "received"})
-            status = reward["status"]
-            items.append({
-                "sourceId": row.id,
-                "category": str(payload.get("category") or "其他反馈")[:60],
-                "message": str(payload.get("message") or "")[:500],
-                "page": str(payload.get("page") or "")[:240],
-                "createdAt": (row.created_at or datetime.utcnow()).isoformat() + "Z",
-                "status": status,
-                "statusLabel": "已采纳" if status == "granted" else ("待处理" if status == "pending" else "已收到"),
-                "rewardPoints": reward["points"] if status == "granted" else 0,
-            })
-        summary = _feedback_reward_summary(db, user)
-        summary["pendingFeedbackCount"] = sum(1 for item in items if item["status"] != "granted")
-        return {"ok": True, "items": items, "summary": summary}
-
     def _reconcile_feedback_handoff(db, feedback_id: int) -> bool:
         row = db.scalar(
             select(implementation.AuditLog).where(
