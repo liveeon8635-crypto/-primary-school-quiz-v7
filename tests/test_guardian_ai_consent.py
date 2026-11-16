@@ -972,7 +972,7 @@ def test_v6_round3_audit_fixes(client, monkeypatch, tmp_path):
     from types import SimpleNamespace
     from fastapi import HTTPException
     import app_v924 as legacy
-    from changying.services.guardian_consent_migration import (
+    from changying.services.guardian_consent_ddl import (
         downgrade_consent_schema,
         main as migration_cli_main,
         upgrade_consent_schema,
