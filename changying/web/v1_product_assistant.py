@@ -1496,6 +1496,25 @@ if(cyFeedbackWorkspace){
             # Images from any role may contain student data and must pass unified authorization.
             assistant_feature = "product_assistant"
             target_student_ids = ()
+        else:
+            # Unreviewed teacher/admin free text must not be sent to external AI as an
+            # unauthenticated pure-teaching bypass; serve safe local navigation/help instead.
+            return {
+                "ok": True,
+                "reply": _clean_assistant_reply(
+                    _local_answer(
+                        question,
+                        body.identity,
+                        body.page,
+                        body.tutorial_step,
+                        role=role,
+                        learning_context=learning_context,
+                    )
+                ),
+                "source": "local",
+                "degraded": False,
+                "cards": navigation_cards,
+            }
 
         try:
             reply = implementation._ai_call(

@@ -159,7 +159,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
     def hint_rows(db: Any, school_id: int, qid: int) -> dict[int, Any]:
         return {int(r.level): r for r in db.execute(select(hints).where(hints.c.school_id == school_id, hints.c.question_id == qid)).all()}
 
-    def draft_with_ai(db: Any, u: Any, q: Any) -> list[str]:
+    def draft_with_ai(db: Any, u: Any, q: Any, student_ids: tuple[int, ...] = ()) -> list[str]:
         names = level_names(q.subject)
         letters = "ABCDEFGH"
         opts = "；".join(f"{letters[i]}. {t}" for i, t in enumerate(options(q)))
@@ -170,7 +170,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
             f"第3级【{names[2]}】：完整讲解并给出答案。每级不超过 60 字，用小学生能懂的话。\n"
             '只输出 JSON：{"levels":["第1级","第2级","第3级"]}'
         )
-        raw = implementation._ai_call(db, u, HINT_FEATURE, prompt, timeout=45)
+        raw = implementation._ai_call(db, u, HINT_FEATURE, prompt, timeout=45, student_ids=student_ids)
         data = implementation._ai_json(raw)
         levels = data.get("levels") if isinstance(data, dict) else None
         if not isinstance(levels, list) or len(levels) != 3 or not all(str(x).strip() for x in levels):
@@ -324,7 +324,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         hs = hint_rows(db, int(u.school_id), q.id)
         usable = {i: h for i, h in hs.items() if h.status in ("approved", "auto")}
         if len(usable) < 3:
-            levels = draft_with_ai(db, u, q)            # raises 502 with a readable message; nothing is recorded then
+            levels = draft_with_ai(db, u, q, student_ids=(int(u.id),))            # raises 502 with a readable message; nothing is recorded then
             save_levels(db, int(u.school_id), q.id, levels, "auto")
             db.commit()
             usable = hint_rows(db, int(u.school_id), q.id)
