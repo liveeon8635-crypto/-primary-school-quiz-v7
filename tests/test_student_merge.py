@@ -1,7 +1,13 @@
 from sqlalchemy import Boolean, Column, Integer, MetaData, String, Table, Text, create_engine, select
 from sqlalchemy.orm import Session
 
-from changying.domain.student_merge import StudentMergeConflict, StudentMergeError, merge_student_records, plan_student_merge
+from changying.domain.student_merge import (
+    StudentMergeConflict,
+    StudentMergeError,
+    _row_lock_sql,
+    merge_student_records,
+    plan_student_merge,
+)
 
 
 def build_db():
@@ -155,3 +161,22 @@ def test_merge_rejects_unique_scope_collision_without_dropping_rows():
         else:
             raise AssertionError("expected unique conflict to abort")
         assert session.execute(select(classes.c.student_id).order_by(classes.c.id)).scalars().all() == [11, 13]
+
+
+def test_plan_locks_student_rows_on_servers_with_row_locks():
+    class _PgDialect:
+        name = "postgresql"
+
+    class _PgSession:
+        def get_bind(self):
+            return type("Bind", (), {"dialect": _PgDialect()})()
+
+    class _SqliteDialect:
+        name = "sqlite"
+
+    class _SqliteSession:
+        def get_bind(self):
+            return type("Bind", (), {"dialect": _SqliteDialect()})()
+
+    assert _row_lock_sql(_PgSession()) == " FOR UPDATE"
+    assert _row_lock_sql(_SqliteSession()) == ""
