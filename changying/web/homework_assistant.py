@@ -46,6 +46,7 @@ def require_enabled() -> None:
 
 class ParseBody(BaseModel):
     text: str
+    studentIds: list[int] = []
 
 
 class NoticeBody(BaseModel):
@@ -120,11 +121,11 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
     # Follow-up routes (help requests) register on the same router through this handle.
     app.state.homework_tables = tables
 
-    def require_school_ai_for_notice(db: Any, teacher: Any) -> None:
+    def require_school_ai_for_notice(db: Any, teacher: Any, student_ids: tuple[int, ...] = ()) -> None:
         """Notices (text or screenshot) can contain student and parent names, phone numbers, chat names.
 
-        They only go to the AI provider when compliance, workspace AI switch, and
-        student-data switch are all enabled; otherwise nothing is sent and the teacher types manually.
+        They only go to the AI provider when compliance, workspace AI switch,
+        student-data switch, and student ownership/consent are all satisfied.
         """
         from changying.services.guardian_consent import require_student_ai_authorized
 
@@ -133,6 +134,7 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
             implementation,
             school_id=int(teacher.school_id),
             feature="homework_notice_parse",
+            student_ids=student_ids,
             actor_user_id=int(teacher.id),
             require_guardian_for_personal=False,
         )
@@ -223,12 +225,14 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
         db: Any = Depends(get_db),
     ):
         need(u, "teacher")
-        await run_in_threadpool(require_school_ai_for_notice, db, u)
+        raw_sids = str(request.query_params.get("studentIds") or "").strip()
+        parsed_sids = tuple(int(x) for x in raw_sids.split(",") if x.strip().isdigit())
+        await run_in_threadpool(require_school_ai_for_notice, db, u, parsed_sids)
         data = await read_image_body(request)
 
         def work() -> dict[str, Any]:
             implementation._ai_rate_check(db, u.school_id)
-            return recognize_image(implementation, db, u, data, feature="homework_parse_vision")
+            return recognize_image(implementation, db, u, data, feature="homework_parse_vision", student_ids=parsed_sids)
 
         result = await run_in_threadpool(work)
         text = scrub_notice_text(result["text"])
@@ -244,13 +248,21 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
     @router.post("/teacher/homework/parse")
     def parse(b: ParseBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
-        require_school_ai_for_notice(db, u)
+        sids = tuple(int(x) for x in (b.studentIds or []))
+        require_school_ai_for_notice(db, u, sids)
         if len(b.text) > MAX_NOTICE_CHARS:
             raise HTTPException(400, f"通知太长，请控制在 {MAX_NOTICE_CHARS} 字以内")
         text = scrub_notice_text(b.text)
         if not text:
             raise HTTPException(400, "请先粘贴作业通知文字")
-        raw = implementation._ai_call(db, u, "homework_parse", build_parse_prompt(text), timeout=60)
+        raw = implementation._ai_call(
+            db,
+            u,
+            "homework_parse",
+            build_parse_prompt(text),
+            timeout=60,
+            student_ids=tuple(int(x) for x in (b.studentIds or [])),
+        )
         try:
             parsed = clean_parse_result(implementation._ai_json(raw))
         except HTTPException:

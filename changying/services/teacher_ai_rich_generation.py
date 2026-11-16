@@ -426,12 +426,12 @@ def _rich_generate_call(implementation: ModuleType):
 
 {refs}"""
 
-        has_unverified_notes = bool(str(b.notes or "").strip())
+        has_unverified_input = bool(str(b.notes or "").strip()) or bool(b.resource_ids)
 
         def run_generation(feature: str, text: str, wanted: int):
             from changying.services.guardian_consent import _UNVERIFIED_FREE_TEXT
 
-            tok = _UNVERIFIED_FREE_TEXT.set(has_unverified_notes)
+            tok = _UNVERIFIED_FREE_TEXT.set(has_unverified_input)
             try:
                 raw = implementation._ai_json(implementation._ai_call(db, u, feature, text))
             finally:

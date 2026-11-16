@@ -62,7 +62,6 @@ TEACHING_ONLY_AI_FEATURES: frozenset[str] = frozenset({
     "connection_test",
     "question_generation",
     "question_generation_repair",
-    "weekend_hint",
 })
 
 _REQUEST_STUDENT_ID: contextvars.ContextVar[int | None] = contextvars.ContextVar(
@@ -695,21 +694,28 @@ def require_student_ai_authorized(
         _deny(403, msg, "allow_student_data_false")
 
     if not sids:
-        # Class-level homework notice parsing in institutional workspaces (with allow_student_data=True)
-        # is not scoped to a single pupil; all student-specific features and all personal-workspace
-        # calls strictly require explicit student_ids.
-        is_class_notice_inst = (not is_personal) and feature in {
-            "homework_parse",
-            "homework_parse_vision",
-            "homework_notice_parse",
-            "homework_notice_vision",
-        }
-        if not is_class_notice_inst:
-            _deny(
-                403,
-                "未指定已获授权的学生对象，禁止向外部 AI 发送缺少归属的数据",
-                "missing_student_consent_target",
-            )
+        _deny(
+            403,
+            "未指定已获授权的学生对象，禁止向外部 AI 发送缺少归属的数据",
+            "missing_student_consent_target",
+        )
+
+    UserModel = getattr(implementation, "User", None)
+    if UserModel is not None:
+        for sid in sids:
+            stu = db.get(UserModel, int(sid))
+            if (
+                stu is None
+                or int(getattr(stu, "school_id", -1) or -1) != int(school_id)
+                or getattr(stu, "role", "") != "student"
+                or not bool(getattr(stu, "active", True))
+            ):
+                _deny(
+                    403,
+                    "学生身份或学校归属校验失败，禁止向外部 AI 发送数据",
+                    "invalid_student_ownership",
+                    sid=sid,
+                )
 
     if is_personal and require_guardian_for_personal:
         now = datetime.utcnow()

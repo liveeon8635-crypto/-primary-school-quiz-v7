@@ -531,6 +531,7 @@ def test_institutional_allow_student_data_false_blocks_all_features_and_images(c
         cfg.provider = "openai_compatible"
         cfg.base_url = "https://api.deepseek.com/v1"
         cfg.model = "deepseek-chat"
+        cfg.api_key_cipher = legacy._ai_encrypt_key("sk-inst-v6-test-key")
         db.commit()
         for feat in (
             "weekend_report",
@@ -659,11 +660,10 @@ def test_personal_weekend_courseware_and_hint_boundaries(client, monkeypatch):
     assert r_cw.status_code in (403, 502)
     assert len(http_calls) == 0
 
-    # 2. Structured pure-teaching hint generation (weekend_hint without student_ids) succeeds
+    # 2. Teacher weekend_hint carries unverified question stem/options -> blocked without consent (0 HTTP)
     r_hint = client.post("/teacher/weekend/hints/generate", headers=t_headers, json={"questionId": qid})
-    assert r_hint.status_code == 200, r_hint.text[:300]
-    assert len(r_hint.json()["hints"]) == 3
-    assert len(http_calls) == 1
+    assert r_hint.status_code in (403, 502)
+    assert len(http_calls) == 0
 
     # 3. Student-scoped weekend_hint / weekend_report / weekend_practice without consent MUST be blocked (0 new HTTP calls)
     with legacy.SessionLocal() as db:
@@ -672,7 +672,7 @@ def test_personal_weekend_courseware_and_hint_boundaries(client, monkeypatch):
             with pytest.raises(HTTPException) as exc:
                 legacy._ai_call(db, student, feat, "prompt", student_ids=(student_id,))
             assert exc.value.status_code == 403
-    assert len(http_calls) == 1
+    assert len(http_calls) == 0
 
     # 4. After guardian consent + compliance approval, student weekend_hint succeeds; after revocation -> 403, 0 HTTP
     monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
@@ -681,7 +681,7 @@ def test_personal_weekend_courseware_and_hint_boundaries(client, monkeypatch):
     with legacy.SessionLocal() as db:
         student = db.get(legacy.User, student_id)
         assert legacy._ai_call(db, student, "weekend_hint", '{"levels": []}', student_ids=(student_id,))
-    assert len(http_calls) == 2
+    assert len(http_calls) == 1
 
     assert client.post(f"/parent/children/{student_id}/ai-consent/revoke", headers=p_headers, json={"reason": "revoke"}).status_code == 200
     with legacy.SessionLocal() as db:
@@ -689,7 +689,7 @@ def test_personal_weekend_courseware_and_hint_boundaries(client, monkeypatch):
         with pytest.raises(HTTPException) as exc_rev:
             legacy._ai_call(db, student, "weekend_hint", '{"levels": []}', student_ids=(student_id,))
         assert exc_rev.value.status_code == 403
-    assert len(http_calls) == 2
+    assert len(http_calls) == 1
 
 
 def test_v4_independent_acceptance_matrix(client, monkeypatch):
@@ -762,6 +762,7 @@ def test_v4_independent_acceptance_matrix(client, monkeypatch):
         cfg.provider = "openai_compatible"
         cfg.base_url = "https://api.deepseek.com/v1"
         cfg.model = "deepseek-chat"
+        cfg.api_key_cipher = legacy._ai_encrypt_key("sk-inst-v6-test-key")
         db.commit()
         with pytest.raises(HTTPException) as exc_inst:
             legacy._ai_call(db, inst_admin, "homework_help_solve", "missing student owner")
@@ -964,3 +965,190 @@ def test_v5_reinforcement_and_question_gen_notes_isolation(client, monkeypatch):
     assert "CREATE TABLE guardian_ai_consents" in joined_ddl
     assert "CREATE TABLE guardian_consent_tokens" in joined_ddl
     assert "CREATE TABLE guardian_consent_audit_logs" in joined_ddl
+
+
+def test_v6_round3_audit_fixes(client, monkeypatch, tmp_path):
+    import json
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    import app_v924 as legacy
+    from changying.services.guardian_consent_migration import (
+        downgrade_consent_schema,
+        main as migration_cli_main,
+        upgrade_consent_schema,
+        verify_consent_schema,
+    )
+
+    t_headers, _p_headers, _s_headers, student_id = _setup_personal_family(client)
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+    monkeypatch.setenv("HOMEWORK_ASSISTANT", "1")
+
+    http_calls = []
+
+    def fake_post(url, *args, **kwargs):
+        http_calls.append(url)
+        return SimpleNamespace(
+            ok=True,
+            status_code=200,
+            json=lambda: {
+                "choices": [{
+                    "message": {
+                        "content": json.dumps({
+                            "questions": [{
+                                "question_type": "single_choice",
+                                "knowledge": "分数计算",
+                                "text": "1/2 + 1/4 = ?",
+                                "options": ["1/6", "3/4", "2/6", "1/2"],
+                                "correct_index": 1,
+                                "explanation": "通分相加",
+                            }]
+                        }, ensure_ascii=False)
+                    }
+                }]
+            },
+        )
+
+    monkeypatch.setattr(legacy.requests, "post", fake_post)
+
+    # 1. P0-1: question_generation with resource_ids containing student PII (even with notes="") MUST be blocked (0 HTTP)
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, student_id)
+        teacher = db.query(legacy.User).filter(legacy.User.school_id == stu.school_id, legacy.User.role == "teacher").first()
+        raw_doc = "张小明 学号20260105 数学考试 58分".encode("utf-8")
+        res = legacy.TeachingResource(
+            school_id=stu.school_id,
+            uploader_id=teacher.id,
+            title="张小明数学测验记录.docx",
+            subject="数学",
+            grade=5,
+            file_name="score.docx",
+            file_ext="docx",
+            size_bytes=len(raw_doc),
+            sha256="a" * 64,
+            file_data=raw_doc,
+        )
+        db.add(res)
+        db.commit()
+        rid = res.id
+
+    r_res = client.post(
+        "/ai/questions/generate",
+        headers=t_headers,
+        json={
+            "grade": 5,
+            "subject": "数学",
+            "textbook": "人教版",
+            "semester": "上册",
+            "count": 1,
+            "notes": "",
+            "resource_ids": [rid],
+        },
+    )
+    assert r_res.status_code == 403
+    assert len(http_calls) == 0
+
+    # Pure question_generation (no notes, no resource_ids) succeeds
+    r_pure = client.post(
+        "/ai/questions/generate",
+        headers=t_headers,
+        json={
+            "grade": 5,
+            "subject": "数学",
+            "textbook": "人教版",
+            "semester": "上册",
+            "knowledge": "分数计算",
+            "count": 1,
+            "notes": "",
+            "resource_ids": [],
+        },
+    )
+    assert r_pure.status_code == 200
+    assert len(http_calls) == 1
+
+    # 2. P0-3 & P1: Institutional homework_parse / homework_parse_vision without studentIds & invalid student ownership
+    tag = uuid.uuid4().hex[:8]
+    inst_code = f"inst-v6-{tag}"
+    assert client.post(
+        "/operator/schools/create",
+        headers={"X-Commercial-Key": COMMERCIAL_KEY},
+        json={
+            "school_name": f"机构V6-{tag}",
+            "school_code": inst_code,
+            "admin_name": "赵老师",
+            "admin_username": inst_code,
+            "admin_password": PASSWORD,
+            "individual": False,
+        },
+    ).status_code == 200
+    inst_admin_h = _login_headers(client, inst_code, PASSWORD)
+    tr = client.post(
+        "/admin/users",
+        headers=inst_admin_h,
+        json={"name": "机构教师", "username": f"it6-{tag}", "password": PASSWORD, "role": "teacher"},
+    )
+    assert tr.status_code == 200
+    teach_id = tr.json()["id"]
+    with legacy.SessionLocal() as db:
+        t_u = db.get(legacy.User, teach_id)
+        cls = legacy.SchoolClass(school_id=t_u.school_id, name="五年级1班", grade=5, teacher_id=teach_id)
+        db.add(cls)
+        db.commit()
+        cls_id = cls.id
+        cfg = legacy.ai_config_for(db, t_u.school_id, True)
+        cfg.enabled = True
+        cfg.allow_student_data = True
+        cfg.provider = "openai_compatible"
+        cfg.base_url = "https://api.deepseek.com/v1"
+        cfg.model = "deepseek-chat"
+        cfg.api_key_cipher = legacy._ai_encrypt_key("sk-inst-v6-test-key")
+        db.commit()
+    inst_teach_h = _login_headers(client, f"it6-{tag}", PASSWORD)
+    sr = client.post(
+        "/teacher/students",
+        headers=inst_teach_h,
+        json={"name": "机构小敏", "username": f"is6-{tag}", "password": PASSWORD, "grade": 5, "class_id": cls_id},
+    )
+    assert sr.status_code == 200
+    inst_sid = sr.json()["id"]
+
+    # Missing studentIds on institutional homework_parse -> 403, 0 new HTTP
+    r_hw_no_sid = client.post(
+        "/teacher/homework/parse",
+        headers=inst_teach_h,
+        json={"text": "张小明 学号20260105 数学58分，请完成第5页练习"},
+    )
+    assert r_hw_no_sid.status_code == 403
+    assert len(http_calls) == 1
+
+    # Missing studentIds on institutional homework_parse_vision -> 403, 0 new HTTP
+    r_hw_img_no_sid = client.post(
+        "/teacher/homework/parse-image",
+        headers={**inst_teach_h, "Content-Type": "image/png"},
+        content=b"\x89PNG\r\n\x1a\n" + b"0" * 32,
+    )
+    assert r_hw_img_no_sid.status_code == 403
+    assert len(http_calls) == 1
+
+    # P1: Institutional DB student ownership validation
+    with legacy.SessionLocal() as db:
+        inst_teacher = db.get(legacy.User, teach_id)
+        for bad_sid in (999999, teach_id, student_id):
+            with pytest.raises(HTTPException) as exc_bad:
+                legacy._ai_call(db, inst_teacher, "homework_help_solve", "hello", student_ids=(bad_sid,))
+            assert exc_bad.value.status_code == 403
+        assert len(http_calls) == 1
+        assert legacy._ai_call(db, inst_teacher, "homework_help_solve", "hello", student_ids=(inst_sid,))
+    assert len(http_calls) == 2
+
+    # 3. P1: Executable migration & reverse-order rollback CLI drill on isolated DB
+    mig_db_url = f"sqlite:///{tmp_path / 'mig_drill.sqlite3'}"
+    mig_engine = create_engine(mig_db_url)
+    legacy.Base.metadata.create_all(bind=mig_engine)
+    assert migration_cli_main(["upgrade", "--database-url", mig_db_url]) == 0
+    assert all(verify_consent_schema(mig_engine).values())
+    assert migration_cli_main(["downgrade", "--database-url", mig_db_url]) == 0
+    assert not any(verify_consent_schema(mig_engine).values())
+    assert {"users", "parent_students", "point_ledger"}.issubset(set(inspect(mig_engine).get_table_names()))
+    assert upgrade_consent_schema(mig_engine)
+    assert downgrade_consent_schema(mig_engine)
+    mig_engine.dispose()

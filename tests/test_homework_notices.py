@@ -136,7 +136,7 @@ with TestClient(app) as client:
     assert sid in [s["id"] for s in students]
 
     pasted = "各位家长好，明天作业：口算题卡第5页。有事请联系 13812345678 或 123456789012。"
-    parsed = client.post("/teacher/homework/parse", headers=th, json={"text": pasted})
+    parsed = client.post("/teacher/homework/parse", headers=th, json={"text": pasted, "studentIds": [sid]})
     assert parsed.status_code == 200, parsed.text
     notice = parsed.json()
     assert notice["status"] == "draft" and len(notice["items"]) == 2
@@ -209,9 +209,9 @@ with TestClient(app) as client:
     allow_ai(school_of(sid))
 
     # A model answer that is not usable asks the teacher to type the list by hand.
-    bad = client.post("/teacher/homework/parse", headers=th, json={"text": "明天作业：略"})
+    bad = client.post("/teacher/homework/parse", headers=th, json={"text": "明天作业：略", "studentIds": [sid]})
     assert bad.status_code == 422 and "手动" in bad.json()["detail"]
-    assert client.post("/teacher/homework/parse", headers=th, json={"text": "   "}).status_code == 400
+    assert client.post("/teacher/homework/parse", headers=th, json={"text": "   ", "studentIds": [sid]}).status_code == 400
 
     manual = client.post(
         "/teacher/homework/notices", headers=th,
@@ -254,7 +254,7 @@ legacy._ai_call = lambda *a, **k: NOTICE_JSON
 with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
     allow_ai(school_of(sid))
-    nid = client.post("/teacher/homework/parse", headers=th, json={"text": "明天作业：略"}).json()["id"]
+    nid = client.post("/teacher/homework/parse", headers=th, json={"text": "明天作业：略", "studentIds": [sid]}).json()["id"]
     tbl = legacy.Base.metadata.tables["homework_notices"]
     with legacy.SessionLocal() as db:
         assert db.scalar(select(tbl.c.raw_text).where(tbl.c.id == nid)) != ""
@@ -360,7 +360,7 @@ with TestClient(app) as client:
     allow_ai(school_of(sid))
 
     # Not configured: clear message, nothing is sent anywhere.
-    r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
+    r = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
     assert r.status_code == 503 and not captured
 
     import os
@@ -372,7 +372,7 @@ with TestClient(app) as client:
     })
     assert client.get("/homework/config").json()["visionEnabled"] is True
 
-    ok = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
+    ok = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
     assert ok.status_code == 200, ok.text
     assert "13812345678" not in ok.json()["text"] and "数学第5页" in ok.json()["text"]
     # The model name is sent exactly as configured, the key only in the header.
@@ -381,9 +381,9 @@ with TestClient(app) as client:
     assert "test-key-not-real" not in json.dumps(captured["payload"])
 
     # Bad inputs.
-    assert client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=b"GIF89a....").status_code == 415
+    assert client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=b"GIF89a....").status_code == 415
     big = b"\xff\xd8\xff" + b"0" * (homework_vision.MAX_IMAGE_BYTES + 10)
-    assert client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=big).status_code == 413
+    assert client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=big).status_code == 413
     assert client.post("/teacher/homework/parse-image", headers={**sh, "Content-Type": "image/jpeg"}, content=jpeg).status_code == 403
 
     # Only metadata is logged; the image bytes appear nowhere in the database file.
@@ -438,11 +438,11 @@ with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
     allow_ai(school_of(sid))
     homework_vision.requests.post = lambda *a, **k: Bad()
-    r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
+    r = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
     assert r.status_code == 502 and "secret-key-xyz" not in r.text and "429" in r.text
     assert "rate_limit" not in r.text  # provider-controlled strings are no longer exposed
     homework_vision.requests.post = boom
-    r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
+    r = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
     assert r.status_code == 504 and "secret-key-xyz" not in r.text
     from sqlalchemy import select
     with legacy.SessionLocal() as db:
@@ -484,25 +484,26 @@ class FakeResponse:
 homework_vision.requests.post = lambda *a, **k: (sent.append(1), FakeResponse())[1]
 jpeg = b"\xff\xd8\xff\xe0" + b"1" * 50
 
-def upload(client, th):
-    return client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
+def upload(client, th, sid=None):
+    url = f"/teacher/homework/parse-image?studentIds={sid}" if sid else "/teacher/homework/parse-image"
+    return client.post(url, headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
 
 with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
     school_id = school_of(sid)
 
     # No AI settings at all, then AI enabled but content not allowed to leave: nothing is sent.
-    assert upload(client, th).status_code == 503
+    assert upload(client, th, sid).status_code == 503
     allow_ai(school_id, allow=False, enabled=True)
-    refused = upload(client, th)
+    refused = upload(client, th, sid)
     assert refused.status_code == 403 and "手动录入" in refused.json()["detail"]
     allow_ai(school_id, allow=True, enabled=False)
-    assert upload(client, th).status_code == 503
+    assert upload(client, th, sid).status_code == 503
     assert not sent, "no picture may leave the server without the school's permission"
 
     # Both switched on: it works.
     allow_ai(school_id, allow=True, enabled=True)
-    assert upload(client, th).status_code == 200 and len(sent) == 1
+    assert upload(client, th, sid).status_code == 200 and len(sent) == 1
 print("OK")
 ''',
         {"HOMEWORK_ASSISTANT": "1"},
@@ -553,7 +554,7 @@ with TestClient(app) as client:
     result = {}
 
     def upload():
-        r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
+        r = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
         result["status"] = r.status_code
 
     worker = threading.Thread(target=upload)
@@ -588,7 +589,7 @@ legacy._ai_call = fake_ai
 with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
     school_id = school_of(sid)
-    text = {"text": "三(2)班 张小明 家长王女士：明天作业口算题卡第5页"}
+    text = {"text": "三(2)班 张小明 家长王女士：明天作业口算题卡第5页", "studentIds": [sid]}
 
     assert client.post("/teacher/homework/parse", headers=th, json=text).status_code == 503      # AI not set up
     allow_ai(school_id, allow=False, enabled=True)
@@ -700,7 +701,7 @@ with TestClient(app) as client:
         "HOMEWORK_VISION_MODEL": "vision-test-model",
         "HOMEWORK_VISION_API_KEY": "test-key-not-real",
     })
-    r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"},
+    r = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"},
                     content=b"\xff\xd8\xff\xe0" + b"y" * 200)
     assert r.status_code == 200, r.text
     body = r.json()
