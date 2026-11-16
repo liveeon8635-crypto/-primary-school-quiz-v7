@@ -73,9 +73,9 @@ def week_work_map(impl: Any, db: Any, *, school_id: int, student_ids: list[int],
     """Ordinary assignments each pupil received in the report's week (Mon..Sun); read-only.
 
     An assignment counts when the pupil is a recipient of it and its due date (or, without
-    one, its creation date) falls inside the window. The latest submission decides the state:
-    no submission "未交", a submission with nothing graded "待批改", otherwise "已交" with the
-    share of correct questions. Ordinary homework is never attached to a lesson.
+    one, its creation date) falls inside the window. Completion follows the assignment's
+    quiz/media mode; completed ungraded work is "待批改", and graded work includes accuracy.
+    Ordinary homework is never attached to a lesson.
     """
     start, end = week_window(day)
     ids = sorted({int(s) for s in student_ids})
@@ -104,7 +104,7 @@ def week_work_map(impl: Any, db: Any, *, school_id: int, student_ids: list[int],
         s = latest.get((int(row.student_id), int(task.id)))
         state = impl.assignment_effective_status(db, task, int(row.student_id))
         total = int(getattr(s, "total", 0) or 0) if s is not None and state["completed"] else 0
-        correct = int(getattr(s, "correct", 0) or 0) if s is not None else 0
+        correct = int(getattr(s, "correct", 0) or 0) if s is not None and state["completed"] else 0
         status = "unsubmitted" if not state["completed"] else ("pending" if not total else "submitted")
         submitted_at = str(state.get("submittedAt") or "")
         block["items"].append({"assignmentId": int(task.id), "title": str(task.title or ""), "due": due, "status": status,
