@@ -82,7 +82,7 @@ with TestClient(app) as client:
     assert public_questions.status_code == 200, public_questions.text
     public_items = public_questions.json()
     assert len(public_items) == 2
-    assert all(item["learningPoints"] == 1 for item in public_items)
+    assert all(item["learningPoints"] == 2 for item in public_items)
 
     with legacy.SessionLocal() as db:
         paper = db.get(legacy.Paper, pid)
@@ -105,19 +105,19 @@ with TestClient(app) as client:
     submitted_body = submitted.json()
     assert submitted_body["correct"] == 1
     assert submitted_body["total"] == 2
-    assert submitted_body["learningPointsAwarded"] == 1
-    assert submitted_body["learningPointMax"] == 2
+    assert submitted_body["learningPointsAwarded"] == 3
+    assert submitted_body["learningPointMax"] == 4
 
     after_assignment = client.get("/student/points", headers=sh).json()
-    assert after_assignment["summary"]["balance"] == baseline_balance + 1
-    assert after_assignment["summary"]["learning"] == baseline_learning + 1
-    assert after_assignment["weekly"]["learning"] >= 1
+    assert after_assignment["summary"]["balance"] == baseline_balance + 3
+    assert after_assignment["summary"]["learning"] == baseline_learning + 3
+    assert after_assignment["weekly"]["learning"] >= 3
     assignment_learning = [
         row for row in after_assignment["ledger"]
         if row["source"] == "learning_submission" and row["relatedID"] == submitted_body["id"]
     ]
     assert len(assignment_learning) == 1
-    assert assignment_learning[0]["points"] == 1
+    assert assignment_learning[0]["points"] == 3
     assert assignment_learning[0]["category"] == "learning"
 
     practice_question = [{
@@ -140,12 +140,12 @@ with TestClient(app) as client:
     )
     assert practice.status_code == 200, practice.text
     practice_body = practice.json()
-    assert practice_body["learningPointsAwarded"] == 1
-    assert practice_body["learningPointMax"] == 1
+    assert practice_body["learningPointsAwarded"] == 2
+    assert practice_body["learningPointMax"] == 2
 
     after_practice = client.get("/student/points", headers=sh).json()
-    assert after_practice["summary"]["balance"] == baseline_balance + 2
-    assert after_practice["summary"]["learning"] == baseline_learning + 2
+    assert after_practice["summary"]["balance"] == baseline_balance + 5
+    assert after_practice["summary"]["learning"] == baseline_learning + 5
     practice_learning = [
         row for row in after_practice["ledger"]
         if row["source"] == "learning_submission" and row["relatedID"] == practice_body["id"]
@@ -219,8 +219,8 @@ with TestClient(app) as client:
     assert confirmed_body["learningPointMax"] == 1
 
     after_subjective = client.get("/student/points", headers=sh).json()
-    assert after_subjective["summary"]["balance"] == baseline_balance + 3
-    assert after_subjective["summary"]["learning"] == baseline_learning + 3
+    assert after_subjective["summary"]["balance"] == baseline_balance + 6
+    assert after_subjective["summary"]["learning"] == baseline_learning + 6
     grading_rows = [
         row for row in after_subjective["ledger"]
         if row["source"] == "learning_grading"
@@ -239,8 +239,8 @@ with TestClient(app) as client:
     assert confirmed_again.json()["learningPointsTotal"] == 1
 
     final_points = client.get("/student/points", headers=sh).json()
-    assert final_points["summary"]["balance"] == baseline_balance + 3
-    assert final_points["summary"]["learning"] == baseline_learning + 3
+    assert final_points["summary"]["balance"] == baseline_balance + 6
+    assert final_points["summary"]["learning"] == baseline_learning + 6
     assert "学习积分" in legacy.INDEX_HTML
     assert "本周学习" in legacy.INDEX_HTML
 
@@ -300,18 +300,18 @@ with TestClient(app) as client:
     reinforcement_body = reinforcement_submitted.json()
     assert reinforcement_body["correct"] == 2
     assert reinforcement_body["total"] == 3
-    assert reinforcement_body["learningPointsAwarded"] == 2
-    assert reinforcement_body["learningPointMax"] == 3
+    assert reinforcement_body["learningPointsAwarded"] == 5
+    assert reinforcement_body["learningPointMax"] == 6
 
     after_reinforcement = client.get("/student/points", headers=sh).json()
-    assert after_reinforcement["summary"]["balance"] == baseline_balance + 5
-    assert after_reinforcement["summary"]["learning"] == baseline_learning + 5
+    assert after_reinforcement["summary"]["balance"] == baseline_balance + 11
+    assert after_reinforcement["summary"]["learning"] == baseline_learning + 11
     reinforcement_learning = [
         row for row in after_reinforcement["ledger"]
         if row["source"] == "learning_submission" and row["relatedID"] == reinforcement_body["id"]
     ]
     assert len(reinforcement_learning) == 1
-    assert reinforcement_learning[0]["points"] == 2
+    assert reinforcement_learning[0]["points"] == 5
     assert reinforcement_learning[0]["category"] == "learning"
 
     reinforcement_resubmitted = client.post(
@@ -329,14 +329,14 @@ with TestClient(app) as client:
     assert reinforcement_resubmitted.json()["id"] == reinforcement_body["id"]
     assert reinforcement_resubmitted.json()["learningPointsAwarded"] == 0
     after_reinforcement_resubmit = client.get("/student/points", headers=sh).json()
-    assert after_reinforcement_resubmit["summary"]["balance"] == baseline_balance + 5
-    assert after_reinforcement_resubmit["summary"]["learning"] == baseline_learning + 5
+    assert after_reinforcement_resubmit["summary"]["balance"] == baseline_balance + 11
+    assert after_reinforcement_resubmit["summary"]["learning"] == baseline_learning + 11
     reinforcement_learning_after = [
         row for row in after_reinforcement_resubmit["ledger"]
         if row["source"] == "learning_submission" and row["relatedID"] == reinforcement_body["id"]
     ]
     assert len(reinforcement_learning_after) == 1
-    assert reinforcement_learning_after[0]["points"] == 2
+    assert reinforcement_learning_after[0]["points"] == 5
 '''
 
     env = os.environ.copy()
