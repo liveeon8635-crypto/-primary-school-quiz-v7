@@ -720,11 +720,11 @@ def test_v4_independent_acceptance_matrix(client, monkeypatch):
     assert r_paper.status_code in (403, 502)
     assert len(http_calls) == 0
 
-    # 2. Pure teaching question_generation (no student data) -> succeeds
+    # 2. Hardcoded connection_test (zero user input) succeeds; question_generation without consent is blocked
     with legacy.SessionLocal() as db:
         student = db.get(legacy.User, student_id)
         teacher = db.query(legacy.User).filter(legacy.User.school_id == student.school_id, legacy.User.role == "teacher").first()
-        assert legacy._ai_call(db, teacher, "question_generation", "出1道五年级分数计算题") == "ok"
+        assert legacy._ai_call(db, teacher, "connection_test", "你是长缨辅学的AI连接测试。请只回复：连接成功") == "ok"
     assert len(http_calls) == 1
 
     # 3. Unregistered AI feature MUST return 403 and 0 HTTP even with student_ai_all consent & compliance open
@@ -937,7 +937,7 @@ def test_v5_reinforcement_and_question_gen_notes_isolation(client, monkeypatch):
         assert exc_rep.value.status_code == 403
     assert len(http_calls) == 1
 
-    # 7. Pure structured question_generation without notes -> succeeds
+    # 7. question_generation without student_ids is ALSO blocked (403, 0 new HTTP) since all user fields can carry PII
     r_q_pure = client.post(
         "/ai/questions/generate",
         headers=t_headers,
@@ -951,8 +951,8 @@ def test_v5_reinforcement_and_question_gen_notes_isolation(client, monkeypatch):
             "notes": "",
         },
     )
-    assert r_q_pure.status_code == 200, r_q_pure.text[:300]
-    assert len(http_calls) == 2
+    assert r_q_pure.status_code == 403
+    assert len(http_calls) == 1
 
     # 8. PostgreSQL DDL compilation check for all 3 tables & indexes
     pg_dialect = postgresql.dialect()
@@ -1047,7 +1047,7 @@ def test_v6_round3_audit_fixes(client, monkeypatch, tmp_path):
     assert r_res.status_code == 403
     assert len(http_calls) == 0
 
-    # Pure question_generation (no notes, no resource_ids) succeeds
+    # question_generation without student_ids is strictly blocked (0 HTTP)
     r_pure = client.post(
         "/ai/questions/generate",
         headers=t_headers,
@@ -1062,8 +1062,8 @@ def test_v6_round3_audit_fixes(client, monkeypatch, tmp_path):
             "resource_ids": [],
         },
     )
-    assert r_pure.status_code == 200
-    assert len(http_calls) == 1
+    assert r_pure.status_code == 403
+    assert len(http_calls) == 0
 
     # 2. P0-3 & P1: Institutional homework_parse / homework_parse_vision without studentIds & invalid student ownership
     tag = uuid.uuid4().hex[:8]
@@ -1118,7 +1118,7 @@ def test_v6_round3_audit_fixes(client, monkeypatch, tmp_path):
         json={"text": "张小明 学号20260105 数学58分，请完成第5页练习"},
     )
     assert r_hw_no_sid.status_code == 403
-    assert len(http_calls) == 1
+    assert len(http_calls) == 0
 
     # Missing studentIds on institutional homework_parse_vision -> 403, 0 new HTTP
     r_hw_img_no_sid = client.post(
@@ -1127,7 +1127,7 @@ def test_v6_round3_audit_fixes(client, monkeypatch, tmp_path):
         content=b"\x89PNG\r\n\x1a\n" + b"0" * 32,
     )
     assert r_hw_img_no_sid.status_code == 403
-    assert len(http_calls) == 1
+    assert len(http_calls) == 0
 
     # P1: Institutional DB student ownership validation
     with legacy.SessionLocal() as db:
@@ -1136,19 +1136,185 @@ def test_v6_round3_audit_fixes(client, monkeypatch, tmp_path):
             with pytest.raises(HTTPException) as exc_bad:
                 legacy._ai_call(db, inst_teacher, "homework_help_solve", "hello", student_ids=(bad_sid,))
             assert exc_bad.value.status_code == 403
-        assert len(http_calls) == 1
+        assert len(http_calls) == 0
         assert legacy._ai_call(db, inst_teacher, "homework_help_solve", "hello", student_ids=(inst_sid,))
-    assert len(http_calls) == 2
+    assert len(http_calls) == 1
 
     # 3. P1: Executable migration & reverse-order rollback CLI drill on isolated DB
     mig_db_url = f"sqlite:///{tmp_path / 'mig_drill.sqlite3'}"
     mig_engine = create_engine(mig_db_url)
     legacy.Base.metadata.create_all(bind=mig_engine)
+    assert migration_cli_main(["verify", "--database-url", mig_db_url]) == 1
     assert migration_cli_main(["upgrade", "--database-url", mig_db_url]) == 0
+    assert migration_cli_main(["verify", "--database-url", mig_db_url]) == 0
     assert all(verify_consent_schema(mig_engine).values())
-    assert migration_cli_main(["downgrade", "--database-url", mig_db_url]) == 0
+    assert migration_cli_main(["downgrade", "--database-url", mig_db_url]) == 2
+    assert all(verify_consent_schema(mig_engine).values())
+    assert migration_cli_main(["downgrade", "--database-url", mig_db_url, "--confirm-downgrade"]) == 0
+    assert migration_cli_main(["verify", "--database-url", mig_db_url]) == 1
     assert not any(verify_consent_schema(mig_engine).values())
     assert {"users", "parent_students", "point_ledger"}.issubset(set(inspect(mig_engine).get_table_names()))
     assert upgrade_consent_schema(mig_engine)
     assert downgrade_consent_schema(mig_engine)
     mig_engine.dispose()
+
+
+def test_v7_round4_audit_fixes(client, monkeypatch, tmp_path):
+    import json
+    import subprocess
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    import app_v924 as legacy
+    from changying.services.homework_prompts import scrub_notice_text
+
+    t_headers, p_headers, _s_headers, student_id = _setup_personal_family(client)
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+    monkeypatch.setenv("HOMEWORK_ASSISTANT", "1")
+    monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
+
+    http_calls = []
+
+    def fake_post(url, *args, **kwargs):
+        http_calls.append(url)
+        return SimpleNamespace(
+            ok=True,
+            status_code=200,
+            json=lambda: {"choices": [{"message": {"content": json.dumps({"levels": ["提示1", "提示2", "提示3"]}, ensure_ascii=False)}}]},
+        )
+
+    monkeypatch.setattr(legacy.requests, "post", fake_post)
+
+    # 1. P0: Every string field in AIQuestionGenerateBody injected with student PII + question_generation_repair -> 403, 0 HTTP
+    pii = "张小明最近考试58分，数学薄弱"
+    base_payload = {
+        "grade": 5,
+        "subject": "数学",
+        "textbook": "人教版",
+        "semester": "上册",
+        "unit": "",
+        "knowledge": "",
+        "difficulty": "中等",
+        "question_type": "mixed",
+        "count": 1,
+        "notes": "",
+        "resource_ids": [],
+    }
+    for field in ("subject", "textbook", "semester", "unit", "knowledge", "difficulty", "question_type", "notes"):
+        bad_payload = {**base_payload, field: pii}
+        r_f = client.post("/ai/questions/generate", headers=t_headers, json=bad_payload)
+        assert r_f.status_code in (400, 403), (field, r_f.status_code)
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, student_id)
+        teacher = db.query(legacy.User).filter(legacy.User.school_id == stu.school_id, legacy.User.role == "teacher").first()
+        for feat in ("question_generation", "question_generation_repair"):
+            with pytest.raises(HTTPException) as exc_q:
+                legacy._ai_call(db, teacher, feat, pii)
+            assert exc_q.value.status_code == 403
+    assert len(http_calls) == 0
+
+    # 2. P1: Same-school other-teacher class student MUST be rejected (teacher_class_ownership_denied)
+    tag = uuid.uuid4().hex[:8]
+    inst_code = f"inst-v7-{tag}"
+    assert client.post(
+        "/operator/schools/create",
+        headers={"X-Commercial-Key": COMMERCIAL_KEY},
+        json={
+            "school_name": f"机构V7-{tag}",
+            "school_code": inst_code,
+            "admin_name": "校长",
+            "admin_username": inst_code,
+            "admin_password": PASSWORD,
+            "individual": False,
+        },
+    ).status_code == 200
+    admin_h = _login_headers(client, inst_code, PASSWORD)
+    ta_id = client.post("/admin/users", headers=admin_h, json={"name": "甲老师", "username": f"ta-{tag}", "password": PASSWORD, "role": "teacher"}).json()["id"]
+    with legacy.SessionLocal() as db:
+        ta_u = db.get(legacy.User, ta_id)
+        tb_u = legacy.User(
+            school_id=ta_u.school_id,
+            name="乙老师",
+            username=f"tb-{tag}",
+            password_hash=ta_u.password_hash,
+            role="teacher",
+            active=True,
+        )
+        db.add(tb_u)
+        db.flush()
+        tb_id = tb_u.id
+        ca = legacy.SchoolClass(school_id=ta_u.school_id, name="甲班", grade=5, teacher_id=ta_id)
+        cb = legacy.SchoolClass(school_id=ta_u.school_id, name="乙班", grade=5, teacher_id=tb_id)
+        db.add_all([ca, cb])
+        db.commit()
+        ca_id, cb_id = ca.id, cb.id
+        cfg = legacy.ai_config_for(db, ta_u.school_id, True)
+        cfg.enabled = True
+        cfg.allow_student_data = True
+        cfg.provider = "openai_compatible"
+        cfg.base_url = "https://api.deepseek.com/v1"
+        cfg.model = "deepseek-chat"
+        cfg.api_key_cipher = legacy._ai_encrypt_key("sk-inst-v7-key")
+        db.commit()
+    ta_h = _login_headers(client, f"ta-{tag}", PASSWORD)
+    tb_h = _login_headers(client, f"tb-{tag}", PASSWORD)
+    sa_id = client.post("/teacher/students", headers=ta_h, json={"name": "甲班生", "username": f"sa-{tag}", "password": PASSWORD, "grade": 5, "class_id": ca_id}).json()["id"]
+    sb_id = client.post("/teacher/students", headers=tb_h, json={"name": "乙班生", "username": f"sb-{tag}", "password": PASSWORD, "grade": 5, "class_id": cb_id}).json()["id"]
+
+    # Teacher A passing Teacher B's student sb_id in the SAME school -> 403, 0 HTTP
+    r_cross_cls = client.post(
+        "/teacher/homework/parse",
+        headers=ta_h,
+        json={"text": "明天作业第5页", "studentIds": [sb_id]},
+    )
+    assert r_cross_cls.status_code == 403
+    assert len(http_calls) == 0
+
+    # 3. P1: Teacher weekend hints with studentIds (and authorized) succeeds; without studentIds -> 403
+    with legacy.SessionLocal() as db:
+        ta_u = db.get(legacy.User, ta_id)
+        prog = legacy.TeachingProgram(school_id=ta_u.school_id, title="五年级培优V7", grade=5)
+        db.add(prog)
+        db.flush()
+        lesson = legacy.TeachingLesson(school_id=ta_u.school_id, program_id=prog.id, subject="数学", lesson_no=1, title="小数")
+        db.add(lesson)
+        db.flush()
+        tq = legacy.TeachingQuestion(
+            school_id=ta_u.school_id,
+            program_id=prog.id,
+            lesson_id=lesson.id,
+            subject="数学",
+            level=1,
+            stem="0.5 + 0.25 = ?",
+            options_json=json.dumps(["0.75", "0.3", "0.5", "1.0"]),
+            correct_index=0,
+        )
+        db.add(tq)
+        db.commit()
+        qid = tq.id
+
+    assert client.post("/teacher/weekend/hints/generate", headers=ta_h, json={"questionId": qid}).status_code == 403
+    assert client.post("/teacher/weekend/hints/generate", headers=ta_h, json={"questionId": qid, "studentIds": [sb_id]}).status_code == 403
+    assert len(http_calls) == 0
+    r_hint_ok = client.post("/teacher/weekend/hints/generate", headers=ta_h, json={"questionId": qid, "studentIds": [sa_id]})
+    assert r_hint_ok.status_code == 200
+    assert len(http_calls) == 1
+
+    # 4. P1: Frontend /v1/homework wires /teacher/homework/students and passes studentIds
+    hw_html = client.get("/v1/homework").text
+    assert "/teacher/homework/students" in hw_html
+    assert "studentIds" in hw_html
+
+    # 5. P1: scrub_notice_text redacts labelled PII & scores
+    scrubbed = scrub_notice_text("学生姓名：张小明 家长：王女士 学号：20260105 成绩：58分 13812345678")
+    for secret in ("张小明", "王女士", "20260105", "58分", "13812345678"):
+        assert secret not in scrubbed
+
+    # 6. P1: Real subprocess CLI execution of python -m changying.services.guardian_consent_ddl
+    cli_db_url = f"sqlite:///{tmp_path / 'cli_subproc.sqlite3'}"
+    cli_env = {**os.environ, "PYTHONPATH": str(ROOT)}
+    assert subprocess.run([sys.executable, "-m", "changying.services.guardian_consent_ddl", "verify", "--database-url", cli_db_url], cwd=ROOT, env=cli_env).returncode == 1
+    assert subprocess.run([sys.executable, "-m", "changying.services.guardian_consent_ddl", "upgrade", "--database-url", cli_db_url], cwd=ROOT, env=cli_env).returncode == 0
+    assert subprocess.run([sys.executable, "-m", "changying.services.guardian_consent_ddl", "verify", "--database-url", cli_db_url], cwd=ROOT, env=cli_env).returncode == 0
+    assert subprocess.run([sys.executable, "-m", "changying.services.guardian_consent_ddl", "downgrade", "--database-url", cli_db_url], cwd=ROOT, env=cli_env).returncode == 2
+    assert subprocess.run([sys.executable, "-m", "changying.services.guardian_consent_ddl", "downgrade", "--database-url", cli_db_url, "--confirm-downgrade"], cwd=ROOT, env=cli_env).returncode == 0
+    assert subprocess.run([sys.executable, "-m", "changying.services.guardian_consent_ddl", "verify", "--database-url", cli_db_url], cwd=ROOT, env=cli_env).returncode == 1

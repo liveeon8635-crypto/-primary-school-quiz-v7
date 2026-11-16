@@ -53,15 +53,11 @@ CONSENT_SCOPES: tuple[str, ...] = (
     "exam_prep_ai",
 )
 
-# Explicit allowlist of strictly structured, non-student-PII teaching/connection-test
-# features that carry NO unverified user/teacher free-text, NO student_ids, and NO images.
-# Features carrying student records (e.g. reinforcement_generate) or unverified teacher
-# free-text (e.g. question_generation with notes, lesson_plan, paper_import, weekend_courseware)
-# are excluded or dynamically gated.
+# Explicit allowlist of strictly non-user-input connection-test features.
+# Every feature carrying user/teacher free-text, uploaded resources, or student data
+# is excluded and routed through require_student_ai_authorized.
 TEACHING_ONLY_AI_FEATURES: frozenset[str] = frozenset({
     "connection_test",
-    "question_generation",
-    "question_generation_repair",
 })
 
 _REQUEST_STUDENT_ID: contextvars.ContextVar[int | None] = contextvars.ContextVar(
@@ -84,6 +80,8 @@ FEATURE_TO_SCOPE: dict[str, str] = {
     "homework_help_guide": "homework_help",
     "homework_help_solve": "homework_help",
     "homework_practice_generate": "homework_help",
+    "question_generation": "exam_prep_ai",
+    "question_generation_repair": "exam_prep_ai",
     "reinforcement_generate": "exam_prep_ai",
     "weekend_report": "weekend_review",
     "weekend_report_suggest": "weekend_review",
@@ -716,6 +714,34 @@ def require_student_ai_authorized(
                     "invalid_student_ownership",
                     sid=sid,
                 )
+        SchoolClassModel = getattr(implementation, "SchoolClass", None)
+        ClassStudentModel = getattr(implementation, "ClassStudent", None)
+        if (
+            not is_personal
+            and actor_user_id is not None
+            and SchoolClassModel is not None
+            and ClassStudentModel is not None
+        ):
+            actor = db.get(UserModel, int(actor_user_id))
+            if actor is not None and getattr(actor, "role", "") == "teacher":
+                owned_sids = set(
+                    db.scalars(
+                        select(ClassStudentModel.student_id)
+                        .join(SchoolClassModel, SchoolClassModel.id == ClassStudentModel.class_id)
+                        .where(
+                            SchoolClassModel.teacher_id == int(actor.id),
+                            SchoolClassModel.school_id == int(school_id),
+                        )
+                    ).all()
+                )
+                for sid in sids:
+                    if int(sid) not in owned_sids:
+                        _deny(
+                            403,
+                            "该学生不在当前教师所管理班级内，禁止向外部 AI 发送数据",
+                            "teacher_class_ownership_denied",
+                            sid=sid,
+                        )
 
     if is_personal and require_guardian_for_personal:
         now = datetime.utcnow()

@@ -42,6 +42,7 @@ NO_CACHE = {"Cache-Control": "no-store"}
 
 class GenBody(BaseModel):
     questionId: int
+    studentIds: list[int] = []
 
 
 class HintBody(BaseModel):
@@ -207,7 +208,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         q = db.get(TQ, b.questionId)
         if q is None or int(q.school_id) != int(u.school_id):
             raise HTTPException(404, "没有找到这道题")
-        levels = draft_with_ai(db, u, q)
+        levels = draft_with_ai(db, u, q, student_ids=tuple(int(x) for x in (b.studentIds or [])))
         save_levels(db, int(u.school_id), q.id, levels, "draft")
         db.commit()
         return {"questionId": q.id, "hints": levels, "hintStatus": "draft"}
