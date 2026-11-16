@@ -570,6 +570,7 @@ def install_v1_classroom_presentation_review_routes(implementation: Any) -> None
             note=note,
             source="classroom",
             related_id=rid,
+            idempotency_key=f"classroom_presentation:{rid}",
         )
         db.add(ledger)
         db.flush()
