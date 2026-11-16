@@ -140,6 +140,7 @@ def recognize_image(
     feature: str,
     timeout: int = VISION_TIMEOUT_SECONDS,
     prompt: str = RECOGNIZE_PROMPT,
+    student_ids: tuple[int, ...] | list[int] = (),
 ) -> dict[str, Any]:
     """Recognise text in one image. Returns ``{"text", "hasFigure", "confidence"}``."""
     config = vision_config()
@@ -163,7 +164,7 @@ def recognize_image(
         if hasattr(implementation, "Base") and hasattr(implementation, "is_individual_school"):
             from changying.services.guardian_consent import require_student_ai_authorized
 
-            target_sids = (int(user.id),) if getattr(user, "role", "") == "student" else ()
+            target_sids = tuple(student_ids) or ((int(user.id),) if getattr(user, "role", "") == "student" else ())
             require_student_ai_authorized(
                 db,
                 implementation,
@@ -171,7 +172,7 @@ def recognize_image(
                 feature=feature,
                 student_ids=target_sids,
                 actor_user_id=getattr(user, "id", None),
-                require_guardian_for_personal=bool(target_sids),
+                require_guardian_for_personal=True,
             )
         if provider == "openai_responses":
             payload = {

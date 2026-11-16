@@ -132,7 +132,8 @@ class WrittenPrechecks:
                         actor = SimpleNamespace(id=user.id, school_id=user.school_id)
                         db.rollback()
                         read = recognize_image(impl, db, actor, answer.photo,
-                            feature="homework_help_written_precheck_ocr", prompt=rules.transcription_prompt())
+                            feature="homework_help_written_precheck_ocr", prompt=rules.transcription_prompt(),
+                            student_ids=(int(user.id),))
                     truncated = bool(read.get("truncated") or len(read.get("text") or "") >= RECOGNIZED_CHAR_LIMIT)
                     try:
                         parsed = impl._ai_json(read["text"])

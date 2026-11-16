@@ -1,4 +1,4 @@
-"""Security & integration tests for P0-2 guardian AI consent and unified AI egress guard."""
+"""Security & adversarial tests for P0-2 guardian AI consent and default-deny AI egress guard."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import inspect, text
+from sqlalchemy import create_engine, inspect, text
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -93,7 +93,6 @@ def _setup_personal_family(client: TestClient):
     p_headers = _login_headers(client, p_user, PASSWORD)
     s_headers = _login_headers(client, s_user, PASSWORD)
 
-    # Configure teacher AI with allow_student_data=True
     cfg = client.put(
         "/teacher/ai-config",
         headers=t_headers,
@@ -112,8 +111,7 @@ def _setup_personal_family(client: TestClient):
 
 def test_compliance_gate_blocks_personal_egress_by_default(client, monkeypatch):
     monkeypatch.delenv("STUDENT_AI_COMPLIANCE_APPROVED", raising=False)
-    t_headers, p_headers, s_headers, sid = _setup_personal_family(client)
-    # Even if guardian consent exists, closed compliance gate must block real student AI egress
+    t_headers, p_headers, _, sid = _setup_personal_family(client)
     tok = client.post(f"/teacher/students/{sid}/ai-consent/token", headers=t_headers, json={}).json()["token"]
     assert client.post("/parent/ai-consent/confirm", headers=p_headers, json={"token": tok}).status_code == 200
 
@@ -136,6 +134,106 @@ def test_compliance_gate_blocks_personal_egress_by_default(client, monkeypatch):
     assert called["http"] == 0
 
 
+def test_default_deny_unknown_feature_missing_student_ids_and_teacher_image_upload(client, monkeypatch):
+    monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
+    monkeypatch.setenv("HOMEWORK_VISION_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("HOMEWORK_VISION_BASE_URL", "https://api.example.com/v1")
+    monkeypatch.setenv("HOMEWORK_VISION_MODEL", "vision-test-model")
+    monkeypatch.setenv("HOMEWORK_VISION_API_KEY", "sk-vision-test-key-123456")
+
+    t_headers, _, _, sid = _setup_personal_family(client)
+    other_t_headers, _, _, other_sid = _setup_personal_family(client)
+
+    # Cross-workspace isolation: Teacher B cannot view/create token/submit proof/revoke Teacher A's student
+    assert client.get(f"/teacher/students/{sid}/ai-consent", headers=other_t_headers).status_code == 404
+    assert client.post(f"/teacher/students/{sid}/ai-consent/token", headers=other_t_headers, json={}).status_code == 404
+    assert client.post(f"/teacher/students/{sid}/ai-consent/revoke", headers=other_t_headers, json={}).status_code == 404
+
+    import app_v924 as legacy
+    from changying.services.homework_vision import recognize_image
+
+    http_calls = {"count": 0}
+
+    class _FakeResp:
+        ok = True
+        status_code = 200
+        def json(self):
+            return {"choices": [{"message": {"content": "连接成功"}}], "usage": {}}
+
+    def _fake_post(*args, **kwargs):
+        http_calls["count"] += 1
+        return _FakeResp()
+
+    monkeypatch.setattr(legacy.requests, "post", _fake_post)
+    monkeypatch.setattr("changying.services.homework_vision.requests.post", _fake_post)
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, sid)
+        teacher = db.scalar(legacy.select(legacy.User).where(legacy.User.school_id == stu.school_id, legacy.User.role == "teacher"))
+
+        # Teaching-only allowlisted feature (no student_ids, no images) is allowed
+        out = legacy._ai_call(db, teacher, "connection_test", "ping")
+        assert out == "连接成功"
+        assert http_calls["count"] == 1
+
+        # Unknown / unregistered feature is default-denied (0 HTTP calls)
+        http_calls["count"] = 0
+        with pytest.raises(Exception) as exc_unk:
+            legacy._ai_call(db, teacher, "unknown_custom_feature", "hello")
+        assert getattr(exc_unk.value, "status_code", None) == 403
+
+        # Student-data feature with missing student_ids is default-denied (0 HTTP calls)
+        with pytest.raises(Exception) as exc_missing:
+            legacy._ai_call(db, teacher, "weekend_report", "report without student_ids")
+        assert getattr(exc_missing.value, "status_code", None) == 403
+
+        # Teacher uploading an image containing student info MUST NOT skip guardian consent
+        tiny_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+        with pytest.raises(Exception) as exc_img:
+            recognize_image(legacy, db, teacher, tiny_png, feature="homework_parse_vision")
+        assert getattr(exc_img.value, "status_code", None) == 403
+    assert http_calls["count"] == 0
+
+
+def test_proof_consent_requires_controlled_verification_before_becoming_active(client, monkeypatch):
+    monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
+    t_headers, p_headers, _, sid = _setup_personal_family(client)
+    _, other_p_headers, _, _ = _setup_personal_family(client)
+
+    proof = client.post(
+        f"/teacher/students/{sid}/ai-consent/proof",
+        headers=t_headers,
+        json={"verificationMethod": "written_proof", "proofDigest": "SIGNED-2026-001", "scope": "student_ai_all"},
+    )
+    assert proof.status_code == 200
+    body = proof.json()
+    assert body["status"] == "pending_verification"
+    cid = body["consentId"]
+
+    import app_v924 as legacy
+
+    http_calls = {"count": 0}
+    monkeypatch.setattr(legacy.requests, "post", lambda *a, **kw: http_calls.__setitem__("count", http_calls["count"] + 1))
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+
+    # Pending proof MUST NOT allow AI egress
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, sid)
+        with pytest.raises(Exception) as exc:
+            legacy._ai_call(db, stu, "homework_help_guide", "hello", student_ids=[sid])
+        assert getattr(exc.value, "status_code", None) == 403
+    assert http_calls["count"] == 0
+
+    # Teacher cannot self-verify their own proof
+    assert client.post(f"/guardian-consents/{cid}/verify", headers=t_headers, json={"approved": True}).status_code == 403
+    # Unlinked parent cannot verify
+    assert client.post(f"/guardian-consents/{cid}/verify", headers=other_p_headers, json={"approved": True}).status_code == 403
+    # Linked parent verifies -> becomes active
+    ok = client.post(f"/guardian-consents/{cid}/verify", headers=p_headers, json={"approved": True})
+    assert ok.status_code == 200 and ok.json()["status"] == "active"
+
+
 def test_token_security_replay_expiry_cross_student_and_unlinked_parent(client, monkeypatch):
     monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
     t_headers, p_headers, s_headers, sid = _setup_personal_family(client)
@@ -149,35 +247,27 @@ def test_token_security_replay_expiry_cross_student_and_unlinked_parent(client, 
     assert res.status_code == 200
     raw_token = res.json()["token"]
 
-    # Plaintext token must never be stored in DB
     import app_v924 as legacy
     with legacy.SessionLocal() as db:
         rows = db.execute(text("SELECT token_hash FROM guardian_consent_tokens")).fetchall()
         assert all(raw_token not in str(r[0]) for r in rows)
 
-    # Student role cannot confirm
     assert client.post("/parent/ai-consent/confirm", headers=s_headers, json={"token": raw_token}).status_code == 403
-    # Unlinked / cross-workspace parent cannot confirm
     assert client.post("/parent/ai-consent/confirm", headers=other_p_headers, json={"token": raw_token}).status_code == 403
-    # Mismatched expected studentId rejected
     assert client.post(
         "/parent/ai-consent/confirm",
         headers=p_headers,
         json={"token": raw_token, "studentId": other_sid},
     ).status_code == 403
 
-    # Valid parent confirms once
     ok = client.post("/parent/ai-consent/confirm", headers=p_headers, json={"token": raw_token, "studentId": sid})
     assert ok.status_code == 200
     body = ok.json()
     assert body["status"] == "active"
     assert body["validUntil"] != body["retentionUntil"]
 
-    # Replay must fail with 409
-    replay = client.post("/parent/ai-consent/confirm", headers=p_headers, json={"token": raw_token})
-    assert replay.status_code == 409
+    assert client.post("/parent/ai-consent/confirm", headers=p_headers, json={"token": raw_token}).status_code == 409
 
-    # Expired token must fail
     exp_tok = client.post(f"/teacher/students/{sid}/ai-consent/token", headers=t_headers, json={}).json()["token"]
     with legacy.SessionLocal() as db:
         db.execute(
@@ -196,13 +286,8 @@ def test_revocation_blocks_all_four_modules_and_queued_retries_with_zero_http(cl
     monkeypatch.setenv("HOMEWORK_VISION_API_KEY", "sk-vision-test-key-123456")
     t_headers, p_headers, _, sid = _setup_personal_family(client)
 
-    # Record written proof consent for student_ai_all
-    proof = client.post(
-        f"/teacher/students/{sid}/ai-consent/proof",
-        headers=t_headers,
-        json={"verificationMethod": "written_proof", "proofDigest": "SIGNED-2026-001", "scope": "student_ai_all"},
-    )
-    assert proof.status_code == 200
+    tok = client.post(f"/teacher/students/{sid}/ai-consent/token", headers=t_headers, json={}).json()["token"]
+    assert client.post("/parent/ai-consent/confirm", headers=p_headers, json={"token": tok}).status_code == 200
 
     import app_v924 as legacy
     from changying.services.homework_vision import recognize_image
@@ -223,17 +308,14 @@ def test_revocation_blocks_all_four_modules_and_queued_retries_with_zero_http(cl
     monkeypatch.setattr("changying.services.homework_vision.requests.post", _fake_post)
     monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
 
-    # While active, all 4 modules pass unified check
     with legacy.SessionLocal() as db:
         stu = db.get(legacy.User, sid)
         for feat in ("homework_help_guide", "weekend_report", "knowledge_map_student_ai", "exam_prep_student_ai"):
             legacy._ai_call(db, stu, feat, "prompt", student_ids=[sid])
-        # Direct vision HTTP path also succeeds when active
         tiny_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
         recognize_image(legacy, db, stu, tiny_png, feature="homework_help_vision")
     assert http_calls["count"] == 5
 
-    # Parent revokes consent -> subsequent, queued, and retry calls MUST abort before HTTP
     rev = client.post(f"/parent/children/{sid}/ai-consent/revoke", headers=p_headers, json={"reason": "parent_stop"})
     assert rev.status_code == 200
 
@@ -249,10 +331,9 @@ def test_revocation_blocks_all_four_modules_and_queued_retries_with_zero_http(cl
         assert getattr(exc_v.value, "status_code", None) == 403
     assert http_calls["count"] == 0
 
-    # Audit trail exists and contains no API key or plaintext token
     info = client.get(f"/teacher/students/{sid}/ai-consent", headers=t_headers).json()
     actions = [a["action"] for a in info["audits"]]
-    assert "consent.proof" in actions
+    assert "consent.grant" in actions
     assert "consent.revoke" in actions
     assert "egress.blocked" in actions
     serialized = str(info)
@@ -262,19 +343,20 @@ def test_revocation_blocks_all_four_modules_and_queued_retries_with_zero_http(cl
 
 def test_migration_tables_exist_and_isolated_rollback_preserves_legacy_tables(client, tmp_path):
     import app_v924 as legacy
-    from sqlalchemy import create_engine
-    from changying.services.guardian_consent import register_guardian_consent_tables
+    from changying.services.guardian_consent import CONSENT_METADATA, register_guardian_consent_tables
 
     insp = inspect(legacy.engine)
     names = set(insp.get_table_names())
     new_tables = ("guardian_ai_consents", "guardian_consent_tokens", "guardian_consent_audit_logs")
     assert set(new_tables).issubset(names)
     assert {"users", "parent_students", "point_ledger"}.issubset(names)
+    # Must NOT pollute Base.metadata so prelaunch_data_cleanup remains untouched
+    assert not set(new_tables).intersection(set(legacy.Base.metadata.tables))
 
-    # Verify additive migration & clean rollback on a separate isolated SQLite DB
     iso_engine = create_engine(f"sqlite:///{tmp_path / 'rollback.sqlite3'}")
-    tables = register_guardian_consent_tables(legacy)
     legacy.Base.metadata.create_all(bind=iso_engine)
+    tables = register_guardian_consent_tables()
+    CONSENT_METADATA.create_all(bind=iso_engine)
     assert set(new_tables).issubset(set(inspect(iso_engine).get_table_names()))
     for tname in ("audits", "tokens", "consents"):
         tables[tname].drop(bind=iso_engine, checkfirst=True)

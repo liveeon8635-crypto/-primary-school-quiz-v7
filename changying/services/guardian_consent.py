@@ -7,9 +7,13 @@ Implements P0-2 safety controls:
    and ``retention_until`` timestamps.
 4. Atomic one-time token confirmation (``guardian_consent_tokens``, SHA-256 hashed) bound
    to logged-in parent identity and ``ParentStudent`` link.
-5. Unified pre-send and pre-retry authorization check for all external AI HTTP send points,
-   with traceable audit logging that never stores API keys, plaintext tokens, or sensitive
-   student content.
+5. Controlled verification for written/electronic proofs: teacher submission creates
+   ``pending_verification`` (never ``active``); activation requires linked parent or
+   independent verifier confirmation.
+6. Default-deny policy on all external AI HTTP send points: only explicitly registered
+   non-student-data ``TEACHING_ONLY_AI_FEATURES`` (with no ``student_ids`` and no ``images``)
+   bypass student consent; all student-data, image, and unknown/unregistered features go
+   through ``require_student_ai_authorized``.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from sqlalchemy import (
     DateTime,
     Index,
     Integer,
+    MetaData,
     String,
     Table,
     Text,
@@ -37,6 +42,8 @@ from sqlalchemy import (
 
 COMPLIANCE_FLAG = "STUDENT_AI_COMPLIANCE_APPROVED"
 
+CONSENT_METADATA = MetaData()
+
 CONSENT_SCOPES: tuple[str, ...] = (
     "student_ai_all",
     "homework_help",
@@ -45,17 +52,40 @@ CONSENT_SCOPES: tuple[str, ...] = (
     "exam_prep_ai",
 )
 
+# Explicit allowlist of pure teaching-content / connection-test features that carry
+# NO student PII, NO student_ids, and NO images. Everything else is default-denied.
+TEACHING_ONLY_AI_FEATURES: frozenset[str] = frozenset({
+    "connection_test",
+    "question_generation",
+    "question_generation_repair",
+    "lesson_plan",
+    "lesson_practice",
+    "reinforcement_generate",
+    "kp_card_draft",
+    "kp_card_ai_draft",
+    "paper_import",
+    "product_assistant",
+    "weekend_lesson_draft",
+    "weekend_lesson_import",
+    "weekend_question_gen",
+    "weekend_courseware_draft",
+    "homework_practice",
+    "science_lesson",
+})
+
 FEATURE_TO_SCOPE: dict[str, str] = {
+    "homework_parse": "homework_help",
+    "homework_parse_vision": "homework_help",
     "homework_notice_parse": "homework_help",
     "homework_notice_vision": "homework_help",
     "homework_help_vision": "homework_help",
     "homework_help_guide": "homework_help",
     "homework_help_solve": "homework_help",
-    "homework_practice": "homework_help",
     "weekend_report": "weekend_review",
     "weekend_report_suggest": "weekend_review",
     "weekend_written_score": "weekend_review",
     "weekend_written_precheck": "weekend_review",
+    "weekend_written_precheck_ocr": "weekend_review",
     "knowledge_map_student_ai": "knowledge_map_ai",
     "exam_prep_student_ai": "exam_prep_ai",
 }
@@ -74,8 +104,8 @@ def hash_consent_token(raw_token: str) -> str:
     return hashlib.sha256((raw_token or "").encode("utf-8")).hexdigest()
 
 
-def register_guardian_consent_tables(implementation: Any) -> dict[str, Table]:
-    md = implementation.Base.metadata
+def register_guardian_consent_tables(implementation: Any = None) -> dict[str, Table]:
+    md = CONSENT_METADATA
     if "guardian_ai_consents" not in md.tables:
         Table(
             "guardian_ai_consents",
@@ -84,13 +114,14 @@ def register_guardian_consent_tables(implementation: Any) -> dict[str, Table]:
             Column("school_id", Integer, nullable=False, index=True),
             Column("student_id", Integer, nullable=False, index=True),
             Column("guardian_user_id", Integer, nullable=True, index=True),
-            Column("status", String(20), nullable=False, default="active", index=True),
+            Column("status", String(32), nullable=False, default="pending_verification", index=True),
             Column("scope", String(64), nullable=False),
             Column("policy_version", String(32), nullable=False),
             Column("verification_method", String(32), nullable=False),
             Column("verifier_user_id", Integer, nullable=True),
+            Column("created_by", Integer, nullable=True),
             Column("proof_digest", String(128), nullable=True),
-            Column("verified_at", DateTime, nullable=False),
+            Column("verified_at", DateTime, nullable=True),
             Column("valid_until", DateTime, nullable=False, index=True),
             Column("retention_until", DateTime, nullable=False),
             Column("revoked_at", DateTime, nullable=True),
@@ -131,6 +162,8 @@ def register_guardian_consent_tables(implementation: Any) -> dict[str, Table]:
             Column("detail", Text, nullable=False, default=""),
             Column("created_at", DateTime, nullable=False, index=True),
         )
+    if implementation is not None and getattr(implementation, "engine", None) is not None:
+        md.create_all(bind=implementation.engine)
     return {
         "consents": md.tables["guardian_ai_consents"],
         "tokens": md.tables["guardian_consent_tokens"],
@@ -305,6 +338,7 @@ def confirm_consent_token(
             policy_version=str(tok.policy_version),
             verification_method="parent_link",
             verifier_user_id=int(parent_user.id),
+            created_by=int(tok.created_by),
             proof_digest="",
             verified_at=now,
             valid_until=valid_until,
@@ -349,6 +383,11 @@ def record_proof_consent(
     policy_version: str = "v1.0",
     valid_days: int = DEFAULT_VALID_DAYS,
 ) -> dict[str, Any]:
+    """Register a written/electronic proof in ``pending_verification`` state.
+
+    A teacher's unilateral registration NEVER makes consent ``active``; it must be
+    verified by a linked parent or an independent verifier before AI egress is allowed.
+    """
     if verification_method not in ("written_proof", "electronic_proof"):
         raise HTTPException(400, "备用凭证类型无效")
     digest = (proof_digest or "").strip()
@@ -359,36 +398,21 @@ def record_proof_consent(
     tables = register_guardian_consent_tables(implementation)
     consents_t, audits_t = tables["consents"], tables["audits"]
     now = datetime.utcnow()
-    db.execute(
-        update(consents_t)
-        .where(
-            consents_t.c.school_id == int(teacher.school_id),
-            consents_t.c.student_id == int(student_id),
-            consents_t.c.scope == scope,
-            consents_t.c.status == "active",
-        )
-        .values(
-            status="revoked",
-            revoked_at=now,
-            revoked_by=int(teacher.id),
-            revoke_reason="superseded_by_new_proof",
-            updated_at=now,
-        )
-    )
     valid_until = now + timedelta(days=max(1, min(int(valid_days), 365)))
     retention_until = now + timedelta(days=DEFAULT_RETENTION_DAYS)
-    db.execute(
+    res = db.execute(
         insert(consents_t).values(
             school_id=int(teacher.school_id),
             student_id=int(student_id),
             guardian_user_id=None,
-            status="active",
+            status="pending_verification",
             scope=scope,
             policy_version=policy_version[:32],
             verification_method=verification_method,
-            verifier_user_id=int(teacher.id),
+            verifier_user_id=None,
+            created_by=int(teacher.id),
             proof_digest=digest[:128],
-            verified_at=now,
+            verified_at=None,
             valid_until=valid_until,
             retention_until=retention_until,
             revoked_at=None,
@@ -398,25 +422,131 @@ def record_proof_consent(
             updated_at=now,
         )
     )
+    consent_id = int(res.inserted_primary_key[0])
     _record_audit(
         db,
         audits_t,
         school_id=int(teacher.school_id),
         student_id=int(student_id),
         actor_user_id=int(teacher.id),
-        action="consent.proof",
+        action="consent.proof_submitted",
         scope=scope,
-        detail=f"method={verification_method}:policy={policy_version[:32]}",
+        detail=f"consent_id={consent_id}:method={verification_method}:status=pending_verification",
     )
     db.commit()
     return {
         "ok": True,
+        "consentId": consent_id,
         "studentId": int(student_id),
         "scope": scope,
-        "status": "active",
+        "status": "pending_verification",
         "validUntil": valid_until.isoformat(timespec="seconds"),
         "retentionUntil": retention_until.isoformat(timespec="seconds"),
     }
+
+
+def verify_proof_consent(
+    db: Any,
+    implementation: Any,
+    *,
+    consent_id: int,
+    actor_user: Any,
+    approved: bool = True,
+) -> dict[str, Any]:
+    """Activate or reject a ``pending_verification`` proof via linked parent or independent verifier."""
+    tables = register_guardian_consent_tables(implementation)
+    consents_t, audits_t = tables["consents"], tables["audits"]
+    row = db.execute(select(consents_t).where(consents_t.c.id == int(consent_id))).first()
+    if row is None:
+        raise HTTPException(404, "未找到该待核验授权记录")
+    if int(row.school_id) != int(actor_user.school_id):
+        raise HTTPException(403, "无权跨工作室核验授权记录")
+    if str(row.status) != "pending_verification":
+        raise HTTPException(409, "该授权记录已核验或已失效")
+
+    role = getattr(actor_user, "role", "")
+    if role == "parent":
+        ParentStudent = implementation.ParentStudent
+        linked = db.scalar(
+            select(ParentStudent.id).where(
+                ParentStudent.parent_id == actor_user.id,
+                ParentStudent.student_id == row.student_id,
+            )
+        )
+        if not linked:
+            raise HTTPException(403, "当前家长未绑定该学生，无法核验")
+    elif role == "admin" and row.created_by is not None and int(actor_user.id) != int(row.created_by):
+        pass
+    else:
+        raise HTTPException(403, "教师不得单方面自审生效，须由已关联监护人或独立管理员核验")
+
+    now = datetime.utcnow()
+    if not approved:
+        db.execute(
+            update(consents_t)
+            .where(consents_t.c.id == int(consent_id), consents_t.c.status == "pending_verification")
+            .values(
+                status="revoked",
+                revoked_at=now,
+                revoked_by=int(actor_user.id),
+                revoke_reason="verification_rejected",
+                updated_at=now,
+            )
+        )
+        _record_audit(
+            db,
+            audits_t,
+            school_id=int(row.school_id),
+            student_id=int(row.student_id),
+            actor_user_id=int(actor_user.id),
+            action="consent.proof_rejected",
+            scope=str(row.scope),
+            detail=f"consent_id={consent_id}",
+        )
+        db.commit()
+        return {"ok": True, "consentId": int(consent_id), "status": "revoked"}
+
+    db.execute(
+        update(consents_t)
+        .where(
+            consents_t.c.school_id == row.school_id,
+            consents_t.c.student_id == row.student_id,
+            consents_t.c.scope == row.scope,
+            consents_t.c.status == "active",
+        )
+        .values(
+            status="revoked",
+            revoked_at=now,
+            revoked_by=int(actor_user.id),
+            revoke_reason="superseded_by_verified_proof",
+            updated_at=now,
+        )
+    )
+    res = db.execute(
+        update(consents_t)
+        .where(consents_t.c.id == int(consent_id), consents_t.c.status == "pending_verification")
+        .values(
+            status="active",
+            guardian_user_id=int(actor_user.id) if role == "parent" else row.guardian_user_id,
+            verifier_user_id=int(actor_user.id),
+            verified_at=now,
+            updated_at=now,
+        )
+    )
+    if res.rowcount != 1:
+        raise HTTPException(409, "授权状态已变更，请刷新后重试")
+    _record_audit(
+        db,
+        audits_t,
+        school_id=int(row.school_id),
+        student_id=int(row.student_id),
+        actor_user_id=int(actor_user.id),
+        action="consent.proof_verified",
+        scope=str(row.scope),
+        detail=f"consent_id={consent_id}:verifier_role={role}",
+    )
+    db.commit()
+    return {"ok": True, "consentId": int(consent_id), "status": "active"}
 
 
 def revoke_student_consent(
@@ -435,7 +565,7 @@ def revoke_student_consent(
     conds = [
         consents_t.c.school_id == int(school_id),
         consents_t.c.student_id == int(student_id),
-        consents_t.c.status == "active",
+        consents_t.c.status.in_(("active", "pending_verification")),
     ]
     if scope:
         conds.append(consents_t.c.scope == scope)
@@ -496,7 +626,7 @@ def require_student_ai_authorized(
     actor_user_id: int | None = None,
     require_guardian_for_personal: bool = True,
 ) -> None:
-    """Unified authorization check before ANY external AI HTTP call carrying student data."""
+    """Unified default-deny authorization check before ANY external AI HTTP call."""
     scope = FEATURE_TO_SCOPE.get(feature, "student_ai_all")
     is_personal = bool(implementation.is_individual_school(db, int(school_id)))
     config = implementation.ai_config_for(db, int(school_id), False)
@@ -533,13 +663,14 @@ def require_student_ai_authorized(
         _deny(503, msg, "ai_disabled")
 
     sids = [int(x) for x in dict.fromkeys(student_ids) if x is not None]
-    if not config.allow_student_data and (is_personal or sids or feature == "homework_notice_parse"):
+    if not config.allow_student_data and (is_personal or sids or feature in ("homework_notice_parse", "homework_parse", "homework_parse_vision")):
         msg = (
             "尚未开启发送学生内容授权，请先前往「AI 设置」开启并完成监护人授权"
             if is_personal
             else "学校管理员尚未允许把学生内容发送到 AI 服务商，请先手动录入"
         )
         _deny(403, msg, "allow_student_data_false")
+
     if is_personal and require_guardian_for_personal:
         if not sids:
             _deny(
@@ -556,3 +687,30 @@ def require_student_ai_authorized(
                     "guardian_consent_missing_or_revoked",
                     sid=sid,
                 )
+
+
+def install_ai_egress_guard(implementation: Any) -> None:
+    """Wrap ``implementation._ai_call`` inside ``changying/`` with default-deny authorization."""
+    if getattr(implementation, "_guardian_ai_egress_guard_installed", False):
+        return
+    original_ai_call = implementation._ai_call
+
+    def guarded_ai_call(db, u, feature, prompt, images=None, timeout=90, rate_check=None, **kwargs):
+        student_ids = kwargs.pop("student_ids", ()) or ()
+        imgs = images or []
+        is_teaching_only = (feature in TEACHING_ONLY_AI_FEATURES) and not student_ids and not imgs
+        if not is_teaching_only:
+            target_sids = tuple(student_ids) or ((int(u.id),) if getattr(u, "role", "") == "student" else ())
+            require_student_ai_authorized(
+                db,
+                implementation,
+                school_id=int(u.school_id),
+                feature=str(feature or ""),
+                student_ids=target_sids,
+                actor_user_id=getattr(u, "id", None),
+                require_guardian_for_personal=True,
+            )
+        return original_ai_call(db, u, feature, prompt, images=images, timeout=timeout, rate_check=rate_check, **kwargs)
+
+    implementation._ai_call = guarded_ai_call
+    implementation._guardian_ai_egress_guard_installed = True
