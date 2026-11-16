@@ -82,3 +82,4 @@
 ## 8. UI/UX 施工
 
 - [页面资产](ui-ux/INVENTORY.md)、[依赖](ui-ux/DEPENDENCY_MAP.md)、[风险](ui-ux/RISK_REGISTER.md)、[基线](ui-ux/BASELINE.md)、[实施](ui-ux/IMPLEMENTATION_PLAN.md)、[设计决策](ui-ux/DESIGN_DECISIONS.md)。
+- [历史作业来源](ui-ux/HISTORICAL_HOMEWORK_PROVENANCE.md)、[权限审查](ui-ux/SECURITY_REVIEW.md)、[角色验收](ui-ux/ROLE_ACCEPTANCE.md)、[设备验收](ui-ux/DEVICE_ACCEPTANCE.md)、[回归](ui-ux/FINAL_REGRESSION.md)、[独立审查](ui-ux/FINAL_AUDIT.md)、[集中验收](ui-ux/FINAL_ACCEPTANCE.md)。
