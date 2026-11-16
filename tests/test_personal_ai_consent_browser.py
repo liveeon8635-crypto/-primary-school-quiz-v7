@@ -142,3 +142,121 @@ def test_real_browser_ai_settings_and_parent_consent_flow(tmp_path, monkeypatch)
     finally:
         server.should_exit = True
         thread.join(timeout=5)
+
+
+def test_real_browser_homework_notice_parse_flow(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+    playwright_sync = pytest.importorskip("playwright.sync_api")
+
+    db_path = tmp_path / "hw_browser.sqlite3"
+    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
+    os.environ["ENABLE_DEMO_SEED"] = "0"
+    os.environ["HOMEWORK_ASSISTANT"] = "1"
+    os.environ.setdefault("JWT_SECRET", "browser-hw-jwt-secret-0123456789abcdef")
+
+    import app as app_module
+    import app_v924 as legacy
+
+    legacy.COMMERCIAL_ADMIN_KEY = COMMERCIAL_KEY
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+    http_calls = []
+
+    def fake_post(url, *args, **kwargs):
+        http_calls.append(kwargs.get("json"))
+        return SimpleNamespace(
+            ok=True,
+            status_code=200,
+            json=lambda: {
+                "choices": [{
+                    "message": {
+                        "content": json.dumps({
+                            "groupLabel": "五年级1班",
+                            "items": [{"subject": "数学", "content": "第5页练习", "page": "P5", "requirement": "订正"}],
+                        }, ensure_ascii=False)
+                    }
+                }]
+            },
+        )
+
+    monkeypatch.setattr(legacy.requests, "post", fake_post)
+
+    with TestClient(app_module.app) as client:
+        tag = uuid.uuid4().hex[:8]
+        code = f"hwb-{tag}"
+        assert client.post(
+            "/operator/schools/create",
+            headers={"X-Commercial-Key": COMMERCIAL_KEY},
+            json={
+                "school_name": f"晚托浏览器测试{tag}",
+                "school_code": code,
+                "admin_name": "校长",
+                "admin_username": code,
+                "admin_password": PASSWORD,
+                "individual": False,
+            },
+        ).status_code == 200
+        adm_tok = client.post("/login", json={"username": code, "password": PASSWORD}).json()["token"]
+        adm_tok = client.post("/change-password", headers={"Authorization": f"Bearer {adm_tok}"}, json={"current_password": PASSWORD, "new_password": CHANGED}).json()["token"]
+        adm_h = {"Authorization": f"Bearer {adm_tok}"}
+        tid = client.post("/admin/users", headers=adm_h, json={"name": "林老师", "username": f"ht-{tag}", "password": PASSWORD, "role": "teacher"}).json()["id"]
+        with legacy.SessionLocal() as db:
+            t_u = db.get(legacy.User, tid)
+            cls = legacy.SchoolClass(school_id=t_u.school_id, name="五年级1班", grade=5, teacher_id=tid)
+            db.add(cls)
+            db.commit()
+            cls_id = cls.id
+            cfg = legacy.ai_config_for(db, t_u.school_id, True)
+            cfg.enabled = True
+            cfg.allow_student_data = True
+            cfg.provider = "openai_compatible"
+            cfg.base_url = "https://api.deepseek.com/v1"
+            cfg.model = "deepseek-chat"
+            cfg.api_key_cipher = legacy._ai_encrypt_key("sk-browser-hw-key")
+            db.commit()
+        t_tok = client.post("/login", json={"username": f"ht-{tag}", "password": PASSWORD}).json()["token"]
+        t_tok = client.post("/change-password", headers={"Authorization": f"Bearer {t_tok}"}, json={"current_password": PASSWORD, "new_password": CHANGED}).json()["token"]
+        sid = client.post("/teacher/students", headers={"Authorization": f"Bearer {t_tok}"}, json={"name": "小明", "username": f"hs-{tag}", "password": PASSWORD, "grade": 5, "class_id": cls_id}).json()["id"]
+
+    port = _free_port()
+    server = uvicorn.Server(uvicorn.Config(app_module.app, host="127.0.0.1", port=port, log_level="error"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    try:
+        for _ in range(40):
+            if server.started:
+                break
+            time.sleep(0.1)
+
+        with playwright_sync.sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            try:
+                page = browser.new_page()
+                seen_parse_bodies = []
+                page.on("request", lambda req: seen_parse_bodies.append(req.post_data_json) if req.url.endswith("/teacher/homework/parse") else None)
+                page.goto(f"http://127.0.0.1:{port}/v1/homework", wait_until="domcontentloaded")
+                page.evaluate("tok => localStorage.setItem('v717Token', tok)", t_tok)
+                page.reload(wait_until="networkidle")
+
+                page.wait_for_selector("input[type='checkbox']")
+                page.fill("textarea", "学生姓名：张小明 学号：20260105 成绩：58分 13812345678 明天完成数学第5页")
+                page.click("button:has-text('AI 解析')")
+                page.wait_for_selector("button:has-text('发布给选中的学生')")
+
+                assert len(seen_parse_bodies) == 1
+                assert seen_parse_bodies[0]["studentIds"] == [sid]
+                assert len(http_calls) == 1
+                sent_prompt = json.dumps(http_calls[0], ensure_ascii=False)
+                for secret in ("张小明", "20260105", "58分", "13812345678"):
+                    assert secret not in sent_prompt
+
+                # Uncheck student scope -> parse MUST be blocked (0 new HTTP)
+                page.uncheck("input[type='checkbox']")
+                page.click("button:has-text('AI 解析')")
+                page.wait_for_function("() => document.body.textContent.includes('禁止向外部 AI 发送')")
+                assert len(http_calls) == 1
+            finally:
+                browser.close()
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
