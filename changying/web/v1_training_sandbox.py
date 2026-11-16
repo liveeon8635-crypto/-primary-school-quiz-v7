@@ -145,7 +145,7 @@ STEP_RELATIONSHIPS: dict[str, dict[str, str]] = {
     "admin_catalog": {"who": "管理员/教师", "creates": "教材题库配置", "visible_to": "按角色授权", "other_role_sees": "学生只看到最终教学内容", "communication_tip": "题库配置是上游资源，不是学生任务", "next": "组卷/AI 出题"},
 
     "create_class": {"who": "教师", "creates": "当前教学容器", "visible_to": "教师/管理员", "other_role_sees": "学生和家长此时还看不到任何作业", "communication_tip": "先确认班级名称、年级和教学周期，避免后续双方口径不一致", "next": "添加学生账号"},
-    "add_student": {"who": "教师", "creates": "学生账号 + 连续档案起点", "visible_to": "教师/学生/授权家长", "other_role_sees": "学生得到自己的入口；家长只有关联后才看到该学生", "communication_tip": "告知学生使用哪个账号、家长能看到什么，避免把教师入口当成学生入口", "next": "组卷和布置"},
+    "add_student": {"who": "教师", "creates": "学生账号 + 连续档案起点", "visible_to": "教师/学生/授权家长", "other_role_sees": "学生得到自己的入口；家长只有关联后才看到该学生", "communication_tip": "告知学生使用哪个账号、家长能看到什么，避免把教师入口当成学生入口。学校里有多个老师时，家长下拉只列出自己班学生已绑定的家长；要把别的班的家长绑过来，输入完整家长账号精确查找，不会把全校家长都列出来", "next": "组卷和布置"},
     "paper": {"who": "教师", "creates": "试卷草稿", "visible_to": "教师", "other_role_sees": "未发布前学生和家长都看不到", "communication_tip": "草稿不是作业，教师审核通过后才进入布置环节", "next": "审核后布置"},
     "assign": {"who": "教师", "creates": "学生待办", "visible_to": "教师/学生/家长状态页", "other_role_sees": "学生看到待完成作业；家长看到状态和截止信息，不代替学生作答", "communication_tip": "让教师明确告诉学生作业名称、截止时间和入口", "next": "学生作答"},
     "student_submission": {"who": "学生或沙盒模拟器", "creates": "稳定的一条作业提交记录、逐题提交历史和首次完整覆盖时的一次积分", "visible_to": "学生/教师/家长摘要", "other_role_sees": "教师看到进行中/已完成、逐题历史并可追加修改次数；家长看到授权范围内的完成状态/摘要", "communication_tip": "草稿不判分、不发积分；每题默认共 4 次正式提交机会，各题独立计数；重交复用同一提交记录，不重复发完成积分", "next": "教师查看证据"},
