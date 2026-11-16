@@ -1,8 +1,10 @@
 """Automatic learning-point fusion for every question workflow.
 
 Rule:
-* every question is worth 1 learning point;
-* objective/auto-graded submissions earn one point per correct answer;
+* completing an objective/auto-graded submission earns one learning point per
+  question (so a student who answers everything but misses every question still
+  gets a record instead of zero);
+* every correct answer earns one additional learning point;
 * teacher-confirmed subjective work earns one point per rubric item whose
   confirmed completion ratio is at least 0.6;
 * if no rubric result is available, the confirmed overall score is converted
@@ -31,6 +33,9 @@ LEARNING_SUBMISSION_SOURCE = "learning_submission"
 LEARNING_GRADING_SOURCE = "learning_grading"
 LEARNING_POINT_CATEGORY = "learning"
 POINTS_PER_QUESTION = 1
+COMPLETION_POINTS_PER_QUESTION = 1
+CORRECT_POINTS_PER_QUESTION = 1
+QUESTION_MAX_POINTS = COMPLETION_POINTS_PER_QUESTION + CORRECT_POINTS_PER_QUESTION
 SUBJECTIVE_PASS_RATIO = 0.6
 
 
@@ -84,9 +89,13 @@ def award_submission_learning_points(
             actor=actor,
         )
 
-    maximum = max(0, int(getattr(submission, "total", 0) or 0)) * POINTS_PER_QUESTION
-    awarded = max(0, int(getattr(submission, "correct", 0) or 0)) * POINTS_PER_QUESTION
-    awarded = min(awarded, maximum)
+    total = max(0, int(getattr(submission, "total", 0) or 0))
+    correct = min(max(0, int(getattr(submission, "correct", 0) or 0)), total)
+    maximum = total * QUESTION_MAX_POINTS
+    awarded = (
+        total * COMPLETION_POINTS_PER_QUESTION
+        + correct * CORRECT_POINTS_PER_QUESTION
+    )
 
     if _existing_submission_points(implementation, db, submission) is not None:
         # Assignment retries reuse the same Submission id. The existing ledger
@@ -104,9 +113,8 @@ def award_submission_learning_points(
             points=awarded,
             reason=f"答题积分：{str(getattr(submission, 'title', '') or '学习练习')[:140]}",
             note=(
-                f"每题{POINTS_PER_QUESTION}积分；答对"
-                f"{int(getattr(submission, 'correct', 0) or 0)}/"
-                f"{int(getattr(submission, 'total', 0) or 0)}题"
+                f"完成{total}题×{COMPLETION_POINTS_PER_QUESTION}分"
+                f" + 答对{correct}题×{CORRECT_POINTS_PER_QUESTION}分"
             ),
             source=LEARNING_SUBMISSION_SOURCE,
             related_id=int(submission.id),
@@ -269,7 +277,7 @@ def install_learning_points(implementation: ModuleType) -> None:
     @wraps(original_public)
     def question_public_with_learning_points(question):
         payload = dict(original_public(question))
-        payload["learningPoints"] = POINTS_PER_QUESTION
+        payload["learningPoints"] = QUESTION_MAX_POINTS
         return payload
 
     implementation.qj_public = question_public_with_learning_points
@@ -376,7 +384,10 @@ def install_learning_points(implementation: ModuleType) -> None:
             else:
                 payload["learningPointsAwarded"] = points["awarded"]
                 payload["learningPointMax"] = points["maximum"]
-                payload["learningPointRule"] = f"每题{POINTS_PER_QUESTION}积分，答对后获得"
+                payload["learningPointRule"] = (
+                    f"每题完成得{COMPLETION_POINTS_PER_QUESTION}分，"
+                    f"答对再加{CORRECT_POINTS_PER_QUESTION}分"
+                )
             return payload
 
         route.dependant.call = scored_submission
