@@ -16,12 +16,11 @@ def test_bounded_login_rate_limiter_caps_unique_clients_and_prunes_stale_state()
         limiter.failure(key)
     assert limiter.size() == 32
 
-    try:
-        limiter.check("client-overflow")
-    except LoginRateLimitExceeded:
-        pass
-    else:
-        raise AssertionError("new client must fail closed at tracker capacity")
+    # A fuller tracker must not turn into a system-wide login outage: the oldest key
+    # that is not locked out yet gives way to the new client.
+    limiter.check("client-overflow")
+    assert limiter.size() == 31
+    assert limiter.count("client-0") == 0
 
     now[0] += 61
     limiter.check("client-overflow")

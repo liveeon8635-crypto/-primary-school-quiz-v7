@@ -62,6 +62,17 @@ def test_production_login_and_commercial_auth_share_trusted_client_identity(monk
     assert limiter.cleared == ["198.51.100.77"]
 
 
+def test_direct_public_peer_cannot_forge_forwarding_headers():
+    # A request that reaches the process from a public address is not coming through the
+    # trusted proxy, so invented headers must be ignored and the peer identity kept.
+    headers = {
+        "cf-connecting-ip": "198.51.100.44",
+        "x-forwarded-for": "203.0.113.9",
+    }
+    assert trusted_client_ip(headers, "198.51.100.9") == "198.51.100.9"
+    assert trusted_client_ip(headers, "2001:db8::1") == "2001:db8::1"
+
+
 def test_source_no_longer_uses_first_forwarded_for_for_auth_identity():
     import inspect
     import app_v924 as legacy

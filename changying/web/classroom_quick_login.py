@@ -195,7 +195,10 @@ def install_classroom_quick_login(implementation: Any) -> bool:
     router = APIRouter()
 
     ip_limiter = BoundedLoginRateLimiter(window_seconds=600, max_attempts=20)
-    global_limiter = BoundedLoginRateLimiter(window_seconds=600, max_attempts=100)
+    # Total failure budget across all clients. It is deliberately far above what a few
+    # classrooms can produce, so a handful of bad guesses never locks out every school;
+    # it only bounds the compute a distributed guesser can spend.
+    global_limiter = BoundedLoginRateLimiter(window_seconds=600, max_attempts=600)
     # A guessed string gets its own budget: hammering one candidate is cut off even when the
     # guesser hops between client IPs (the class code is 8 characters, so a hit is not a risk
     # of enumeration -- this only stops repeated retries on the same candidate).
@@ -588,9 +591,20 @@ def install_classroom_quick_login(implementation: Any) -> bool:
                     authorization[7:], implementation.JWT_SECRET, algorithms=[implementation.JWT_ALG]
                 )
                 student_id = int(payload["sub"])
+                seat_id = payload.get("qjs")
+                nonce = payload.get("qjn")
+                if seat_id is None or not nonce:
+                    raise ValueError("quick-login session handle missing")
+                # Only the seat session this token was issued for may be released: a
+                # stale token must not kick a tablet that re-claimed the seat.
                 result = db.execute(
                     update(seat_rows)
-                    .where(seat_rows.c.student_id == student_id, seat_rows.c.released_at.is_(None))
+                    .where(
+                        seat_rows.c.id == int(seat_id),
+                        seat_rows.c.claim_nonce == str(nonce),
+                        seat_rows.c.student_id == student_id,
+                        seat_rows.c.released_at.is_(None),
+                    )
                     .values(released_at=_utcnow())
                 )
                 released = int(result.rowcount or 0)
@@ -598,9 +612,9 @@ def install_classroom_quick_login(implementation: Any) -> bool:
         except Exception:
             db.rollback()
         response = JSONResponse({"ok": True, "released": released})
-        from changying.web.v1_auth_handoff import V1_AUTH_HANDOFF_COOKIE
+        from changying.web.v1_auth_handoff import _delete_handoff_cookie
 
-        response.delete_cookie(V1_AUTH_HANDOFF_COOKIE, path="/")
+        _delete_handoff_cookie(response, request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["Clear-Site-Data"] = '"cache"'
         return response

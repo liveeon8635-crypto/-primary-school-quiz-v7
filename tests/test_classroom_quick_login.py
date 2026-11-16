@@ -310,6 +310,50 @@ with TestClient(app) as client:
     )
 
 
+def test_logout_only_releases_the_seat_session_it_was_issued_for(tmp_path):
+    run_isolated(
+        tmp_path,
+        SETUP
+        + r'''
+with TestClient(app) as client:
+    th, outsider, ids, sid = build_session(client, None)
+    client.post(f"/teacher/classroom-sessions/{sid}/state", headers=th, json={"status": "active"})
+    first = client.post(f"/teacher/classroom-sessions/{sid}/join-code", headers=th).json()
+    code_one = first["code"]
+    token_one = client.post(
+        "/classroom-join/login",
+        json={"code": code_one, "seat": 1, "device_id": "device-aaaaaaa1"},
+    ).json()["token"]
+
+    # The same child also has a live seat in a second (parallel) class code.
+    with legacy.SessionLocal() as db:
+        codes = legacy.Base.metadata.tables["classroom_join_codes"]
+        row = db.execute(select(codes).where(codes.c.code == code_one)).mappings().first()
+        now = datetime.utcnow()
+        db.execute(codes.insert().values(
+            school_id=row["school_id"], class_id=row["class_id"], session_id=row["session_id"],
+            teacher_id=row["teacher_id"], code="ZZZZ9998", seats_json=row["seats_json"],
+            created_at=now, expires_at=row["expires_at"], revoked_at=None))
+        db.commit()
+
+    token_two = client.post(
+        "/classroom-join/login",
+        json={"code": "ZZZZ9998", "seat": 1, "device_id": "device-bbbbbbb2"},
+    )
+    assert token_two.status_code == 200, token_two.text
+    token_two = token_two.json()["token"]
+    assert client.get("/session", headers={"Authorization": "Bearer " + token_two}).status_code == 200
+
+    out = client.post("/classroom-join/logout", headers={"Authorization": "Bearer " + token_one})
+    assert out.status_code == 200, out.text
+    assert out.json()["released"] == 1, out.text          # only this token's seat, not both
+    assert client.get("/session", headers={"Authorization": "Bearer " + token_two}).status_code == 200
+    print("OK")
+''',
+        flag=True,
+    )
+
+
 def test_pages_and_exit_button_are_tablet_ready_and_inert_until_quick_login(tmp_path):
     run_isolated(
         tmp_path,

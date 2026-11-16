@@ -19,6 +19,7 @@ def _authorized_student(implementation: ModuleType, db, user, sid: int):
             implementation.User.id == sid,
             implementation.User.school_id == user.school_id,
             implementation.User.role == "student",
+            implementation.User.active.is_(True),
         )
     )
     if student is None:
