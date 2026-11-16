@@ -519,7 +519,8 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
                     ledger_id = None
                     if pts > 0:
                         led = PointLedger(school_id=u.school_id, student_id=it["studentId"], class_id=names.get(it["studentId"], ("", None))[1], actor_id=u.id,
-                                          category=CATEGORY[kind], points=int(pts), reason=REASON[kind], note=f"周末课 {row.title}", source=SOURCE, related_id=sid, created_at=now)
+                                          category=CATEGORY[kind], points=int(pts), reason=REASON[kind], note=f"周末课 {row.title}", source=SOURCE, related_id=sid, created_at=now,
+                                          idempotency_key=f"{SOURCE}:{sid}:{it['studentId']}:{kind}")
                         db.add(led)
                         db.flush()
                         ledger_id = int(led.id)

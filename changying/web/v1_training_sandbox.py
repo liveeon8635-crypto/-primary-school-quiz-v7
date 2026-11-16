@@ -153,7 +153,7 @@ STEP_RELATIONSHIPS: dict[str, dict[str, str]] = {
     "targeted": {"who": "AI 草稿 + 教师审核", "creates": "针对性练习", "visible_to": "教师审核后给指定学生", "other_role_sees": "学生只看到教师确认发布后的练习", "communication_tip": "明确说明练习为什么被生成、依据哪次测试/哪些错题", "next": "继续练习并回流"},
     "class_review": {"who": "教师", "creates": "班级复盘讲义草稿", "visible_to": "教师确认后再发布", "other_role_sees": "草稿阶段学生不可见；发布后按课堂流程使用", "communication_tip": "区分“系统建议复盘”和“教师确认发布”", "next": "互动课堂"},
     "interactive": {"who": "教师主导/学生参与", "creates": "课堂事件与随堂反馈", "visible_to": "对应课堂参与者", "other_role_sees": "学生收到邀请/随堂检测；教师看汇总；家长只看适合家长端的结果摘要", "communication_tip": "邀请学生讲解不是系统评价，学生可以拒绝且不形成负面证据", "next": "积分/复盘/下一轮教学"},
-    "points": {"who": "规则或教师", "creates": "可追溯积分动态", "visible_to": "教师/学生/家长摘要", "other_role_sees": "不同角色看到同一积分事实的不同解释层级", "communication_tip": "必须显示积分来源，避免用户把总分误解为学习成绩", "next": "长期激励与评价"},
+    "points": {"who": "规则或教师", "creates": "可追溯积分动态", "visible_to": "教师/学生/家长摘要", "other_role_sees": "不同角色看到同一积分事实的不同解释层级", "communication_tip": "必须显示积分来源，避免用户把总分误解为学习成绩。自动积分（答题、晚托练习、周末课结算、课堂讲解）同一件事只记一次，重复提交或重复点结算不会再加分；老师手工加减分不受这个限制", "next": "长期激励与评价"},
     "history": {"who": "系统归档", "creates": "只读往期教学", "visible_to": "授权角色", "other_role_sees": "当前工作台减少旧内容，但学生连续档案仍保留历史", "communication_tip": "结束班级不等于删除学生或删除成绩", "next": "阶段衔接"},
     "transition": {"who": "教师/管理员", "creates": "同一学生的阶段变化计划", "visible_to": "授权角色", "other_role_sees": "学生/家长看到的是同一学生下一阶段的连续变化，而不是一个新账号", "communication_tip": "强调学生ID连续性，避免升年级重复建档", "next": "下一阶段继续同一档案"},
     "classroom": {"who": "学生参与", "creates": "课堂参与/随堂反馈", "visible_to": "学生本人/教师汇总", "other_role_sees": "教师看到参与结果；家长只看适合家长端的摘要", "communication_tip": "讲解邀请可拒绝，拒绝不形成负面证据", "next": "作业与随堂反馈"},
