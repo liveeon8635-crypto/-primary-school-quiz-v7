@@ -102,6 +102,15 @@ def _unique_conflicts(session: Session, table: str, keep_id: int, merge_id: int)
     return conflicts
 
 
+def _row_lock_sql(session: Session) -> str:
+    """Lock the student rows for the rest of the transaction (PostgreSQL/MySQL only).
+
+    SQLite has no row locks, so the clause is skipped there (tests run on SQLite).
+    """
+    name = getattr(getattr(session.get_bind(), "dialect", None), "name", "")
+    return " FOR UPDATE" if name in {"postgresql", "mysql", "mariadb"} else ""
+
+
 def plan_student_merge(session: Session, keep_id: int, merge_id: int, *, expected_name: str | None = None) -> MergePlan:
     if keep_id == merge_id:
         raise StudentMergeError("keep_id and merge_id must differ")
@@ -109,7 +118,7 @@ def plan_student_merge(session: Session, keep_id: int, merge_id: int, *, expecte
     rows = session.execute(
         text(
             "SELECT id, school_id, name, role, grade, active FROM users "
-            "WHERE id IN (:keep_id,:merge_id) ORDER BY id"
+            "WHERE id IN (:keep_id,:merge_id) ORDER BY id" + _row_lock_sql(session)
         ),
         {"keep_id": keep_id, "merge_id": merge_id},
     ).mappings().all()
@@ -191,6 +200,12 @@ def merge_student_records(
             {"keep_id": keep_id, "merge_id": merge_id},
         )
         moved[table] = int(result.rowcount if result.rowcount is not None and result.rowcount >= 0 else expected_count)
+        if moved[table] != expected_count:
+            # Rows appeared or vanished between planning and writing: abort the transaction
+            # instead of half-merging a student's history.
+            raise StudentMergeError(
+                f"reference count changed during merge for {table}: planned {expected_count}, moved {moved[table]}"
+            )
 
     session.execute(
         text("UPDATE users SET grade=:grade WHERE id=:keep_id"),
