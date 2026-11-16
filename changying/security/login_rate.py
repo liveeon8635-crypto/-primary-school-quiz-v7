@@ -78,6 +78,16 @@ class BoundedLoginRateLimiter:
                 del hits[:-self.max_attempts]
             self._hits.move_to_end(normalized)
 
+    def count(self, key: str) -> int:
+        """How many failures are still inside the window for this key (0 when unknown)."""
+        normalized = str(key or "unknown")[:256]
+        now = self._clock()
+        with self._lock:
+            hits = self._hits.get(normalized)
+            if not hits:
+                return 0
+            return len(self._fresh(hits, now))
+
     def clear(self, key: str) -> None:
         normalized = str(key or "unknown")[:256]
         with self._lock:
