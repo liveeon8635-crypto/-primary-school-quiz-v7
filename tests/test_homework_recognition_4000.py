@@ -145,43 +145,44 @@ valid_notice = json.dumps({
 with TestClient(app) as client:
     th, sh, sid, school_id = setup(client)
 
-    # 1) /teacher/homework/parse-image 3999 / 4000 / 4001 boundary + explicit truncation warning + half-JSON rejection
-    for n, exp_len, exp_trunc in [(3999, 3999, False), (4000, 4000, True), (4001, 4000, True)]:
-        vision_out["content"] = json.dumps({"text": "甲" * n, "hasFigure": False, "confidence": 0.95}, ensure_ascii=False)
-        r = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=JPEG)
-        assert r.status_code == 200, (n, r.text)
-        body = r.json()
-        assert len(body["text"]) == exp_len, (n, len(body["text"]))
-        assert body["truncated"] is exp_trunc, (n, body)
-        if exp_trunc:
-            assert "可能不完整，请核对" in body["warning"], body
-        else:
-            assert body["warning"] == "", body
+    # 1) /teacher/homework/parse-image default-denies raw unverified screenshots (0 vision HTTP calls)
+    blocked_img = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=JPEG)
+    assert blocked_img.status_code == 403 and len(vision_calls) == 0
 
-    vision_out["content"] = '{"text": "半截JSON通知未闭合'
-    half_img = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=JPEG)
-    assert half_img.status_code == 502 and "半截JSON" not in half_img.text
+    # recognize_image 3999 / 4000 / 4001 boundary + explicit truncation flag + half-JSON rejection (via homework_help_vision)
+    from changying.services import homework_vision as hv
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, sid)
+        for n, exp_len, exp_trunc in [(3999, 3999, False), (4000, 4000, True), (4001, 4000, True)]:
+            vision_out["content"] = json.dumps({"text": "甲" * n, "hasFigure": False, "confidence": 0.95}, ensure_ascii=False)
+            body = hv.recognize_image(legacy, db, stu, JPEG, feature="homework_help_vision", student_ids=(sid,))
+            assert len(body["text"]) == exp_len, (n, len(body["text"]))
+            assert bool(body.get("truncated")) is exp_trunc, (n, body)
 
-    # 模型直接回纯文本（不是 JSON）：仍然当草稿收下，不能因为格式判定把老师挡在 502
-    vision_out["content"] = "作业：数学口算第 5 页，家长签字"
-    plain = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=JPEG)
-    assert plain.status_code == 200, plain.text
-    plain_body = plain.json()
-    assert "口算第 5 页" in plain_body["text"], plain_body
-    assert plain_body["truncated"] is False and plain_body["warning"] == "", plain_body
+        vision_out["content"] = '{"text": "半截JSON通知未闭合'
+        try:
+            hv.recognize_image(legacy, db, stu, JPEG, feature="homework_help_vision", student_ids=(sid,))
+            assert False, "expected HTTPException 502"
+        except HTTPException as exc:
+            assert exc.status_code == 502 and "半截JSON" not in str(exc.detail)
 
-    # 以 [ 开头的普通文字也不能被当成“破损的 JSON”
-    vision_out["content"] = "[1] 计算题：3+4=？"
-    bracket = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=JPEG)
-    assert bracket.status_code == 200, bracket.text
-    assert "[1]" in bracket.json()["text"], bracket.json()
+        # 模型直接回纯文本（不是 JSON）：仍然当草稿收下，不能因为格式判定把老师/学生挡在 502
+        vision_out["content"] = "作业：数学口算第 5 页，家长签字"
+        plain_body = hv.recognize_image(legacy, db, stu, JPEG, feature="homework_help_vision", student_ids=(sid,))
+        assert "口算第 5 页" in plain_body["text"], plain_body
+        assert bool(plain_body.get("truncated")) is False, plain_body
+
+        # 以 [ 开头的普通文字也不能被当成“破损的 JSON”
+        vision_out["content"] = "[1] 计算题：3+4=？"
+        bracket_body = hv.recognize_image(legacy, db, stu, JPEG, feature="homework_help_vision", student_ids=(sid,))
+        assert "[1]" in bracket_body["text"], bracket_body
 
     # 2) /teacher/homework/parse 3999 / 4000 / 4001 / 6000 / 6001 boundary
     notices_tbl = legacy.Base.metadata.tables["homework_notices"]
     for n in (3999, 4000, 4001, 6000):
         parse_replies.append(valid_notice)
         txt = "乙" * n
-        r = client.post("/teacher/homework/parse", headers=th, json={"text": txt})
+        r = client.post("/teacher/homework/parse", headers=th, json={"text": txt, "studentIds": [sid]})
         assert r.status_code == 200, (n, r.text)
         assert txt in parse_prompts[-1], f"prompt should contain all {n} chars"
         nid = r.json()["id"]
@@ -189,7 +190,7 @@ with TestClient(app) as client:
             saved_raw = db.scalar(select(notices_tbl.c.raw_text).where(notices_tbl.c.id == nid))
             assert len(saved_raw) == n, (n, len(saved_raw))
 
-    too_long = client.post("/teacher/homework/parse", headers=th, json={"text": "乙" * 6001})
+    too_long = client.post("/teacher/homework/parse", headers=th, json={"text": "乙" * 6001, "studentIds": [sid]})
     assert too_long.status_code == 400 and "6000" in too_long.json()["detail"]
 
     # 3) Structured output anomalies on /teacher/homework/parse: invalid JSON, half JSON, missing items, overlong fields
@@ -200,7 +201,7 @@ with TestClient(app) as client:
         '{"groupLabel": "三(2)班", "items": [{"subject": "数学", "content": "   "}]}',
     ):
         parse_replies.append(bad_out)
-        r = client.post("/teacher/homework/parse", headers=th, json={"text": "明天数学口算第5页"})
+        r = client.post("/teacher/homework/parse", headers=th, json={"text": "明天数学口算第5页", "studentIds": [sid]})
         assert r.status_code == 422 and "手动" in r.json()["detail"], (bad_out, r.status_code, r.text)
 
     # Overlong fields in model output are clipped safely (groupLabel<=120, content<=300, items<=30)
@@ -209,7 +210,7 @@ with TestClient(app) as client:
         "items": [{"subject": "数" * 50, "content": "题" * 500, "page": "P" * 80, "requirement": "要" * 300} for _ in range(40)],
     }, ensure_ascii=False)
     parse_replies.append(overlong_out)
-    r = client.post("/teacher/homework/parse", headers=th, json={"text": "明天数学口算"})
+    r = client.post("/teacher/homework/parse", headers=th, json={"text": "明天数学口算", "studentIds": [sid]})
     assert r.status_code == 200
     parsed_body = r.json()
     assert len(parsed_body["groupLabel"]) == 120
@@ -219,14 +220,19 @@ with TestClient(app) as client:
     # 4) Failure & retry: single call, clear message, no infinite retry
     before_calls = len(parse_prompts)
     parse_replies.append(HTTPException(504, "AI 调用超时，请稍后重试"))
-    fail = client.post("/teacher/homework/parse", headers=th, json={"text": "明天数学口算"})
+    fail = client.post("/teacher/homework/parse", headers=th, json={"text": "明天数学口算", "studentIds": [sid]})
     assert fail.status_code == 504 and len(parse_prompts) == before_calls + 1
 
     import requests as req_mod
     before_v = len(vision_calls)
     vision_out["content"] = req_mod.Timeout()
-    vfail = client.post("/teacher/homework/parse-image", headers={**th, "Content-Type": "image/jpeg"}, content=JPEG)
-    assert vfail.status_code == 504 and len(vision_calls) == before_v + 1
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, sid)
+        try:
+            hv.recognize_image(legacy, db, stu, JPEG, feature="homework_help_vision", student_ids=(sid,))
+            assert False, "expected HTTPException 504"
+        except HTTPException as exc:
+            assert exc.status_code == 504 and len(vision_calls) == before_v + 1
 print("OK")
 ''',
     )

@@ -9,6 +9,7 @@ import app_v924 as implementation
 
 
 def test_image_provider_failure_logs_status_and_code_without_raw_message(monkeypatch, capsys):
+    monkeypatch.setattr("changying.services.guardian_consent.require_student_ai_authorized", lambda *a, **kw: None)
     monkeypatch.setattr(implementation, "_ai_rate_check", lambda db, school_id: None)
     monkeypatch.setattr(
         implementation, "_ai_active_config",

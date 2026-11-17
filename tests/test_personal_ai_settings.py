@@ -112,3 +112,63 @@ def test_saving_a_key_through_the_same_api_the_page_uses(client):
     )
     assert r.status_code == 200
     assert client.get("/teacher/ai-config", headers=headers).json()["hasKey"] is True
+
+
+def test_page_exposes_provider_selector_and_student_data_toggle(client):
+    page = client.get("/teacher/ai-settings").text
+    assert 'id="cy-provider"' in page
+    assert 'value="openai_compatible"' in page
+    assert 'id="cy-allow-student"' in page
+    assert "provider:'openai_responses'" not in page
+    assert "allow_student_data:false" not in page
+
+
+def test_openai_compatible_protocol_saved_and_tested_without_key_leak(client, monkeypatch):
+    headers = _workspace(client)
+    r = client.put(
+        "/teacher/ai-config",
+        headers=headers,
+        json={
+            "provider": "openai_compatible",
+            "base_url": "https://api.deepseek.com/v1",
+            "model": "deepseek-chat",
+            "api_key": "sk-deepseek-secret-99887766",
+            "enabled": True,
+            "allow_student_data": False,
+        },
+    )
+    assert r.status_code == 200, r.text[:300]
+    cfg = client.get("/teacher/ai-config", headers=headers).json()
+    assert cfg["provider"] == "openai_compatible"
+    assert cfg["baseURL"] == "https://api.deepseek.com/v1"
+
+    import app_v924 as legacy
+
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+    seen = {}
+
+    class _OkResp:
+        ok = True
+        status_code = 200
+        def json(self):
+            return {"choices": [{"message": {"content": "连接成功"}}], "usage": {"prompt_tokens": 3, "completion_tokens": 2}}
+
+    def _fake_post(url, headers=None, json=None, timeout=None):
+        seen["url"] = url
+        return _OkResp()
+
+    monkeypatch.setattr(legacy.requests, "post", _fake_post)
+    test_res = client.post("/teacher/ai-test", headers=headers)
+    assert test_res.status_code == 200
+    assert seen["url"] == "https://api.deepseek.com/v1/chat/completions"
+
+    class _ErrResp:
+        ok = False
+        status_code = 401
+        def json(self):
+            return {"error": {"message": "invalid api key"}}
+
+    monkeypatch.setattr(legacy.requests, "post", lambda *a, **kw: _ErrResp())
+    err_res = client.post("/teacher/ai-test", headers=headers)
+    assert err_res.status_code == 502
+    assert "sk-deepseek-secret-99887766" not in err_res.text
