@@ -143,6 +143,11 @@ def recognize_image(
     student_ids: tuple[int, ...] | list[int] = (),
 ) -> dict[str, Any]:
     """Recognise text in one image. Returns ``{"text", "hasFigure", "confidence"}``."""
+    if feature in {"homework_parse_vision", "homework_notice_vision"}:
+        raise HTTPException(
+            403,
+            "原始作业截图可能包含其他学生、家长、成绩或联系方式等敏感信息，服务端无法在发送前完成脱敏核验，已禁止向外部视觉 AI 发送原图；请直接粘贴脱敏后的纯文本进行解析，或点击“直接手动录入”。",
+        )
     config = vision_config()
     if config is None:
         raise HTTPException(503, "拍照识别尚未配置，请直接输入文字")

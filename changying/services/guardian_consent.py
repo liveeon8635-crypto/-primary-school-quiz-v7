@@ -60,6 +60,16 @@ TEACHING_ONLY_AI_FEATURES: frozenset[str] = frozenset({
     "connection_test",
 })
 
+_PURE_TEACHING_QGEN_FEATURES: frozenset[str] = frozenset({
+    "question_generation",
+    "question_generation_repair",
+})
+
+_VERIFIED_PURE_TEACHING_QGEN: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "guardian_consent_verified_pure_teaching_qgen",
+    default=False,
+)
+
 _REQUEST_STUDENT_ID: contextvars.ContextVar[int | None] = contextvars.ContextVar(
     "guardian_consent_request_student_id",
     default=None,
@@ -771,9 +781,13 @@ def install_ai_egress_guard(implementation: Any) -> None:
     def guarded_ai_call(db, u, feature, prompt, images=None, timeout=90, rate_check=None, **kwargs):
         student_ids = kwargs.pop("student_ids", ()) or ()
         unverified_free_text = bool(kwargs.pop("unverified_free_text", False)) or bool(_UNVERIFIED_FREE_TEXT.get())
+        verified_pure_qgen = bool(_VERIFIED_PURE_TEACHING_QGEN.get())
         imgs = images or []
         is_teaching_only = (
-            (feature in TEACHING_ONLY_AI_FEATURES)
+            (
+                (feature in TEACHING_ONLY_AI_FEATURES)
+                or (feature in _PURE_TEACHING_QGEN_FEATURES and verified_pure_qgen)
+            )
             and not student_ids
             and not imgs
             and not unverified_free_text

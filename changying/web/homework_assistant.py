@@ -225,25 +225,10 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
         db: Any = Depends(get_db),
     ):
         need(u, "teacher")
-        raw_sids = str(request.query_params.get("studentIds") or "").strip()
-        parsed_sids = tuple(int(x) for x in raw_sids.split(",") if x.strip().isdigit())
-        await run_in_threadpool(require_school_ai_for_notice, db, u, parsed_sids)
-        data = await read_image_body(request)
-
-        def work() -> dict[str, Any]:
-            implementation._ai_rate_check(db, u.school_id)
-            return recognize_image(implementation, db, u, data, feature="homework_parse_vision", student_ids=parsed_sids)
-
-        result = await run_in_threadpool(work)
-        text = scrub_notice_text(result["text"])
-        truncated = bool(result.get("truncated") or len(result["text"]) >= RECOGNIZED_CHAR_LIMIT)
-        # 识别返回在服务层被截到 4000 字；到顶就提醒老师核对最后一条，避免静默少题。
-        return {
-            "text": text,
-            "confidence": result["confidence"],
-            "truncated": truncated,
-            "warning": "识别内容已达 4000 字上限，可能不完整，请核对最后一条作业是否齐全" if truncated else "",
-        }
+        raise HTTPException(
+            403,
+            "原始作业截图可能包含其他学生、家长、成绩或联系方式等敏感信息，服务端无法在发送前完成脱敏核验，已禁止向外部视觉 AI 发送原图；请直接粘贴脱敏后的纯文本进行解析，或点击“直接手动录入”。",
+        )
 
     @router.post("/teacher/homework/parse")
     def parse(b: ParseBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):

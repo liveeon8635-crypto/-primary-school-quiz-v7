@@ -260,3 +260,136 @@ def test_real_browser_homework_notice_parse_flow(tmp_path, monkeypatch):
     finally:
         server.should_exit = True
         thread.join(timeout=5)
+
+
+def test_browser_teacher_pure_teaching_question_generation_and_notice_manual_fallback(tmp_path: Path, monkeypatch):
+    """Real Chromium verification: teacher pure-teaching AI question generation + manual homework notice UI."""
+    import importlib
+    import json
+    from types import SimpleNamespace
+    from playwright import sync_api as playwright_sync
+
+    db_path = tmp_path / "browser_v8_teacher.sqlite3"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
+    monkeypatch.setenv("COMMERCIAL_ADMIN_KEY", COMMERCIAL_KEY)
+    monkeypatch.setenv("HOMEWORK_ASSISTANT", "1")
+    monkeypatch.delenv("STUDENT_AI_COMPLIANCE_APPROVED", raising=False)
+
+    app_module = importlib.import_module("app")
+    legacy = importlib.import_module("app_v924")
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+
+    http_calls = []
+
+    def fake_post(url, *args, **kwargs):
+        http_calls.append({"url": url, "json": kwargs.get("json")})
+        return SimpleNamespace(
+            ok=True,
+            status_code=200,
+            json=lambda: {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "questions": [
+                                        {
+                                            "question_type": "single_choice",
+                                            "text": "计算 1/4 + 1/2 的和是多少？",
+                                            "options": ["1/6", "3/4", "2/6", "1/2"],
+                                            "correct_index": 1,
+                                            "knowledge": "分数加减法",
+                                            "explanation": "1/4 + 2/4 = 3/4。",
+                                            "steps": ["通分", "相加"],
+                                            "expression": "1/4+1/2",
+                                        }
+                                    ]
+                                },
+                                ensure_ascii=False,
+                            )
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 24},
+            },
+        )
+
+    monkeypatch.setattr(legacy.requests, "post", fake_post)
+
+    tag = uuid.uuid4().hex[:6]
+    code = f"qgb-{tag}"
+    with TestClient(app_module.app) as client:
+        assert client.post(
+            "/operator/schools/create",
+            headers={"X-Commercial-Key": COMMERCIAL_KEY},
+            json={
+                "school_name": f"出题浏览器测试{tag}",
+                "school_code": code,
+                "admin_name": "校长",
+                "admin_username": code,
+                "admin_password": PASSWORD,
+                "individual": False,
+            },
+        ).status_code == 200
+        adm_tok = client.post("/login", json={"username": code, "password": PASSWORD}).json()["token"]
+        adm_tok = client.post("/change-password", headers={"Authorization": f"Bearer {adm_tok}"}, json={"current_password": PASSWORD, "new_password": CHANGED}).json()["token"]
+        adm_h = {"Authorization": f"Bearer {adm_tok}"}
+        tid = client.post("/admin/users", headers=adm_h, json={"name": "林老师", "username": f"qt-{tag}", "password": PASSWORD, "role": "teacher"}).json()["id"]
+        t_tok = client.post("/login", json={"username": f"qt-{tag}", "password": PASSWORD}).json()["token"]
+        t_tok = client.post("/change-password", headers={"Authorization": f"Bearer {t_tok}"}, json={"current_password": PASSWORD, "new_password": CHANGED}).json()["token"]
+        with legacy.SessionLocal() as db:
+            t_u = db.get(legacy.User, tid)
+            cfg = legacy.ai_config_for(db, t_u.school_id, True)
+            cfg.enabled = True
+            cfg.allow_student_data = False
+            cfg.provider = "openai_compatible"
+            cfg.base_url = "https://api.deepseek.com/v1"
+            cfg.model = "deepseek-chat"
+            cfg.api_key_cipher = legacy._ai_encrypt_key("sk-browser-qgen-key")
+            db.commit()
+
+    port = _free_port()
+    server = uvicorn.Server(uvicorn.Config(app_module.app, host="127.0.0.1", port=port, log_level="error"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    try:
+        for _ in range(40):
+            if server.started:
+                break
+            time.sleep(0.1)
+
+        with playwright_sync.sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            try:
+                page = browser.new_page()
+                page.goto(f"http://127.0.0.1:{port}/classic?legacy=1", wait_until="networkidle")
+                page.fill("#username", f"qt-{tag}")
+                page.fill("#password", CHANGED)
+                page.click("#loginBtn")
+                page.wait_for_selector(".nav-btn:has-text('AI')")
+
+                # Navigate to AI tab and click 生成题目 with structured defaults
+                page.click(".nav-btn:has-text('AI')")
+                page.wait_for_selector("#aiGenerateQuestions")
+                page.fill("#aqCount", "1")
+                with page.expect_response(lambda r: "/ai/questions/generate" in r.url) as resp_info:
+                    page.click("#aiGenerateQuestions")
+                q_resp = resp_info.value
+                assert q_resp.status == 200, q_resp.text()
+                assert len(q_resp.json().get("items") or []) >= 1
+                page.wait_for_function(
+                    "() => Array.from(document.querySelectorAll('textarea,input')).some(el => (el.value || '').includes('1/4 + 1/2')) || document.body.textContent.includes('1/4 + 1/2')"
+                )
+                assert len(http_calls) >= 1
+
+                # Navigate to /v1/homework and confirm raw screenshot upload is hidden/disabled while manual entry works
+                page.goto(f"http://127.0.0.1:{port}/v1/homework", wait_until="networkidle")
+                page.click("button:has-text('直接手动录入')")
+                page.wait_for_selector("button:has-text('发布给选中的学生')")
+                assert page.locator("button:has-text('上传通知截图')").count() == 1
+                assert not page.locator("button:has-text('上传通知截图')").is_visible()
+            finally:
+                browser.close()
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)

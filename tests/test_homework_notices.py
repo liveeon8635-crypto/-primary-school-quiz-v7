@@ -359,37 +359,55 @@ with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
     allow_ai(school_of(sid))
 
-    # Not configured: clear message, nothing is sent anywhere.
+    # Raw notice screenshot upload is default-denied (403, nothing sent).
     r = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
-    assert r.status_code == 503 and not captured
+    assert r.status_code == 403 and not captured
 
     import os
-    os.environ.update({
-        "HOMEWORK_VISION_PROVIDER": "openai_compatible",
-        "HOMEWORK_VISION_BASE_URL": "https://api.deepseek.com",
-        "HOMEWORK_VISION_MODEL": MODEL,
-        "HOMEWORK_VISION_API_KEY": "test-key-not-real",
-    })
-    assert client.get("/homework/config").json()["visionEnabled"] is True
+    from fastapi import HTTPException as FastHTTPException
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, sid)
+        # Not configured: clear message, nothing is sent anywhere.
+        try:
+            homework_vision.recognize_image(legacy, db, stu, jpeg, feature="homework_help_vision", student_ids=(sid,))
+            assert False, "expected 503"
+        except FastHTTPException as exc:
+            assert exc.status_code == 503 and not captured
 
-    ok = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
-    assert ok.status_code == 200, ok.text
-    assert "13812345678" not in ok.json()["text"] and "数学第5页" in ok.json()["text"]
-    # The model name is sent exactly as configured, the key only in the header.
-    assert captured["payload"]["model"] == MODEL
-    assert captured["headers"]["Authorization"] == "Bearer test-key-not-real"
-    assert "test-key-not-real" not in json.dumps(captured["payload"])
+        os.environ.update({
+            "HOMEWORK_VISION_PROVIDER": "openai_compatible",
+            "HOMEWORK_VISION_BASE_URL": "https://api.deepseek.com",
+            "HOMEWORK_VISION_MODEL": MODEL,
+            "HOMEWORK_VISION_API_KEY": "test-key-not-real",
+        })
+        assert client.get("/homework/config").json()["visionEnabled"] is True
 
-    # Bad inputs.
-    assert client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=b"GIF89a....").status_code == 415
-    big = b"\xff\xd8\xff" + b"0" * (homework_vision.MAX_IMAGE_BYTES + 10)
-    assert client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=big).status_code == 413
+        # Raw notice screenshot upload stays blocked even when vision is configured.
+        blocked = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
+        assert blocked.status_code == 403 and not captured
+
+        from changying.services.homework_prompts import scrub_notice_text
+        ok_res = homework_vision.recognize_image(legacy, db, stu, jpeg, feature="homework_help_vision", student_ids=(sid,))
+        assert "数学第5页" in ok_res["text"]
+        assert "13812345678" not in scrub_notice_text(ok_res["text"])
+        # The model name is sent exactly as configured, the key only in the header.
+        assert captured["payload"]["model"] == MODEL
+        assert captured["headers"]["Authorization"] == "Bearer test-key-not-real"
+        assert "test-key-not-real" not in json.dumps(captured["payload"])
+
+        # Bad inputs.
+        for bad_data, code in [(b"GIF89a....", 415), (b"\xff\xd8\xff" + b"0" * (homework_vision.MAX_IMAGE_BYTES + 10), 413)]:
+            try:
+                homework_vision.recognize_image(legacy, db, stu, bad_data, feature="homework_help_vision", student_ids=(sid,))
+                assert False, f"expected {code}"
+            except FastHTTPException as exc:
+                assert exc.status_code == code
     assert client.post("/teacher/homework/parse-image", headers={**sh, "Content-Type": "image/jpeg"}, content=jpeg).status_code == 403
 
     # Only metadata is logged; the image bytes appear nowhere in the database file.
     from sqlalchemy import select
     with legacy.SessionLocal() as db:
-        rows = db.scalars(select(legacy.AIUsageLog).where(legacy.AIUsageLog.feature == "homework_parse_vision")).all()
+        rows = db.scalars(select(legacy.AIUsageLog).where(legacy.AIUsageLog.feature == "homework_help_vision")).all()
         assert len(rows) == 1 and rows[0].model == MODEL and rows[0].input_tokens == 120
         assert rows[0].error == "" and rows[0].prompt_chars > 0
     legacy.engine.dispose()
@@ -437,13 +455,22 @@ def boom(*a, **k):
 with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
     allow_ai(school_of(sid))
-    homework_vision.requests.post = lambda *a, **k: Bad()
-    r = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
-    assert r.status_code == 502 and "secret-key-xyz" not in r.text and "429" in r.text
-    assert "rate_limit" not in r.text  # provider-controlled strings are no longer exposed
-    homework_vision.requests.post = boom
-    r = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
-    assert r.status_code == 504 and "secret-key-xyz" not in r.text
+    from fastapi import HTTPException as FastHTTPException
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, sid)
+        homework_vision.requests.post = lambda *a, **k: Bad()
+        try:
+            homework_vision.recognize_image(legacy, db, stu, jpeg, feature="homework_help_vision", student_ids=(sid,))
+            assert False, "expected 502"
+        except FastHTTPException as exc:
+            assert exc.status_code == 502 and "secret-key-xyz" not in str(exc.detail) and "429" in str(exc.detail)
+            assert "rate_limit" not in str(exc.detail)  # provider-controlled strings are no longer exposed
+        homework_vision.requests.post = boom
+        try:
+            homework_vision.recognize_image(legacy, db, stu, jpeg, feature="homework_help_vision", student_ids=(sid,))
+            assert False, "expected 504"
+        except FastHTTPException as exc:
+            assert exc.status_code == 504 and "secret-key-xyz" not in str(exc.detail)
     from sqlalchemy import select
     with legacy.SessionLocal() as db:
         errors = [x.error for x in db.scalars(select(legacy.AIUsageLog)).all()]
@@ -492,18 +519,22 @@ with TestClient(app) as client:
     th, sh, sid = teacher_student_headers(client)
     school_id = school_of(sid)
 
-    # No AI settings at all, then AI enabled but content not allowed to leave: nothing is sent.
-    assert upload(client, th, sid).status_code == 503
+    # Raw notice screenshot upload is always denied (403) before any AI call.
+    assert upload(client, th, sid).status_code == 403
     allow_ai(school_id, allow=False, enabled=True)
     refused = upload(client, th, sid)
     assert refused.status_code == 403 and "手动录入" in refused.json()["detail"]
     allow_ai(school_id, allow=True, enabled=False)
-    assert upload(client, th, sid).status_code == 503
+    assert upload(client, th, sid).status_code == 403
     assert not sent, "no picture may leave the server without the school's permission"
 
-    # Both switched on: it works.
+    # Even with school AI enabled, raw notice screenshot stays blocked; homework_help_vision still honors allow_ai.
     allow_ai(school_id, allow=True, enabled=True)
-    assert upload(client, th, sid).status_code == 200 and len(sent) == 1
+    assert upload(client, th, sid).status_code == 403 and not sent
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, sid)
+        res = homework_vision.recognize_image(legacy, db, stu, jpeg, feature="homework_help_vision", student_ids=(sid,))
+        assert "数学第5页" in res["text"] and len(sent) == 1
 print("OK")
 ''',
         {"HOMEWORK_ASSISTANT": "1"},
@@ -554,8 +585,10 @@ with TestClient(app) as client:
     result = {}
 
     def upload():
-        r = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"}, content=jpeg)
-        result["status"] = r.status_code
+        with legacy.SessionLocal() as db:
+            stu = db.get(legacy.User, sid)
+            res = homework_vision.recognize_image(legacy, db, stu, jpeg, feature="homework_help_vision", student_ids=(sid,))
+            result["status"] = 200 if "数学第5页" in res["text"] else 500
 
     worker = threading.Thread(target=upload)
     worker.start()
@@ -701,10 +734,11 @@ with TestClient(app) as client:
         "HOMEWORK_VISION_MODEL": "vision-test-model",
         "HOMEWORK_VISION_API_KEY": "test-key-not-real",
     })
-    r = client.post(f"/teacher/homework/parse-image?studentIds={sid}", headers={**th, "Content-Type": "image/jpeg"},
-                    content=b"\xff\xd8\xff\xe0" + b"y" * 200)
-    assert r.status_code == 200, r.text
-    body = r.json()
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, sid)
+        body = homework_vision.recognize_image(
+            legacy, db, stu, b"\xff\xd8\xff\xe0" + b"y" * 200, feature="homework_help_vision", student_ids=(sid,)
+        )
     assert len(body["text"]) == 4000, len(body["text"])
     assert body["truncated"] is True, "到 4000 字上限必须标记 truncated"
 print("OK")

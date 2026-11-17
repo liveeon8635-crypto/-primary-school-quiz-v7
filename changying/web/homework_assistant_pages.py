@@ -226,9 +226,9 @@ function hwTarget(search){
 function importView(body){
   var text=el('textarea',{placeholder:'把家长转发的作业通知文字粘贴到这里'}),msg=el('div'),editor=el('div');
   var parseBtn=el('button',{class:'primary',text:'AI 解析'}),file=el('input',{type:'file',accept:'image/*',hidden:true});
-  var shot=el('button',{text:'上传通知截图',onclick:function(){file.click()}});
+  var shot=el('button',{text:'上传通知截图（已禁用原图外发）',disabled:true,title:'为保护学生与家长隐私，原始通知截图禁止直接发往外部视觉 AI'});
   var scopeBox=el('div',{class:'muted',text:'正在加载班级学生范围…'}),scopeChecks=[];
-  if(!CONFIG.visionEnabled)shot.style.display='none';
+  shot.style.display='none';
   function selectedScopeIds(){
     return scopeChecks.filter(function(c){return c.checked}).map(function(c){return Number(c.value)});
   }

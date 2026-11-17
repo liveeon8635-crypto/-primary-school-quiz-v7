@@ -136,6 +136,7 @@ def test_compliance_gate_blocks_personal_egress_by_default(client, monkeypatch):
 
 def test_default_deny_unknown_feature_missing_student_ids_and_teacher_image_upload(client, monkeypatch):
     monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
+    monkeypatch.setenv("HOMEWORK_ASSISTANT", "1")
     monkeypatch.setenv("HOMEWORK_VISION_PROVIDER", "openai_compatible")
     monkeypatch.setenv("HOMEWORK_VISION_BASE_URL", "https://api.example.com/v1")
     monkeypatch.setenv("HOMEWORK_VISION_MODEL", "vision-test-model")
@@ -280,6 +281,7 @@ def test_token_security_replay_expiry_cross_student_and_unlinked_parent(client, 
 
 def test_revocation_blocks_all_four_modules_and_queued_retries_with_zero_http(client, monkeypatch):
     monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
+    monkeypatch.setenv("HOMEWORK_ASSISTANT", "1")
     monkeypatch.setenv("HOMEWORK_VISION_PROVIDER", "openai_compatible")
     monkeypatch.setenv("HOMEWORK_VISION_BASE_URL", "https://api.example.com/v1")
     monkeypatch.setenv("HOMEWORK_VISION_MODEL", "vision-test-model")
@@ -1359,3 +1361,232 @@ def test_denied_egress_never_commits_callers_pending_changes(client, monkeypatch
         assert reloaded.name != unpaid_name
         assert db.query(legacy.User).filter(legacy.User.name == unpaid_name).count() == 0
     assert http_calls["count"] == 0
+
+
+def test_v8_p0_1_pure_teaching_question_generation_and_free_text_blocking(client, monkeypatch):
+    """V8 P0-1: Structured pure-teaching generation works; free-text/PII/direct repair calls stay blocked."""
+    import json
+    from fastapi import HTTPException
+    import app_v924 as legacy
+
+    monkeypatch.delenv("STUDENT_AI_COMPLIANCE_APPROVED", raising=False)
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+    t_headers, _p_headers, _s_headers, student_id = _setup_personal_family(client)
+
+    sent_prompts: list[str] = []
+
+    class FakeAIResp:
+        status_code = 200
+        ok = True
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "questions": [
+                                        {
+                                            "question_type": "single_choice",
+                                            "text": "计算 1/2 + 1/3 的结果是多少？",
+                                            "options": ["2/5", "5/6", "1/6", "2/3"],
+                                            "correct_index": 1,
+                                            "knowledge": "分数加减法",
+                                            "explanation": "通分后 3/6 + 2/6 = 5/6。",
+                                            "steps": ["通分", "分子相加"],
+                                            "expression": "1/2+1/3",
+                                        }
+                                    ]
+                                },
+                                ensure_ascii=False,
+                            )
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 20, "completion_tokens": 30},
+            }
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        sent_prompts.append(str(json))
+        return FakeAIResp()
+
+    monkeypatch.setattr(legacy.requests, "post", fake_post)
+
+    # Ensure AI config is enabled but allow_student_data=False and compliance closed
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, student_id)
+        school_id = int(stu.school_id)
+        teacher = db.query(legacy.User).filter(legacy.User.school_id == school_id, legacy.User.role == "teacher").first()
+        teacher_id = int(teacher.id)
+        cfg = legacy.ai_config_for(db, school_id, True)
+        cfg.enabled = True
+        cfg.allow_student_data = False
+        cfg.provider = "openai_compatible"
+        cfg.base_url = "https://api.deepseek.com/v1"
+        cfg.model = "deepseek-chat"
+        cfg.api_key_cipher = legacy._ai_encrypt_key("sk-v8-p01-test-key")
+        # Plant a school DB question containing a student name to prove pure-teaching skips _bank_examples
+        db.add(
+            legacy.Question(
+                school_id=school_id,
+                grade=5,
+                subject="数学",
+                textbook="人教版",
+                semester="上册",
+                unit="第三单元",
+                knowledge="分数加减法",
+                text="张三同学考了95分，请问他比平均分高多少？",
+                options_json=json.dumps(["1", "2", "3", "4"]),
+                correct_index=0,
+                explanation="示例",
+            )
+        )
+        db.commit()
+
+    # 1. Legitimate structured pure-teaching generation succeeds for Math, Chinese, Science
+    for payload in [
+        {"grade": 5, "subject": "数学", "textbook": "人教版", "semester": "上册", "unit": "第三单元", "knowledge": "分数加减法", "difficulty": "中等", "question_type": "single_choice", "count": 1, "notes": "", "resource_ids": []},
+        {"grade": 5, "subject": "语文", "textbook": "统编版（人民教育出版社）", "semester": "上册", "unit": "综合", "knowledge": "阅读理解", "difficulty": "基础", "question_type": "single_choice", "count": 1, "notes": "", "resource_ids": []},
+        {"grade": 5, "subject": "科学", "textbook": "教科版", "semester": "上册", "unit": "第一单元", "knowledge": "物质的变化", "difficulty": "基础", "question_type": "single_choice", "count": 1, "notes": "", "resource_ids": []},
+    ]:
+        before = len(sent_prompts)
+        res = client.post("/ai/questions/generate", headers=t_headers, json=payload)
+        assert res.status_code == 200, (payload, res.text)
+        assert len(res.json().get("items") or []) >= 1
+        assert len(sent_prompts) > before
+        assert "张三" not in sent_prompts[-1]
+
+    # 2. All free-text / PII / resource_ids / direct repair / unknown feature probes MUST return 403 and 0 HTTP
+    http_before_blocks = len(sent_prompts)
+    for bad_payload in [
+        {"grade": 5, "subject": "数学", "textbook": "人教版", "semester": "上册", "unit": "综合", "knowledge": "张小明 分数加减法 58分", "difficulty": "中等", "question_type": "single_choice", "count": 1, "notes": "", "resource_ids": []},
+        {"grade": 5, "subject": "数学", "textbook": "人教版", "semester": "上册", "unit": "第三单元 李小红", "knowledge": "分数加减法", "difficulty": "中等", "question_type": "single_choice", "count": 1, "notes": "", "resource_ids": []},
+        {"grade": 5, "subject": "数学", "textbook": "人教版", "semester": "上册", "unit": "综合", "knowledge": "分数加减法", "difficulty": "中等", "question_type": "single_choice", "count": 1, "notes": "针对张小明85分出题", "resource_ids": []},
+        {"grade": 5, "subject": "数学", "textbook": "人教版", "semester": "上册", "unit": "综合", "knowledge": "分数加减法", "difficulty": "中等", "question_type": "single_choice", "count": 1, "notes": "", "resource_ids": [1]},
+    ]:
+        blocked = client.post("/ai/questions/generate", headers=t_headers, json=bad_payload)
+        assert blocked.status_code == 403, (bad_payload, blocked.status_code, blocked.text)
+        assert len(sent_prompts) == http_before_blocks
+
+    with legacy.SessionLocal() as db:
+        teacher = db.get(legacy.User, teacher_id)
+        for direct_feature in ("question_generation", "question_generation_repair", "unknown_probe_feature"):
+            with pytest.raises(HTTPException) as exc:
+                legacy._ai_call(db, teacher, direct_feature, "学生张三 90分")
+            assert exc.value.status_code == 403
+            assert len(sent_prompts) == http_before_blocks
+
+
+def test_v8_p0_2_homework_notice_raw_screenshot_8_scenarios(client, monkeypatch):
+    """V8 P0-2: Unverified raw screenshots never leave to external vision AI; manual & text flows work."""
+    from fastapi import HTTPException
+    import app_v924 as legacy
+    from changying.services import homework_vision
+
+    monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
+    monkeypatch.setenv("HOMEWORK_ASSISTANT", "1")
+    monkeypatch.setenv("HOMEWORK_VISION_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("HOMEWORK_VISION_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setenv("HOMEWORK_VISION_MODEL", "vision-test-model")
+    monkeypatch.setenv("HOMEWORK_VISION_API_KEY", "sk-vision-test-key")
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+
+    t_headers, p_headers, _s_headers, sid1 = _setup_personal_family(client)
+    # Create a second student without guardian consent
+    with legacy.SessionLocal() as db:
+        stu1 = db.get(legacy.User, sid1)
+        school_id = int(stu1.school_id)
+        teacher = db.query(legacy.User).filter(legacy.User.school_id == school_id, legacy.User.role == "teacher").first()
+        cls = db.query(legacy.SchoolClass).filter(legacy.SchoolClass.school_id == school_id).first()
+        cls_id = int(cls.id)
+        teacher_id = int(teacher.id)
+        cfg = legacy.ai_config_for(db, school_id, True)
+        cfg.enabled = True
+        cfg.allow_student_data = True
+        cfg.provider = "openai_compatible"
+        cfg.base_url = "https://api.deepseek.com/v1"
+        cfg.model = "deepseek-chat"
+        cfg.api_key_cipher = legacy._ai_encrypt_key("sk-hw-v8-key")
+        db.commit()
+
+    # Grant guardian consent ONLY for sid1
+    tok_res = client.post(
+        f"/teacher/students/{sid1}/ai-consent/token",
+        headers=t_headers,
+        json={"scope": "student_ai_all", "valid_days": 30},
+    )
+    assert tok_res.status_code == 200, tok_res.text
+    conf_res = client.post(
+        "/parent/ai-consent/confirm",
+        headers=p_headers,
+        json={"token": tok_res.json()["token"], "guardian_relation": "家长", "confirm_method": "parent_confirm"},
+    )
+    assert conf_res.status_code == 200, conf_res.text
+
+    res2 = client.post(
+        "/teacher/students",
+        headers=t_headers,
+        json={"name": "未授权同学", "username": f"unauth-{uuid.uuid4().hex[:6]}", "password": "Password123!", "grade": 5, "class_id": cls_id},
+    )
+    assert res2.status_code == 200
+    sid2 = int(res2.json()["id"])
+
+    http_calls: list[dict] = []
+    monkeypatch.setattr(homework_vision.requests, "post", lambda *a, **kw: http_calls.append({"url": a, "kw": kw}))
+    monkeypatch.setattr(legacy.requests, "post", lambda *a, **kw: http_calls.append({"url": a, "kw": kw}))
+
+    jpeg = b"\xff\xd8\xff\xe0" + b"RAW-SCREENSHOT-BYTES" * 10
+
+    # Scenarios 1-6: Raw screenshot upload via /teacher/homework/parse-image MUST be blocked with 0 external HTTP
+    for url in (
+        "/teacher/homework/parse-image",                         # 1. teaching-only raw screenshot (no studentIds)
+        f"/teacher/homework/parse-image?studentIds={sid1}",      # 2 & 5 & 6. authorized / sensitive / partial studentIds
+        f"/teacher/homework/parse-image?studentIds={sid2}",      # 3. unauthorized student
+        f"/teacher/homework/parse-image?studentIds={sid1},{sid2}",  # 4. multiple students & parents
+    ):
+        r = client.post(url, headers={**t_headers, "Content-Type": "image/jpeg"}, content=jpeg)
+        assert r.status_code == 403, (url, r.status_code, r.text)
+        assert len(http_calls) == 0
+
+    # Scenario 7: Direct service call with unverified raw notice features MUST also fail with 0 external HTTP
+    with legacy.SessionLocal() as db:
+        t_user = db.get(legacy.User, teacher_id)
+        for feat in ("homework_parse_vision", "homework_notice_vision"):
+            with pytest.raises(HTTPException) as exc:
+                homework_vision.recognize_image(legacy, db, t_user, jpeg, feature=feat, student_ids=(sid1,))
+            assert exc.value.status_code == 403
+            assert len(http_calls) == 0
+
+    # Scenario 8: With external AI disabled, teacher manual entry, edit, and publish still work (0 external HTTP)
+    with legacy.SessionLocal() as db:
+        cfg = legacy.ai_config_for(db, school_id, True)
+        cfg.enabled = False
+        db.commit()
+
+    created = client.post(
+        "/teacher/homework/notices",
+        headers=t_headers,
+        json={
+            "groupLabel": "五(1)班",
+            "items": [{"seq": 1, "subject": "数学", "content": "口算第5页", "page": "P5", "requirement": "独立完成"}],
+        },
+    )
+    assert created.status_code == 200, created.text
+    nid = created.json()["id"]
+    edited = client.put(
+        f"/teacher/homework/notices/{nid}",
+        headers=t_headers,
+        json={
+            "groupLabel": "五(1)班",
+            "items": [{"seq": 1, "subject": "数学", "content": "口算第5-6页", "page": "P5-6", "requirement": "家长核对"}],
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    published = client.post(
+        f"/teacher/homework/notices/{nid}/publish",
+        headers=t_headers,
+        json={"studentIDs": [sid1]},
+    )
+    assert published.status_code == 200, published.text
+    assert len(http_calls) == 0
