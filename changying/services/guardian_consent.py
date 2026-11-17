@@ -658,27 +658,27 @@ def require_student_ai_authorized(
     consents_t = tables["consents"]
 
     def _deny(status_code: int, message: str, reason: str, sid: int | None = None) -> None:
-        # 拒绝外发时必须只记录审计，绝不能提交调用方在同一 Session 内尚未保存的修改。
-        # 先丢弃调用方当前事务状态，再在干净事务里写审计；审计失败也不能回滚别人的数据
-        # （此时对方数据已 rollback，不存在二次影响）。
+        # 拒绝外发时绝不能提交或回滚调用方 Session 内尚未保存的业务修改；
+        # 审计日志必须在独立 Session / 独立事务中提交。
         try:
-            db.rollback()
+            from sqlalchemy.orm import Session as _SASession
+
+            bind = db.get_bind()
+            engine = getattr(bind, "engine", bind)
+            with _SASession(engine) as audit_db:
+                _record_audit(
+                    audit_db,
+                    audits_t,
+                    school_id=int(school_id),
+                    student_id=sid,
+                    actor_user_id=actor_user_id,
+                    action="egress.blocked",
+                    scope=scope or "unregistered",
+                    detail=f"feature={feature}:reason={reason}",
+                )
+                audit_db.commit()
         except Exception:
             pass
-        try:
-            _record_audit(
-                db,
-                audits_t,
-                school_id=int(school_id),
-                student_id=sid,
-                actor_user_id=actor_user_id,
-                action="egress.blocked",
-                scope=scope or "unregistered",
-                detail=f"feature={feature}:reason={reason}",
-            )
-            db.commit()
-        except Exception:
-            db.rollback()
         raise HTTPException(status_code, message)
 
     if scope is None:

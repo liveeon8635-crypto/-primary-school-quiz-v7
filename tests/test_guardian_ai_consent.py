@@ -1360,6 +1360,23 @@ def test_denied_egress_never_commits_callers_pending_changes(client, monkeypatch
         reloaded = db.get(legacy.User, teacher_id)
         assert reloaded.name != unpaid_name
         assert db.query(legacy.User).filter(legacy.User.name == unpaid_name).count() == 0
+
+    # Caller's pending business modification must ALSO be preserved if caller commits later!
+    kept_name = f"合法保存-{uuid.uuid4().hex[:6]}"
+    with legacy.SessionLocal() as db:
+        teacher = db.get(legacy.User, teacher_id)
+        teacher.name = kept_name
+        with pytest.raises(HTTPException) as exc:
+            legacy._ai_call(db, teacher, "pending_change_preserve_probe", "hello")
+        assert exc.value.status_code == 403
+        # Before caller commits, kept_name is still pending in caller's Session and not yet committed.
+        with legacy.SessionLocal() as probe_db:
+            assert probe_db.get(legacy.User, teacher_id).name != kept_name
+        # Now caller performs a legitimate save: kept_name MUST be preserved and persisted!
+        db.commit()
+
+    with legacy.SessionLocal() as db:
+        assert db.get(legacy.User, teacher_id).name == kept_name
     assert http_calls["count"] == 0
 
 

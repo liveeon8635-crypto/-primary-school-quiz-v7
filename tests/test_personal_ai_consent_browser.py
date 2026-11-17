@@ -382,12 +382,12 @@ def test_browser_teacher_pure_teaching_question_generation_and_notice_manual_fal
                 )
                 assert len(http_calls) >= 1
 
-                # Navigate to /v1/homework and confirm raw screenshot upload is hidden/disabled while manual entry works
+                # Navigate to /v1/homework and confirm raw screenshot OCR is safely disabled with clear notice, while manual entry works
                 page.goto(f"http://127.0.0.1:{port}/v1/homework", wait_until="networkidle")
+                page.wait_for_function("() => document.body.textContent.includes('原图截图识别（OCR）已安全禁用')")
+                assert page.locator("button:has-text('上传通知截图')").count() == 0
                 page.click("button:has-text('直接手动录入')")
                 page.wait_for_selector("button:has-text('发布给选中的学生')")
-                assert page.locator("button:has-text('上传通知截图')").count() == 1
-                assert not page.locator("button:has-text('上传通知截图')").is_visible()
             finally:
                 browser.close()
     finally:
