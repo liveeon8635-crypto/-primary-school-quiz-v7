@@ -648,17 +648,24 @@ def require_student_ai_authorized(
     consents_t = tables["consents"]
 
     def _deny(status_code: int, message: str, reason: str, sid: int | None = None) -> None:
-        _record_audit(
-            db,
-            audits_t,
-            school_id=int(school_id),
-            student_id=sid,
-            actor_user_id=actor_user_id,
-            action="egress.blocked",
-            scope=scope or "unregistered",
-            detail=f"feature={feature}:reason={reason}",
-        )
+        # 拒绝外发时必须只记录审计，绝不能提交调用方在同一 Session 内尚未保存的修改。
+        # 先丢弃调用方当前事务状态，再在干净事务里写审计；审计失败也不能回滚别人的数据
+        # （此时对方数据已 rollback，不存在二次影响）。
         try:
+            db.rollback()
+        except Exception:
+            pass
+        try:
+            _record_audit(
+                db,
+                audits_t,
+                school_id=int(school_id),
+                student_id=sid,
+                actor_user_id=actor_user_id,
+                action="egress.blocked",
+                scope=scope or "unregistered",
+                detail=f"feature={feature}:reason={reason}",
+            )
             db.commit()
         except Exception:
             db.rollback()

@@ -1318,3 +1318,44 @@ def test_v7_round4_audit_fixes(client, monkeypatch, tmp_path):
     assert subprocess.run([sys.executable, "-m", "changying.services.guardian_consent_ddl", "downgrade", "--database-url", cli_db_url], cwd=ROOT, env=cli_env).returncode == 2
     assert subprocess.run([sys.executable, "-m", "changying.services.guardian_consent_ddl", "downgrade", "--database-url", cli_db_url, "--confirm-downgrade"], cwd=ROOT, env=cli_env).returncode == 0
     assert subprocess.run([sys.executable, "-m", "changying.services.guardian_consent_ddl", "verify", "--database-url", cli_db_url], cwd=ROOT, env=cli_env).returncode == 1
+
+def test_denied_egress_never_commits_callers_pending_changes(client, monkeypatch):
+    """A blocked AI egress must not commit (or lose) unrelated pending business changes."""
+    from fastapi import HTTPException
+    import app_v924 as legacy
+
+    monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", "1")
+    monkeypatch.setattr(legacy, "_validate_ai_base_url", lambda base, runtime=False: base)
+    t_headers, _p_headers, _s_headers, student_id = _setup_personal_family(client)
+
+    http_calls = {"count": 0}
+    monkeypatch.setattr(legacy.requests, "post", lambda *a, **kw: http_calls.__setitem__("count", http_calls["count"] + 1))
+
+    with legacy.SessionLocal() as db:
+        stu = db.get(legacy.User, student_id)
+        teacher = db.query(legacy.User).filter(legacy.User.school_id == stu.school_id, legacy.User.role == "teacher").first()
+        teacher_id = int(teacher.id)
+        unpaid_name = f"未保存草稿-{uuid.uuid4().hex[:6]}"
+        teacher.name = unpaid_name
+
+        with pytest.raises(HTTPException) as exc:
+            legacy._ai_call(db, teacher, "pending_change_probe_feature", "hello")
+        assert exc.value.status_code == 403
+
+        # The denial audit is still persisted, in its own transaction.
+        audit_row = db.execute(
+            text(
+                "SELECT action, detail FROM guardian_consent_audit_logs "
+                "WHERE actor_user_id = :uid AND action = 'egress.blocked' ORDER BY id DESC LIMIT 1"
+            ),
+            {"uid": teacher_id},
+        ).first()
+        assert audit_row is not None
+        assert "pending_change_probe_feature" in str(audit_row[1])
+
+    # The staged rename must not have been committed by the denial path.
+    with legacy.SessionLocal() as db:
+        reloaded = db.get(legacy.User, teacher_id)
+        assert reloaded.name != unpaid_name
+        assert db.query(legacy.User).filter(legacy.User.name == unpaid_name).count() == 0
+    assert http_calls["count"] == 0
