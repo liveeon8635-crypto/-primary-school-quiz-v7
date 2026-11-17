@@ -722,6 +722,18 @@ def test_v4_independent_acceptance_matrix(client, monkeypatch):
     assert r_paper.status_code in (403, 502)
     assert len(http_calls) == 0
 
+    for compliance_enabled in ("0", "1"):
+        monkeypatch.setenv("STUDENT_AI_COMPLIANCE_APPROVED", compliance_enabled)
+        progress = client.post(
+            "/teacher/weekend/schedule/parse",
+            headers=t_headers,
+            json={"subject": "数学", "text": "第三周：分数加减法。合成学生甲：58分。"},
+        )
+        assert progress.status_code == 403, progress.text
+        assert "默认拒绝向外部 AI 发送数据" in progress.json()["detail"]
+        assert len(http_calls) == 0
+    monkeypatch.delenv("STUDENT_AI_COMPLIANCE_APPROVED", raising=False)
+
     # 2. Hardcoded connection_test (zero user input) succeeds; question_generation without consent is blocked
     with legacy.SessionLocal() as db:
         student = db.get(legacy.User, student_id)
