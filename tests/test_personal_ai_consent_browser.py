@@ -267,7 +267,7 @@ def test_browser_teacher_pure_teaching_question_generation_and_notice_manual_fal
     import importlib
     import json
     from types import SimpleNamespace
-    from playwright import sync_api as playwright_sync
+    playwright_sync = pytest.importorskip("playwright.sync_api")
 
     db_path = tmp_path / "browser_v8_teacher.sqlite3"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
