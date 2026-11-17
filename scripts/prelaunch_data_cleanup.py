@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Pre-launch cleanup: delete the test *activity* data, keep every account and all configuration.
 
+Run only during a maintenance window with application and background writes paused.
 Safe by default: without ``--execute`` it only prints what it WOULD delete and then rolls back.
 
     DISABLED since the system went live (the data is real). Every run needs --allow-after-launch:
@@ -103,6 +104,7 @@ def render_sql(order: list[str]) -> str:
     lines = [
         "-- 正式使用前清理测试操作数据（由 scripts/prelaunch_data_cleanup.py --print-sql 生成，不要手工改）。",
         "-- 只删除操作数据；账号、班级、学校设置、AI 设置、题库、试卷、审计和反馈记录都保留。",
+        "-- 仅在业务停写窗口运行，须先暂停应用和后台任务写入。",
         "--",
         "--   【已停用】系统正式使用后这是真实数据，必须加 -v allow_after_launch=1 才会运行。",
         "--   演习（什么都不会改，最后自动回滚）：  psql \"$DATABASE_URL\" -v allow_after_launch=1 -f scripts/prelaunch_data_cleanup.sql",
@@ -110,6 +112,11 @@ def render_sql(order: list[str]) -> str:
         "",
         "\\set ON_ERROR_STOP on",
         "\\if :{?allow_after_launch}",
+        "\\else",
+        "  \\set allow_after_launch 0",
+        "\\endif",
+        "SELECT :'allow_after_launch' = '1' AS cleanup_launch_allowed \\gset",
+        "\\if :cleanup_launch_allowed",
         "\\else",
         "  \\echo '系统已正式使用，这个清理脚本已停用：现在库里是真实数据（学习证据、积分、作业提交、AI 辅助记录）。'",
         "  \\echo '确实要运行，请加 -v allow_after_launch=1'",
@@ -185,9 +192,6 @@ def main(argv: list[str] | None = None) -> int:
     engine = create_engine(url)
     meta = MetaData()
     meta.reflect(bind=engine)
-    if args.print_sql:
-        sys.stdout.write(render_sql(delete_order(meta)))
-        return 0
     present = set(meta.tables)
     unknown = sorted(present - set(DELETE_TABLES) - set(KEEP_TABLES))
     if unknown:
@@ -201,6 +205,9 @@ def main(argv: list[str] | None = None) -> int:
         return 3
 
     order = delete_order(meta)
+    if args.print_sql:
+        sys.stdout.write(render_sql(order))
+        return 0
     keep_present = [name for name in KEEP_TABLES if name in present]
 
     def count(conn, name: str) -> int:

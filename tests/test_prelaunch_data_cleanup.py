@@ -94,6 +94,25 @@ def test_an_unclassified_table_aborts_the_run(tmp_path, monkeypatch, capsys):
     assert "brand_new_feature" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    ("table_name", "reason"),
+    [("brand_new_feature", "Unclassified tables"), ("users", "both KEEP and DELETE")],
+)
+def test_print_sql_refuses_invalid_classification(tmp_path, monkeypatch, capsys, table_name, reason):
+    url = f"sqlite:///{tmp_path / 'inventory.db'}"
+    with create_engine(url).begin() as conn:
+        conn.execute(text(f"CREATE TABLE {table_name} (id INTEGER PRIMARY KEY)"))
+    if table_name == "users":
+        monkeypatch.setattr(cleanup, "DELETE_TABLES", (*cleanup.DELETE_TABLES, table_name))
+    monkeypatch.setenv("DATABASE_URL", url)
+
+    assert cleanup.main(["--print-sql"]) == 3
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert reason in output.err
+    assert table_name in output.err
+
+
 def test_the_psql_version_deletes_exactly_the_delete_list_children_first():
     import re
 
