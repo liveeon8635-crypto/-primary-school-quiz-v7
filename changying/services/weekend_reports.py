@@ -19,10 +19,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from changying.services.weekend_answers import option_text
 
@@ -54,6 +54,135 @@ def unit_text(unit: str | None) -> str:
     """The lesson unit, without the placeholder new weekend lessons start with."""
     unit = str(unit or "").strip()
     return "" if unit == "待配置单元" else unit
+
+
+WORK_STATUS_LABEL = {"submitted": "已交", "unsubmitted": "未交", "pending": "待批改"}
+
+
+def week_window(day: str) -> tuple[str, str]:
+    """The natural Monday..Sunday window of a report day; the week a lesson belongs to."""
+    try:
+        start = datetime.strptime(str(day or ""), "%Y-%m-%d").date() - timedelta(days=datetime.strptime(str(day or ""), "%Y-%m-%d").weekday())
+    except ValueError:
+        start = datetime.now(timezone.utc).date()
+        start = start - timedelta(days=start.weekday())
+    return start.isoformat(), (start + timedelta(days=6)).isoformat()
+
+
+def week_work_map(impl: Any, db: Any, *, school_id: int, student_ids: list[int], day: str) -> dict[int, dict[str, Any]]:
+    """Ordinary assignments each pupil received in the report's week (Mon..Sun); read-only.
+
+    An assignment counts when the pupil is a recipient of it and its due date (or, without
+    one, its creation date) falls inside the window. Completion follows the assignment's
+    quiz/media mode; completed ungraded work is "待批改", and graded work includes accuracy.
+    Ordinary homework is never attached to a lesson.
+    """
+    start, end = week_window(day)
+    ids = sorted({int(s) for s in student_ids})
+    out = {sid: {"weekStart": start, "weekEnd": end, "items": [], "counts": {"total": 0, "submitted": 0, "unsubmitted": 0, "pending": 0}, "rate": None}
+           for sid in ids}
+    if not ids:
+        return out
+    recipient, assignment, submission = impl.AssignmentRecipient, impl.Assignment, impl.Submission
+    lower = datetime.fromisoformat(start) - timedelta(days=1)
+    upper = datetime.fromisoformat(end) + timedelta(days=2)
+    rows = db.execute(select(recipient.student_id, recipient.source, assignment)
+                      .select_from(recipient).join(assignment, assignment.id == recipient.assignment_id)
+                      .where(recipient.school_id == school_id, assignment.school_id == school_id, recipient.student_id.in_(ids),
+                             or_(func.substr(assignment.due_date, 1, 10).between(start, end),
+                                 ((assignment.due_date == "") | assignment.due_date.is_(None)) &
+                                 assignment.created_at.between(lower, upper)))
+                      .order_by(assignment.due_date, assignment.id)).all()
+    candidates = []
+    for sid, source, task in rows:
+        due = str(task.due_date or "")[:10]
+        created = local_dt(impl, task.created_at)
+        day_key = due or (created.strftime("%Y-%m-%d") if created is not None else "")
+        if start <= day_key <= end:
+            candidates.append((int(sid), source, task, due))
+    aids = sorted({int(task.id) for _, _, task, _ in candidates})
+    if not aids:
+        return out
+    sources = {}
+    for aid, source in db.execute(select(recipient.assignment_id, recipient.source).where(
+            recipient.school_id == school_id, recipient.assignment_id.in_(aids))):
+        sources.setdefault(int(aid), set()).add(source)
+    normal = {"assignment", "paper_import"}
+    ambiguous = {None, "", "submission_backfill", "class_history_backfill", "current_member_backfill"}
+    non_normal = {"knowledge_map", "teacher_ai_practice", "ai_reinforcement", "exam_prep",
+                  "student_self_reinforcement", "student_module_practice", "student_comprehensive_test"}
+    latest = {}
+    for s in db.scalars(select(submission).where(submission.school_id == school_id,
+            submission.student_id.in_(ids), submission.assignment_id.in_(aids)).order_by(submission.submitted_at, submission.id)):
+        latest[(int(s.student_id), int(s.assignment_id))] = s
+    settings = {s.assignment_id: s.mode for s in db.scalars(select(impl.AssignmentSubmissionSetting).where(
+        impl.AssignmentSubmissionSetting.school_id == school_id, impl.AssignmentSubmissionSetting.assignment_id.in_(aids)))}
+    media = {(s.student_id, s.assignment_id): s for s in db.scalars(select(impl.HomeworkMediaSubmit).where(
+        impl.HomeworkMediaSubmit.school_id == school_id, impl.HomeworkMediaSubmit.student_id.in_(ids),
+        impl.HomeworkMediaSubmit.assignment_id.in_(aids)))}
+    reviews = {(r.student_id, r.assignment_id): r for r in db.scalars(select(impl.AIGradingReview).where(
+        impl.AIGradingReview.school_id == school_id, impl.AIGradingReview.student_id.in_(ids),
+        impl.AIGradingReview.assignment_id.in_(aids)))}
+    attempts = {}
+    for sid, aid, qid in db.execute(select(impl.AssignmentQuestionAttempt.student_id, impl.AssignmentQuestionAttempt.assignment_id,
+            impl.AssignmentQuestionAttempt.question_id).where(impl.AssignmentQuestionAttempt.school_id == school_id,
+            impl.AssignmentQuestionAttempt.student_id.in_(ids), impl.AssignmentQuestionAttempt.assignment_id.in_(aids)).distinct()):
+        attempts.setdefault((int(sid), int(aid)), set()).add(int(qid))
+    paper_ids = {task.paper_id for _, _, task, _ in candidates if task.paper_id is not None}
+    papers = {p.id: p for p in db.scalars(select(impl.Paper).where(impl.Paper.school_id == school_id, impl.Paper.id.in_(paper_ids)))}
+    for sid, source, task, due in candidates:
+        aid = int(task.id)
+        explicit = sources.get(aid, set()) - ambiguous
+        if (explicit - normal - non_normal) or (explicit & normal and explicit & non_normal):
+            out[sid]["unclassifiedCount"] = out[sid].get("unclassifiedCount", 0) + 1
+            continue
+        if source not in normal:
+            if source in non_normal or (source in ambiguous and explicit & non_normal):
+                continue
+            if source not in ambiguous or not (explicit & normal):
+                out[sid]["unclassifiedCount"] = out[sid].get("unclassifiedCount", 0) + 1
+                continue
+        block = out[sid]
+        s = latest.get((sid, aid))
+        mode = settings.get(aid, "quiz")
+        if mode not in {"quiz", "media", "mixed"}:
+            mode = "quiz"
+        attempted = attempts.get((sid, aid), set())
+        try:
+            expected = {int(q) for q in json.loads(getattr(papers.get(task.paper_id), "question_ids_json", "[]") or "[]")}
+        except (TypeError, ValueError):
+            expected = set()
+        quiz_ok = bool(s) and (not attempted or bool(expected) and attempted >= expected)
+        media_sub = media.get((sid, aid))
+        completed = quiz_ok if mode == "quiz" else bool(media_sub) if mode == "media" else bool(quiz_ok and media_sub)
+        total = int(getattr(s, "total", 0) or 0) if s is not None and completed and mode == "quiz" else 0
+        correct = int(getattr(s, "correct", 0) or 0) if s is not None and completed and mode == "quiz" else 0
+        review = reviews.get((sid, aid))
+        media_reviewed = bool(media_sub and review and review.status == "confirmed" and review.confirmed_at and
+                              review.confirmed_at >= media_sub.submitted_at)
+        status = "unsubmitted" if not completed else ("pending" if (mode in {"media", "mixed"} and not media_reviewed) or (mode == "quiz" and not total) else "submitted")
+        if status != "submitted":
+            total = correct = 0
+        stamps = ([s.submitted_at] if completed and mode in {"quiz", "mixed"} and s else []) + ([media_sub.submitted_at] if completed and mode in {"media", "mixed"} and media_sub else [])
+        when = local_dt(impl, max(stamps)) if stamps else None
+        block["items"].append({"assignmentId": int(task.id), "title": str(task.title or ""), "due": due, "status": status,
+                               "statusLabel": WORK_STATUS_LABEL[status], "correct": correct, "total": total,
+                               "rate": round(correct * 100 / total) if total else None,
+                               "submittedAt": when.strftime("%m-%d %H:%M") if when else ""})
+    for block in out.values():
+        items = block["items"]
+        block["counts"] = {"total": len(items), "submitted": sum(1 for i in items if i["status"] != "unsubmitted"),
+                           "unsubmitted": sum(1 for i in items if i["status"] == "unsubmitted"),
+                           "pending": sum(1 for i in items if i["status"] == "pending")}
+        graded = [i for i in items if i["rate"] is not None]
+        block["rate"] = round(sum(i["correct"] for i in graded) * 100 / sum(i["total"] for i in graded)) if graded else None
+    return out
+
+
+def parent_week_work(block: dict[str, Any]) -> dict[str, Any]:
+    """What a parent may see of the week's ordinary homework: completion and accuracy, never the questions."""
+    return {"weekStart": block["weekStart"], "weekEnd": block["weekEnd"], "counts": block["counts"], "rate": block["rate"], "unclassifiedCount": block.get("unclassifiedCount", 0),
+            "items": [{k: i[k] for k in ("title", "status", "statusLabel", "rate", "due")} for i in block["items"]]}
 
 
 def material_title(material: str) -> str:
@@ -146,6 +275,7 @@ def session_facts(impl: Any, db: Any, row: Any) -> dict[str, Any]:
     no_of = {q["key"]: q["no"] for q in questions}
 
     student_ids = set(members) | {s for s, _ in choice} | {s for s, _ in written}
+    week = week_work_map(impl, db, school_id=int(row.school_id), student_ids=[int(s) for s in student_ids], day=local_date(impl, row))
     students: dict[int, dict[str, Any]] = {}
     for sid in sorted(student_ids, key=lambda x: (members.get(x, ("学生",))[0], x)):
         items = []
@@ -188,6 +318,7 @@ def session_facts(impl: Any, db: Any, row: Any) -> dict[str, Any]:
         parts = awards.get(sid, {})
         students[sid] = {"studentId": sid, "name": members.get(sid, ("学生",))[0], "participated": participated, "items": items,
                          "counts": counts, "explained": sorted(explained), "followups": followups,
+                         "weekWork": week.get(sid, {"weekStart": "", "weekEnd": "", "items": [], "counts": {"total": 0, "submitted": 0, "unsubmitted": 0, "pending": 0}, "rate": None}),
                          "points": {"settled": settled, "total": sum(parts.values()), "parts": parts}}
     return {"sessionId": int(row.id), "title": row.title, "status": row.status, "date": local_date(impl, row),
             "subject": lesson.subject if lesson else "", "lessonTitle": lesson.title if lesson else row.title,
@@ -225,7 +356,7 @@ def student_facts(facts: dict[str, Any], student_id: int) -> dict[str, Any] | No
         return None
     return {k: facts[k] for k in ("sessionId", "date", "subject", "lessonTitle", "unit", "coreTarget", "className", "settled", "cutoff")} | {
         "questions": [{k: q[k] for k in ("key", "no", "kind", "stem", "knowledge", "task", "material")} for q in facts["questions"]],
-        **{k: pupil[k] for k in ("studentId", "name", "participated", "counts", "explained", "followups", "points")},
+        **{k: pupil[k] for k in ("studentId", "name", "participated", "counts", "explained", "followups", "points", "weekWork")},
         "items": [{k: i.get(k, "") for k in ("key", "no", "kind", "status", "attempts", "hint", "knowledge", "answer", "comment")} for i in pupil["items"]]}
 
 
@@ -246,6 +377,7 @@ def parent_facts(part: dict[str, Any]) -> dict[str, Any]:
     out = {k: part[k] for k in ("sessionId", "date", "subject", "lessonTitle", "unit", "counts")}
     if part["points"]["settled"]:
         out["points"] = part["points"]["total"]
+    out["weekWork"] = parent_week_work(part["weekWork"])
     return out
 
 
@@ -389,6 +521,16 @@ def draft_section(part: dict[str, Any], evidence: list[dict[str, Any]] | None = 
         homework.append("完成课后题并交给老师：" + "；".join(f"「{tasks[i['key']]}」（第{i['no']}题）" for i in later) + "。")
     if not homework:
         homework.append(f"回顾《{part['lessonTitle']}》课堂例题的方法，下节课前讲给家长听。")
+    week = part.get("weekWork") or {}
+    if week.get("items"):
+        wc = week.get("counts") or {}
+        line = (f"本周普通作业（{week['weekStart']} 至 {week['weekEnd']}）：应做 {wc.get('total', 0)} 份，"
+                f"已交 {wc.get('submitted', 0)} 份，未交 {wc.get('unsubmitted', 0)} 份，待批改 {wc.get('pending', 0)} 份")
+        line += f"，已批改的正确率 {week['rate']}%。" if week.get("rate") is not None else "。"
+        missed = [i for i in week["items"] if i["status"] == "unsubmitted"]
+        if missed:
+            line += "未交：" + "、".join(f"「{i['title']}」" for i in missed[:6]) + ("等" if len(missed) > 6 else "") + "，请在本周内补齐。"
+        homework.insert(max(0, len(homework) - 1), line)
     homework.append("家长配合：请孩子讲一讲订正或解题思路，家长只听和提问，不代写答案。")
     targets = "、".join(g["topic"] for g in groups[:2])
     followup = (f"下节课先用同类题检查{targets}的订正情况。" if targets else "下节课在新内容前用 1 道题回顾本节方法。")

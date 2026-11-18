@@ -70,9 +70,35 @@ def test_visibility_filter_does_not_mutate_full_source():
     assert "内部课堂观察原文-仅教师" in row["context"]
 
 
-def test_unknown_role_defaults_to_shared_summary():
-    result = learning_evidence_for_role(sample(), "unknown")
-    row = result["recentEvidence"][0]
-    assert "context" not in row
-    assert "sourceId" not in row
-    assert "sourceType" not in row
+def test_unknown_role_is_denied_instead_of_receiving_the_shared_view():
+    try:
+        learning_evidence_for_role(sample(), "unknown")
+    except PermissionError as exc:
+        assert "unsupported role" in str(exc)
+    else:  # pragma: no cover - explicit failure message for readability
+        raise AssertionError("unknown roles must not receive evidence")
+
+
+def test_shared_view_only_contains_allowlisted_top_level_keys():
+    source = sample()
+    source["teacherPrivateNote"] = "只给老师看的诊断备注"
+    source["sourceTraceId"] = "trace-abc"
+
+    result = learning_evidence_for_role(source, "parent")
+
+    assert "teacherPrivateNote" not in result
+    assert "sourceTraceId" not in result
+    assert result["studentId"] == "7"
+    assert result["state"] == source["state"]
+    assert set(result) <= {
+        "studentId",
+        "state",
+        "sampleCount",
+        "dimensions",
+        "subjects",
+        "knowledge",
+        "recentEvidence",
+        "masteryInferred",
+        "stableMasteryInferred",
+        "contractVersion",
+    }

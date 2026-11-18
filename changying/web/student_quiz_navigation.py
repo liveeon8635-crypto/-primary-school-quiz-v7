@@ -36,7 +36,7 @@ def patch_student_quiz_navigation(html: str) -> str:
      const answers=orderedAnswers();
      const r=aid?await api("/student/assignments/"+aid+"/submit",{method:"POST",body:JSON.stringify({answers})}):await api("/student/practice-submit",{method:"POST",body:JSON.stringify({title,answers})});
      const learning=Number(r.learningPointsAwarded||0),learningMax=Number(r.learningPointMax||r.total||0),homework=Number(r.homeworkPointsAwarded||0),isHomework=!!r.homeworkPointsDetail;
-     $("#page").innerHTML=head(aid?"作业已提交":"练习完成",title)+'<div class="card empty"><div style="font-size:62px">🏆</div><h1 style="color:var(--primary)">'+r.score+'分</h1><p>答对 '+r.correct+' 题，答错 '+(r.total-r.correct)+' 题</p><p><span class="badge green">'+(isHomework?'本次获得 '+(homework>=0?'+':'')+homework+' 晚托作业积分':'本次获得 +'+learning+' 学习积分')+'</span></p><p class="muted">'+(isHomework?'按时完成 +3；正确率按 60% 中点上下调整，扣到 0 为止':'本卷最高 '+learningMax+' 学习积分 · 每答对1题获得1积分')+'</p>'+(aid?'<p class="muted">成绩已回传教师端。</p>':"")+'<button id="backQuiz" class="btn primary">返回</button></div>';
+     $("#page").innerHTML=head(aid?"作业已提交":"练习完成",title)+'<div class="card empty"><div style="font-size:62px">🏆</div><h1 style="color:var(--primary)">'+r.score+'分</h1><p>答对 '+r.correct+' 题，答错 '+(r.total-r.correct)+' 题</p><p><span class="badge green">'+(isHomework?'本次获得 '+(homework>=0?'+':'')+homework+' 晚托作业积分':'本次获得 +'+learning+' 学习积分')+'</span></p><p class="muted">'+(isHomework?'按时完成 +3；正确率按 60% 中点上下调整，扣到 0 为止':'本卷最高 '+learningMax+' 学习积分 · 每题完成得1分，答对再加1分')+'</p>'+(aid?'<p class="muted">成绩已回传教师端。</p>':"")+'<button id="backQuiz" class="btn primary">返回</button></div>';
      $("#backQuiz").onclick=()=>go(aid?"assignments":"practice");
    }catch(e){submitting=false;render();toast(e.message)}
  };
@@ -56,7 +56,7 @@ def patch_student_quiz_navigation(html: str) -> str:
   const nav=onlineServerGraded?'<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-top:14px"><button id="quizPrev" class="btn secondary" '+(i===0||submitting?"disabled":"")+'>上一题</button><span class="muted" style="text-align:center;white-space:nowrap">已答 '+count+'/'+qs.length+'</span><button id="quizForward" class="btn secondary" '+(i===qs.length-1||submitting?"disabled":"")+'>下一题</button></div><button id="quizSubmit" class="btn primary full" style="margin-top:10px" '+(count!==qs.length||submitting?"disabled":"")+'>'+(submitting?"正在提交…":"提交整份答卷")+'</button>':'<button id="quizNext" class="btn primary full" '+(!hasResponse(q)&&!checked?"disabled":"")+'>'+(checked?(i===qs.length-1?"完成练习":"下一题"):"提交答案")+'</button>';
   $("#page").innerHTML=head(title,"第 "+(i+1)+"/"+qs.length+" 题"+(onlineServerGraded?" · 可前后切换 · 服务器判分":""),'<button class="btn secondary" id="quitQuiz">退出</button>')+
   '<div class="card"><div class="progress"><i style="width:'+pct(count,qs.length)+'%"></i></div>'+
-  '<div style="margin-top:12px"><span class="badge">'+esc(questionMeta)+'</span> <span class="badge">'+esc(typeName)+'</span> <span class="badge green">本题 '+esc(q.learningPoints||1)+' 学习积分</span></div>'+
+  '<div style="margin-top:12px"><span class="badge">'+esc(questionMeta)+'</span> <span class="badge">'+esc(typeName)+'</span> <span class="badge green">'+(isChoice?'本题完成得1分 · 答对再加1分':'本题由教师确认评分点后计分')+'</span></div>'+
   '<div class="question">'+esc(q.text)+'</div>'+figure+choiceHtml+textHtml+localAnswer+
   (onlineServerGraded&&aid?'<div class="note">答案会在本机暂存，可自由切换上下题；正式提交前不会显示正确答案或解析。</div>':"")+nav+'</div>';
   $("#quitQuiz").onclick=()=>go(aid?"assignments":"practice");

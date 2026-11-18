@@ -19,6 +19,14 @@ function glanceBox(g,s){
   if(g.compare)box.appendChild(el('div',{class:'muted',text:g.compare}));
   return box;
 }
+function weekWorkBox(w){
+  if(!w||!w.counts||(!w.counts.total&&!w.unclassifiedCount))return null;
+  var c=w.counts,box=el('div',{class:'card'},el('h2',{text:'本周作业（'+w.weekStart+' 至 '+w.weekEnd+'）'}));
+  if(w.unclassifiedCount)box.appendChild(el('div',{class:'notice',text:'部分历史作业来源待核实，本周普通作业统计不完整，请联系老师确认。'}));
+  box.appendChild(el('div',{class:'notice',text:'应做 '+c.total+' 份 · 已交 '+c.submitted+' 份 · 未交 '+c.unsubmitted+' 份 · 待批改 '+c.pending+' 份'+(w.rate!=null?' · 已批改正确率 '+w.rate+'%':'')}));
+  (w.items||[]).forEach(function(i){box.appendChild(el('div',{class:'notice',text:i.title+(i.due?' · 截止 '+i.due:'')+' · '+i.statusLabel+(i.rate!=null?' · 正确率 '+i.rate+'%':'')}))});
+  return box;
+}
 function reportView(r){
   var box=el('div');
   (r.facts||[]).forEach(function(f,i){
@@ -28,6 +36,7 @@ function reportView(r){
     card.appendChild(el('div',{class:'notice',text:factsLine(f)+(f.points!=null?' · 课堂积分 '+f.points+' 分（积分不是学业成绩）':'')}));
     var g=(r.glance||[])[i];if(g)card.appendChild(glanceBox(g,s));
     REPORT_KEYS.forEach(function(k){if(!s[k])return;card.appendChild(el('b',{text:r.titles[k]}));card.appendChild(el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0 10px',text:s[k]}))});
+    var wk=weekWorkBox(f.weekWork);if(wk)card.appendChild(wk);
     box.appendChild(card);
   });
   if(r.comment)box.appendChild(el('div',{class:'card'},el('b',{text:'老师的话'}),el('p',{style:'white-space:pre-wrap',text:r.comment})));
@@ -399,7 +408,7 @@ function paintChildren(list){
     api('/parent/children/'+id+'/weekend-briefs').then(function(d){
       var reports=d.reports||[];
       if(!reports.length&&!d.items.length){box.appendChild(el('div',{class:'muted',text:'老师发布后会显示在这里。还没有反馈不代表孩子没有交作业。'}));return}
-      var subject=el('select'),date=el('select'),out=el('div');
+      var subject=el('select',{'aria-label':'科目'}),date=el('select',{'aria-label':'日期'}),out=el('div');
       [['','全部科目'],['语文','语文'],['数学','数学']].forEach(function(x){subject.appendChild(el('option',{value:x[0],text:x[1]}))});
       date.appendChild(el('option',{value:'',text:'全部日期'}));
       reports.map(function(r){return r.date}).filter(function(x,i,a){return a.indexOf(x)===i}).forEach(function(x){date.appendChild(el('option',{value:x,text:x}))});
@@ -416,7 +425,7 @@ function paintChildren(list){
         });
         if(!shown&&reports.length)out.appendChild(el('div',{class:'muted',text:'所选日期或科目还没有已发布的反馈。'}));
       }
-      if(reports.length){box.appendChild(el('div',{class:'row'},subject,date));subject.onchange=date.onchange=paint;box.appendChild(out);paint()}
+      if(reports.length){box.appendChild(el('div',{class:'row'},el('label',{},el('span',{text:'科目 '}),subject),el('label',{},el('span',{text:'日期 '}),date)));subject.onchange=date.onchange=paint;box.appendChild(out);paint()}
       if(d.items.length){
         var old=el('details',{open:!reports.length},el('summary',{text:'此前的课堂简报'}));
         d.items.forEach(function(b){old.appendChild(el('div',{class:'item'},el('span',{class:'t'},el('b',{text:b.title+' · '+b.at}),el('div',{text:b.text}))))});

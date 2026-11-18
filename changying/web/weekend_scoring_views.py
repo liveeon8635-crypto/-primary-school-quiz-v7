@@ -519,7 +519,8 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
                     ledger_id = None
                     if pts > 0:
                         led = PointLedger(school_id=u.school_id, student_id=it["studentId"], class_id=names.get(it["studentId"], ("", None))[1], actor_id=u.id,
-                                          category=CATEGORY[kind], points=int(pts), reason=REASON[kind], note=f"周末课 {row.title}", source=SOURCE, related_id=sid, created_at=now)
+                                          category=CATEGORY[kind], points=int(pts), reason=REASON[kind], note=f"周末课 {row.title}", source=SOURCE, related_id=sid, created_at=now,
+                                          idempotency_key=f"{SOURCE}:{sid}:{it['studentId']}:{kind}")
                         db.add(led)
                         db.flush()
                         ledger_id = int(led.id)
@@ -682,19 +683,19 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         db.commit()
         return {"published": count}
 
-    @router.get("/parent/children/{cid}/weekend-briefs")
-    def child_briefs(cid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    @router.get("/parent/children/{sid}/weekend-briefs")
+    def child_briefs(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "parent")
-        linked = db.scalar(select(ParentStudent.id).where(ParentStudent.parent_id == u.id, ParentStudent.student_id == cid).limit(1))
-        child = db.scalar(select(User).where(User.id == cid, User.school_id == u.school_id, User.role == "student"))
+        linked = db.scalar(select(ParentStudent.id).where(ParentStudent.parent_id == u.id, ParentStudent.student_id == sid).limit(1))
+        child = db.scalar(select(User).where(User.id == sid, User.school_id == u.school_id, User.role == "student"))
         if not linked or child is None:
             raise HTTPException(404, "没有找到这个孩子")
         rows = db.execute(select(briefs.c.text, briefs.c.created_at, sessions.c.title).join(sessions, sessions.c.id == briefs.c.session_id)
-                          .where(briefs.c.student_id == cid, briefs.c.school_id == u.school_id).order_by(briefs.c.id.desc()).limit(30)).all()
+                          .where(briefs.c.student_id == sid, briefs.c.school_id == u.school_id).order_by(briefs.c.id.desc()).limit(30)).all()
         from changying.web.weekend_report_views import published_reports
         # Both parent entries (孩子课程 and 孩子学情) read this one endpoint, so they show the same published data.
         return {"childName": child.name, "items": [{"title": r.title, "text": r.text, "at": r.created_at.strftime("%Y-%m-%d")} for r in rows],
-                "reports": published_reports(implementation, db, int(u.school_id), cid)}
+                "reports": published_reports(implementation, db, int(u.school_id), sid)}
 
     @router.get("/teacher/weekend/term-summary")
     def term_summary(subject: str = "", u: Any = Depends(current_user), db: Any = Depends(get_db)):

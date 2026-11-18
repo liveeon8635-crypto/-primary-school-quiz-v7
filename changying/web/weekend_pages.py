@@ -212,6 +212,22 @@ function scoreCard(box){
 function hintsCard(box){
   box.appendChild(el('h2',{text:'本节习题的 3 级提示'}));
   box.appendChild(el('div',{class:'muted',text:'提示由 AI 写草稿，你审核后才是正式提示；没审核的题，学生求助时 AI 会临时生成（标记“待审核”）。'}));
+  var scopeBox=el('div',{class:'muted',text:'正在加载本班学生范围…'}),scopeChecks=[];
+  box.appendChild(scopeBox);
+  function selectedHintSids(){
+    return scopeChecks.filter(function(c){return c.checked}).map(function(c){return Number(c.value)});
+  }
+  api('/teacher/weekend/sessions/'+SID+'/progress').then(function(p){
+    scopeBox.textContent='';
+    var items=(p&&p.items)||[];
+    if(!items.length){scopeBox.textContent='当前暂无已入班学生；可手动填写提示并审核通过。';return}
+    scopeBox.appendChild(el('span',{text:'AI 生成适用学生：'}));
+    items.forEach(function(it){
+      var cb=el('input',{type:'checkbox',value:String(it.studentId),checked:true});
+      scopeChecks.push(cb);
+      scopeBox.appendChild(el('label',{style:'margin-right:8px'},cb,document.createTextNode(it.name||('学生'+it.studentId))));
+    });
+  }).catch(function(){scopeBox.textContent='请手动填写提示或确认学生授权范围'});
   var list=el('div');box.appendChild(list);
   api('/teacher/weekend/sessions/'+SID+'/questions').then(function(d){
     if(!d.items.length){list.appendChild(el('div',{class:'muted',text:'本节没有选择题提示。简答／写作题请在备课页审核题目及提示。'}));return}
@@ -222,7 +238,7 @@ function hintsCard(box){
       function vals(){return tas.map(function(t){return t.value})}
       var body=el('div',{hidden:true});
       var ai=el('button',{text:'AI 写草稿',onclick:function(){m.textContent='';ai.disabled=true;
-        api('/teacher/weekend/hints/generate',{json:{questionId:q.id}}).then(function(r){r.hints.forEach(function(h,i){tas[i].value=h});lab('draft');m.appendChild(el('div',{class:'notice ok',text:'已生成草稿，请核对后审核通过'}))})
+        api('/teacher/weekend/hints/generate',{json:{questionId:q.id,studentIds:selectedHintSids()}}).then(function(r){r.hints.forEach(function(h,i){tas[i].value=h});lab('draft');m.appendChild(el('div',{class:'notice ok',text:'已生成草稿，请核对后审核通过'}))})
           .catch(function(e){m.appendChild(el('div',{class:'notice error',text:e.message}))}).then(function(){ai.disabled=false})}});
       var ok=el('button',{class:'primary',text:'审核通过',onclick:function(){m.textContent='';
         api('/teacher/weekend/hints/'+q.id,{method:'PUT',json:{levels:vals(),approve:true}}).then(function(){lab('approved');m.appendChild(el('div',{class:'notice ok',text:'已审核'}))})
@@ -265,7 +281,7 @@ function picker(){
     if(!d.items.length){rlist.appendChild(el('div',{class:'muted',text:'还没有。'}));return}
     d.items.forEach(function(s){rlist.appendChild(el('div',{class:'row'},el('a',{href:'/v1/weekend?s='+s.id,text:s.title}),el('span',{class:'muted',text:s.createdAt+' · '+(s.status==='finished'?'已结束':s.status==='running'?'进行中':'未开始')}),
       s.status==='planned'?null:el('a',{class:'btn',href:'/v1/weekend-report?s='+s.id,text:'课后总结与家长反馈'})))});
-  });
+  }).catch(function(e){rlist.appendChild(el('div',{class:'notice error',text:e.message||'加载失败'}))});
   recent.appendChild(el('hr'));
   recent.appendChild(el('div',{class:'row'},el('a',{class:'btn',href:'/v1/weekend-plan',text:'18 次课进度表与备课'}),el('a',{class:'btn',href:'/v1/knowledge',text:'知识点讲解卡片（学生搜索、错题讲解）'})));
 }
@@ -470,6 +486,7 @@ function board(){
     window.blRefit=function(){fitText(body)};          // a shown answer makes the page longer: fit it again
     boardLayout(body,d.content,false);
     scrollBody=body;lastRenderKey=nextKey;lastViewKey=viewKey(d);
+    if(keepScroll)body.scrollTop=oldScroll;
     requestAnimationFrame(function(){
       if(window.innerWidth<1000)fitText(body);
       else{var two=laid(true),one=laid(false);if(two>=one)laid(true)}
@@ -622,7 +639,7 @@ def _page(title: str, js: str, with_header: bool, back: tuple[str, str] = ("/v1"
         # An ordinary external ES5 file does not change any of the precompiled
         # Safari12 inline script fingerprints. It overrides only the known-bad
         # four-method lesson 11 drawing, not generic geometry.
-        rendered = rendered.replace("</body>", '<script src="/v1/lesson11-methods-v2.js?v=20261113-lesson11-diagrams-r5"></script></body>')
+        rendered = rendered.replace("</body>", '<script src="/v1/lesson11-methods-v2.js?v=20261115-lesson11-diagrams-r6"></script></body>')
     return apply_surface(rendered, "weekend" if with_header else "board")
 
 

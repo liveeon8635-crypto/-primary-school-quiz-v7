@@ -46,7 +46,7 @@ def sol(answer="7", expression="12-5", steps=("先算 12 减 5", "得到 7"), kp
                        "answer": answer, "expression": expression, "knowledgePoint": kp}, ensure_ascii=False)
 
 
-def fake_ai(db, u, feature, prompt, images=None, timeout=90, rate_check=None):
+def fake_ai(db, u, feature, prompt, images=None, timeout=90, rate_check=None, **_kwargs):
     # Mirrors the real function's contract: the limit hook runs first, every call is logged.
     (rate_check or legacy._ai_rate_check)(db, u.school_id)
     calls.append({"feature": feature, "timeout": timeout, "rate_check": rate_check})

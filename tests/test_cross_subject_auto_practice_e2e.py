@@ -238,11 +238,11 @@ with TestClient(app) as client:
         assert result["correct"] == 4
         assert result["total"] == 8
         assert result["score"] == 50
-        assert result["learningPointsAwarded"] == 4
-        assert result["learningPointMax"] == 8
+        assert result["learningPointsAwarded"] == 12
+        assert result["learningPointMax"] == 16
         assert result["assessmentFeedbackArchived"] == 4
 
-        balance += 4
+        balance += 12
         points = client.get("/student/points", headers=sh)
         assert points.status_code == 200, points.text
         assert points.json()["summary"]["balance"] == balance
@@ -369,7 +369,7 @@ with TestClient(app) as client:
         assert reinforcement_result["correct"] == 3
         assert reinforcement_result["total"] == 3
         assert reinforcement_result["score"] == 100
-        assert reinforcement_result["learningPointsAwarded"] == 3
+        assert reinforcement_result["learningPointsAwarded"] == 6
         assert reinforcement_result["learningEvidenceAdded"] == 4
         # Reliability policy deliberately requires repeated, knowledge-matched
         # confirmation before an old wrong question becomes mastered. One
@@ -377,7 +377,7 @@ with TestClient(app) as client:
         # prematurely closing every linked historical wrong question.
         assert reinforcement_result["reinforcementClosed"] == 0
 
-        balance += 3
+        balance += 6
         points = client.get("/student/points", headers=sh)
         assert points.status_code == 200, points.text
         assert points.json()["summary"]["balance"] == balance

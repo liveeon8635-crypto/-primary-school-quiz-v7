@@ -56,6 +56,7 @@ from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_l
 from changying.utils.json_tools import json_list
 from changying.web.classic_ui import install_classic_ui_patch
 from changying.web.design_system import apply_surface
+from changying.web.guardian_consent_views import install_guardian_consent_views
 from changying.web.health_revision import install_health_revision_route
 from changying.web.product_shell import (
     PRODUCT_SHELL_MARKER,
@@ -156,6 +157,7 @@ from changying.web.rubric_review_ui import install_rubric_review_ui
 from changying.web.science_teacher_ai import install_science_teacher_ai_workflow
 from changying.web.student_quiz_navigation import install_student_quiz_navigation
 from changying.web.classroom_quick_login import install_classroom_quick_login
+from changying.web.offline_capability import install_offline_capability
 from changying.services.homework_assistant_tables import register_homework_assistant_tables
 from changying.services.homework_knowledge import register_homework_knowledge_table
 from changying.web.homework_assistant import install_homework_assistant
@@ -289,11 +291,19 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
         max_attempts=implementation.LOGIN_RATE_MAX_ATTEMPTS,
         max_keys=2048,
     )
+    # A second, never-cleared budget per client: signing in successfully must not
+    # reset the total number of guesses a shared-IP attacker already spent.
+    login_client_limiter = BoundedLoginRateLimiter(
+        window_seconds=implementation.LOGIN_RATE_WINDOW_SECONDS,
+        max_attempts=implementation.LOGIN_RATE_MAX_ATTEMPTS,
+        max_keys=2048,
+    )
 
     def bounded_login_rate_check(request):
         key = implementation._client_ip(request)
         try:
             login_rate_limiter.check(key)
+            login_client_limiter.check(key)
         except LoginRateLimitExceeded:
             raise implementation.HTTPException(429, "登录请求过于频繁，请稍后再试")
         return key
@@ -301,10 +311,13 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     def bounded_login_rate_failure(key):
         try:
             login_rate_limiter.failure(key)
+            login_client_limiter.failure(key)
         except LoginRateLimitExceeded:
             raise implementation.HTTPException(429, "登录请求过于频繁，请稍后再试")
 
     def bounded_login_rate_clear(key):
+        # Only the "recent failures" counter is cleared on success; the client budget
+        # above keeps counting so a successful sign-in cannot wipe the history.
         login_rate_limiter.clear(key)
 
     implementation._bounded_login_rate_limiter = login_rate_limiter
@@ -491,6 +504,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_classroom_live_board_patch()
     install_v1_classroom_live_board_routes(implementation)
     install_classroom_quick_login(implementation)
+    install_offline_capability(implementation)
     register_homework_assistant_tables(implementation)
     register_homework_knowledge_table(implementation)
     install_homework_assistant(implementation)
@@ -515,6 +529,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_classroom_handout_release_patch()
     install_v1_classroom_handout_release_routes(implementation)
     install_v1_guardian_visibility_patch()
+    install_guardian_consent_views(implementation)
     install_v1_membership_reliability_patch()
     install_v1_final_closure_patch()
     install_v1_fast_path_patch()

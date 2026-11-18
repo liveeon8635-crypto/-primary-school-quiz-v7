@@ -25,6 +25,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, LargeBinary, String, Table, insert, select, update
 
+from changying.web.design_system import apply_surface
 from changying.web.v1_nezha_icons import AVATAR_PNG_B64
 from changying.web import v1 as v1_module
 from changying.web import v1_classic_gzip_embed as classic_embed_module
@@ -1051,7 +1052,7 @@ def install_v1_product_assistant_routes(implementation: ModuleType) -> None:
 .cy-feedback-page{max-width:960px;margin:0 auto;padding:18px 14px 40px}
 .cy-feedback-page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
 .cy-feedback-page-head h1{margin:0;font-size:24px}.cy-feedback-page-head p{margin:4px 0 0;color:#667085;font-size:13px}
-.cy-feedback-page-back{display:inline-flex;text-decoration:none;border:1px solid #d5deeb;background:#fff;color:#a8101c;border-radius:10px;padding:9px 12px;font-weight:800;font-size:13px}
+.cy-feedback-page-back{display:inline-flex;align-items:center;min-height:44px;text-decoration:none;border:1px solid #d5deeb;background:#fff;color:#a8101c;border-radius:10px;padding:9px 12px;font-weight:800;font-size:13px}
 #cy-feedback-center-backdrop{position:static!important;display:block!important;background:transparent!important;padding:0!important}
 #cy-feedback-center-modal{width:100%!important;max-height:none!important;border-radius:16px!important}
 #cy-fc-close{display:none!important}
@@ -1085,7 +1086,7 @@ if(cyFeedbackWorkspace){
 </body>
 </html>"""
         return HTMLResponse(
-            html,
+            apply_surface(html, "personal"),
             headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
         )
 
@@ -1461,14 +1462,69 @@ if(cyFeedbackWorkspace){
             + ("\n附图说明：只根据实际可见图片内容回答；看不清时直接说明，不推测文字、人物或答案。"
                if image else "")
         )
+        target_student_ids: tuple[int, ...] = ()
+        assistant_feature = "product_assistant_guidance"
+        if role == "student":
+            assistant_feature = "product_assistant"
+            target_student_ids = (int(user.id),)
+        elif role == "parent":
+            assistant_feature = "product_assistant"
+            linked_children = db.scalars(
+                select(implementation.User)
+                .join(
+                    implementation.ParentStudent,
+                    implementation.ParentStudent.student_id == implementation.User.id,
+                )
+                .where(
+                    implementation.ParentStudent.parent_id == user.id,
+                    implementation.User.school_id == user.school_id,
+                    implementation.User.role == "student",
+                    implementation.User.active.is_(True),
+                )
+                .order_by(implementation.User.id)
+            ).all()
+            if body.child_id is not None:
+                matched = next((c for c in linked_children if int(c.id) == int(body.child_id)), None)
+                if matched is None:
+                    raise HTTPException(403, "无权访问未关联或跨工作室的孩子学习数据")
+                target_student_ids = (int(matched.id),)
+            elif len(linked_children) == 1:
+                target_student_ids = (int(linked_children[0].id),)
+            else:
+                raise HTTPException(403, "未能明确确定关联孩子，请先选择具体孩子后再使用 AI 助手")
+        elif image:
+            # Images from any role may contain student data and must pass unified authorization.
+            assistant_feature = "product_assistant"
+            target_student_ids = ()
+        else:
+            # Unreviewed teacher/admin free text must not be sent to external AI as an
+            # unauthenticated pure-teaching bypass; serve safe local navigation/help instead.
+            return {
+                "ok": True,
+                "reply": _clean_assistant_reply(
+                    _local_answer(
+                        question,
+                        body.identity,
+                        body.page,
+                        body.tutorial_step,
+                        role=role,
+                        learning_context=learning_context,
+                    )
+                ),
+                "source": "local",
+                "degraded": False,
+                "cards": navigation_cards,
+            }
+
         try:
             reply = implementation._ai_call(
                 db,
                 user,
-                "product_assistant",
+                assistant_feature,
                 prompt,
                 images=[image] if image else None,
                 timeout=45,
+                student_ids=target_student_ids,
             )
             return {
                 "ok": True,
@@ -1592,48 +1648,6 @@ if(cyFeedbackWorkspace){
 
         synced = _post_feedback_import(proof_token, int(audit_row.id))
         return {"ok": True, "received": True, "freemanSynced": synced}
-
-    @router.get("/v1/product-feedback/history", include_in_schema=False)
-    def product_feedback_history(
-        user=Depends(implementation.current_user),
-        db=Depends(implementation.get_db),
-    ):
-        rows = db.scalars(
-            select(implementation.AuditLog)
-            .where(
-                implementation.AuditLog.action == "product.feedback",
-                implementation.AuditLog.user_id == user.id,
-                implementation.AuditLog.school_id == user.school_id,
-            )
-            .order_by(implementation.AuditLog.id.desc()).limit(50)
-        ).all()
-        audit_ids = [row.id for row in rows]
-        reward_rows = db.execute(
-            select(reward_table.c.audit_id, reward_table.c.points, reward_table.c.status)
-            .where(reward_table.c.audit_id.in_(audit_ids))
-        ).all() if audit_ids else []
-        rewards = {int(r[0]): {"points": int(r[1] or 0), "status": str(r[2] or "pending")} for r in reward_rows}
-        items = []
-        for row in rows:
-            try:
-                payload = json.loads(row.detail or "{}")
-            except Exception:
-                payload = {}
-            reward = rewards.get(row.id, {"points": 0, "status": "received"})
-            status = reward["status"]
-            items.append({
-                "sourceId": row.id,
-                "category": str(payload.get("category") or "其他反馈")[:60],
-                "message": str(payload.get("message") or "")[:500],
-                "page": str(payload.get("page") or "")[:240],
-                "createdAt": (row.created_at or datetime.utcnow()).isoformat() + "Z",
-                "status": status,
-                "statusLabel": "已采纳" if status == "granted" else ("待处理" if status == "pending" else "已收到"),
-                "rewardPoints": reward["points"] if status == "granted" else 0,
-            })
-        summary = _feedback_reward_summary(db, user)
-        summary["pendingFeedbackCount"] = sum(1 for item in items if item["status"] != "granted")
-        return {"ok": True, "items": items, "summary": summary}
 
     def _reconcile_feedback_handoff(db, feedback_id: int) -> bool:
         row = db.scalar(

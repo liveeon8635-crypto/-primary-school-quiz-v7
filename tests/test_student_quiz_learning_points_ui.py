@@ -10,11 +10,12 @@ def test_classic_student_quiz_shows_learning_points_and_locks_final_submit():
     assert 'id="quizSubmit"' in html
     assert 'count!==qs.length||submitting?"disabled":""' in html
     assert 'if(submitting)return;' in html
-    assert '本题 \'+esc(q.learningPoints||1)+\' 学习积分' in html
+    assert '本题完成得1分 · 答对再加1分' in html
+    assert '本题由教师确认评分点后计分' in html
     assert '本次获得 +' in html
     assert 'learningPointsAwarded' in html
     assert 'learningPointMax' in html
-    assert '每答对1题获得1积分' in html
+    assert '每题完成得1分，答对再加1分' in html
 
 
 def test_learning_point_backend_contract_remains_visible_to_classic_result_ui():

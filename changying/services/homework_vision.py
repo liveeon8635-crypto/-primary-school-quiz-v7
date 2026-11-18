@@ -140,8 +140,14 @@ def recognize_image(
     feature: str,
     timeout: int = VISION_TIMEOUT_SECONDS,
     prompt: str = RECOGNIZE_PROMPT,
+    student_ids: tuple[int, ...] | list[int] = (),
 ) -> dict[str, Any]:
     """Recognise text in one image. Returns ``{"text", "hasFigure", "confidence"}``."""
+    if feature in {"homework_parse_vision", "homework_notice_vision"}:
+        raise HTTPException(
+            403,
+            "原始作业截图可能包含其他学生、家长、成绩或联系方式等敏感信息，服务端无法在发送前完成脱敏核验，已禁止向外部视觉 AI 发送原图；请直接粘贴脱敏后的纯文本进行解析，或点击“直接手动录入”。",
+        )
     config = vision_config()
     if config is None:
         raise HTTPException(503, "拍照识别尚未配置，请直接输入文字")
@@ -160,6 +166,19 @@ def recognize_image(
     started = time.time()
     status, error, out, data = "ok", "", "", {}
     try:
+        if hasattr(implementation, "Base") and hasattr(implementation, "is_individual_school"):
+            from changying.services.guardian_consent import require_student_ai_authorized
+
+            target_sids = tuple(student_ids) or ((int(user.id),) if getattr(user, "role", "") == "student" else ())
+            require_student_ai_authorized(
+                db,
+                implementation,
+                school_id=int(user.school_id),
+                feature=feature,
+                student_ids=target_sids,
+                actor_user_id=getattr(user, "id", None),
+                require_guardian_for_personal=True,
+            )
         if provider == "openai_responses":
             payload = {
                 "model": model,

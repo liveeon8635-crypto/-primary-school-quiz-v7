@@ -25,11 +25,24 @@ def _no_store(response: JSONResponse) -> JSONResponse:
     return response
 
 
+def _request_is_https(request: Request) -> bool:
+    """True for direct TLS and for TLS terminated by the platform proxy.
+
+    Render terminates TLS and forwards plain HTTP to uvicorn, so ``request.url.scheme``
+    reads "http" in production.  Without honouring ``X-Forwarded-Proto`` the one-time
+    handoff cookie would be issued *without* ``Secure``.
+    """
+    if request.url.scheme == "https":
+        return True
+    forwarded = str(request.headers.get("x-forwarded-proto", "")).split(",")[0].strip().lower()
+    return forwarded == "https"
+
+
 def _delete_handoff_cookie(response: JSONResponse, request: Request) -> None:
     response.delete_cookie(
         V1_AUTH_HANDOFF_COOKIE,
         path="/",
-        secure=request.url.scheme == "https",
+        secure=_request_is_https(request),
         httponly=True,
         samesite="strict",
     )
@@ -65,7 +78,7 @@ def install_v1_auth_handoff_routes(implementation: ModuleType) -> None:
             token,
             max_age=V1_AUTH_HANDOFF_MAX_AGE,
             path="/",
-            secure=request.url.scheme == "https",
+            secure=_request_is_https(request),
             httponly=True,
             samesite="strict",
         )

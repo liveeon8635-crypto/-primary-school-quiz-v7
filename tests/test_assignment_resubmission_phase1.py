@@ -188,7 +188,7 @@ def test_real_routes_cover_draft_partial_history_limits_grants_and_points():
         )
         assert completed.status_code == 200, completed.text
         assert completed.json()["completed"] is True
-        assert completed.json()["learningPointsAwarded"] == 2
+        assert completed.json()["learningPointsAwarded"] == 4
         assert completed.json()["id"] == submission_id
 
         revised = client.post(
@@ -255,7 +255,7 @@ def test_real_routes_cover_draft_partial_history_limits_grants_and_points():
         assert len(assignment_submissions) == 1
         assert assignment_submissions[0].id == submission_id
         assert point_count == baseline_point_count + 1
-        assert point_sum == baseline_point_sum + 2
+        assert point_sum == baseline_point_sum + 4
 
 
 def test_historical_submission_stays_complete_and_is_not_reawarded():

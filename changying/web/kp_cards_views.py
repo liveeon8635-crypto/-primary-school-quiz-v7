@@ -102,14 +102,14 @@ def install_kp_cards_views(implementation: Any) -> APIRouter:
         out: dict[int, list[int]] = {}
         if not ids:
             return out
-        for cid, iid in db.execute(
+        for kid, iid in db.execute(
             select(images.c.card_id, images.c.id).where(images.c.school_id == school_id, images.c.card_id.in_(ids)).order_by(images.c.id)
         ).all():
-            out.setdefault(int(cid), []).append(int(iid))
+            out.setdefault(int(kid), []).append(int(iid))
         return out
 
-    def get_card(db: Any, school_id: int, cid: int) -> Any:
-        row = db.execute(select(cards).where(cards.c.id == cid, cards.c.school_id == school_id)).first()
+    def get_card(db: Any, school_id: int, kid: int) -> Any:
+        row = db.execute(select(cards).where(cards.c.id == kid, cards.c.school_id == school_id)).first()
         if row is None:
             raise HTTPException(404, "没有找到这张卡片")
         return row
@@ -153,34 +153,34 @@ def install_kp_cards_views(implementation: Any) -> APIRouter:
         values = apply_body(b)
         if existing is not None:
             db.execute(update(cards).where(cards.c.id == existing.id).values(**values, status="draft", approved_by=None, approved_at=None, updated_at=now))
-            cid = int(existing.id)
+            kid = int(existing.id)
         else:
-            cid = int(db.execute(insert(cards).values(
+            kid = int(db.execute(insert(cards).values(
                 school_id=u.school_id, grade=b.grade, subject=b.subject, knowledge_key=key, **values,
                 status="draft", created_by=u.id, created_at=now, updated_at=now)).inserted_primary_key[0])
         db.commit()
-        return card_json(get_card(db, int(u.school_id), cid), image_map(db, int(u.school_id), [cid]).get(cid), with_status=True)
+        return card_json(get_card(db, int(u.school_id), kid), image_map(db, int(u.school_id), [kid]).get(kid), with_status=True)
 
-    @router.put("/teacher/kp-cards/{cid}")
-    def edit_card(cid: int, b: CardBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    @router.put("/teacher/kp-cards/{kid}")
+    def edit_card(kid: int, b: CardBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
-        row = get_card(db, int(u.school_id), cid)
+        row = get_card(db, int(u.school_id), kid)
         # Editing takes an approved card back to draft: students never see unreviewed text.
         db.execute(update(cards).where(cards.c.id == row.id).values(**apply_body(b), status="draft", approved_by=None, approved_at=None, updated_at=datetime.utcnow()))
         db.commit()
-        return card_json(get_card(db, int(u.school_id), cid), image_map(db, int(u.school_id), [cid]).get(cid), with_status=True)
+        return card_json(get_card(db, int(u.school_id), kid), image_map(db, int(u.school_id), [kid]).get(kid), with_status=True)
 
-    @router.post("/teacher/kp-cards/{cid}/approve")
-    def approve_card(cid: int, b: ApproveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    @router.post("/teacher/kp-cards/{kid}/approve")
+    def approve_card(kid: int, b: ApproveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
-        row = get_card(db, int(u.school_id), cid)
+        row = get_card(db, int(u.school_id), kid)
         if b.approved and not is_filled(row):
             raise HTTPException(400, "卡片还是空的，先写讲解再发布")
         db.execute(update(cards).where(cards.c.id == row.id).values(
             status="approved" if b.approved else "draft", approved_by=u.id if b.approved else None,
             approved_at=datetime.utcnow() if b.approved else None))
         db.commit()
-        return {"id": cid, "status": "approved" if b.approved else "draft"}
+        return {"id": kid, "status": "approved" if b.approved else "draft"}
 
     @router.post("/teacher/kp-cards/seed")
     def seed_cards(b: SeedBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -199,10 +199,10 @@ def install_kp_cards_views(implementation: Any) -> APIRouter:
         db.commit()
         return {"created": created}
 
-    @router.post("/teacher/kp-cards/{cid}/ai-draft")
-    def ai_draft(cid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    @router.post("/teacher/kp-cards/{kid}/ai-draft")
+    def ai_draft(kid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
-        row = get_card(db, int(u.school_id), cid)
+        row = get_card(db, int(u.school_id), kid)
         prompt = (
             f"你是小学{row.grade}年级{row.subject}老师。请为知识点“{row.knowledge_key}”写一张给学生看的讲解卡片。"
             "只输出 JSON：{\"summary\":\"一句话讲清是什么(40字内)\",\"steps\":[\"分步讲解，每步一句，3-6步\"],"
@@ -223,12 +223,12 @@ def install_kp_cards_views(implementation: Any) -> APIRouter:
             examples_json=json.dumps(clean_list(data.get("examples")), ensure_ascii=False),
             status="draft", approved_by=None, approved_at=None, updated_at=datetime.utcnow()))
         db.commit()
-        return card_json(get_card(db, int(u.school_id), cid), image_map(db, int(u.school_id), [cid]).get(cid), with_status=True)
+        return card_json(get_card(db, int(u.school_id), kid), image_map(db, int(u.school_id), [kid]).get(kid), with_status=True)
 
-    @router.post("/teacher/kp-cards/{cid}/images")
-    def add_image(cid: int, b: ImageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    @router.post("/teacher/kp-cards/{kid}/images")
+    def add_image(kid: int, b: ImageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
-        get_card(db, int(u.school_id), cid)
+        get_card(db, int(u.school_id), kid)
         m = DATA_URL.match(b.data.strip())
         if not m:
             raise HTTPException(400, "只支持 JPEG 或 PNG 图片")
@@ -238,12 +238,12 @@ def install_kp_cards_views(implementation: Any) -> APIRouter:
             raise HTTPException(400, "图片数据不完整")
         if len(raw) > MAX_IMAGE_BYTES:
             raise HTTPException(413, "图片太大，请压缩到 600KB 以内")
-        count = db.scalar(select(func.count()).select_from(images).where(images.c.card_id == cid)) or 0
+        count = db.scalar(select(func.count()).select_from(images).where(images.c.card_id == kid)) or 0
         if count >= MAX_IMAGES:
             raise HTTPException(400, f"每张卡片最多 {MAX_IMAGES} 张图片")
-        iid = int(db.execute(insert(images).values(school_id=u.school_id, card_id=cid, mime=m.group(1), caption=b.caption.strip()[:120],
+        iid = int(db.execute(insert(images).values(school_id=u.school_id, card_id=kid, mime=m.group(1), caption=b.caption.strip()[:120],
                                                     data=raw, created_at=datetime.utcnow())).inserted_primary_key[0])
-        db.execute(update(cards).where(cards.c.id == cid).values(status="draft", approved_by=None, approved_at=None, updated_at=datetime.utcnow()))
+        db.execute(update(cards).where(cards.c.id == kid).values(status="draft", approved_by=None, approved_at=None, updated_at=datetime.utcnow()))
         db.commit()
         return {"id": iid}
 
@@ -290,13 +290,13 @@ def install_kp_cards_views(implementation: Any) -> APIRouter:
         imgs = image_map(db, int(u.school_id), [r.id for r in rows])
         return {"items": [card_json(r, imgs.get(r.id)) for r in rows]}
 
-    @router.get("/student/kp-cards/{cid}")
-    def one_card(cid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    @router.get("/student/kp-cards/{kid}")
+    def one_card(kid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "student")
-        row = get_card(db, int(u.school_id), cid)
+        row = get_card(db, int(u.school_id), kid)
         if row.status != "approved" or int(row.grade) != student_grade(db, u):
             raise HTTPException(404, "没有找到这张卡片")
-        return card_json(row, image_map(db, int(u.school_id), [cid]).get(cid))
+        return card_json(row, image_map(db, int(u.school_id), [kid]).get(kid))
 
     @router.get("/student/kp-wrong")
     def wrong_with_cards(u: Any = Depends(current_user), db: Any = Depends(get_db)):

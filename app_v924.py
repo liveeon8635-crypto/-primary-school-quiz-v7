@@ -683,6 +683,7 @@ class PointLedger(Base):
     note:Mapped[str]=mapped_column(Text,default="")
     source:Mapped[str]=mapped_column(String(30),default="classroom",index=True)
     related_id:Mapped[int|None]=mapped_column(Integer,nullable=True,index=True)
+    idempotency_key:Mapped[str|None]=mapped_column(String(120),nullable=True)
     reversed:Mapped[bool]=mapped_column(Boolean,default=False,index=True)
     reversal_of_id:Mapped[int|None]=mapped_column(ForeignKey("point_ledger.id"),nullable=True,index=True)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,index=True)
@@ -4001,6 +4002,35 @@ def ensure_teaching_question_figure_column():
     with engine.begin() as conn:
         conn.execute(sa_text("ALTER TABLE teaching_questions ADD COLUMN figure_json TEXT NOT NULL DEFAULT '{}'"))
 
+def ensure_point_ledger_idempotency():
+    """Add the nullable idempotency key and its partial unique index.
+
+    Automatic point writes (learning submissions, homework practice, weekend
+    scoring, classroom presentations) fill the key, so a double click or a
+    retried request can never award the same thing twice. Manual adjustments,
+    redemption and refunds stay NULL on purpose: a teacher may legitimately
+    grant or reverse points more than once.
+
+    Historical rows keep NULL, so building the index never rewrites or deletes
+    old ledger entries; duplicates that already exist are only reported.
+    """
+    inspector=sa_inspect(engine)
+    if "point_ledger" not in set(inspector.get_table_names()):
+        return
+    if "idempotency_key" not in {col["name"] for col in inspector.get_columns("point_ledger")}:
+        with engine.begin() as conn:
+            conn.execute(sa_text("ALTER TABLE point_ledger ADD COLUMN idempotency_key VARCHAR(120) NULL"))
+    try:
+        with engine.begin() as conn:
+            conn.execute(sa_text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_point_ledger_idempotency "
+                "ON point_ledger (school_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
+            ))
+    except Exception as error:
+        # The application-level checks still apply; only the database backstop is
+        # missing, so report it instead of blocking startup.
+        print(f"[startup] point ledger idempotency index skipped: {type(error).__name__}")
+
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(engine)
@@ -4008,6 +4038,7 @@ def startup():
     normalize_personal_workspace_accounts()
     ensure_submission_completion_actor_column()
     ensure_teaching_question_figure_column()
+    ensure_point_ledger_idempotency()
     # V7.3.0: keep the V7.2.0 production seeding behavior; never create public demo credentials automatically on PostgreSQL.
     # Existing production users are untouched. Set ENABLE_DEMO_SEED=1 only for an intentional demo.
     if raw_url.startswith("sqlite") or os.getenv("ENABLE_DEMO_SEED","0")=="1":
@@ -5055,6 +5086,10 @@ a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:no
 </div>
 <div class="card">
 <h2>把已有家长账号绑到学生</h2>
+<label for="cy-parent-q">按账号精确查找</label>
+<input id="cy-parent-q" autocomplete="off" placeholder="输入完整家长账号，例如 parent_xm">
+<div class="actions"><button class="plain" id="cy-parent-find">查找并选中</button></div>
+<div id="cy-parent-hint" class="hint">学校里的老师只看到自己班上家长；知道对方账号时，用这里精确查找。</div>
 <select id="cy-parent"></select>
 <div class="actions"><button class="plain" id="cy-bind">绑到上面选中的学生</button></div>
 <h2>学生与家长</h2>
@@ -5123,6 +5158,26 @@ a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:no
       fillParents();
     });
   }
+  function findParentByAccount(){
+    var box=el('cy-parent-q'),hint=el('cy-parent-hint');
+    if(!box||!hint)return;
+    var q=(box.value||'').trim();
+    if(!q){hint.textContent='请输入完整家长账号。';return}
+    hint.textContent='正在查找…';
+    send('GET','/teacher/parents?q='+encodeURIComponent(q),null,function(s,ps){
+      if(s!==200){hint.textContent='查找失败，请重试。';return}
+      var list=ps||[],hit=null,i;
+      for(i=0;i<list.length;i++){if(list[i].username===q){hit=list[i];break}}
+      if(!hit){hint.textContent='本校没有账号「'+q+'」，请核对后再试。';return}
+      var exists=false;
+      for(i=0;i<state.parents.length;i++){if(state.parents[i].id===hit.id){exists=true;break}}
+      if(!exists)state.parents.push(hit);
+      state.parents.sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''))});
+      fillParents();
+      var sel=el('cy-parent');if(sel)sel.value=String(hit.id);
+      hint.textContent='已找到：'+hit.name+'（'+hit.username+'），已选中，可直接绑定。';
+    });
+  }
   function loadStudents(){
     if(!state.cid){setStatus('还没有学生名单。','err');return}
     send('GET','/teacher/classes/'+state.cid+'/students',null,function(s,list){
@@ -5161,6 +5216,7 @@ a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:no
       });
     });
   };
+  el('cy-parent-find').onclick=findParentByAccount;
   el('cy-bind').onclick=function(){
     var sid=Number(el('cy-student').value||0);
     var pid=Number(el('cy-parent').value||0);
@@ -6922,11 +6978,24 @@ def addstudent(b:StudentCreate,u:User=Depends(current_user),db:Session=Depends(g
     audit(db,u,"student.create",f"{s.id}:{s.name}:class={c.id}");db.commit();return uj(s)
 
 @app.get("/teacher/parents")
-def teacher_parents(u:User=Depends(current_user),db:Session=Depends(get_db)):
+def teacher_parents(q:str="",u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"teacher")
-    # A personal workspace keeps its parents in the same school row, so they are
-    # found the same way; hiding them here made the "绑定家长" picker always empty.
-    rows=db.scalars(select(User).where(User.school_id==u.school_id,User.role=="parent",User.active==True).order_by(User.name,User.username)).all()
+    # A personal workspace keeps its parents in the same school row and has a single
+    # owner account, so the owner sees all of them; hiding them made the "绑定家长"
+    # picker always empty. Inside a school (several teachers) a teacher only sees the
+    # parents already bound to pupils of the classes they own (#1097), plus an exact
+    # username lookup for a known account, so one teacher cannot enumerate the school.
+    base=select(User).where(User.school_id==u.school_id,User.role=="parent",User.active==True)
+    if is_personal_workspace_user(u):
+        rows=list(db.scalars(base.order_by(User.name,User.username)).all())
+    else:
+        mine=select(ParentStudent.parent_id).join(ClassStudent,ClassStudent.student_id==ParentStudent.student_id).join(SchoolClass,SchoolClass.id==ClassStudent.class_id).where(SchoolClass.school_id==u.school_id,SchoolClass.teacher_id==u.id)
+        rows=list(db.scalars(base.where(User.id.in_(mine)).order_by(User.name,User.username)).all())
+        wanted=q.strip()
+        if wanted:
+            found=db.scalar(base.where(User.username==wanted))
+            if found is not None and all(x.id!=found.id for x in rows):
+                rows.append(found);rows.sort(key=lambda x:(x.name or "",x.username or ""))
     return [{"id":x.id,"name":x.name,"username":x.username} for x in rows]
 
 @app.post("/teacher/students/{sid}/parent")

@@ -24,7 +24,7 @@ def render_dom(tmp_path, html, size, query=""):
             "--disable-background-networking",
             f"--user-data-dir={tmp_path / 'chrome'}",
             f"--window-size={size}",
-            "--virtual-time-budget=5000",
+            "--virtual-time-budget=8000",
             "--dump-dom",
             page.as_uri() + query,
         ],
