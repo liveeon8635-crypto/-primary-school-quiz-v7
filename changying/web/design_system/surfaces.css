@@ -147,6 +147,7 @@ html[data-cy-ui="product"] {
     transform: none;
   }
 
+  [data-cy-ui="shell"] .toast.show,
   [data-cy-ui="classic"] .cy-toast.is-visible {
     transform: translateX(-50%);
   }
