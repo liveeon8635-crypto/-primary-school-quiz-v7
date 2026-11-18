@@ -11,7 +11,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Header, Depends, UploadFi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from string import Template
 from sqlalchemy import create_engine, String, Integer, ForeignKey, Text, DateTime, Boolean, LargeBinary, UniqueConstraint, CheckConstraint, Index, select, func, inspect as sa_inspect, text as sa_text
 from sqlalchemy.exc import IntegrityError
@@ -1015,7 +1015,8 @@ def current_user(request:Request,u:User=Depends(authenticated_user),db:Session=D
     if request.method.upper() in ("POST","PUT","PATCH","DELETE"):
         exempt=(
             request.url.path.startswith("/account/deletion-request") or
-            request.url.path.startswith("/admin/deletion-requests/")
+            request.url.path.startswith("/admin/deletion-requests/") or
+            (request.url.path == "/teacher/parents/lookup" and request.method.upper() == "POST")
         )
         if not exempt:
             blocked,payload=commercial_write_blocked(db,u.school_id)
@@ -5164,8 +5165,8 @@ a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:no
     var q=(box.value||'').trim();
     if(!q){hint.textContent='请输入完整家长账号。';return}
     hint.textContent='正在查找…';
-    send('GET','/teacher/parents?q='+encodeURIComponent(q),null,function(s,ps){
-      if(s!==200){hint.textContent='查找失败，请重试。';return}
+    send('POST','/teacher/parents/lookup',{username:q},function(s,ps){
+      if(s!==200){hint.textContent=s===429?'查询次数过多，请稍后再试。':'查找失败，请重试。';return}
       var list=ps||[],hit=null,i;
       for(i=0;i<list.length;i++){if(list[i].username===q){hit=list[i];break}}
       if(!hit){hint.textContent='本校没有账号「'+q+'」，请核对后再试。';return}
@@ -6993,10 +6994,26 @@ def teacher_parents(q:str="",u:User=Depends(current_user),db:Session=Depends(get
         rows=list(db.scalars(base.where(User.id.in_(mine)).order_by(User.name,User.username)).all())
         wanted=q.strip()
         if wanted:
+            has_class=db.scalar(select(SchoolClass.id).where(SchoolClass.school_id==u.school_id,SchoolClass.teacher_id==u.id).limit(1))
+            if not has_class:raise HTTPException(403,"请先关联负责的班级")
+            from changying.security.parent_lookup import limit_parent_lookup
+            limit_parent_lookup(db,u,User,AuditLog)
             found=db.scalar(base.where(User.username==wanted))
             if found is not None and all(x.id!=found.id for x in rows):
                 rows.append(found);rows.sort(key=lambda x:(x.name or "",x.username or ""))
     return [{"id":x.id,"name":x.name,"username":x.username} for x in rows]
+
+class ParentLookupBody(BaseModel):
+    username:str=Field(max_length=100)
+
+@app.post("/teacher/parents/lookup")
+def teacher_parent_lookup(b:ParentLookupBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
+    need(u,"teacher")
+    wanted=b.username.strip()
+    if not wanted:return []
+    # Keep the legacy GET contract for existing clients; the current UI uses a
+    # request body and receives only the exact match rather than the whole list.
+    return [p for p in teacher_parents(q=wanted,u=u,db=db) if p["username"]==wanted]
 
 @app.post("/teacher/students/{sid}/parent")
 def bind_student_parent(sid:int,b:ParentBindBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
