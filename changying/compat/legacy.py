@@ -56,6 +56,7 @@ from changying.utils.datetime_tools import SCHOOL_TZ, due_deadline_utc, school_l
 from changying.utils.json_tools import json_list
 from changying.web.classic_ui import install_classic_ui_patch
 from changying.web.design_system import apply_surface
+from changying.web.guardian_consent_views import install_guardian_consent_views
 from changying.web.health_revision import install_health_revision_route
 from changying.web.product_shell import (
     PRODUCT_SHELL_MARKER,
@@ -528,6 +529,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_classroom_handout_release_patch()
     install_v1_classroom_handout_release_routes(implementation)
     install_v1_guardian_visibility_patch()
+    install_guardian_consent_views(implementation)
     install_v1_membership_reliability_patch()
     install_v1_final_closure_patch()
     install_v1_fast_path_patch()

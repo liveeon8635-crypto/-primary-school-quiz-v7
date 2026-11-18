@@ -22,7 +22,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from changying.services.weekend_answers import option_text
 
@@ -70,12 +70,12 @@ def week_window(day: str) -> tuple[str, str]:
 
 
 def week_work_map(impl: Any, db: Any, *, school_id: int, student_ids: list[int], day: str) -> dict[int, dict[str, Any]]:
-    """Ordinary assignments each pupil received in the report's week (Mon..Sun); read-only, two queries.
+    """Ordinary assignments each pupil received in the report's week (Mon..Sun); read-only.
 
     An assignment counts when the pupil is a recipient of it and its due date (or, without
-    one, its creation date) falls inside the window. The latest submission decides the state:
-    no submission "未交", a submission with nothing graded "待批改", otherwise "已交" with the
-    share of correct questions. Ordinary homework is never attached to a lesson.
+    one, its creation date) falls inside the window. Completion follows the assignment's
+    quiz/media mode; completed ungraded work is "待批改", and graded work includes accuracy.
+    Ordinary homework is never attached to a lesson.
     """
     start, end = week_window(day)
     ids = sorted({int(s) for s in student_ids})
@@ -84,31 +84,91 @@ def week_work_map(impl: Any, db: Any, *, school_id: int, student_ids: list[int],
     if not ids:
         return out
     recipient, assignment, submission = impl.AssignmentRecipient, impl.Assignment, impl.Submission
-    latest: dict[tuple[int, int], Any] = {}
-    for s in db.execute(select(submission.assignment_id, submission.student_id, submission.correct, submission.total, submission.submitted_at)
-                        .where(submission.school_id == school_id, submission.student_id.in_(ids), submission.assignment_id.isnot(None))
-                        .order_by(submission.submitted_at, submission.id)):
-        latest[(int(s.student_id), int(s.assignment_id))] = s
-    rows = db.execute(select(recipient.student_id, assignment.id, assignment.title, assignment.due_date, assignment.created_at)
+    lower = datetime.fromisoformat(start) - timedelta(days=1)
+    upper = datetime.fromisoformat(end) + timedelta(days=2)
+    rows = db.execute(select(recipient.student_id, recipient.source, assignment)
                       .select_from(recipient).join(assignment, assignment.id == recipient.assignment_id)
-                      .where(recipient.school_id == school_id, recipient.student_id.in_(ids))
-                      .order_by(assignment.due_date, assignment.id))
-    for row in rows:
-        due = str(row.due_date or "")[:10]
-        created = local_dt(impl, row.created_at)
+                      .where(recipient.school_id == school_id, assignment.school_id == school_id, recipient.student_id.in_(ids),
+                             or_(func.substr(assignment.due_date, 1, 10).between(start, end),
+                                 ((assignment.due_date == "") | assignment.due_date.is_(None)) &
+                                 assignment.created_at.between(lower, upper)))
+                      .order_by(assignment.due_date, assignment.id)).all()
+    candidates = []
+    for sid, source, task in rows:
+        due = str(task.due_date or "")[:10]
+        created = local_dt(impl, task.created_at)
         day_key = due or (created.strftime("%Y-%m-%d") if created is not None else "")
-        if not (start <= day_key <= end):
+        if start <= day_key <= end:
+            candidates.append((int(sid), source, task, due))
+    aids = sorted({int(task.id) for _, _, task, _ in candidates})
+    if not aids:
+        return out
+    sources = {}
+    for aid, source in db.execute(select(recipient.assignment_id, recipient.source).where(
+            recipient.school_id == school_id, recipient.assignment_id.in_(aids))):
+        sources.setdefault(int(aid), set()).add(source)
+    normal = {"assignment", "paper_import"}
+    ambiguous = {None, "", "submission_backfill", "class_history_backfill", "current_member_backfill"}
+    non_normal = {"knowledge_map", "teacher_ai_practice", "ai_reinforcement", "exam_prep",
+                  "student_self_reinforcement", "student_module_practice", "student_comprehensive_test"}
+    latest = {}
+    for s in db.scalars(select(submission).where(submission.school_id == school_id,
+            submission.student_id.in_(ids), submission.assignment_id.in_(aids)).order_by(submission.submitted_at, submission.id)):
+        latest[(int(s.student_id), int(s.assignment_id))] = s
+    settings = {s.assignment_id: s.mode for s in db.scalars(select(impl.AssignmentSubmissionSetting).where(
+        impl.AssignmentSubmissionSetting.school_id == school_id, impl.AssignmentSubmissionSetting.assignment_id.in_(aids)))}
+    media = {(s.student_id, s.assignment_id): s for s in db.scalars(select(impl.HomeworkMediaSubmit).where(
+        impl.HomeworkMediaSubmit.school_id == school_id, impl.HomeworkMediaSubmit.student_id.in_(ids),
+        impl.HomeworkMediaSubmit.assignment_id.in_(aids)))}
+    reviews = {(r.student_id, r.assignment_id): r for r in db.scalars(select(impl.AIGradingReview).where(
+        impl.AIGradingReview.school_id == school_id, impl.AIGradingReview.student_id.in_(ids),
+        impl.AIGradingReview.assignment_id.in_(aids)))}
+    attempts = {}
+    for sid, aid, qid in db.execute(select(impl.AssignmentQuestionAttempt.student_id, impl.AssignmentQuestionAttempt.assignment_id,
+            impl.AssignmentQuestionAttempt.question_id).where(impl.AssignmentQuestionAttempt.school_id == school_id,
+            impl.AssignmentQuestionAttempt.student_id.in_(ids), impl.AssignmentQuestionAttempt.assignment_id.in_(aids)).distinct()):
+        attempts.setdefault((int(sid), int(aid)), set()).add(int(qid))
+    paper_ids = {task.paper_id for _, _, task, _ in candidates if task.paper_id is not None}
+    papers = {p.id: p for p in db.scalars(select(impl.Paper).where(impl.Paper.school_id == school_id, impl.Paper.id.in_(paper_ids)))}
+    for sid, source, task, due in candidates:
+        aid = int(task.id)
+        explicit = sources.get(aid, set()) - ambiguous
+        if (explicit - normal - non_normal) or (explicit & normal and explicit & non_normal):
+            out[sid]["unclassifiedCount"] = out[sid].get("unclassifiedCount", 0) + 1
             continue
-        block = out[int(row.student_id)]
-        s = latest.get((int(row.student_id), int(row.id)))
-        total = int(getattr(s, "total", 0) or 0) if s is not None else 0
-        correct = int(getattr(s, "correct", 0) or 0) if s is not None else 0
-        status = "unsubmitted" if s is None else ("pending" if not total else "submitted")
-        when = local_dt(impl, s.submitted_at) if s is not None else None
-        block["items"].append({"assignmentId": int(row.id), "title": str(row.title or ""), "due": due, "status": status,
+        if source not in normal:
+            if source in non_normal or (source in ambiguous and explicit & non_normal):
+                continue
+            if source not in ambiguous or not (explicit & normal):
+                out[sid]["unclassifiedCount"] = out[sid].get("unclassifiedCount", 0) + 1
+                continue
+        block = out[sid]
+        s = latest.get((sid, aid))
+        mode = settings.get(aid, "quiz")
+        if mode not in {"quiz", "media", "mixed"}:
+            mode = "quiz"
+        attempted = attempts.get((sid, aid), set())
+        try:
+            expected = {int(q) for q in json.loads(getattr(papers.get(task.paper_id), "question_ids_json", "[]") or "[]")}
+        except (TypeError, ValueError):
+            expected = set()
+        quiz_ok = bool(s) and (not attempted or bool(expected) and attempted >= expected)
+        media_sub = media.get((sid, aid))
+        completed = quiz_ok if mode == "quiz" else bool(media_sub) if mode == "media" else bool(quiz_ok and media_sub)
+        total = int(getattr(s, "total", 0) or 0) if s is not None and completed and mode == "quiz" else 0
+        correct = int(getattr(s, "correct", 0) or 0) if s is not None and completed and mode == "quiz" else 0
+        review = reviews.get((sid, aid))
+        media_reviewed = bool(media_sub and review and review.status == "confirmed" and review.confirmed_at and
+                              review.confirmed_at >= media_sub.submitted_at)
+        status = "unsubmitted" if not completed else ("pending" if (mode in {"media", "mixed"} and not media_reviewed) or (mode == "quiz" and not total) else "submitted")
+        if status != "submitted":
+            total = correct = 0
+        stamps = ([s.submitted_at] if completed and mode in {"quiz", "mixed"} and s else []) + ([media_sub.submitted_at] if completed and mode in {"media", "mixed"} and media_sub else [])
+        when = local_dt(impl, max(stamps)) if stamps else None
+        block["items"].append({"assignmentId": int(task.id), "title": str(task.title or ""), "due": due, "status": status,
                                "statusLabel": WORK_STATUS_LABEL[status], "correct": correct, "total": total,
                                "rate": round(correct * 100 / total) if total else None,
-                               "submittedAt": when.strftime("%m-%d %H:%M") if when is not None else ""})
+                               "submittedAt": when.strftime("%m-%d %H:%M") if when else ""})
     for block in out.values():
         items = block["items"]
         block["counts"] = {"total": len(items), "submitted": sum(1 for i in items if i["status"] != "unsubmitted"),
@@ -121,7 +181,7 @@ def week_work_map(impl: Any, db: Any, *, school_id: int, student_ids: list[int],
 
 def parent_week_work(block: dict[str, Any]) -> dict[str, Any]:
     """What a parent may see of the week's ordinary homework: completion and accuracy, never the questions."""
-    return {"weekStart": block["weekStart"], "weekEnd": block["weekEnd"], "counts": block["counts"], "rate": block["rate"],
+    return {"weekStart": block["weekStart"], "weekEnd": block["weekEnd"], "counts": block["counts"], "rate": block["rate"], "unclassifiedCount": block.get("unclassifiedCount", 0),
             "items": [{k: i[k] for k in ("title", "status", "statusLabel", "rate", "due")} for i in block["items"]]}
 
 

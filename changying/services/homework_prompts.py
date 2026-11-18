@@ -18,13 +18,15 @@ _PHONE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
 _LONG_DIGITS = re.compile(r"(?<!\d)\d{8,}(?!\d)")
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _URL = re.compile(r"https?://\S+", re.I)
+_LABELLED_PII = re.compile(r"(?:学生姓名|家长姓名|学生|姓名|家长|学号|考号|成绩|分数)\s*[:：]\s*[^\s,，;；。\n]{1,20}")
+_SCORE_TOKEN = re.compile(r"\b\d{1,3}(?:\.\d+)?\s*分(?:\b|(?=[，。,\s]|$))")
 _HIDDEN = "【已隐藏】"
 
 
 def scrub_notice_text(text: str) -> str:
-    """Hide phone numbers, long digit runs, e-mails and links before a notice leaves the server."""
+    """Hide phone numbers, long digit runs, e-mails, links and labelled PII before a notice leaves the server."""
     value = str(text or "")
-    for pattern in (_URL, _EMAIL, _PHONE, _LONG_DIGITS):
+    for pattern in (_URL, _EMAIL, _PHONE, _LONG_DIGITS, _LABELLED_PII, _SCORE_TOKEN):
         value = pattern.sub(_HIDDEN, value)
     return value.strip()[:MAX_NOTICE_CHARS]
 

@@ -31,6 +31,122 @@ _TYPE_ALIASES = {
     "application": "short_answer",
 }
 
+_PURE_TEACHING_SUBJECTS = frozenset({"数学", "语文", "英语", "科学"})
+_PURE_TEACHING_SEMESTERS = frozenset({"", "上册", "下册", "全一册"})
+_PURE_TEACHING_DIFFICULTIES = frozenset({"", "基础", "简单", "中等", "提高", "偏难", "挑战"})
+_PURE_TEACHING_TYPES = frozenset(
+    {"", "auto", "choice", "non_choice", "mixed", "single_choice", "true_false", "fill_blank", "calculation", "short_answer"}
+)
+_PURE_TEACHING_TEXTBOOKS = frozenset({
+    "人教版",
+    "人教版（当前最新版）",
+    "统编版",
+    "统编版（人民教育出版社）",
+    "统编版（人教社）",
+    "人教版（PEP·当前最新版）",
+    "PEP·当前最新版",
+    "教科版",
+    "苏教版",
+    "北师大版",
+    "外研版",
+    "青岛版",
+    "冀教版",
+    "粤教版",
+    "湘教版",
+    "大象版",
+    "鄂教版",
+})
+_PURE_TEACHING_UNITS_STATIC = frozenset({"", "综合", "未指定", "总复习", "期中复习", "期末复习"})
+_PURE_TEACHING_UNIT_RE = re.compile(r"^第[一二三四五六七八九十]{1,2}单元$")
+_PURE_TEACHING_KNOWLEDGE = frozenset({
+    "",
+    "综合",
+    "未指定",
+    "计算",
+    "口算",
+    "竖式计算",
+    "混合运算",
+    "简便运算",
+    "小数乘法",
+    "小数除法",
+    "分数加减法",
+    "分数乘法",
+    "分数除法",
+    "简易方程",
+    "比和比例",
+    "百分数",
+    "因数与倍数",
+    "多边形的面积",
+    "长方体和正方体",
+    "圆的周长和面积",
+    "图形的运动",
+    "位置与方向",
+    "观察物体",
+    "折线统计图",
+    "统计与概率",
+    "解决问题",
+    "应用题",
+    "字词基础",
+    "拼音与字词",
+    "古诗词阅读",
+    "文言文阅读",
+    "现代文阅读",
+    "阅读理解",
+    "句子仿写",
+    "修辞手法",
+    "病句修改",
+    "基础知识",
+    "词汇与语法",
+    "句型转换",
+    "阅读理解与表达",
+    "情景交际",
+    "物质的变化",
+    "地球与宇宙",
+    "生物与环境",
+    "力与运动",
+    "声与光",
+    "电与磁",
+    "能量与转化",
+    "微小世界",
+    "工具与技术",
+})
+
+
+def _is_verified_pure_teaching_question(body: Any) -> bool:
+    """Return True iff every prompt-bound parameter is a server-verified curriculum constant."""
+    if str(getattr(body, "notes", "") or "").strip():
+        return False
+    if list(getattr(body, "resource_ids", None) or []):
+        return False
+    try:
+        grade = int(getattr(body, "grade", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+    if grade < 1 or grade > 9:
+        return False
+    subject = str(getattr(body, "subject", "") or "").strip()
+    if subject not in _PURE_TEACHING_SUBJECTS:
+        return False
+    textbook = str(getattr(body, "textbook", "") or "").strip()
+    if textbook not in _PURE_TEACHING_TEXTBOOKS:
+        return False
+    semester = str(getattr(body, "semester", "") or "").strip()
+    if semester not in _PURE_TEACHING_SEMESTERS:
+        return False
+    difficulty = str(getattr(body, "difficulty", "") or "").strip()
+    if difficulty not in _PURE_TEACHING_DIFFICULTIES:
+        return False
+    qtype = str(getattr(body, "question_type", "") or "").strip()
+    if qtype not in _PURE_TEACHING_TYPES:
+        return False
+    unit = str(getattr(body, "unit", "") or "").strip()
+    if unit not in _PURE_TEACHING_UNITS_STATIC and not _PURE_TEACHING_UNIT_RE.fullmatch(unit):
+        return False
+    knowledge = str(getattr(body, "knowledge", "") or "").strip()
+    if knowledge not in _PURE_TEACHING_KNOWLEDGE:
+        return False
+    return True
+
 
 def normalize_question_type(value: Any) -> str:
     raw = str(value or "").strip().lower()
@@ -390,21 +506,25 @@ def _rich_generate_call(implementation: ModuleType):
             "解析必须写出完整算式或完整推理步骤，学生能照着重算一遍。",
         ]
         difficulty_block = "\n".join(difficulty_lines)
-        examples_block = _bank_examples(implementation, db, u, b)
-        refs = implementation._resource_context(db, u.school_id, b.resource_ids)
+        pure_teaching = _is_verified_pure_teaching_question(b)
+        examples_block = "" if pure_teaching else _bank_examples(implementation, db, u, b)
+        refs = "" if pure_teaching else implementation._resource_context(db, u.school_id, b.resource_ids)
         rule = format_rule(requested, b.subject, count)
         s_rule = subject_rule(b.subject)
+        safe_unit = (str(b.unit or "").strip() or "未指定")
+        safe_knowledge = (str(b.knowledge or "").strip() or "综合")
+        safe_notes = "无" if pure_teaching else (b.notes or "无")
 
         prompt = f"""你是有一线命题经验的中国小学教师。请生成真实校内练习/单元测验风格题目。
 
 年级：{b.grade}年级
 科目：{b.subject}
 教材：{b.textbook} {b.semester}
-单元：{b.unit or '未指定'}
-知识点：{b.knowledge or '综合'}
+单元：{safe_unit}
+知识点：{safe_knowledge}
 难度：{difficulty}
 数量：{count}道
-老师补充要求：{b.notes or '无'}
+老师补充要求：{safe_notes}
 
 {difficulty_block}
 
@@ -426,8 +546,21 @@ def _rich_generate_call(implementation: ModuleType):
 
 {refs}"""
 
+        has_unverified_input = not pure_teaching
+
         def run_generation(feature: str, text: str, wanted: int):
-            raw = implementation._ai_json(implementation._ai_call(db, u, feature, text))
+            from changying.services.guardian_consent import (
+                _UNVERIFIED_FREE_TEXT,
+                _VERIFIED_PURE_TEACHING_QGEN,
+            )
+
+            tok_free = _UNVERIFIED_FREE_TEXT.set(has_unverified_input)
+            tok_pure = _VERIFIED_PURE_TEACHING_QGEN.set(pure_teaching)
+            try:
+                raw = implementation._ai_json(implementation._ai_call(db, u, feature, text))
+            finally:
+                _VERIFIED_PURE_TEACHING_QGEN.reset(tok_pure)
+                _UNVERIFIED_FREE_TEXT.reset(tok_free)
             return clean_rich_question_rows(
                 raw,
                 body=b,
@@ -443,8 +576,8 @@ def _rich_generate_call(implementation: ModuleType):
         if len(output) < count:
             missing = count - len(output)
             repair = f"""请补充 {missing} 道小学{b.subject}题目，保持课程信息完全一致：
-年级{b.grade}；教材{b.textbook}{b.semester}；单元{b.unit or '未指定'}；知识点{b.knowledge or '综合'}；难度{difficulty}。
-不得复制已有题干。老师补充要求：{b.notes or '无'}。
+年级{b.grade}；教材{b.textbook}{b.semester}；单元{safe_unit}；知识点{safe_knowledge}；难度{difficulty}。
+不得复制已有题干。老师补充要求：{safe_notes}。
 {s_rule}
 {rule}
 只返回 JSON：{{"questions":[...]}}。"""
