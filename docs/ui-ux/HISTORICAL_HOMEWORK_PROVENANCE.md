@@ -1,6 +1,6 @@
 # 历史作业来源追溯（隔离样本，2026-11-16）
 
-核对基准：main `0bb9b6b7b93e914f56e69167c91a2d82206bf7cf`；周报分类实现位于尚未合并的草稿 PR #1100（`7efcff67253538a40aebc0ee47b73ea6d45218f9`）。本文不代表生产数据已核查，也不授权对生产历史数据做任何写入。
+隔离样本使用 `0bb9b6b` 加 #1100 草稿 `7efcff6`。周报分类已通过 [#1100](https://github.com/liveeon8635-crypto/-primary-school-quiz-v7/pull/1100) 以 `f7375ad` 合入 main，本次记录核对基准为 `2bd6044`。生产数据未核查。
 
 ## 写入路径和证据
 
@@ -20,7 +20,7 @@
 
 ## 隔离样本统计
 
-统计对象为本机自动化测试合成库 `tmp/uiux1100-browser-seed2/test_report_shows_the_weeks_or0/solve.sqlite3` 的 **接收记录**，非作业数、非生产样本。按 #1100 的分类口径：
+统计对象为本机自动化测试合成库 `tmp/uiux1100-browser-seed2/test_report_shows_the_weeks_or0/solve.sqlite3` 的 **接收记录**，非作业数、非生产样本。按 #1100 的分类口径统计，共 139 条。原样本库路径为当时的本机证据位置，仓库中的测试可验证分类规则。
 
 | 分类 | 数量 | 含义 |
 |---|---:|---|
@@ -29,7 +29,7 @@
 | C | 2 | 同一作业来源冲突 |
 | D | 3 | 空值、未知值或缺乏可用来源旁证 |
 
-样本中按原始 `source` 分组：`assignment` 71、`paper_import` 1、`knowledge_map` 2、`submission_backfill` 1、`class_history_backfill` 61、空字符串 2、`legacy_manual` 1。分类以每条接收记录计数；冲突的同一作业可贡献多条记录。样本人工构造，不能外推生产规模。测试包含已知历史作业、知识地图、未知及冲突来源、不同学校、报告发布和不完整提示；见 #1100 的 `tests/test_weekend_report_weekly_homework.py`。
+样本中按原始 `source` 分组：`assignment` 71、`paper_import` 1、`knowledge_map` 2、`submission_backfill` 1、`class_history_backfill` 61、空字符串 2、`legacy_manual` 1。分类以每条接收记录计数；冲突的同一作业可贡献多条记录。样本人工构造，不能外推生产规模。测试包含已知历史作业、知识地图、未知及冲突来源、不同学校、报告发布和不完整提示；见 [周报作业来源回归测试](../../tests/test_weekend_report_weekly_homework.py)。
 
 ## 建议的安全追溯流程
 
