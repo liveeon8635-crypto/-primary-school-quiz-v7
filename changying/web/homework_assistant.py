@@ -46,6 +46,7 @@ def require_enabled() -> None:
 
 class ParseBody(BaseModel):
     text: str
+    studentIds: list[int] = []
 
 
 class NoticeBody(BaseModel):
@@ -120,17 +121,23 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
     # Follow-up routes (help requests) register on the same router through this handle.
     app.state.homework_tables = tables
 
-    def require_school_ai_for_notice(db: Any, teacher: Any) -> None:
+    def require_school_ai_for_notice(db: Any, teacher: Any, student_ids: tuple[int, ...] = ()) -> None:
         """Notices (text or screenshot) can contain student and parent names, phone numbers, chat names.
 
-        They only go to the AI provider when the school has switched AI on AND allowed content to leave
-        (the same switch the student side uses); otherwise nothing is sent and the teacher types the list by hand.
+        They only go to the AI provider when compliance, workspace AI switch,
+        student-data switch, and student ownership/consent are all satisfied.
         """
-        config = implementation.ai_config_for(db, teacher.school_id, False)
-        if not config or not config.enabled:
-            raise HTTPException(503, "AI 教学助手尚未启用，请联系学校管理员完成 AI 设置")
-        if not config.allow_student_data:
-            raise HTTPException(403, "学校管理员尚未允许把作业通知内容发送到 AI 服务商，请先手动录入作业")
+        from changying.services.guardian_consent import require_student_ai_authorized
+
+        require_student_ai_authorized(
+            db,
+            implementation,
+            school_id=int(teacher.school_id),
+            feature="homework_notice_parse",
+            student_ids=student_ids,
+            actor_user_id=int(teacher.id),
+            require_guardian_for_personal=False,
+        )
 
     def teacher_students(db: Any, teacher: Any) -> list[dict[str, Any]]:
         rows = db.execute(
@@ -218,34 +225,29 @@ def install_homework_assistant(implementation: Any) -> APIRouter:
         db: Any = Depends(get_db),
     ):
         need(u, "teacher")
-        await run_in_threadpool(require_school_ai_for_notice, db, u)
-        data = await read_image_body(request)
-
-        def work() -> dict[str, Any]:
-            implementation._ai_rate_check(db, u.school_id)
-            return recognize_image(implementation, db, u, data, feature="homework_parse_vision")
-
-        result = await run_in_threadpool(work)
-        text = scrub_notice_text(result["text"])
-        truncated = bool(result.get("truncated") or len(result["text"]) >= RECOGNIZED_CHAR_LIMIT)
-        # 识别返回在服务层被截到 4000 字；到顶就提醒老师核对最后一条，避免静默少题。
-        return {
-            "text": text,
-            "confidence": result["confidence"],
-            "truncated": truncated,
-            "warning": "识别内容已达 4000 字上限，可能不完整，请核对最后一条作业是否齐全" if truncated else "",
-        }
+        raise HTTPException(
+            403,
+            "原始作业截图可能包含其他学生、家长、成绩或联系方式等敏感信息，服务端无法在发送前完成脱敏核验，已禁止向外部视觉 AI 发送原图；请直接粘贴脱敏后的纯文本进行解析，或点击“直接手动录入”。",
+        )
 
     @router.post("/teacher/homework/parse")
     def parse(b: ParseBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
-        require_school_ai_for_notice(db, u)
+        sids = tuple(int(x) for x in (b.studentIds or []))
+        require_school_ai_for_notice(db, u, sids)
         if len(b.text) > MAX_NOTICE_CHARS:
             raise HTTPException(400, f"通知太长，请控制在 {MAX_NOTICE_CHARS} 字以内")
         text = scrub_notice_text(b.text)
         if not text:
             raise HTTPException(400, "请先粘贴作业通知文字")
-        raw = implementation._ai_call(db, u, "homework_parse", build_parse_prompt(text), timeout=60)
+        raw = implementation._ai_call(
+            db,
+            u,
+            "homework_parse",
+            build_parse_prompt(text),
+            timeout=60,
+            student_ids=tuple(int(x) for x in (b.studentIds or [])),
+        )
         try:
             parsed = clean_parse_result(implementation._ai_json(raw))
         except HTTPException:

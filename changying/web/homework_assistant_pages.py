@@ -225,23 +225,32 @@ function hwTarget(search){
 }
 function importView(body){
   var text=el('textarea',{placeholder:'把家长转发的作业通知文字粘贴到这里'}),msg=el('div'),editor=el('div');
-  var parseBtn=el('button',{class:'primary',text:'AI 解析'}),file=el('input',{type:'file',accept:'image/*',hidden:true});
-  var shot=el('button',{text:'上传通知截图',onclick:function(){file.click()}});
-  if(!CONFIG.visionEnabled)shot.style.display='none';
+  var parseBtn=el('button',{class:'primary',text:'AI 解析'});
+  var privacyHint=el('div',{class:'muted',text:'隐私保护提示：为防止微信群或作业通知截图包含其他学生、家长及联系方式，原图截图识别（OCR）已安全禁用；请粘贴脱敏后的纯文本进行「AI 解析」，或点击「直接手动录入」。'});
+  var scopeBox=el('div',{class:'muted',text:'正在加载班级学生范围…'}),scopeChecks=[];
+  function selectedScopeIds(){
+    return scopeChecks.filter(function(c){return c.checked}).map(function(c){return Number(c.value)});
+  }
+  api('/teacher/homework/students').then(function(list){
+    scopeBox.textContent='';
+    if(!list.length){scopeBox.appendChild(notice('error','当前暂无已绑定班级学生，请先建班加生或直接手动录入。'));return}
+    scopeBox.appendChild(el('div',{class:'muted',text:'2. 确认本次 AI 解析适用学生（仅向已授权学生开放）：'}));
+    var wrap=el('div',{class:'row'});
+    list.forEach(function(st){
+      var cb=el('input',{type:'checkbox',value:String(st.id),checked:true});
+      scopeChecks.push(cb);
+      wrap.appendChild(el('label',{class:'row'},cb,document.createTextNode(st.name+'（'+st.className+'）')));
+    });
+    scopeBox.appendChild(wrap);
+  }).catch(function(){scopeBox.textContent='请先手动录入或确认学生范围'});
   body.appendChild(el('div',{class:'card'},el('h2',{text:'1. 粘贴通知'}),
-    el('div',{class:'muted',text:'文字会发送给 AI 服务商用于整理成清单；手机号等会先被隐藏。'}),text,
-    el('div',{class:'row'},parseBtn,shot,file,el('button',{text:'直接手动录入',onclick:function(){drawEditor({id:0,groupLabel:'',items:[{seq:1,subject:'',content:'',page:'',requirement:''}]})}})),msg));
+    el('div',{class:'muted',text:'文字会发送给 AI 服务商用于整理成清单；手机号等会先被隐藏。'}),privacyHint,text,scopeBox,
+    el('div',{class:'row'},parseBtn,el('button',{text:'直接手动录入',onclick:function(){drawEditor({id:0,groupLabel:'',items:[{seq:1,subject:'',content:'',page:'',requirement:''}]})}})),msg));
   body.appendChild(editor);
-  file.addEventListener('change',function(){
-    var f=file.files&&file.files[0];if(!f)return;
-    msg.textContent='';msg.appendChild(notice('ok','正在识别截图…'));shot.disabled=true;
-    shrink(f,1800).then(function(blob){return api('/teacher/homework/parse-image',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}})})
-      .then(function(d){text.value=d.text;msg.textContent='';msg.appendChild(notice('ok','已识别，请检查文字，需要的话直接修改，再点“AI 解析”。'));if(d.truncated)msg.appendChild(notice('error','识别内容较长，可能未完整显示。请核对最后一条作业是否齐全，缺了就手动补上。'))})
-      .catch(function(e){msg.textContent='';msg.appendChild(notice('error',e.message))}).then(function(){shot.disabled=false;file.value=''});
-  });
   parseBtn.addEventListener('click',function(){
+    var sids=selectedScopeIds();
     msg.textContent='';parseBtn.disabled=true;msg.appendChild(notice('ok','AI 正在整理…'));
-    api('/teacher/homework/parse',{json:{text:text.value}}).then(function(n){msg.textContent='';drawEditor(n)})
+    api('/teacher/homework/parse',{json:{text:text.value,studentIds:sids}}).then(function(n){msg.textContent='';drawEditor(n)})
       .catch(function(e){msg.textContent='';msg.appendChild(notice('error',e.message))}).then(function(){parseBtn.disabled=false});
   });
   function drawEditor(n){

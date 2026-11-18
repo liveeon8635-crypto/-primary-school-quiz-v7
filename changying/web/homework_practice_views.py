@@ -121,7 +121,7 @@ def install_homework_practice_views(implementation: Any) -> APIRouter:
         groups = hp.build_groups(rows, b.counts, b.subjects)
         src = hp.sources(groups)
         try:
-            data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, hp.prompt(groups), timeout=90))
+            data = implementation._ai_json(implementation._ai_call(db, u, AI_FEATURE, hp.prompt(groups), timeout=90, student_ids=(int(sid),)))
             returned = {str(g.get("key")): g for g in (data.get("groups") or []) if isinstance(g, dict)} if isinstance(data, dict) else {}
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f"生成失败：{getattr(e, 'detail', '') or 'AI 服务不可用'}。请稍后重试")

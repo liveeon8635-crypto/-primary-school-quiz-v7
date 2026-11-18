@@ -560,7 +560,7 @@ def test_product_assistant_image_validation_and_ai_handoff(monkeypatch):
         _decode_assistant_image(body)
 
     received = {}
-    def fake_ai(db, user, feature, prompt, images=None, timeout=90):
+    def fake_ai(db, user, feature, prompt, images=None, timeout=90, **_kwargs):
         received.update(feature=feature, prompt=prompt, images=images)
         return "图片里是测试图。"
     monkeypatch.setattr(implementation, "_ai_call", fake_ai)

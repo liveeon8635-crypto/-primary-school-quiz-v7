@@ -300,6 +300,8 @@ def report_document(report):
         c = facts['counts']
         _paragraph(body, '应做 '+str(c['total'])+' 题，已提交 '+str(c['submitted'])+' 题，未提交 '+str(c['unsubmitted'])+' 题；正确 '+str(c['correct'])
                    +' 题，部分正确 '+str(c['partial'])+' 题，需订正 '+str(c['revise'])+' 题，待批改 '+str(c['pending'])+' 题。', 'TeacherNote')
+        if (facts.get('weekWork') or {}).get('unclassifiedCount'):
+            _paragraph(body, '部分历史作业来源待核实，本周普通作业统计不完整，请联系老师确认。', 'TeacherNote')
         for key, title in report['titles']:
             if section.get(key):
                 _paragraph(body, title, keep=True, before=80, after=40)
