@@ -1142,12 +1142,27 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(400, f"课次需要在 1–{LESSONS} 之间")
         filename = (file.filename or "").strip() if file is not None else ""
         extension = ("." + filename.rsplit(".", 1)[-1]).lower() if "." in filename else ""
-        if extension == ".json":
-            raw = file.file.read(MAX_FILE_BYTES + 1)
-            if len(raw) > MAX_FILE_BYTES:
-                raise HTTPException(413, "整包文件不能超过 10MB，请压缩图片后重试")
+        # Read once, then rewind for the ordinary document extractor. The structured
+        # bundle is local-only and must not fall through to the external-AI import path
+        # just because a downloaded file lost its .json suffix.
+        raw = file.file.read(MAX_FILE_BYTES + 1) if file is not None else b""
+        if len(raw) > MAX_FILE_BYTES:
+            raise HTTPException(413, "整包文件不能超过 10MB，请压缩图片后重试")
+        if file is not None:
+            file.file.seek(0)
+
+        bundle_payload = None
+        if raw.lstrip(b"\\xef\\xbb\\xbf \\t\\r\\n").startswith(b"{"):
             try:
-                payload = json.loads(raw.decode("utf-8-sig"))
+                candidate = json.loads(raw.decode("utf-8-sig"))
+                if isinstance(candidate, dict) and "schemaVersion" in candidate and "items" in candidate:
+                    bundle_payload = candidate
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                pass
+
+        if extension == ".json" or bundle_payload is not None:
+            try:
+                payload = bundle_payload if bundle_payload is not None else json.loads(raw.decode("utf-8-sig"))
                 body = StructuredImportBody.model_validate(payload)
             except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as exc:
                 raise HTTPException(422, "JSON 整包格式不正确，请使用网站导出的单文件整包") from exc
