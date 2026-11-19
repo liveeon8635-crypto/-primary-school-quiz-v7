@@ -124,25 +124,33 @@ def stage_pages(lesson: Any, stage_no: int) -> list[str]:
     return lesson_deck({"ppt_json": lesson.ppt_json, "examples_json": lesson.examples_json, "reading_plan": lesson.reading_plan}, stage_no)
 
 
-def practice_courseware_pages(implementation: Any, db: Any, lesson: Any, teacher_id: int) -> list[str]:
-    """Approved practice in classroom order; duplicate example questions are excluded."""
+def practice_courseware_sources(implementation: Any, db: Any, lesson: Any, teacher_id: int) -> list[tuple[str, str]]:
+    """Approved practice stems plus source-answer fingerprints, in classroom order."""
     from changying.services.lesson_written import template_meta, written_templates
     from changying.web.weekend_plan_views import lesson_worked_examples
-    from changying.services.weekend_answers import _duplicates_example, choice_courseware_binding
+    from changying.services.weekend_answers import (
+        _duplicates_example, choice_courseware_binding, courseware_answer_binding,
+    )
     from changying.web.weekend_written import register_written_tables
     examples = [item['stem'] for item in lesson_worked_examples(lesson) if item['stem']]
     TQ = implementation.TeachingQuestion
     choices = db.scalars(select(TQ).where(TQ.school_id == lesson.school_id, TQ.lesson_id == lesson.id,
                                           TQ.active.is_(True)).order_by(TQ.id).limit(30)).all()
-    pages = [choice_courseware_binding(q.stem, json.loads(q.options_json or '[]'))
-             for q in choices if not _duplicates_example(q.stem, examples)]
+    sources = [
+        (choice_courseware_binding(q.stem, json.loads(q.options_json or '[]')),
+         courseware_answer_binding('choice', int(q.correct_index), q.explanation))
+        for q in choices if not _duplicates_example(q.stem, examples)
+    ]
     table = register_written_tables(implementation)['questions']
     for q in written_templates(db, table, lesson.school_id, teacher_id, lesson.id):
         text = str(q.stem).split('\n\n')[-1].strip()
         if template_meta(q).get('approved') and not _duplicates_example(text, examples):
-            pages.append(text)
-    return pages
+            sources.append((text, courseware_answer_binding('written', q.reference)))
+    return sources
 
+
+def practice_courseware_pages(implementation: Any, db: Any, lesson: Any, teacher_id: int) -> list[str]:
+    return [stem for stem, _ in practice_courseware_sources(implementation, db, lesson, teacher_id)]
 
 def _short(text: str, limit: int = 40) -> str:
     line = " ".join(str(text or "").split())
@@ -873,14 +881,17 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
     approved = [i for i in items_of(c) if i.get("approved") is not None and int(i["stage"]) == stage]
     if not approved:
         return None, ""
-    if stage == 4 and any(item.get('page') is not None for item in approved):
-        from changying.services.weekend_answers import practice_deck, practice_items
+    if stage == 4:
+        # Legacy whole-stage slides and new per-question slides share the release gate.
+        from changying.services.weekend_answers import practice_deck
         deck, _, index, _ = practice_deck(implementation, db, row)
         if not deck:
             return None, "本环节暂无可展示的练习。"
-        current = deck[index]
-        if not current.get('published'):
+        if not deck[index].get('published'):
             return None, "公布本题答案后才能展示讲解课件。"
+    if stage == 4 and any(item.get('page') is not None for item in approved):
+        from changying.services.weekend_answers import practice_items
+        current = deck[index]
         questions = practice_items(implementation, db, row)
         qindex = int(current['question']) - 1
         if qindex < 0 or qindex >= len(questions):
@@ -890,6 +901,8 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
         if not stem or sum(str(q.get('bindingStem') or '').strip() == stem for q in questions) != 1 or len(matches) != 1:
             return None, "本题没有唯一匹配的课件，请教师核对。"
         item = matches[0]
+        if item.get('approvedAnswerBinding') != questions[qindex].get('answerBinding'):
+            return None, "本题参考答案或解析已变化，请教师重新审核对应课件。"
         params = _repair_courseware_visual(item['approved'], _courseware_visual_text(item, item['approved'], item.get('pageText') or ''))
         key = f"{row.id}:{stage}:{item.get('page')}"
         view = cw.clean_view(item['kind'], params, json.loads(c.live_json or '{}').get(key))
@@ -1130,6 +1143,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     def payload(db: Any, lesson: Any, teacher_id: int) -> dict[str, Any]:
         items = []
         page_cache = {n: pages_for(db, lesson, n, teacher_id) for n in (2, 3, 4)}
+        stage4_sources = practice_courseware_sources(implementation, db, lesson, teacher_id)
         for i in items_of(row_for(db, lesson)):
             stage = int(i.get("stage") or 0)
             pages = page_cache.get(stage, [])
@@ -1143,6 +1157,9 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             needs_sync = bool(i.get("reimportReviewRequired"))
             if page_index is not None:
                 needs_sync = needs_sync or not 0 <= int(page_index) < len(pages) or i.get("pageText", "") != page_text
+            if stage == 4 and page_index is not None and i.get('approved') is not None:
+                signatures = [signature for stem, signature in stage4_sources if stem == i.get('pageText')]
+                needs_sync = needs_sync or len(signatures) != 1 or i.get('approvedAnswerBinding') != signatures[0]
             items.append({**i, "needsSync": needs_sync,
                           "kindLabel": cw.KIND_LABEL.get(i["kind"], i["kind"]),
                           "writtenTaskPreview": task(i, i["params"])})
@@ -1161,6 +1178,10 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                written_task: bool | None, page_text: str) -> None:
         items = items_of(row_for(db, lesson, lock=True))
         old = find(items, stage, page)
+        if stage == 4 and written_task:
+            raise HTTPException(400, '随堂练习已有原题，不需要重复生成学生作答题')
+        if old is not None and stage == 4 and old.get('pageText') != page_text:
+            raise HTTPException(409, '练习顺序或题干已变化，不能覆盖旧位置；请先人工核对')
         if old is None:
             items.append({"stage": stage, "page": page, "kind": kind, "status": "draft", "params": params, "approved": None,
                           "writtenTask": bool(written_task), "templateId": None, "pageText": page_text})
@@ -1284,6 +1305,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     def generate(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Preparation only: for one page, AI picks a reviewed template and fills it; validated, saved as a draft."""
         lesson = my_lesson(db, u, lid)
+        if b.stageNo == 4:
+            raise HTTPException(400, '随堂练习只使用预制包或手动填写，不调用外部 AI 生成')
         if b.stageNo == 3 and source_page_mismatch(lesson)[1]:
             raise HTTPException(409, "导入原题数量与例题课件页数不符，已暂停生成；请检查教案题号识别。")
         page = checked_page(db, lesson, b.stageNo, b.page, u.id)
@@ -1411,6 +1434,15 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         current_text = pages[page] if page is not None else ""
         if item.get("pageText", "") != current_text:
             raise HTTPException(409, "教案原题已变化，旧课件不可直接审核；请重新生成或保存与本页一致的讲解。")
+        answer_binding = None
+        if b.stageNo == 4:
+            if item.get('writtenTask'):
+                raise HTTPException(400, '随堂练习课件不能重复生成学生作答题')
+            signatures = [signature for stem, signature in practice_courseware_sources(implementation, db, lesson, u.id)
+                          if stem == current_text]
+            if len(signatures) != 1:
+                raise HTTPException(409, '练习题干已变化或不唯一，请教师核对后再审核')
+            answer_binding = signatures[0]
         try:
             params = cw.clean(item["kind"], item["params"], lesson.reading_plan or "")
         except ValueError as e:
@@ -1468,6 +1500,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             drop_template(db, u, lesson, template_id)
             template_id = None
         item.update(status="approved", params=params, approved=params, approvedPageText=current_text, templateId=template_id)
+        if b.stageNo == 4:
+            item['approvedAnswerBinding'] = answer_binding
         item.pop("reimportReviewRequired", None)
         write(db, u, lesson, items, reset_pages=[(b.stageNo, page)])
         implementation.audit(db, u, "weekend.courseware.approve", f"lesson={lid}:stage={b.stageNo}:page={page}:template={template_id}")
@@ -1516,7 +1550,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         tid = db.execute(insert(qt).values(school_id=u.school_id, grade=lesson_grade(db, lesson), subject=lesson.subject,
                                            name=name, kind=item["kind"], stage_no=b.stageNo, page=page,
                                            params_json=json.dumps(params, ensure_ascii=False),
-                                           written_task=bool(item.get("writtenTask")), source_lesson_id=lesson.id,
+                                           written_task=bool(item.get("writtenTask")) if b.stageNo != 4 else False, source_lesson_id=lesson.id,
                                            created_by=u.id, created_at=datetime.utcnow())).inserted_primary_key[0]
         implementation.audit(db, u, "weekend.courseware.save_template", f"lesson={lid}:stage={b.stageNo}:page={page}:template={tid}")
         db.commit()
@@ -1539,7 +1573,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             raise HTTPException(400, f"这个模板套用到本节课不合适（{e}），可以改用生成或手动填写")
         pages = pages_for(db, lesson, b.stageNo, u.id)
         page_text = pages[page] if page is not None else ""
-        upsert(db, u, lesson, b.stageNo, page, row.kind, params, bool(row.written_task), page_text)
+        upsert(db, u, lesson, b.stageNo, page, row.kind, params,
+               False if b.stageNo == 4 else bool(row.written_task), page_text)
         implementation.audit(db, u, "weekend.courseware.from_template", f"lesson={lid}:stage={b.stageNo}:page={page}:template={row.id}")
         db.commit()
         return payload(db, lesson, u.id)
