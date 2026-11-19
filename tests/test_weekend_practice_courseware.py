@@ -18,7 +18,7 @@ def test_practice_courseware_is_bound_to_question_and_waits_for_release(tmp_path
     helpers.run_isolated(tmp_path,helpers.COMMON+r'''
 from sqlalchemy import update
 from changying.web.weekend_written import register_written_tables
-from changying.web.weekend_courseware import register_courseware_template_table
+from changying.web.weekend_courseware import register_courseware_template_table, register_courseware_table
 from changying.services.lesson_written import written_templates,template_meta
 MD="""# 第12课：面积
 ## 本节目标
@@ -93,5 +93,31 @@ with TestClient(app) as client:
   db.execute(update(t).where(t.c.id==snapshots[1].id).values(reference='另一个评分答案'))
   db.commit()
  assert client.get(base+'/board',headers=th).json().get('courseware') is None
+ # A legacy stage-wide slide may include answers to all questions.
+ # Hide it even after the *first* question is published.
+ with legacy.SessionLocal() as db:
+  first=written_templates(db,t,school,tid,lid)[0]
+  db.execute(update(t).where(t.c.id==first.id).values(hints_json=json.dumps({**template_meta(first),'approved':True},ensure_ascii=False)))
+  courseware_table=register_courseware_table(legacy)
+  cwrow=db.execute(select(courseware_table).where(courseware_table.c.lesson_id==lid)).first()
+  assert cwrow is not None
+  old_items=json.loads(cwrow.params_json)['items']
+  legacy_item=dict(next(x for x in old_items if x['stage']==4 and x['page']==0))
+  legacy_item.update(page=None,pageText='',approvedPageText='')
+  legacy_item.pop('approvedAnswerBinding',None)
+  db.execute(update(courseware_table).where(courseware_table.c.id==cwrow.id).values(
+    params_json=json.dumps({'version':2,'items':[legacy_item]},ensure_ascii=False),
+    approved_json=json.dumps([[4,None]]),live_json='{}'))
+  db.commit()
+ second=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid})
+ assert second.status_code==200,second.text
+ base2=f"/teacher/weekend/sessions/{second.json()['id']}"
+ assert client.post(base2+'/start',headers=th).status_code==200
+ assert client.post(base2+'/goto',headers=th,json={'stage':4}).status_code==200
+ assert client.get(base2+'/board',headers=th).json().get('courseware') is None
+ assert client.post(base2+'/publish-answers',headers=th,json={'question':1}).status_code==200
+ assert client.get(base2+'/board',headers=th).json().get('courseware') is None
+ assert client.post(base2+'/publish-answers',headers=th,json={'question':2}).status_code==200
+ assert client.get(base2+'/board',headers=th).json().get('courseware') is not None
 print('OK')
 ''',{'PYTHONUTF8':'1','PYTHONIOENCODING':'utf-8'})
