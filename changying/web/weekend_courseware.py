@@ -1442,11 +1442,12 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         if b.stageNo == 4:
             if item.get('writtenTask'):
                 raise HTTPException(400, '随堂练习课件不能重复生成学生作答题')
-            signatures = [signature for stem, signature in practice_courseware_sources(implementation, db, lesson, u.id)
-                          if stem == current_text]
-            if len(signatures) != 1:
-                raise HTTPException(409, '练习题干已变化或不唯一，请教师核对后再审核')
-            answer_binding = signatures[0]
+            if page is not None:
+                signatures = [signature for stem, signature in practice_courseware_sources(implementation, db, lesson, u.id)
+                              if stem == current_text]
+                if len(signatures) != 1:
+                    raise HTTPException(409, '练习题干已变化或不唯一，请教师核对后再审核')
+                answer_binding = signatures[0]
         try:
             params = cw.clean(item["kind"], item["params"], lesson.reading_plan or "")
         except ValueError as e:
