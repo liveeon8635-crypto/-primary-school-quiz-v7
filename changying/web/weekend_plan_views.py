@@ -1142,12 +1142,26 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(400, f"课次需要在 1–{LESSONS} 之间")
         filename = (file.filename or "").strip() if file is not None else ""
         extension = ("." + filename.rsplit(".", 1)[-1]).lower() if "." in filename else ""
-        if extension == ".json":
-            raw = file.file.read(MAX_FILE_BYTES + 1)
-            if len(raw) > MAX_FILE_BYTES:
-                raise HTTPException(413, "整包文件不能超过 10MB，请压缩图片后重试")
+        # Read once, then rewind for the ordinary document extractor. The structured
+        # bundle is local-only and must not fall through to the external-AI import path
+        # just because a downloaded file lost its .json suffix.
+        raw = file.file.read(MAX_FILE_BYTES + 1) if file is not None else b""
+        if len(raw) > MAX_FILE_BYTES:
+            raise HTTPException(413, "文件不能超过 10MB，请压缩图片或拆分后重试")
+        if file is not None:
+            file.file.seek(0)
+
+        bundle_payload = None
+        try:
+            candidate = json.loads(raw.decode("utf-8-sig"))
+            if isinstance(candidate, dict) and "schemaVersion" in candidate and "items" in candidate:
+                bundle_payload = candidate
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            pass
+
+        if extension == ".json" or bundle_payload is not None:
             try:
-                payload = json.loads(raw.decode("utf-8-sig"))
+                payload = bundle_payload if bundle_payload is not None else json.loads(raw.decode("utf-8-sig"))
                 body = StructuredImportBody.model_validate(payload)
             except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as exc:
                 raise HTTPException(422, "JSON 整包格式不正确，请使用网站导出的单文件整包") from exc
@@ -1167,7 +1181,42 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                            f"{item.get('coursewarePagesFound', 0)} 页互动课件草稿。"
                            "题目与课件仍需分别逐题审核。",
             }
-        return _apply_lesson_extract(db, u, subject, lessonNo, force, _extract_upload(file, text))
+        # Keep the established AI-assisted extraction path when its feature gate allows it.
+        # If the guardian-consent guard explicitly denies this unregistered feature, preserve
+        # the source locally as a draft instead of sending it to an external service.
+        extracted = _extract_upload(file, text)
+        try:
+            return _apply_lesson_extract(db, u, subject, lessonNo, force, extracted)
+        except HTTPException as exc:
+            if (
+                exc.status_code != 403
+                or str(exc.detail).strip()
+                != "未登记或未证明无学生数据的 AI 功能，默认拒绝向外部 AI 发送数据"
+            ):
+                raise
+        plan = {
+            "title": f"{subject}第{lessonNo}课",
+            "coreTarget": "",
+            "teacherPlan": extracted["text"],
+            "ppt": [],
+            "examples": [],
+            "closureTraining": "",
+            "questions": [],
+            "writtenQuestions": [],
+        }
+        result = _apply_lesson_plan(
+            db, u, subject, lessonNo, plan, extracted["text"],
+            slides_hint=extracted.get("slides") or None,
+            use_literal=False,
+            overwrite=force == "1",
+        )
+        result["importMode"] = "local"
+        result["message"] = (
+            "AI 功能当前未获准发送这份教案，原文已在本地保存为草稿。"
+            "系统没有自动拆分习题或匹配图片；请在“审改”中核对并补充，"
+            "或上传结构化 JSON 整包。"
+        )
+        return result
 
     @router.post("/teacher/weekend/lessons/{lid}/practice/import")
     def import_practice(lid: int, text: str = Form(""), file: UploadFile | None = File(None),
