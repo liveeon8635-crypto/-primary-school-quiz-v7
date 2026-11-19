@@ -915,12 +915,18 @@ function cwPlan(box,lessonId,refresh){
     var preparedImport=el('button',{text:'预检并导入课件包',onclick:function(){
       var file=preparedFile.files&&preparedFile.files[0];
       if(!file){msg.textContent='请选择预制课件 JSON 文件';return}
-      if(file.size>3000000){msg.textContent='课件包不能超过3 MB';return}
       var reader=new FileReader();reader.onerror=function(){msg.textContent='无法读取课件包'};
       reader.onload=function(){
-        var bundle;try{bundle=JSON.parse(String(reader.result||''))}catch(e){msg.textContent='课件包不是有效 JSON';return}
+        var parsed,bundle;try{parsed=JSON.parse(String(reader.result||''))}catch(e){msg.textContent='课件包不是有效 JSON';return}
+        if(parsed&&Array.isArray(parsed.items)&&parsed.courseware){
+          msg.className='notice warn';
+          msg.textContent='检测到“教案+习题+课件”完整整包。请回到本次课列表，点“导入教案/整包”；这里只用于补传课件，不会导入教案和习题。';
+          return;
+        }
+        bundle=parsed;
         if(bundle&&bundle.courseware)bundle=bundle.courseware;
         if(!bundle||!Array.isArray(bundle.pages)){msg.textContent='课件包缺少 pages 列表';return}
+        if(JSON.stringify(bundle.pages).length>3000000){msg.textContent='课件内容不能超过3 MB，请压缩图片或分批导入';return}
         var url='/teacher/weekend/lessons/'+lessonId+'/courseware/prepared-import';
         api(url,{json:{dryRun:true,replaceExisting:replacePrepared.checked,pages:bundle.pages}}).then(function(preview){
           var warnings=(preview.pages||[]).filter(function(p){return !!p.notice}).length;
@@ -933,6 +939,7 @@ function cwPlan(box,lessonId,refresh){
     if(stageNo==='4')actionRow.appendChild(el('span',{class:'muted',text:'随堂练习课件请导入预制包或手动填写，此环节不调用 AI。'}));
     else {actionRow.appendChild(all);actionRow.appendChild(el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})));}
     actionRow.appendChild(approveAll);box.appendChild(actionRow);
+    box.appendChild(el('div',{class:'muted',text:'这里只用于补传课件包。若文件同时包含教案、习题和课件，请退出审改，在本次课列表点“导入教案/整包”，一次完成导入。'}));
     box.appendChild(el('div',{class:'row'},preparedFile,el('label',{},replacePrepared,el('span',{text:'替换对应页并保留上一版'})),preparedImport));
     box.appendChild(msg);
     if(stageNo==='3'&&d.qualityAudit){
