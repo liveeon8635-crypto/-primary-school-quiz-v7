@@ -420,6 +420,8 @@ with TestClient(app) as client:
     qid_text = client.post(base + "/questions", headers=th, json={"stem": "12-5=（）", "reference": "7"}).json()["id"]
     client.post(f"/teacher/weekend/sessions/{sid}/start", headers=th)
     client.post(f"/teacher/weekend/sessions/{sid}/goto", headers=th,json={"stage": 4})
+    assert client.post(f'/teacher/weekend/sessions/{sid}'+'/practice-question', headers=th, json={'question':1}).status_code == 200
+    assert client.post(f'/teacher/weekend/sessions/{sid}'+'/practice-question', headers=th, json={'question':2}).status_code == 200
 
     # 1) Typed answer 3999 / 4000 / 4001 boundary on /student/weekend/sessions/{sid}/written/{qid}
     r_4001 = client.post(f"/student/weekend/sessions/{sid}/written/{qid_text}", headers=sh, data={"text": "7" * 4001})

@@ -1577,7 +1577,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         # Lock before checking evidence. Student submissions use the same session lock.
         rows = db.execute(select(sessions).where(sessions.c.lesson_id == lid)
                           .order_by(sessions.c.id).with_for_update()).all()
-        disposable = {"weekend_stage_log", "weekend_slide_state", "weekend_class_rosters", "weekend_written_questions", "weekend_session_questions"}
+        disposable = {"weekend_stage_log", "weekend_slide_state", "weekend_class_rosters", "weekend_written_questions", "weekend_session_questions", "weekend_open_questions"}
         md = implementation.Base.metadata
         for row in rows:
             if row.school_id != u.school_id or row.teacher_id != u.id:
@@ -1628,7 +1628,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 snapshot["coursewareLive"] = {"id": cw.id, "removed": removed}
                 db.execute(update(courseware).where(courseware.c.id == cw.id).values(
                     live_json=json.dumps({key: value for key, value in live.items() if key not in removed}, ensure_ascii=False)))
-        for name in ("weekend_stage_log", "weekend_slide_state", "weekend_class_rosters", "weekend_written_questions", "weekend_session_questions"):
+        for name in ("weekend_stage_log", "weekend_slide_state", "weekend_class_rosters", "weekend_written_questions", "weekend_session_questions", "weekend_open_questions"):
             table = implementation.Base.metadata.tables.get(name)
             if table is not None:
                 snapshot["related"][name] = [dict(r._mapping) for r in db.execute(select(table).where(table.c.session_id.in_(ids)))]

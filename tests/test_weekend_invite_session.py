@@ -14,6 +14,7 @@ from sqlalchemy import insert
 with TestClient(app) as client:
     th,sh,student,school,lid,qid,wid,sid,base,body=prepare(client)
     client.post(base+'/start',headers=th);client.post(base+'/goto',headers=th,json={'stage':4})
+    assert client.post(base+'/practice-question', headers=th, json={'question':2}).status_code == 200
     r=client.post('/student/weekend/sessions/'+str(sid)+'/written/'+str(wid),headers=sh,data={'text':'旧语文答案'})
     assert r.status_code==200,r.text
     assert client.post(base+'/explain',headers=th,json={'tutorId':student,'questionId':wid,'questionType':'written'}).status_code==200
@@ -38,6 +39,7 @@ with TestClient(app) as client:
     assert client.get('/student/weekend/followup',headers=sh).json()['active'] is False
     assert client.post('/student/weekend/followup',headers=sh,json={'peerHelpId':pid,'selected':0}).status_code==404
     client.post(nb+'/goto',headers=th,json={'stage':4})
+    assert client.post(nb+'/practice-question', headers=th, json={'question':1}).status_code == 200
     client.post('/student/weekend/sessions/'+str(new)+'/written/'+str(nw),headers=sh,data={'text':'数学本人答案'})
     assert client.post(nb+'/explain',headers=th,json={'tutorId':student,'questionId':nw,'questionType':'written'}).status_code==200
     data=client.get('/student/weekend/explain?sessionId='+str(new),headers=sh).json()

@@ -67,6 +67,10 @@ with TestClient(app) as client:
     base=f'/teacher/weekend/sessions/{session}'
     assert len(client.get(base+'/written',headers=th).json()['questions'])==9
     client.post(base+'/start',headers=th);client.post(base+'/goto',headers=th,json={'stage':4})
+    # This scenario explicitly opens its exercises before testing student work.
+    for ordinal in range(1, client.get(base, headers=th).json()['answerRelease']['total'] + 1):
+        assert client.post(base+'/practice-question', headers=th, json={'question':ordinal}).status_code == 200
+    assert client.post(base+'/practice-question', headers=th, json={'question':1}).status_code == 200
     page=client.get(f'/student/weekend/sessions/{session}/written',headers=sh)
     assert page.status_code==200,page.text
     assert len(page.json()['questions'])==9 and page.json()['canSubmit']

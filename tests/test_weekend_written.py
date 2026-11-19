@@ -41,6 +41,7 @@ with TestClient(app) as client:
     assert client.get(student, headers=sh).json()['questions'] == []
     assert client.post(url, headers=sh, data={'text':'答案'}).status_code == 409
     client.post(base+'/start', headers=th);client.post(base+'/goto', headers=th, json={'stage':4})
+    assert client.post(base+'/practice-question', headers=th, json={'question':1}).status_code == 200
     assert client.post(base+'/written/questions', headers=th, json={'stem':'late'}).status_code == 409
     page = client.get('/v1/weekend-practice').text
     assert 'writtenStudent(writtenBox)' in page and 'function cropPhoto' in page and '重新提交答案' in page

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from changying.services.weekend_answers import answers_published, practice_release
+from changying.services.weekend_answers import answers_published, practice_release, question_is_open
 from changying.services.lesson_written import numbered_student_stem
 from changying.services.weekend_submissions import submission_attempts, record_submission, require_unsettled
 
@@ -168,7 +168,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
                 "answersPublished": all_released,
                 "questions": [{"id": q.id, "answersPublished": q.id in released, "canSubmit": row.status == "running" and row.current_stage == 4 and q.id not in released, "stem": numbered_student_stem(source, q.stem), "hasHints": bool(json.loads(q.hints_json)), "hintUsed": used.get(q.id, 0),
                                "hintTexts": json.loads(q.hints_json)[:used.get(q.id, 0)],
-                               "submission": ({**submission_dict(ans[q.id]), 'attempts':submission_attempts(implementation,db,u,sid,'written',q.id,True), **({} if q.id in released else {"result": "pending", "comment": ""})}) if q.id in ans else None} for q in question_rows(db, row)]}
+                               "submission": ({**submission_dict(ans[q.id]), 'attempts':submission_attempts(implementation,db,u,sid,'written',q.id,True), **({} if q.id in released else {"result": "pending", "comment": ""})}) if q.id in ans else None} for q in question_rows(db, row) if question_is_open(implementation, db, row, 'written', q.id)]}
 
     @router.post("/student/weekend/sessions/{sid}/written/{qid}/hint")
     def student_hint(sid: int, qid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -176,7 +176,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         if row.status != "running" or row.current_stage != 4 or answers_published(implementation, db, row, qid, "written"):
             raise HTTPException(409, "现在不是随堂练习时间")
         q = next((q for q in question_rows(db, row) if q.id == qid), None)
-        if q is None:
+        if q is None or not question_is_open(implementation, db, row, 'written', qid):
             raise HTTPException(404, "没有找到这道题")
         answered = db.execute(select(submissions.c.id).where(submissions.c.session_id == sid,
             submissions.c.student_id == u.id, submissions.c.question_id == qid)).first()
@@ -203,7 +203,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         row = student_session(db, u, sid)
         if row.status != "running" or row.current_stage != 4 or answers_published(implementation, db, row, qid, "written"):
             raise HTTPException(409, "现在不是随堂练习时间")
-        if not any(q.id == qid for q in question_rows(db, row)):
+        if not any(q.id == qid for q in question_rows(db, row)) or not question_is_open(implementation, db, row, 'written', qid):
             raise HTTPException(404, "没有找到这道题")
         require_unsettled(implementation, db, sid)
         text = text.strip()

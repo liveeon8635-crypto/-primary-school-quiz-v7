@@ -16,7 +16,7 @@ on the spot and they are stored as "auto" (visible to students, flagged for teac
 
 from __future__ import annotations
 
-from changying.services.weekend_answers import answers_published, practice_release
+from changying.services.weekend_answers import answers_published, practice_release, question_is_open
 from changying.services.lesson_written import numbered_student_stem
 from changying.services.weekend_submissions import submission_attempts, record_submission, require_unsettled
 
@@ -298,6 +298,8 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         published = bool(release_items) and release_count == len(release_items)
         qs = []
         for q in lesson_questions(db, int(u.school_id), int(row.lesson_id), int(row.id)):
+            if not question_is_open(implementation, db, row, 'choice', q.id):
+                continue
             a = mine.get(q.id)
             item = {"id": q.id, "stem": numbered_student_stem(source, q.stem), "options": options(q), "figure": figure_of(q), "answersPublished": q.id in released_choices, "canSubmit": q.id not in released_choices, "hintUsed": used.get(q.id, 0), "levelNames": level_names(q.subject)}
             if used.get(q.id):
@@ -313,7 +315,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         need(u, "student")
         row = student_session(db, u, b.sessionId)
         q = db.get(TQ, b.questionId)
-        if q is None or int(q.school_id) != int(u.school_id) or int(q.lesson_id or 0) != int(row.lesson_id):
+        if q is None or int(q.school_id) != int(u.school_id) or int(q.lesson_id or 0) != int(row.lesson_id) or not question_is_open(implementation, db, row, 'choice', q.id):
             raise HTTPException(404, "没有找到这道题")
         if answers_published(implementation, db, row, q.id):
             raise HTTPException(409, "老师已公布本题答案，停止提交")
@@ -341,7 +343,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         need(u, "student")
         row = student_session(db, u, b.sessionId)
         q = db.get(TQ, b.questionId)
-        if q is None or int(q.school_id) != int(u.school_id) or int(q.lesson_id or 0) != int(row.lesson_id):
+        if q is None or int(q.school_id) != int(u.school_id) or int(q.lesson_id or 0) != int(row.lesson_id) or not question_is_open(implementation, db, row, 'choice', q.id):
             raise HTTPException(404, "没有找到这道题")
         if answers_published(implementation, db, row, q.id):
             raise HTTPException(409, "老师已公布本题答案，停止提交")

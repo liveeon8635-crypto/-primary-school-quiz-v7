@@ -23,6 +23,8 @@ with TestClient(app) as client:
         db.execute(update(rt).where(rt.c.session_id==sid).values(members_json=json.dumps(members)));db.commit()
     oh={'Authorization':'Bearer '+login_and_change(client,'review_other','x','Other1234')}
     client.post(base+'/start',headers=th);client.post(base+'/goto',headers=th,json={'stage':4})
+    assert client.post(base+'/practice-question', headers=th, json={'question':1}).status_code == 200
+    assert client.post(base+'/practice-question', headers=th, json={'question':2}).status_code == 200
     url='/student/weekend/sessions/'+str(sid)+'/written/'+str(wid)
     first=client.post(url,headers=sh,data={'text':'甲第一次'}).json()
     assert first['attempts']==1 and first['submission']['questionId']==wid

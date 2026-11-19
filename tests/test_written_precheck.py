@@ -86,6 +86,8 @@ with TestClient(app) as client:
     q2=client.post(base+'/questions',headers=th,json={'stem':'12-5=（）','reference':'7'}).json()['id']
     client.post(f'/teacher/weekend/sessions/{s}/start',headers=th)
     client.post(f'/teacher/weekend/sessions/{s}/goto',headers=th,json={'stage':4})
+    assert client.post(f'/teacher/weekend/sessions/{s}'+'/practice-question', headers=th, json={'question':1}).status_code == 200
+    assert client.post(f'/teacher/weekend/sessions/{s}'+'/practice-question', headers=th, json={'question':2}).status_code == 200
     # A single-connection pool reproduces the production pressure deterministically.
     # Upload + teacher retry + OCR must release their read transactions before waiting.
     from sqlalchemy import create_engine

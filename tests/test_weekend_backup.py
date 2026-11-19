@@ -186,6 +186,8 @@ def test_paper_never_overwrites_online_answers_stale_packs_or_other_teachers(tmp
 with TestClient(app) as client:
     th,sh,student,school,lid,qid,wid,sid,base,body=prepare(client)
     client.post(base+'/start',headers=th);client.post(base+'/goto',headers=th,json={'stage':4})
+    assert client.post(base+'/practice-question', headers=th, json={'question':1}).status_code == 200
+    assert client.post(base+'/practice-question', headers=th, json={'question':2}).status_code == 200
     online=client.post('/student/weekend/answer',headers=sh,json={'sessionId':sid,'questionId':qid,'selected':0})
     assert online.status_code==200,online.text
     assert client.post(base+'/backup-record',headers=th,json=body).status_code==409

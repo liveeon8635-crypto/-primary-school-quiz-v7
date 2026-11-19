@@ -7,9 +7,70 @@ or paging never increases the released prefix.
 import hashlib
 import json
 import re
-from sqlalchemy import select
+from sqlalchemy import insert, select, update
 
 from changying.services.weekend_question_gen import question_key
+
+
+def _gate_table(implementation):
+    return implementation.Base.metadata.tables['weekend_open_questions']
+
+
+def _read_gate(db, table, session):
+    return db.execute(select(table.c.opened_question_ids).where(table.c.session_id == session.id,
+        table.c.school_id == session.school_id)).scalar_one_or_none()
+
+
+def _insert_gate_if_missing(db, table, session):
+    """Create the gate row once, even when two requests create it at the same time."""
+    from sqlalchemy.dialects.postgresql import insert as postgres_insert
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+    dialect = db.get_bind().dialect.name
+    values = {"session_id": session.id, "school_id": session.school_id, "opened_question_ids": "[]"}
+    if dialect == "postgresql":
+        db.execute(postgres_insert(table).values(**values).on_conflict_do_nothing(index_elements=["session_id"]))
+    elif dialect == "sqlite":
+        db.execute(sqlite_insert(table).values(**values).on_conflict_do_nothing(index_elements=["session_id"]))
+    else:  # Unknown dialect: the caller already holds the classroom row lock.
+        db.execute(insert(table).values(**values))
+
+
+def open_practice_question(implementation, db, session, ordinal):
+    """Open one practice question and never drop a question another request opened.
+
+    Two requests can read the same released list at once (the teacher taps twice,
+    or two devices drive one classroom). Writing the list back blind made the
+    later write erase the earlier question, so every write names the value it
+    read and retries when somebody else moved the row first.
+    """
+    items = practice_items(implementation, db, session)
+    if not 1 <= ordinal <= len(items):
+        return
+    item = items[ordinal - 1]
+    key = f"{item['kind']}:{item['id']}"
+    table = _gate_table(implementation)
+    _insert_gate_if_missing(db, table, session)
+    for _attempt in range(8):
+        current = _read_gate(db, table, session)
+        opened = json.loads(current) if current else []
+        if key in opened:
+            return
+        opened.append(key)
+        changed = db.execute(update(table).where(table.c.session_id == session.id,
+            table.c.school_id == session.school_id, table.c.opened_question_ids == current,
+        ).values(opened_question_ids=json.dumps(opened)))
+        if changed.rowcount:
+            return
+    raise RuntimeError("随堂练习开放状态被同时修改多次，请刷新后重试")
+
+
+def question_is_open(implementation, db, session, kind, question_id):
+    table = _gate_table(implementation)
+    value = _read_gate(db, table, session)
+    # Existing classrooms without an explicit gate retain the historical workflow.
+    if not value:
+        return True
+    return f'{kind}:{question_id}' in json.loads(value)
 
 _LABEL = re.compile(r'^\s*[A-Da-d]\s*[．.、:：)）]\s*')
 
