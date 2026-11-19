@@ -106,3 +106,5 @@ def test_prepared_import_entry_is_in_the_actual_preparation_page():
     assert '预检并导入课件包' in page
     assert '/courseware/prepared-import' in page
     assert '替换对应页并保留上一版' in page
+    assert '这里只用于补传课件包' in page
+    assert '请回到本次课列表，点“导入教案/整包”' in page
