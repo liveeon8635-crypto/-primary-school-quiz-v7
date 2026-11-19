@@ -44,7 +44,7 @@ class SaveBody(PageBody):
 
 
 class PreparedPage(BaseModel):
-    stageNo: int = Field(ge=2, le=3)
+    stageNo: int = Field(ge=2, le=4)
     page: int = Field(ge=0)
     expectedPageText: str = Field(min_length=1, max_length=4000)
     kind: str = Field(default="steps", max_length=20)
@@ -122,6 +122,25 @@ def stage_pages(lesson: Any, stage_no: int) -> list[str]:
     """The pages the big screen pages through in this stage (slides or worked examples); empty when it has none."""
     from changying.services.weekend_presentation import lesson_deck
     return lesson_deck({"ppt_json": lesson.ppt_json, "examples_json": lesson.examples_json, "reading_plan": lesson.reading_plan}, stage_no)
+
+
+def practice_courseware_pages(implementation: Any, db: Any, lesson: Any, teacher_id: int) -> list[str]:
+    """Approved practice in classroom order; duplicate example questions are excluded."""
+    from changying.services.lesson_written import template_meta, written_templates
+    from changying.web.weekend_plan_views import lesson_worked_examples
+    from changying.services.weekend_answers import _duplicates_example
+    from changying.web.weekend_written import register_written_tables
+    examples = [item['stem'] for item in lesson_worked_examples(lesson) if item['stem']]
+    TQ = implementation.TeachingQuestion
+    choices = db.scalars(select(TQ).where(TQ.school_id == lesson.school_id, TQ.lesson_id == lesson.id,
+                                          TQ.active.is_(True)).order_by(TQ.id).limit(30)).all()
+    pages = [str(q.stem).strip() for q in choices if not _duplicates_example(q.stem, examples)]
+    table = register_written_tables(implementation)['questions']
+    for q in written_templates(db, table, lesson.school_id, teacher_id, lesson.id):
+        text = str(q.stem).split('\n\n')[-1].strip()
+        if template_meta(q).get('approved') and not _duplicates_example(text, examples):
+            pages.append(text)
+    return pages
 
 
 def _short(text: str, limit: int = 40) -> str:
@@ -853,6 +872,28 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
     approved = [i for i in items_of(c) if i.get("approved") is not None and int(i["stage"]) == stage]
     if not approved:
         return None, ""
+    if stage == 4 and any(item.get('page') is not None for item in approved):
+        from changying.services.weekend_answers import practice_deck, practice_items
+        deck, _, index, _ = practice_deck(implementation, db, row)
+        if not deck:
+            return None, "本环节暂无可展示的练习。"
+        current = deck[index]
+        if not current.get('published'):
+            return None, "公布本题答案后才能展示讲解课件。"
+        questions = practice_items(implementation, db, row)
+        qindex = int(current['question']) - 1
+        if qindex < 0 or qindex >= len(questions):
+            return None, "练习与课件无法安全对应，请教师核对。"
+        stem = str(questions[qindex].get('bindingStem') or '').strip()
+        matches = [i for i in approved if str(i.get('approvedPageText', i.get('pageText')) or '').strip() == stem]
+        if not stem or sum(str(q.get('bindingStem') or '').strip() == stem for q in questions) != 1 or len(matches) != 1:
+            return None, "本题没有唯一匹配的课件，请教师核对。"
+        item = matches[0]
+        params = _repair_courseware_visual(item['approved'], _courseware_visual_text(item, item['approved'], item.get('pageText') or ''))
+        key = f"{row.id}:{stage}:{item.get('page')}"
+        view = cw.clean_view(item['kind'], params, json.loads(c.live_json or '{}').get(key))
+        return {"id": c.id, "kind": item['kind'], "kindLabel": cw.KIND_LABEL[item['kind']], "stageNo": stage,
+                "page": item.get('page'), "params": cw.public_params(item['kind'], params), "view": view}, ""
     pages = stage_pages(db.get(implementation.TeachingLesson, row.lesson_id), stage)
     if pages:
         # Each courseware belongs to one slide or worked example; other pages keep their own content.
@@ -1018,9 +1059,19 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     def find(items: list[dict[str, Any]], stage: int, page: int | None) -> dict[str, Any] | None:
         return next((i for i in items if int(i["stage"]) == stage and i.get("page") == page), None)
 
-    def checked_page(lesson: Any, stage_no: int, page: int | None) -> int | None:
-        pages = stage_pages(lesson, stage_no)
+    def pages_for(db: Any, lesson: Any, stage_no: int, teacher_id: int) -> list[str]:
+        return practice_courseware_pages(implementation, db, lesson, teacher_id) if stage_no == 4 else stage_pages(lesson, stage_no)
+
+    def checked_page(db: Any, lesson: Any, stage_no: int, page: int | None, teacher_id: int) -> int | None:
+        pages = pages_for(db, lesson, stage_no, teacher_id)
+        if stage_no == 4 and page is None:
+            existing = items_of(row_for(db, lesson))
+            if any(int(item['stage']) == 4 and item.get('page') is None for item in existing):
+                return None
+            raise HTTPException(409, '请先审核通过随堂练习并选择对应题目')
         if not pages:
+            if stage_no == 4:
+                raise HTTPException(409, '请先审核通过随堂练习')
             return None
         if page is None or not 0 <= page < len(pages):
             raise HTTPException(400, "这个环节有分页，请选择课件对应的页（例题）")
@@ -1075,10 +1126,12 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         except ValueError as e:
             return {"stem": str(e), "reference": ""}
 
-    def payload(db: Any, lesson: Any) -> dict[str, Any]:
+    def payload(db: Any, lesson: Any, teacher_id: int) -> dict[str, Any]:
         items = []
+        page_cache = {n: pages_for(db, lesson, n, teacher_id) for n in (2, 3, 4)}
         for i in items_of(row_for(db, lesson)):
-            pages = stage_pages(lesson, int(i.get("stage") or 0))
+            stage = int(i.get("stage") or 0)
+            pages = page_cache.get(stage, [])
             page_index = i.get("page")
             page_text = pages[int(page_index)] if page_index is not None and 0 <= int(page_index) < len(pages) else ""
             visual_text = _courseware_visual_text(i, i.get("params"), page_text)
@@ -1101,7 +1154,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 "sourceQuestionCount": source_count, "sourcePageMismatch": mismatch,
                 "qualityAudit": quality_audit,
                 "hasSource": bool((lesson.reading_plan or "").strip()), "items": items,
-                "pages": {str(n): [_short(x, 80) for x in stage_pages(lesson, n)] for n in (2, 3)}}
+                "pages": {str(n): [_short(x, 80) for x in page_cache[n]] for n in (2, 3, 4)}}
 
     def upsert(db: Any, u: Any, lesson: Any, stage: int, page: int | None, kind: str, params: dict[str, Any],
                written_task: bool | None, page_text: str) -> None:
@@ -1125,7 +1178,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
 
     @router.get("/teacher/weekend/lessons/{lid}/courseware")
     def get_courseware(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
-        return payload(db, my_lesson(db, u, lid))
+        return payload(db, my_lesson(db, u, lid), u.id)
 
     @router.post("/teacher/weekend/lessons/{lid}/courseware/prepared-import")
     def import_prepared(lid: int, b: PreparedPagesBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1141,21 +1194,33 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         if not b.dryRun and b.replaceExisting and b.expectedRevision != revision:
             raise HTTPException(409, "已有课件在预检后发生变化，请重新预检")
         occupied = {(int(item['stage']), item.get('page')) for item in existing}
-        selected, ready = set(), []
+        selected, ready, page_cache = set(), [], {}
         for incoming in b.pages:
-            key = (incoming.stageNo, incoming.page)
+            if incoming.stageNo == 4 and incoming.writtenTask:
+                raise HTTPException(400, '随堂练习已有原题，不需要重复生成学生作答题')
+            if incoming.stageNo not in page_cache:
+                page_cache[incoming.stageNo] = pages_for(db, lesson, incoming.stageNo, u.id)
+            pages = page_cache[incoming.stageNo]
+            page = incoming.page
+            if incoming.stageNo == 4:
+                matched = [i for i, text in enumerate(pages) if text == incoming.expectedPageText]
+                if len(matched) != 1:
+                    raise HTTPException(409, '练习题干不存在或存在重复，请先核对习题审核中的题目')
+                page = matched[0]
+            key = (incoming.stageNo, page)
             if key in selected:
                 raise HTTPException(400, "课件包含重复环节和页码")
             selected.add(key)
-            old = find(existing, incoming.stageNo, incoming.page)
+            old = find(existing, incoming.stageNo, page)
+            if old and incoming.stageNo == 4 and old.get('pageText') != incoming.expectedPageText:
+                raise HTTPException(409, '练习顺序已变化，此位置存在旧课件；请先人工核对，不能覆盖')
             if key in occupied and not b.replaceExisting:
                 raise HTTPException(409, "对应页已有课件，请先人工核对；导入不会覆盖")
             if old and old.get('approved') is not None and old.get('kind') != incoming.kind:
                 raise HTTPException(409, "已审核课件不能直接更换模板类型")
             if incoming.kind not in cw.TEMPLATES[lesson.subject]:
                 raise HTTPException(400, "这门课不能使用此模板")
-            pages = stage_pages(lesson, incoming.stageNo)
-            if incoming.page >= len(pages) or pages[incoming.page] != incoming.expectedPageText:
+            if page >= len(pages) or pages[page] != incoming.expectedPageText:
                 raise HTTPException(409, "教案页码或内容已变化，请重新匹配后再导入")
             try:
                 params = cw.clean(incoming.kind, incoming.params, lesson.reading_plan or "")
@@ -1164,13 +1229,13 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             prompt_text = str(params.get('problem') or '') + '\n' + str(params.get('sourceProblem') or '')
             if re.search(r'【\s*(?:答案|参考答案|解析|解答)\s*】', prompt_text):
                 raise HTTPException(400, "初始题干含答案或解析标记，请将答案移入单独答案字段")
-            current_text = pages[incoming.page]
+            current_text = pages[page]
             issue = figure_semantic_issue(params.get('figure') or {}, current_text)
             missing = missing_visual_reason(current_text, params.get('figure') or {})
             if issue or missing:
                 params['figureUnverified'] = True
                 params['figureNotice'] = "图示待确认：" + (issue or missing)
-            ready.append({"stage": incoming.stageNo, "page": incoming.page, "kind": incoming.kind,
+            ready.append({"stage": incoming.stageNo, "page": page, "kind": incoming.kind,
                           "status": "draft", "params": params, "approved": None,
                           "writtenTask": incoming.writtenTask, "templateId": None,
                           "pageText": current_text,
@@ -1191,12 +1256,12 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         write(db, u, lesson, retained + ready, commit=False)
         implementation.audit(db, u, "weekend.courseware.prepared_import", f"lesson={lid}:pages={len(ready)}")
         db.commit()
-        return {"dryRun": False, "imported": len(ready), "courseware": payload(db, lesson)}
+        return {"dryRun": False, "imported": len(ready), "courseware": payload(db, lesson, u.id)}
 
     @router.post("/teacher/weekend/lessons/{lid}/courseware/restore-previous")
     def restore_previous(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         lesson = my_lesson(db, u, lid)
-        page = checked_page(lesson, b.stageNo, b.page)
+        page = checked_page(db, lesson, b.stageNo, b.page, u.id)
         items = items_of(row_for(db, lesson, lock=True))
         item = find(items, b.stageNo, page)
         previous = item.get('previousDraft') if item else None
@@ -1204,7 +1269,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             raise HTTPException(404, '这页没有可恢复的上一版')
         if item.get('approved') is not None and previous.get('kind') != item.get('kind'):
             raise HTTPException(409, '上一版模板与已审核课件不同，不能自动恢复')
-        pages = stage_pages(lesson, b.stageNo)
+        pages = pages_for(db, lesson, b.stageNo, u.id)
         current_text = pages[page] if page is not None else ''
         if previous.get('pageText') != current_text:
             raise HTTPException(409, '教案分页已变化，不能自动恢复到这一页，请先核对原教案')
@@ -1212,7 +1277,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         item.update({k: previous.get(k) for k in ('kind', 'params', 'writtenTask', 'pageText')})
         item['status'] = 'draft'
         write(db, u, lesson, items)
-        return payload(db, lesson)
+        return payload(db, lesson, u.id)
 
     @router.post("/teacher/weekend/lessons/{lid}/courseware/generate")
     def generate(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1220,8 +1285,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         lesson = my_lesson(db, u, lid)
         if b.stageNo == 3 and source_page_mismatch(lesson)[1]:
             raise HTTPException(409, "导入原题数量与例题课件页数不符，已暂停生成；请检查教案题号识别。")
-        page = checked_page(lesson, b.stageNo, b.page)
-        pages = stage_pages(lesson, b.stageNo)
+        page = checked_page(db, lesson, b.stageNo, b.page, u.id)
+        pages = pages_for(db, lesson, b.stageNo, u.id)
         page_text = pages[page] if page is not None else ""
         info = {"title": lesson.title, "coreTarget": lesson.core_target or "", "sourceText": lesson.reading_plan or "",
                 "pageText": page_text or (lesson.teacher_plan or "")[:1500]}
@@ -1294,19 +1359,21 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         upsert(db, u, lesson, b.stageNo, page, kind, params, None, page_text)
         implementation.audit(db, u, "weekend.courseware.generate", f"lesson={lid}:stage={b.stageNo}:page={page}:kind={kind}")
         db.commit()
-        return {**payload(db, lesson), "notice": notice}
+        return {**payload(db, lesson, u.id), "notice": notice}
 
     @router.put("/teacher/weekend/lessons/{lid}/courseware")
     def save(lid: int, b: SaveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         lesson = my_lesson(db, u, lid)
+        if b.stageNo == 4 and b.writtenTask:
+            raise HTTPException(400, '随堂练习已有原题，不需要重复生成学生作答题')
         if b.kind not in cw.TEMPLATES[lesson.subject]:
             raise HTTPException(400, "这门课不能使用这种课件模板")
         try:
             params = cw.clean(b.kind, b.params, lesson.reading_plan or "")
         except ValueError as e:
             raise HTTPException(400, str(e))
-        page = checked_page(lesson, b.stageNo, b.page)
-        pages = stage_pages(lesson, b.stageNo)
+        page = checked_page(db, lesson, b.stageNo, b.page, u.id)
+        pages = pages_for(db, lesson, b.stageNo, u.id)
         page_text = pages[page] if page is not None else ""
         fallback_figure = required_visual_figure(page_text)
         if fallback_figure and not (params.get("figure") or {}).get("type"):
@@ -1318,7 +1385,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         if b.kind == "steps":
             params = attach_original_figure(params, lesson_figures(implementation, db, lesson, written), page_text)
         upsert(db, u, lesson, b.stageNo, page, b.kind, params, b.writtenTask, page_text)
-        return payload(db, lesson)
+        return payload(db, lesson, u.id)
 
     def drop_template(db: Any, u: Any, lesson: Any, template_id: int | None) -> None:
         # Only the lesson's preparation template (session_id 0); classroom snapshots are never touched.
@@ -1332,14 +1399,14 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         lesson = my_lesson(db, u, lid)
         if b.stageNo == 3 and source_page_mismatch(lesson)[1]:
             raise HTTPException(409, "原文题号与例题页数不符，已禁止审核或展示错误页。")
-        page = checked_page(lesson, b.stageNo, b.page)
+        page = checked_page(db, lesson, b.stageNo, b.page, u.id)
         items = items_of(row_for(db, lesson))
         item = find(items, b.stageNo, page)
         if item is None:
             raise HTTPException(404, "这一页还没有课件，请先生成或填写")
         if item.get("reimportReviewRequired"):
             raise HTTPException(409, "教案已重新导入，图片可能变化；请重新生成或保存课件草稿，再逐页审核。")
-        pages = stage_pages(lesson, b.stageNo)
+        pages = pages_for(db, lesson, b.stageNo, u.id)
         current_text = pages[page] if page is not None else ""
         if item.get("pageText", "") != current_text:
             raise HTTPException(409, "教案原题已变化，旧课件不可直接审核；请重新生成或保存与本页一致的讲解。")
@@ -1404,7 +1471,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         write(db, u, lesson, items, reset_pages=[(b.stageNo, page)])
         implementation.audit(db, u, "weekend.courseware.approve", f"lesson={lid}:stage={b.stageNo}:page={page}:template={template_id}")
         db.commit()
-        return payload(db, lesson)
+        return payload(db, lesson, u.id)
 
     @router.post("/teacher/weekend/lessons/{lid}/courseware/remove")
     def remove(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1416,7 +1483,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         drop_template(db, u, lesson, item.get("templateId"))
         items.remove(item)
         write(db, u, lesson, items)
-        return payload(db, lesson)
+        return payload(db, lesson, u.id)
 
     @router.get("/teacher/weekend/courseware/templates")
     def list_templates(subject: str = "", u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1435,7 +1502,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     def save_as_template(lid: int, b: TemplateBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Save one page's current courseware as a template this school can reuse in other lessons."""
         lesson = my_lesson(db, u, lid)
-        page = checked_page(lesson, b.stageNo, b.page)
+        page = checked_page(db, lesson, b.stageNo, b.page, u.id)
         item = find(items_of(row_for(db, lesson)), b.stageNo, page)
         if item is None:
             raise HTTPException(404, "这一页还没有课件，请先生成或填写")
@@ -1458,7 +1525,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     def from_template(lid: int, b: ApplyTemplateBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Copy a saved template onto one page of this lesson; re-validated and stored as a draft."""
         lesson = my_lesson(db, u, lid)
-        page = checked_page(lesson, b.stageNo, b.page)
+        page = checked_page(db, lesson, b.stageNo, b.page, u.id)
         qt = register_courseware_template_table(implementation)
         row = db.execute(select(qt).where(qt.c.id == b.templateId, qt.c.school_id == u.school_id)).first()
         if row is None:
@@ -1469,12 +1536,12 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             params = cw.clean(row.kind, json.loads(row.params_json or "{}"), lesson.reading_plan or "")
         except ValueError as e:
             raise HTTPException(400, f"这个模板套用到本节课不合适（{e}），可以改用生成或手动填写")
-        pages = stage_pages(lesson, b.stageNo)
+        pages = pages_for(db, lesson, b.stageNo, u.id)
         page_text = pages[page] if page is not None else ""
         upsert(db, u, lesson, b.stageNo, page, row.kind, params, bool(row.written_task), page_text)
         implementation.audit(db, u, "weekend.courseware.from_template", f"lesson={lid}:stage={b.stageNo}:page={page}:template={row.id}")
         db.commit()
-        return payload(db, lesson)
+        return payload(db, lesson, u.id)
 
     @router.post("/teacher/weekend/sessions/{sid}/courseware/view")
     def set_view(sid: int, b: ViewBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):

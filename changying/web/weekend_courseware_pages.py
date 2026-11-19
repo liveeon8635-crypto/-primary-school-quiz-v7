@@ -891,10 +891,12 @@ function cwPlan(box,lessonId,refresh){
     // AI 或网络偶尔会回一个空对象：先把缺的字段补齐再画，避免 Cannot convert undefined or null to object。
     d.templates=d.templates||[];d.kindLabels=d.kindLabels||{};d.pages=d.pages||{};d.items=d.items||[];
     data=d;rowEls={};box.textContent='';
-    box.appendChild(el('p',{class:'muted',text:'每一页讲解／例题可配一个互动课件。AI 从审核过的模板（'+d.templates.map(function(k){return d.kindLabels[k]}).join('、')+'）中为每页选一个并填写参数；你逐页预览、修改、审核后才会在大屏那一页出现。上课翻页和操作不调用 AI。'}));
+    box.appendChild(el('p',{class:'muted',text:'讲解、例题和已通过的随堂练习可逐题配置互动课件。你需逐页预览、修改、审核；随堂练习在课堂公布该题答案后才显示对应讲解。上课翻页和操作不调用 AI。'}));
     var stageSel=el('select',{'aria-label':'环节'});CW_STAGES.forEach(function(x,i){stageSel.appendChild(el('option',{value:i+1,text:'第'+(i+1)+'环节：'+x+((d.pages[String(i+1)]||[]).length?'（'+d.pages[String(i+1)].length+' 页）':'')}))});
     stageSel.value=stageNo;stageSel.onchange=function(){stageNo=stageSel.value;paint(data)};
-    var pages=d.pages[stageNo]||[],list=pages.length?pages.map(function(x,i){return {page:i,text:x}}):[{page:null,text:'整个环节'}];
+    var pages=d.pages[stageNo]||[],list=pages.length?pages.map(function(x,i){return {page:i,text:x}}):(stageNo==='4'?[]:[{page:null,text:'整个环节'}]);
+    if(stageNo==='4'&&itemAt(null))list.unshift({page:null,text:'整个环节（原有课件）'});
+    if(stageNo==='4'&&!pages.length)box.appendChild(el('div',{class:'notice warn',text:'暂无通过审核的随堂练习，请先到“习题审核”通过题目。'}));
     var redo=el('input',{type:'checkbox'});
     var all=el('button',{class:'primary',text:'为本环节全部 '+list.length+' 页生成',onclick:function(){
       var todo=list.filter(function(x){var it=itemAt(x.page);return redo.checked||!it});
@@ -1093,7 +1095,9 @@ function cwPlan(box,lessonId,refresh){
     card.appendChild(el('p',{class:'muted',style:'white-space:pre-wrap',text:'这一页的内容：'+x.text}));
     var kindSel=el('select');kinds.forEach(function(k){kindSel.appendChild(el('option',{value:k,text:data.kindLabels[k]}))});kindSel.value=kind;
     var task=el('input',{type:'checkbox'});task.checked=!!(it&&it.writtenTask);
-    card.appendChild(el('div',{class:'row'},el('span',{text:'模板'}),kindSel,el('label',{class:'row'},task,el('span',{text:'审核后同时生成学生书面作答题'}))));
+    var templateRow=el('div',{class:'row'},el('span',{text:'模板'}),kindSel);
+    if(stageNo!=='4')templateRow.appendChild(el('label',{class:'row'},task,el('span',{text:'审核后同时生成学生书面作答题'})));
+    card.appendChild(templateRow);
     var form=el('div');card.appendChild(form);card.appendChild(preview);
     function input(v){var n=el('input',{type:'text'});n.value=v==null?'':String(v);return n}
     function area(v){var n=el('textarea');n.value=v||'';return n}

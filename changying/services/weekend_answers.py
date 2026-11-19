@@ -113,6 +113,7 @@ def practice_items(implementation, db, session):
         correct = int(q.correct_index)
         answer = f'{chr(65+correct)}. {option_text(options[correct])}' if 0 <= correct < len(options) else '请老师核对参考答案'
         items.append({'kind': 'choice', 'id': q.id, 'source': 'reviewed_question', 'question': stem,
+            'bindingStem': str(q.stem).strip(),
             'answer': stem + f'\n正确答案：{answer}\n解析：{q.explanation or "请听老师讲解"}'})
     written = register_written_tables(implementation)['questions']
     reviewed_written = list(db.execute(select(written).where(written.c.session_id == session.id,
@@ -122,6 +123,7 @@ def practice_items(implementation, db, session):
     for index, q in enumerate(reviewed_written, 1):
         stem = f'文字／照片题 {index}：{display_stem(q.stem.split(chr(10)+chr(10))[-1])}'
         items.append({'kind': 'written', 'id': q.id, 'source': 'reviewed_question', 'question': stem,
+            'bindingStem': q.stem.split(chr(10)+chr(10))[-1].strip(),
             'answer': stem + '\n参考答案／评分要点：' + (q.reference.strip() or '本题未填写参考答案，请听老师讲评。')})
     return items
 
