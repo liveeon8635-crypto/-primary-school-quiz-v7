@@ -68,6 +68,7 @@ with TestClient(app) as client:
     s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lesson_id, "classId": cls_id}).json()["id"]
     assert client.post(f"/teacher/weekend/sessions/{s}/start", headers=th).status_code == 200
     assert client.post(f"/teacher/weekend/sessions/{s}/goto", headers=th, json={"stage": 4}).status_code == 200
+    assert client.post(f'/teacher/weekend/sessions/{s}'+'/practice-question', headers=th, json={'question':1}).status_code == 200
     assert client.post("/student/weekend/answer", headers=sh,
                        json={"sessionId": s, "questionId": q_id, "selected": 0, "attempt": 0}).status_code == 200
     assert client.post(f"/teacher/weekend/sessions/{s}/finish", headers=th).status_code == 200

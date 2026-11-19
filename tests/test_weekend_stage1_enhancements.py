@@ -116,6 +116,7 @@ assert client.post(base + '/questions', headers=th, json={'approve': [ok_id]}).s
 sid = client.post('/teacher/weekend/sessions', headers=th, json={'lessonId': lid, 'classId': class_id, 'requireReady': True}).json()['id']
 assert client.post(f'/teacher/weekend/sessions/{sid}/start', headers=th).status_code == 200
 assert client.post(f'/teacher/weekend/sessions/{sid}/goto', headers=th, json={'stage': 4}).status_code == 200
+assert client.post(f'/teacher/weekend/sessions/{sid}'+'/practice-question', headers=th, json={'question':1}).status_code == 200
 
 # Approve another choice question & a written question while classroom is running
 w_tpl = client.get(base + '/written/questions', headers=th).json()['items']
@@ -145,6 +146,12 @@ synced = client.post(f'/teacher/weekend/sessions/{sid}/sync-practice', headers=t
 assert synced.status_code == 200, synced.text
 sj = synced.json()
 assert sj['addedChoices'] == 1 and sj['addedWritten'] == 1 and sj['addedTotal'] == 2 and sj['pendingPracticeSync'] == 0, sj
+
+# Sync alone cannot open newly approved exercises to the students.
+assert len(client.get('/student/weekend/current', headers=sh).json()['questions']) == 1
+assert client.get(f'/student/weekend/sessions/{sid}/written', headers=sh).json()['questions'] == []
+assert client.post(f'/teacher/weekend/sessions/{sid}'+'/practice-question', headers=th, json={'question':2}).status_code == 200
+assert client.post(f'/teacher/weekend/sessions/{sid}'+'/practice-question', headers=th, json={'question':3}).status_code == 200
 
 pr_after = client.get('/student/weekend/current', headers=sh).json()
 assert len(pr_after['questions']) == 2, pr_after

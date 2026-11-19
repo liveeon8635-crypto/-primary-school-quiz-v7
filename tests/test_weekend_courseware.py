@@ -182,6 +182,9 @@ with TestClient(app) as client:
     assert reset.json()["view"] == {"step": 0, "showAnswer": False}
     assert client.get(b1 + "/board", headers=th).json()["courseware"]["view"] == reset.json()["view"]
     client.post(b1 + "/goto", headers=th, json={"stage": 4})
+    # This scenario explicitly opens its exercises before testing student work.
+    for ordinal in range(1, client.get(b1, headers=th).json()['answerRelease']['total'] + 1):
+        assert client.post(b1+'/practice-question', headers=th, json={'question':ordinal}).status_code == 200
     mine = client.get(f"/student/weekend/sessions/{s1}/written", headers=sh).json()
     task = next(q for q in mine["questions"] if "风车每分钟转4圈" in q["stem"])
     assert "15秒" not in json.dumps(mine, ensure_ascii=False)

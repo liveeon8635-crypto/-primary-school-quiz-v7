@@ -72,6 +72,7 @@ with TestClient(app) as client:
     second_screen=client.get(base+'/board',headers=th).json()
     assert second_screen['deck']==changed['deck'] and second_screen['content']==changed['content']
     client.post(base+'/goto',headers=th,json={'stage':4})
+    assert client.post(base+'/practice-question', headers=th, json={'question':1}).status_code == 200
     progress=client.get(base+'/progress',headers=th).json()['items']
     assert [i['studentId'] for i in progress]==[student_id]
     assert client.get(base+'/written',headers=th).json()['total']==1

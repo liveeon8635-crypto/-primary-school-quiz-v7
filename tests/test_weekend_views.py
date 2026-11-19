@@ -140,6 +140,8 @@ with TestClient(app) as client:
     assert client.put(f"/teacher/weekend/hints/{a}", headers=th, json={"levels": g["hints"], "approve": True}).json()["hintStatus"] == "approved"
 
     client.post(base + "/goto", headers=th, json={"stage": 4})
+    assert client.post(base+'/practice-question', headers=th, json={'question':2}).status_code == 200
+    assert client.post(base+'/practice-question', headers=th, json={'question':1}).status_code == 200
     cur = client.get("/student/weekend/current", headers=sh).json()
     assert cur["practice"] and [x["id"] for x in cur["questions"]] == [a, b] and "correctIndex" not in cur["questions"][0]
 

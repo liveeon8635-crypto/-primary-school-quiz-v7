@@ -69,6 +69,9 @@ with TestClient(app) as client:
                 for stem in written]
         client.post(f"/teacher/weekend/sessions/{s}/start", headers=th)
         client.post(f"/teacher/weekend/sessions/{s}/goto", headers=th, json={"stage": 4})
+        # This scenario explicitly opens its exercises before testing student work.
+        for ordinal in range(1, client.get(f'/teacher/weekend/sessions/{s}', headers=th).json()['answerRelease']['total'] + 1):
+            assert client.post(f'/teacher/weekend/sessions/{s}'+'/practice-question', headers=th, json={'question':ordinal}).status_code == 200
         return s, wids
 
     # 数学：甲、乙参加；丙没有任何作答记录。

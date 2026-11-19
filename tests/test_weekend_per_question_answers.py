@@ -27,6 +27,7 @@ with TestClient(app) as client:
         assert r.status_code==200,r.text
         ids.append(r.json()['id'])
     client.post(base+'/start',headers=th);client.post(base+'/goto',headers=th,json={'stage':4})
+    assert client.post(base+'/practice-question', headers=th, json={'question':1}).status_code == 200
     control=client.get('/v1/weekend').text
     assert "post('publish-answers',{question:current})" in control and '继续第 ' in control
     assert client.post(base+'/publish-answers',headers=th,json={'question':2}).status_code==409
@@ -44,7 +45,8 @@ with TestClient(app) as client:
         for later in range(i+2,4):assert f'唯一参考答案{later}' not in board
         now=client.get(student,headers=sh).json()
         assert not now['questions'][i]['canSubmit']
-        assert all(q['canSubmit'] for q in now['questions'][i+1:])
+        assert [q['id'] for q in now['questions']] == ids[:i+1]
+        assert all(not q['canSubmit'] for q in now['questions'])
         assert now['canSubmit']==(i<2)
         assert client.post(student+f'/{qid}',headers=sh,data={'text':'看答案后改交','revision':1}).status_code==409
         # Retry the same release and refresh the page: no accidental next release.
