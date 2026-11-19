@@ -128,13 +128,14 @@ def practice_courseware_pages(implementation: Any, db: Any, lesson: Any, teacher
     """Approved practice in classroom order; duplicate example questions are excluded."""
     from changying.services.lesson_written import template_meta, written_templates
     from changying.web.weekend_plan_views import lesson_worked_examples
-    from changying.services.weekend_answers import _duplicates_example
+    from changying.services.weekend_answers import _duplicates_example, choice_courseware_binding
     from changying.web.weekend_written import register_written_tables
     examples = [item['stem'] for item in lesson_worked_examples(lesson) if item['stem']]
     TQ = implementation.TeachingQuestion
     choices = db.scalars(select(TQ).where(TQ.school_id == lesson.school_id, TQ.lesson_id == lesson.id,
                                           TQ.active.is_(True)).order_by(TQ.id).limit(30)).all()
-    pages = [str(q.stem).strip() for q in choices if not _duplicates_example(q.stem, examples)]
+    pages = [choice_courseware_binding(q.stem, json.loads(q.options_json or '[]'))
+             for q in choices if not _duplicates_example(q.stem, examples)]
     table = register_written_tables(implementation)['questions']
     for q in written_templates(db, table, lesson.school_id, teacher_id, lesson.id):
         text = str(q.stem).split('\n\n')[-1].strip()

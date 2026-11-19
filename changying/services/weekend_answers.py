@@ -57,6 +57,11 @@ def option_text(value):
     """Imported options often carry their own letter ("A．8ab"); the screen adds the letter once."""
     return _LABEL.sub('', str(value), count=1)
 
+
+def choice_courseware_binding(stem, options):
+    """Options are part of a choice question's identity, not just its stem."""
+    return str(stem or '').strip() + '\n选项：' + json.dumps(options, ensure_ascii=False, sort_keys=True)
+
 CURSOR_VERSION = 1_000_000
 CURSOR_PAGES = 10_000
 
@@ -113,7 +118,7 @@ def practice_items(implementation, db, session):
         correct = int(q.correct_index)
         answer = f'{chr(65+correct)}. {option_text(options[correct])}' if 0 <= correct < len(options) else '请老师核对参考答案'
         items.append({'kind': 'choice', 'id': q.id, 'source': 'reviewed_question', 'question': stem,
-            'bindingStem': str(q.stem).strip(),
+            'bindingStem': choice_courseware_binding(q.stem, options),
             'answer': stem + f'\n正确答案：{answer}\n解析：{q.explanation or "请听老师讲解"}'})
     written = register_written_tables(implementation)['questions']
     reviewed_written = list(db.execute(select(written).where(written.c.session_id == session.id,

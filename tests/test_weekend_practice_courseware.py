@@ -6,6 +6,11 @@ spec=importlib.util.spec_from_file_location('practice_courseware_helpers',Path(_
 helpers=importlib.util.module_from_spec(spec);sys.modules[spec.name]=helpers;spec.loader.exec_module(helpers)
 
 
+def test_choice_binding_includes_options():
+    from changying.services.weekend_answers import choice_courseware_binding
+    assert choice_courseware_binding('同一题干', ['3','4']) != choice_courseware_binding('同一题干', ['4','3'])
+
+
 def test_practice_courseware_is_bound_to_question_and_waits_for_release(tmp_path):
     helpers.run_isolated(tmp_path,helpers.COMMON+r'''
 from sqlalchemy import update
