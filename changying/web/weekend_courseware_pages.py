@@ -929,7 +929,10 @@ function cwPlan(box,lessonId,refresh){
         }).catch(function(e){msg.textContent=e.message})
       };reader.readAsText(file,'UTF-8');
     }});
-    box.appendChild(el('div',{class:'row'},stageSel,all,el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})),approveAll));
+    var actionRow=el('div',{class:'row'},stageSel);
+    if(stageNo==='4')actionRow.appendChild(el('span',{class:'muted',text:'随堂练习课件请导入预制包或手动填写，此环节不调用 AI。'}));
+    else {actionRow.appendChild(all);actionRow.appendChild(el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})));}
+    actionRow.appendChild(approveAll);box.appendChild(actionRow);
     box.appendChild(el('div',{class:'row'},preparedFile,el('label',{},replacePrepared,el('span',{text:'替换对应页并保留上一版'})),preparedImport));
     box.appendChild(msg);
     if(stageNo==='3'&&d.qualityAudit){
@@ -951,7 +954,7 @@ function cwPlan(box,lessonId,refresh){
         }
       }
       var note=el('div',{role:'status','aria-live':'polite',style:'flex-basis:100%'});notes[String(x.page)]=note;
-      line.appendChild(el('button',{text:it?'重新生成':'生成',onclick:function(e){
+      if(stageNo!=='4')line.appendChild(el('button',{text:it?'重新生成':'生成',onclick:function(e){
         if(busy){note.textContent='正在处理另一页，请等它完成后再点。';return}
         var b=e.target,label=b.textContent;busy=true;b.disabled=true;b.textContent='生成中…';
         note.className='notice';note.textContent='AI 正在为这一页生成课件，约十几秒，请稍候…';
