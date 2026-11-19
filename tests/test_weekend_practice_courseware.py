@@ -103,7 +103,7 @@ with TestClient(app) as client:
   assert cwrow is not None
   old_items=json.loads(cwrow.params_json)['items']
   legacy_item=dict(next(x for x in old_items if x['stage']==4 and x['page']==0))
-  legacy_item.update(page=None,pageText='',approvedPageText='')
+  legacy_item.update(page=None,pageText='',approvedPageText='',writtenTask=True,templateId=None)
   legacy_item.pop('approvedAnswerBinding',None)
   db.execute(update(courseware_table).where(courseware_table.c.id==cwrow.id).values(
     params_json=json.dumps({'version':2,'items':[legacy_item]},ensure_ascii=False),
@@ -111,6 +111,9 @@ with TestClient(app) as client:
   db.commit()
  legacy_approval=client.post(f'/teacher/weekend/lessons/{lid}/courseware/approve',headers=th,json={'stageNo':4,'page':None})
  assert legacy_approval.status_code==200,legacy_approval.text
+ assert next(x for x in legacy_approval.json()['items'] if x['stage']==4 and x['page'] is None)['writtenTask'] is False
+ with legacy.SessionLocal() as db:
+  assert len(written_templates(db,t,school,tid,lid))==2
  second=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid})
  assert second.status_code==200,second.text
  base2=f"/teacher/weekend/sessions/{second.json()['id']}"
