@@ -755,6 +755,12 @@ function cwLesson10RemainingFigure(wrap,p,view,big,teacher){
   }
   return false;
 }
+function cwPreviewFigureTag(kind,v){
+  v=v||{};
+  if(kind==='steps'&&Array.isArray(v.stepFigures)&&v.stepFigures.length)return '分步图示';
+  var fig=v.figure||{};
+  return kind!=='steps'?'模板图示':fig.type==='uploaded_image'?'原卷图片':fig.type?'课件图示':'无图';
+}
 function cwSteps(box,p,view,big,teacher){
   p=p||{};view=view||{};
   var steps=Array.isArray(p.steps)?p.steps:[];
@@ -1218,7 +1224,7 @@ function cwPlan(box,lessonId,refresh){
       return v;
     }
     function show(){
-      var v=collect(),title=el('b',{text:'预览（教师视角，含答案）'}),view=el('div'),fig=v.figure||{};preview.textContent='';preview.appendChild(el('div',{class:'row',style:'justify-content:space-between'},title,el('span',{class:'tag',text:kind!=='steps'?'模板图示':fig.type==='uploaded_image'?'原卷图片':fig.type?'课件图示':'无图'})));preview.appendChild(view);
+      var v=collect(),title=el('b',{text:'预览（教师视角，含答案）'}),view=el('div');preview.textContent='';preview.appendChild(el('div',{class:'row',style:'justify-content:space-between'},title,el('span',{class:'tag',text:cwPreviewFigureTag(kind,v)})));preview.appendChild(view);
       if(kind==='rotation'){if(!(v.shape.length>=3&&v.center.length===2&&v.shape.every(function(q){return q.length===2&&isFinite(q[0])&&isFinite(q[1])}))){view.appendChild(el('div',{class:'notice warn',text:'坐标格式不完整'}));return}
         v.rotated=v.shape.map(function(q){return cwRotate(q,v.center,v.direction,v.angle)});cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,showCenter:true,step:v.steps.length},false,true)}
       else if(kind==='clock'){var t=v.angle/30*(v.direction==='cw'?1:-1);v.end=((v.start-1+t)%12+12)%12+1;cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,step:v.steps.length},false,true)}
