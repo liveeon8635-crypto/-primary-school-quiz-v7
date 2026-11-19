@@ -117,6 +117,8 @@ with TestClient(app) as client:
  assert client.get(base2+'/board',headers=th).json().get('courseware') is None
  assert client.post(base2+'/publish-answers',headers=th,json={'question':1}).status_code==200
  assert client.get(base2+'/board',headers=th).json().get('courseware') is None
+ assert client.post(base2+'/practice-question',headers=th,json={'question':2}).status_code==200
+ assert client.get(base2+'/board',headers=th).json().get('courseware') is None
  assert client.post(base2+'/publish-answers',headers=th,json={'question':2}).status_code==200
  assert client.get(base2+'/board',headers=th).json().get('courseware') is not None
 print('OK')
