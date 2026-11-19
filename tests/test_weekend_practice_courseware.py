@@ -126,5 +126,31 @@ with TestClient(app) as client:
  assert client.get(base2+'/board',headers=th).json().get('courseware') is None
  assert client.post(base2+'/publish-answers',headers=th,json={'question':2}).status_code==200
  assert client.get(base2+'/board',headers=th).json().get('courseware') is not None
+ # Older slides may link to a separate approved written task. Never delete or
+ # lose that task when the teacher reapproves, edits or removes the courseware.
+ with legacy.SessionLocal() as db:
+  existing_written=written_templates(db,t,school,tid,lid)
+  linked_id=existing_written[0].id
+  cwrow=db.execute(select(courseware_table).where(courseware_table.c.lesson_id==lid)).first()
+  linked_doc=json.loads(cwrow.params_json)
+  linked_doc['items'][0].update(templateId=linked_id,writtenTask=True)
+  db.execute(update(courseware_table).where(courseware_table.c.id==cwrow.id).values(
+    params_json=json.dumps(linked_doc,ensure_ascii=False)))
+  db.commit()
+ assert client.post(f'/teacher/weekend/lessons/{lid}/courseware/approve',headers=th,json={'stageNo':4,'page':None}).status_code==409
+ assert client.post(f'/teacher/weekend/lessons/{lid}/courseware/remove',headers=th,json={'stageNo':4,'page':None}).status_code==409
+ assert client.post(f'/teacher/weekend/lessons/{lid}/courseware/from-template',headers=th,
+                    json={'stageNo':4,'page':None,'templateId':template_id}).status_code==409
+ # A stored per-question legacy association must also block replacement import.
+ with legacy.SessionLocal() as db:
+  cwrow=db.execute(select(courseware_table).where(courseware_table.c.lesson_id==lid)).first()
+  linked_doc=json.loads(cwrow.params_json)
+  linked_doc['items'][0].update(page=0,pageText=stems[0],approvedPageText=stems[0])
+  db.execute(update(courseware_table).where(courseware_table.c.id==cwrow.id).values(
+    params_json=json.dumps(linked_doc,ensure_ascii=False)))
+  db.commit()
+ assert client.post(url,headers=th,json={'dryRun':True,'replaceExisting':True,'pages':[pages[0]]}).status_code==409
+ with legacy.SessionLocal() as db:
+  assert len(written_templates(db,t,school,tid,lid))==2
 print('OK')
 ''',{'PYTHONUTF8':'1','PYTHONIOENCODING':'utf-8'})
