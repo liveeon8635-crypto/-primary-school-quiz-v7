@@ -174,6 +174,7 @@ STEP_RELATIONSHIPS: dict[str, dict[str, str]] = {
 }
 
 STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 已有教案可在互动课件中预检导入预制课件包；默认不覆盖，勾选替换可保留上一版并生成待审核草稿，不改教案和习题。"
+STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 第4环节按已通过的随堂练习逐题配置课件；课堂公布该题答案后才展示对应讲解。"
 
 SCENARIO_PRESETS: dict[str, dict[str, Any]] = {
     "empty": {"title": "从零开始", "description": "从建立班级开始完整练习。"},

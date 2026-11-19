@@ -182,6 +182,7 @@ const TOURS={
   parent_exam_report:['在“孩子学情”页顶部点“考试提分报告”。','看到得分变化、失分点、专项练习和再测对比，以及老师的话。','看不到答案和其他孩子的信息。']
 };
 TOURS.teacher_weekend_plan.push('已有教案可在“互动课件”预检导入课件包；默认不覆盖，勾选替换可保留上一版并生成待审核草稿，不改教案或习题。');
+TOURS.teacher_weekend_plan.push('第4环节可按已通过的随堂练习逐题配课件；课堂公布该题答案后才显示讲解，须逐题审核。');
 function tourPage(step,roleLabel,doneId='auxDone'){
   const rel=relation(step),lines=TOURS[step.id]||[];
   const open=roleLabel==='教师'?'<a class="btn" href="'+esc(step.page)+'" target="_blank" rel="noopener">打开真实页面（新窗口，会影响真实数据）</a>':'';
