@@ -42,6 +42,20 @@ class SaveBody(PageBody):
     writtenTask: bool = False
 
 
+class PreparedPage(BaseModel):
+    stageNo: int = Field(ge=2, le=3)
+    page: int = Field(ge=0)
+    expectedPageText: str = Field(min_length=1, max_length=4000)
+    kind: str = Field(default="steps", max_length=20)
+    params: dict[str, Any]
+    writtenTask: bool = False
+
+
+class PreparedPagesBody(BaseModel):
+    dryRun: bool = True
+    pages: list[PreparedPage] = Field(min_length=1, max_length=40)
+
+
 class TemplateBody(PageBody):
     name: str = Field(default="", max_length=80)
 
@@ -1108,6 +1122,56 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     @router.get("/teacher/weekend/lessons/{lid}/courseware")
     def get_courseware(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         return payload(db, my_lesson(db, u, lid))
+
+    @router.post("/teacher/weekend/lessons/{lid}/courseware/prepared-import")
+    def import_prepared(lid: int, b: PreparedPagesBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Preview or atomically add pre-authored drafts without altering the lesson or its questions."""
+        lesson = my_lesson(db, u, lid)
+        if len(json.dumps(b.model_dump(), ensure_ascii=False)) > 3000000:
+            raise HTTPException(413, "课件包过大，请压缩图片或分批导入")
+        existing_row = row_for(db, lesson, lock=not b.dryRun)
+        if existing_row is not None and int(existing_row.teacher_id) != int(u.id):
+            raise HTTPException(403, "只能导入自己备课的课件")
+        existing = items_of(existing_row)
+        occupied = {(int(item['stage']), item.get('page')) for item in existing}
+        selected, ready = set(), []
+        for incoming in b.pages:
+            key = (incoming.stageNo, incoming.page)
+            if key in selected:
+                raise HTTPException(400, "课件包含重复环节和页码")
+            selected.add(key)
+            if key in occupied:
+                raise HTTPException(409, "对应页已有课件，请先人工核对；导入不会覆盖")
+            if incoming.kind not in cw.TEMPLATES[lesson.subject]:
+                raise HTTPException(400, "这门课不能使用此模板")
+            pages = stage_pages(lesson, incoming.stageNo)
+            if incoming.page >= len(pages) or pages[incoming.page] != incoming.expectedPageText:
+                raise HTTPException(409, "教案页码或内容已变化，请重新匹配后再导入")
+            try:
+                params = cw.clean(incoming.kind, incoming.params, lesson.reading_plan or "")
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            prompt_text = str(params.get('problem') or '') + '\n' + str(params.get('sourceProblem') or '')
+            if re.search(r'【\s*(?:答案|参考答案|解析|解答)\s*】', prompt_text):
+                raise HTTPException(400, "初始题干含答案或解析标记，请将答案移入单独答案字段")
+            current_text = pages[incoming.page]
+            issue = figure_semantic_issue(params.get('figure') or {}, current_text)
+            missing = missing_visual_reason(current_text, params.get('figure') or {})
+            if issue or missing:
+                params['figureUnverified'] = True
+                params['figureNotice'] = "图示待确认：" + (issue or missing)
+            ready.append({"stage": incoming.stageNo, "page": incoming.page, "kind": incoming.kind,
+                          "status": "draft", "params": params, "approved": None,
+                          "writtenTask": incoming.writtenTask, "templateId": None,
+                          "pageText": current_text,
+                          "updatedAt": datetime.now(implementation.SCHOOL_TZ).strftime("%Y-%m-%d %H:%M")})
+        if b.dryRun:
+            return {"dryRun": True, "ready": len(ready), "pages": [{"stageNo": i['stage'], "page": i['page'],
+                    "notice": i['params'].get('figureNotice', '')} for i in ready]}
+        write(db, u, lesson, existing + ready)
+        implementation.audit(db, u, "weekend.courseware.prepared_import", f"lesson={lid}:pages={len(ready)}")
+        db.commit()
+        return {"dryRun": False, "imported": len(ready), "courseware": payload(db, lesson)}
 
     @router.post("/teacher/weekend/lessons/{lid}/courseware/restore-previous")
     def restore_previous(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):

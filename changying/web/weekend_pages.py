@@ -294,7 +294,7 @@ BOARD_LAYOUT_JS = r"""
 var BL_HEAD=/^(考点|知识点|重点|难点|方法|规律|结论)[一二三四五六七八九十0-9]*\s*[：:、．.\s]/;
 var BL_EXAMPLE=/^(示例|例题|例\s*[0-9一二三四五六七八九十]|练一练|试一试|做一做|想一想)/;
 var BL_WARN=/^(易错|注意|提醒|易混|误区)[点：:\s]/;
-var BL_ANSWER=/^((参考答案|答案|解答)([／\/][^：:]{1,6})?|答)\s*[：:]/,BL_SHOWN={},BL_COVER=true;     // cover answers only while explaining (stages 2-3)
+var BL_ANSWER=/^(?:【\s*(?:参考答案|答案|解答|解析)\s*】|((参考答案|答案|解答)([／\/][^：:]{1,6})?|答)\s*[：:])/,BL_SHOWN={},BL_COVER=true;     // cover answers only while explaining (stages 2-3)
 var BL_QUESTION=/^(选择题|判断题|填空题|计算题|文字／照片题|第\s*[0-9一二三四五六七八九十]+\s*题)/;
 var BL_BLANK=/[（(][\s　_＿]*[）)]|_{2,}|＿{2,}/;
 function blMath(t){return /[=＝×÷+＋−\-<>＜＞]/.test(t)&&/[0-9a-zA-Z²³]/.test(t)}

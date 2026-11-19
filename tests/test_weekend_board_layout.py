@@ -128,6 +128,8 @@ def test_board_picks_side_by_side_or_stacked_by_text_size():
 
 CASE4 = "例题1 | 省略乘号\n写出下面各式的结果：5×m＝（　　）　a×1＝（　　）　b×7.8＝（　　）\n参考答案：5m；a；7.8b"
 
+CASE_BRACKET_ANSWER = "一个梯形上底5厘米、下底7厘米、高5厘米，求面积。\n【答案】30平方厘米，两个相同梯形拼合后面积减半。"
+
 NODE4 = r'''
 var window={};
 function el(tag,attrs,...kids){const n={tag,attrs:attrs||{},children:[],style:{},appendChild(c){if(c)this.children.push(c);return c}};
@@ -151,6 +153,16 @@ def test_answers_stay_covered_until_the_teacher_shows_them():
     assert r["before"] == {"hidden": True, "label": "显示答案"}
     assert r["clicked"] == {"hidden": False}
     assert r["repaint"] == {"hidden": False, "label": "隐藏答案"}        # the 3-second refresh keeps it open
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_bracketed_answer_is_covered_for_imported_markdown_example():
+    harness = NODE4.replace("startsWith('参考答案')", "startsWith('【答案】')")
+    out = subprocess.run(["node", "-e", f"const TEXT={json.dumps(CASE_BRACKET_ANSWER, ensure_ascii=False)};" + harness], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    result = json.loads(out.stdout)
+    assert result['before'] == {'hidden': True, 'label': '显示答案'}
+    assert result['clicked']['hidden'] is False
 
 
 CASE5 = "选择题 1：诊断题 3 | 选择（1）省略乘号，a×8×b 应写成（　　）\nA. 8ab\nB. ab8\n参考答案／评分要点：8ab"

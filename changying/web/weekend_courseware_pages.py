@@ -905,7 +905,26 @@ function cwPlan(box,lessonId,refresh){
       if(!confirm('确认已逐页预览这 '+todo.length+' 页课件的内容和答案？审核后会在大屏对应页显示。'))return;
       run(todo,function(x){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:x.page}})},'审核');
     }});
+    var preparedFile=el('input',{type:'file',accept:'.json,application/json','aria-label':'选择预制课件包'});
+    var preparedImport=el('button',{text:'预检并导入课件包',onclick:function(){
+      var file=preparedFile.files&&preparedFile.files[0];
+      if(!file){msg.textContent='请选择预制课件 JSON 文件';return}
+      if(file.size>3000000){msg.textContent='课件包不能超过3 MB';return}
+      var reader=new FileReader();reader.onerror=function(){msg.textContent='无法读取课件包'};
+      reader.onload=function(){
+        var bundle;try{bundle=JSON.parse(String(reader.result||''))}catch(e){msg.textContent='课件包不是有效 JSON';return}
+        if(bundle&&bundle.courseware)bundle=bundle.courseware;
+        if(!bundle||!Array.isArray(bundle.pages)){msg.textContent='课件包缺少 pages 列表';return}
+        var url='/teacher/weekend/lessons/'+lessonId+'/courseware/prepared-import';
+        api(url,{json:{dryRun:true,pages:bundle.pages}}).then(function(preview){
+          var warnings=(preview.pages||[]).filter(function(p){return !!p.notice}).length;
+          if(!confirm('预检通过：'+preview.ready+' 页，其中 '+warnings+' 页有图示待核对提示。导入后均为草稿，需逐页审核。确定导入吗？'))return;
+          return api(url,{json:{dryRun:false,pages:bundle.pages}}).then(function(result){paint(result.courseware);msg.textContent='已导入 '+result.imported+' 页草稿，请逐页核对'})
+        }).catch(function(e){msg.textContent=e.message})
+      };reader.readAsText(file,'UTF-8');
+    }});
     box.appendChild(el('div',{class:'row'},stageSel,all,el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})),approveAll));
+    box.appendChild(el('div',{class:'row'},preparedFile,preparedImport));
     box.appendChild(msg);
     if(stageNo==='3'&&d.qualityAudit){
       var audit=d.qualityAudit;
