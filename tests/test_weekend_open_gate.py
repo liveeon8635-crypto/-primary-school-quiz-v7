@@ -93,6 +93,11 @@ def test_new_classroom_is_closed_before_first_teacher_selection(tmp_path):
             headers=sh).status_code == 404
         assert client.post(f'/student/weekend/sessions/{sid}/written/{question_id}',
             headers=sh, data={'text':'premature answer'}).status_code == 404
+    # 讲解题与巩固题也只在随堂练习里出现，开放前同样不能带出题干。
+    explain = client.get('/student/weekend/explain', headers=sh)
+    assert explain.status_code == 200 and explain.json()['items'] == [], explain.text
+    follow = client.get('/student/weekend/followup', headers=sh)
+    assert follow.status_code == 200 and follow.json()['active'] is False, follow.text
     with legacy.SessionLocal() as db:
         gate = legacy.Base.metadata.tables['weekend_open_questions']
         value = db.scalar(select(gate.c.opened_question_ids).where(
@@ -123,5 +128,44 @@ with TestClient(app) as client:
     assert client.post(base+'/goto', headers=th, json={'stage':4}).status_code == 200
     assert [q['id'] for q in client.get('/student/weekend/current', headers=sh).json()['questions']] == [qid]
     assert [q['id'] for q in client.get(f'/student/weekend/sessions/{sid}/written', headers=sh).json()['questions']] == [wid]
+    print('OK')
+''')
+
+
+def test_two_opens_in_flight_do_not_erase_each_other(tmp_path):
+    """A stale read must not overwrite a question another request just opened.
+
+    The teacher taps the board twice, or two devices drive one classroom: both
+    requests read the released list, each appends its own question and writes the
+    list back. A blind write keeps only the last one, so a question the teacher
+    opened silently disappears from the student view.
+    """
+    backup.helpers.run_isolated(tmp_path, backup.COMMON + SETUP + r'''
+    from changying.services import weekend_answers as answers
+    sessions_t = legacy.Base.metadata.tables['weekend_sessions']
+    gate_t = legacy.Base.metadata.tables['weekend_open_questions']
+    with legacy.SessionLocal() as db:
+        session_row = db.execute(select(sessions_t).where(sessions_t.c.id == sid)).first()
+        # Another request opens the first written question before our write lands.
+        answers.open_practice_question(legacy, db, session_row, 3)
+        db.commit()
+        real_read = answers._read_gate
+        stale = []
+        def stale_read(db_, table, session_):
+            if not stale:
+                stale.append(True)
+                return json.dumps([f'choice:{qid}'])
+            return real_read(db_, table, session_)
+        answers._read_gate = stale_read
+        answers.open_practice_question(legacy, db, session_row, 2)
+        db.commit()
+        answers._read_gate = real_read
+        opened = json.loads(db.scalar(select(gate_t.c.opened_question_ids).where(
+            gate_t.c.session_id == sid, gate_t.c.school_id == school)))
+    assert sorted(opened) == sorted([f'choice:{qid}', f'written:{wid}', f'choice:{second_id}']), opened
+    current = client.get('/student/weekend/current', headers=sh)
+    assert [q['id'] for q in current.json()['questions']] == [qid, second_id], current.text
+    written = client.get(f'/student/weekend/sessions/{sid}/written', headers=sh)
+    assert [q['id'] for q in written.json()['questions']] == [wid], written.text
     print('OK')
 ''')
