@@ -5,7 +5,7 @@ from test_node_script import run_node
 
 
 def test_lesson_row_shows_import_failure_next_to_its_own_button():
-    """A failed 导入我的教案 must be visible at the row, not only in the page-level note above the list."""
+    """A failed 导入教案/整包 must be visible at the row, not only above the list."""
 
     script = r'''
 const assert=require('node:assert/strict');
@@ -61,7 +61,7 @@ function byTag(tag){return all(root,tag)}
  assert.equal(boxes[0].className,'notice error');
 
  const buttons=byTag('button');
- const impBtn=buttons.find(b=>b.textContent==='导入我的教案');
+ const impBtn=buttons.find(b=>b.textContent==='导入教案/整包');
  assert(impBtn,'the import button must be identifiable again');
  assert(!impBtn.disabled,'the button must be usable after a failure');
 

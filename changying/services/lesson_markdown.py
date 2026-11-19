@@ -5,6 +5,7 @@ Eight markers only, and no model call anywhere::
     # 第03课：圆的面积        optional; supplies the lesson number and the title
     ## 本节目标
     ## 教学流程
+    ## 知识点                big-screen teaching pages for stage 2
     ## 例题                  worked examples (teacher-facing; pupils never answer them)
     ## 课后练习              becomes choice questions and written questions
     1. 题干 / C1. 题干       starts a question
@@ -28,7 +29,14 @@ _ANSWER = re.compile(r"^【\s*答案\s*】\s*(.*)$")
 _EXPLAIN = re.compile(r"^【\s*解析\s*】\s*(.*)$")
 _ANSWER_LETTER = re.compile(r"^\s*([A-Ha-h])")
 
-SECTION_FIELDS = {"本节目标": "core", "教学流程": "flow", "例题": "examples", "课后练习": "practice"}
+SECTION_FIELDS = {
+    "本节目标": "core",
+    "教学流程": "flow",
+    "知识点": "ppt",
+    "课件": "ppt",
+    "例题": "examples",
+    "课后练习": "practice",
+}
 
 
 def normalize(text: str) -> str:
@@ -75,6 +83,7 @@ def parse(text: str, *, max_lesson: int = 18) -> dict[str, Any]:
     title = ""
     core: list[str] = []
     flow: list[str] = []
+    ppt: list[str] = []
     practice: list[str] = []
     examples: list[str] = []
     questions: list[dict[str, Any]] = []
@@ -149,6 +158,9 @@ def parse(text: str, *, max_lesson: int = 18) -> dict[str, Any]:
         if section == "flow":
             flow.append(line)
             continue
+        if section == "ppt":
+            ppt.append(line)
+            continue
         if section == "practice":
             practice.append(line)
         if section not in ("examples", "practice"):
@@ -194,6 +206,7 @@ def parse(text: str, *, max_lesson: int = 18) -> dict[str, Any]:
         "title": title,
         "coreTarget": "\n".join(x for x in core if x).strip(),
         "teacherPlan": "\n".join(x for x in flow if x).strip(),
+        "ppt": [x for x in ppt if x],
         "examples": examples,
         "closureTraining": "\n".join(x for x in practice if x).strip(),
         "questions": questions,

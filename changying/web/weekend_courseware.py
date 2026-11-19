@@ -152,6 +152,234 @@ def practice_courseware_sources(implementation: Any, db: Any, lesson: Any, teach
 def practice_courseware_pages(implementation: Any, db: Any, lesson: Any, teacher_id: int) -> list[str]:
     return [stem for stem, _ in practice_courseware_sources(implementation, db, lesson, teacher_id)]
 
+
+def draft_practice_courseware_pages(implementation: Any, db: Any, lesson: Any, teacher_id: int) -> list[str]:
+    """Practice in review order, including questions that are still waiting for approval.
+
+    A one-file import creates questions and their prepared courseware in the same
+    transaction. The teacher must still approve both separately, but the courseware
+    can be attached while the questions are still drafts instead of forcing a second
+    upload after approval.
+    """
+    from changying.services.lesson_written import written_templates
+    from changying.web.weekend_plan_views import lesson_worked_examples
+    from changying.services.weekend_answers import _duplicates_example, choice_courseware_binding
+    from changying.web.weekend_written import register_written_tables
+    examples = [item['stem'] for item in lesson_worked_examples(lesson) if item['stem']]
+    TQ = implementation.TeachingQuestion
+    choices = db.scalars(select(TQ).where(
+        TQ.school_id == lesson.school_id,
+        TQ.lesson_id == lesson.id,
+        TQ.stage != "weekend_removed",
+    ).order_by(TQ.id).limit(30)).all()
+    pages = [choice_courseware_binding(q.stem, json.loads(q.options_json or '[]'))
+             for q in choices if not _duplicates_example(q.stem, examples)]
+    table = register_written_tables(implementation)['questions']
+    for q in written_templates(db, table, lesson.school_id, teacher_id, lesson.id):
+        text = str(q.stem).split('\n\n')[-1].strip()
+        if not _duplicates_example(text, examples):
+            pages.append(text)
+    return pages
+
+
+def _prepared_page_dict(page: Any) -> dict[str, Any]:
+    return page.model_dump() if hasattr(page, "model_dump") else dict(page)
+
+
+def _same_page_text(left: Any, right: Any) -> bool:
+    """Compare page identity without treating imported whitespace as a content change."""
+    return re.sub(r"\s+", "", str(left or "")) == re.sub(r"\s+", "", str(right or ""))
+
+
+def _build_prepared_courseware(
+    implementation: Any,
+    db: Any,
+    u: Any,
+    lesson: Any,
+    incoming_pages: list[Any],
+    *,
+    existing: list[dict[str, Any]],
+    replace_existing: bool,
+    allow_pending_practice: bool,
+) -> tuple[list[dict[str, Any]], set[tuple[int, int | None]]]:
+    """Validate a prepared bundle against the lesson currently locked by the caller."""
+    payload_size = len(json.dumps([_prepared_page_dict(x) for x in incoming_pages], ensure_ascii=False))
+    if payload_size > 3_000_000:
+        raise HTTPException(413, "课件包过大，请压缩图片或分批导入")
+    occupied = {(int(item['stage']), item.get('page')) for item in existing}
+    selected: set[tuple[int, int | None]] = set()
+    ready: list[dict[str, Any]] = []
+    page_cache: dict[int, list[str]] = {}
+    for incoming_value in incoming_pages:
+        incoming = _prepared_page_dict(incoming_value)
+        stage = int(incoming["stageNo"])
+        if stage == 4 and incoming.get("writtenTask"):
+            raise HTTPException(400, "随堂练习已有原题，不需要重复生成学生作答题")
+        if stage not in page_cache:
+            page_cache[stage] = (
+                draft_practice_courseware_pages(implementation, db, lesson, u.id)
+                if stage == 4 and allow_pending_practice
+                else practice_courseware_pages(implementation, db, lesson, u.id)
+                if stage == 4
+                else stage_pages(lesson, stage)
+            )
+        pages = page_cache[stage]
+        page = int(incoming["page"])
+        expected_text = str(incoming["expectedPageText"])
+        if stage == 4:
+            matched = [index for index, text in enumerate(pages) if _same_page_text(text, expected_text)]
+            if len(matched) != 1:
+                raise HTTPException(409, "练习题干不存在或存在重复，请先核对习题审核中的题目")
+            page = matched[0]
+        key = (stage, page)
+        if key in selected:
+            raise HTTPException(400, "课件包含重复环节和页码")
+        selected.add(key)
+        old = next((item for item in existing
+                    if int(item["stage"]) == stage and item.get("page") == page), None)
+        if old and stage == 4 and old.get("templateId") is not None:
+            raise HTTPException(409, "旧课件关联了学生书面题，禁止自动替换；请先人工核对历史练习")
+        if old and stage == 4 and old.get("pageText") != expected_text:
+            raise HTTPException(409, "练习顺序已变化，此位置存在旧课件；请先人工核对，不能覆盖")
+        if key in occupied and not replace_existing:
+            raise HTTPException(409, "对应页已有课件，请先人工核对；导入不会覆盖")
+        if old and old.get("approved") is not None and old.get("kind") != incoming["kind"]:
+            raise HTTPException(409, "已审核课件不能直接更换模板类型")
+        if incoming["kind"] not in cw.TEMPLATES[lesson.subject]:
+            raise HTTPException(400, "这门课不能使用此模板")
+        if page >= len(pages) or not _same_page_text(pages[page], expected_text):
+            raise HTTPException(409, "教案页码或内容已变化，请重新匹配后再导入")
+        try:
+            params = cw.clean(incoming["kind"], incoming["params"], lesson.reading_plan or "")
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        prompt_text = str(params.get('problem') or '') + '\n' + str(params.get('sourceProblem') or '')
+        if re.search(r"【\s*(?:答案|参考答案|解析|解答)\s*】", prompt_text):
+            raise HTTPException(400, "初始题干含答案或解析标记，请将答案移入单独答案字段")
+        current_text = pages[page]
+        visual = primary_visual(params)
+        issue = figure_semantic_issue(visual, current_text)
+        missing = missing_visual_reason(current_text, visual)
+        if issue or missing:
+            params['figureUnverified'] = True
+            params['figureNotice'] = "图示待确认：" + (issue or missing)
+        ready_item = {
+            "stage": stage,
+            "page": page,
+            "kind": incoming["kind"],
+            "status": "draft",
+            "params": params,
+            "approved": None,
+            "writtenTask": bool(incoming.get("writtenTask")),
+            "templateId": None,
+            "pageText": current_text,
+            "updatedAt": datetime.now(implementation.SCHOOL_TZ).strftime("%Y-%m-%d %H:%M"),
+        }
+        if old:
+            replacement = dict(old)
+            replacement['previousDraft'] = {
+                key: old.get(key) for key in ('kind', 'params', 'writtenTask', 'pageText')
+            }
+            replacement.update(ready_item)
+            replacement['approved'] = old.get('approved')
+            replacement.pop('reimportReviewRequired', None)
+            ready_item = replacement
+        ready.append(ready_item)
+    return ready, selected
+
+
+def import_prepared_courseware(
+    implementation: Any,
+    db: Any,
+    u: Any,
+    lesson: Any,
+    incoming_pages: list[Any],
+    *,
+    dry_run: bool,
+    replace_existing: bool,
+    expected_revision: str = "",
+    allow_pending_practice: bool = False,
+    commit: bool = True,
+    audit_detail: str = "",
+) -> dict[str, Any]:
+    """Validate and atomically write prepared pages for one lesson.
+
+    Shared by the standalone preparation screen and the one-file lesson bundle.
+    The caller may keep the transaction open so the lesson, questions and
+    courseware all succeed or all roll back together.
+    """
+    table = register_courseware_table(implementation)
+    query = select(table).where(table.c.school_id == lesson.school_id, table.c.lesson_id == lesson.id)
+    row = db.execute(query.with_for_update() if not dry_run else query).first()
+    if row is not None and int(row.teacher_id) != int(u.id):
+        raise HTTPException(403, "只能导入自己备课的课件")
+    existing = items_of(row)
+    revision = hashlib.sha256(
+        json.dumps(existing, ensure_ascii=False, sort_keys=True).encode('utf-8')
+    ).hexdigest()
+    if not dry_run and replace_existing and expected_revision and expected_revision != revision:
+        raise HTTPException(409, "已有课件在预检后发生变化，请重新预检")
+    ready, selected = _build_prepared_courseware(
+        implementation, db, u, lesson, incoming_pages,
+        existing=existing,
+        replace_existing=replace_existing,
+        allow_pending_practice=allow_pending_practice,
+    )
+    if dry_run:
+        return {
+            "dryRun": True,
+            "ready": len(ready),
+            "revision": revision,
+            "replacing": len(selected & {(int(i['stage']), i.get('page')) for i in existing}),
+            "pages": [
+                {
+                    "stageNo": item['stage'],
+                    "page": item['page'],
+                    "notice": item['params'].get('figureNotice', ''),
+                }
+                for item in ready
+            ],
+        }
+    retained = [
+        item for item in existing
+        if (int(item['stage']), item.get('page')) not in selected
+    ]
+    items = sorted(retained + ready, key=lambda item: (
+        int(item["stage"]),
+        -1 if item.get("page") is None else int(item["page"]),
+    ))
+    approved = [[int(item["stage"]), item.get("page")] for item in items if item.get("approved") is not None]
+    values = dict(
+        teacher_id=u.id,
+        kind="multi",
+        stage_no=int(items[0]["stage"]) if items else 3,
+        status="approved" if approved else "draft",
+        params_json=json.dumps({"version": 2, "items": items}, ensure_ascii=False),
+        approved_json=json.dumps(approved) if approved else None,
+        approved_stage=None,
+        template_id=None,
+        updated_at=datetime.utcnow(),
+    )
+    if row is None:
+        db.execute(insert(table).values(
+            school_id=u.school_id,
+            lesson_id=lesson.id,
+            live_json="{}",
+            **values,
+        ))
+    else:
+        db.execute(update(table).where(table.c.id == row.id).values(**values))
+    if audit_detail:
+        implementation.audit(db, u, "weekend.courseware.prepared_import", audit_detail)
+    if commit:
+        db.commit()
+    return {
+        "dryRun": False,
+        "imported": len(ready),
+        "revision": revision,
+        "replacing": len(selected & {(int(i['stage']), i.get('page')) for i in existing}),
+    }
+
 def _short(text: str, limit: int = 40) -> str:
     line = " ".join(str(text or "").split())
     return line if len(line) <= limit else line[:limit] + "…"
@@ -650,9 +878,32 @@ def _courseware_visual_text(item: dict[str, Any], params: dict[str, Any] | None 
     return " ".join(str(part or "") for part in parts)
 
 
+def primary_visual(params: dict[str, Any] | None) -> dict[str, Any]:
+    """Return the diagram that actually reaches the screen.
+
+    Progressive bundles can carry the initial diagram only in ``stepFigures``.
+    Treat that frame as the primary visual so validation and audit do not reject
+    a page merely because the same image was not copied into ``figure`` twice.
+    """
+    values = params if isinstance(params, dict) else {}
+    figure = values.get("figure")
+    if isinstance(figure, dict) and figure.get("type"):
+        return figure
+    frames = values.get("stepFigures")
+    if isinstance(frames, list):
+        for frame in frames:
+            if isinstance(frame, dict) and frame.get("type"):
+                return frame
+    return {}
+
+
 def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[str, Any]:
     """Repair known lesson diagrams at display time while preserving the scanned source separately."""
     result = dict(params or {})
+    if primary_visual(result).get("type") == "uploaded_image" and result.get("stepFigures"):
+        result.pop("figureUnverified", None)
+        result.pop("figureNotice", None)
+        return result
     figure = required_visual_figure(visual_text)
     if not figure:
         # 没有可用的标准图示时，仍要告诉老师“这页缺图/图不能用”。
@@ -1212,81 +1463,18 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     def import_prepared(lid: int, b: PreparedPagesBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Preview or atomically add pre-authored drafts without altering the lesson or its questions."""
         lesson = my_lesson(db, u, lid)
-        if len(json.dumps(b.model_dump(), ensure_ascii=False)) > 3000000:
-            raise HTTPException(413, "课件包过大，请压缩图片或分批导入")
-        existing_row = row_for(db, lesson, lock=not b.dryRun)
-        if existing_row is not None and int(existing_row.teacher_id) != int(u.id):
-            raise HTTPException(403, "只能导入自己备课的课件")
-        existing = items_of(existing_row)
-        revision = hashlib.sha256(json.dumps(existing, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()
-        if not b.dryRun and b.replaceExisting and b.expectedRevision != revision:
-            raise HTTPException(409, "已有课件在预检后发生变化，请重新预检")
-        occupied = {(int(item['stage']), item.get('page')) for item in existing}
-        selected, ready, page_cache = set(), [], {}
-        for incoming in b.pages:
-            if incoming.stageNo == 4 and incoming.writtenTask:
-                raise HTTPException(400, '随堂练习已有原题，不需要重复生成学生作答题')
-            if incoming.stageNo not in page_cache:
-                page_cache[incoming.stageNo] = pages_for(db, lesson, incoming.stageNo, u.id)
-            pages = page_cache[incoming.stageNo]
-            page = incoming.page
-            if incoming.stageNo == 4:
-                matched = [i for i, text in enumerate(pages) if text == incoming.expectedPageText]
-                if len(matched) != 1:
-                    raise HTTPException(409, '练习题干不存在或存在重复，请先核对习题审核中的题目')
-                page = matched[0]
-            key = (incoming.stageNo, page)
-            if key in selected:
-                raise HTTPException(400, "课件包含重复环节和页码")
-            selected.add(key)
-            old = find(existing, incoming.stageNo, page)
-            if old and incoming.stageNo == 4 and old.get('templateId') is not None:
-                raise HTTPException(409, '旧课件关联了学生书面题，禁止自动替换；请先人工核对历史练习')
-            if old and incoming.stageNo == 4 and old.get('pageText') != incoming.expectedPageText:
-                raise HTTPException(409, '练习顺序已变化，此位置存在旧课件；请先人工核对，不能覆盖')
-            if key in occupied and not b.replaceExisting:
-                raise HTTPException(409, "对应页已有课件，请先人工核对；导入不会覆盖")
-            if old and old.get('approved') is not None and old.get('kind') != incoming.kind:
-                raise HTTPException(409, "已审核课件不能直接更换模板类型")
-            if incoming.kind not in cw.TEMPLATES[lesson.subject]:
-                raise HTTPException(400, "这门课不能使用此模板")
-            if page >= len(pages) or pages[page] != incoming.expectedPageText:
-                raise HTTPException(409, "教案页码或内容已变化，请重新匹配后再导入")
-            try:
-                params = cw.clean(incoming.kind, incoming.params, lesson.reading_plan or "")
-            except ValueError as exc:
-                raise HTTPException(400, str(exc)) from exc
-            prompt_text = str(params.get('problem') or '') + '\n' + str(params.get('sourceProblem') or '')
-            if re.search(r'【\s*(?:答案|参考答案|解析|解答)\s*】', prompt_text):
-                raise HTTPException(400, "初始题干含答案或解析标记，请将答案移入单独答案字段")
-            current_text = pages[page]
-            issue = figure_semantic_issue(params.get('figure') or {}, current_text)
-            missing = missing_visual_reason(current_text, params.get('figure') or {})
-            if issue or missing:
-                params['figureUnverified'] = True
-                params['figureNotice'] = "图示待确认：" + (issue or missing)
-            ready.append({"stage": incoming.stageNo, "page": page, "kind": incoming.kind,
-                          "status": "draft", "params": params, "approved": None,
-                          "writtenTask": incoming.writtenTask, "templateId": None,
-                          "pageText": current_text,
-                          "updatedAt": datetime.now(implementation.SCHOOL_TZ).strftime("%Y-%m-%d %H:%M")})
-            if old:
-                replacement = dict(old)
-                replacement['previousDraft'] = {k: old.get(k) for k in ('kind', 'params', 'writtenTask', 'pageText')}
-                replacement.update(ready[-1])
-                replacement['approved'] = old.get('approved')
-                replacement.pop('reimportReviewRequired', None)
-                ready[-1] = replacement
+        result = import_prepared_courseware(
+            implementation, db, u, lesson, b.pages,
+            dry_run=b.dryRun,
+            replace_existing=b.replaceExisting,
+            expected_revision=b.expectedRevision,
+            commit=False,
+            audit_detail="" if b.dryRun else f"lesson={lid}:pages={len(b.pages)}",
+        )
         if b.dryRun:
-            return {"dryRun": True, "ready": len(ready), "revision": revision, "replacing": len(selected & occupied), "pages": [{"stageNo": i['stage'], "page": i['page'],
-                    "notice": i['params'].get('figureNotice', '')} for i in ready]}
-        # The drafts and their audit entry share one transaction (and the row lock taken
-        # above), so a failed audit can never leave unaudited courseware behind.
-        retained = [item for item in existing if (int(item['stage']), item.get('page')) not in selected]
-        write(db, u, lesson, retained + ready, commit=False)
-        implementation.audit(db, u, "weekend.courseware.prepared_import", f"lesson={lid}:pages={len(ready)}")
+            return result
         db.commit()
-        return {"dryRun": False, "imported": len(ready), "courseware": payload(db, lesson, u.id)}
+        return {**result, "courseware": payload(db, lesson, u.id)}
 
     @router.post("/teacher/weekend/lessons/{lid}/courseware/restore-previous")
     def restore_previous(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1408,9 +1596,10 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         pages = pages_for(db, lesson, b.stageNo, u.id)
         page_text = pages[page] if page is not None else ""
         fallback_figure = required_visual_figure(page_text)
-        if fallback_figure and not (params.get("figure") or {}).get("type"):
+        saved_visual = primary_visual(params)
+        if (not params.get("stepFigures")) and fallback_figure and not saved_visual.get("type"):
             params = cw.clean(b.kind, {**params, "figure": fallback_figure}, lesson.reading_plan or "")
-        elif fallback_figure and (params.get("figure") or {}).get("type") != fallback_figure.get("type"):
+        elif (not params.get("stepFigures")) and fallback_figure and saved_visual.get("type") != fallback_figure.get("type"):
             # These question types have fixed, source-derived diagrams; repair stale legacy figure kinds.
             if fallback_figure.get("type") in ("equal_base_height", "parallelogram_thirds", "table"):
                 params = cw.clean(b.kind, {**params, "figure": fallback_figure}, lesson.reading_plan or "")
@@ -1470,12 +1659,12 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             # Source scans are attached when available. Their absence is a teacher-review warning,
             # not a server-side approval lock; the page audit still flags missing known diagrams.
         required_figure = required_visual_type(item.get("pageText") or "")
-        saved_figure = params.get("figure") or {}
-        if required_figure in ("equal_base_height", "parallelogram_thirds", "table") and saved_figure.get("type") != required_figure:
+        saved_figure = primary_visual(params)
+        if (not params.get("stepFigures")) and required_figure in ("equal_base_height", "parallelogram_thirds", "table") and saved_figure.get("type") != required_figure:
             fallback_figure = required_visual_figure(item.get("pageText") or "")
             if fallback_figure:
                 params = cw.clean(item["kind"], {**params, "figure": fallback_figure}, lesson.reading_plan or "")
-                saved_figure = params.get("figure") or {}
+                saved_figure = primary_visual(params)
         # A reviewed custom diagram may be better than our generic fallback.
         # Prevent approval of the known old solved-answer calendar table, but
         # never silently overwrite any teacher-authored drawing.
