@@ -1184,6 +1184,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         old = find(items, stage, page)
         if stage == 4 and written_task:
             raise HTTPException(400, '随堂练习已有原题，不需要重复生成学生作答题')
+        if old is not None and stage == 4 and old.get('templateId') is not None:
+            raise HTTPException(409, '旧课件关联了学生书面题，禁止直接覆盖；请先人工核对历史练习')
         if old is not None and stage == 4 and old.get('pageText') != page_text:
             raise HTTPException(409, '练习顺序或题干已变化，不能覆盖旧位置；请先人工核对')
         if old is None:
@@ -1238,6 +1240,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 raise HTTPException(400, "课件包含重复环节和页码")
             selected.add(key)
             old = find(existing, incoming.stageNo, page)
+            if old and incoming.stageNo == 4 and old.get('templateId') is not None:
+                raise HTTPException(409, '旧课件关联了学生书面题，禁止自动替换；请先人工核对历史练习')
             if old and incoming.stageNo == 4 and old.get('pageText') != incoming.expectedPageText:
                 raise HTTPException(409, '练习顺序已变化，此位置存在旧课件；请先人工核对，不能覆盖')
             if key in occupied and not b.replaceExisting:
@@ -1440,6 +1444,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             raise HTTPException(409, "教案原题已变化，旧课件不可直接审核；请重新生成或保存与本页一致的讲解。")
         answer_binding = None
         if b.stageNo == 4:
+            if item.get('templateId') is not None:
+                raise HTTPException(409, '旧课件关联了学生书面题，禁止自动改写或删除；请先人工核对')
             if item.get('writtenTask'):
                 # Historical whole-stage records defaulted to writtenTask=True.
                 # Allow safe re-approval only when no generated question is linked.
@@ -1525,6 +1531,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         item = find(items, b.stageNo, b.page)
         if item is None:
             raise HTTPException(404, "这一页没有课件")
+        if b.stageNo == 4 and item.get("templateId") is not None:
+            raise HTTPException(409, "旧课件关联了学生书面题，不能直接删除课件；请先人工核对历史练习")
         drop_template(db, u, lesson, item.get("templateId"))
         items.remove(item)
         write(db, u, lesson, items)
