@@ -884,11 +884,15 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
     if stage == 4:
         # Legacy whole-stage slides and new per-question slides share the release gate.
         from changying.services.weekend_answers import practice_deck
-        deck, _, index, _ = practice_deck(implementation, db, row)
+        deck, released, index, total = practice_deck(implementation, db, row)
         if not deck:
             return None, "本环节暂无可展示的练习。"
-        if not deck[index].get('published'):
-            return None, "公布本题答案后才能展示讲解课件。"
+        if any(item.get('page') is not None for item in approved):
+            if not deck[index].get('published'):
+                return None, "公布本题答案后才能展示讲解课件。"
+        elif released < total:
+            # The legacy whole-stage bundle can contain solutions to *every* exercise.
+            return None, "旧版整环节课件需公布全部练习答案后才能展示。"
     if stage == 4 and any(item.get('page') is not None for item in approved):
         from changying.services.weekend_answers import practice_items
         current = deck[index]
