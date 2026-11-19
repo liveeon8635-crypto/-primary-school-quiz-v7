@@ -109,6 +109,8 @@ with TestClient(app) as client:
     params_json=json.dumps({'version':2,'items':[legacy_item]},ensure_ascii=False),
     approved_json=json.dumps([[4,None]]),live_json='{}'))
   db.commit()
+ legacy_approval=client.post(f'/teacher/weekend/lessons/{lid}/courseware/approve',headers=th,json={'stageNo':4,'page':None})
+ assert legacy_approval.status_code==200,legacy_approval.text
  second=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid})
  assert second.status_code==200,second.text
  base2=f"/teacher/weekend/sessions/{second.json()['id']}"
