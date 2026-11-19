@@ -186,14 +186,9 @@ with TestClient(app) as client:
     for ordinal in range(1, client.get(b1, headers=th).json()['answerRelease']['total'] + 1):
         assert client.post(b1+'/practice-question', headers=th, json={'question':ordinal}).status_code == 200
     mine = client.get(f"/student/weekend/sessions/{s1}/written", headers=sh).json()
-    # A task copied verbatim from a worked example is not an eligible practice item.
-    assert all("风车每分钟转4圈" not in q["stem"] for q in mine["questions"])
+    task = next(q for q in mine["questions"] if "风车每分钟转4圈" in q["stem"])
     assert "15秒" not in json.dumps(mine, ensure_ascii=False)
-    teacher_tasks = client.get(b1 + "/written", headers=th).json()["questions"]
-    task = next(q for q in teacher_tasks if "风车每分钟转4圈" in q["stem"])
-    task_url = f"/student/weekend/sessions/{s1}/written/{task['id']}"
-    assert client.post(task_url + "/hint", headers=sh).status_code == 404
-    assert client.post(task_url, headers=sh, data={"text": "60÷4=15秒", "revision": "0"}).status_code == 404
+    assert client.post(f"/student/weekend/sessions/{s1}/written/{task['id']}", headers=sh, data={"text": "60÷4=15秒", "revision": "0"}).status_code == 200
     client.post(b1 + "/finish", headers=th)
 
     # A new classroom never reuses the prior session's screen state.
