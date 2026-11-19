@@ -51,6 +51,8 @@ def make_db(tmp_path):
                           "VALUES (1, 1, '', 'text', '', '[]', 'published', CURRENT_TIMESTAMP)"))
         conn.execute(text("INSERT INTO ai_usage_logs (school_id, user_id, feature, provider, model, status, prompt_chars, output_chars, "
                           "input_tokens, output_tokens, latency_ms, error, created_at) VALUES (1, 1, 'f', 'p', 'm', 'ok', 0, 0, 0, 0, 0, '', CURRENT_TIMESTAMP)"))
+        conn.execute(text("INSERT INTO weekend_open_questions (session_id, school_id, opened_question_ids) "
+                          "VALUES (1, 1, '[\"choice:1\"]')"))
         conn.execute(text("INSERT INTO audit_logs (school_id, user_id, action, detail, created_at) VALUES (1, 1, 'product_feedback', '{}', CURRENT_TIMESTAMP)"))
     return f"sqlite:///{db}", engine
 
@@ -58,7 +60,7 @@ def make_db(tmp_path):
 def counts(engine):
     with engine.connect() as conn:
         return {n: conn.execute(text(f"SELECT COUNT(*) FROM {n}")).scalar() for n in
-                ("users", "user_security", "audit_logs", "homework_notices", "ai_usage_logs")}
+                ("users", "user_security", "audit_logs", "homework_notices", "ai_usage_logs", "weekend_open_questions")}
 
 
 def test_dry_run_changes_nothing_and_execute_needs_the_backup_flag(tmp_path, monkeypatch, capsys):
@@ -77,6 +79,7 @@ def test_execute_removes_activity_data_but_keeps_accounts_audit_and_resets_locko
     assert cleanup.main(["--allow-after-launch", "--execute", "--i-have-a-backup"]) == 0
     after = counts(engine)
     assert after["homework_notices"] == 0 and after["ai_usage_logs"] == 0
+    assert after["weekend_open_questions"] == 0
     assert after["users"] == 2 and after["audit_logs"] == 1                          # accounts and feedback/audit records stay
     with engine.connect() as conn:
         assert conn.execute(text("SELECT failed_login_count FROM user_security WHERE user_id = 2")).scalar() == 0
