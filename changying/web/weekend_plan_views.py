@@ -1217,8 +1217,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         else:
             result["message"] = (
                 "教案原文已在本地保存为草稿，未调用外部 AI。"
-                "文件未按约定格式自动拆分例题和练习；请在“审改”中核对原文并补充题目，"
-                "或上传结构化 JSON 整包。"
+                "文件未按约定格式自动拆分例题和练习，也未把图片匹配到题目；"
+                "请在“审改”中核对原文并补充题目与配图，或上传结构化 JSON 整包。"
             )
         return result
 
