@@ -16,6 +16,7 @@ through the existing written questions (text/photo, teacher review, question-by-
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 from datetime import datetime
 from typing import Any
@@ -53,6 +54,8 @@ class PreparedPage(BaseModel):
 
 class PreparedPagesBody(BaseModel):
     dryRun: bool = True
+    replaceExisting: bool = False
+    expectedRevision: str = Field(default="", max_length=64)
     pages: list[PreparedPage] = Field(min_length=1, max_length=40)
 
 
@@ -1134,6 +1137,9 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         if existing_row is not None and int(existing_row.teacher_id) != int(u.id):
             raise HTTPException(403, "只能导入自己备课的课件")
         existing = items_of(existing_row)
+        revision = hashlib.sha256(json.dumps(existing, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()
+        if not b.dryRun and b.replaceExisting and b.expectedRevision != revision:
+            raise HTTPException(409, "已有课件在预检后发生变化，请重新预检")
         occupied = {(int(item['stage']), item.get('page')) for item in existing}
         selected, ready = set(), []
         for incoming in b.pages:
@@ -1141,8 +1147,11 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             if key in selected:
                 raise HTTPException(400, "课件包含重复环节和页码")
             selected.add(key)
-            if key in occupied:
+            old = find(existing, incoming.stageNo, incoming.page)
+            if key in occupied and not b.replaceExisting:
                 raise HTTPException(409, "对应页已有课件，请先人工核对；导入不会覆盖")
+            if old and old.get('approved') is not None and old.get('kind') != incoming.kind:
+                raise HTTPException(409, "已审核课件不能直接更换模板类型")
             if incoming.kind not in cw.TEMPLATES[lesson.subject]:
                 raise HTTPException(400, "这门课不能使用此模板")
             pages = stage_pages(lesson, incoming.stageNo)
@@ -1166,12 +1175,20 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                           "writtenTask": incoming.writtenTask, "templateId": None,
                           "pageText": current_text,
                           "updatedAt": datetime.now(implementation.SCHOOL_TZ).strftime("%Y-%m-%d %H:%M")})
+            if old:
+                replacement = dict(old)
+                replacement['previousDraft'] = {k: old.get(k) for k in ('kind', 'params', 'writtenTask', 'pageText')}
+                replacement.update(ready[-1])
+                replacement['approved'] = old.get('approved')
+                replacement.pop('reimportReviewRequired', None)
+                ready[-1] = replacement
         if b.dryRun:
-            return {"dryRun": True, "ready": len(ready), "pages": [{"stageNo": i['stage'], "page": i['page'],
+            return {"dryRun": True, "ready": len(ready), "revision": revision, "replacing": len(selected & occupied), "pages": [{"stageNo": i['stage'], "page": i['page'],
                     "notice": i['params'].get('figureNotice', '')} for i in ready]}
         # The drafts and their audit entry share one transaction (and the row lock taken
         # above), so a failed audit can never leave unaudited courseware behind.
-        write(db, u, lesson, existing + ready, commit=False)
+        retained = [item for item in existing if (int(item['stage']), item.get('page')) not in selected]
+        write(db, u, lesson, retained + ready, commit=False)
         implementation.audit(db, u, "weekend.courseware.prepared_import", f"lesson={lid}:pages={len(ready)}")
         db.commit()
         return {"dryRun": False, "imported": len(ready), "courseware": payload(db, lesson)}

@@ -173,7 +173,7 @@ STEP_RELATIONSHIPS: dict[str, dict[str, str]] = {
     "account": {"who": "当前用户", "creates": "账号偏好/安全操作", "visible_to": "账号本人", "other_role_sees": "其他角色不应直接看到账号安全信息", "communication_tip": "身份切换和账号退出要区分", "next": "返回角色主线"},
 }
 
-STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 已有教案可在互动课件中预检并导入预制课件包；只新增待审核草稿，不覆盖已有页，也不改教案和习题。"
+STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 已有教案可在互动课件中预检导入预制课件包；默认不覆盖，勾选替换可保留上一版并生成待审核草稿，不改教案和习题。"
 
 SCENARIO_PRESETS: dict[str, dict[str, Any]] = {
     "empty": {"title": "从零开始", "description": "从建立班级开始完整练习。"},

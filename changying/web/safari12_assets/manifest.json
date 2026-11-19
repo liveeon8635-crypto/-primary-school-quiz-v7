@@ -375,7 +375,7 @@
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b"
     ],
     "/v1/training": [
-      "203baf34e2229973298a20588f69c50e2ee57ba2b269a1aede9a4061664d6390"
+      "5688cd8253814f212a03ecf6d22be6cf39822476753bc78ee5e70f7e917e9fa3"
     ],
     "/v1/transition": [
       "f8f56c33f77910ed27ccfcd07ceabe918d7a478077bf789b962e71dc84f0b6cd",
@@ -409,16 +409,16 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/weekend": [
-      "fe787c058b2c1343cfd73759279d41f4989e7aa19a26468d5f2b852621a70a42"
+      "5654521541e78079e6a655b4f0fec9e512191cbb1832623b534b7a4bcadb3185"
     ],
     "/v1/weekend-board": [
-      "28d4a55455cb82cb0e97a6d2089149af107fa86ae973b807aa1e2b4783de0ca1"
+      "60d690ad081bc3b3711b1ed82c8c5fe2334e458927d657bc90f8ddb799adcbcb"
     ],
     "/v1/weekend-brief": [
       "330e889e84a00750732571fff2701447498443d54160fd4e2d191e8318846828"
     ],
     "/v1/weekend-plan": [
-      "3f003199104e6cba344bdc2a8afcdd5deb306725eaaf5cf1dc48fee2dfa6a998"
+      "2748f7439101adb59a942d0e516b316fe26938f906a78881eb11bdb65472830d"
     ],
     "/v1/weekend-practice": [
       "dae46bd9c6dab0c069e482d3d57702879775be625ec700b09e0ed7cb90490e82"
@@ -508,11 +508,6 @@
       "sourceBytes": 63010,
       "compiledBytes": 63010
     },
-    "203baf34e2229973298a20588f69c50e2ee57ba2b269a1aede9a4061664d6390": {
-      "unchanged": false,
-      "sourceBytes": 64934,
-      "compiledBytes": 68636
-    },
     "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901": {
       "unchanged": true,
       "sourceBytes": 2156,
@@ -528,10 +523,10 @@
       "sourceBytes": 3749,
       "compiledBytes": 4287
     },
-    "28d4a55455cb82cb0e97a6d2089149af107fa86ae973b807aa1e2b4783de0ca1": {
+    "2748f7439101adb59a942d0e516b316fe26938f906a78881eb11bdb65472830d": {
       "unchanged": true,
-      "sourceBytes": 101120,
-      "compiledBytes": 101120
+      "sourceBytes": 179058,
+      "compiledBytes": 179058
     },
     "330e889e84a00750732571fff2701447498443d54160fd4e2d191e8318846828": {
       "unchanged": true,
@@ -557,11 +552,6 @@
       "unchanged": true,
       "sourceBytes": 2291,
       "compiledBytes": 2291
-    },
-    "3f003199104e6cba344bdc2a8afcdd5deb306725eaaf5cf1dc48fee2dfa6a998": {
-      "unchanged": true,
-      "sourceBytes": 178402,
-      "compiledBytes": 178402
     },
     "41566b57e73502bc3258788239b6b06a1ab0f3a3be2541faf36e78e331abbed9": {
       "unchanged": false,
@@ -597,6 +587,21 @@
       "unchanged": false,
       "sourceBytes": 277168,
       "compiledBytes": 285989
+    },
+    "5654521541e78079e6a655b4f0fec9e512191cbb1832623b534b7a4bcadb3185": {
+      "unchanged": true,
+      "sourceBytes": 148117,
+      "compiledBytes": 148117
+    },
+    "5688cd8253814f212a03ecf6d22be6cf39822476753bc78ee5e70f7e917e9fa3": {
+      "unchanged": false,
+      "sourceBytes": 64952,
+      "compiledBytes": 68654
+    },
+    "60d690ad081bc3b3711b1ed82c8c5fe2334e458927d657bc90f8ddb799adcbcb": {
+      "unchanged": true,
+      "sourceBytes": 101387,
+      "compiledBytes": 101387
     },
     "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf": {
       "unchanged": false,
@@ -767,11 +772,6 @@
       "unchanged": false,
       "sourceBytes": 1367,
       "compiledBytes": 1366
-    },
-    "fe787c058b2c1343cfd73759279d41f4989e7aa19a26468d5f2b852621a70a42": {
-      "unchanged": true,
-      "sourceBytes": 147850,
-      "compiledBytes": 147850
     }
   }
 }
