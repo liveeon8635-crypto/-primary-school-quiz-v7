@@ -324,6 +324,11 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         sid = int(db.execute(insert(sessions).values(
             school_id=u.school_id, teacher_id=u.id, lesson_id=b.lessonId, status="planned", current_stage=0, covered=False,
             title=f"{lesson['subject']} 第{lesson['lesson_no']}课 {lesson['title']}"[:220], created_at=now)).inserted_primary_key[0])
+        # New classrooms start closed; only pre-upgrade classrooms lack a gate.
+        # Persist this in the classroom creation transaction, before it is visible.
+        opened = implementation.Base.metadata.tables["weekend_open_questions"]
+        db.execute(insert(opened).values(
+            session_id=sid, school_id=u.school_id, opened_question_ids="[]"))
         from changying.services.lesson_written import snapshot_written_questions
         from changying.web.weekend_written import register_written_tables
         from changying.web.weekend_plan_views import duplicate_of, lesson_worked_examples, question_options
