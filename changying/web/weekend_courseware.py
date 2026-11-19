@@ -1441,7 +1441,12 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         answer_binding = None
         if b.stageNo == 4:
             if item.get('writtenTask'):
-                raise HTTPException(400, '随堂练习课件不能重复生成学生作答题')
+                # Historical whole-stage records defaulted to writtenTask=True.
+                # Allow safe re-approval only when no generated question is linked.
+                # Never create or silently delete an existing practice question.
+                if page is not None or item.get('templateId') is not None:
+                    raise HTTPException(409, '旧课件关联了学生作答题，请先核对，不能重复生成或自动删除')
+                item['writtenTask'] = False
             if page is not None:
                 signatures = [signature for stem, signature in practice_courseware_sources(implementation, db, lesson, u.id)
                               if stem == current_text]
