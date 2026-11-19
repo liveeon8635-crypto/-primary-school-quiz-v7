@@ -181,6 +181,7 @@ const TOURS={
   parent_weekend_brief:['在“孩子学情”页顶部点“周末课学情反馈”。','每节课最上面是“一眼看懂”：掌握得好的考点、需要加强的考点、回家做的一件事，以及和孩子自己上次比。','下面是老师发布的完整反馈：这节课学了什么、孩子表现、接下来怎么做。','没有排名，也看不到其他孩子。'],
   parent_exam_report:['在“孩子学情”页顶部点“考试提分报告”。','看到得分变化、失分点、专项练习和再测对比，以及老师的话。','看不到答案和其他孩子的信息。']
 };
+TOURS.teacher_weekend_plan.push('已有教案可在“互动课件”里预检并导入预制课件包；只新增待审核草稿，不覆盖已有课件、教案或习题。');
 function tourPage(step,roleLabel,doneId='auxDone'){
   const rel=relation(step),lines=TOURS[step.id]||[];
   const open=roleLabel==='教师'?'<a class="btn" href="'+esc(step.page)+'" target="_blank" rel="noopener">打开真实页面（新窗口，会影响真实数据）</a>':'';
