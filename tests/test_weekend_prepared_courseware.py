@@ -58,12 +58,26 @@ with TestClient(app) as client:
     assert client.post(url,headers=th,json=dup).status_code==400
     assert client.get(f'/teacher/weekend/lessons/{lid}/courseware',headers=th).json()['items']==[]
     bundle['dryRun']=False
+    real_audit=legacy.audit
+    def failing_audit(*a,**k): raise RuntimeError('audit store unavailable')
+    legacy.audit=failing_audit
+    try:
+        try:
+            client.post(url,headers=th,json=bundle); raise AssertionError('import must fail with its audit')
+        except RuntimeError:
+            pass
+    finally:
+        legacy.audit=real_audit
+    assert client.get(f'/teacher/weekend/lessons/{lid}/courseware',headers=th).json()['items']==[]
     saved=client.post(url,headers=th,json=bundle)
     assert saved.status_code==200 and saved.json()['imported']==2,saved.text
     items=saved.json()['courseware']['items']
     assert len(items)==2 and all(x['status']=='draft' and x['approved'] is None for x in items)
     assert all(x['params']['figure']['type']=='uploaded_image' for x in items)
     assert client.post(url,headers=th,json=bundle).status_code==409
+    with legacy.SessionLocal() as db:
+        audits=db.query(legacy.AuditLog).filter_by(action='weekend.courseware.prepared_import').all()
+    assert [a.detail for a in audits]==[f'lesson={lid}:pages=2']
     after=client.get(f'/teacher/weekend/lessons/{lid}/written/questions',headers=th).json()
     assert [(q['id'],q['stem'],q['reference']) for q in before['items']]==[(q['id'],q['stem'],q['reference']) for q in after['items']]
     assert before['workedExamples']==after['workedExamples'] and not calls

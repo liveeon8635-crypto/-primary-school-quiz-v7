@@ -19,5 +19,9 @@ for(const [key,source] of Object.entries(input.scripts)){
 // Sort by script hash so a rebuild on another host or in another process writes a
 // byte-identical manifest instead of a reordering-only diff.
 for(const key of Object.keys(scripts).sort())manifest.scripts[key]=scripts[key];
+// The server only serves compiled scripts listed in the manifest, so earlier builds'
+// payloads are unreachable; prune them so the asset folder mirrors the manifest.
+for(const name of fs.readdirSync(out)){const m=/^([0-9a-f]{64})\.js\.gz\.b64$/.exec(name);
+ if(m&&!(scripts[m[1]]&&!scripts[m[1]].unchanged))fs.unlinkSync(path.join(out,name));}
 fs.writeFileSync(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
 console.log(JSON.stringify({routes:Object.keys(input.routes).length,scripts:Object.keys(input.scripts).length,compiled:Object.values(manifest.scripts).filter(s=>!s.unchanged).length}));
