@@ -29,6 +29,9 @@ function all(n){return [n].concat(n.children.flatMap(all))}
 function draw(step,teacher){var root=new E('div');cwSteps(root,p,{step:step,previewMode:teacher,showAnswer:false},false,teacher);return all(root).filter(n=>n.tag==='img')[0].a.src}
 var f=x=>({type:'uploaded_image',data_url:'data:image/jpeg;base64,'+x,alt:x});
 var p={title:'例题',steps:['一步','二步'],answer:'答案',figure:f('QUFB'),stepFigures:[f('QUFB'),f('QkJC'),f('Q0ND')]};
+assert.strictEqual(cwPreviewFigureTag('steps',{stepFigures:[f('QUFB')]}),'分步图示');
+assert.strictEqual(cwPreviewFigureTag('steps',{figure:f('QUFB')}),'原卷图片');
+assert.strictEqual(cwPreviewFigureTag('steps',{}),'无图');
 for(var teacher of [false,true]){assert(draw(0,teacher).endsWith('QUFB'));assert(draw(1,teacher).endsWith('QkJC'));assert(draw(2,teacher).endsWith('Q0ND'))}
 '''
     result = subprocess.run(['node'], input=COURSEWARE_JS + '\n' + harness, capture_output=True, text=True, encoding='utf-8', timeout=30)
