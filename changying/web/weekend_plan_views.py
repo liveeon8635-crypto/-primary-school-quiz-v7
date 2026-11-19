@@ -1181,7 +1181,46 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                            f"{item.get('coursewarePagesFound', 0)} 页互动课件草稿。"
                            "题目与课件仍需分别逐题审核。",
             }
-        return _apply_lesson_extract(db, u, subject, lessonNo, force, _extract_upload(file, text))
+        # Ordinary lesson files are extracted locally. The documented Markdown convention
+        # can be split deterministically; free-form documents are preserved as a raw draft.
+        # Neither path sends lesson or student content to an external AI service.
+        extracted = _extract_upload(file, text)
+        plan = _markdown_plan(extracted)
+        parsed_by_rule = plan is not None
+        if plan is None:
+            plan = {
+                "title": f"{subject}第{lessonNo}课",
+                "coreTarget": "",
+                "teacherPlan": extracted["text"],
+                "ppt": [],
+                "examples": [],
+                "closureTraining": "",
+                "questions": [],
+                "writtenQuestions": [],
+            }
+        else:
+            source_lesson_no = plan.get("lessonNo")
+            if source_lesson_no is not None and source_lesson_no != lessonNo:
+                raise HTTPException(422, f"文件内容识别为第 {source_lesson_no} 课，与当前第 {lessonNo} 次课不一致")
+        result = _apply_lesson_plan(
+            db, u, subject, lessonNo, plan, extracted["text"],
+            slides_hint=extracted.get("slides") or None,
+            use_literal=False,
+            overwrite=force == "1",
+        )
+        result["importMode"] = "local"
+        if parsed_by_rule:
+            result["message"] = (
+                f"本地解析并导入完成：保留原文，识别到 {result['questionsFound']} 道习题；"
+                "未调用外部 AI。题目仍需逐题审核。"
+            )
+        else:
+            result["message"] = (
+                "教案原文已在本地保存为草稿，未调用外部 AI。"
+                "文件未按约定格式自动拆分例题和练习；请在“审改”中核对原文并补充题目，"
+                "或上传结构化 JSON 整包。"
+            )
+        return result
 
     @router.post("/teacher/weekend/lessons/{lid}/practice/import")
     def import_practice(lid: int, text: str = Form(""), file: UploadFile | None = File(None),
