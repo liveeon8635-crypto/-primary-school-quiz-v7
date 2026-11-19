@@ -1152,13 +1152,12 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             file.file.seek(0)
 
         bundle_payload = None
-        if raw.lstrip(b"\\xef\\xbb\\xbf \\t\\r\\n").startswith(b"{"):
-            try:
-                candidate = json.loads(raw.decode("utf-8-sig"))
-                if isinstance(candidate, dict) and "schemaVersion" in candidate and "items" in candidate:
-                    bundle_payload = candidate
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                pass
+        try:
+            candidate = json.loads(raw.decode("utf-8-sig"))
+            if isinstance(candidate, dict) and "schemaVersion" in candidate and "items" in candidate:
+                bundle_payload = candidate
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            pass
 
         if extension == ".json" or bundle_payload is not None:
             try:
