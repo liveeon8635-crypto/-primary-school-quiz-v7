@@ -35,6 +35,14 @@ def test_all_shipped_routes_have_current_compilation(tmp_path):
         assert 'cy-safari12-runtime' in result
 
 
+def test_asset_folder_holds_exactly_the_compiled_manifest_scripts():
+    manifest = json.loads((ASSETS / 'manifest.json').read_text())
+    compiled = {key for key, entry in manifest['scripts'].items() if not entry['unchanged']}
+    shipped = {p.name[:-len('.js.gz.b64')] for p in ASSETS.glob('*.js.gz.b64')}
+    assert not compiled - shipped, f'missing compiled payloads: {sorted(compiled - shipped)}'
+    assert not shipped - compiled, f'stale payloads no longer in manifest: {sorted(shipped - compiled)}'
+
+
 def test_actual_entry_cache_and_modern_representation(tmp_path):
     if isolated('test_actual_entry_cache_and_modern_representation', tmp_path): return
     from app import app

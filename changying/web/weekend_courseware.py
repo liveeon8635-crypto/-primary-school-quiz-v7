@@ -1036,7 +1036,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         return int(getattr(p, "grade", 0) or 0) if p is not None else 0
 
     def write(db: Any, u: Any, lesson: Any, items: list[dict[str, Any]],
-              reset_pages: list[tuple[int, int | None]] | None = None) -> None:
+              reset_pages: list[tuple[int, int | None]] | None = None, commit: bool = True) -> None:
         c = row_for(db, lesson, lock=True)
         items = sorted(items, key=lambda i: (int(i["stage"]), -1 if i.get("page") is None else int(i["page"])))
         approved = [[int(i["stage"]), i.get("page")] for i in items if i.get("approved") is not None]
@@ -1063,7 +1063,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             db.execute(insert(t).values(school_id=u.school_id, lesson_id=lesson.id, teacher_id=u.id, live_json="{}", **values))
         else:
             db.execute(update(t).where(t.c.id == c.id).values(**values))
-        db.commit()
+        if commit:
+            db.commit()
 
     def task(item: dict[str, Any], params: dict[str, Any]) -> dict[str, str]:
         try:
@@ -1168,7 +1169,9 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         if b.dryRun:
             return {"dryRun": True, "ready": len(ready), "pages": [{"stageNo": i['stage'], "page": i['page'],
                     "notice": i['params'].get('figureNotice', '')} for i in ready]}
-        write(db, u, lesson, existing + ready)
+        # The drafts and their audit entry share one transaction (and the row lock taken
+        # above), so a failed audit can never leave unaudited courseware behind.
+        write(db, u, lesson, existing + ready, commit=False)
         implementation.audit(db, u, "weekend.courseware.prepared_import", f"lesson={lid}:pages={len(ready)}")
         db.commit()
         return {"dryRun": False, "imported": len(ready), "courseware": payload(db, lesson)}
