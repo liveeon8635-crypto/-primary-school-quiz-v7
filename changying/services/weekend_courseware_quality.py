@@ -77,6 +77,12 @@ def audit_example_pages(
         # newer, unfinished teacher draft for the quality of the live lesson.
         saved = approved if approved is not None else draft
         figure = saved.get("figure") if isinstance(saved.get("figure"), dict) else {}
+        if not figure.get("type"):
+            frames = saved.get("stepFigures") if isinstance(saved.get("stepFigures"), list) else []
+            figure = next(
+                (frame for frame in frames if isinstance(frame, dict) and frame.get("type")),
+                {},
+            )
         figure_type = str(figure.get("type") or "")
         steps = saved.get("steps") if isinstance(saved.get("steps"), list) else []
         answer = _text(saved.get("answer"))

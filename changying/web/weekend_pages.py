@@ -741,7 +741,7 @@ function plan(){
     });
   }).catch(function(e){nextBox.appendChild(el('div',{class:'notice error',text:e.message}))});
 
-  toolBox.appendChild(el('div',{class:'notice ok',text:'备课方法：在下面每一次课的那一行，点“导入我的教案”上传你自己的 Word / PPT / PDF 教案，系统整理成上课用的内容；没有教案时才用“AI 帮我写”。学校进度表只是用来对照学校讲到哪里，可以不填。'}));
+  toolBox.appendChild(el('div',{class:'notice ok',text:'备课方法：在下面每一次课的那一行，点“导入教案/整包”上传自己的 Word / PPT / PDF 教案，或上传一个 JSON 整包，一次带入教案、随堂题和互动课件草稿；没有教案时才用“AI 帮我写”。学校进度表只是用来对照学校讲到哪里，可以不填。'}));
   toolBox.appendChild(el('h2',{text:'学校进度表（选填）'}));
   toolBox.appendChild(el('div',{class:'muted',text:'把学校发的进度安排粘贴进来，AI 帮你整理成 18 次课；也可以手动填。学校调课时，用“整体顺延”一次改完。'}));
   var paste=el('textarea',{placeholder:'粘贴学校的教学进度表文字'}),parseBtn=el('button',{text:'AI 识别进度',onclick:function(){
@@ -784,8 +784,8 @@ function plan(){
           dt=el('input',{type:'text',value:r.plannedDate||'',placeholder:'2026-09-12',style:'width:120px',oninput:function(e){r.plannedDate=e.target.value}});
       var tag=el('span',{class:'tag '+(r.taught?'ok':r.hasPlan?'':'warn'),text:r.taught?'已上':r.hasPlan?'有教案 · 例题 '+(r.exampleCount||0)+'（待审 '+(r.examplePending||0)+'）· 可用练习 '+(r.practiceReady||0)+'（待审 '+r.draftQuestions+'）':'未备课'});
       var detail=el('div',{hidden:true});
-      var fileIn=el('input',{type:'file',accept:'.docx,.pptx,.pdf,.txt,.md',hidden:true});
-      var impBtn=el('button',{class:r.hasPlan?'':'primary',text:'导入我的教案',title:'支持 Word(.docx)、PPT(.pptx)、PDF、txt',onclick:function(){fileIn.click()}});
+      var fileIn=el('input',{type:'file',accept:'.docx,.pptx,.pdf,.txt,.md,.json,application/json',hidden:true});
+      var impBtn=el('button',{class:r.hasPlan?'':'primary',text:'导入教案/整包',title:'支持 Word(.docx)、PPT(.pptx)、PDF、txt，或一个包含教案、习题和课件的 JSON 整包',onclick:function(){fileIn.click()}});
       // The page-level note sits above the list; a teacher scrolled to this row never sees it.
       // Every import result is therefore shown right here, next to the button that produced it.
       var importFeedback=el('div',{role:'status','aria-live':'polite','data-import-feedback':'1'});
@@ -800,7 +800,7 @@ function plan(){
           var status=e&&e.status?'（'+e.status+'）':'';
           importFeedback.className='notice error';
           importFeedback.textContent='导入失败'+status+'：'+(e&&e.message?e.message:'请重试')+'。你选的文件不会被改动，可以处理后再导入。';
-          impBtn.disabled=false;impBtn.textContent='导入我的教案';
+          impBtn.disabled=false;impBtn.textContent='导入教案/整包';
           if(importFeedback.scrollIntoView)importFeedback.scrollIntoView({block:'center'});
         }).then(function(){fileIn.value=''});
       });

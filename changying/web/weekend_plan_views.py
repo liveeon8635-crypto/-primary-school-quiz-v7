@@ -25,7 +25,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import Column, DateTime, Integer, String, Table, UniqueConstraint, delete, func, insert, select, update
 
 from changying.services import lesson_markdown, weekend_plan_history as history
@@ -35,6 +35,7 @@ from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUP
 from changying.web.weekend_pages import plan_page_html
 from changying.services.lesson_written import (MAX_KNOWLEDGE, lesson_goals, literal_written_questions, suggest_knowledge,
     valid_written_questions, replace_written_drafts, written_templates, template_meta, lesson_question_number)
+from changying.web.weekend_courseware import PreparedPagesBody, import_prepared_courseware
 
 AI_FEATURE = "weekend_lesson_draft"
 SUBJECTS = ("语文", "数学")
@@ -95,6 +96,15 @@ class PlanQuestionBody(BaseModel):
     knowledge: str = Field(default="", max_length=160)
 
 
+class PlanWrittenFigureBody(BaseModel):
+    """An optional source picture attached to one written question."""
+
+    type: Literal["uploaded_image"] = "uploaded_image"
+    data_url: str = Field(default="", max_length=700000)
+    alt: str = Field(default="", max_length=80)
+    question_no: int | None = Field(default=None, ge=1, le=999)
+
+
 class PlanWrittenBody(BaseModel):
     """One written question (short answer / final answer / composition)."""
 
@@ -103,6 +113,7 @@ class PlanWrittenBody(BaseModel):
     stem: str = Field(min_length=1, max_length=20000)
     reference: str = Field(default="", max_length=4000)
     hints: list[str] = Field(default_factory=list, max_length=3)
+    figure: PlanWrittenFigureBody | None = None
 
 
 class PlanLessonBody(BaseModel):
@@ -127,6 +138,9 @@ class StructuredImportBody(BaseModel):
     dryRun: bool = False
     onConflict: Literal["ask", "skip", "overwrite"] = "ask"
     items: list[PlanLessonBody] = Field(min_length=1, max_length=LESSONS)
+    # Optional pre-authored courseware that belongs to the single lesson in this
+    # envelope. It is imported as draft pages in the same transaction.
+    courseware: PreparedPagesBody | None = None
 
 
 class DraftBody(BaseModel):
@@ -996,7 +1010,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         return lesson_status(db, u, lesson)
 
     def _apply_lesson_plan(db: Any, u: Any, subject: str, lessonNo: int, data: dict[str, Any], source_text: str,
-                           *, slides_hint: list[str] | None = None, use_literal: bool = True, overwrite: bool = False) -> dict[str, Any]:
+                           *, slides_hint: list[str] | None = None, use_literal: bool = True, overwrite: bool = False,
+                           courseware_pages: list[Any] | None = None,
+                           courseware_replace_existing: bool = False) -> dict[str, Any]:
         """Write one structured lesson plan plus its draft questions, then commit.
 
         Shared by the AI import, the structured JSON import and the Markdown import, so all
@@ -1049,11 +1065,24 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             db.add(TQ(school_id=u.school_id, program_id=p.id, lesson_id=lesson.id, stage="lesson", subject=subject, level=LEVELS[min(i, len(LEVELS) - 1)], knowledge=q["kp"],
                       stem=q["stem"], options_json=json.dumps(q["options"], ensure_ascii=False), correct_index=q["ci"], explanation=q["exp"], active=False,
                       figure_json=json.dumps(q["fig"], ensure_ascii=False)))
+        if courseware_pages:
+            # The lesson, every draft question and all pre-authored courseware
+            # share one transaction. Both question approval and courseware
+            # approval remain separate teacher decisions afterwards.
+            import_prepared_courseware(
+                implementation, db, u, lesson, courseware_pages,
+                dry_run=False,
+                replace_existing=courseware_replace_existing,
+                allow_pending_practice=True,
+                commit=False,
+                audit_detail=f"lesson={lesson.id}:pages={len(courseware_pages)}:bundle=1",
+            )
         if before is not None:
             db.execute(insert(versions).values(school_id=u.school_id, teacher_id=u.id, lesson_id=lesson.id,
                 before_json=history.serialize(before), after_hash=history.digest(plan_state(db, u, lesson))))
         db.commit()
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs) + len(wqs), "writtenQuestionsFound": len(wqs),
+                "coursewarePagesFound": len(courseware_pages or []),
                 "sourceChars": len(source_text), "message": f"原文 {len(source_text)} 字已完整保留（含阅读材料及非选择题）。已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道选择题、{len(wqs)} 道简答/写作题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
 
     def _apply_lesson_extract(db: Any, u: Any, subject: str, lessonNo: int, force: str, extracted: dict[str, Any]) -> dict[str, Any]:
@@ -1106,11 +1135,38 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     @router.post("/teacher/weekend/lessons/import")
     def import_lesson(subject: str = Form(...), lessonNo: int = Form(...), force: str = Form("0"), text: str = Form(""), file: UploadFile | None = File(None),
                             u: Any = Depends(current_user), db: Any = Depends(get_db)):
-        """Teacher uploads their own lesson plan (.docx/.pptx/.pdf/.txt) or pastes the text; AI only tidies it into the lesson fields (no inventing)."""
+        """Import one lesson file; a JSON bundle can carry the plan, questions and courseware together."""
         need(u, "teacher")
         check_subject(subject)
         if not 1 <= lessonNo <= LESSONS:
             raise HTTPException(400, f"课次需要在 1–{LESSONS} 之间")
+        filename = (file.filename or "").strip() if file is not None else ""
+        extension = ("." + filename.rsplit(".", 1)[-1]).lower() if "." in filename else ""
+        if extension == ".json":
+            raw = file.file.read(MAX_FILE_BYTES + 1)
+            if len(raw) > MAX_FILE_BYTES:
+                raise HTTPException(413, "整包文件不能超过 10MB，请压缩图片后重试")
+            try:
+                payload = json.loads(raw.decode("utf-8-sig"))
+                body = StructuredImportBody.model_validate(payload)
+            except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as exc:
+                raise HTTPException(422, "JSON 整包格式不正确，请使用网站导出的单文件整包") from exc
+            if body.subject != subject:
+                raise HTTPException(422, f"整包学科是“{body.subject}”，与当前“{subject}”不一致")
+            if len(body.items) != 1 or body.items[0].lessonNo != lessonNo:
+                raise HTTPException(422, f"整包必须只含当前第 {lessonNo} 次课；请在该课次行导入")
+            body.dryRun = False
+            body.onConflict = "overwrite" if force == "1" else "ask"
+            result = _import_structured_body(body, u, db)
+            item = result["items"][0]
+            if not item.get("ok"):
+                raise HTTPException(409, item.get("error") or result.get("message") or "整包导入失败")
+            return {
+                **item,
+                "message": f"整包已导入：教案、{item.get('questionsFound', 0)} 道随堂题、"
+                           f"{item.get('coursewarePagesFound', 0)} 页互动课件草稿。"
+                           "题目与课件仍需分别逐题审核。",
+            }
         return _apply_lesson_extract(db, u, subject, lessonNo, force, _extract_upload(file, text))
 
     @router.post("/teacher/weekend/lessons/{lid}/practice/import")
@@ -1356,7 +1412,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             if hints and len(hints) != 3:
                 raise HTTPException(422, f"第 {index} 道简答题的 hints 要么不填，要么正好 3 条")
             written.append({"type": kind, "material": w.material.strip(), "stem": w.stem.strip(),
-                            "reference": w.reference.strip(), "hints": hints})
+                            "reference": w.reference.strip(), "hints": hints,
+                            "figure": w.figure.model_dump(exclude_none=True) if w.figure else {}})
         plan = {"title": item.title.strip(), "coreTarget": item.coreTarget.strip(), "teacherPlan": item.teacherPlan,
                 "ppt": [str(x) for x in item.ppt], "examples": [str(x) for x in item.examples],
                 "closureTraining": item.closureTraining, "questions": questions, "writtenQuestions": written}
@@ -1424,12 +1481,19 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                     results.append({**base, "ok": True, "status": "ready", "contentHash": fingerprint})
                     continue
                 source_text = job.get("sourceText") or _plan_source_text(plan)
-                got = _apply_lesson_plan(db, u, subject, int(job["lessonNo"]), plan, source_text, use_literal=False, overwrite=on_conflict == "overwrite")
+                got = _apply_lesson_plan(
+                    db, u, subject, int(job["lessonNo"]), plan, source_text,
+                    use_literal=False,
+                    overwrite=on_conflict == "overwrite",
+                    courseware_pages=job.get("coursewarePages") or [],
+                    courseware_replace_existing=True,
+                )
                 implementation.audit(db, u, "weekend.lessons.import_structured",
                                      f"lesson={job['lessonNo']}:hash={fingerprint[:16]}:chars={len(source_text)}")
                 imported += 1
                 results.append({**base, "ok": True, "status": "imported", "lessonId": got["lessonId"],
-                                "contentHash": fingerprint, "questionsFound": got["questionsFound"]})
+                                "contentHash": fingerprint, "questionsFound": got["questionsFound"],
+                                "coursewarePagesFound": got.get("coursewarePagesFound", 0)})
             except HTTPException as exc:
                 db.rollback()
                 results.append({**base, "ok": False, "status": "invalid", "error": str(exc.detail)})
@@ -1454,20 +1518,32 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         return {"items": results, "imported": imported, "ready": ready, "blocked": blocked,
                 "failed": invalid, "dryRun": dry_run, "message": message}
 
+    def _import_structured_body(b: StructuredImportBody, u: Any, db: Any) -> dict[str, Any]:
+        """Validate one structured envelope, including its optional courseware bundle."""
+        check_subject(b.subject)
+        if b.schemaVersion != 1:
+            raise HTTPException(422, "schemaVersion 只支持 1")
+        courseware_pages = b.courseware.pages if b.courseware else []
+        if courseware_pages and len(b.items) != 1:
+            raise HTTPException(422, "带互动课件的整包一次只能导入一节课")
+        jobs: list[dict[str, Any]] = []
+        for item in b.items:
+            try:
+                jobs.append({
+                    "lessonNo": item.lessonNo,
+                    "plan": _plan_from_body(item),
+                    "sourceText": "",
+                    "coursewarePages": courseware_pages,
+                })
+            except HTTPException as exc:
+                jobs.append({"lessonNo": item.lessonNo, "plan": None, "error": str(exc.detail)})
+        return _import_plans(db, u, b.subject, jobs, dry_run=b.dryRun, on_conflict=b.onConflict)
+
     @router.post("/teacher/weekend/lessons/import/structured")
     def import_structured(b: StructuredImportBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Import already-structured lesson plans: no model call, deterministic fields."""
         need(u, "teacher")
-        check_subject(b.subject)
-        if b.schemaVersion != 1:
-            raise HTTPException(422, "schemaVersion 只支持 1")
-        jobs: list[dict[str, Any]] = []
-        for item in b.items:
-            try:
-                jobs.append({"lessonNo": item.lessonNo, "plan": _plan_from_body(item), "sourceText": ""})
-            except HTTPException as exc:
-                jobs.append({"lessonNo": item.lessonNo, "plan": None, "error": str(exc.detail)})
-        return _import_plans(db, u, b.subject, jobs, dry_run=b.dryRun, on_conflict=b.onConflict)
+        return _import_structured_body(b, u, db)
 
     @router.post("/teacher/weekend/lessons/import/markdown")
     def import_markdown(subject: str = Form(...), dryRun: str = Form("0"), onConflict: str = Form("ask"),
