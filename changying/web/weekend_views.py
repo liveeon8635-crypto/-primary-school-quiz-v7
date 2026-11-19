@@ -21,7 +21,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, UniqueConstraint, desc, insert, select, update
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, Text, UniqueConstraint, desc, insert, select, update
 
 from changying.services.weekend_stages import (
     MAX_EXTEND_MIN, STAGE_COUNT, STAGES, remaining_seconds, stage_by_no, stage_content,
@@ -117,6 +117,11 @@ def register_weekend_tables(implementation: Any) -> dict[str, Table]:
             Column("added_at", DateTime, nullable=False, default=datetime.utcnow),
             UniqueConstraint("session_id", "question_id", name="uq_weekend_session_question"),
         )
+    if "weekend_open_questions" not in md.tables:
+        Table("weekend_open_questions", md,
+              Column("session_id", Integer, primary_key=True),
+              Column("school_id", Integer, nullable=False, index=True),
+              Column("opened_question_ids", Text, nullable=False, default="[]"))
     return {"sessions": sessions, "log": log, "slide": slide, "session_questions": session_q}
 
 
@@ -489,6 +494,8 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         target = b.index if b.index is not None else cur + b.delta
         target = max(0, min(int(target), len(deck) - 1))
         if no == 4:
+            from changying.services.weekend_answers import open_practice_question
+            open_practice_question(implementation, db, row, deck[target]['question'])
             target = practice_cursor(practice_deck(implementation, db, row)[1], target)
         ex = db.execute(select(slide_t.c.id).where(slide_t.c.session_id == sid)).first()
         if ex:
@@ -509,6 +516,8 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         deck, count, _, total = practice_deck(implementation, db, row)
         if not 1 <= b.question <= total:
             raise HTTPException(400, "请选择有效题目")
+        from changying.services.weekend_answers import open_practice_question
+        open_practice_question(implementation, db, row, b.question)
         page = next(i for i, item in enumerate(deck) if item['question'] == b.question)
         value = practice_cursor(count, page)
         cursor = db.execute(select(slide_t.c.id).where(slide_t.c.session_id == sid)).first()
@@ -534,6 +543,8 @@ def install_weekend_views(implementation: Any) -> APIRouter:
             raise HTTPException(409, "请按题目顺序公布答案")
         if b.question == count+1:
             # The request carries the ordinal: retries cannot release another question.
+            from changying.services.weekend_answers import open_practice_question
+            open_practice_question(implementation, db, row, b.question)
             count += 1
             page = next(i for i, item in enumerate(deck) if item["question"] == b.question)
             cursor = db.execute(select(slide_t.c.id).where(slide_t.c.session_id == sid)).first()

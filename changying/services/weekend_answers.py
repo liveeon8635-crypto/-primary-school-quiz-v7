@@ -7,9 +7,36 @@ or paging never increases the released prefix.
 import hashlib
 import json
 import re
-from sqlalchemy import select
+from sqlalchemy import insert, select, update
 
 from changying.services.weekend_question_gen import question_key
+
+
+def open_practice_question(implementation, db, session, ordinal):
+    items = practice_items(implementation, db, session)
+    if not 1 <= ordinal <= len(items):
+        return
+    table = implementation.Base.metadata.tables['weekend_open_questions']
+    row = db.execute(select(table).where(table.c.session_id == session.id,
+        table.c.school_id == session.school_id)).first()
+    opened = json.loads(row.opened_question_ids) if row else []
+    item = items[ordinal - 1]
+    key = f"{item['kind']}:{item['id']}"
+    if key not in opened:
+        opened.append(key)
+    if row:
+        db.execute(update(table).where(table.c.session_id == session.id).values(opened_question_ids=json.dumps(opened)))
+    else:
+        db.execute(insert(table).values(session_id=session.id, school_id=session.school_id,
+                                        opened_question_ids=json.dumps(opened)))
+
+
+def question_is_open(implementation, db, session, kind, question_id):
+    table = implementation.Base.metadata.tables['weekend_open_questions']
+    value = db.execute(select(table.c.opened_question_ids).where(table.c.session_id == session.id,
+        table.c.school_id == session.school_id)).scalar_one_or_none()
+    # Existing classrooms without an explicit gate retain the historical workflow.
+    return value is None or f'{kind}:{question_id}' in json.loads(value)
 
 _LABEL = re.compile(r'^\s*[A-Da-d]\s*[．.、:：)）]\s*')
 
