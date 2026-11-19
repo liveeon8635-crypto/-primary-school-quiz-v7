@@ -431,7 +431,13 @@ def clean_steps(raw: Any) -> dict[str, Any]:
     figure = clean_figure(raw.get("figure"))
     if figure.get("type") in ("calendar_compare", "calendar_cross", "seating_pattern", "alternating_triangle", "running_track", "triangular_numbers", "tile_pattern", "square_sticks_pattern", "hundred_chart_square", "obtuse_triangle_height") and len(steps) < 4:
         raise ValueError("这类规律题的互动图示需要至少 4 步，才能逐步展示规律和结论")
-    return {"title": _text(raw.get("title"), 40) or "分步讲解", "steps": steps, "answer": answer,
+    frames = raw.get("stepFigures") or []
+    if not isinstance(frames, list) or (frames and len(frames) != len(steps) + 1):
+        raise ValueError("分步图需要初始图和每一步各一张图")
+    frames = [clean_figure(frame) for frame in frames]
+    if any(frame.get("type") != "uploaded_image" for frame in frames):
+        raise ValueError("分步图必须是有效图片")
+    return {"title": _text(raw.get("title"), 40) or "分步讲解", "steps": steps, "answer": answer, "stepFigures": frames,
             "problem": _text(raw.get("problem"), 600),        # the example's own question, without its answer (pupils' task)
             "figure": figure, "sourceFigure": clean_figure(raw.get("sourceFigure")),
             "question": _text(raw.get("question"), 200) or "写出解题过程和答案。", "reference": _text(raw.get("reference"), 1000)}

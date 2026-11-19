@@ -75,9 +75,24 @@ with TestClient(app) as client:
     assert len(items)==2 and all(x['status']=='draft' and x['approved'] is None for x in items)
     assert all(x['params']['figure']['type']=='uploaded_image' for x in items)
     assert client.post(url,headers=th,json=bundle).status_code==409
+    updated=json.loads(json.dumps(bundle))
+    for p in updated['pages']:
+        p['params']['stepFigures']=[p['params']['figure']]*3
+        p['params']['steps'][0]='更新后的第一步'
+    updated.update(dryRun=True,replaceExisting=True)
+    preview=client.post(url,headers=th,json=updated)
+    assert preview.status_code==200 and preview.json()['replacing']==2,preview.text
+    updated.update(dryRun=False,expectedRevision='0'*64)
+    assert client.post(url,headers=th,json=updated).status_code==409
+    updated['expectedRevision']=preview.json()['revision']
+    replaced=client.post(url,headers=th,json=updated)
+    assert replaced.status_code==200,replaced.text
+    items=replaced.json()['courseware']['items']
+    assert len(items)==2 and all(len(x['params']['stepFigures'])==3 and x['previousDraft'] for x in items)
+    assert all(x['status']=='draft' for x in items)
     with legacy.SessionLocal() as db:
         audits=db.query(legacy.AuditLog).filter_by(action='weekend.courseware.prepared_import').all()
-    assert [a.detail for a in audits]==[f'lesson={lid}:pages=2']
+    assert [a.detail for a in audits]==[f'lesson={lid}:pages=2']*2
     after=client.get(f'/teacher/weekend/lessons/{lid}/written/questions',headers=th).json()
     assert [(q['id'],q['stem'],q['reference']) for q in before['items']]==[(q['id'],q['stem'],q['reference']) for q in after['items']]
     assert before['workedExamples']==after['workedExamples'] and not calls
@@ -90,3 +105,4 @@ def test_prepared_import_entry_is_in_the_actual_preparation_page():
     page = plan_page_html()
     assert '预检并导入课件包' in page
     assert '/courseware/prepared-import' in page
+    assert '替换对应页并保留上一版' in page

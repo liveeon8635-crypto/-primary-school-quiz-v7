@@ -771,6 +771,9 @@ function cwSteps(box,p,view,big,teacher){
     // 图示和题干数据对不上时不能当正确图展示，改成黄底提示让老师先核对。
     wrap.appendChild(el('div',{style:'margin:10px 0 0;padding:10px 12px;border-radius:10px;background:#fff7ed;border:1px solid #f59e0b;color:#92400e;font-weight:700',text:'本题需要老师确认配图'}));
     wrap.appendChild(el('div',{style:'margin:6px 0 10px;padding:12px;border-radius:10px;background:#fef3c7;border:1px solid #f59e0b;color:#78350f',text:p.figureNotice||'图示待确认：题干与图示不一致，请老师核对'}));
+  }else if(Array.isArray(p.stepFigures)&&p.stepFigures.length===steps.length+1){
+    var frameStep=teacher&&!view.previewMode?steps.length:(view.step||0);
+    cwFigure(wrap,p.stepFigures[Math.max(0,Math.min(steps.length,frameStep))],big,view,teacher,p.steps.length);
   }else if(!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
   if(p.figureNotice&&!p.figureUnverified)wrap.appendChild(el('div',{class:'muted',style:'margin-top:6px',text:p.figureNotice}));
   if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
@@ -906,6 +909,7 @@ function cwPlan(box,lessonId,refresh){
       run(todo,function(x){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:x.page}})},'审核');
     }});
     var preparedFile=el('input',{type:'file',accept:'.json,application/json','aria-label':'选择预制课件包'});
+    var replacePrepared=el('input',{type:'checkbox'});
     var preparedImport=el('button',{text:'预检并导入课件包',onclick:function(){
       var file=preparedFile.files&&preparedFile.files[0];
       if(!file){msg.textContent='请选择预制课件 JSON 文件';return}
@@ -916,15 +920,15 @@ function cwPlan(box,lessonId,refresh){
         if(bundle&&bundle.courseware)bundle=bundle.courseware;
         if(!bundle||!Array.isArray(bundle.pages)){msg.textContent='课件包缺少 pages 列表';return}
         var url='/teacher/weekend/lessons/'+lessonId+'/courseware/prepared-import';
-        api(url,{json:{dryRun:true,pages:bundle.pages}}).then(function(preview){
+        api(url,{json:{dryRun:true,replaceExisting:replacePrepared.checked,pages:bundle.pages}}).then(function(preview){
           var warnings=(preview.pages||[]).filter(function(p){return !!p.notice}).length;
-          if(!confirm('预检通过：'+preview.ready+' 页，其中 '+warnings+' 页有图示待核对提示。导入后均为草稿，需逐页审核。确定导入吗？'))return;
-          return api(url,{json:{dryRun:false,pages:bundle.pages}}).then(function(result){paint(result.courseware);msg.textContent='已导入 '+result.imported+' 页草稿，请逐页核对'})
+          if(!confirm('预检通过：'+preview.ready+' 页，其中 '+preview.replacing+' 页替换已有草稿，'+warnings+' 页有图示待核对提示。替换前版本可恢复，导入后需逐页审核。确定导入吗？'))return;
+          return api(url,{json:{dryRun:false,replaceExisting:replacePrepared.checked,expectedRevision:preview.revision,pages:bundle.pages}}).then(function(result){paint(result.courseware);msg.textContent='已导入 '+result.imported+' 页草稿，请逐页核对'})
         }).catch(function(e){msg.textContent=e.message})
       };reader.readAsText(file,'UTF-8');
     }});
     box.appendChild(el('div',{class:'row'},stageSel,all,el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})),approveAll));
-    box.appendChild(el('div',{class:'row'},preparedFile,preparedImport));
+    box.appendChild(el('div',{class:'row'},preparedFile,el('label',{},replacePrepared,el('span',{text:'替换对应页并保留上一版'})),preparedImport));
     box.appendChild(msg);
     if(stageNo==='3'&&d.qualityAudit){
       var audit=d.qualityAudit;
@@ -1195,7 +1199,7 @@ function cwPlan(box,lessonId,refresh){
       var v={title:fields.title.value,question:fields.question.value,reference:fields.reference.value};
       if(kind==='rotation'){v.width=+fields.width.value;v.height=+fields.height.value;v.shape=fields.shape.value.split(/[;；]/).filter(function(x){return x.trim()}).map(pt);v.center=pt(fields.center.value);v.direction=fields.direction.value;v.angle=+fields.angle.value;v.steps=lines(fields.steps)}
       else if(kind==='clock'){v.start=+fields.start.value;v.direction=fields.direction.value;v.angle=+fields.angle.value;v.steps=lines(fields.steps)}
-      else if(kind==='steps'){v.problem=fields.problem.value;v.sourceProblem=p.sourceProblem||'';v.steps=lines(fields.steps);v.answer=fields.answer.value;v.figure=figure();v.sourceFigure=p.sourceFigure||{}}
+      else if(kind==='steps'){v.problem=fields.problem.value;v.sourceProblem=p.sourceProblem||'';v.steps=lines(fields.steps);v.answer=fields.answer.value;v.figure=figure();v.sourceFigure=p.sourceFigure||{};v.stepFigures=(p.stepFigures||[]).length===v.steps.length+1?p.stepFigures:[]}
       else{v.passage=fields.passage.value;v.sentences=cwSplit(v.passage);v.material=fields.material.value;v.writingPrompt=fields.writingPrompt.value;p.evidence=(p.evidence||[]).filter(function(i){return i<v.sentences.length});v.evidence=p.evidence}
       return v;
     }
