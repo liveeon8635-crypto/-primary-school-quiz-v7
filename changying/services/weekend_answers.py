@@ -69,7 +69,9 @@ def question_is_open(implementation, db, session, kind, question_id):
     value = _read_gate(db, table, session)
     # Existing classrooms without an explicit gate retain the historical workflow.
     if not value:
-        return True
+        from changying.services.weekend_course_types import frozen_session
+        frozen = frozen_session(db, implementation, int(session.id))
+        return not frozen or frozen.get("courseType") not in ("reading", "writing")
     return f'{kind}:{question_id}' in json.loads(value)
 
 _LABEL = re.compile(r'^\s*[A-Da-d]\s*[．.、:：)）]\s*')
@@ -204,12 +206,14 @@ def practice_items(implementation, db, session):
 
 
 def practice_release(implementation, db, session):
+    from changying.services.weekend_course_types import frozen_session, practice_stage
+
     table = implementation.Base.metadata.tables['weekend_slide_state']
     cursor = db.execute(select(table).where(table.c.session_id == session.id,
         table.c.school_id == session.school_id)).first()
     items = practice_items(implementation, db, session)
     count, page = 0, 0
-    if cursor is not None and cursor.stage_no == 4:
+    if cursor is not None and cursor.stage_no == practice_stage((frozen_session(db, implementation, session.id) or {}).get("courseType")):
         value = int(cursor.idx)
         if value >= CURSOR_VERSION:
             count, page = divmod(value-CURSOR_VERSION, CURSOR_PAGES)

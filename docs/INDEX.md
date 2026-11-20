@@ -53,6 +53,7 @@
 | [`weekend-course/1-现状核对.md`](weekend-course/1-现状核对.md) | 周末课：可复用能力盘点 | 设计稿 |
 | [`weekend-course/2-数据设计稿.md`](weekend-course/2-数据设计稿.md) | 周末课：新增表设计（均带 school_id） | 设计稿 |
 | [`weekend-course/3-口径文档.md`](weekend-course/3-口径文档.md) | 周末课：指标口径（完成率 / 提示依赖 / 进步分） | 默认值，上课后调 |
+| [`weekend-course/chinese-workflow-implementation.md`](weekend-course/chinese-workflow-implementation.md) | 语文阅读课/作文课流程与当前实现边界 | 开发中；不可作为全流程验收通过 |
 
 ## 5. 历史与验收记录
 

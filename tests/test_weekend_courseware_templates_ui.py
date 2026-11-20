@@ -22,7 +22,7 @@ function el(tag,attrs,...children){const n=new Element(tag,attrs);children.forEa
 var calls=[],promptAnswer='我的模板',confirmAnswer=true;
 function confirm(){return confirmAnswer}
 function prompt(){return promptAnswer}
-const payload={lessonId:7,subject:'数学',templates:['rotation','clock','steps'],
+const payload={lessonId:7,subject:'数学',courseType:'math',practiceStage:4,stageOptions:[{no:2,name:'知识点介绍'},{no:3,name:'例题讲解'},{no:4,name:'随堂练习'}],templates:['rotation','clock','steps'],
   kindLabels:{rotation:'旋转',clock:'钟面',steps:'分步讲解'},hasSource:false,pages:{'2':[],'3':['页一']},
   items:[{stage:3,page:0,kind:'steps',status:'draft',approved:null,params:{steps:['第一步','第二步'],answer:'1'},
           writtenTask:false,pageText:'',templateId:null}]};

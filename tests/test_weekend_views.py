@@ -5,7 +5,9 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from changying.services.weekend_stages import STAGES, remaining_seconds, stage_content
+from changying.services.weekend_stages import (
+    STAGES, READING_STAGES, WRITING_STAGES, remaining_seconds, stage_content, stages_for,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("hw_solve_helpers", ROOT / "tests" / "test_homework_solve.py")
@@ -16,6 +18,59 @@ spec.loader.exec_module(helpers)
 
 def test_template_is_120_minutes_in_seven_stages():
     assert len(STAGES) == 7 and sum(s["minutes"] for s in STAGES) == 120
+
+
+def test_chinese_workflows_are_six_stages_and_math_is_unchanged():
+    assert len(READING_STAGES) == len(WRITING_STAGES) == 6
+    assert sum(s["minutes"] for s in READING_STAGES) == 120
+    assert sum(s["minutes"] for s in WRITING_STAGES) == 120
+    assert [s["name"] for s in stages_for("reading")] == [
+        "点名与回顾", "短文阅读", "长文阅读", "考点总结", "综合练习", "课后反馈"
+    ]
+    assert [s["name"] for s in stages_for("writing")] == [
+        "点名与回顾", "范文导览", "看图写话", "技法梳理", "随堂练习", "课后反馈"
+    ]
+    assert len(stages_for("math")) == 7
+
+
+def test_chinese_course_type_persists_and_freezes_per_classroom(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="语文", lesson_no=12,
+                                  title="舐犊情深", reading_plan="《母亲的那盏灯》\n《父亲的泥脚》")
+        db.add(l); db.commit(); lid = l.id
+    path = "/teacher/weekend/schedule/语文/12/course-type"
+    before = client.get("/teacher/weekend/schedule?subject=语文", headers=th).json()["items"][11]
+    assert before["courseType"] is None and before["workflowLabel"] == "待选择课型"
+    assert client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).status_code == 409
+    saved = client.put(path, headers=th, json={"courseType":"reading", "expectedRevision":0})
+    assert saved.status_code == 200, saved.text
+    again = client.get("/teacher/weekend/schedule?subject=语文", headers=th).json()["items"][11]
+    assert again["courseType"] == "reading" and again["workflowRevision"] == 1
+    first = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()
+    assert first["courseType"] == "reading" and first["stageCount"] == 6
+    session_url = f"/teacher/weekend/sessions/{first['id']}"
+    started = client.post(session_url + "/start", headers=th).json()
+    assert started["stageName"] == "点名与回顾" and len(started["stages"]) == 6
+    assert client.put(path, headers=th, json={"courseType":"writing", "expectedRevision":1}).status_code == 200
+    assert client.get(session_url, headers=th).json()["courseType"] == "reading"
+    stale = client.put(path, headers=th, json={"courseType":"reading", "expectedRevision":1})
+    assert stale.status_code == 409
+    second = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()
+    assert second["courseType"] == "writing" and second["stageCount"] == 6
+    writing_cw = client.get(f"/teacher/weekend/lessons/{lid}/courseware", headers=th).json()
+    assert writing_cw["courseType"] == "writing" and writing_cw["practiceStage"] == 5
+    assert [s["name"] for s in writing_cw["stageOptions"]] == ["点名与回顾", "范文导览", "看图写话", "技法梳理", "随堂练习", "课后反馈"]
+    assert client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()["items"][11]["courseType"] == "math"
+    print("OK")
+'''
+    )
 
 
 def test_remaining_seconds_counts_down_and_goes_negative_on_overtime():

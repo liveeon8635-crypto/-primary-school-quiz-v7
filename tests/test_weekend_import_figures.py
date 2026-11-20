@@ -11,6 +11,7 @@ from changying.web.weekend_plan_views import _attach_figures, _question_figure, 
 # Smallest readable JPEG header/trailer pair; the extractor only needs the magic bytes.
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 32 + b"\xff\xd9"
 FIG_URL = "data:image/jpeg;base64," + "A" * 40
+PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 40
 
 
 def docx_with_picture() -> bytes:
@@ -22,12 +23,74 @@ def docx_with_picture() -> bytes:
     return buf.getvalue()
 
 
+def docx_with_png(payload: bytes) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("word/document.xml", "<w:document><w:p><w:r><w:t>阅读文章</w:t></w:r></w:p></w:document>")
+        z.writestr("word/media/image1.png", payload)
+    return buf.getvalue()
+
+
 def test_a_word_lesson_keeps_the_pictures_inside_it():
     got = lesson_import.extract(".docx", docx_with_picture())
 
     assert "第10课" in got["text"]
     assert len(got["images"]) == 1
     assert got["images"][0]["data_url"].startswith("data:image/jpeg;base64,")
+
+
+def test_a_word_lesson_keeps_small_png_pictures_and_reports_oversized_ones():
+    def docx_with_png(payload: bytes) -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("[Content_Types].xml", "<Types/>")
+            z.writestr("word/document.xml", "<w:document><w:p><w:r><w:t>阅读文章</w:t></w:r></w:p></w:document>")
+            z.writestr("word/media/image1.png", payload)
+        return buf.getvalue()
+
+    small = lesson_import.extract(".docx", docx_with_png(PNG))
+    assert len(small["images"]) == 1
+    assert small["images"][0]["data_url"].startswith("data:image/png;base64,")
+    assert small["omittedImages"] == 0
+
+    large = lesson_import.extract(".docx", docx_with_png(b"\x89PNG\r\n\x1a\n" + b"x" * 800_000))
+    assert large["images"] == [] and large["omittedImages"] == 1
+
+
+def test_large_valid_docx_picture_gets_a_bounded_review_preview_with_source_hash():
+    import hashlib
+    import random
+    from PIL import Image
+
+    pixels = Image.new("RGB", (600, 600))
+    rng = random.Random(12)
+    pixels.putdata([(rng.randrange(256), rng.randrange(256), rng.randrange(256)) for _ in range(600 * 600)])
+    source = io.BytesIO()
+    pixels.save(source, format="PNG", optimize=False)
+    original = source.getvalue()
+    assert len(original) > 450_000
+
+    got = lesson_import.extract(".docx", docx_with_png(original))
+
+    assert len(got["images"]) == 1 and got["omittedImages"] == 0
+    image = got["images"][0]
+    assert image["data_url"].startswith("data:image/jpeg;base64,")
+    assert len(image["data_url"]) <= lesson_import.MAX_FIGURE_CHARS
+    assert image["source_name"] == "image1.png"
+    assert image["source_sha256"] == hashlib.sha256(original).hexdigest()
+    assert image["source_format"] == "png"
+
+
+def test_unsupported_and_corrupt_docx_media_are_counted_as_omitted():
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("word/document.xml", "<w:document><w:p><w:r><w:t>正文</w:t></w:r></w:p></w:document>")
+        z.writestr("word/media/image1.gif", b"GIF89a")
+        z.writestr("word/media/image2.jpg", b"invalid-jpeg")
+    result = lesson_import.extract(".docx", buf.getvalue())
+    assert result["images"] == []
+    assert result["omittedImages"] == 2
 
 
 def test_model_image_indexes_are_ignored_and_text_geometry_selects_the_picture():
@@ -113,7 +176,39 @@ def test_the_weekend_page_renders_the_imported_picture():
 
     for script in (COMMON_JS, PLAN_JS):
         assert "questionFigureImg" in script, "both the 审改 page and the student page must show it"
-    assert "data:image\\/jpeg;base64," in COMMON_JS
+    assert "data:image\\/(jpeg|png);base64," in COMMON_JS
+
+
+def test_chinese_workbench_exposes_teacher_only_material_review():
+    from changying.web.weekend_pages import PLAN_JS
+    from changying.web.weekend_plan_views import ImportedMaterialReviewBody
+
+    assert "导入素材审核" in PLAN_JS
+    assert "reviewImportedMaterials(r,detail,refreshRow)" in PLAN_JS
+    assert "api('/teacher/weekend/lessons/'+r.lessonId+'/imported-materials')" in PLAN_JS
+    assert "expectedRevision" in ImportedMaterialReviewBody.model_fields
+
+
+def test_material_review_uses_authenticated_page_api_and_saves_revision():
+    import json
+    import subprocess
+    from changying.web.weekend_pages import PLAN_JS
+
+    review = PLAN_JS.split("  function reviewImportedMaterials(", 1)[1].split("  function startReason(", 1)[0]
+    script = r'''
+const assert=require('assert');
+let calls=[], saved=null, refreshed=null;
+function el(tag,attrs,...children){let n={tag,attrs:attrs||{},children:children.filter(Boolean),value:(attrs||{}).value||'',textContent:(attrs||{}).text||'',disabled:false,events:{},appendChild(c){this.children.push(c)},addEventListener(k,f){this.events[k]=f}};return n}
+function questionFigureImg(fig){return el('img',{src:fig.data_url})}
+function api(path,opts){calls.push({path,opts});if(opts){saved=opts.json;return Promise.resolve({})}if(path.includes('schedule?'))return Promise.resolve({items:[{lessonId:12,pendingMaterials:0}]});return Promise.resolve({items:[{id:4,sourceFile:'teacher.docx',sourcePart:'image1.png',sourceSha256:'abc',status:'pending',dataUrl:'data:image/png;base64,AAAA',sortOrder:1,revision:3}]})}
+const SUBJ='语文';
+''' + "function reviewImportedMaterials(" + review + r'''
+let box=el('div',{});reviewImportedMaterials({lessonId:12,courseType:'reading'},box,function(x){refreshed=x});
+setTimeout(function(){let card=box.children[2].children[0],row=card.children[3];let confirm=row.children[3];confirm.events.click();setTimeout(function(){assert.equal(calls[0].path,'/teacher/weekend/lessons/12/imported-materials');assert.equal(saved.status,'confirmed');assert.equal(saved.expectedRevision,3);assert.equal(refreshed.pendingMaterials,0);console.log('OK')},0)},0);
+'''
+    result = subprocess.run(["node", "-e", script], text=True, capture_output=True, timeout=15)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "OK" in result.stdout
 
 
 def test_a_written_question_keeps_its_picture_in_the_stored_metadata():

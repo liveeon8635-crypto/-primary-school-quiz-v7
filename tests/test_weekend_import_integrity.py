@@ -30,7 +30,9 @@ with zipfile.ZipFile(buf,'w') as z:
 with TestClient(app) as client:
     th, sh, sid, school_id = setup(client)
     replies.append(reply)
-    r = client.post('/teacher/weekend/lessons/import',headers=th,data={'subject':'语文','lessonNo':'17'},files={'file':('lesson.docx',buf.getvalue(),'application/octet-stream')})
+    selected=client.put('/teacher/weekend/schedule/语文/17/course-type',headers=th,json={'courseType':'reading','expectedRevision':0})
+    assert selected.status_code==200,selected.text
+    r = client.post('/teacher/weekend/lessons/import',headers=th,data={'subject':'语文','lessonNo':'17','courseType':'reading'},files={'file':('lesson.docx',buf.getvalue(),'application/octet-stream')})
     assert r.status_code == 200,r.text
     lid=r.json()['lessonId'];assert r.json()['sourceChars'] == len(source)
     url=f'/teacher/weekend/lessons/{lid}'

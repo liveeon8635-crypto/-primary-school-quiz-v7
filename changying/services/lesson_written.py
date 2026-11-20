@@ -151,7 +151,7 @@ def valid_written_questions(raw: Any) -> list[dict[str, Any]]:
     return out[:30]
 
 
-_FIGURE_URL = re.compile(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}")
+_FIGURE_URL = re.compile(r"data:image/(?:jpeg|png);base64,[A-Za-z0-9+/]+={0,2}")
 
 
 def _figure(value: Any) -> dict[str, Any]:

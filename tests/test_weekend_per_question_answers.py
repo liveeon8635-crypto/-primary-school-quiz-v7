@@ -16,7 +16,7 @@ with TestClient(app) as client:
     th, sh, student_id, school_id = setup(client)
     with legacy.SessionLocal() as db:
         p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
-        l = legacy.TeachingLesson(school_id=school_id,program_id=p.id,subject='语文',lesson_no=94,title='逐题讲评')
+        l = legacy.TeachingLesson(school_id=school_id,program_id=p.id,subject='数学',lesson_no=94,title='逐题讲评')
         db.add(l);db.commit();lid=l.id
     sid=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid}).json()['id']
     base=f'/teacher/weekend/sessions/{sid}'

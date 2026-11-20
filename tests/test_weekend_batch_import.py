@@ -53,7 +53,7 @@ with TestClient(app) as client:
     files.append(('files', ('教案没有课次.docx', plan(4), 'application/octet-stream')))
 
     # Preview reads every file but writes nothing and calls no model.
-    r = client.post('/teacher/weekend/lessons/import/preview', headers=th, data={'subject': '语文'}, files=files)
+    r = client.post('/teacher/weekend/lessons/import/preview', headers=th, data={'subject': '语文', 'courseType':'reading'}, files=files)
     assert r.status_code == 200, r.text
     preview = r.json()
     assert [i['lessonNo'] for i in preview['items']] == [1, 2, 3, None]
@@ -64,10 +64,10 @@ with TestClient(app) as client:
 
     # The batch imports the three named files and reports the unnamed one without stopping.
     replies.extend([reply('第一课'), reply('第二课'), reply('第三课')])
-    r = client.post('/teacher/weekend/lessons/import/batch', headers=th, data={'subject': '语文'}, files=files)
+    r = client.post('/teacher/weekend/lessons/import/batch', headers=th, data={'subject': '语文', 'courseType':'reading'}, files=files)
     assert r.status_code == 200, r.text
     got = r.json()
-    assert got['imported'] == 3 and got['failed'] == 1
+    assert got['imported'] == 3 and got['failed'] == 1, got
     assert [i['lessonNo'] for i in got['items']] == [1, 2, 3, None]
     assert got['items'][3]['ok'] is False and '课次' in got['items'][3]['error']
     assert len(calls) == 3
@@ -82,7 +82,7 @@ with TestClient(app) as client:
 
     # Without force an existing plan is refused per file and the stored lesson is untouched.
     before = client.get(f"/teacher/weekend/lessons/{by_no[1]}", headers=th).json()
-    r = client.post('/teacher/weekend/lessons/import/batch', headers=th, data={'subject': '语文'}, files=files[:2])
+    r = client.post('/teacher/weekend/lessons/import/batch', headers=th, data={'subject': '语文', 'courseType':'reading'}, files=files[:2])
     assert r.status_code == 200, r.text
     again = r.json()
     assert again['imported'] == 0 and again['failed'] == 2

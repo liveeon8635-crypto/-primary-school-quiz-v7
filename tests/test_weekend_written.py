@@ -21,7 +21,7 @@ with TestClient(app) as client:
     th, sh, sid, school_id = setup(client)
     with legacy.SessionLocal() as db:
         p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
-        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="语文", lesson_no=92, title="民间故事", core_target="概括情节")
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="语文", lesson_no=12, title="民间故事", core_target="概括情节")
         db.add(l); db.flush(); lid = l.id
         tid = db.scalar(select(legacy.User.id).where(legacy.User.username == "teacher1"))
         cls = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id)); cls.teacher_id = tid
@@ -29,6 +29,9 @@ with TestClient(app) as client:
         if link is None: db.add(legacy.ClassStudent(class_id=cls.id, student_id=sid))
         else: link.class_id = cls.id
         db.commit(); class_id = cls.id
+    selected = client.put('/teacher/weekend/schedule/语文/12/course-type', headers=th,
+                          json={'courseType':'reading','expectedRevision':0})
+    assert selected.status_code == 200, selected.text
     s = client.post('/teacher/weekend/sessions', headers=th, json={'lessonId':lid}).json()['id']
     base = f'/teacher/weekend/sessions/{s}'
     student = f'/student/weekend/sessions/{s}/written'
@@ -40,7 +43,7 @@ with TestClient(app) as client:
     qid = r.json()['id']; url = student+f'/{qid}'
     assert client.get(student, headers=sh).json()['questions'] == []
     assert client.post(url, headers=sh, data={'text':'答案'}).status_code == 409
-    client.post(base+'/start', headers=th);client.post(base+'/goto', headers=th, json={'stage':4})
+    client.post(base+'/start', headers=th);client.post(base+'/goto', headers=th, json={'stage':5})
     assert client.post(base+'/practice-question', headers=th, json={'question':1}).status_code == 200
     assert client.post(base+'/written/questions', headers=th, json={'stem':'late'}).status_code == 409
     page = client.get('/v1/weekend-practice').text
@@ -72,7 +75,7 @@ with TestClient(app) as client:
     assert len(invitation)==1 and invitation[0]['questionType']=='written'
     assert invitation[0]['answerText']=='为救乡亲牺牲自己' and invitation[0]['submission']['hasPhoto']
     assert 'reference' not in invitation[0]
-    assert '请 ' in str(client.get(base+'/board',headers=th).json()['content'])
+    assert '综合练习' in str(client.get(base+'/board',headers=th).json()['content'])
     assert client.get(base+'/peer-help',headers=th).json()['items']==[]
     assert client.get('/student/weekend/followup',headers=sh).json()['active'] is False
 

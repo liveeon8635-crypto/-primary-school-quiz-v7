@@ -87,6 +87,11 @@ def install_weekend_written(implementation: Any) -> APIRouter:
     User, CS, SC = implementation.User, implementation.ClassStudent, implementation.SchoolClass
     current_user, get_db, need = implementation.current_user, implementation.get_db, implementation.need
     router = APIRouter()
+
+    def task_stage(db: Any, row: Any) -> int:
+        from changying.services.weekend_course_types import frozen_session, practice_stage
+        frozen = frozen_session(db, implementation, int(row.id))
+        return practice_stage(frozen["courseType"] if frozen else "legacy")
     prechecks = WrittenPrechecks(implementation, t)
 
     def teacher_session(db: Any, u: Any, sid: int) -> Any:
@@ -164,16 +169,17 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         release_items, release_count, _ = practice_release(implementation, db, row)
         released = {q["id"] for q in release_items[:release_count] if q["kind"] == "written"}
         all_released = bool(release_items) and release_count == len(release_items)
-        return {"status": row.status, "stage": row.current_stage, "canSubmit": row.status == "running" and row.current_stage == 4 and not all_released,
+        practice_no = task_stage(db, row)
+        return {"status": row.status, "stage": row.current_stage, "canSubmit": row.status == "running" and row.current_stage == practice_no and not all_released,
                 "answersPublished": all_released,
-                "questions": [{"id": q.id, "answersPublished": q.id in released, "canSubmit": row.status == "running" and row.current_stage == 4 and q.id not in released, "stem": numbered_student_stem(source, q.stem), "hasHints": bool(json.loads(q.hints_json)), "hintUsed": used.get(q.id, 0),
+                 "questions": [{"id": q.id, "answersPublished": q.id in released, "canSubmit": row.status == "running" and row.current_stage == practice_no and q.id not in released, "stem": numbered_student_stem(source, q.stem), "hasHints": bool(json.loads(q.hints_json)), "hintUsed": used.get(q.id, 0),
                                "hintTexts": json.loads(q.hints_json)[:used.get(q.id, 0)],
                                "submission": ({**submission_dict(ans[q.id]), 'attempts':submission_attempts(implementation,db,u,sid,'written',q.id,True), **({} if q.id in released else {"result": "pending", "comment": ""})}) if q.id in ans else None} for q in question_rows(db, row) if question_is_open(implementation, db, row, 'written', q.id)]}
 
     @router.post("/student/weekend/sessions/{sid}/written/{qid}/hint")
     def student_hint(sid: int, qid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
-        if row.status != "running" or row.current_stage != 4 or answers_published(implementation, db, row, qid, "written"):
+        if row.status != "running" or row.current_stage != task_stage(db, row) or answers_published(implementation, db, row, qid, "written"):
             raise HTTPException(409, "现在不是随堂练习时间")
         q = next((q for q in question_rows(db, row) if q.id == qid), None)
         if q is None or not question_is_open(implementation, db, row, 'written', qid):
@@ -201,7 +207,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
     async def submit(sid: int, qid: int, tasks: BackgroundTasks, text: str = Form(""), revision: int = Form(0),
                      photo: UploadFile | None = File(None), removePhoto: bool = Form(False), u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
-        if row.status != "running" or row.current_stage != 4 or answers_published(implementation, db, row, qid, "written"):
+        if row.status != "running" or row.current_stage != task_stage(db, row) or answers_published(implementation, db, row, qid, "written"):
             raise HTTPException(409, "现在不是随堂练习时间")
         if not any(q.id == qid for q in question_rows(db, row)) or not question_is_open(implementation, db, row, 'written', qid):
             raise HTTPException(404, "没有找到这道题")

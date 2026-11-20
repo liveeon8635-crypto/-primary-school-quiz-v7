@@ -66,7 +66,7 @@ def compatible_html(html: str) -> str:
             code = code.replace('"__CY_BUILD__"', build).replace("'__CY_BUILD__'", build)
         return tag+code+end
     html = SCRIPTS.sub(script, html)
-    runtime = (ASSETS/'runtime.js').read_text()
+    runtime = (ASSETS/'runtime.js').read_text(encoding='utf-8')
     css = (ASSETS/'fallback.css').read_text()
     return html.replace('</head>', '<style id="cy-safari12-css">'+css+'</style><script id="cy-safari12-runtime">'+runtime+'</script></head>', 1)
 

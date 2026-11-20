@@ -145,7 +145,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
             return {}
         if not isinstance(fig, dict) or fig.get("type") != "uploaded_image":
             return {}
-        return fig if str(fig.get("data_url") or "").startswith("data:image/jpeg;base64,") else {}
+        return fig if str(fig.get("data_url") or "").startswith(("data:image/jpeg;base64,", "data:image/png;base64,")) else {}
 
     def level_names(subject: str) -> tuple[str, str, str]:
         return LEVEL_NAMES.get(subject, LEVEL_NAMES["default"])
@@ -265,7 +265,10 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         from changying.services.weekend_roster import student_in_session
         if not student_in_session(implementation, db, row, u.id):
             raise HTTPException(404, "现在没有正在上的课")
-        if int(row.current_stage) != PRACTICE_STAGE:
+        from changying.services.weekend_course_types import frozen_session, practice_stage
+        frozen = frozen_session(db, implementation, int(row.id))
+        course_type = frozen["courseType"] if frozen else "legacy"
+        if int(row.current_stage) != practice_stage(course_type):
             raise HTTPException(409, "现在不是随堂练习时间")
         return row
 
@@ -280,13 +283,17 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         if row is None:
             return {"active": False, "message": "现在没有正在上的课"}
         from changying.services.weekend_stages import stage_by_no
+        from changying.services.weekend_course_types import frozen_session, practice_stage
         from changying.services.weekend_roster import session_class
-        stage = stage_by_no(int(row.current_stage))
+        frozen = frozen_session(db, implementation, int(row.id))
+        course_type = frozen["courseType"] if frozen else "legacy"
+        practice_no = practice_stage(course_type)
+        stage = stage_by_no(int(row.current_stage), course_type)
         bound = session_class(implementation, db, row)
         base = {"active": True, "sessionId": row.id, "title": row.title, "stage": int(row.current_stage),
                 "stageName": stage["name"] if stage else "", "className": bound.class_name if bound else ""}
-        if int(row.current_stage) != PRACTICE_STAGE:
-            return {**base, "practice": False, "message": "还没到随堂练习，请看大屏听老师讲" if int(row.current_stage) < PRACTICE_STAGE else "随堂练习已关闭，可查看已提交答案与老师反馈"}
+        if int(row.current_stage) != practice_no:
+            return {**base, "practice": False, "message": "还没到随堂练习，请看大屏听老师讲" if int(row.current_stage) < practice_no else "随堂练习已关闭，可查看已提交答案与老师反馈"}
         lesson = db.get(implementation.TeachingLesson, row.lesson_id)
         source = lesson.reading_plan if lesson is not None else ""
         mine = {int(a.question_id): a for a in db.execute(select(answers).where(answers.c.session_id == row.id, answers.c.student_id == u.id)).all()}

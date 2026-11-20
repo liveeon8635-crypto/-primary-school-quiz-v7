@@ -46,10 +46,12 @@ with TestClient(app) as client:
         other=legacy.User(school_id=school_id,username='class_b_pupil',name='乙班同学',role='student',grade=5,password_hash=teacher.password_hash)
         db.add(other);db.flush();other_id=other.id
         db.add(legacy.ClassStudent(class_id=bid,student_id=other_id))
-        l=legacy.TeachingLesson(school_id=school_id,program_id=p.id,subject='语文',lesson_no=98,title='阅读',ppt_json=json.dumps(['方法'+str(i) for i in range(26)]),examples_json=json.dumps(['例题讲解第'+str(i)+'行' for i in range(132)]),reading_plan='原教案')
+        l=legacy.TeachingLesson(school_id=school_id,program_id=p.id,subject='语文',lesson_no=12,title='阅读',ppt_json=json.dumps(['长文第'+str(i)+'页' for i in range(132)]),examples_json=json.dumps(['例题讲解第'+str(i)+'行' for i in range(132)]),reading_plan=json.dumps(['短文'+str(i) for i in range(3)],ensure_ascii=False))
         db.add(l);db.flush();lid=l.id
         q=legacy.TeachingQuestion(school_id=school_id,program_id=p.id,level='C',lesson_id=lid,subject='语文',stem='概括',options_json='["甲","乙"]',correct_index=0,active=True,knowledge='概括')
         db.add(q);db.flush();qid=q.id;db.commit()
+    configured=client.put('/teacher/weekend/schedule/语文/12/course-type',headers=th,json={'courseType':'reading','expectedRevision':0})
+    assert configured.status_code==200,configured.text
     listed=client.get('/teacher/weekend/classes',headers=th)
     assert listed.status_code==200 and any(c['id']==aid and c['studentCount']==1 for c in listed.json()['items'])
     assert client.get('/teacher/weekend/classes',headers=sh).status_code==403
@@ -64,15 +66,19 @@ with TestClient(app) as client:
     wid=w.json()['id']
     client.post(base+'/start',headers=th);client.post(base+'/goto',headers=th,json={'stage':2})
     board=client.get(base+'/board',headers=th).json()
-    assert board['deck']['total']<26 and '方法0' in board['content'][0] and '方法1' in board['content'][0]
+    assert board['deck']['total']==3 and board['content']==['短文0']
+    short2=client.post(base+'/slide',headers=th,json={'delta':1}).json()
+    assert short2['content']==['短文1']
     client.post(base+'/goto',headers=th,json={'stage':3})
     example=client.get(base+'/board',headers=th).json()
-    assert example['deck']['total']<132 and '例题讲解第0行' in example['content'][0] and '例题讲解第1行' in example['content'][0]
+    assert example['deck']['total']==132 and example['content']==['长文第0页']
+    client.post(base+'/slide',headers=th,json={'delta':1})
+    assert client.get(base+'/board',headers=th).json()['content']==['长文第1页']
     changed=client.post(base+'/slide',headers=th,json={'delta':1}).json()
     second_screen=client.get(base+'/board',headers=th).json()
     assert second_screen['deck']==changed['deck'] and second_screen['content']==changed['content']
-    client.post(base+'/goto',headers=th,json={'stage':4})
-    assert client.post(base+'/practice-question', headers=th, json={'question':1}).status_code == 200
+    client.post(base+'/goto',headers=th,json={'stage':5})
+    rel=client.post(base+'/practice-question', headers=th, json={'question':1}); assert rel.status_code == 200, (rel.text, client.get(base,headers=th).json())
     progress=client.get(base+'/progress',headers=th).json()['items']
     assert [i['studentId'] for i in progress]==[student_id]
     assert client.get(base+'/written',headers=th).json()['total']==1

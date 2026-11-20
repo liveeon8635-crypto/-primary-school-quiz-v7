@@ -47,7 +47,7 @@ with TestClient(app) as client:
         db.add(legacy.ParentStudent(parent_id=pa_id, student_id=a_id)); db.add(legacy.ParentStudent(parent_id=pb_id, student_id=b_id))
         math = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=97, title="旋转、解决问题、整理和复习",
                                      core_target="会用旋转解决问题")
-        chin = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="语文", lesson_no=96, title="阅读·家国情怀", core_target="提取文本依据")
+        chin = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="语文", lesson_no=12, title="阅读·家国情怀", core_target="提取文本依据")
         db.add_all([math, chin]); db.flush()
         mq = []
         for i, k in enumerate(["旋转的意义", "旋转作图"]):
@@ -64,11 +64,19 @@ with TestClient(app) as client:
     pb_h = {"Authorization": "Bearer " + login_and_change(client, "parent_b", "Parent1234", "Parent5678")}
 
     def lesson_session(lid, written):
+        with legacy.SessionLocal() as db:
+            source_lesson = db.get(legacy.TeachingLesson, lid)
+            is_chinese = source_lesson.subject == "语文"
+            lesson_no = source_lesson.lesson_no
+        if is_chinese:
+            selected = client.put(f"/teacher/weekend/schedule/语文/{lesson_no}/course-type", headers=th,
+                                  json={"courseType": "reading", "expectedRevision": 0})
+            assert selected.status_code == 200, selected.text
         s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid, "classId": cls_id}).json()["id"]
         wids = [client.post(f"/teacher/weekend/sessions/{s}/written/questions", headers=th, json={"stem": stem, "reference": "评分要点：秘密参考"}).json()["id"]
                 for stem in written]
         client.post(f"/teacher/weekend/sessions/{s}/start", headers=th)
-        client.post(f"/teacher/weekend/sessions/{s}/goto", headers=th, json={"stage": 4})
+        client.post(f"/teacher/weekend/sessions/{s}/goto", headers=th, json={"stage": 5 if is_chinese else 4})
         # This scenario explicitly opens its exercises before testing student work.
         for ordinal in range(1, client.get(f'/teacher/weekend/sessions/{s}', headers=th).json()['answerRelease']['total'] + 1):
             assert client.post(f'/teacher/weekend/sessions/{s}'+'/practice-question', headers=th, json={'question':ordinal}).status_code == 200

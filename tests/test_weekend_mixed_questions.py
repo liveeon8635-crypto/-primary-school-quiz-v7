@@ -34,7 +34,7 @@ with TestClient(app) as client:
     # Deliberately omit all written questions in the AI response. Literal
     # extraction must retain the nine actual paper questions anyway.
     replies.append(json.dumps({'title':'民间故事阅读','coreTarget':'概括与复述','teacherPlan':'阅读并作答','ppt':['目标'], 'examples':[], 'questions':[]},ensure_ascii=False))
-    r=client.post('/teacher/weekend/lessons/import',headers=th,data={'subject':'语文','lessonNo':'17'},files={'file':('reading.docx',raw,'application/octet-stream')})
+    r=client.post('/teacher/weekend/lessons/import',headers=th,data={'subject':'语文','lessonNo':'17','courseType':'reading'},files={'file':('reading.docx',raw,'application/octet-stream')})
     assert r.status_code==200,r.text
     assert r.json()['writtenQuestionsFound']==9,r.text
     lid=r.json()['lessonId'];url=f'/teacher/weekend/lessons/{lid}/written/questions'
@@ -66,7 +66,7 @@ with TestClient(app) as client:
     session=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid}).json()['id']
     base=f'/teacher/weekend/sessions/{session}'
     assert len(client.get(base+'/written',headers=th).json()['questions'])==9
-    client.post(base+'/start',headers=th);client.post(base+'/goto',headers=th,json={'stage':4})
+    client.post(base+'/start',headers=th);client.post(base+'/goto',headers=th,json={'stage':5})
     # This scenario explicitly opens its exercises before testing student work.
     for ordinal in range(1, client.get(base, headers=th).json()['answerRelease']['total'] + 1):
         assert client.post(base+'/practice-question', headers=th, json={'question':ordinal}).status_code == 200
