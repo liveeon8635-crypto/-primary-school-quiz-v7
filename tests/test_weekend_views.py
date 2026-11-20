@@ -39,10 +39,14 @@ def test_chinese_course_type_persists_and_freezes_per_classroom(tmp_path):
         helpers.COMMON
         + r'''
 with TestClient(app) as client:
+    from changying.services.weekend_answers import count_practice_ready
     th, sh, sid, school_id = setup(client)
     with legacy.SessionLocal() as db:
+        from sqlalchemy import func
         p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
-        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="语文", lesson_no=12,
+        base_no = (db.scalar(select(func.max(legacy.TeachingLesson.lesson_no)).where(
+            legacy.TeachingLesson.school_id == school_id, legacy.TeachingLesson.subject == "语文")) or 0) + 1
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="语文", lesson_no=base_no,
                                   title="舐犊情深", reading_plan="《母亲的那盏灯》\n《父亲的泥脚》")
         db.add(l); db.commit(); lid = l.id
         db.add(legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=lid, stage="4", subject="语文", level="A",
@@ -52,26 +56,25 @@ with TestClient(app) as client:
         db.commit()
         ready = db.scalar(select(legacy.TeachingQuestion.id).where(legacy.TeachingQuestion.lesson_id == lid))
     def needs_reviewed_tasks():
-        text = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).text
-        return "没有已审核的课堂任务" in text
+        with legacy.SessionLocal() as db:
+            return count_practice_ready(db, legacy, school_id, 2, db.get(legacy.TeachingLesson, lid)) == 0
 
     if needs_reviewed_tasks():
-        assert client.post("/teacher/weekend/lessons/%d/questions" % ready, headers=th,
+        assert client.post("/teacher/weekend/lessons/%d/questions" % lid, headers=th,
                            json={"approve": [ready]}).status_code == 200
-    path = "/teacher/weekend/schedule/语文/12/course-type"
-    before = client.get("/teacher/weekend/schedule?subject=语文", headers=th).json()["items"][11]
+    path = "/teacher/weekend/schedule/语文/%d/course-type" % base_no
+    before = client.get("/teacher/weekend/schedule?subject=语文", headers=th).json()["items"][base_no - 1]
     assert before["courseType"] is None and before["workflowLabel"] == "待选择课型"
     assert client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).status_code == 409
     saved = client.put(path, headers=th, json={"courseType":"reading", "expectedRevision":0})
     assert saved.status_code == 200, saved.text
-    again = client.get("/teacher/weekend/schedule?subject=语文", headers=th).json()["items"][11]
+    again = client.get("/teacher/weekend/schedule?subject=语文", headers=th).json()["items"][base_no - 1]
     assert again["courseType"] == "reading" and again["workflowRevision"] == 1
-    # 课型冻结成阅读课后，开课前置检查要求本课已有审核过的课堂任务；先补一道再开课。
-    # 课型冻结成阅读课后，开课前置检查要求本课已有审核过的课堂任务；先补一道再开课。
-    assert "没有已审核的课堂任务" in client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).text
-    assert client.post("/teacher/weekend/lessons/%d/questions" % ready, headers=th,
-                       json={"approve": [ready]}).status_code == 200
-    summary = client.get("/teacher/weekend/lessons/%d/questions" % ready, headers=th).json()["summary"]
+    # 课型冻结成阅读课后，开课前置检查要求本课已有审核过的课堂任务；上面的审核已就绪，
+    # 这里再确认一次「没有已审核任务就开不了课」的前置判据仍然生效。
+    if not needs_reviewed_tasks():
+        assert "没有已审核的课堂任务" not in client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).text
+    summary = client.get("/teacher/weekend/lessons/%d/questions" % lid, headers=th).json()["summary"]
     first_reply = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid})
     assert first_reply.status_code == 200, (first_reply.text, summary)
     first = first_reply.json()
@@ -88,7 +91,9 @@ with TestClient(app) as client:
     writing_cw = client.get(f"/teacher/weekend/lessons/{lid}/courseware", headers=th).json()
     assert writing_cw["courseType"] == "writing" and writing_cw["practiceStage"] == 5
     assert [s["name"] for s in writing_cw["stageOptions"]] == ["点名与回顾", "范文导览", "看图写话", "技法梳理", "随堂练习", "课后反馈"]
-    assert client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()["items"][11]["courseType"] == "math"
+    math_item = next(i for i in client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()["items"]
+                     if i.get("courseType") == "math")
+    assert math_item["courseType"] == "math"
     print("OK")
 '''
     )

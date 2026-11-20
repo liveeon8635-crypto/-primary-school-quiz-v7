@@ -123,28 +123,20 @@ def register_courseware_template_table(implementation: Any) -> Table:
 def _presentation_pages(raw: Any) -> list[str]:
     """The same page split the big screen uses, so a courseware page index names one screen."""
     from changying.services.weekend_presentation import presentation_pages
+    if isinstance(raw, str) and raw.strip() and not raw.lstrip().startswith(("[", "{")):
+        # A Chinese reading plan is plain text; the deck reads it as one stored page.
+        raw = json.dumps([raw], ensure_ascii=False)
     return presentation_pages(raw, preserve_pages=False, source="")
 
 
 def stage_pages(lesson: Any, stage_no: int, course_type: str | None = "math") -> list[str]:
     """The pages the big screen pages through in this stage (slides or worked examples); empty when it has none."""
     if course_type == "reading":
-        if stage_no == 2:
-            raw = lesson.reading_plan
-        elif stage_no == 3:
-            raw = lesson.ppt_json
-        elif stage_no == 5:
-            raw = lesson.closure_training
-        else:
-            raw = lesson.core_target if stage_no == 4 else ""
+        # The plan is the short-passage page; the long passage is its own import, never the plan.
+        raw = {2: lesson.reading_plan, 5: lesson.closure_training}.get(stage_no, "")
         return _presentation_pages(raw)
     if course_type == "writing":
-        raw = {
-            2: lesson.examples_json,
-            3: lesson.ppt_json,
-            4: lesson.reading_plan,
-            5: lesson.writing_plan or lesson.closure_training,
-        }.get(stage_no, "")
+        raw = {2: lesson.reading_plan, 5: lesson.writing_plan or lesson.closure_training}.get(stage_no, "")
         return _presentation_pages(raw)
     from changying.services.weekend_presentation import lesson_deck
     return lesson_deck({"ppt_json": lesson.ppt_json, "examples_json": lesson.examples_json, "reading_plan": lesson.reading_plan}, stage_no)
