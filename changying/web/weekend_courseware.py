@@ -120,6 +120,12 @@ def register_courseware_template_table(implementation: Any) -> Table:
     return md.tables["weekend_courseware_template"]
 
 
+def _presentation_pages(raw: Any) -> list[str]:
+    """The same page split the big screen uses, so a courseware page index names one screen."""
+    from changying.services.weekend_presentation import presentation_pages
+    return presentation_pages(raw, preserve_pages=False, source="")
+
+
 def stage_pages(lesson: Any, stage_no: int, course_type: str | None = "math") -> list[str]:
     """The pages the big screen pages through in this stage (slides or worked examples); empty when it has none."""
     if course_type == "reading":
@@ -131,7 +137,7 @@ def stage_pages(lesson: Any, stage_no: int, course_type: str | None = "math") ->
             raw = lesson.closure_training
         else:
             raw = lesson.core_target if stage_no == 4 else ""
-        return _courseware_lines(raw)
+        return _presentation_pages(raw)
     if course_type == "writing":
         raw = {
             2: lesson.examples_json,
@@ -139,25 +145,9 @@ def stage_pages(lesson: Any, stage_no: int, course_type: str | None = "math") ->
             4: lesson.reading_plan,
             5: lesson.writing_plan or lesson.closure_training,
         }.get(stage_no, "")
-        return _courseware_lines(raw)
+        return _presentation_pages(raw)
     from changying.services.weekend_presentation import lesson_deck
     return lesson_deck({"ppt_json": lesson.ppt_json, "examples_json": lesson.examples_json, "reading_plan": lesson.reading_plan}, stage_no)
-
-
-def _courseware_lines(raw: Any) -> list[str]:
-    if isinstance(raw, list):
-        values = raw
-    else:
-        try:
-            values = json.loads(str(raw or ""))
-        except (TypeError, ValueError):
-            values = str(raw or "").splitlines()
-    out = []
-    for item in values if isinstance(values, list) else []:
-        text = " ".join(str(item.get(key) or "") for key in ("title", "text", "content", "stem") if item.get(key)) if isinstance(item, dict) else str(item or "")
-        if text.strip():
-            out.append(text.strip())
-    return out
 
 
 def practice_courseware_sources(implementation: Any, db: Any, lesson: Any, teacher_id: int) -> list[tuple[str, str]]:
@@ -1165,7 +1155,7 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
                                    t.c.approved_json.isnot(None))).first()
     stage = int(row.current_stage or 0)
     from changying.services.weekend_course_types import frozen_session
-    frozen = frozen_session(db, implementation, int(row.id))
+    frozen = frozen_session(db, implementation, int(row.id), metadata=getattr(implementation, "Base", None) and implementation.Base.metadata)
     course_type = frozen["courseType"] if frozen else "legacy"
     practice_no = practice_stage(course_type)
     lesson = db.get(implementation.TeachingLesson, row.lesson_id)
@@ -1209,7 +1199,10 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
     if pages:
         # Each courseware belongs to one slide or worked example; other pages keep their own content.
         bound = [i for i in approved if i.get("page") is not None and 0 <= int(i["page"]) < len(pages)]
-        item = next((i for i in bound if int(i["page"]) == page_index), None)
+        # The board always walks page one first (page_index None or 0), so an approved courseware of
+        # the page on screen must still be shown; only pages the classroom has not reached yet wait.
+        item = bound[0] if page_index is None and len(bound) == 1 else next(
+            (i for i in bound if int(i["page"]) == page_index), None)
         if item is None:
             if bound:
                 return None, "本环节第 " + "、".join(str(int(i["page"]) + 1) for i in sorted(bound, key=lambda i: i["page"])) + " 页有互动课件。"

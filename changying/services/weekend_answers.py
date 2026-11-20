@@ -70,7 +70,7 @@ def question_is_open(implementation, db, session, kind, question_id):
     # Existing classrooms without an explicit gate retain the historical workflow.
     if not value:
         from changying.services.weekend_course_types import frozen_session
-        frozen = frozen_session(db, implementation, int(session.id))
+        frozen = frozen_session(db, implementation, int(session.id), metadata=getattr(implementation, "Base", None) and implementation.Base.metadata)
         return not frozen or frozen.get("courseType") not in ("reading", "writing")
     return f'{kind}:{question_id}' in json.loads(value)
 
@@ -213,7 +213,7 @@ def practice_release(implementation, db, session):
         table.c.school_id == session.school_id)).first()
     items = practice_items(implementation, db, session)
     count, page = 0, 0
-    if cursor is not None and cursor.stage_no == practice_stage((frozen_session(db, implementation, session.id) or {}).get("courseType")):
+    if cursor is not None and cursor.stage_no == practice_stage((frozen_session(db, implementation, session.id, metadata=getattr(implementation, "Base", None) and implementation.Base.metadata) or {}).get("courseType")):
         value = int(cursor.idx)
         if value >= CURSOR_VERSION:
             count, page = divmod(value-CURSOR_VERSION, CURSOR_PAGES)

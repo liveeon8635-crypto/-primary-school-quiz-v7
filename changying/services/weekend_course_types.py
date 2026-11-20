@@ -197,9 +197,23 @@ def lesson_snapshot(lesson: Any) -> str:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
-def frozen_session(db: Any, implementation: Any, session_id: int) -> dict[str, Any] | None:
-    tables = register_weekend_course_type_tables(implementation)
-    row = db.execute(select(tables["frozen"]).where(tables["frozen"].c.session_id == int(session_id))).first()
+def frozen_session(
+    db: Any, implementation: Any, session_id: int, *, table: Any = None, metadata: Any = None,
+) -> dict[str, Any] | None:
+    """The course type a classroom froze when it was created.
+
+    ``table`` lets a caller that only has the metadata (the launch-time cleanup classifier) read
+    the snapshot with an empty registry instead of registering the tables as a side effect.
+    ``metadata`` does the same when the caller owns the tables but not the implementation module;
+    the snapshot is then absent instead of raising when the tables were never registered.
+    """
+    if table is None and metadata is not None:
+        table = metadata.tables.get("weekend_session_workflows")
+        if table is None:
+            return None
+    if table is None:
+        table = register_weekend_course_type_tables(implementation)["frozen"]
+    row = db.execute(select(table).where(table.c.session_id == int(session_id))).first()
     if row is None:
         return None
     try:

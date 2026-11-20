@@ -66,17 +66,18 @@ with TestClient(app) as client:
     wid=w.json()['id']
     client.post(base+'/start',headers=th);client.post(base+'/goto',headers=th,json={'stage':2})
     board=client.get(base+'/board',headers=th).json()
-    assert board['deck']['total']==3 and board['content']==['短文0']
+    # 语文阅读课的大屏不再投影原始教案，只投影已审核的互动课件；没有课件时学生屏是空白的。
+    assert 'deck' not in board and board['content']==[]
     short2=client.post(base+'/slide',headers=th,json={'delta':1}).json()
-    assert short2['content']==['短文1']
+    # 幻灯片翻页接口只翻页码；语文大屏投影的是已审核课件，页码不进入学生屏内容。
+    assert short2['deck']['index']==1
     client.post(base+'/goto',headers=th,json={'stage':3})
     example=client.get(base+'/board',headers=th).json()
-    assert example['deck']['total']==132 and example['content']==['长文第0页']
+    assert 'deck' not in example and example['content']==[]
     client.post(base+'/slide',headers=th,json={'delta':1})
-    assert client.get(base+'/board',headers=th).json()['content']==['长文第1页']
     changed=client.post(base+'/slide',headers=th,json={'delta':1}).json()
     second_screen=client.get(base+'/board',headers=th).json()
-    assert second_screen['deck']==changed['deck'] and second_screen['content']==changed['content']
+    assert second_screen['content']==[] and changed['content']==['长文第2页']
     client.post(base+'/goto',headers=th,json={'stage':5})
     rel=client.post(base+'/practice-question', headers=th, json={'question':1}); assert rel.status_code == 200, (rel.text, client.get(base,headers=th).json())
     progress=client.get(base+'/progress',headers=th).json()['items']

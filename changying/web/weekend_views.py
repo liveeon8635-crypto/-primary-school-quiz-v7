@@ -301,7 +301,7 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                         out['content'].append(f"请 {who} 同学来讲：{stem.split(chr(10)+chr(10))[-1]}")
         if row.status == "running" and not (board and row.covered):
             from changying.web.weekend_courseware import courseware_for_session
-            courseware, notice = courseware_for_session(implementation, db, row, out["deck"]["index"] if "deck" in out else None)
+            courseware, notice = courseware_for_session(implementation, db, row, out.get("deck", {}).get("index"))
             if courseware is not None:
                 out["courseware"] = courseware
             if notice and not board:
@@ -311,11 +311,10 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                 out["content"] = []
             elif course_type in ("reading", "writing") and no != practice_no:
                 # The legacy lesson fields can contain a complete teacher document,
-                # including answers. They are not reviewed student-facing nodes.
-                # Do not project them until the node-level release model exists.
-                out["content"] = ["本环节素材尚未完成学生内容审核，请教师在备课页核对。"]
+                # including answers. They are not reviewed student-facing nodes:
+                # only approved courseware of this page may reach the board.
+                out["content"] = [courseware["kindLabel"]] if "courseware" in out else []
                 out.pop("deck", None)
-                out.pop("courseware", None)
             elif course_type in ("reading", "writing") and no == practice_no and "deck" in out:
                 from changying.services.weekend_answers import practice_items, question_is_open
                 items = practice_items(implementation, db, row)

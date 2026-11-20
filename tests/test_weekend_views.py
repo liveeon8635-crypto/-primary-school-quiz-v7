@@ -45,6 +45,19 @@ with TestClient(app) as client:
         l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="语文", lesson_no=12,
                                   title="舐犊情深", reading_plan="《母亲的那盏灯》\n《父亲的泥脚》")
         db.add(l); db.commit(); lid = l.id
+        db.add(legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=lid, stage="4", subject="语文", level="A",
+                                       knowledge="舐犊情深", stem="《母亲的那盏灯》里母亲守在灯下的用意是？",
+                                       options_json=json.dumps(["怕黑", "为孩子照亮路", "习惯", "省电"], ensure_ascii=False),
+                                       correct_index=1, explanation="母亲守在灯下，是为了照亮孩子回家的路。", active=False))
+        db.commit()
+        ready = db.scalar(select(legacy.TeachingQuestion.id).where(legacy.TeachingQuestion.lesson_id == lid))
+    def needs_reviewed_tasks():
+        text = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).text
+        return "没有已审核的课堂任务" in text
+
+    if needs_reviewed_tasks():
+        assert client.post("/teacher/weekend/lessons/%d/questions" % ready, headers=th,
+                           json={"approve": [ready]}).status_code == 200
     path = "/teacher/weekend/schedule/语文/12/course-type"
     before = client.get("/teacher/weekend/schedule?subject=语文", headers=th).json()["items"][11]
     assert before["courseType"] is None and before["workflowLabel"] == "待选择课型"
@@ -53,8 +66,16 @@ with TestClient(app) as client:
     assert saved.status_code == 200, saved.text
     again = client.get("/teacher/weekend/schedule?subject=语文", headers=th).json()["items"][11]
     assert again["courseType"] == "reading" and again["workflowRevision"] == 1
-    first = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()
-    assert first["courseType"] == "reading" and first["stageCount"] == 6
+    # 课型冻结成阅读课后，开课前置检查要求本课已有审核过的课堂任务；先补一道再开课。
+    # 课型冻结成阅读课后，开课前置检查要求本课已有审核过的课堂任务；先补一道再开课。
+    assert "没有已审核的课堂任务" in client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).text
+    assert client.post("/teacher/weekend/lessons/%d/questions" % ready, headers=th,
+                       json={"approve": [ready]}).status_code == 200
+    summary = client.get("/teacher/weekend/lessons/%d/questions" % ready, headers=th).json()["summary"]
+    first_reply = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid})
+    assert first_reply.status_code == 200, (first_reply.text, summary)
+    first = first_reply.json()
+    assert first["courseType"] == "reading" and first["stageCount"] == 6, first
     session_url = f"/teacher/weekend/sessions/{first['id']}"
     started = client.post(session_url + "/start", headers=th).json()
     assert started["stageName"] == "点名与回顾" and len(started["stages"]) == 6
