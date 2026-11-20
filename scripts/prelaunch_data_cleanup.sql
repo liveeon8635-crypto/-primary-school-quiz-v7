@@ -73,6 +73,10 @@ WITH d AS (DELETE FROM weekend_written_hint_log RETURNING 1) INSERT INTO _delete
 WITH d AS (DELETE FROM weekend_stage_log RETURNING 1) INSERT INTO _deleted SELECT 'weekend_stage_log', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_slide_state RETURNING 1) INSERT INTO _deleted SELECT 'weekend_slide_state', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_session_questions RETURNING 1) INSERT INTO _deleted SELECT 'weekend_session_questions', COUNT(*) FROM d;
+-- DELETE: session snapshots are classroom activity; delete before their parent sessions.
+WITH d AS (DELETE FROM weekend_session_workflows RETURNING 1) INSERT INTO _deleted SELECT 'weekend_session_workflows', COUNT(*) FROM d;
+-- DELETE: imported review materials are prelaunch activity, not persistent course configuration.
+WITH d AS (DELETE FROM weekend_lesson_materials RETURNING 1) INSERT INTO _deleted SELECT 'weekend_lesson_materials', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_open_questions RETURNING 1) INSERT INTO _deleted SELECT 'weekend_open_questions', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_sessions RETURNING 1) INSERT INTO _deleted SELECT 'weekend_sessions', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_schedule RETURNING 1) INSERT INTO _deleted SELECT 'weekend_schedule', COUNT(*) FROM d;
