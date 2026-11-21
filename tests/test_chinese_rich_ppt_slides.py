@@ -20,6 +20,7 @@ def test_clean_slide_rich_pedagogy_and_media_limits():
     tiny_mp3 = "data:audio/mpeg;base64,SUQzAwAAAAAA"
     big_mp3 = "data:audio/mpeg;base64," + ("A" * 900000)
     too_big_mp3 = "data:audio/mpeg;base64," + ("A" * 1850000)
+    long_script = "每当夜幕降临。" * 150
 
     cleaned = cw.clean(
         "slide",
@@ -34,8 +35,13 @@ def test_clean_slide_rich_pedagogy_and_media_limits():
                     "subtitle": "贴近日常深夜书桌",
                     "caption": "母爱守候场景",
                     "figure": {"type": "uploaded_image", "data_url": tiny_jpeg, "alt": "台灯插图"},
+                    "gallery": [
+                        {"data_url": tiny_jpeg, "caption": "分镜一：缝补校服"},
+                        {"data_url": tiny_jpeg, "caption": "分镜二：换冷毛巾"},
+                    ],
                     "body": ["第一段背景说明。"],
                     "audioLabel": "课文配音朗读",
+                    "audioText": long_script,
                     "audioUrl": big_mp3,
                 },
                 {
@@ -69,6 +75,9 @@ def test_clean_slide_rich_pedagogy_and_media_limits():
     assert cleaned["slides"][0]["caption"] == "母爱守候场景"
     assert cleaned["slides"][0]["audioLabel"] == "课文配音朗读"
     assert cleaned["slides"][0]["figure"]["type"] == "uploaded_image"
+    assert len(cleaned["slides"][0]["gallery"]) == 2
+    assert cleaned["slides"][0]["gallery"][1]["caption"] == "分镜二：换冷毛巾"
+    assert len(cleaned["slides"][0]["audioText"]) > 600
     assert len(cleaned["slides"][1]["characters"]) == 1
     assert cleaned["slides"][1]["characters"][0]["traits"] == ["勤劳", "温柔"]
     assert len(cleaned["slides"][2]["plot"]) == 2
@@ -77,6 +86,8 @@ def test_clean_slide_rich_pedagogy_and_media_limits():
     pub = cw.public_params("slide", cleaned)
     assert "teacherNotes" not in pub
     assert len(pub["slides"]) == 3
+    assert "audioText" not in pub["slides"][0]
+    assert len(pub["slides"][0]["gallery"]) == 2
 
     try:
         cw.clean("slide", {"slides": [{"heading": "超长音频", "body": ["正文"], "audioUrl": too_big_mp3}]})
@@ -103,13 +114,21 @@ def test_courseware_slide_renderer_and_editor_preserves_rich_fields():
                 "subtitle": "贴近生活",
                 "caption": "暖灯插图说明",
                 "figure": {"type": "uploaded_image", "data_url": "data:image/jpeg;base64,AAAA", "alt": "灯"},
+                "gallery": [
+                    {"data_url": "data:image/jpeg;base64,AAAB", "caption": "分镜1"},
+                    {"data_url": "data:image/jpeg;base64,AAAC", "caption": "分镜2"},
+                ],
                 "audioLabel": "课文范读",
+                "audioText": "示范逐字朗读原稿内容",
                 "audioUrl": "data:audio/mpeg;base64,SUQz",
                 "body": ["这是==重点细节==所在句子。"],
             },
             {
                 "layout": "characters",
                 "heading": "人物分析",
+                "audioLabel": "人物讲读",
+                "audioText": "第二页逐字稿",
+                "audioUrl": "data:audio/mpeg;base64,SUQ0",
                 "characters": [
                     {
                         "name": "母亲",
@@ -132,7 +151,9 @@ def test_courseware_slide_renderer_and_editor_preserves_rich_fields():
 
     js_script = rf'''
 const assert = require('node:assert/strict');
+const audioRegistry = [];
 function makeNode(tag, attrs, children) {{
+  const listeners = {{}};
   const n = {{
     tagName: String(tag || '').toUpperCase(),
     attrs: attrs || {{}},
@@ -141,6 +162,7 @@ function makeNode(tag, attrs, children) {{
     hidden: !!(attrs && attrs.hidden),
     value: (attrs && attrs.value) || '',
     textContent: (attrs && attrs.text) || '',
+    _pausedCalls: 0,
     appendChild(c) {{ if (c) this.children.push(c); return c; }},
     insertBefore(c, ref) {{
       const cur = this.children.indexOf(c);
@@ -150,18 +172,23 @@ function makeNode(tag, attrs, children) {{
       else this.children.push(c);
       return c;
     }},
-    addEventListener() {{}},
-    play() {{ return Promise.resolve(); }},
-    pause() {{}},
+    addEventListener(ev, fn) {{ (listeners[ev] = listeners[ev] || []).push(fn); }},
+    dispatchPlay() {{ (listeners.play || []).forEach(fn => fn()); }},
+    play() {{ this.dispatchPlay(); return Promise.resolve(); }},
+    pause() {{ this._pausedCalls++; }},
   }};
   Object.keys(n.attrs).forEach(k => {{
     if (k !== 'text' && k !== 'style' && k !== 'hidden') n[k] = n.attrs[k];
   }});
+  if (n.tagName === 'AUDIO') audioRegistry.push(n);
   for (const c of children) if (c) n.children.push(c);
   return n;
 }}
 function el(tag, attrs, ...children) {{ return makeNode(tag, attrs, children); }}
-const document = {{ createTextNode(t) {{ return makeNode('#text', {{ text: String(t || '') }}, []); }} }};
+const document = {{
+  createTextNode(t) {{ return makeNode('#text', {{ text: String(t || '') }}, []); }},
+  querySelectorAll(sel) {{ return sel === 'audio' ? audioRegistry : []; }}
+}};
 const window = {{}};
 function all(node, pred, out = []) {{
   if (!node) return out;
@@ -175,24 +202,34 @@ function api(p, o) {{ return apiHandler(p, o); }}
 {COURSEWARE_JS}
 {COURSEWARE_PLAN_JS}
 
-// 1. Verify cwSlide renders <img>, <audio>, characters, plot, qa, and highlight in showAllSlides mode.
+// 1. Verify cwSlide renders <img> (single + gallery), <audio>, script toggle, mutual exclusion, characters, plot, qa, and highlight in showAllSlides mode.
 const host = el('div');
 cwRender(host, {{ kind: 'slide', params: {json.dumps(sample, ensure_ascii=False)} }}, {{ showAllSlides: true }}, false, true);
 const imgs = all(host, n => n.tagName === 'IMG');
 const audios = all(host, n => n.tagName === 'AUDIO');
-assert.equal(imgs.length, 1);
-assert.equal(audios.length, 1);
+assert.equal(imgs.length, 3);
+assert.equal(audios.length, 2);
 assert.equal(audios[0].controls, true);
+audios[1].play();
+assert.equal(audios[0]._pausedCalls, 1, 'playing second audio must pause first');
 const allTexts = all(host, () => true).map(n => n.textContent).join('\n');
 assert(allTexts.includes('暖灯插图说明'), 'missing caption');
+assert(allTexts.includes('分镜1') && allTexts.includes('分镜2'), 'missing gallery captions');
 assert(allTexts.includes('课文范读'), 'missing audioLabel');
+assert(allTexts.includes('示范逐字朗读原稿内容'), 'missing inline audioText script box');
+const scriptBtn = all(host, n => n.tagName === 'BUTTON' && n.textContent === '对照朗读原稿')[0];
+assert(scriptBtn, 'expected 对照朗读原稿 toggle');
+const scriptDiv = all(host, n => n.textContent === '示范逐字朗读原稿内容')[0];
+assert.equal(scriptDiv.hidden, true);
+scriptBtn.onclick();
+assert.equal(scriptDiv.hidden, false);
 assert(allTexts.includes('细节描写：'), 'missing character details');
 assert(allTexts.includes('无私母爱'), 'missing character emotion');
 assert(allTexts.includes('情感：温馨'), 'missing plot feeling');
 const toggles = all(host, n => n.tagName === 'BUTTON' && n.textContent === '查看点拨');
 assert.equal(toggles.length, 1);
 
-// 2. Verify openEditor puts preview BEFORE collapsed details and collect() preserves all rich fields on PUT.
+// 2. Verify Audio Audit Hub + openEditor preview-first + collect() preserves gallery and audioText.
 let savedPayload = null;
 apiHandler = (path, opts) => {{
   if (opts && opts.method === 'PUT') {{
@@ -214,6 +251,13 @@ apiHandler = (path, opts) => {{
   const box = el('div');
   cwPlan(box, 12, () => {{}});
   await new Promise(r => setTimeout(r, 20));
+  const auditBtn = all(box, n => n.tagName === 'BUTTON' && String(n.textContent).includes('核对音频配套（2/2）'))[0];
+  assert(auditBtn, 'expected 核对音频配套（2/2） button');
+  auditBtn.onclick();
+  const auditTexts = all(box, () => true).map(n => n.textContent).join('\n');
+  assert(auditTexts.includes('音频配套核对总表'), 'expected audit panel header');
+  assert(all(box, n => n.tagName === 'BUTTON' && n.textContent === '替换 .mp3').length === 2, 'expected per-slide replace mp3 buttons');
+
   const editBtn = all(box, n => n.tagName === 'BUTTON' && n.textContent === '预览／修改')[0];
   assert(editBtn, 'expected 预览／修改 button');
   editBtn.onclick();
@@ -235,8 +279,11 @@ apiHandler = (path, opts) => {{
   assert.equal(s0.layout, 'scene');
   assert.equal(s0.caption, '暖灯插图说明');
   assert.equal(s0.audioLabel, '课文范读');
+  assert.equal(s0.audioText, '示范逐字朗读原稿内容');
   assert.equal(s0.audioUrl, 'data:audio/mpeg;base64,SUQz');
   assert.equal(s0.figure.type, 'uploaded_image');
+  assert.equal(s0.gallery.length, 2);
+  assert.equal(s0.gallery[0].caption, '分镜1');
   assert.equal(s1.characters[0].name, '母亲');
   assert.equal(s1.plot[0].feeling, '温馨');
   assert.equal(s1.cards[0].tag, '考点14');
@@ -305,8 +352,10 @@ bundle = {
                             "layout": "reading",
                             "heading": "《母亲的那盏灯》",
                             "audioLabel": "课文配音朗读",
+                            "audioText": "大屏必须剔除的逐字朗读原稿",
                             "audioUrl": tiny_mp3,
                             "figure": {"type": "uploaded_image", "data_url": tiny_jpeg, "alt": "台灯"},
+                            "gallery": [{"data_url": tiny_jpeg, "caption": "分镜图"}],
                             "body": ["每当夜幕降临，台灯==一直亮着==。"],
                         },
                         {
@@ -394,6 +443,8 @@ with TestClient(app) as client:
     assert b_cw.get('kind') == 'slide'
     assert b_cw['params']['slides'][0]['audioUrl'] == tiny_mp3
     assert b_cw['params']['slides'][0]['figure']['type'] == 'uploaded_image'
+    assert b_cw['params']['slides'][0]['gallery'][0]['caption'] == '分镜图'
+    assert 'audioText' not in b_cw['params']['slides'][0]
     assert b_cw['params']['slides'][1] == {}
 
     v1 = client.post(f'/teacher/weekend/sessions/{sid}/courseware/view', headers=th,
