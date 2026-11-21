@@ -920,7 +920,7 @@ function cwPlan(box,lessonId,refresh){
           sec.appendChild(el('h3',{text:'第'+st.no+'环节：'+st.name}));
           stageItems.forEach(function(it){
             var previewHost=el('div');sec.appendChild(previewHost);
-            cwPreview(previewHost,{kind:it.kind,params:it.approved?it.approved.params:it.params,kindLabel:it.kindLabel||d.kindLabels[it.kind]||it.kind});
+            cwPreview(previewHost,{kind:it.kind,params:it.approved||it.params,kindLabel:it.kindLabel||d.kindLabels[it.kind]||it.kind});
           });
           wholePreviewWrap.appendChild(sec);
         });
