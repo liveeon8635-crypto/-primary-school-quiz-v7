@@ -73,3 +73,37 @@ with TestClient(app) as client:
     assert client.post(f'/teacher/weekend/sessions/{sid}/start',headers=th).status_code == 200
     print("OK")
 ''')
+
+
+def test_courseware_payload_exposes_server_readiness_after_draft_over_approval(tmp_path):
+    """保存草稿覆盖已审核版本后，课件接口的 stageReadiness 必须报「待确认」，
+    而不是前端只看 item.approved 就报「已审核」（对应生产页「还差」行与六环节按钮打架）。"""
+    helpers.run_isolated(tmp_path, helpers.COMMON + r'''
+__import__('sys').path.insert(0, 'tests')
+from test_chinese_readiness import prepare_reviewed_lesson
+with TestClient(app) as client:
+    th, sh, student, school = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school))
+        lesson = legacy.TeachingLesson(school_id=school, program_id=p.id, subject="语文",
+            lesson_no=18, title="构造阅读", core_target="阅读", reading_plan="构造完整正文")
+        db.add(lesson); db.commit(); lid = lesson.id
+    assert client.put('/teacher/weekend/schedule/语文/18/course-type', headers=th,
+        json={"courseType":"reading","expectedRevision":0}).status_code == 200
+    base = f"/teacher/weekend/lessons/{lid}/courseware"
+    prepare_reviewed_lesson(client, th, legacy, lid)
+    st = next(x for x in client.get('/teacher/weekend/schedule?subject=语文',headers=th).json()["items"] if x["lessonId"] == lid)
+    assert st["coursewareApproved"] and st["canStart"], st
+    # 覆盖第 1 环节已审核版本：upsert 保留 approved、status 改 draft。
+    saved = client.put(base, headers=th, json={"stageNo":1,"kind":"slide","writtenTask":False,
+        "params":{"title":"修改后的草稿","slides":[{"heading":"待审","body":["尚未审核"]}]}})
+    assert saved.status_code == 200, saved.text
+    data = client.get(base, headers=th).json()
+    stage1 = next(x for x in data["stageReadiness"] if x["no"] == 1)
+    assert stage1["status"] == "待确认", stage1
+    item1 = next(i for i in data["items"] if i["stage"] == 1)
+    assert item1.get("approved"), "item 仍带 approved：旧前端只看它就误报已审核"
+    st2 = next(x for x in client.get('/teacher/weekend/schedule?subject=语文',headers=th).json()["items"] if x["lessonId"] == lid)
+    assert any("草稿已更新" in r for r in st2["startReasons"]), st2["startReasons"]
+    print("OK")
+''')

@@ -975,9 +975,11 @@ function cwPlan(box,lessonId,refresh){
     if(d.subject==='语文'){
       var overview=el('div',{'aria-label':'六环节课件状态'});
       CW_STAGES.forEach(function(st){
+        var server=(d.stageReadiness||[]).filter(function(x){return String(x.no)===String(st.no)})[0];
         var entries=d.items.filter(function(it){return Number(it.stage)===Number(st.no)});
         var approved=entries.filter(function(it){return !!it.approved}).length;
-        var label=!entries.length?'缺少素材':approved===entries.length?'已审核':'已导入 · 待确认';
+        var local=!entries.length?'缺少素材':approved===entries.length?'已审核':'已导入 · 待确认';
+        var label=server?server.status:local;
         overview.appendChild(el('button',{text:st.no+'. '+st.name+' · '+label,onclick:function(){stageNo=String(st.no);paint(data)}}));
       });
       box.appendChild(overview);
