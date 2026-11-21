@@ -53,10 +53,11 @@ with TestClient(app) as client:
         if link:link.class_id=cls.id
         else:db.add(legacy.ClassStudent(class_id=cls.id,student_id=student_id))
         db.commit()
-    # Unapproved templates never enter a classroom, and a Chinese course type
-    # refuses to open a classroom while no practice task is approved yet.
-    refused=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid})
-    assert refused.status_code==409 and '没有已审核的课堂任务' in refused.text,refused.text
+    # Chinese lessons can open a classroom without approving exercises first,
+    # while unapproved templates still never enter the classroom.
+    pre_session=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid})
+    assert pre_session.status_code==200,pre_session.text
+    assert len(client.get(f"/teacher/weekend/sessions/{pre_session.json()['id']}/written",headers=th).json()['questions'])==0
     q=questions[0]
     r=client.put(url+'/'+str(q['id']),headers=th,json={'stem':q['stem'],'reference':'教师专用评分秘密','hints':['找人物','找事件','组织句子']})
     assert r.status_code==200,r.text

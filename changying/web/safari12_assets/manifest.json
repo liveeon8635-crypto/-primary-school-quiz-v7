@@ -409,7 +409,7 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/weekend": [
-      "93a56e38a08d5c760d1347f4eca9cafb07534aec0fda7d010eabc7e65dffd22c"
+      "84bec90ae5ab65605c97eb686586fb2174ae29145a377bd9688658d6ea07bfb9"
     ],
     "/v1/weekend-board": [
       "8f6e48fc64ec0ce0eb03042cce703a2261f5e3a43989fdea4336b85249d1b39e"
@@ -418,7 +418,7 @@
       "7b7dea7ffd9195ee51fe0b4f872802febd332d57b3431e9800ececcac91279a8"
     ],
     "/v1/weekend-plan": [
-      "764a0fffcd0384c8509554b734a807f331b8e547992bae1d8f6ce162f34cef14"
+      "26eb0860f2f9d52508c574532cee81a6725a7b8250b4d8fe7f5eb196e1396d4a"
     ],
     "/v1/weekend-practice": [
       "b7e212ead7f6ba2b8d8a9ca4d2fb3efb3a65b80ac063b833210db426bf65f5c3"
@@ -507,6 +507,11 @@
       "unchanged": true,
       "sourceBytes": 2212,
       "compiledBytes": 2212
+    },
+    "26eb0860f2f9d52508c574532cee81a6725a7b8250b4d8fe7f5eb196e1396d4a": {
+      "unchanged": true,
+      "sourceBytes": 188951,
+      "compiledBytes": 188951
     },
     "271c4c5a3fc4882ddfa747195de1e8c5794702c3a183250d67a844a264f07b5d": {
       "unchanged": false,
@@ -598,11 +603,6 @@
       "sourceBytes": 38929,
       "compiledBytes": 37581
     },
-    "764a0fffcd0384c8509554b734a807f331b8e547992bae1d8f6ce162f34cef14": {
-      "unchanged": true,
-      "sourceBytes": 169063,
-      "compiledBytes": 169063
-    },
     "77b7e539cd2e13260d6ecdfb9be170e10b510cbd3f3a80f2529932828112f9fb": {
       "unchanged": false,
       "sourceBytes": 66116,
@@ -648,6 +648,11 @@
       "sourceBytes": 4910,
       "compiledBytes": 4691
     },
+    "84bec90ae5ab65605c97eb686586fb2174ae29145a377bd9688658d6ea07bfb9": {
+      "unchanged": true,
+      "sourceBytes": 148818,
+      "compiledBytes": 148818
+    },
     "8a9730dec00a7b7aa4fd977604ba8a7cba1e21252cd201248c3b07efb81b842c": {
       "unchanged": false,
       "sourceBytes": 5883,
@@ -662,11 +667,6 @@
       "unchanged": true,
       "sourceBytes": 101684,
       "compiledBytes": 101684
-    },
-    "93a56e38a08d5c760d1347f4eca9cafb07534aec0fda7d010eabc7e65dffd22c": {
-      "unchanged": true,
-      "sourceBytes": 148414,
-      "compiledBytes": 148414
     },
     "9bf3edc8401ca483334cede440ca77dc652d9716e2ecb8f9de8bae4af8caf403": {
       "unchanged": true,
