@@ -6,9 +6,10 @@ from changying.services.weekend_answers import answers_published, practice_relea
 from changying.services.lesson_written import numbered_student_stem
 from changying.services.weekend_submissions import submission_attempts, record_submission, require_unsettled
 
+import base64
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -38,6 +39,22 @@ class ReviewItem(WrittenReviewBody):
 
 class ReviewBatch(BaseModel):
     items: list[ReviewItem] = Field(min_length=1, max_length=1000)
+
+
+class AnnotationShape(BaseModel):
+    kind: Literal["circle", "arrow", "rect", "text"]
+    x: float = 0
+    y: float = 0
+    w: float = 0
+    h: float = 0
+    text: str = Field(default="", max_length=200)
+
+
+class AnnotationBody(BaseModel):
+    submissionVersionId: int = Field(ge=1)
+    verdict: Literal["passed", "needs_revision", "retake"]
+    comment: str = Field(default="", max_length=1000)
+    shapes: list[AnnotationShape] = Field(default_factory=list, max_length=40)
 
 
 def register_written_tables(implementation: Any) -> dict[str, Table]:
@@ -71,9 +88,35 @@ def register_written_tables(implementation: Any) -> dict[str, Table]:
               Column("student_id", Integer, nullable=False), Column("question_id", Integer, nullable=False),
               Column("level", Integer, nullable=False), Column("created_at", DateTime, nullable=False),
               UniqueConstraint("session_id", "question_id", "student_id", "level", name="uq_weekend_written_hint"))
+    if "weekend_written_submission_versions" not in md.tables:
+        Table("weekend_written_submission_versions", md,
+              Column("id", Integer, primary_key=True),
+              Column("school_id", Integer, nullable=False, index=True),
+              Column("session_id", Integer, nullable=False, index=True),
+              Column("question_id", Integer, nullable=False, index=True),
+              Column("student_id", Integer, nullable=False, index=True),
+              Column("version_no", Integer, nullable=False),
+              Column("answer_text", Text, nullable=False),
+              Column("photos_json", Text, nullable=False),
+              Column("created_at", DateTime, nullable=False))
+    if "weekend_written_annotations" not in md.tables:
+        Table("weekend_written_annotations", md,
+              Column("id", Integer, primary_key=True),
+              Column("school_id", Integer, nullable=False, index=True),
+              Column("session_id", Integer, nullable=False, index=True),
+              Column("question_id", Integer, nullable=False, index=True),
+              Column("student_id", Integer, nullable=False, index=True),
+              Column("submission_version_id", Integer, nullable=False, index=True),
+              Column("teacher_id", Integer, nullable=False),
+              Column("verdict", String(30), nullable=False),
+              Column("comment", Text, nullable=False),
+              Column("shapes_json", Text, nullable=False),
+              Column("created_at", DateTime, nullable=False))
     register_precheck_table(implementation)
     return {"questions": md.tables["weekend_written_questions"], "submissions": md.tables["weekend_written_submissions"],
-            "hint_log": md.tables["weekend_written_hint_log"]}
+            "hint_log": md.tables["weekend_written_hint_log"],
+            "submission_versions": md.tables["weekend_written_submission_versions"],
+            "annotations": md.tables["weekend_written_annotations"]}
 
 
 def install_weekend_written(implementation: Any) -> APIRouter:
@@ -83,6 +126,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
     from changying.web.weekend_views import register_weekend_tables
     t = register_written_tables(implementation)
     questions, submissions, hint_log = t["questions"], t["submissions"], t["hint_log"]
+    sub_versions, annotations_t = t["submission_versions"], t["annotations"]
     sessions = register_weekend_tables(implementation)["sessions"]
     User, CS, SC = implementation.User, implementation.ClassStudent, implementation.SchoolClass
     current_user, get_db, need = implementation.current_user, implementation.get_db, implementation.need
@@ -203,9 +247,21 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         # Reference answers are never included in student payloads.
         return {"level": level, "text": levels[level - 1]}
 
+    async def _read_image(file_obj: UploadFile) -> tuple[bytes, str]:
+        raw = await file_obj.read(3 * 1024 * 1024 + 1)
+        if len(raw) > 3 * 1024 * 1024:
+            raise HTTPException(413, "照片不能超过3MB，请裁剪后重试")
+        if raw.startswith(b"\xff\xd8\xff") and raw.endswith(b"\xff\xd9"):
+            return raw, "image/jpeg"
+        if raw.startswith(b"\x89PNG\r\n\x1a\n") and raw.endswith(b"IEND\xaeB`\x82"):
+            return raw, "image/png"
+        raise HTTPException(400, "请上传有效的JPEG或PNG照片")
+
     @router.post("/student/weekend/sessions/{sid}/written/{qid}")
     async def submit(sid: int, qid: int, tasks: BackgroundTasks, text: str = Form(""), revision: int = Form(0),
-                     photo: UploadFile | None = File(None), removePhoto: bool = Form(False), u: Any = Depends(current_user), db: Any = Depends(get_db)):
+                     photo: UploadFile | None = File(None), photos: list[UploadFile] = File(default_factory=list),
+                     orientation: int = Form(1), removePhoto: bool = Form(False),
+                     u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
         if row.status != "running" or row.current_stage != task_stage(db, row) or answers_published(implementation, db, row, qid, "written"):
             raise HTTPException(409, "现在不是随堂练习时间")
@@ -215,31 +271,36 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         text = text.strip()
         if len(text) > 4000:
             raise HTTPException(400, "文字不能超过4000字")
+        extra_photos: list[dict[str, Any]] = []
+        uploads = ([photo] if photo is not None else []) + [p for p in photos if p is not None]
         data, mime = None, ""
-        if photo is not None:
-            data = await photo.read(3 * 1024 * 1024 + 1)
-            if len(data) > 3 * 1024 * 1024:
-                raise HTTPException(413, "照片不能超过3MB，请裁剪后重试")
-            if data.startswith(b"\xff\xd8\xff") and data.endswith(b"\xff\xd9"):
-                mime = "image/jpeg"
-            elif data.startswith(b"\x89PNG\r\n\x1a\n") and data.endswith(b"IEND\xaeB`\x82"):
-                mime = "image/png"
-            else:
-                raise HTTPException(400, "请上传有效的JPEG或PNG照片")
+        for idx, up in enumerate(uploads[:6]):
+            raw_bytes, img_mime = await _read_image(up)
+            if idx == 0:
+                data, mime = raw_bytes, img_mime
+            extra_photos.append({
+                "mime": img_mime,
+                "orientation": max(1, min(8, int(orientation or 1))),
+                "dataUrl": f"data:{img_mime};base64,{base64.b64encode(raw_bytes).decode('ascii')}",
+            })
         old = db.execute(select(submissions).where(submissions.c.session_id == sid, submissions.c.question_id == qid,
             submissions.c.student_id == u.id)).first()
-        if old and photo is None and not removePhoto:
+        if old and not uploads and not removePhoto:
             data, mime = old.photo, old.photo_type
+            if data and mime:
+                extra_photos = [{"mime": mime, "orientation": max(1, min(8, int(orientation or 1))),
+                                 "dataUrl": f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"}]
         if not text and not data: raise HTTPException(400,'请填写答案或拍照提交')
         attempts = submission_attempts(implementation, db, u, sid, 'written', qid, old is not None)
-        if old and old.answer_text == text and old.photo == data:
+        if old and old.answer_text == text and old.photo == data and len(uploads) <= 1:
             response = {"submitted":True,"revision":old.revision,"attempts":attempts,"submission":{**submission_dict(old),"result":"pending","comment":""}}
             db.rollback()
             if old.result == "pending": tasks.add_task(prechecks.run, old.id, old.revision)
             return response
         if attempts >= 3: raise HTTPException(409, '本题已提交3次，不能继续修改')
+        now = datetime.utcnow()
         values = dict(answer_text=text, photo=data, photo_type=mime, result="pending", comment="",
-                      revision=revision + 1, submitted_at=datetime.utcnow(), reviewed_at=None)
+                      revision=revision + 1, submitted_at=now, reviewed_at=None)
         if old:
             if old.revision != revision:
                 raise HTTPException(409, "答案已更新，请刷新后重试")
@@ -256,6 +317,30 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             except IntegrityError:
                 db.rollback()
                 raise HTTPException(409, "答案已经提交，请刷新查看")
+        next_ver = int(
+            db.scalar(
+                select(func.coalesce(func.max(sub_versions.c.version_no), 0)).where(
+                    sub_versions.c.session_id == sid,
+                    sub_versions.c.question_id == qid,
+                    sub_versions.c.student_id == u.id,
+                )
+            )
+            or 0
+        ) + 1
+        version_id = int(
+            db.execute(
+                insert(sub_versions).values(
+                    school_id=int(u.school_id),
+                    session_id=sid,
+                    question_id=qid,
+                    student_id=int(u.id),
+                    version_no=next_ver,
+                    answer_text=text,
+                    photos_json=json.dumps(extra_photos, ensure_ascii=False),
+                    created_at=now,
+                )
+            ).inserted_primary_key[0]
+        )
         record_submission(implementation, db, u, sid, 'written', qid, attempts+1)
         try:
             db.commit()
@@ -263,7 +348,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             db.rollback()
             raise HTTPException(409, "答案已经提交，请刷新查看")
         saved = db.execute(select(submissions).where(submissions.c.session_id==sid,submissions.c.question_id==qid,submissions.c.student_id==u.id)).first()
-        response = {"submitted": True, "revision":saved.revision, "attempts":attempts+1, "submission":{**submission_dict(saved),"result":"pending","comment":""}, "result": "pending"}
+        response = {"submitted": True, "revision":saved.revision, "versionId": version_id, "versionNo": next_ver, "attempts":attempts+1, "submission":{**submission_dict(saved),"result":"pending","comment":""}, "result": "pending"}
         db.rollback()
         tasks.add_task(prechecks.run, saved.id, saved.revision)
         return response
@@ -315,6 +400,91 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             raise HTTPException(404, "没有找到照片")
         return Response(content=a.photo, media_type=a.photo_type,
                         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+    def _versions_payload(db: Any, sid: int, qid: int, student_id: int) -> dict[str, Any]:
+        ver_rows = db.execute(
+            select(sub_versions).where(
+                sub_versions.c.session_id == sid,
+                sub_versions.c.question_id == qid,
+                sub_versions.c.student_id == student_id,
+            ).order_by(sub_versions.c.version_no)
+        ).all()
+        ann_rows = db.execute(
+            select(annotations_t).where(
+                annotations_t.c.session_id == sid,
+                annotations_t.c.question_id == qid,
+                annotations_t.c.student_id == student_id,
+            ).order_by(annotations_t.c.id)
+        ).all()
+        by_ver: dict[int, list[dict[str, Any]]] = {}
+        for a in ann_rows:
+            by_ver.setdefault(int(a.submission_version_id), []).append({
+                "id": int(a.id),
+                "submissionVersionId": int(a.submission_version_id),
+                "verdict": str(a.verdict),
+                "comment": str(a.comment),
+                "shapes": json.loads(a.shapes_json or "[]"),
+                "createdAt": a.created_at.isoformat(),
+            })
+        return {
+            "versions": [
+                {
+                    "id": int(v.id),
+                    "versionNo": int(v.version_no),
+                    "answerText": str(v.answer_text),
+                    "photos": json.loads(v.photos_json or "[]"),
+                    "createdAt": v.created_at.isoformat(),
+                    "annotations": by_ver.get(int(v.id), []),
+                }
+                for v in ver_rows
+            ]
+        }
+
+    @router.get("/student/weekend/sessions/{sid}/written/{qid}/versions")
+    def student_versions(sid: int, qid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)) -> dict[str, Any]:
+        student_session(db, u, sid)
+        return _versions_payload(db, sid, qid, int(u.id))
+
+    @router.get("/teacher/weekend/sessions/{sid}/written/{qid}/students/{student_id}/versions")
+    def teacher_versions(sid: int, qid: int, student_id: int, u: Any = Depends(current_user), db: Any = Depends(get_db)) -> dict[str, Any]:
+        teacher_session(db, u, sid)
+        return _versions_payload(db, sid, qid, student_id)
+
+    @router.post("/teacher/weekend/sessions/{sid}/written/{qid}/students/{student_id}/annotate")
+    def annotate_submission(sid: int, qid: int, student_id: int, b: AnnotationBody,
+                            u: Any = Depends(current_user), db: Any = Depends(get_db)) -> dict[str, Any]:
+        teacher_session(db, u, sid)
+        ver = db.execute(
+            select(sub_versions).where(
+                sub_versions.c.id == b.submissionVersionId,
+                sub_versions.c.session_id == sid,
+                sub_versions.c.question_id == qid,
+                sub_versions.c.student_id == student_id,
+                sub_versions.c.school_id == u.school_id,
+            )
+        ).first()
+        if ver is None:
+            raise HTTPException(404, "未找到对应的学生提交版本")
+        now = datetime.utcnow()
+        ann_id = int(
+            db.execute(
+                insert(annotations_t).values(
+                    school_id=int(u.school_id),
+                    session_id=sid,
+                    question_id=qid,
+                    student_id=student_id,
+                    submission_version_id=int(ver.id),
+                    teacher_id=int(u.id),
+                    verdict=b.verdict,
+                    comment=b.comment.strip(),
+                    shapes_json=json.dumps([s.model_dump() for s in b.shapes], ensure_ascii=False),
+                    created_at=now,
+                )
+            ).inserted_primary_key[0]
+        )
+        implementation.audit(db, u, "weekend.written.annotate", f"session={sid}:qid={qid}:student={student_id}:ver={ver.id}:verdict={b.verdict}")
+        db.commit()
+        return {"annotationId": ann_id, "submissionVersionId": int(ver.id), "verdict": b.verdict}
 
     prechecks.install(router, teacher_session)
     app.include_router(router)

@@ -15,12 +15,18 @@ from typing import Any
 
 from changying.domain.student_merge import merge_student_records
 from changying.web.weekend_node_reveal import register_block4_node_tables
+from changying.web.weekend_paired_import import register_paired_import_tables
+from changying.web.weekend_written import register_written_tables
 
 
 TEST_DUPLICATE_MERGE_ID = "test-data-dedupe-20260915-v1"
 NODE_APPROVAL_REVEAL_MIGRATION_VERSION = "10.6.7"
 NODE_APPROVAL_REVEAL_MIGRATION_DESC = (
     "语文周末课块四：节点稳定 ID、审核真源与逐级开放撤回表（lesson_nodes / node_approvals / node_reveal_states）"
+)
+PAIRED_IMPORT_WRITTEN_VERSIONS_MIGRATION_VERSION = "10.6.8"
+PAIRED_IMPORT_WRITTEN_VERSIONS_MIGRATION_DESC = (
+    "语文周末课：成对导入绑定、勘误留痕与多图版本化批注表"
 )
 _TEST_DUPLICATE_PAIRS = (
     {"keep_id": 11, "merge_id": 13, "expected_name": "张志轩"},
@@ -69,13 +75,57 @@ def apply_node_approval_reveal_migration(implementation: Any) -> dict[str, Any]:
     }
 
 
+def apply_paired_import_and_written_versions_migration(implementation: Any) -> dict[str, Any]:
+    """幂等建表（lesson_import_pairs / lesson_content_bindings / lesson_errata_logs / submission_versions / annotations）。"""
+    paired = register_paired_import_tables(implementation)
+    written = register_written_tables(implementation)
+    new_tables = {
+        **paired,
+        "weekend_written_submission_versions": written["submission_versions"],
+        "weekend_written_annotations": written["annotations"],
+    }
+    engine = getattr(implementation, "engine", None)
+    Base = getattr(implementation, "Base", None)
+    if engine is not None and Base is not None:
+        create_targets = list(new_tables.values())
+        schema_table = Base.metadata.tables.get("schema_migrations")
+        if schema_table is not None:
+            create_targets.append(schema_table)
+        Base.metadata.create_all(engine, tables=create_targets)
+    SessionLocal = getattr(implementation, "SessionLocal", None)
+    SchemaMigration = getattr(implementation, "SchemaMigration", None)
+    recorded = False
+    if SessionLocal is not None and SchemaMigration is not None:
+        with SessionLocal() as session:
+            existing = session.get(SchemaMigration, PAIRED_IMPORT_WRITTEN_VERSIONS_MIGRATION_VERSION)
+            if existing is None:
+                session.add(
+                    SchemaMigration(
+                        version=PAIRED_IMPORT_WRITTEN_VERSIONS_MIGRATION_VERSION,
+                        description=PAIRED_IMPORT_WRITTEN_VERSIONS_MIGRATION_DESC,
+                        applied_at=datetime.utcnow(),
+                    )
+                )
+                session.commit()
+                recorded = True
+    return {
+        "version": PAIRED_IMPORT_WRITTEN_VERSIONS_MIGRATION_VERSION,
+        "description": PAIRED_IMPORT_WRITTEN_VERSIONS_MIGRATION_DESC,
+        "tables": sorted(new_tables.keys()),
+        "recorded": recorded,
+    }
+
+
 def maybe_apply_one_time_migration(implementation: Any) -> dict[str, Any]:
     schema_info = apply_node_approval_reveal_migration(implementation)
+    paired_info = apply_paired_import_and_written_versions_migration(implementation)
     migration_id = os.getenv("CHANGYING_ONE_TIME_MIGRATION", "").strip()
     if not migration_id:
-        return {"status": "disabled", "schema_migration": schema_info["version"], "tables": schema_info["tables"]}
+        return {"status": "disabled", "schema_migration": schema_info["version"], "tables": schema_info["tables"] + paired_info["tables"]}
     if migration_id == NODE_APPROVAL_REVEAL_MIGRATION_VERSION:
         return {"status": "applied", "migration": migration_id, **schema_info}
+    if migration_id == PAIRED_IMPORT_WRITTEN_VERSIONS_MIGRATION_VERSION:
+        return {"status": "applied", "migration": migration_id, **paired_info}
     if migration_id != TEST_DUPLICATE_MERGE_ID:
         raise RuntimeError(f"unsupported one-time migration: {migration_id}")
 
