@@ -875,7 +875,7 @@ function plan(){
           return api('/teacher/weekend/lessons/'+lid+'/cancel-debug-classrooms',{method:'POST',json:{subject:subject,lessonNo:r.lessonNo,confirmed:true,sessionIds:items.map(function(x){return x.id})}}).then(function(result){
             deleteFeedback.textContent=result.message;
           });
-        }).catch(function(e){deleteFeedback.textContent=e.message}).then(function(){cancelDebugBtn.disabled=false});
+        }).catch(function(e){deleteFeedback.textContent=e.message+(e.message&&e.message.indexOf('不能按调试课堂撤销')>=0?'（如确系测试课堂，请点击“强制撤销测试课堂”）':'')}).then(function(){cancelDebugBtn.disabled=false});
       }});
       var deleteBtn=el('button',{text:'删除教案',disabled:!r.lessonId,onclick:function(){
         var subject=SUBJ;
@@ -886,8 +886,22 @@ function plan(){
           if(SUBJ===subject){note('ok',d.message);load()}
         }).catch(function(e){deleteFeedback.textContent=e.message;deleteBtn.disabled=false});
       }});
+      var forceCancelBtn=el('button',{text:'强制撤销测试课堂',disabled:!r.lessonId,onclick:function(){
+        var subject=SUBJ,lid=r.lessonId;
+        forceCancelBtn.disabled=true;deleteFeedback.textContent='正在读取本课全部课堂记录…';
+        api('/teacher/weekend/lessons/'+lid+'/debug-classrooms?includeAll=1').then(function(d){
+          var items=d.items||[];
+          if(!items.length){deleteFeedback.textContent='这节课目前没有课堂记录；可以直接删除教案或重新导入';return}
+          var names=items.map(function(x){return '#'+x.id+' '+x.title+' ('+x.status+')'}).join('\n');
+          if(!confirm('确认强制撤销以下 '+items.length+' 个测试课堂？\n'+names+'\n此操作会清除这些课堂的计时、翻页、学生作答、批改、积分、反馈及关联学情报告，但保留教案、课件和已审核习题。仅限测试或误开课堂使用！')){deleteFeedback.textContent='未撤销';return}
+          return api('/teacher/weekend/lessons/'+lid+'/cancel-debug-classrooms',{method:'POST',json:{subject:subject,lessonNo:r.lessonNo,confirmed:true,force:true,sessionIds:items.map(function(x){return x.id})}}).then(function(result){
+            deleteFeedback.textContent=result.message;
+            if(typeof load==='function')load();
+          });
+        }).catch(function(e){deleteFeedback.textContent=e.message}).then(function(){forceCancelBtn.disabled=false});
+      }});
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
-        el('div',{class:'row'},tag,workflowSelect,titleLabel,impBtn,fileIn,open,materialReviewBtn,pairedImportBtn,cwBtn,go,why),el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,cancelDebugBtn,deleteBtn)),importFeedback,deleteFeedback,detail));
+        el('div',{class:'row'},tag,workflowSelect,titleLabel,impBtn,fileIn,open,materialReviewBtn,pairedImportBtn,cwBtn,go,why),el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,cancelDebugBtn,forceCancelBtn,deleteBtn)),importFeedback,deleteFeedback,detail));
     });
     list.appendChild(el('button',{class:'primary',text:'保存进度表',onclick:function(){
       api('/teacher/weekend/schedule',{method:'PUT',json:{subject:SUBJ,rows:state.map(function(r){return {lessonNo:r.lessonNo,schoolWeek:r.schoolWeek,schoolUnit:r.schoolUnit||'',plannedDate:r.plannedDate||'',note:r.note||''}})}}).then(function(){note('ok','已保存');load()}).catch(function(e){note('error',e.message)})}}));

@@ -102,8 +102,26 @@ with TestClient(app) as client:
     assert cancel([third,fourth]).status_code == 409
     assert client.get(f'/teacher/weekend/sessions/{fourth}', headers=th).status_code == 200
     assert client.get(f'/teacher/weekend/sessions/{third}', headers=th).status_code == 200
+    # force=True revokes test classrooms even when answers/hints/reports exist, but never another teacher's.
+    with legacy.SessionLocal() as db:
+        reports = legacy.Base.metadata.tables['weekend_reports']
+        db.execute(insert(reports).values(school_id=school_id,teacher_id=owner,student_id=student_id,
+            report_date='2026-11-08',session_key=str(third),draft_json='{}',draft_revision=1,draft_hash='y',
+            draft_saved_at=datetime.utcnow(),published_version=0,created_at=datetime.utcnow()))
+        db.commit()
+    all_preview = client.get(url+'/debug-classrooms?includeAll=1', headers=th)
+    assert all_preview.status_code == 200 and sorted(r['id'] for r in all_preview.json()['items']) == sorted([third, fourth])
+    forced = client.post(url+'/cancel-debug-classrooms', headers=th,
+        json={'subject':'数学','lessonNo':10,'confirmed':True,'force':True,'sessionIds':[third, fourth]})
+    assert forced.status_code == 200, forced.text
+    assert forced.json()['cancelled'] == 2
+    assert client.get(f'/teacher/weekend/sessions/{third}', headers=th).status_code == 404
+    assert client.get(f'/teacher/weekend/sessions/{fourth}', headers=th).status_code == 404
+    with legacy.SessionLocal() as db:
+        reports = legacy.Base.metadata.tables['weekend_reports']
+        assert db.scalar(select(func.count()).select_from(reports).where(reports.c.session_key == str(third))) == 0
     page = client.get('/v1/weekend-plan').text
-    assert '撤销调试课堂' in page and '/cancel-debug-classrooms' in page
+    assert '撤销调试课堂' in page and '强制撤销测试课堂' in page and '/cancel-debug-classrooms' in page
     for route in ('/v1/weekend-plan','/v1/training'):
         response = client.get(route, headers={'User-Agent':'Version/12.1 Mobile Safari/605.1.15'})
         assert response.status_code == 200, response.text[:200]

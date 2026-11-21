@@ -210,6 +210,7 @@ class DeleteLessonBody(BaseModel):
 
 class CancelDebugBody(DeleteLessonBody):
     sessionIds: list[int] = Field(default_factory=list, max_length=100)
+    force: bool = False
 
 
 class ApproveBody(BaseModel):
@@ -1821,7 +1822,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 jobs.append({"filename": name, "lessonNo": None, "plan": None, "error": str(exc)})
         return _import_plans(db, u, subject, jobs, dry_run=dryRun == "1", on_conflict=onConflict)
 
-    def debug_classrooms(db: Any, u: Any, lid: int) -> list[Any]:
+    def debug_classrooms(db: Any, u: Any, lid: int, include_with_records: bool = False) -> list[Any]:
         # Lock before checking evidence. Student submissions use the same session lock.
         rows = db.execute(select(sessions).where(sessions.c.lesson_id == lid)
                           .order_by(sessions.c.id).with_for_update()).all()
@@ -1832,6 +1833,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 raise HTTPException(409, "其他老师也有这节课的课堂，不能代为撤销")
             if row.status not in ("planned", "running", "finished"):
                 raise HTTPException(409, "课堂状态无法核对，不能按调试课堂撤销")
+            if include_with_records:
+                continue
             for name, table in md.tables.items():
                 if name.startswith("weekend_") and "session_id" in table.c and name not in disposable:
                     if db.execute(select(table).where(table.c.session_id == row.id).limit(1)).first():
@@ -1844,10 +1847,10 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         return rows
 
     @router.get("/teacher/weekend/lessons/{lid}/debug-classrooms")
-    def preview_debug_classrooms(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    def preview_debug_classrooms(lid: int, includeAll: bool = False, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         my_lesson(db, u, lid)
-        rows = debug_classrooms(db, u, lid)
+        rows = debug_classrooms(db, u, lid, include_with_records=includeAll)
         return {"items": [{"id": r.id, "title": r.title, "status": r.status} for r in rows]}
 
     @router.post("/teacher/weekend/lessons/{lid}/cancel-debug-classrooms")
@@ -1857,14 +1860,14 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         db.execute(select(Lesson.id).where(Lesson.id == lid).with_for_update()).first()
         if not b.confirmed or b.subject != lesson.subject or b.lessonNo != lesson.lesson_no:
             raise HTTPException(400, "请核对学科和课次，并确认没有实际上课，仅为调试")
-        rows = debug_classrooms(db, u, lid)
+        rows = debug_classrooms(db, u, lid, include_with_records=b.force)
         ids = [r.id for r in rows]
         if sorted(set(b.sessionIds)) != ids:
             raise HTTPException(409, "课堂列表已变化，请重新预览后确认撤销")
         if not ids:
             return {"message": "没有需要撤销的调试课堂；教案保持不变", "cancelled": 0}
         # Keep a recovery snapshot in the audit log; do not delete lesson templates.
-        snapshot = {"lessonId": lid, "sessions": [dict(r._mapping) for r in rows], "related": {}}
+        snapshot = {"lessonId": lid, "force": b.force, "sessions": [dict(r._mapping) for r in rows], "related": {}}
         courseware = implementation.Base.metadata.tables.get("weekend_courseware")
         if courseware is not None:
             cw = db.execute(select(courseware).where(courseware.c.school_id == u.school_id,
@@ -1876,15 +1879,50 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 snapshot["coursewareLive"] = {"id": cw.id, "removed": removed}
                 db.execute(update(courseware).where(courseware.c.id == cw.id).values(
                     live_json=json.dumps({key: value for key, value in live.items() if key not in removed}, ensure_ascii=False)))
-        for name in ("weekend_stage_log", "weekend_slide_state", "weekend_class_rosters", "weekend_written_questions", "weekend_session_questions", "weekend_open_questions"):
-            table = implementation.Base.metadata.tables.get(name)
-            if table is not None:
-                snapshot["related"][name] = [dict(r._mapping) for r in db.execute(select(table).where(table.c.session_id.in_(ids)))]
-                db.execute(delete(table).where(table.c.session_id.in_(ids)))
+        if b.force:
+            md = implementation.Base.metadata
+            written_subs = md.tables.get("weekend_written_submissions")
+            prechecks = md.tables.get("weekend_written_prechecks")
+            if written_subs is not None and prechecks is not None:
+                sub_ids = db.scalars(select(written_subs.c.id).where(written_subs.c.session_id.in_(ids))).all()
+                if sub_ids:
+                    snapshot["related"]["weekend_written_prechecks"] = [
+                        dict(r._mapping) for r in db.execute(select(prechecks).where(prechecks.c.submission_id.in_(sub_ids)))
+                    ]
+                    db.execute(delete(prechecks).where(prechecks.c.submission_id.in_(sub_ids)))
+            for name, table in md.tables.items():
+                if (name.startswith("weekend_") or name.startswith("classroom_")) and "session_id" in table.c:
+                    snapshot["related"][name] = [dict(r._mapping) for r in db.execute(select(table).where(table.c.session_id.in_(ids)))]
+                    db.execute(delete(table).where(table.c.session_id.in_(ids)))
+            reports = md.tables.get("weekend_reports")
+            if reports is not None:
+                id_strs = {str(sid) for sid in ids}
+                rep_rows = db.execute(select(reports).where(reports.c.school_id == u.school_id)).all()
+                matched_rep_ids = []
+                for rr in rep_rows:
+                    parts = [p for p in str(rr.session_key or "").split(",") if p]
+                    if any(p in id_strs for p in parts):
+                        remaining_parts = [p for p in parts if p not in id_strs]
+                        if not remaining_parts:
+                            matched_rep_ids.append(rr.id)
+                        else:
+                            db.execute(update(reports).where(reports.c.id == rr.id).values(session_key=",".join(remaining_parts)))
+                if matched_rep_ids:
+                    snapshot["related"]["weekend_reports"] = [
+                        dict(r._mapping) for r in db.execute(select(reports).where(reports.c.id.in_(matched_rep_ids)))
+                    ]
+                    db.execute(delete(reports).where(reports.c.id.in_(matched_rep_ids)))
+        else:
+            for name in ("weekend_stage_log", "weekend_slide_state", "weekend_class_rosters", "weekend_written_questions", "weekend_session_questions", "weekend_open_questions"):
+                table = implementation.Base.metadata.tables.get(name)
+                if table is not None:
+                    snapshot["related"][name] = [dict(r._mapping) for r in db.execute(select(table).where(table.c.session_id.in_(ids)))]
+                    db.execute(delete(table).where(table.c.session_id.in_(ids)))
         db.execute(delete(sessions).where(sessions.c.id.in_(ids)))
         implementation.audit(db, u, "weekend.cancel_debug_classrooms", json.dumps(snapshot, ensure_ascii=False, default=str))
         db.commit()
-        return {"message": f"已撤销 {len(ids)} 个调试课堂，教案和已审核习题保留；现在可以删除教案或重新开课", "cancelled": len(ids)}
+        label = "测试课堂（含作答与反馈记录）" if b.force else "调试课堂"
+        return {"message": f"已撤销 {len(ids)} 个{label}，教案和已审核习题保留；现在可以删除教案、重新导入或重新开课", "cancelled": len(ids)}
 
     @router.delete("/teacher/weekend/lessons/{lid}")
     def delete_lesson(lid: int, b: DeleteLessonBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
