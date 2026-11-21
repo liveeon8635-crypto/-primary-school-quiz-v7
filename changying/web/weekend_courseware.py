@@ -46,8 +46,8 @@ class SaveBody(PageBody):
 
 
 class PreparedPage(BaseModel):
-    stageNo: int = Field(ge=2, le=7)
-    page: int = Field(ge=0)
+    stageNo: int = Field(ge=1, le=7)
+    page: int | None = Field(default=None, ge=0)
     expectedPageText: str = Field(min_length=1, max_length=4000)
     kind: str = Field(default="steps", max_length=20)
     params: dict[str, Any]
@@ -260,13 +260,17 @@ def _build_prepared_courseware(
                 else stage_pages(lesson, stage, course_type_for(db, implementation, lesson))
             )
         pages = page_cache[stage]
-        page = int(incoming["page"])
+        is_chinese = lesson.subject == "语文" or course_type_for(db, implementation, lesson) in ("reading", "writing")
+        raw_page = incoming.get("page")
+        page: int | None = None if raw_page is None else int(raw_page)
         expected_text = str(incoming["expectedPageText"])
-        if stage == practice_no:
+        if stage == practice_no and not (is_chinese and incoming["kind"] == "slide" and page is None):
             matched = [index for index, text in enumerate(pages) if _same_page_text(text, expected_text)]
             if len(matched) != 1:
                 raise HTTPException(409, "练习题干不存在或存在重复，请先核对习题审核中的题目")
             page = matched[0]
+        elif is_chinese and not pages:
+            page = None
         key = (stage, page)
         if key in selected:
             raise HTTPException(400, "课件包含重复环节和页码")
@@ -275,7 +279,7 @@ def _build_prepared_courseware(
                     if int(item["stage"]) == stage and item.get("page") == page), None)
         if old and stage == practice_no and old.get("templateId") is not None:
             raise HTTPException(409, "旧课件关联了学生书面题，禁止自动替换；请先人工核对历史练习")
-        if old and stage == practice_no and old.get("pageText") != expected_text:
+        if old and stage == practice_no and not (is_chinese and incoming["kind"] == "slide" and page is None) and old.get("pageText") != expected_text:
             raise HTTPException(409, "练习顺序已变化，此位置存在旧课件；请先人工核对，不能覆盖")
         if key in occupied and not replace_existing:
             raise HTTPException(409, "对应页已有课件，请先人工核对；导入不会覆盖")
@@ -283,7 +287,10 @@ def _build_prepared_courseware(
             raise HTTPException(409, "已审核课件不能直接更换模板类型")
         if incoming["kind"] not in cw.TEMPLATES[lesson.subject]:
             raise HTTPException(400, "这门课不能使用此模板")
-        if page >= len(pages) or not _same_page_text(pages[page], expected_text):
+        if pages and page is not None:
+            if page >= len(pages) or not _same_page_text(pages[page], expected_text):
+                raise HTTPException(409, "教案页码或内容已变化，请重新匹配后再导入")
+        elif not is_chinese:
             raise HTTPException(409, "教案页码或内容已变化，请重新匹配后再导入")
         try:
             params = cw.clean(incoming["kind"], incoming["params"], lesson.reading_plan or "")
@@ -292,7 +299,7 @@ def _build_prepared_courseware(
         prompt_text = str(params.get('problem') or '') + '\n' + str(params.get('sourceProblem') or '')
         if re.search(r"【\s*(?:答案|参考答案|解析|解答)\s*】", prompt_text):
             raise HTTPException(400, "初始题干含答案或解析标记，请将答案移入单独答案字段")
-        current_text = pages[page]
+        current_text = pages[page] if (pages and page is not None and 0 <= page < len(pages)) else expected_text
         visual = primary_visual(params)
         issue = figure_semantic_issue(visual, current_text)
         missing = missing_visual_reason(current_text, visual)
@@ -1687,7 +1694,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         if item.get('approved') is not None and previous.get('kind') != item.get('kind'):
             raise HTTPException(409, '上一版模板与已审核课件不同，不能自动恢复')
         pages = pages_for(db, lesson, b.stageNo, u.id)
-        current_text = pages[page] if page is not None else ''
+        current_text = pages[page] if (pages and page is not None and 0 <= page < len(pages)) else ''
         if previous.get('pageText') != current_text:
             raise HTTPException(409, '教案分页已变化，不能自动恢复到这一页，请先核对原教案')
         item['previousDraft'] = {k: item.get(k) for k in ('kind', 'params', 'writtenTask', 'pageText')}
@@ -1839,8 +1846,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         if item.get("reimportReviewRequired"):
             raise HTTPException(409, "教案已重新导入，图片可能变化；请重新生成或保存课件草稿，再逐页审核。")
         pages = pages_for(db, lesson, b.stageNo, u.id)
-        current_text = pages[page] if page is not None else ""
-        if item.get("pageText", "") != current_text:
+        current_text = pages[page] if (pages and page is not None and 0 <= page < len(pages)) else ""
+        if page is not None and item.get("pageText", "") != current_text:
             raise HTTPException(409, "教案原题已变化，旧课件不可直接审核；请重新生成或保存与本页一致的讲解。")
         answer_binding = None
         if b.stageNo == practice_no:

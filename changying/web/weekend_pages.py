@@ -857,6 +857,7 @@ function plan(){
       function refreshRow(st){Object.assign(r,st);titleLabel.textContent=r.title||'';var needsQ=SUBJ!=='语文';go.disabled=!(r.lessonId&&r.hasPlan&&(!needsQ||(r.practiceReady!=null?r.practiceReady:r.approvedQuestions)>0)&&!(r.pendingMaterials>0)&&(SUBJ!=='语文'||r.courseType)&&(SUBJ!=='语文'||r.coursewareApproved));why.textContent=startReason(r);tag.textContent=lessonRowTagText(r);if(cwBtn)cwBtn.textContent=SUBJ==='语文'?'六环节课件与审核':'互动课件预览'}
       var open=el('button',{text:'教案与题目审核',disabled:!r.lessonId,onclick:function(){detail.hidden=!detail.hidden;if(!detail.hidden)lessonDetail(r,detail,refreshRow)}});
       var materialReviewBtn=SUBJ==='语文'&&r.lessonId?el('button',{text:'导入素材审核',onclick:function(){detail.hidden=false;reviewImportedMaterials(r,detail,refreshRow)}}):null;
+      var pairedImportBtn=SUBJ==='语文'&&r.lessonId?el('button',{text:'双文件成对导入与绑定',onclick:function(){detail.hidden=false;pairedImportPanel(r,detail)}}):null;
       var cwBtn=r.hasPlan&&r.lessonId?el('button',{text:SUBJ==='语文'?'六环节课件与审核':'互动课件预览',onclick:function(){detail.hidden=false;lessonDetail(r,detail,refreshRow,3)}}):null;
       var go=el('button',{class:'primary',text:'开课',title:SUBJ==='语文'?'需选择课型、核对并审核六环节课件':'需选择课型、完成教案和审核任务',disabled:!(r.lessonId&&r.hasPlan&&(SUBJ==='语文'||(r.practiceReady!=null?r.practiceReady:r.approvedQuestions)>0)&&!(r.pendingMaterials>0)&&(SUBJ!=='语文'||r.courseType)&&(SUBJ!=='语文'||r.coursewareApproved)),onclick:function(){
         createWeekendClassroom(r.lessonId)}});
@@ -886,7 +887,7 @@ function plan(){
         }).catch(function(e){deleteFeedback.textContent=e.message;deleteBtn.disabled=false});
       }});
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
-        el('div',{class:'row'},tag,workflowSelect,titleLabel,impBtn,fileIn,open,materialReviewBtn,cwBtn,go,why),el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,qCount,qBtn,cancelDebugBtn,deleteBtn)),importFeedback,deleteFeedback,detail));
+        el('div',{class:'row'},tag,workflowSelect,titleLabel,impBtn,fileIn,open,materialReviewBtn,pairedImportBtn,cwBtn,go,why),el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,cancelDebugBtn,deleteBtn)),importFeedback,deleteFeedback,detail));
     });
     list.appendChild(el('button',{class:'primary',text:'保存进度表',onclick:function(){
       api('/teacher/weekend/schedule',{method:'PUT',json:{subject:SUBJ,rows:state.map(function(r){return {lessonNo:r.lessonNo,schoolWeek:r.schoolWeek,schoolUnit:r.schoolUnit||'',plannedDate:r.plannedDate||'',note:r.note||''}})}}).then(function(){note('ok','已保存');load()}).catch(function(e){note('error',e.message)})}}));
@@ -917,6 +918,58 @@ function plan(){
       }).catch(function(e){status.textContent='读取失败：'+e.message});
     }
     reload();
+  }
+  function pairedImportPanel(r,box){
+    box.textContent='';
+    box.appendChild(el('h3',{text:'双文件成对导入与绑定审核（教师版 + 学生版 .docx）'}));
+    var tIn=el('input',{type:'file',accept:'.docx','aria-label':'教师版原件'}),sIn=el('input',{type:'file',accept:'.docx','aria-label':'学生版原件'});
+    var msg=el('div',{role:'status','aria-live':'polite'}),bodyBox=el('div');
+    var upBtn=el('button',{class:'primary',text:'成对导入并识别',onclick:function(){
+      if(!tIn.files[0]||!sIn.files[0]){msg.className='notice warn';msg.textContent='请同时选择教师版和学生版两个 .docx 文件';return}
+      upBtn.disabled=true;msg.className='notice';msg.textContent='正在配对解析并核对哈希…';
+      var fd=new FormData();fd.append('teacherFile',tIn.files[0]);fd.append('studentFile',sIn.files[0]);
+      fetch('/teacher/weekend/lessons/'+r.lessonId+'/paired-import',{method:'POST',headers:TOKEN?{Authorization:'Bearer '+TOKEN}:{},body:fd})
+        .then(function(res){return res.json().then(function(d){if(!res.ok)throw new Error(d.detail||'导入失败');return d})})
+        .then(function(d){msg.className='notice ok';msg.textContent='成对导入完成，请逐项核对并绑定。';paintPaired(d)})
+        .catch(function(e){msg.className='notice error';msg.textContent=e.message})
+        .then(function(){upBtn.disabled=false});
+    }});
+    box.appendChild(el('div',{class:'row'},el('label',{},el('span',{text:'教师版：'}),tIn),el('label',{},el('span',{text:'学生版：'}),sIn),upBtn));
+    box.appendChild(msg);box.appendChild(bodyBox);
+    function paintPaired(d){
+      bodyBox.textContent='';
+      if(!d||!d.pair){bodyBox.appendChild(el('p',{class:'muted',text:'尚未上传成对文件；请先选择教师版与学生版 .docx。'}));return}
+      bodyBox.appendChild(el('div',{class:'notice',text:'教师版：'+d.pair.teacherFile+'（图 '+d.pair.teacherMediaCount+'） · 学生版：'+d.pair.studentFile+'（图 '+d.pair.studentMediaCount+'）'}));
+      var targets=(d.bindings||[]).filter(function(b){return b.itemType==='article'||b.itemType==='question'});
+      var stageNames=r.courseType==='writing'?['点名与回顾','范文导览','看图写话','技法梳理','随堂练习','课后反馈']:['点名与回顾','短文阅读','长文阅读','考点总结','综合练习','课后反馈'];
+      (d.bindings||[]).forEach(function(b){
+        var card=el('div',{class:'card'});
+        card.appendChild(el('div',{text:b.itemKey+' · '+b.itemType+' · 来源 '+b.sourceFile+' ('+b.sourcePart+') · 置信度 '+b.confidence+' · 状态 '+b.status}));
+        if(b.pendingReason)card.appendChild(el('div',{class:'muted',style:'color:#b54708',text:'待确认原因：'+b.pendingReason}));
+        if(b.payload&&b.payload.dataUrl)card.appendChild(questionFigureImg({type:'uploaded_image',data_url:b.payload.dataUrl,alt:b.itemKey}));
+        var txt=b.payload&&b.payload.text!=null?el('textarea',{class:'s'}):null;if(txt)txt.value=b.payload.text;
+        if(txt)card.appendChild(txt);
+        var stSel=el('select',{'aria-label':'环节'});stageNames.forEach(function(n,i){stSel.appendChild(el('option',{value:String(i+1),text:(i+1)+'. '+n}))});stSel.value=String(b.stageNo||2);
+        var tgtSel=el('select',{'aria-label':'绑定目标'});tgtSel.appendChild(el('option',{value:'',text:'（未绑定目标）'}));
+        targets.forEach(function(t){tgtSel.appendChild(el('option',{value:t.itemKey,text:t.itemKey+'：'+String((t.payload&&t.payload.text)||'').slice(0,28)}))});
+        tgtSel.value=b.targetKey||'';
+        var fb=el('span',{role:'status'});
+        function saveB(st){
+          fb.textContent='保存中…';
+          api('/teacher/weekend/lessons/'+r.lessonId+'/bindings/'+b.id,{method:'PUT',json:{status:st,stageNo:+stSel.value,targetKey:tgtSel.value,text:txt?txt.value:null,expectedRevision:b.revision}})
+            .then(function(){return api('/teacher/weekend/lessons/'+r.lessonId+'/paired-import')}).then(paintPaired)
+            .catch(function(e){fb.textContent=e.message});
+        }
+        card.appendChild(el('div',{class:'row'},stSel,tgtSel,el('button',{class:'primary',text:'确认绑定',onclick:function(){saveB('confirmed')}}),el('button',{text:'忽略',onclick:function(){saveB('ignored')}}),fb));
+        bodyBox.appendChild(card);
+      });
+      if((d.errata||[]).length){
+        var errBox=el('details',{},el('summary',{text:'勘误与修改留痕（'+d.errata.length+' 条）'}));
+        d.errata.forEach(function(e){errBox.appendChild(el('div',{class:'muted',text:'#'+e.bindingId+' ['+e.fieldName+'] '+e.oldValue.slice(0,30)+' → '+e.newValue.slice(0,30)+' ('+e.editedAt+')'}))});
+        bodyBox.appendChild(errBox);
+      }
+    }
+    api('/teacher/weekend/lessons/'+r.lessonId+'/paired-import').then(paintPaired).catch(function(e){msg.textContent=e.message});
   }
   function startReason(r){
     if(r.pendingMaterials>0)return '待审核：还有 '+r.pendingMaterials+' 项导入素材未确认；请打开“导入素材审核”。';
