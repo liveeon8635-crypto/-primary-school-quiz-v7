@@ -816,42 +816,126 @@ function cwClock(box,p,view,big){
   var steps=el('ol',{style:big?'font-size:2.6vh':''});p.steps.forEach(function(s,k){steps.appendChild(el('li',{style:k<(view.step||0)?'font-weight:700;color:#b42318':'opacity:.7',text:s}))});wrap.appendChild(steps);
   wrap.appendChild(el('div',{style:'opacity:.8',text:'当前转过 '+(view.angle||0)+'° / '+p.angle+'°'+(view.showResult?' · 指向数字 '+p.end:'')}));
 }
-function cwSlide(box,p,view,big,teacher){
-  var wrap=el('div',{style:'background:#fff;color:#111;border-radius:12px;padding:14px'});box.appendChild(wrap);
-  var slides=Array.isArray(p.slides)&&p.slides.length?p.slides:[{heading:p.title||'幻灯片',body:[]}];
-  var idx=Math.max(0,Math.min(slides.length-1,Number(view.slideIndex||0)));
-  var cur=slides[idx]||{};
-  var headRow=el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px'});
-  headRow.appendChild(el('b',{style:big?'font-size:3vh':'font-size:16px',text:p.title||'图文幻灯片'}));
-  headRow.appendChild(el('span',{class:'tag',text:'第 '+(idx+1)+' / '+slides.length+' 页'}));
-  wrap.appendChild(headRow);
-  if(cur.heading)wrap.appendChild(el('h3',{style:'margin:6px 0 10px;color:#991b1b;'+(big?'font-size:3.2vh':''),text:cur.heading}));
-  (cur.body||[]).forEach(function(line){
-    wrap.appendChild(el('p',{style:'margin:6px 0;line-height:1.75;white-space:pre-wrap;'+(big?'font-size:2.4vh':''),text:line}));
+function cwAppendRichText(node,text){
+  var parts=String(text||'').split(/(==[^=]+==)/g);
+  parts.forEach(function(seg){
+    if(!seg)return;
+    if(seg.length>4&&seg.slice(0,2)==='=='&&seg.slice(-2)==='=='){
+      node.appendChild(el('mark',{style:'background:#fde68a;color:#7c2d12;padding:1px 4px;border-radius:4px;font-weight:700',text:seg.slice(2,-2)}));
+    }else{
+      node.appendChild(document.createTextNode(seg));
+    }
   });
-  if(cur.figure&&cur.figure.type)cwFigure(wrap,cur.figure,big,view,teacher,1);
+}
+function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
+  var isCover=cur.layout==='cover';
+  var isReading=cur.layout==='reading';
+  var cardStyle='background:linear-gradient(135deg,#fffdf9 0%,#fbf5e9 100%);color:#1f2937;border:1px solid #e6d8be;border-top:5px solid #8b1e24;border-radius:14px;padding:'+(big?'28px 34px':'20px 24px')+';box-shadow:0 4px 16px rgba(120,53,15,0.08);min-height:'+(big?'62vh':'300px')+';display:flex;flex-direction:column;justify-content:space-between;gap:12px;margin-bottom:14px';
+  var slideEl=el('div',{style:cardStyle});
+  var topBar=el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #efe3cc;padding-bottom:8px'});
+  var leftMeta=el('div',{style:'display:flex;align-items:center;gap:8px;flex-wrap:wrap'});
+  leftMeta.appendChild(el('span',{style:'font-weight:700;color:#8b1e24;'+(big?'font-size:2.2vh':'font-size:13px'),text:p.title||'课件幻灯片'}));
+  if(cur.badge)leftMeta.appendChild(el('span',{style:'background:#8b1e24;color:#fff;padding:2px 8px;border-radius:999px;font-weight:700;'+(big?'font-size:1.8vh':'font-size:12px'),text:cur.badge}));
+  topBar.appendChild(leftMeta);
+  topBar.appendChild(el('span',{class:'tag',style:'background:#f3e8d2;color:#78350f;font-weight:700',text:'第 '+(idx+1)+' / '+total+' 页'}));
+  slideEl.appendChild(topBar);
+  var main=el('div',{style:'flex:1;display:flex;flex-direction:column;gap:12px;'+(isCover?'justify-content:center;text-align:center;padding:12px 0':'')});
+  if(cur.heading){
+    main.appendChild(el('h3',{style:'margin:2px 0 0;color:#7f1d1d;line-height:1.35;'+(isCover?(big?'font-size:4.4vh':'font-size:24px'):(big?'font-size:3.2vh':'font-size:19px')),text:cur.heading}));
+  }
+  if(cur.subtitle){
+    main.appendChild(el('div',{style:'color:#6b4f3a;font-weight:600;'+(big?'font-size:2.3vh':'font-size:14px'),text:cur.subtitle}));
+  }
+  if((cur.body||[]).length){
+    var bodyWrap=el('div',{style:isReading?'background:#fff;border:1px solid #eadcc4;border-radius:10px;padding:14px 18px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.03)':''});
+    (cur.body||[]).forEach(function(line){
+      var para=el('p',{style:'margin:7px 0;line-height:1.85;white-space:pre-wrap;'+(isReading?'text-indent:2em;':'')+(big?'font-size:2.4vh':'font-size:15px')});
+      cwAppendRichText(para,line);
+      bodyWrap.appendChild(para);
+    });
+    main.appendChild(bodyWrap);
+  }
+  if(Array.isArray(cur.cards)&&cur.cards.length){
+    var grid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;text-align:left'});
+    var accents=['#8b1e24','#b45309','#1d4ed8','#15803d'];
+    cur.cards.forEach(function(cd,ci){
+      var accent=accents[ci%accents.length];
+      var card=el('div',{style:'background:#fff;border:1px solid #e7decb;border-top:3px solid '+accent+';border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px'});
+      if(cd.tag)card.appendChild(el('span',{style:'align-self:flex-start;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:6px;font-size:12px;font-weight:700',text:cd.tag}));
+      if(cd.title)card.appendChild(el('b',{style:'color:#1f2937;'+(big?'font-size:2.3vh':'font-size:15px'),text:cd.title}));
+      if(cd.text){
+        var ct=el('div',{style:'color:#374151;line-height:1.7;white-space:pre-wrap;'+(big?'font-size:2.1vh':'font-size:14px')});
+        cwAppendRichText(ct,cd.text);
+        card.appendChild(ct);
+      }
+      grid.appendChild(card);
+    });
+    main.appendChild(grid);
+  }
+  if(Array.isArray(cur.steps)&&cur.steps.length){
+    var srow=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;text-align:left'});
+    cur.steps.forEach(function(st,si){
+      var sc=el('div',{style:'background:#fff;border:1px solid #e7decb;border-radius:10px;padding:10px 12px;display:flex;align-items:flex-start;gap:9px'});
+      sc.appendChild(el('span',{style:'flex:none;width:24px;height:24px;border-radius:999px;background:#8b1e24;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px',text:String(si+1)}));
+      var sb=el('div',{style:'display:flex;flex-direction:column;gap:3px'});
+      if(st.label)sb.appendChild(el('b',{style:'color:#7f1d1d;'+(big?'font-size:2.2vh':'font-size:14px'),text:st.label}));
+      if(st.desc)sb.appendChild(el('span',{style:'color:#374151;line-height:1.6;'+(big?'font-size:2vh':'font-size:13px'),text:st.desc}));
+      sc.appendChild(sb);
+      srow.appendChild(sc);
+    });
+    main.appendChild(srow);
+  }
+  if(cur.figure&&cur.figure.type)cwFigure(main,cur.figure,big,view,teacher,1);
+  if(Array.isArray(cur.qa)&&cur.qa.length){
+    var qaWrap=el('div',{style:'display:flex;flex-direction:column;gap:8px;text-align:left'});
+    cur.qa.forEach(function(item,qi){
+      var qbox=el('div',{style:'background:#fff;border:1px solid #e5d5bc;border-left:4px solid #8b1e24;border-radius:10px;padding:10px 14px'});
+      var qrow=el('div',{style:'display:flex;justify-content:space-between;align-items:flex-start;gap:10px'});
+      var qtxt=el('div',{style:'font-weight:700;color:#1f2937;line-height:1.65;'+(big?'font-size:2.2vh':'font-size:14px'),text:'思考 '+(qi+1)+'：'+item.q});
+      qrow.appendChild(qtxt);
+      var ansBox=item.a?el('div',{hidden:true,style:'margin-top:8px;padding:8px 10px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0;color:#14532d;line-height:1.7;white-space:pre-wrap;'+(big?'font-size:2.1vh':'font-size:14px')}):null;
+      if(ansBox){
+        cwAppendRichText(ansBox,'参考点拨：'+item.a);
+        var toggle=el('button',{type:'button',style:'flex:none;font-size:12px;padding:4px 10px',text:'查看点拨',onclick:function(){
+          ansBox.hidden=!ansBox.hidden;
+          toggle.textContent=ansBox.hidden?'查看点拨':'收起点拨';
+        }});
+        qrow.appendChild(toggle);
+      }
+      qbox.appendChild(qrow);
+      if(ansBox)qbox.appendChild(ansBox);
+      qaWrap.appendChild(qbox);
+    });
+    main.appendChild(qaWrap);
+  }
+  slideEl.appendChild(main);
   if(cur.highlight){
-    wrap.appendChild(el('div',{style:'margin:10px 0;padding:10px 12px;border-radius:10px;background:#fff8eb;border-left:4px solid #b45309;color:#78350f;font-weight:700;white-space:pre-wrap;'+(big?'font-size:2.2vh':''),text:cur.highlight}));
+    var hl=el('div',{style:'padding:10px 14px;border-radius:10px;background:#fef3c7;border-left:4px solid #b45309;color:#78350f;font-weight:700;white-space:pre-wrap;line-height:1.65;'+(big?'font-size:2.2vh':'font-size:14px')});
+    cwAppendRichText(hl,cur.highlight);
+    slideEl.appendChild(hl);
   }
   if(cur.audioUrl){
-    var au=el('audio',{controls:true,src:cur.audioUrl,style:'width:100%;margin-top:10px'});
-    wrap.appendChild(au);
-  }else if(cur.audioText&&typeof window!=='undefined'&&window.speechSynthesis){
-    var speakBtn=el('button',{type:'button',text:'🔊 朗读本页',style:'margin-top:8px',onclick:function(){
-      try{
-        window.speechSynthesis.cancel();
-        var u=new SpeechSynthesisUtterance(cur.audioText);
-        u.lang='zh-CN';u.rate=0.92;
-        window.speechSynthesis.speak(u);
-      }catch(_e){}
-    }});
-    wrap.appendChild(speakBtn);
+    slideEl.appendChild(el('audio',{controls:true,src:cur.audioUrl,style:'width:100%;margin-top:4px'}));
   }
+  return slideEl;
+}
+function cwSlide(box,p,view,big,teacher){
+  var slides=Array.isArray(p.slides)&&p.slides.length?p.slides:[{heading:p.title||'幻灯片',body:[]}];
+  if(view&&view.showAllSlides){
+    slides.forEach(function(cur,i){
+      box.appendChild(cwRenderOneSlide(p,cur,i,slides.length,big,view,teacher));
+    });
+    return;
+  }
+  var idx=Math.max(0,Math.min(slides.length-1,Number(view.slideIndex||0)));
+  var cur=slides[idx]||{};
+  box.appendChild(cwRenderOneSlide(p,cur,idx,slides.length,big,view,teacher));
   if(teacher&&slides.length>1){
-    var nav=el('div',{class:'row',style:'margin-top:10px'});
+    var nav=el('div',{class:'row',style:'margin-top:6px;justify-content:center;align-items:center'});
     nav.appendChild(el('button',{type:'button',text:'‹ 上一页',disabled:idx<=0,onclick:function(){view.slideIndex=Math.max(0,idx-1);box.textContent='';cwSlide(box,p,view,big,teacher)}}));
+    nav.appendChild(el('span',{class:'muted',text:'第 '+(idx+1)+' / '+slides.length+' 页'}));
     nav.appendChild(el('button',{type:'button',text:'下一页 ›',disabled:idx>=slides.length-1,onclick:function(){view.slideIndex=Math.min(slides.length-1,idx+1);box.textContent='';cwSlide(box,p,view,big,teacher)}}));
-    wrap.appendChild(nav);
+    box.appendChild(nav);
   }
 }
 function cwRender(box,c,view,big,teacher,onTap){
@@ -958,7 +1042,7 @@ function cwPlan(box,lessonId,refresh){
         stageItems.forEach(function(it){
           sec.appendChild(el('p',{class:'muted',text:it.approved?'已审核版本（教师预览）':'已导入 · 待确认草稿（教师预览）'}));
           var previewHost=el('div');sec.appendChild(previewHost);
-          cwRender(previewHost,{kind:it.kind,params:it.approved||it.params,kindLabel:it.kindLabel||d.kindLabels[it.kind]||it.kind},{},false,true);
+          cwRender(previewHost,{kind:it.kind,params:it.approved||it.params,kindLabel:it.kindLabel||d.kindLabels[it.kind]||it.kind},{showAllSlides:true},false,true);
         });
         wholePreviewWrap.appendChild(sec);
       });
@@ -1285,14 +1369,14 @@ function cwPlan(box,lessonId,refresh){
             hdr.appendChild(el('b',{text:'第 '+(sIdx+1)+' 页幻灯片'}));
             if(p.slides.length>1)hdr.appendChild(el('button',{type:'button',text:'删除本页',onclick:function(){p.slides.splice(sIdx,1);renderSlideFields();show()}}));
             scard.appendChild(hdr);
-            var hIn=input(sl.heading||''),bIn=area((sl.body||[]).join('\n')),hlIn=input(sl.highlight||''),atIn=area(sl.audioText||''),auIn=input(sl.audioUrl||'');
-            [['页标题',hIn,function(){sl.heading=hIn.value}],['正文段落（每行一段）',bIn,function(){sl.body=lines(bIn)}],['重点／答题模板（高亮框）',hlIn,function(){sl.highlight=hlIn.value}],['朗读稿（点“朗读本页”播放）',atIn,function(){sl.audioText=atIn.value}],['音频链接（可选 .mp3 URL）',auIn,function(){sl.audioUrl=auIn.value}]].forEach(function(row){
+            var hIn=input(sl.heading||''),bIn=area((sl.body||[]).join('\n')),hlIn=input(sl.highlight||''),auIn=input(sl.audioUrl||'');
+            [['页标题',hIn,function(){sl.heading=hIn.value}],['正文段落（每行一段，可用 ==重点== 高亮）',bIn,function(){sl.body=lines(bIn)}],['重点／答题模板（高亮框）',hlIn,function(){sl.highlight=hlIn.value}],['真人音频链接（可选 .mp3 URL）',auIn,function(){sl.audioUrl=auIn.value}]].forEach(function(row){
               var fn=function(){row[2]();show()};row[1].addEventListener('input',fn);row[1].addEventListener('change',fn);
               scard.appendChild(el('label',{class:'field'},el('span',{text:row[0]}),row[1]));
             });
             slidesBox.appendChild(scard);
           });
-          if(p.slides.length<12)slidesBox.appendChild(el('button',{type:'button',text:'+ 添加一页幻灯片',onclick:function(){p.slides.push({heading:'新页面',body:[],highlight:'',audioText:'',audioUrl:''});renderSlideFields();show()}}));
+          if(p.slides.length<12)slidesBox.appendChild(el('button',{type:'button',text:'+ 添加一页幻灯片',onclick:function(){p.slides.push({layout:'standard',heading:'新页面',body:[],highlight:'',audioUrl:''});renderSlideFields();show()}}));
         }
         renderSlideFields();
         field('teacherNotes','教师备课提示（仅老师可见）',area(p.teacherNotes||''));
