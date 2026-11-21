@@ -20,7 +20,7 @@ import json
 import re
 from typing import Any
 
-TEMPLATES = {"数学": ("rotation", "clock", "steps", "slide"), "语文": ("slide", "reading", "steps")}
+TEMPLATES = {"数学": ("rotation", "clock", "steps"), "语文": ("slide", "reading", "steps")}
 KIND_LABEL = {"rotation": "数学·图形旋转", "reading": "语文·阅读与文本依据", "clock": "数学·钟面指针旋转", "steps": "分步讲解", "slide": "图文幻灯片"}
 ANGLES = (90, 180, 270)
 LETTERS = "ABCDEF"
@@ -596,6 +596,7 @@ def generation_prompt(subject: str, lesson: dict[str, Any]) -> str:
                  '"angle":120,"steps":["讲解步骤"],"question":"","reference":""}；一道例题有多个小问时，选第一个小问的数据。',
         "reading": '阅读找文本依据：{"template":"reading","title":"","passage":"从本课原文原样摘取的连续段落（40—600字）","question":"",'
                    '"evidence":[作为依据的句子序号，从0开始],"material":"不超过150字的确定常识，可留空","writingPrompt":"","reference":""}',
+        "slide": '图文幻灯片：{"template":"slide","title":"","slides":[{"heading":"页标题","body":["正文段落"],"highlight":"重点或答题模板","audioText":"本页朗读稿"}]}',
         "steps": '分步讲解（任何例题都可用）：{"template":"steps","title":"","problem":"这一页例题的题目原文，不含答案","steps":["先观察哪些条件？","怎样比较/操作？","怎样表示规律？","怎样检验结果？"],'
                  '"answer":"本题答案","figure":{},"question":"学生书面作答的要求","reference":""}；必须写真实讲解内容，禁止只写“第1步”“第2步”这类占位；2—6 步，每步不超过60字，严格按这一页的题目和数据讲解。'
                  '题目里有线段和点、计算程序、图形或数表时，必须用 figure 画出题目给出的条件（只画已知条件，不画答案）：'
