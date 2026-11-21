@@ -20,8 +20,8 @@ import json
 import re
 from typing import Any
 
-TEMPLATES = {"数学": ("rotation", "clock", "steps"), "语文": ("reading", "steps")}
-KIND_LABEL = {"rotation": "数学·图形旋转", "reading": "语文·阅读与文本依据", "clock": "数学·钟面指针旋转", "steps": "分步讲解"}
+TEMPLATES = {"数学": ("rotation", "clock", "steps"), "语文": ("slide", "reading", "steps")}
+KIND_LABEL = {"rotation": "数学·图形旋转", "reading": "语文·阅读与文本依据", "clock": "数学·钟面指针旋转", "steps": "分步讲解", "slide": "图文幻灯片"}
 ANGLES = (90, 180, 270)
 LETTERS = "ABCDEF"
 
@@ -443,6 +443,47 @@ def clean_steps(raw: Any) -> dict[str, Any]:
             "question": _text(raw.get("question"), 200) or "写出解题过程和答案。", "reference": _text(raw.get("reference"), 1000)}
 
 
+def clean_slide(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ValueError("幻灯片参数格式不正确")
+    raw_slides = raw.get("slides")
+    if not isinstance(raw_slides, list) or not 1 <= len(raw_slides) <= 12:
+        raise ValueError("幻灯片需要 1—12 页")
+    slides: list[dict[str, Any]] = []
+    for item in raw_slides:
+        if not isinstance(item, dict):
+            raise ValueError("每页幻灯片必须是对象")
+        heading = _text(item.get("heading"), 80)
+        body_raw = item.get("body") or []
+        if isinstance(body_raw, str):
+            body_raw = [x.strip() for x in body_raw.splitlines() if x.strip()]
+        body = [_text(x, 400) for x in body_raw if _text(x, 400)][:8]
+        if not heading and not body:
+            raise ValueError("每页幻灯片至少需要标题或正文")
+        audio_url = str(item.get("audioUrl") or "").strip()
+        if audio_url and not (
+            audio_url.startswith(("https://", "http://", "/"))
+            or re.fullmatch(r"data:audio/(?:mpeg|mp3|ogg|wav|webm);base64,[A-Za-z0-9+/]+={0,2}", audio_url)
+        ):
+            raise ValueError("音频链接格式不正确")
+        if len(audio_url) > 350000:
+            raise ValueError("音频数据过大，请改用音频链接或压缩后上传")
+        slide_obj: dict[str, Any] = {
+            "heading": heading or "幻灯片",
+            "body": body,
+            "highlight": _text(item.get("highlight"), 300),
+            "audioUrl": audio_url,
+            "audioText": _text(item.get("audioText"), 600),
+            "figure": clean_figure(item.get("figure")) if item.get("figure") else {},
+        }
+        slides.append(slide_obj)
+    return {
+        "title": _text(raw.get("title"), 60) or "图文幻灯片",
+        "slides": slides,
+        "teacherNotes": _text(raw.get("teacherNotes"), 400),
+    }
+
+
 def clean(kind: str, raw: Any, source_text: str = "") -> dict[str, Any]:
     if kind == "rotation":
         return clean_rotation(raw)
@@ -450,6 +491,8 @@ def clean(kind: str, raw: Any, source_text: str = "") -> dict[str, Any]:
         return clean_reading(raw, source_text)
     if kind == "clock":
         return clean_clock(raw)
+    if kind == "slide":
+        return clean_slide(raw)
     if kind == "steps":
         result = clean_steps(raw)
         source_problem = str(raw.get('sourceProblem') or '') if isinstance(raw, dict) else ''
@@ -464,6 +507,8 @@ def clean(kind: str, raw: Any, source_text: str = "") -> dict[str, Any]:
 
 def public_params(kind: str, params: dict[str, Any]) -> dict[str, Any]:
     """What the classroom screen receives: no reference answer, no evidence key."""
+    if kind == "slide":
+        return {k: v for k, v in params.items() if k != "teacherNotes"}
     hidden = {"reference", "evidence"} if kind == "reading" else {"reference"}
     return {k: v for k, v in params.items() if k not in hidden}
 
@@ -471,6 +516,13 @@ def public_params(kind: str, params: dict[str, Any]) -> dict[str, Any]:
 def clean_view(kind: str, params: dict[str, Any], raw: Any) -> dict[str, Any]:
     """The teacher's live screen state; small, validated, no AI."""
     raw = raw if isinstance(raw, dict) else {}
+    if kind == "slide":
+        slides = params.get("slides") or [{}]
+        try:
+            idx = _int(raw.get("slideIndex", 0))
+        except ValueError:
+            idx = 0
+        return {"slideIndex": max(0, min(len(slides) - 1, idx)), "audioPlaying": bool(raw.get("audioPlaying"))}
     try:
         angle, step = _int(raw.get("angle", 0)), _int(raw.get("step", 0))
     except ValueError:
@@ -544,6 +596,7 @@ def generation_prompt(subject: str, lesson: dict[str, Any]) -> str:
                  '"angle":120,"steps":["讲解步骤"],"question":"","reference":""}；一道例题有多个小问时，选第一个小问的数据。',
         "reading": '阅读找文本依据：{"template":"reading","title":"","passage":"从本课原文原样摘取的连续段落（40—600字）","question":"",'
                    '"evidence":[作为依据的句子序号，从0开始],"material":"不超过150字的确定常识，可留空","writingPrompt":"","reference":""}',
+        "slide": '图文幻灯片：{"template":"slide","title":"","slides":[{"heading":"页标题","body":["正文段落"],"highlight":"重点或答题模板","audioText":"本页朗读稿"}]}',
         "steps": '分步讲解（任何例题都可用）：{"template":"steps","title":"","problem":"这一页例题的题目原文，不含答案","steps":["先观察哪些条件？","怎样比较/操作？","怎样表示规律？","怎样检验结果？"],'
                  '"answer":"本题答案","figure":{},"question":"学生书面作答的要求","reference":""}；必须写真实讲解内容，禁止只写“第1步”“第2步”这类占位；2—6 步，每步不超过60字，严格按这一页的题目和数据讲解。'
                  '题目里有线段和点、计算程序、图形或数表时，必须用 figure 画出题目给出的条件（只画已知条件，不画答案）：'

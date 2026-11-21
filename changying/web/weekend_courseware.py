@@ -503,15 +503,56 @@ def auto_populate_courseware(
                 continue
             steps, answer = _extract_steps_from_text(page_text, stage_name, stage_goal)
             title = f"{stage_name} · {lesson_title}" if lesson_title else stage_name
-            params = cw.clean(
-                "steps",
-                {"title": title[:40], "steps": steps, "answer": answer},
-                reading_plan,
-            )
+            kind = "steps"
+            params = None
+            if course_type in ("reading", "writing") or lesson.subject == "语文":
+                raw_paras = [p.strip() for p in str(page_text or "").splitlines() if p.strip()]
+                slides_payload: list[dict[str, Any]] = []
+                if stage_no == 2 and reading_plan:
+                    passage_paras = [p.strip() for p in reading_plan.splitlines() if p.strip()]
+                    slides_payload.append({
+                        "heading": passage_paras[0][:80] if passage_paras else stage_name,
+                        "body": passage_paras[:6] or [reading_plan[:380]],
+                        "highlight": f"本节核心目标：{core_target[:260]}" if core_target else stage_goal,
+                        "audioText": reading_plan[:580],
+                    })
+                    try:
+                        ex_list = json.loads(lesson.examples_json or "[]")
+                    except Exception:
+                        ex_list = []
+                    for ex_i, ex_item in enumerate(ex_list[:4], 1):
+                        ex_str = str(ex_item or "").strip()
+                        if not ex_str:
+                            continue
+                        ex_parts = [p.strip() for p in ex_str.split("｜") if p.strip()]
+                        slides_payload.append({
+                            "heading": f"考点例题 {ex_i}",
+                            "body": [p[:380] for p in ex_parts[:4]],
+                            "highlight": ex_parts[-1][:280] if len(ex_parts) > 1 else "",
+                            "audioText": ex_str[:580],
+                        })
+                else:
+                    slides_payload.append({
+                        "heading": stage_name,
+                        "body": [p[:380] for p in raw_paras[:6]] or steps,
+                        "highlight": stage_goal[:280] if stage_goal else "",
+                        "audioText": (page_text or stage_goal)[:580],
+                    })
+                try:
+                    params = cw.clean("slide", {"title": title[:60], "slides": slides_payload}, reading_plan)
+                    kind = "slide"
+                except ValueError:
+                    params = None
+            if params is None:
+                params = cw.clean(
+                    "steps",
+                    {"title": title[:40], "steps": steps, "answer": answer},
+                    reading_plan,
+                )
             item: dict[str, Any] = {
                 "stage": stage_no,
                 "page": page_idx,
-                "kind": "steps",
+                "kind": kind,
                 "params": params,
                 "writtenTask": False,
                 "status": "approved" if approve else "draft",

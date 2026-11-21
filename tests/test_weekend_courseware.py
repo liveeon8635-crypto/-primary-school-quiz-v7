@@ -225,7 +225,7 @@ with TestClient(app) as client:
     assert selected.status_code == 200, selected.text
     assert selected.json()["courseType"] == "reading"
     cbase = f"/teacher/weekend/lessons/{cid}/courseware"
-    assert client.get(cbase, headers=th).json()["templates"] == ["reading", "steps"]
+    assert client.get(cbase, headers=th).json()["templates"] == ["slide", "reading", "steps"]
     flow = client.get(cbase, headers=th).json()
     assert flow["courseType"] == "reading" and flow["practiceStage"] == 5
     assert [s["name"] for s in flow["stageOptions"]] == ["点名与回顾", "短文阅读", "长文阅读", "考点总结", "综合练习", "课后反馈"]

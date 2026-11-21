@@ -816,11 +816,49 @@ function cwClock(box,p,view,big){
   var steps=el('ol',{style:big?'font-size:2.6vh':''});p.steps.forEach(function(s,k){steps.appendChild(el('li',{style:k<(view.step||0)?'font-weight:700;color:#b42318':'opacity:.7',text:s}))});wrap.appendChild(steps);
   wrap.appendChild(el('div',{style:'opacity:.8',text:'当前转过 '+(view.angle||0)+'° / '+p.angle+'°'+(view.showResult?' · 指向数字 '+p.end:'')}));
 }
+function cwSlide(box,p,view,big,teacher){
+  var wrap=el('div',{style:'background:#fff;color:#111;border-radius:12px;padding:14px'});box.appendChild(wrap);
+  var slides=Array.isArray(p.slides)&&p.slides.length?p.slides:[{heading:p.title||'幻灯片',body:[]}];
+  var idx=Math.max(0,Math.min(slides.length-1,Number(view.slideIndex||0)));
+  var cur=slides[idx]||{};
+  var headRow=el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px'});
+  headRow.appendChild(el('b',{style:big?'font-size:3vh':'font-size:16px',text:p.title||'图文幻灯片'}));
+  headRow.appendChild(el('span',{class:'tag',text:'第 '+(idx+1)+' / '+slides.length+' 页'}));
+  wrap.appendChild(headRow);
+  if(cur.heading)wrap.appendChild(el('h3',{style:'margin:6px 0 10px;color:#991b1b;'+(big?'font-size:3.2vh':''),text:cur.heading}));
+  (cur.body||[]).forEach(function(line){
+    wrap.appendChild(el('p',{style:'margin:6px 0;line-height:1.75;white-space:pre-wrap;'+(big?'font-size:2.4vh':''),text:line}));
+  });
+  if(cur.figure&&cur.figure.type)cwFigure(wrap,cur.figure,big,view,teacher,1);
+  if(cur.highlight){
+    wrap.appendChild(el('div',{style:'margin:10px 0;padding:10px 12px;border-radius:10px;background:#fff8eb;border-left:4px solid #b45309;color:#78350f;font-weight:700;white-space:pre-wrap;'+(big?'font-size:2.2vh':''),text:cur.highlight}));
+  }
+  if(cur.audioUrl){
+    var au=el('audio',{controls:true,src:cur.audioUrl,style:'width:100%;margin-top:10px'});
+    wrap.appendChild(au);
+  }else if(cur.audioText&&typeof window!=='undefined'&&window.speechSynthesis){
+    var speakBtn=el('button',{type:'button',text:'🔊 朗读本页',style:'margin-top:8px',onclick:function(){
+      try{
+        window.speechSynthesis.cancel();
+        var u=new SpeechSynthesisUtterance(cur.audioText);
+        u.lang='zh-CN';u.rate=0.92;
+        window.speechSynthesis.speak(u);
+      }catch(_e){}
+    }});
+    wrap.appendChild(speakBtn);
+  }
+  if(teacher&&slides.length>1){
+    var nav=el('div',{class:'row',style:'margin-top:10px'});
+    nav.appendChild(el('button',{type:'button',text:'‹ 上一页',disabled:idx<=0,onclick:function(){view.slideIndex=Math.max(0,idx-1);box.textContent='';cwSlide(box,p,view,big,teacher)}}));
+    nav.appendChild(el('button',{type:'button',text:'下一页 ›',disabled:idx>=slides.length-1,onclick:function(){view.slideIndex=Math.min(slides.length-1,idx+1);box.textContent='';cwSlide(box,p,view,big,teacher)}}));
+    wrap.appendChild(nav);
+  }
+}
 function cwRender(box,c,view,big,teacher,onTap){
   box.textContent='';view=view||{};c=c||{};
   try{
     if(c.kind==='rotation')cwRotation(box,c.params,view,big);else if(c.kind==='clock')cwClock(box,c.params,view,big);
-    else if(c.kind==='steps')cwSteps(box,c.params,view,big,teacher);else cwReading(box,c.params,view,big,teacher,onTap);
+    else if(c.kind==='steps')cwSteps(box,c.params,view,big,teacher);else if(c.kind==='slide')cwSlide(box,c.params,view,big,teacher);else cwReading(box,c.params,view,big,teacher,onTap);
   }catch(err){
     // 单个图示画坏了也不能整页白屏：清空后给一句老师看得懂的话，再给“重试”按钮。
     var reason=err&&err.message?err.message:String(err||'未知原因');
@@ -875,6 +913,12 @@ function cwControl(box,c,sid){
       answerBtn.textContent=view.showAnswer?'隐藏答案':'显示答案';answerBtn.disabled=false;
       resetBtn.textContent='重来';resetBtn.disabled=(s===0&&!view.showAnswer);
     };
+  }else if(c.kind==='slide'){
+    var sl=((c.params&&c.params.slides)||[]),scount=sl.length||1;
+    function slideNow(){return Math.max(0,Math.min(scount-1,Number(view.slideIndex||0)))}
+    button('‹ 上一页',function(){view.slideIndex=Math.max(0,slideNow()-1)});
+    button('下一页 ›',function(){view.slideIndex=Math.min(scount-1,slideNow()+1)});
+    button('🔊 播放/暂停朗读',function(){view.audioPlaying=!view.audioPlaying});
   }else{
     bar.appendChild(el('span',{class:'muted',text:'点句子＝在大屏上高亮为同学们找到的依据'}));
     button('显示/隐藏补充资料',function(){view.showMaterial=!view.showMaterial});
@@ -903,6 +947,21 @@ function cwPlan(box,lessonId,refresh){
     data=d;rowEls={};box.textContent='';
     box.appendChild(el('p',{class:'muted',text:d.subject==='语文'?'导入教案后已自动生成整套互动课件；你可以整体预览各环节效果，或按需微调后直接开课。':'讲解、例题和已通过的随堂练习可逐题配置互动课件。你需逐页预览、修改、审核；随堂练习在课堂公布该题答案后才显示对应讲解。上课翻页和操作不调用 AI。'}));
     var wholePreviewWrap=el('div',{hidden:true});
+    function renderWholePreview(){
+      wholePreviewWrap.textContent='';
+      if(!d.items.length){wholePreviewWrap.appendChild(el('div',{class:'notice warn',text:'当前还没有生成课件，请先点“一键生成整套课件”。'}));return}
+      CW_STAGES.forEach(function(st){
+        var stageItems=d.items.filter(function(it){return Number(it.stage)===Number(st.no)});
+        if(!stageItems.length)return;
+        var sec=el('div',{class:'card'});
+        sec.appendChild(el('h3',{text:'第'+st.no+'环节：'+st.name}));
+        stageItems.forEach(function(it){
+          var previewHost=el('div');sec.appendChild(previewHost);
+          cwPreview(previewHost,{kind:it.kind,params:it.approved||it.params,kindLabel:it.kindLabel||d.kindLabels[it.kind]||it.kind});
+        });
+        wholePreviewWrap.appendChild(sec);
+      });
+    }
     var genAllBtn=el('button',{class:'primary',text:'一键生成整套课件',onclick:function(){
       if(busy)return;busy=true;msg.className='';msg.textContent='正在整套生成互动课件…';
       api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate-all',{json:{}}).then(function(res){busy=false;paint(res);msg.textContent=res.notice||'已生成整套课件';if(refresh)refresh()}).catch(function(e){busy=false;msg.textContent=e.message});
@@ -910,22 +969,13 @@ function cwPlan(box,lessonId,refresh){
     var previewAllBtn=el('button',{text:'整体预览整套课件',onclick:function(){
       wholePreviewWrap.hidden=!wholePreviewWrap.hidden;
       previewAllBtn.textContent=wholePreviewWrap.hidden?'整体预览整套课件':'收起整体预览';
-      if(!wholePreviewWrap.hidden){
-        wholePreviewWrap.textContent='';
-        if(!d.items.length){wholePreviewWrap.appendChild(el('div',{class:'notice warn',text:'当前还没有生成课件，请先点“一键生成整套课件”。'}));return}
-        CW_STAGES.forEach(function(st){
-          var stageItems=d.items.filter(function(it){return Number(it.stage)===Number(st.no)});
-          if(!stageItems.length)return;
-          var sec=el('div',{class:'card'});
-          sec.appendChild(el('h3',{text:'第'+st.no+'环节：'+st.name}));
-          stageItems.forEach(function(it){
-            var previewHost=el('div');sec.appendChild(previewHost);
-            cwPreview(previewHost,{kind:it.kind,params:it.approved||it.params,kindLabel:it.kindLabel||d.kindLabels[it.kind]||it.kind});
-          });
-          wholePreviewWrap.appendChild(sec);
-        });
-      }
+      if(!wholePreviewWrap.hidden)renderWholePreview();
     }});
+    if(d.subject==='语文'&&d.items.length){
+      wholePreviewWrap.hidden=false;
+      previewAllBtn.textContent='收起整体预览';
+      renderWholePreview();
+    }
     box.appendChild(el('div',{class:'row'},genAllBtn,previewAllBtn));
     box.appendChild(wholePreviewWrap);
     var stageSel=el('select',{'aria-label':'环节'});CW_STAGES.forEach(function(x){stageSel.appendChild(el('option',{value:x.no,text:'第'+x.no+'环节：'+x.name+((d.pages[String(x.no)]||[]).length?'（'+(d.pages[String(x.no)]||[]).length+' 项）':'')}))});
@@ -974,16 +1024,19 @@ function cwPlan(box,lessonId,refresh){
     var actionRow=el('div',{class:'row'},stageSel);
     if(stageNo===practiceNo)actionRow.appendChild(el('span',{class:'muted',text:'课堂任务课件请导入预制包或手动填写，此环节不调用 AI。'}));
     else {actionRow.appendChild(all);actionRow.appendChild(el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})));}
-    actionRow.appendChild(approveAll);box.appendChild(actionRow);
-    box.appendChild(el('div',{class:'muted',text:'这里只用于补传课件包。若文件同时包含教案、习题和课件，请退出审改，在本次课列表点“导入教案/整包”，一次完成导入。'}));
-    box.appendChild(el('div',{class:'row'},preparedFile,el('label',{},replacePrepared,el('span',{text:'替换对应页并保留上一版'})),preparedImport));
+    actionRow.appendChild(approveAll);
+    var host=d.subject==='语文'?el('details',{style:'margin-top:10px'},el('summary',{text:'高级：按环节手动微调或补传课件'})):box;
+    if(d.subject==='语文')box.appendChild(host);
+    host.appendChild(actionRow);
+    host.appendChild(el('div',{class:'muted',text:'这里只用于补传课件包。若文件同时包含教案、习题和课件，请退出审改，在本次课列表点“导入教案/整包”，一次完成导入。'}));
+    host.appendChild(el('div',{class:'row'},preparedFile,el('label',{},replacePrepared,el('span',{text:'替换对应页并保留上一版'})),preparedImport));
     box.appendChild(msg);
     if(stageNo==='3'&&d.qualityAudit){
       var audit=d.qualityAudit;
       box.appendChild(el('div',{class:'notice warn',style:'margin:10px 0;white-space:normal',
         text:'课件逐页体检：共 '+audit.totalPages+' 页，已配置 '+audit.configured+' 页，发现明确问题 '+audit.flagged+' 页。全部仍须与原题逐页人工核对；机器未报警不等于验收通过。'}));
     }
-    var rows=el('div'),editor=el('div');box.appendChild(rows);box.appendChild(editor);editorBox=editor;notes={};rowEls={};
+    var rows=el('div'),editor=el('div');host.appendChild(rows);box.appendChild(editor);editorBox=editor;notes={};rowEls={};
     list.forEach(function(x){
       var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
       var line=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:(x.page==null?'':'第'+(x.page+1)+'页：')+x.text}),
