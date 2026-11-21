@@ -1,0 +1,413 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("rich_slide_helpers", ROOT / "tests/test_homework_solve.py")
+helpers = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = helpers
+SPEC.loader.exec_module(helpers)
+
+
+def test_clean_slide_rich_pedagogy_and_media_limits():
+    from changying.services import weekend_courseware as cw
+
+    tiny_jpeg = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP///8Q="
+    tiny_mp3 = "data:audio/mpeg;base64,SUQzAwAAAAAA"
+    big_mp3 = "data:audio/mpeg;base64," + ("A" * 900000)
+    too_big_mp3 = "data:audio/mpeg;base64," + ("A" * 1850000)
+
+    cleaned = cw.clean(
+        "slide",
+        {
+            "title": "第2环节 · 短文精读",
+            "teacherNotes": "仅教师可见的课堂提示",
+            "slides": [
+                {
+                    "layout": "scene",
+                    "badge": "写作背景",
+                    "heading": "《母亲的那盏灯》情境导入",
+                    "subtitle": "贴近日常深夜书桌",
+                    "caption": "母爱守候场景",
+                    "figure": {"type": "uploaded_image", "data_url": tiny_jpeg, "alt": "台灯插图"},
+                    "body": ["第一段背景说明。"],
+                    "audioLabel": "课文配音朗读",
+                    "audioUrl": big_mp3,
+                },
+                {
+                    "layout": "characters",
+                    "heading": "文章人物分析",
+                    "characters": [
+                        {
+                            "name": "母亲",
+                            "role": "无私守候者",
+                            "traits": ["勤劳", "温柔"],
+                            "details": "微驼着背、粗糙的手指",
+                            "emotion": "无私深沉的母爱",
+                        }
+                    ],
+                },
+                {
+                    "layout": "plot",
+                    "heading": "情节脉络图",
+                    "plot": [
+                        {"stage": "开端", "scene": "第①段", "event": "客厅台灯亮起", "feeling": "温暖日常"},
+                        {"stage": "高潮", "scene": "第④段", "event": "雨夜晚归见灯光", "feeling": "踏实感动"},
+                    ],
+                    "qa": [{"q": "为什么灯一直亮着？", "a": "象征母亲始终牵挂守候。"}],
+                    "highlight": "抓关键词句体会情感",
+                    "audioUrl": tiny_mp3,
+                },
+            ],
+        },
+    )
+    assert cleaned["slides"][0]["layout"] == "scene"
+    assert cleaned["slides"][0]["caption"] == "母爱守候场景"
+    assert cleaned["slides"][0]["audioLabel"] == "课文配音朗读"
+    assert cleaned["slides"][0]["figure"]["type"] == "uploaded_image"
+    assert len(cleaned["slides"][1]["characters"]) == 1
+    assert cleaned["slides"][1]["characters"][0]["traits"] == ["勤劳", "温柔"]
+    assert len(cleaned["slides"][2]["plot"]) == 2
+    assert cleaned["slides"][2]["qa"][0]["q"] == "为什么灯一直亮着？"
+
+    pub = cw.public_params("slide", cleaned)
+    assert "teacherNotes" not in pub
+    assert len(pub["slides"]) == 3
+
+    try:
+        cw.clean("slide", {"slides": [{"heading": "超长音频", "body": ["正文"], "audioUrl": too_big_mp3}]})
+        raise AssertionError("expected ValueError for oversized audio")
+    except ValueError as exc:
+        assert "音频数据过大" in str(exc)
+
+
+def test_courseware_slide_renderer_and_editor_preserves_rich_fields():
+    from changying.web.weekend_courseware_pages import COURSEWARE_JS, COURSEWARE_PLAN_JS
+
+    assert "speechSynthesis" not in COURSEWARE_JS
+    assert "speechSynthesis" not in COURSEWARE_PLAN_JS
+    assert "9500000" in COURSEWARE_PLAN_JS
+
+    sample = {
+        "title": "短文精读",
+        "teacherNotes": "注意引导学生圈画细节",
+        "slides": [
+            {
+                "layout": "scene",
+                "badge": "写作背景",
+                "heading": "背景与配音",
+                "subtitle": "贴近生活",
+                "caption": "暖灯插图说明",
+                "figure": {"type": "uploaded_image", "data_url": "data:image/jpeg;base64,AAAA", "alt": "灯"},
+                "audioLabel": "课文范读",
+                "audioUrl": "data:audio/mpeg;base64,SUQz",
+                "body": ["这是==重点细节==所在句子。"],
+            },
+            {
+                "layout": "characters",
+                "heading": "人物分析",
+                "characters": [
+                    {
+                        "name": "母亲",
+                        "role": "核心人物",
+                        "traits": ["温柔", "操劳"],
+                        "details": "==微驼着背==缝补校服",
+                        "emotion": "无私母爱",
+                    }
+                ],
+                "plot": [
+                    {"stage": "开端", "scene": "夜晚", "event": "台灯亮起", "feeling": "温馨"}
+                ],
+                "cards": [{"tag": "考点14", "title": "细节描写", "text": "找动作神态"}],
+                "steps": [{"label": "第一步", "desc": "点明方法"}],
+                "qa": [{"q": "体会到什么？", "a": "母爱的无微不至。"}],
+                "highlight": "记住三步答题法",
+            },
+        ],
+    }
+
+    js_script = rf'''
+const assert = require('node:assert/strict');
+function makeNode(tag, attrs, children) {{
+  const n = {{
+    tagName: String(tag || '').toUpperCase(),
+    attrs: attrs || {{}},
+    children: [],
+    style: {{}},
+    hidden: !!(attrs && attrs.hidden),
+    value: (attrs && attrs.value) || '',
+    textContent: (attrs && attrs.text) || '',
+    appendChild(c) {{ if (c) this.children.push(c); return c; }},
+    insertBefore(c, ref) {{
+      const cur = this.children.indexOf(c);
+      if (cur >= 0) this.children.splice(cur, 1);
+      const idx = this.children.indexOf(ref);
+      if (idx >= 0) this.children.splice(idx, 0, c);
+      else this.children.push(c);
+      return c;
+    }},
+    addEventListener() {{}},
+    play() {{ return Promise.resolve(); }},
+    pause() {{}},
+  }};
+  Object.keys(n.attrs).forEach(k => {{
+    if (k !== 'text' && k !== 'style' && k !== 'hidden') n[k] = n.attrs[k];
+  }});
+  for (const c of children) if (c) n.children.push(c);
+  return n;
+}}
+function el(tag, attrs, ...children) {{ return makeNode(tag, attrs, children); }}
+const document = {{ createTextNode(t) {{ return makeNode('#text', {{ text: String(t || '') }}, []); }} }};
+const window = {{}};
+function all(node, pred, out = []) {{
+  if (!node) return out;
+  if (pred(node)) out.push(node);
+  for (const c of node.children || []) all(c, pred, out);
+  return out;
+}}
+let apiHandler = () => Promise.resolve({{}});
+function api(p, o) {{ return apiHandler(p, o); }}
+
+{COURSEWARE_JS}
+{COURSEWARE_PLAN_JS}
+
+// 1. Verify cwSlide renders <img>, <audio>, characters, plot, qa, and highlight in showAllSlides mode.
+const host = el('div');
+cwRender(host, {{ kind: 'slide', params: {json.dumps(sample, ensure_ascii=False)} }}, {{ showAllSlides: true }}, false, true);
+const imgs = all(host, n => n.tagName === 'IMG');
+const audios = all(host, n => n.tagName === 'AUDIO');
+assert.equal(imgs.length, 1);
+assert.equal(audios.length, 1);
+assert.equal(audios[0].controls, true);
+const allTexts = all(host, () => true).map(n => n.textContent).join('\n');
+assert(allTexts.includes('暖灯插图说明'), 'missing caption');
+assert(allTexts.includes('课文范读'), 'missing audioLabel');
+assert(allTexts.includes('细节描写：'), 'missing character details');
+assert(allTexts.includes('无私母爱'), 'missing character emotion');
+assert(allTexts.includes('情感：温馨'), 'missing plot feeling');
+const toggles = all(host, n => n.tagName === 'BUTTON' && n.textContent === '查看点拨');
+assert.equal(toggles.length, 1);
+
+// 2. Verify openEditor puts preview BEFORE collapsed details and collect() preserves all rich fields on PUT.
+let savedPayload = null;
+apiHandler = (path, opts) => {{
+  if (opts && opts.method === 'PUT') {{
+    savedPayload = opts.json;
+    return Promise.resolve({{ items: [] }});
+  }}
+  return Promise.resolve({{
+    subject: '语文',
+    courseType: 'reading',
+    practiceStage: 5,
+    stageOptions: [{{ no: 2, key: 'short_reading', name: '短文阅读', minutes: 20 }}],
+    pages: {{ '2': ['测试页面'] }},
+    kindLabels: {{ slide: '图文幻灯片', reading: '阅读依据', steps: '分步讲解' }},
+    templates: ['slide', 'reading', 'steps'],
+    items: [{{ stage: 2, page: 0, kind: 'slide', status: 'draft', writtenTask: false, params: {json.dumps(sample, ensure_ascii=False)} }}]
+  }});
+}};
+(async () => {{
+  const box = el('div');
+  cwPlan(box, 12, () => {{}});
+  await new Promise(r => setTimeout(r, 20));
+  const editBtn = all(box, n => n.tagName === 'BUTTON' && n.textContent === '预览／修改')[0];
+  assert(editBtn, 'expected 预览／修改 button');
+  editBtn.onclick();
+  const card = all(box, c =>
+    c.children.some(ch => all(ch, n => n.tagName === 'DETAILS').length)
+    && c.children.some(ch => all(ch, n => n.tagName === 'AUDIO' || n.tagName === 'IMG').length)
+    && all(c, n => n.tagName === 'BUTTON' && String(n.textContent).includes('保存修改')).length
+  ).slice(-1)[0];
+  assert(card, 'expected editor card');
+  const detailsIdx = card.children.findIndex(ch => all(ch, n => n.tagName === 'DETAILS').length);
+  const previewIdx = card.children.findIndex(ch => all(ch, n => n.tagName === 'AUDIO' || n.tagName === 'IMG').length);
+  assert(previewIdx >= 0 && detailsIdx > previewIdx, 'preview should appear before form details');
+  const saveBtn = all(card, n => n.tagName === 'BUTTON' && String(n.textContent).includes('保存修改'))[0];
+  saveBtn.onclick();
+  await new Promise(r => setTimeout(r, 20));
+  assert(savedPayload && savedPayload.kind === 'slide');
+  const s0 = savedPayload.params.slides[0];
+  const s1 = savedPayload.params.slides[1];
+  assert.equal(s0.layout, 'scene');
+  assert.equal(s0.caption, '暖灯插图说明');
+  assert.equal(s0.audioLabel, '课文范读');
+  assert.equal(s0.audioUrl, 'data:audio/mpeg;base64,SUQz');
+  assert.equal(s0.figure.type, 'uploaded_image');
+  assert.equal(s1.characters[0].name, '母亲');
+  assert.equal(s1.plot[0].feeling, '温馨');
+  assert.equal(s1.cards[0].tag, '考点14');
+  assert.equal(s1.qa[0].a, '母爱的无微不至。');
+}})().catch(e => {{ console.error(e); process.exitCode = 1; }});
+'''
+    res = subprocess.run(["node", "-"], input=js_script, text=True, capture_output=True, timeout=20)
+    assert res.returncode == 0, res.stdout + res.stderr
+
+
+def test_rich_chinese_bundle_multipart_import_approve_and_board(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+tiny_jpeg = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP///8Q="
+tiny_mp3 = "data:audio/mpeg;base64,SUQzAwAAAAAA"
+bundle = {
+    "schemaVersion": 1,
+    "subject": "语文",
+    "dryRun": False,
+    "onConflict": "overwrite",
+    "items": [
+        {
+            "lessonNo": 12,
+            "title": "第12课：阅读——舐犊情深",
+            "coreTarget": "掌握细节描写、反复词语与结尾段作用。",
+            "teacherPlan": "一、短文阅读《母亲的那盏灯》\n二、长文阅读与考点精讲",
+            "courseType": "reading",
+            "readingPlan": "每当夜幕降临，客厅那盏暖黄的台灯总会亮起。直到我写完作业，那盏灯还一直亮着。",
+            "writingPlan": "",
+            "ppt": ["每当夜幕降临，客厅那盏暖黄的台灯总会亮起。直到我写完作业，那盏灯还一直亮着。"],
+            "examples": ["【例题1】体会母爱细节。"],
+            "closureTraining": "完成阅读巩固。",
+            "questions": [
+                {
+                    "stem": "下列理解正确的是哪一项？",
+                    "options": ["A. 灯象征母爱", "B. 与母爱无关"],
+                    "correctIndex": 0,
+                    "explanation": "台灯贯穿全文象征母爱守候。",
+                    "knowledge": "细节描写",
+                }
+            ],
+            "writtenQuestions": [],
+        }
+    ],
+    "courseware": {
+        "pages": [
+            {
+                "stageNo": 1,
+                "page": None,
+                "expectedPageText": "点名与回顾",
+                "kind": "slide",
+                "params": {"title": "1. 点名导入", "slides": [{"layout": "cover", "heading": "舐犊情深", "figure": {"type": "uploaded_image", "data_url": tiny_jpeg, "alt": "封面图"}}]},
+                "writtenTask": False,
+            },
+            {
+                "stageNo": 2,
+                "page": 0,
+                "expectedPageText": "每当夜幕降临，客厅那盏暖黄的台灯总会亮起。直到我写完作业，那盏灯还一直亮着。",
+                "kind": "slide",
+                "params": {
+                    "title": "2. 短文精读",
+                    "slides": [
+                        {
+                            "layout": "reading",
+                            "heading": "《母亲的那盏灯》",
+                            "audioLabel": "课文配音朗读",
+                            "audioUrl": tiny_mp3,
+                            "figure": {"type": "uploaded_image", "data_url": tiny_jpeg, "alt": "台灯"},
+                            "body": ["每当夜幕降临，台灯==一直亮着==。"],
+                        },
+                        {
+                            "layout": "characters",
+                            "heading": "人物档案",
+                            "characters": [{"name": "母亲", "role": "核心人物", "traits": ["温柔"], "details": "细细缝补", "emotion": "深沉母爱"}],
+                        },
+                        {
+                            "layout": "plot",
+                            "heading": "情节脉络",
+                            "plot": [{"stage": "开端", "scene": "夜晚", "event": "台灯亮起", "feeling": "温馨"}],
+                        },
+                    ],
+                },
+                "writtenTask": False,
+            },
+            {
+                "stageNo": 3,
+                "page": None,
+                "expectedPageText": "长文阅读",
+                "kind": "slide",
+                "params": {"title": "3. 长文导学", "slides": [{"heading": "《父亲的泥脚》", "body": ["情节梳理"]}]},
+                "writtenTask": False,
+            },
+            {
+                "stageNo": 4,
+                "page": None,
+                "expectedPageText": "考点总结",
+                "kind": "slide",
+                "params": {"title": "4. 考点总结", "slides": [{"heading": "三大公式", "body": ["方法+内容+情感"]}]},
+                "writtenTask": False,
+            },
+            {
+                "stageNo": 5,
+                "page": None,
+                "expectedPageText": "综合练习",
+                "kind": "slide",
+                "params": {"title": "5. 综合练习", "slides": [{"heading": "随堂任务", "body": ["完成阅读练习"]}]},
+                "writtenTask": False,
+            },
+            {
+                "stageNo": 6,
+                "page": None,
+                "expectedPageText": "课后反馈",
+                "kind": "slide",
+                "params": {"title": "6. 课后反馈", "slides": [{"heading": "课后复盘", "body": ["巩固模板"]}]},
+                "writtenTask": False,
+            },
+        ]
+    },
+}
+
+with TestClient(app) as client:
+    th, sh, student_id, school_id = setup(client)
+    imp = client.post(
+        '/teacher/weekend/lessons/import',
+        headers=th,
+        data={'subject': '语文', 'lessonNo': '12', 'force': '1', 'courseType': 'reading'},
+        files={'file': ('lesson12-reading-bundle.json', json.dumps(bundle, ensure_ascii=False).encode('utf-8'), 'application/json')},
+    )
+    assert imp.status_code == 200, imp.text
+    lid = imp.json()['lessonId']
+
+    cw = client.get(f'/teacher/weekend/lessons/{lid}/courseware', headers=th)
+    assert cw.status_code == 200, cw.text
+    items = cw.json()['items']
+    assert len(items) == 6
+    s2 = [x for x in items if x['stage'] == 2][0]
+    assert s2['params']['slides'][0]['audioUrl'] == tiny_mp3
+    assert s2['params']['slides'][1]['characters'][0]['name'] == '母亲'
+    assert s2['params']['slides'][2]['plot'][0]['stage'] == '开端'
+
+    for it in items:
+        ap = client.post(f'/teacher/weekend/lessons/{lid}/courseware/approve', headers=th, json={'stageNo': it['stage'], 'page': it['page']})
+        assert ap.status_code == 200, (it['stage'], ap.text)
+
+    sess = client.post('/teacher/weekend/sessions', headers=th, json={'lessonId': lid})
+    assert sess.status_code == 200, sess.text
+    sid = sess.json()['id']
+    assert client.post(f'/teacher/weekend/sessions/{sid}/start', headers=th).status_code == 200
+    assert client.post(f'/teacher/weekend/sessions/{sid}/goto', headers=th, json={'stage': 2}).status_code == 200
+    board = client.get(f'/teacher/weekend/sessions/{sid}/board', headers=th)
+    assert board.status_code == 200, board.text
+    b_cw = board.json().get('courseware') or {}
+    assert b_cw.get('kind') == 'slide'
+    assert b_cw['params']['slides'][0]['audioUrl'] == tiny_mp3
+    assert b_cw['params']['slides'][0]['figure']['type'] == 'uploaded_image'
+    assert b_cw['params']['slides'][1] == {}
+
+    v1 = client.post(f'/teacher/weekend/sessions/{sid}/courseware/view', headers=th,
+                     json={'stageNo': 2, 'page': 0, 'view': {'slideIndex': 1, 'audioPlaying': False}})
+    assert v1.status_code == 200, v1.text
+    b1 = client.get(f'/teacher/weekend/sessions/{sid}/board', headers=th).json()['courseware']
+    assert b1['params']['slides'][0] == {}
+    assert b1['params']['slides'][1]['characters'][0]['name'] == '母亲'
+
+    v2 = client.post(f'/teacher/weekend/sessions/{sid}/courseware/view', headers=th,
+                     json={'stageNo': 2, 'page': 0, 'view': {'slideIndex': 2, 'audioPlaying': False}})
+    assert v2.status_code == 200, v2.text
+    b2 = client.get(f'/teacher/weekend/sessions/{sid}/board', headers=th).json()['courseware']
+    assert b2['params']['slides'][2]['plot'][0]['stage'] == '开端'
+print('OK')
+''',
+    )

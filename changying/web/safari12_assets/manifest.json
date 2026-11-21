@@ -409,16 +409,16 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/weekend": [
-      "dd4927966c3bd5622cb3c585d0418330ee51bd9a71efabe66c5aa3bce0dfe828"
+      "58f3887cea83db417279723655b577fed0d834d9f912fae3232e6cb675067a3f"
     ],
     "/v1/weekend-board": [
-      "b10dd2513dbebef8fcfa203fa794056af4189f5a0aae54fc94f702f0bcd9fd94"
+      "1d24786d8e0856f8aaf3aff817f18aa58f41d080cb3ad65d92ee81660fff6cb7"
     ],
     "/v1/weekend-brief": [
       "435df02fa9e38d2b4890cc80429d0d12db15eddfff5d9ba61b63e7e184f848d8"
     ],
     "/v1/weekend-plan": [
-      "d31f77e7c5599d9310f1ae8d117f92ff4a416fdb07054129e37f7e94a6d64dd0"
+      "783e0bf783ed17e39884e5e6da67329fd19c8ab89d75983863749b11468be151"
     ],
     "/v1/weekend-practice": [
       "2b8839a672cbb056fc0d2edc9f62ef4cf9ad89756f3a903c3469f883a2d4bb49"
@@ -497,6 +497,11 @@
       "unchanged": true,
       "sourceBytes": 4863,
       "compiledBytes": 4863
+    },
+    "1d24786d8e0856f8aaf3aff817f18aa58f41d080cb3ad65d92ee81660fff6cb7": {
+      "unchanged": true,
+      "sourceBytes": 116822,
+      "compiledBytes": 116822
     },
     "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901": {
       "unchanged": true,
@@ -588,6 +593,11 @@
       "sourceBytes": 277168,
       "compiledBytes": 285989
     },
+    "58f3887cea83db417279723655b577fed0d834d9f912fae3232e6cb675067a3f": {
+      "unchanged": true,
+      "sourceBytes": 163925,
+      "compiledBytes": 163925
+    },
     "619601f0aee607fedd583fd9281c8a60cda275c029b095d60070c37b302e6cbb": {
       "unchanged": true,
       "sourceBytes": 74333,
@@ -617,6 +627,11 @@
       "unchanged": false,
       "sourceBytes": 38929,
       "compiledBytes": 37581
+    },
+    "783e0bf783ed17e39884e5e6da67329fd19c8ab89d75983863749b11468be151": {
+      "unchanged": true,
+      "sourceBytes": 218670,
+      "compiledBytes": 218670
     },
     "799f0d46bbc308a1950bb49a0ed2c405b941643c725d75138d2e70158a6b23d7": {
       "unchanged": true,
@@ -673,11 +688,6 @@
       "sourceBytes": 5875,
       "compiledBytes": 6410
     },
-    "b10dd2513dbebef8fcfa203fa794056af4189f5a0aae54fc94f702f0bcd9fd94": {
-      "unchanged": true,
-      "sourceBytes": 110524,
-      "compiledBytes": 110524
-    },
     "b2e75bb698230263704c14ccddad397fb00f03ef6460f40ec2e0906c29821821": {
       "unchanged": false,
       "sourceBytes": 281905,
@@ -708,11 +718,6 @@
       "sourceBytes": 1952,
       "compiledBytes": 2166
     },
-    "d31f77e7c5599d9310f1ae8d117f92ff4a416fdb07054129e37f7e94a6d64dd0": {
-      "unchanged": true,
-      "sourceBytes": 210414,
-      "compiledBytes": 210414
-    },
     "d7a601da3a488bd2ffddfaf1bf108e34b78afac5def1224cee48757f68afdad3": {
       "unchanged": false,
       "sourceBytes": 4400,
@@ -727,11 +732,6 @@
       "unchanged": true,
       "sourceBytes": 2792,
       "compiledBytes": 2792
-    },
-    "dd4927966c3bd5622cb3c585d0418330ee51bd9a71efabe66c5aa3bce0dfe828": {
-      "unchanged": true,
-      "sourceBytes": 157627,
-      "compiledBytes": 157627
     },
     "e29b0faa2d3696f4ccb3891be283e55f770bcffd8992996cf0b3519c89b01943": {
       "unchanged": true,

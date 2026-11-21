@@ -459,7 +459,7 @@ def clean_slide(raw: Any) -> dict[str, Any]:
             body_raw = [x.strip() for x in body_raw.splitlines() if x.strip()]
         body = [_text(x, 500) for x in body_raw if _text(x, 500)][:12]
         layout = str(item.get("layout") or "standard").strip()
-        if layout not in ("standard", "cover", "reading", "cards", "steps", "compare"):
+        if layout not in ("standard", "cover", "scene", "reading", "characters", "plot", "cards", "steps", "compare"):
             layout = "standard"
         cards_raw = item.get("cards") or []
         cards = []
@@ -485,7 +485,37 @@ def clean_slide(raw: Any) -> dict[str, Any]:
                     qq, qans = _text(q.get("q"), 260), _text(q.get("a"), 450)
                     if qq:
                         qa.append({"q": qq, "a": qans})
-        if not heading and not body and not cards and not steps and not qa:
+        chars_raw = item.get("characters") or []
+        characters = []
+        if isinstance(chars_raw, list):
+            for ch in chars_raw[:4]:
+                if isinstance(ch, dict):
+                    cname = _text(ch.get("name"), 30)
+                    crole = _text(ch.get("role"), 30)
+                    ctraits = [_text(t, 20) for t in (ch.get("traits") or []) if _text(t, 20)][:4]
+                    cdetails = _text(ch.get("details"), 320)
+                    cemotion = _text(ch.get("emotion"), 200)
+                    if cname or cdetails or cemotion:
+                        characters.append({
+                            "name": cname,
+                            "role": crole,
+                            "traits": ctraits,
+                            "details": cdetails,
+                            "emotion": cemotion,
+                        })
+        plot_raw = item.get("plot") or []
+        plot = []
+        if isinstance(plot_raw, list):
+            for pl in plot_raw[:5]:
+                if isinstance(pl, dict):
+                    pst = _text(pl.get("stage"), 24)
+                    psc = _text(pl.get("scene"), 40)
+                    pev = _text(pl.get("event"), 240)
+                    pfl = _text(pl.get("feeling"), 80)
+                    if pst or psc or pev:
+                        plot.append({"stage": pst, "scene": psc, "event": pev, "feeling": pfl})
+        fig_cleaned = clean_figure(item.get("figure")) if item.get("figure") else {}
+        if not heading and not body and not cards and not steps and not qa and not characters and not plot and not fig_cleaned:
             raise ValueError("每页幻灯片至少需要标题或正文")
         audio_url = str(item.get("audioUrl") or "").strip()
         if audio_url and not (
@@ -493,21 +523,25 @@ def clean_slide(raw: Any) -> dict[str, Any]:
             or re.fullmatch(r"data:audio/(?:mpeg|mp3|ogg|wav|webm);base64,[A-Za-z0-9+/]+={0,2}", audio_url)
         ):
             raise ValueError("音频链接格式不正确")
-        if len(audio_url) > 350000:
+        if len(audio_url) > 1800000:
             raise ValueError("音频数据过大，请改用音频链接或压缩后上传")
         slide_obj: dict[str, Any] = {
             "layout": layout,
             "badge": _text(item.get("badge"), 40),
             "heading": heading or "幻灯片",
             "subtitle": _text(item.get("subtitle"), 120),
+            "caption": _text(item.get("caption"), 120),
             "body": body,
+            "characters": characters,
+            "plot": plot,
             "cards": cards,
             "steps": steps,
             "qa": qa,
             "highlight": _text(item.get("highlight"), 360),
+            "audioLabel": _text(item.get("audioLabel"), 80),
             "audioUrl": audio_url,
             "audioText": _text(item.get("audioText"), 600),
-            "figure": clean_figure(item.get("figure")) if item.get("figure") else {},
+            "figure": fig_cleaned,
         }
         slides.append(slide_obj)
     return {
