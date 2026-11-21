@@ -39,7 +39,7 @@ from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUP
 from changying.web.weekend_pages import plan_page_html
 from changying.services.lesson_written import (MAX_KNOWLEDGE, lesson_goals, literal_written_questions, suggest_knowledge,
     valid_written_questions, replace_written_drafts, written_templates, template_meta, lesson_question_number)
-from changying.web.weekend_courseware import PreparedPagesBody, import_prepared_courseware
+from changying.web.weekend_courseware import PreparedPagesBody, auto_populate_courseware, import_prepared_courseware
 
 AI_FEATURE = "weekend_lesson_draft"
 # A paper question starts with "3.【复述】", "C1.【对比】" or "1、概括…"; headings never do.
@@ -1174,6 +1174,11 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 commit=False,
                 audit_detail=f"lesson={lesson.id}:pages={len(courseware_pages)}:bundle=1",
             )
+        elif subject == "语文":
+            auto_populate_courseware(
+                implementation, db, u, lesson,
+                replace_existing=True, approve=True, commit=False,
+            )
         if before is not None:
             db.execute(insert(versions).values(school_id=u.school_id, teacher_id=u.id, lesson_id=lesson.id,
                 before_json=history.serialize(before), after_hash=history.digest(plan_state(db, u, lesson))))
@@ -2167,7 +2172,7 @@ function load(){api('/teacher/weekend/lessons/'+lid+'/imported-materials').then(
             tips = []
             if not st["hasPlan"]:
                 tips.append("还没有教案：可以用 AI 备课草稿")
-            if st["approvedQuestions"] == 0:
+            if st["approvedQuestions"] == 0 and subject != "语文":
                 tips.append("还没有审核通过的习题")
             out.append({"subject": subject, "lessonNo": nxt, "schoolWeek": r.school_week if r else None, "schoolUnit": r.school_unit if r else "", "plannedDate": r.planned_date if r else "",
                         **st, "weakKnowledge": weak_knowledge(db, u, subject), "tips": tips})
