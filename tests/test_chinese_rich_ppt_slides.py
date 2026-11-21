@@ -101,7 +101,8 @@ def test_courseware_slide_renderer_and_editor_preserves_rich_fields():
 
     assert "speechSynthesis" not in COURSEWARE_JS
     assert "speechSynthesis" not in COURSEWARE_PLAN_JS
-    assert "9500000" in COURSEWARE_PLAN_JS
+    assert "18000000" in COURSEWARE_PLAN_JS
+    assert "media-src 'self' data: blob:;" in (ROOT / "app_v924.py").read_text(encoding="utf-8")
 
     sample = {
         "title": "短文精读",
@@ -173,6 +174,7 @@ function makeNode(tag, attrs, children) {{
       return c;
     }},
     addEventListener(ev, fn) {{ (listeners[ev] = listeners[ev] || []).push(fn); }},
+    dispatchEvent(ev) {{ (listeners[ev] || []).forEach(fn => fn()); }},
     dispatchPlay() {{ (listeners.play || []).forEach(fn => fn()); }},
     play() {{ this.dispatchPlay(); return Promise.resolve(); }},
     pause() {{ this._pausedCalls++; }},
@@ -212,6 +214,21 @@ assert.equal(audios.length, 2);
 assert.equal(audios[0].controls, true);
 audios[1].play();
 assert.equal(audios[0]._pausedCalls, 1, 'playing second audio must pause first');
+audios[0].dispatchEvent('error');
+assert(all(host, n => !n.hidden && String(n.textContent).includes('音频加载失败')).length === 1, 'error event should surface audio load error');
+audios[0].dispatchEvent('loadedmetadata');
+assert.equal(all(host, n => !n.hidden && String(n.textContent).includes('音频加载失败')).length, 0, 'loadedmetadata should clear audio load error');
+
+// Verify Blob URL resolution converts valid base64 audio data URLs when Blob/atob/URL.createObjectURL exist
+const blobStub = class {{ constructor(parts, opts) {{ this.parts = parts; this.type = opts && opts.type; }} }};
+const resolvedBlobUrl = (function() {{
+  const Blob = blobStub;
+  const atob = (b64) => Buffer.from(b64, 'base64').toString('binary');
+  const URL = {{ createObjectURL: (b) => 'blob:mock/' + b.type + '/' + b.parts[0].length }};
+  const fn = new Function('Blob', 'atob', 'URL', 'var CW_AUDIO_BLOB_CACHE={{}};' + cwResolveAudioSrc.toString() + ';return cwResolveAudioSrc("data:audio/mpeg;base64,SUQzAw==");');
+  return fn(Blob, atob, URL);
+}})();
+assert.equal(resolvedBlobUrl, 'blob:mock/audio/mpeg/4');
 const allTexts = all(host, () => true).map(n => n.textContent).join('\n');
 assert(allTexts.includes('暖灯插图说明'), 'missing caption');
 assert(allTexts.includes('分镜1') && allTexts.includes('分镜2'), 'missing gallery captions');
@@ -410,6 +427,10 @@ bundle = {
 
 with TestClient(app) as client:
     th, sh, student_id, school_id = setup(client)
+    plan_html = client.get('/v1/weekend-plan')
+    assert plan_html.status_code == 200
+    csp = plan_html.headers.get('content-security-policy', '')
+    assert "media-src 'self' data: blob:;" in csp, csp
     imp = client.post(
         '/teacher/weekend/lessons/import',
         headers=th,

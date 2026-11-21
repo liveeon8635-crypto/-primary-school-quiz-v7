@@ -827,6 +827,24 @@ function cwAppendRichText(node,text){
     }
   });
 }
+var CW_AUDIO_BLOB_CACHE={};
+function cwResolveAudioSrc(raw){
+  var s=String(raw||'');
+  if(!s)return '';
+  var m=/^data:(audio\/[A-Za-z0-9.+-]+);base64,([\s\S]+)$/.exec(s);
+  if(m&&typeof Blob==='function'&&typeof Uint8Array==='function'&&typeof atob==='function'&&typeof URL!=='undefined'&&URL.createObjectURL){
+    if(CW_AUDIO_BLOB_CACHE[s])return CW_AUDIO_BLOB_CACHE[s];
+    try{
+      var bin=atob(m[2].replace(/\s+/g,''));
+      var bytes=new Uint8Array(bin.length);
+      for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+      var blobUrl=URL.createObjectURL(new Blob([bytes],{type:m[1]}));
+      CW_AUDIO_BLOB_CACHE[s]=blobUrl;
+      return blobUrl;
+    }catch(_e){}
+  }
+  return s;
+}
 function cwBindSingleAudio(au){
   if(!au||!au.addEventListener)return;
   au.addEventListener('play',function(){
@@ -836,6 +854,18 @@ function cwBindSingleAudio(au){
       if(allAudios[i]!==au&&allAudios[i].pause){try{allAudios[i].pause()}catch(_e){}}
     }
   });
+}
+function cwCreateAudio(raw,styleStr,errBox){
+  var au=el('audio',{controls:true,preload:'metadata',src:cwResolveAudioSrc(raw),style:styleStr});
+  cwBindSingleAudio(au);
+  if(errBox&&au&&au.addEventListener){
+    au.addEventListener('error',function(){
+      errBox.hidden=false;
+      errBox.textContent='音频加载失败，请检查格式或点击“替换 .mp3”重试';
+    });
+    au.addEventListener('loadedmetadata',function(){errBox.hidden=true});
+  }
+  return au;
 }
 function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
   var isCover=cur.layout==='cover';
@@ -867,8 +897,8 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
   if(cur.audioUrl){
     var audioBar=el('div',{style:'background:#fff5f5;border:1px solid #fecaca;border-radius:10px;padding:8px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;text-align:left'});
     audioBar.appendChild(el('span',{style:'font-weight:700;color:#991b1b;white-space:nowrap;'+(big?'font-size:2.1vh':'font-size:13px'),text:'🎧 '+(cur.audioLabel||'课文／讲解配音朗读')}));
-    var au=el('audio',{controls:true,preload:'metadata',src:cur.audioUrl,style:'flex:1;min-width:210px;height:36px'});
-    cwBindSingleAudio(au);
+    var audioErr=el('span',{hidden:true,style:'flex-basis:100%;color:#b42318;font-size:12px;font-weight:600'});
+    var au=cwCreateAudio(cur.audioUrl,'flex:1;min-width:210px;height:36px',audioErr);
     var audioNote=el('span',{hidden:true,style:'color:#b45309;font-size:12px',text:'若大屏未自动出声，请轻点页面后点播放'});
     audioBar.appendChild(au);
     audioBar.appendChild(audioNote);
@@ -881,6 +911,7 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
       }});
       audioBar.appendChild(scriptToggle);
     }
+    audioBar.appendChild(audioErr);
     main.appendChild(audioBar);
     if(scriptBox)main.appendChild(scriptBox);
     if(big&&view){
@@ -1198,9 +1229,9 @@ function cwPlan(box,lessonId,refresh){
             row.appendChild(top);
             if(sl.audioLabel)row.appendChild(el('div',{class:'muted',style:'margin:4px 0',text:'配音标题：'+sl.audioLabel}));
             var ctrlRow=el('div',{class:'row',style:'margin-top:6px;align-items:center'});
+            var audErr=el('div',{hidden:true,style:'margin-top:4px;color:#b42318;font-size:12px;font-weight:600'});
             if(sl.audioUrl){
-              var au=el('audio',{controls:true,preload:'metadata',src:sl.audioUrl,style:'flex:1;min-width:220px;height:34px'});
-              cwBindSingleAudio(au);
+              var au=cwCreateAudio(sl.audioUrl,'flex:1;min-width:220px;height:34px',audErr);
               ctrlRow.appendChild(au);
             }
             var trBox=el('div',{hidden:true,style:'margin-top:8px;padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;font-size:13px;line-height:1.7;white-space:pre-wrap',text:sl.audioText||'（未填写逐字朗读原稿）'});
@@ -1228,7 +1259,7 @@ function cwPlan(box,lessonId,refresh){
               reader.readAsDataURL(f);
             });
             ctrlRow.appendChild(trBtn);ctrlRow.appendChild(repBtn);ctrlRow.appendChild(repIn);ctrlRow.appendChild(repStatus);
-            row.appendChild(ctrlRow);row.appendChild(trBox);
+            row.appendChild(ctrlRow);row.appendChild(audErr);row.appendChild(trBox);
             panel.appendChild(row);
           });
         });
@@ -1302,7 +1333,7 @@ function cwPlan(box,lessonId,refresh){
         bundle=parsed;
         if(bundle&&bundle.courseware)bundle=bundle.courseware;
         if(!bundle||!Array.isArray(bundle.pages)){msg.textContent='课件包缺少 pages 列表';return}
-        if(JSON.stringify(bundle.pages).length>9500000){msg.textContent='课件内容不能超过 9.5 MB，请压缩图片或分批导入';return}
+        if(JSON.stringify(bundle.pages).length>18000000){msg.textContent='课件内容不能超过 18 MB，请压缩图片或分批导入';return}
         var url='/teacher/weekend/lessons/'+lessonId+'/courseware/prepared-import';
         api(url,{json:{dryRun:true,replaceExisting:replacePrepared.checked,pages:bundle.pages}}).then(function(preview){
           var warnings=(preview.pages||[]).filter(function(p){return !!p.notice}).length;
