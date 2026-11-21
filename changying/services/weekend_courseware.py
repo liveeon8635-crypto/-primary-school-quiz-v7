@@ -555,6 +555,8 @@ def clean_view(kind: str, params: dict[str, Any], raw: Any) -> dict[str, Any]:
 
 def written_question(kind: str, params: dict[str, Any], page_text: str = "") -> tuple[str, str]:
     """The pupils' task for the existing written answer flow (text/photo, teacher-reviewed)."""
+    if kind == "slide":
+        raise ValueError("图文幻灯片不是作答题，请另行配置并审核阅读或写作任务")
     if kind == "clock":
         way = "顺时针" if params["direction"] == "cw" else "逆时针"
         stem = f"钟面上的指针从数字 {params['start']} 出发，{way}旋转 {params['angle']}°。\n\n{params['question']}"

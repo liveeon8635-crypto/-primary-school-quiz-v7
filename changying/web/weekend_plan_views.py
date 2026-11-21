@@ -1177,7 +1177,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         elif subject == "语文":
             auto_populate_courseware(
                 implementation, db, u, lesson,
-                replace_existing=True, approve=True, commit=False,
+                replace_existing=True, approve=False, commit=False,
             )
         if before is not None:
             db.execute(insert(versions).values(school_id=u.school_id, teacher_id=u.id, lesson_id=lesson.id,

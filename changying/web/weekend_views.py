@@ -307,6 +307,15 @@ def install_weekend_views(implementation: Any) -> APIRouter:
             if notice and not board:
                 out["coursewareNotice"] = notice
         if board:
+            if "courseware" in out and out["courseware"]["kind"] == "slide":
+                # Keep the cursor/count contract, but send only the current page.
+                # Hidden pages must not carry text, answers or media in the response.
+                shown = out["courseware"]
+                current = int(shown["view"].get("slideIndex", 0))
+                shown["params"] = {**shown["params"], "slides": [
+                    slide if index == current else {}
+                    for index, slide in enumerate(shown["params"].get("slides", []))
+                ]}
             if row.covered:
                 out["content"] = []
             elif course_type in ("reading", "writing") and no != practice_no:
