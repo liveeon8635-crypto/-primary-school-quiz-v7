@@ -174,6 +174,7 @@ from changying.web.weekend_practice import install_weekend_practice
 from changying.web.weekend_scoring_views import install_weekend_scoring
 from changying.web.weekend_report_views import install_weekend_reports
 from changying.web.weekend_courseware import install_weekend_courseware
+from changying.web.weekend_node_reveal import install_weekend_node_reveal
 from changying.web.weekend_views import install_weekend_views
 from changying.web.v1_classroom_live_board import (
     install_v1_classroom_live_board_patch,
@@ -518,6 +519,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_weekend_reports(implementation)
     install_weekend_plan(implementation)
     install_weekend_courseware(implementation)
+    install_weekend_node_reveal(implementation)
     install_cube_figure_storage(implementation)
     install_knowledge_map_views(implementation)
     install_knowledge_map_student(implementation)
