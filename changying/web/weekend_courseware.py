@@ -397,7 +397,7 @@ def import_prepared_courseware(
         kind="multi",
         stage_no=int(items[0]["stage"]) if items else 3,
         status="approved" if approved else "draft",
-        params_json=json.dumps({"version": 2, "items": items}, ensure_ascii=False),
+        params_json=_serialize_courseware_items(items),
         approved_json=json.dumps(approved) if approved else None,
         approved_stage=None,
         template_id=None,
@@ -549,7 +549,7 @@ def auto_populate_courseware(
         kind="multi",
         stage_no=int(items[0]["stage"]),
         status="approved" if approved else "draft",
-        params_json=json.dumps({"version": 2, "items": items}, ensure_ascii=False),
+        params_json=_serialize_courseware_items(items),
         approved_json=json.dumps(approved) if approved else None,
         approved_stage=None,
         template_id=None,
@@ -563,6 +563,72 @@ def auto_populate_courseware(
         db.commit()
     return len(generated)
 
+_MEDIA_REF_PREFIX = "@media:"
+_MEDIA_DEDUP_MIN_LEN = 512
+
+
+def _extract_media(value: Any, media: dict[str, str]) -> Any:
+    """Replace repeated large data: URLs with compact content-addressed references."""
+    if isinstance(value, str):
+        if value.startswith("data:") and len(value) >= _MEDIA_DEDUP_MIN_LEN:
+            digest = hashlib.sha256(value.encode("ascii", errors="ignore")).hexdigest()[:24]
+            if digest not in media:
+                media[digest] = value
+            return _MEDIA_REF_PREFIX + digest
+        return value
+    if isinstance(value, list):
+        return [_extract_media(item, media) for item in value]
+    if isinstance(value, dict):
+        return {k: _extract_media(v, media) for k, v in value.items()}
+    return value
+
+
+def _hydrate_media(value: Any, media: dict[str, str]) -> Any:
+    """Restore content-addressed @media: references back to shared string objects."""
+    if isinstance(value, str):
+        if value.startswith(_MEDIA_REF_PREFIX):
+            return media.get(value[len(_MEDIA_REF_PREFIX):], value)
+        return value
+    if isinstance(value, list):
+        return [_hydrate_media(item, media) for item in value]
+    if isinstance(value, dict):
+        return {k: _hydrate_media(v, media) for k, v in value.items()}
+    return value
+
+
+def _serialize_courseware_items(items: list[dict[str, Any]]) -> str:
+    """Serialize v2 courseware items with deduplicated base64 media to keep DB rows compact."""
+    media: dict[str, str] = {}
+    compact_items = _extract_media(items, media)
+    envelope: dict[str, Any] = {"version": 2, "items": compact_items}
+    if media:
+        envelope["media"] = media
+    return json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
+
+
+def _slim_response_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Omit duplicate base64 media from previousDraft and identical approved snapshots in API responses."""
+    out = dict(item)
+    prev = out.get("previousDraft")
+    if isinstance(prev, dict):
+        out["previousDraft"] = {
+            "kind": prev.get("kind"),
+            "pageText": prev.get("pageText", ""),
+            "writtenTask": bool(prev.get("writtenTask")),
+            "hasPrevious": True,
+        }
+    approved = out.get("approved")
+    params = out.get("params")
+    if out.get("status") == "approved" and isinstance(approved, dict) and isinstance(params, dict):
+        slim_approved = dict(approved)
+        if slim_approved.get("stepFigures") and slim_approved.get("stepFigures") == params.get("stepFigures"):
+            slim_approved.pop("stepFigures", None)
+        if slim_approved.get("slides") and slim_approved.get("slides") == params.get("slides"):
+            slim_approved.pop("slides", None)
+        out["approved"] = slim_approved
+    return out
+
+
 def _short(text: str, limit: int = 40) -> str:
     line = " ".join(str(text or "").split())
     return line if len(line) <= limit else line[:limit] + "…"
@@ -574,7 +640,11 @@ def items_of(row: Any) -> list[dict[str, Any]]:
         return []
     data = json.loads(row.params_json or "{}")
     if isinstance(data, dict) and data.get("version") == 2:
-        return list(data.get("items") or [])
+        items = list(data.get("items") or [])
+        media = data.get("media")
+        if isinstance(media, dict) and media:
+            items = _hydrate_media(items, media)
+        return items
     draft = data if isinstance(data, dict) else {}
     approved = json.loads(row.approved_json) if row.approved_json else None
     items = [{"stage": int(row.stage_no), "page": draft.get("page"), "kind": row.kind, "status": row.status, "params": draft,
@@ -608,7 +678,7 @@ def invalidate_courseware_on_reimport(db: Any, table: Table, lesson_id: int) -> 
     db.execute(update(table).where(table.c.id == row.id).values(
         kind="multi", stage_no=int(items[0]["stage"]) if items else 3,
         status="draft", approved_json=None, approved_stage=None, template_id=None,
-        params_json=json.dumps({"version": 2, "items": items}, ensure_ascii=False),
+        params_json=_serialize_courseware_items(items),
         live_json="{}", updated_at=datetime.utcnow(),
     ))
     return len(items)
@@ -1553,12 +1623,13 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         return int(getattr(p, "grade", 0) or 0) if p is not None else 0
 
     def write(db: Any, u: Any, lesson: Any, items: list[dict[str, Any]],
-              reset_pages: list[tuple[int, int | None]] | None = None, commit: bool = True) -> None:
-        c = row_for(db, lesson, lock=True)
+              reset_pages: list[tuple[int, int | None]] | None = None, commit: bool = True,
+              locked_row: Any = None) -> list[dict[str, Any]]:
+        c = locked_row if locked_row is not None else row_for(db, lesson, lock=True)
         items = sorted(items, key=lambda i: (int(i["stage"]), -1 if i.get("page") is None else int(i["page"])))
         approved = [[int(i["stage"]), i.get("page")] for i in items if i.get("approved") is not None]
         values = dict(kind="multi", stage_no=int(items[0]["stage"]) if items else 3, status="approved" if approved else "draft",
-                      params_json=json.dumps({"version": 2, "items": items}, ensure_ascii=False),
+                      params_json=_serialize_courseware_items(items),
                       approved_json=json.dumps(approved) if approved else None, approved_stage=None, template_id=None,
                       updated_at=datetime.utcnow())
         if c is not None and reset_pages:
@@ -1582,6 +1653,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             db.execute(update(t).where(t.c.id == c.id).values(**values))
         if commit:
             db.commit()
+        return items
 
     def task(item: dict[str, Any], params: dict[str, Any]) -> dict[str, str]:
         try:
@@ -1589,14 +1661,16 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         except ValueError as e:
             return {"stem": str(e), "reference": ""}
 
-    def payload(db: Any, lesson: Any, teacher_id: int) -> dict[str, Any]:
+    def payload(db: Any, lesson: Any, teacher_id: int, preloaded_items: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         items = []
         course_type = course_type_for(db, implementation, lesson) or "pending"
         stage_options = stages_for(course_type)
         practice_no = practice_stage(course_type)
         page_cache = {int(stage["no"]): pages_for(db, lesson, int(stage["no"]), teacher_id) for stage in stage_options}
         stage4_sources = practice_courseware_sources(implementation, db, lesson, teacher_id)
-        for i in items_of(row_for(db, lesson)):
+        source_items = preloaded_items if preloaded_items is not None else items_of(row_for(db, lesson))
+        for raw_item in source_items:
+            i = dict(raw_item)
             stage = int(i.get("stage") or 0)
             pages = page_cache.get(stage, [])
             page_index = i.get("page")
@@ -1618,6 +1692,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         quality_audit = (audit_example_pages(stage_pages(lesson, 3, course_type), items,
                                              globals()["required_visual_type"], stage=3)
                          if course_type == "math" else None)
+        response_items = [_slim_response_item(item) for item in items]
         source_count, mismatch = source_page_mismatch(lesson)
         readiness = {}
         if lesson.subject == "语文":
@@ -1628,16 +1703,17 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 "templates": list(cw.TEMPLATES[lesson.subject]), "kindLabels": cw.KIND_LABEL,
                 "sourceQuestionCount": source_count, "sourcePageMismatch": mismatch,
                 "qualityAudit": quality_audit,
-                "hasSource": bool((lesson.reading_plan or "").strip()), "items": items,
+                "hasSource": bool((lesson.reading_plan or "").strip()), "items": response_items,
                 "stageReadiness": readiness.get("stageReadiness", []),
                 "startReasons": readiness.get("startReasons", []),
                 "canStart": readiness.get("canStart", True),
                 "pages": {str(n): [_short(x, 80) for x in values] for n, values in page_cache.items()}}
 
     def upsert(db: Any, u: Any, lesson: Any, stage: int, page: int | None, kind: str, params: dict[str, Any],
-               written_task: bool | None, page_text: str) -> None:
+               written_task: bool | None, page_text: str) -> list[dict[str, Any]]:
         practice_no = practice_stage(course_type_for(db, implementation, lesson))
-        items = items_of(row_for(db, lesson, lock=True))
+        locked = row_for(db, lesson, lock=True)
+        items = items_of(locked)
         old = find(items, stage, page)
         if stage == practice_no and written_task:
             raise HTTPException(400, '随堂练习已有原题，不需要重复生成学生作答题')
@@ -1659,7 +1735,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 old["writtenTask"] = bool(written_task)
         target = find(items, stage, page)
         target["updatedAt"] = datetime.now(implementation.SCHOOL_TZ).strftime("%Y-%m-%d %H:%M")
-        write(db, u, lesson, items, reset_pages=[(stage, page)])
+        return write(db, u, lesson, items, reset_pages=[(stage, page)], locked_row=locked)
 
     @router.get("/teacher/weekend/lessons/{lid}/courseware")
     def get_courseware(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1686,7 +1762,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     def restore_previous(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         lesson = my_lesson(db, u, lid)
         page = checked_page(db, lesson, b.stageNo, b.page, u.id)
-        items = items_of(row_for(db, lesson, lock=True))
+        locked = row_for(db, lesson, lock=True)
+        items = items_of(locked)
         item = find(items, b.stageNo, page)
         previous = item.get('previousDraft') if item else None
         if not isinstance(previous, dict):
@@ -1700,8 +1777,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         item['previousDraft'] = {k: item.get(k) for k in ('kind', 'params', 'writtenTask', 'pageText')}
         item.update({k: previous.get(k) for k in ('kind', 'params', 'writtenTask', 'pageText')})
         item['status'] = 'draft'
-        write(db, u, lesson, items)
-        return payload(db, lesson, u.id)
+        items = write(db, u, lesson, items, locked_row=locked)
+        return payload(db, lesson, u.id, preloaded_items=items)
 
     @router.post("/teacher/weekend/lessons/{lid}/courseware/generate")
     def generate(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1821,8 +1898,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 params = cw.clean(b.kind, {**params, "figure": fallback_figure}, lesson.reading_plan or "")
         if b.kind == "steps":
             params = attach_original_figure(params, lesson_figures(implementation, db, lesson, written), page_text)
-        upsert(db, u, lesson, b.stageNo, page, b.kind, params, b.writtenTask, page_text)
-        return payload(db, lesson, u.id)
+        items = upsert(db, u, lesson, b.stageNo, page, b.kind, params, b.writtenTask, page_text)
+        return payload(db, lesson, u.id, preloaded_items=items)
 
     def drop_template(db: Any, u: Any, lesson: Any, template_id: int | None) -> None:
         # Only the lesson's preparation template (session_id 0); classroom snapshots are never touched.
@@ -1839,7 +1916,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         if course_type == "math" and b.stageNo == 3 and source_page_mismatch(lesson)[1]:
             raise HTTPException(409, "原文题号与例题页数不符，已禁止审核或展示错误页。")
         page = checked_page(db, lesson, b.stageNo, b.page, u.id)
-        items = items_of(row_for(db, lesson))
+        locked = row_for(db, lesson, lock=True)
+        items = items_of(locked)
         item = find(items, b.stageNo, page)
         if item is None:
             raise HTTPException(404, "这一页还没有课件，请先生成或填写")
@@ -1926,15 +2004,16 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         if b.stageNo == practice_no:
             item['approvedAnswerBinding'] = answer_binding
         item.pop("reimportReviewRequired", None)
-        write(db, u, lesson, items, reset_pages=[(b.stageNo, page)])
+        items = write(db, u, lesson, items, reset_pages=[(b.stageNo, page)], commit=False, locked_row=locked)
         implementation.audit(db, u, "weekend.courseware.approve", f"lesson={lid}:stage={b.stageNo}:page={page}:template={template_id}")
         db.commit()
-        return payload(db, lesson, u.id)
+        return payload(db, lesson, u.id, preloaded_items=items)
 
     @router.post("/teacher/weekend/lessons/{lid}/courseware/remove")
     def remove(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         lesson = my_lesson(db, u, lid)
-        items = items_of(row_for(db, lesson))
+        locked = row_for(db, lesson, lock=True)
+        items = items_of(locked)
         item = find(items, b.stageNo, b.page)
         if item is None:
             raise HTTPException(404, "这一页没有课件")
@@ -1942,8 +2021,8 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             raise HTTPException(409, "旧课件关联了学生书面题，不能直接删除课件；请先人工核对历史练习")
         drop_template(db, u, lesson, item.get("templateId"))
         items.remove(item)
-        write(db, u, lesson, items)
-        return payload(db, lesson, u.id)
+        items = write(db, u, lesson, items, locked_row=locked)
+        return payload(db, lesson, u.id, preloaded_items=items)
 
     @router.get("/teacher/weekend/courseware/templates")
     def list_templates(subject: str = "", u: Any = Depends(current_user), db: Any = Depends(get_db)):

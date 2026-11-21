@@ -1396,7 +1396,14 @@ function cwPlan(box,lessonId,refresh){
           .then(function(r){msg.textContent='已存为模板：'+r.name}).catch(function(e){msg.textContent=e.message});
       }}));
       line.appendChild(el('button',{text:'套用模板',onclick:function(){pickTemplate(x)}}));
-      if(it&&it.status==='draft')line.appendChild(el('button',{class:'primary',text:'审核通过',onclick:function(){run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:y.page}})},'审核')}}));
+      if(it&&it.status==='draft')line.appendChild(el('button',{class:'primary',text:'审核通过',onclick:function(e){
+        if(busy){note.className='notice warn';note.textContent='正在处理另一页，请等它完成后再点。';return}
+        var btn=e&&e.target;if(btn){btn.disabled=true;btn.textContent='审核中…'}
+        note.className='notice';note.textContent='正在审核这一页，请稍候…';
+        run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:y.page}})},'审核',function(ok){
+          if(!ok&&btn){btn.disabled=false;btn.textContent='审核通过'}
+        });
+      }}));
       if(it)line.appendChild(el('button',{text:'删除',onclick:function(){if(confirm('删除这一页的课件？'))api('/teacher/weekend/lessons/'+lessonId+'/courseware/remove',{json:{stageNo:+stageNo,page:x.page}}).then(paint).catch(function(e){msg.textContent=e.message})}}));
       rows.appendChild(line);line.appendChild(note);rowEls[String(x.page)]=line;
     });
@@ -1442,10 +1449,10 @@ function cwPlan(box,lessonId,refresh){
       });
     }).catch(function(e){listBox.appendChild(el('div',{class:'notice error',text:e.message}))});
   }
-  function run(todo,call,label){
+  function run(todo,call,label,done){
     if(busy)return;busy=true;var failed=[],i=0,last=null;
     function next(){
-      if(i>=todo.length){busy=false;if(last)paint(last);msg.textContent=label+'完成 '+(todo.length-failed.length)+'/'+todo.length+' 页'+(failed.length?'。未完成：\n'+failed.join('\n'):'');if(refresh)refresh();
+      if(i>=todo.length){busy=false;if(last)paint(last);msg.textContent=label+'完成 '+(todo.length-failed.length)+'/'+todo.length+' 页'+(failed.length?'。未完成：\n'+failed.join('\n'):'');if(done)done(failed.length===0);if(refresh)refresh();
         return}
       var x=todo[i++];msg.textContent='正在'+label+'第 '+i+'/'+todo.length+' 页…';
       call(x).then(function(d){last=d}).catch(function(e){failed.push(e.message)}).then(next);
