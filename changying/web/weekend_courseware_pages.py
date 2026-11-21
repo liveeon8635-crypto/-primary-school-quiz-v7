@@ -830,30 +830,120 @@ function cwAppendRichText(node,text){
 function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
   var isCover=cur.layout==='cover';
   var isReading=cur.layout==='reading';
-  var cardStyle='background:linear-gradient(135deg,#fffdf9 0%,#fbf5e9 100%);color:#1f2937;border:1px solid #e6d8be;border-top:5px solid #8b1e24;border-radius:14px;padding:'+(big?'28px 34px':'20px 24px')+';box-shadow:0 4px 16px rgba(120,53,15,0.08);min-height:'+(big?'62vh':'300px')+';display:flex;flex-direction:column;justify-content:space-between;gap:12px;margin-bottom:14px';
+  var hasUploadedImg=!!(cur.figure&&cur.figure.type==='uploaded_image'&&cwFigureOk(cur.figure));
+  var hasOtherFig=!!(cur.figure&&cur.figure.type&&cur.figure.type!=='uploaded_image');
+  var cardStyle='background:linear-gradient(135deg,#fffdf9 0%,#fbf4e6 100%);color:#1f2937;border:1px solid #e6d8be;border-top:5px solid #8b1e24;border-radius:14px;padding:'+(big?'26px 32px':'18px 22px')+';box-shadow:0 6px 20px rgba(120,53,15,0.09);min-height:'+(big?'64vh':'320px')+';display:flex;flex-direction:column;justify-content:space-between;gap:12px;margin-bottom:16px';
   var slideEl=el('div',{style:cardStyle});
   var topBar=el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #efe3cc;padding-bottom:8px'});
   var leftMeta=el('div',{style:'display:flex;align-items:center;gap:8px;flex-wrap:wrap'});
   leftMeta.appendChild(el('span',{style:'font-weight:700;color:#8b1e24;'+(big?'font-size:2.2vh':'font-size:13px'),text:p.title||'课件幻灯片'}));
-  if(cur.badge)leftMeta.appendChild(el('span',{style:'background:#8b1e24;color:#fff;padding:2px 8px;border-radius:999px;font-weight:700;'+(big?'font-size:1.8vh':'font-size:12px'),text:cur.badge}));
+  if(cur.badge)leftMeta.appendChild(el('span',{style:'background:#8b1e24;color:#fff;padding:2px 9px;border-radius:999px;font-weight:700;'+(big?'font-size:1.8vh':'font-size:12px'),text:cur.badge}));
   topBar.appendChild(leftMeta);
   topBar.appendChild(el('span',{class:'tag',style:'background:#f3e8d2;color:#78350f;font-weight:700',text:'第 '+(idx+1)+' / '+total+' 页'}));
   slideEl.appendChild(topBar);
-  var main=el('div',{style:'flex:1;display:flex;flex-direction:column;gap:12px;'+(isCover?'justify-content:center;text-align:center;padding:12px 0':'')});
+  var main=el('div',{style:'flex:1;display:flex;flex-direction:column;gap:12px;'+(isCover?'justify-content:center;text-align:center;padding:8px 0':'')});
+  if(isCover&&hasUploadedImg){
+    var heroWrap=el('div',{style:'display:flex;flex-direction:column;gap:5px'});
+    heroWrap.appendChild(el('img',{src:cur.figure.data_url,alt:cur.figure.alt||cur.heading||'课文插图',style:'display:block;width:100%;max-height:'+(big?'34vh':'230px')+';object-fit:cover;border-radius:12px;border:1px solid #e6d8be;box-shadow:0 4px 12px rgba(120,53,15,0.1)'}));
+    if(cur.caption)heroWrap.appendChild(el('div',{class:'muted',style:'font-size:12px;text-align:center',text:cur.caption}));
+    main.appendChild(heroWrap);
+  }
   if(cur.heading){
-    main.appendChild(el('h3',{style:'margin:2px 0 0;color:#7f1d1d;line-height:1.35;'+(isCover?(big?'font-size:4.4vh':'font-size:24px'):(big?'font-size:3.2vh':'font-size:19px')),text:cur.heading}));
+    main.appendChild(el('h3',{style:'margin:2px 0 0;color:#7f1d1d;line-height:1.35;'+(isCover?(big?'font-size:4.2vh':'font-size:24px'):(big?'font-size:3.1vh':'font-size:19px')),text:cur.heading}));
   }
   if(cur.subtitle){
-    main.appendChild(el('div',{style:'color:#6b4f3a;font-weight:600;'+(big?'font-size:2.3vh':'font-size:14px'),text:cur.subtitle}));
+    main.appendChild(el('div',{style:'color:#6b4f3a;font-weight:600;'+(big?'font-size:2.2vh':'font-size:14px'),text:cur.subtitle}));
+  }
+  if(cur.audioUrl){
+    var audioBar=el('div',{style:'background:#fff5f5;border:1px solid #fecaca;border-radius:10px;padding:8px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;text-align:left'});
+    audioBar.appendChild(el('span',{style:'font-weight:700;color:#991b1b;white-space:nowrap;'+(big?'font-size:2.1vh':'font-size:13px'),text:'🎧 '+(cur.audioLabel||'课文／讲解配音朗读')}));
+    var au=el('audio',{controls:true,preload:'metadata',src:cur.audioUrl,style:'flex:1;min-width:210px;height:36px'});
+    var audioNote=el('span',{hidden:true,style:'color:#b45309;font-size:12px',text:'若大屏未自动出声，请轻点页面后点播放'});
+    audioBar.appendChild(au);
+    audioBar.appendChild(audioNote);
+    main.appendChild(audioBar);
+    if(big&&view){
+      if(view.audioPlaying){
+        try{
+          var pr=au.play();
+          if(pr&&pr.catch)pr.catch(function(){audioNote.hidden=false});
+        }catch(_e){audioNote.hidden=false}
+      }else{
+        try{au.pause()}catch(_e2){}
+      }
+    }
+  }
+  var contentHost=main;
+  if(hasUploadedImg&&!isCover){
+    var splitGrid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;align-items:start;text-align:left'});
+    var figCol=el('div',{style:'background:#fff;border:1px solid #eadcc4;border-radius:12px;padding:8px;box-shadow:0 3px 10px rgba(120,53,15,0.06)'});
+    figCol.appendChild(el('img',{src:cur.figure.data_url,alt:cur.figure.alt||cur.heading||'课文插图',style:'display:block;width:100%;max-height:'+(big?'45vh':'290px')+';object-fit:cover;border-radius:8px'}));
+    if(cur.caption)figCol.appendChild(el('div',{style:'margin-top:6px;font-size:12px;color:#6b4f3a;text-align:center;line-height:1.5',text:cur.caption}));
+    var textCol=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
+    splitGrid.appendChild(figCol);
+    splitGrid.appendChild(textCol);
+    main.appendChild(splitGrid);
+    contentHost=textCol;
   }
   if((cur.body||[]).length){
-    var bodyWrap=el('div',{style:isReading?'background:#fff;border:1px solid #eadcc4;border-radius:10px;padding:14px 18px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.03)':''});
+    var bodyWrap=el('div',{style:isReading?'background:#fff;border:1px solid #eadcc4;border-radius:10px;padding:12px 16px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.03)':''});
     (cur.body||[]).forEach(function(line){
-      var para=el('p',{style:'margin:7px 0;line-height:1.85;white-space:pre-wrap;'+(isReading?'text-indent:2em;':'')+(big?'font-size:2.4vh':'font-size:15px')});
+      var para=el('p',{style:'margin:6px 0;line-height:1.85;white-space:pre-wrap;'+(isReading?'text-indent:2em;':'')+(big?'font-size:2.3vh':'font-size:15px')});
       cwAppendRichText(para,line);
       bodyWrap.appendChild(para);
     });
-    main.appendChild(bodyWrap);
+    contentHost.appendChild(bodyWrap);
+  }
+  if(Array.isArray(cur.characters)&&cur.characters.length){
+    var chGrid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;text-align:left'});
+    cur.characters.forEach(function(ch){
+      var chCard=el('div',{style:'background:#fff;border:1px solid #e7decb;border-left:4px solid #8b1e24;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px'});
+      var chHead=el('div',{style:'display:flex;align-items:center;gap:10px'});
+      chHead.appendChild(el('span',{style:'flex:none;width:36px;height:36px;border-radius:999px;background:#8b1e24;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:16px',text:(ch.name||'人').slice(0,1)}));
+      var chMeta=el('div',{style:'display:flex;flex-direction:column;gap:2px'});
+      chMeta.appendChild(el('b',{style:'color:#1f2937;'+(big?'font-size:2.3vh':'font-size:15px'),text:ch.name||'人物'}));
+      if(ch.role)chMeta.appendChild(el('span',{style:'font-size:12px;color:#6b4f3a',text:ch.role}));
+      chHead.appendChild(chMeta);
+      chCard.appendChild(chHead);
+      if(Array.isArray(ch.traits)&&ch.traits.length){
+        var trRow=el('div',{style:'display:flex;flex-wrap:wrap;gap:6px'});
+        ch.traits.forEach(function(tr){
+          trRow.appendChild(el('span',{style:'background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700',text:tr}));
+        });
+        chCard.appendChild(trRow);
+      }
+      if(ch.details){
+        var det=el('div',{style:'color:#374151;line-height:1.7;white-space:pre-wrap;'+(big?'font-size:2vh':'font-size:13.5px')});
+        cwAppendRichText(det,'细节描写：'+ch.details);
+        chCard.appendChild(det);
+      }
+      if(ch.emotion){
+        var emo=el('div',{style:'padding:6px 10px;border-radius:8px;background:#fdf2f2;color:#7f1d1d;font-weight:600;line-height:1.6;'+(big?'font-size:1.9vh':'font-size:13px')});
+        cwAppendRichText(emo,'情感品质：'+ch.emotion);
+        chCard.appendChild(emo);
+      }
+      chGrid.appendChild(chCard);
+    });
+    contentHost.appendChild(chGrid);
+  }
+  if(Array.isArray(cur.plot)&&cur.plot.length){
+    var plGrid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;text-align:left'});
+    cur.plot.forEach(function(pl,pi){
+      var plCard=el('div',{style:'background:#fff;border:1px solid #e7decb;border-top:3px solid #b45309;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px'});
+      var plTop=el('div',{style:'display:flex;align-items:center;gap:6px'});
+      plTop.appendChild(el('span',{style:'flex:none;width:22px;height:22px;border-radius:999px;background:#b45309;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px',text:String(pi+1)}));
+      if(pl.stage)plTop.appendChild(el('b',{style:'color:#92400e;font-size:13px',text:pl.stage}));
+      plCard.appendChild(plTop);
+      if(pl.scene)plCard.appendChild(el('b',{style:'color:#1f2937;'+(big?'font-size:2.1vh':'font-size:14px'),text:pl.scene}));
+      if(pl.event){
+        var evBox=el('div',{style:'color:#374151;line-height:1.65;white-space:pre-wrap;'+(big?'font-size:1.95vh':'font-size:13px')});
+        cwAppendRichText(evBox,pl.event);
+        plCard.appendChild(evBox);
+      }
+      if(pl.feeling)plCard.appendChild(el('div',{style:'margin-top:auto;padding:4px 8px;border-radius:6px;background:#fffbeb;color:#92400e;font-size:12px;font-weight:700',text:'情感：'+pl.feeling}));
+      plGrid.appendChild(plCard);
+    });
+    contentHost.appendChild(plGrid);
   }
   if(Array.isArray(cur.cards)&&cur.cards.length){
     var grid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;text-align:left'});
@@ -885,7 +975,7 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
     });
     main.appendChild(srow);
   }
-  if(cur.figure&&cur.figure.type)cwFigure(main,cur.figure,big,view,teacher,1);
+  if(hasOtherFig)cwFigure(main,cur.figure,big,view,teacher,1);
   if(Array.isArray(cur.qa)&&cur.qa.length){
     var qaWrap=el('div',{style:'display:flex;flex-direction:column;gap:8px;text-align:left'});
     cur.qa.forEach(function(item,qi){
@@ -913,9 +1003,6 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
     var hl=el('div',{style:'padding:10px 14px;border-radius:10px;background:#fef3c7;border-left:4px solid #b45309;color:#78350f;font-weight:700;white-space:pre-wrap;line-height:1.65;'+(big?'font-size:2.2vh':'font-size:14px')});
     cwAppendRichText(hl,cur.highlight);
     slideEl.appendChild(hl);
-  }
-  if(cur.audioUrl){
-    slideEl.appendChild(el('audio',{controls:true,src:cur.audioUrl,style:'width:100%;margin-top:4px'}));
   }
   return slideEl;
 }
@@ -1000,9 +1087,9 @@ function cwControl(box,c,sid){
   }else if(c.kind==='slide'){
     var sl=((c.params&&c.params.slides)||[]),scount=sl.length||1;
     function slideNow(){return Math.max(0,Math.min(scount-1,Number(view.slideIndex||0)))}
-    button('‹ 上一页',function(){view.slideIndex=Math.max(0,slideNow()-1)});
-    button('下一页 ›',function(){view.slideIndex=Math.min(scount-1,slideNow()+1)});
-    button('🔊 播放/暂停朗读',function(){view.audioPlaying=!view.audioPlaying});
+    button('‹ 上一页',function(){view.slideIndex=Math.max(0,slideNow()-1);view.audioPlaying=false});
+    button('下一页 ›',function(){view.slideIndex=Math.min(scount-1,slideNow()+1);view.audioPlaying=false});
+    button('🔊 大屏播放/暂停朗读',function(){view.audioPlaying=!view.audioPlaying});
   }else{
     bar.appendChild(el('span',{class:'muted',text:'点句子＝在大屏上高亮为同学们找到的依据'}));
     button('显示/隐藏补充资料',function(){view.showMaterial=!view.showMaterial});
@@ -1110,7 +1197,7 @@ function cwPlan(box,lessonId,refresh){
         bundle=parsed;
         if(bundle&&bundle.courseware)bundle=bundle.courseware;
         if(!bundle||!Array.isArray(bundle.pages)){msg.textContent='课件包缺少 pages 列表';return}
-        if(JSON.stringify(bundle.pages).length>3000000){msg.textContent='课件内容不能超过3 MB，请压缩图片或分批导入';return}
+        if(JSON.stringify(bundle.pages).length>9500000){msg.textContent='课件内容不能超过 9.5 MB，请压缩图片或分批导入';return}
         var url='/teacher/weekend/lessons/'+lessonId+'/courseware/prepared-import';
         api(url,{json:{dryRun:true,replaceExisting:replacePrepared.checked,pages:bundle.pages}}).then(function(preview){
           var warnings=(preview.pages||[]).filter(function(p){return !!p.notice}).length;
@@ -1298,11 +1385,13 @@ function cwPlan(box,lessonId,refresh){
     var form=el('div');card.appendChild(form);card.appendChild(preview);
     function input(v){var n=el('input',{type:'text'});n.value=v==null?'':String(v);return n}
     function area(v){var n=el('textarea');n.value=v||'';return n}
-    function field(key,label,node){fields[key]=node;form.appendChild(el('label',{class:'field'},el('span',{text:label}),node));node.addEventListener('input',show);node.addEventListener('change',show)}
+    function fieldTo(host,key,label,node){fields[key]=node;host.appendChild(el('label',{class:'field'},el('span',{text:label}),node));node.addEventListener('input',show);node.addEventListener('change',show)}
+    function field(key,label,node){fieldTo(form,key,label,node)}
     function sel(opts,v){var n=el('select');opts.forEach(function(o){n.appendChild(el('option',{value:o[0],text:o[1]}))});n.value=String(v);return n}
     function build(){
       form.textContent='';fields={};kind=kindSel.value;
-      field('title','标题',input(p.title));
+      if(kind==='slide'){card.insertBefore(preview,form)}else{card.insertBefore(form,preview)}
+      if(kind!=='slide')field('title','标题',input(p.title));
       if(kind==='rotation'){
         field('width','网格宽（6—12）',input(p.width||10));field('height','网格高（6—12）',input(p.height||10));
         field('shape','原图顶点（如 2,2; 5,2; 2,4）',input((p.shape||[[2,2],[5,2],[2,4]]).map(function(q){return q.join(',')}).join('; ')));
@@ -1359,27 +1448,37 @@ function cwPlan(box,lessonId,refresh){
           field('figA','数表（每行一行，格子用 | 隔开）',area((f.rows||[]).map(function(r){return r.join(' | ')}).join('\n')));
         }
       }else if(kind==='slide'){
-        if(!Array.isArray(p.slides)||!p.slides.length)p.slides=[{heading:p.title||'幻灯片',body:[x.text||''],highlight:'',audioText:'',audioUrl:''}];
-        var slidesBox=el('div');form.appendChild(slidesBox);
+        if(!Array.isArray(p.slides)||!p.slides.length)p.slides=[{layout:'standard',heading:p.title||'幻灯片',body:[x.text||''],highlight:'',audioLabel:'',audioText:'',audioUrl:''}];
+        var slideEditorDetails=el('details',{style:'margin:8px 0'},el('summary',{style:'cursor:pointer;font-weight:700;color:#8b1e24',text:'展开编辑本组幻灯片文字、配音与页数（共 '+p.slides.length+' 页）'}));
+        var slidesBox=el('div');
+        fieldTo(slideEditorDetails,'title','幻灯片组标题',input(p.title));
+        slideEditorDetails.appendChild(slidesBox);form.appendChild(slideEditorDetails);
         function renderSlideFields(){
           slidesBox.textContent='';
           p.slides.forEach(function(sl,sIdx){
             var scard=el('div',{class:'card',style:'margin:8px 0;padding:10px'});
             var hdr=el('div',{class:'row',style:'justify-content:space-between'});
-            hdr.appendChild(el('b',{text:'第 '+(sIdx+1)+' 页幻灯片'}));
+            var badges=[];
+            if(sl.figure&&sl.figure.type)badges.push('配图');
+            if(sl.audioUrl)badges.push('真人配音');
+            if(Array.isArray(sl.characters)&&sl.characters.length)badges.push('人物档案');
+            if(Array.isArray(sl.plot)&&sl.plot.length)badges.push('情节脉络');
+            if(Array.isArray(sl.cards)&&sl.cards.length)badges.push('考点卡片');
+            if(Array.isArray(sl.qa)&&sl.qa.length)badges.push('互动点拨');
+            hdr.appendChild(el('b',{text:'第 '+(sIdx+1)+' 页幻灯片'+(badges.length?'（含：'+badges.join(' / ')+'）':'')}));
             if(p.slides.length>1)hdr.appendChild(el('button',{type:'button',text:'删除本页',onclick:function(){p.slides.splice(sIdx,1);renderSlideFields();show()}}));
             scard.appendChild(hdr);
-            var hIn=input(sl.heading||''),bIn=area((sl.body||[]).join('\n')),hlIn=input(sl.highlight||''),auIn=input(sl.audioUrl||'');
-            [['页标题',hIn,function(){sl.heading=hIn.value}],['正文段落（每行一段，可用 ==重点== 高亮）',bIn,function(){sl.body=lines(bIn)}],['重点／答题模板（高亮框）',hlIn,function(){sl.highlight=hlIn.value}],['真人音频链接（可选 .mp3 URL）',auIn,function(){sl.audioUrl=auIn.value}]].forEach(function(row){
+            var hIn=input(sl.heading||''),subIn=input(sl.subtitle||''),bIn=area((sl.body||[]).join('\n')),hlIn=input(sl.highlight||''),alIn=input(sl.audioLabel||''),auIn=input(sl.audioUrl||'');
+            [['页标题',hIn,function(){sl.heading=hIn.value}],['副标题',subIn,function(){sl.subtitle=subIn.value}],['正文段落（每行一段，可用 ==重点== 高亮）',bIn,function(){sl.body=lines(bIn)}],['重点／答题模板（高亮框）',hlIn,function(){sl.highlight=hlIn.value}],['配音标题',alIn,function(){sl.audioLabel=alIn.value}],['真人音频链接或 data:audio URL',auIn,function(){sl.audioUrl=auIn.value}]].forEach(function(row){
               var fn=function(){row[2]();show()};row[1].addEventListener('input',fn);row[1].addEventListener('change',fn);
               scard.appendChild(el('label',{class:'field'},el('span',{text:row[0]}),row[1]));
             });
             slidesBox.appendChild(scard);
           });
-          if(p.slides.length<12)slidesBox.appendChild(el('button',{type:'button',text:'+ 添加一页幻灯片',onclick:function(){p.slides.push({layout:'standard',heading:'新页面',body:[],highlight:'',audioUrl:''});renderSlideFields();show()}}));
+          if(p.slides.length<12)slidesBox.appendChild(el('button',{type:'button',text:'+ 添加一页幻灯片',onclick:function(){p.slides.push({layout:'standard',heading:'新页面',body:[],highlight:'',audioLabel:'',audioUrl:''});renderSlideFields();show()}}));
         }
         renderSlideFields();
-        field('teacherNotes','教师备课提示（仅老师可见）',area(p.teacherNotes||''));
+        fieldTo(slideEditorDetails,'teacherNotes','教师备课提示（仅老师可见）',area(p.teacherNotes||''));
       }else{
         field('passage','阅读材料（必须是原文中的连续段落）',area(p.passage));field('question','阅读问题',area(p.question));
         field('material','补充资料（请核实）',area(p.material));field('writingPrompt','书面解释要求',area(p.writingPrompt));p.evidence=p.evidence||[];
@@ -1422,7 +1521,26 @@ function cwPlan(box,lessonId,refresh){
       if(kind==='slide'){
         return {
           title:fields.title.value,
-          slides:(p.slides||[]).map(function(sl){return {heading:sl.heading||'',body:Array.isArray(sl.body)?sl.body:[],highlight:sl.highlight||'',audioText:sl.audioText||'',audioUrl:sl.audioUrl||'',figure:sl.figure||{}}}),
+          slides:(p.slides||[]).map(function(sl){
+            return {
+              layout:sl.layout||'standard',
+              badge:sl.badge||'',
+              heading:sl.heading||'',
+              subtitle:sl.subtitle||'',
+              caption:sl.caption||'',
+              body:Array.isArray(sl.body)?sl.body:[],
+              characters:Array.isArray(sl.characters)?sl.characters:[],
+              plot:Array.isArray(sl.plot)?sl.plot:[],
+              cards:Array.isArray(sl.cards)?sl.cards:[],
+              steps:Array.isArray(sl.steps)?sl.steps:[],
+              qa:Array.isArray(sl.qa)?sl.qa:[],
+              highlight:sl.highlight||'',
+              audioLabel:sl.audioLabel||'',
+              audioText:sl.audioText||'',
+              audioUrl:sl.audioUrl||'',
+              figure:sl.figure||{}
+            };
+          }),
           teacherNotes:fields.teacherNotes?fields.teacherNotes.value:''
         };
       }

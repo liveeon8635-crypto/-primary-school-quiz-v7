@@ -239,7 +239,7 @@ def _build_prepared_courseware(
 ) -> tuple[list[dict[str, Any]], set[tuple[int, int | None]]]:
     """Validate a prepared bundle against the lesson currently locked by the caller."""
     payload_size = len(json.dumps([_prepared_page_dict(x) for x in incoming_pages], ensure_ascii=False))
-    if payload_size > 3_000_000:
+    if payload_size > 9_500_000:
         raise HTTPException(413, "课件包过大，请压缩图片或分批导入")
     occupied = {(int(item['stage']), item.get('page')) for item in existing}
     selected: set[tuple[int, int | None]] = set()
