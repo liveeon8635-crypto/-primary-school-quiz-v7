@@ -790,7 +790,17 @@ function plan(){
       var wk=el('input',{type:'text',value:r.schoolWeek==null?'':r.schoolWeek,placeholder:'学校周',style:'width:70px',oninput:function(e){r.schoolWeek=e.target.value===''?null:+e.target.value}}),
           un=el('input',{type:'text',value:r.schoolUnit||'',placeholder:'学校进度/单元',oninput:function(e){r.schoolUnit=e.target.value}}),
           dt=el('input',{type:'text',value:r.plannedDate||'',placeholder:'2026-09-12',style:'width:120px',oninput:function(e){r.plannedDate=e.target.value}});
-      var tag=el('span',{class:'tag '+(r.taught?'ok':r.hasPlan?'':'warn'),text:r.taught?'已上':r.hasPlan?'有教案 · 例题 '+(r.exampleCount||0)+'（待审 '+(r.examplePending||0)+'）· 可用练习 '+(r.practiceReady||0)+'（待审 '+r.draftQuestions+'）':'未备课'});
+      function lessonRowTagText(st){
+        if(st.taught)return '已上';
+        if(!st.hasPlan)return '未备课';
+        if(SUBJ==='语文'){
+          var cwText=st.coursewareApproved?'互动课件已就绪':(st.coursewareStatus?'互动课件待确认':'互动课件未生成');
+          var qTotal=(st.practiceReady||0)+(st.draftQuestions||0);
+          return (st.workflowLabel?st.workflowLabel+' · ':'')+'有教案 · '+cwText+(qTotal?' · 练习 '+qTotal+' 道':'');
+        }
+        return (st.workflowLabel?st.workflowLabel+' · ':'')+'有教案 · 例题 '+(st.exampleCount||0)+'（待审 '+(st.examplePending||0)+'）· 可用练习 '+(st.practiceReady||0)+'（待审 '+st.draftQuestions+'）';
+      }
+      var tag=el('span',{class:'tag '+(r.taught?'ok':r.hasPlan?'':'warn'),text:lessonRowTagText(r)});
       var workflowSelect=SUBJ==='语文'?el('select',{'aria-label':'语文课型',style:'width:auto;min-width:120px'},
         el('option',{value:'',text:'待选择课型',selected:!r.courseType}),
         el('option',{value:'reading',text:'阅读课',selected:r.courseType==='reading'}),
@@ -840,7 +850,7 @@ function plan(){
         api('/teacher/weekend/lessons/'+r.lessonId+'/questions/generate',{json:{count:+qCount.value}}).then(function(g){note('ok','习题草稿已生成：'+genSummary(g)+' 展开“审改”逐题通过后才会给学生。');load()}).catch(function(e){note('error',e.message);qBtn.disabled=false});
       }}):null;
       var titleLabel=el('span',{class:'muted',text:r.title||''});
-      function refreshRow(st){Object.assign(r,st);titleLabel.textContent=r.title||'';var needsQ=SUBJ!=='语文';go.disabled=!(r.lessonId&&r.hasPlan&&(!needsQ||(r.practiceReady!=null?r.practiceReady:r.approvedQuestions)>0)&&!(r.pendingMaterials>0)&&(SUBJ!=='语文'||r.courseType));why.textContent=startReason(r);tag.textContent=r.taught?'已上':r.hasPlan?((r.workflowLabel?r.workflowLabel+' · ':'')+'有教案 · 例题 '+(r.exampleCount||0)+'（待审 '+(r.examplePending||0)+'）· 可用练习 '+(r.practiceReady||0)+'（待审 '+r.draftQuestions+'）'):'未备课';if(cwBtn)cwBtn.textContent=r.coursewareApproved?'互动课件预览':'生成互动课件'}
+      function refreshRow(st){Object.assign(r,st);titleLabel.textContent=r.title||'';var needsQ=SUBJ!=='语文';go.disabled=!(r.lessonId&&r.hasPlan&&(!needsQ||(r.practiceReady!=null?r.practiceReady:r.approvedQuestions)>0)&&!(r.pendingMaterials>0)&&(SUBJ!=='语文'||r.courseType));why.textContent=startReason(r);tag.textContent=lessonRowTagText(r);if(cwBtn)cwBtn.textContent=r.coursewareApproved?'互动课件预览':'生成互动课件'}
       var open=el('button',{text:'审改',disabled:!r.lessonId,onclick:function(){detail.hidden=!detail.hidden;if(!detail.hidden)lessonDetail(r,detail,refreshRow)}});
       var materialReviewBtn=SUBJ==='语文'&&r.lessonId?el('button',{text:'导入素材审核',onclick:function(){detail.hidden=false;reviewImportedMaterials(r,detail,refreshRow)}}):null;
       var cwBtn=r.hasPlan&&r.lessonId?el('button',{text:r.coursewareApproved?'互动课件预览':'生成互动课件',onclick:function(){detail.hidden=false;lessonDetail(r,detail,refreshRow,3)}}):null;
@@ -958,13 +968,17 @@ function plan(){
       }
       var qbox=el('div'),wbox=el('div'),exampleBox=el('div',{class:'card'}),reviewList=el('div',{'data-review-list':'true'}),reviewNote=el('p',{class:'muted'}),choiceCards=[],writtenCards=[];
       var summaryLine=el('div',{class:'notice','data-practice-summary':'1'});
-      questionPane.appendChild(el('h2',{text:'习题审核'}));
+      questionPane.appendChild(el('h2',{text:SUBJ==='语文'?'课堂练习管理（可选）':'习题审核'}));
       questionPane.appendChild(summaryLine);
-      questionPane.appendChild(el('p',{text:'例题讲解只用于老师讲解（第3环节）；随堂练习由学生独立作答（第4环节）。例题和练习各有各的审核，一项通过不代表另一项也通过。'}));
-      questionPane.appendChild(el('p',{class:'muted',text:'课堂建好后再通过的选择题会立即出现在第4环节；填空/简答/写作题在开课时复制一份进课堂，开课后新通过的这类题要新建课堂才生效。重新导入或修改教案后，例题会提示重新审核；已有课堂记录和学生作答不会被改动。'}));
-      questionPane.appendChild(el('h3',{text:'例题讲解（第3环节，只讲不发题）'}));
+      if(SUBJ==='语文'){
+        questionPane.appendChild(el('p',{text:'语文课（阅读课/作文课）无需审核习题即可直接开课。如需在第5环节（综合练习/随堂练习）向学生发题，可在此选择通过；未通过的题目不会发给学生。'}));
+      }else{
+        questionPane.appendChild(el('p',{text:'例题讲解只用于老师讲解（第3环节）；随堂练习由学生独立作答（第4环节）。例题和练习各有各的审核，一项通过不代表另一项也通过。'}));
+        questionPane.appendChild(el('p',{class:'muted',text:'课堂建好后再通过的选择题会立即出现在第4环节；填空/简答/写作题在开课时复制一份进课堂，开课后新通过的这类题要新建课堂才生效。重新导入或修改教案后，例题会提示重新审核；已有课堂记录和学生作答不会被改动。'}));
+      }
+      questionPane.appendChild(el('h3',{text:SUBJ==='语文'?'例题与考点解析（仅教师讲解，不发题）':'例题讲解（第3环节，只讲不发题）'}));
       questionPane.appendChild(exampleBox);
-      questionPane.appendChild(el('h3',{text:'随堂练习候选（审核通过后进入第4环节）'}));
+      questionPane.appendChild(el('h3',{text:SUBJ==='语文'?'第5环节练习候选（可选，通过后发给学生）':'随堂练习候选（审核通过后进入第4环节）'}));
       questionPane.appendChild(practiceImportPanel());
       questionPane.appendChild(materialGroupPanel());
       questionPane.appendChild(qbox);questionPane.appendChild(wbox);questionPane.appendChild(reviewNote);questionPane.appendChild(reviewList);
@@ -973,8 +987,12 @@ function plan(){
       function renderSummary(s){
         if(!s)return;
         summaryLine.textContent='';
-        summaryLine.appendChild(el('span',{text:'例题 '+s.exampleCount+' 道（待审核 '+s.examplePending+'）· 可用练习 '+s.practiceReady+' 道 · 待审核练习 '+s.practiceDraft+' 道 · 互动课件'+(s.coursewareApproved?'已通过':(s.coursewareStatus?'待审核':'未生成'))}));
-        if(!s.practiceReady)summaryLine.appendChild(el('div',{class:'muted',text:'第4环节现在没有可发放的练习：还没有“已通过、又不与例题重复”的题。请通过几道练习，或单独导入随堂练习。'}));
+        if(SUBJ==='语文'){
+          summaryLine.appendChild(el('span',{text:'可用练习 '+s.practiceReady+' 道 · 待确认练习 '+s.practiceDraft+' 道 · 互动课件'+(s.coursewareApproved?'已就绪':(s.coursewareStatus?'待确认':'未生成'))}));
+        }else{
+          summaryLine.appendChild(el('span',{text:'例题 '+s.exampleCount+' 道（待审核 '+s.examplePending+'）· 可用练习 '+s.practiceReady+' 道 · 待审核练习 '+s.practiceDraft+' 道 · 互动课件'+(s.coursewareApproved?'已通过':(s.coursewareStatus?'待审核':'未生成'))}));
+          if(!s.practiceReady)summaryLine.appendChild(el('div',{class:'muted',text:'第4环节现在没有可发放的练习：还没有“已通过、又不与例题重复”的题。请通过几道练习，或单独导入随堂练习。'}));
+        }
       }
       function reviewExamples(payload,btn,fb){
         if(btn)btn.disabled=true;
