@@ -211,6 +211,11 @@ def install_product_visibility_routes(app: FastAPI) -> None:
     @app.middleware("http")
     async def product_visibility_headers(request, call_next):
         response = await call_next(request)
+        csp = response.headers.get("Content-Security-Policy")
+        if csp and "media-src 'self' blob:;" in csp:
+            response.headers["Content-Security-Policy"] = csp.replace(
+                "media-src 'self' blob:;", "media-src 'self' data: blob:;"
+            )
         if request.url.path in {"/", "/new", "/workbench", "/classic"}:
             for header, value in NO_CACHE_HEADERS.items():
                 response.headers[header] = value

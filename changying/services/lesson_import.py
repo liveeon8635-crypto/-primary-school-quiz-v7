@@ -14,7 +14,7 @@ import re
 import zipfile
 from typing import Any
 
-MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_TEXT_CHARS = 200000
 MAX_PDF_PAGES = 60
 MAX_SLIDES = 60

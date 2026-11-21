@@ -1030,7 +1030,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             # model request in FastAPI's worker pool, leaving health checks free.
             raw = file.file.read(MAX_FILE_BYTES + 1)
             if len(raw) > MAX_FILE_BYTES:
-                _reject(413, "文件不能超过 10MB，请拆分后导入")
+                _reject(413, "文件不能超过 20MB，请拆分后导入")
             if ext in (".docx", ".pptx", ".pdf"):
                 try:
                     implementation._validate_office_upload(ext, raw)
@@ -1316,7 +1316,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         # just because a downloaded file lost its .json suffix.
         raw = file.file.read(MAX_FILE_BYTES + 1) if file is not None else b""
         if len(raw) > MAX_FILE_BYTES:
-            raise HTTPException(413, "文件不能超过 10MB，请压缩图片或拆分后重试")
+            raise HTTPException(413, "文件不能超过 20MB，请压缩图片或拆分后重试")
         if file is not None:
             file.file.seek(0)
 
