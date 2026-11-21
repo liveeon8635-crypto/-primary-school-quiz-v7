@@ -102,7 +102,7 @@ def test_courseware_slide_renderer_and_editor_preserves_rich_fields():
     assert "speechSynthesis" not in COURSEWARE_JS
     assert "speechSynthesis" not in COURSEWARE_PLAN_JS
     assert "18000000" in COURSEWARE_PLAN_JS
-    assert "media-src 'self' data: blob:;" in (ROOT / "app_v924.py").read_text(encoding="utf-8")
+    assert "media-src 'self' data: blob:;" in (ROOT / "changying/compat/legacy.py").read_text(encoding="utf-8")
 
     sample = {
         "title": "短文精读",
