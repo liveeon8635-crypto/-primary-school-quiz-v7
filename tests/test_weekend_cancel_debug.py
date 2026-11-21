@@ -121,7 +121,7 @@ with TestClient(app) as client:
         reports = legacy.Base.metadata.tables['weekend_reports']
         assert db.scalar(select(func.count()).select_from(reports).where(reports.c.session_key == str(third))) == 0
     page = client.get('/v1/weekend-plan').text
-    assert '撤销调试课堂' in page and '强制撤销测试课堂' in page and '/cancel-debug-classrooms' in page
+    assert '撤销调试课堂' in page and '/cancel-debug-classrooms' in page
     for route in ('/v1/weekend-plan','/v1/training'):
         response = client.get(route, headers={'User-Agent':'Version/12.1 Mobile Safari/605.1.15'})
         assert response.status_code == 200, response.text[:200]
