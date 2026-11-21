@@ -39,22 +39,39 @@ def chinese_lesson_readiness(implementation, db, lesson, teacher_id):
         if pages and any(not any(i.get("page") == p for i in candidates) for p in range(len(pages))):
             missing = True
             valid = False
+        hint = ""
         for item in candidates:
             page = item.get("page")
             text = pages[page] if isinstance(page, int) and 0 <= page < len(pages) else ""
-            if (item.get("status") != "approved" or not item.get("approved")
-                    or item.get("approved") != item.get("params")
-                    or item.get("reimportReviewRequired")
-                    or item.get("approvedPageText", "") != text
-                    or (pages and (not isinstance(page, int) or not 0 <= page < len(pages)))):
+            bad_page = bool(pages) and (not isinstance(page, int) or not 0 <= page < len(pages))
+            if item.get("reimportReviewRequired"):
+                hint = hint or "重新导入后需重新审核"
+                valid = False
+            elif item.get("status") != "approved":
+                hint = hint or ("草稿已更新，需重新审核" if item.get("approved") else "草稿尚未审核")
+                valid = False
+            elif not item.get("approved"):
+                valid = False
+            elif item.get("approved") != item.get("params"):
+                hint = hint or "审核内容与当前草稿不一致，需重新审核"
+                valid = False
+            elif item.get("approvedPageText", "") != text:
+                hint = hint or "原文已变化，需重新审核"
+                valid = False
+            elif bad_page:
+                hint = hint or "页号越界，需重新核对"
                 valid = False
             if stage == 5 and isinstance(page, int) and 0 <= page < len(sources):
                 if item.get("approvedAnswerBinding") != sources[page][1]:
+                    hint = hint or "答案绑定已变化，需重新审核"
                     valid = False
         state = "缺少素材" if missing else "已审核" if valid else "待确认"
         stages.append({"no": stage, "name": spec["name"], "status": state})
         if not valid:
-            reasons.append(f"第 {stage} 环节{spec['name']}：{state}")
+            reason = f"第 {stage} 环节{spec['name']}：{state}"
+            if state == "待确认" and hint:
+                reason += f"（{hint}）"
+            reasons.append(reason)
     reviewed = bool(stages) and all(s["status"] == "已审核" for s in stages)
     return {"courseType": course_type, "pendingMaterials": pending,
             "coursewareGenerated": bool(items), "coursewareApproved": reviewed,

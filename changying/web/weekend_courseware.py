@@ -1612,12 +1612,19 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                                              globals()["required_visual_type"], stage=3)
                          if course_type == "math" else None)
         source_count, mismatch = source_page_mismatch(lesson)
+        readiness = {}
+        if lesson.subject == "语文":
+            from changying.services.chinese_lesson_readiness import chinese_lesson_readiness
+            readiness = chinese_lesson_readiness(implementation, db, lesson, teacher_id)
         return {"lessonId": lesson.id, "subject": lesson.subject, "courseType": course_type,
                 "stageOptions": stage_options, "practiceStage": practice_no,
                 "templates": list(cw.TEMPLATES[lesson.subject]), "kindLabels": cw.KIND_LABEL,
                 "sourceQuestionCount": source_count, "sourcePageMismatch": mismatch,
                 "qualityAudit": quality_audit,
                 "hasSource": bool((lesson.reading_plan or "").strip()), "items": items,
+                "stageReadiness": readiness.get("stageReadiness", []),
+                "startReasons": readiness.get("startReasons", []),
+                "canStart": readiness.get("canStart", True),
                 "pages": {str(n): [_short(x, 80) for x in values] for n, values in page_cache.items()}}
 
     def upsert(db: Any, u: Any, lesson: Any, stage: int, page: int | None, kind: str, params: dict[str, Any],
