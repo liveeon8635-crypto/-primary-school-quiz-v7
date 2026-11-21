@@ -21,30 +21,33 @@ homework = '作业：《山里的承诺》\n' + story + '\n' + '\n'.join(f'{i}.�
 source = '第六课 民间故事\n本节目标：概括故事内容。\n' + story + '\n课后练习\n' + homework
 example = '长例题完整结尾。' * 90
 slide = '这是一页需要完整保存的PPT文字。' * 50
-reply = json.dumps({'title':'民间故事','coreTarget':'概括故事','teacherPlan':'组织学生阅读并回答问题。','examples':[example], 'ppt':[slide],
-                    'closureTraining':'AI只返回了两道题的摘要。','questions':[]},ensure_ascii=False)
+# 语文课的原文只走本地路径，不发给外部 AI；用教师手填的教案模型验证保存
+# 和读取都不会裁掉原文与课后题。
+example = '长例题完整结尾。' * 90
+slide = '这是一页需要完整保存的PPT文字。' * 50
 buf = io.BytesIO()
 with zipfile.ZipFile(buf,'w') as z:
     z.writestr('[Content_Types].xml','<Types/>')
     z.writestr('word/document.xml','<w:document>'+''.join('<w:p><w:r><w:t>'+escape(line)+'</w:t></w:r></w:p>' for line in source.splitlines())+'</w:document>')
 with TestClient(app) as client:
     th, sh, sid, school_id = setup(client)
-    replies.append(reply)
-    r = client.post('/teacher/weekend/lessons/import',headers=th,data={'subject':'语文','lessonNo':'17'},files={'file':('lesson.docx',buf.getvalue(),'application/octet-stream')})
+    selected=client.put('/teacher/weekend/schedule/语文/17/course-type',headers=th,json={'courseType':'reading','expectedRevision':0})
+    assert selected.status_code==200,selected.text
+    r = client.post('/teacher/weekend/lessons/import',headers=th,data={'subject':'语文','lessonNo':'17','courseType':'reading'},files={'file':('lesson.docx',buf.getvalue(),'application/octet-stream')})
+    assert r.json().get('engine') == 'local' and r.json().get('importMode') == 'local'
     assert r.status_code == 200,r.text
     lid=r.json()['lessonId'];assert r.json()['sourceChars'] == len(source)
     url=f'/teacher/weekend/lessons/{lid}'
     got=client.get(url,headers=th).json()
     assert got['sourceText'] == source and got['closureTraining'] == homework
     assert all(f'{i}.第{i}题：' in got['closureTraining'] for i in range(1,6))
-    assert got['examples'] == [example] and got['ppt'] == [slide]
+    assert not calls
     # Saving the editable summary must not trim homework or erase the original document.
     r=client.put(url,headers=th,json={'title':got['title'],'coreTarget':got['coreTarget'],'teacherPlan':got['teacherPlan'],
         'closureTraining':got['closureTraining'],'examples':got['examples'],'ppt':got['ppt']})
     assert r.status_code == 200,r.text
     after=client.get(url,headers=th).json()
     assert after['sourceText'] == source and after['closureTraining'] == homework
-    assert after['examples'] == [example] and after['ppt'] == [slide]
     assert client.get(url,headers=sh).status_code == 403
     # Over-limit paste is explicitly refused before calling AI; no partial overwrite.
     r=client.post('/teacher/weekend/lessons/import',headers=th,data={'subject':'语文','lessonNo':'17','force':'1','text':'x'*200001})

@@ -62,7 +62,7 @@ var document={createElement:function(t){return new E(t,{})},createElementNS:func
 var window={},sessionStorage={getItem:function(){return 'x'}},requestAnimationFrame=function(f){return f()},confirm=function(){return true},prompt=function(){return null};
 function all(e){return [e].concat(e.children.reduce(function(out,c){return out.concat(c instanceof E?all(c):[])},[]))}
 function find(e,text){return all(e).find(function(x){return x.tag==='button'&&x.a.text===text})}
-var payload={lessonId:10,subject:'数学',templates:['rotation','clock','steps','reading'],kindLabels:{rotation:'图形旋转',clock:'时钟旋转',steps:'分步讲解',reading:'阅读分析'},hasSource:true,
+var payload={lessonId:10,subject:'数学',courseType:'math',practiceStage:4,stageOptions:[{no:2,name:'知识点介绍'},{no:3,name:'例题讲解'},{no:4,name:'随堂练习'}],templates:['rotation','clock','steps','reading'],kindLabels:{rotation:'图形旋转',clock:'时钟旋转',steps:'分步讲解',reading:'阅读分析'},hasSource:true,
   items:[{stage:3,page:11,kind:'steps',status:'draft',params:{title:'田字形百数表',problem:'“田”字形方格 百数表中，四格用 n、m 表示。',steps:['同行向右+1，同列向下+10。','四数和为 4n+22。'],answer:'4n+22',figure:{type:'hundred_chart_square',topLeftNumber:45},sourceFigure:{}},approved:null,writtenTask:false,templateId:null,pageText:'',updatedAt:''}],
   pages:{'2':[],'3':['第1题','第2题','第3题','第4题','第5题','第6题','第7题','第8题','第9题','第10题','第11题','第12题 “田”字形方格 百数表中，“田”字形四格左上角的数用 n 表示。']}};
 function api(){return Promise.resolve(payload)}

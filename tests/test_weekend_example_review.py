@@ -184,8 +184,8 @@ for _ in range(3):
 state=client.get('/teacher/weekend/sessions/'+str(sid)+'/board',headers=th).json()
 assert state['currentStage']==4,state
 text='\n'.join(state['content'])
-assert '没有可用的随堂练习' in text,text
-assert '单独导入随堂练习' in text,text
+assert '随堂练习”还没有已审核的任务' in text,text
+assert '返回备课页导入或配置任务' in text,text
 print('OK')
 ''')
 
@@ -294,7 +294,7 @@ assert client.post('/teacher/weekend/sessions/'+str(sid)+'/goto',headers=th,json
 state=client.get('/teacher/weekend/sessions/'+str(sid)+'/board',headers=th).json()
 assert 'deck' not in state,state
 assert state['answerRelease']['total']==0,state['answerRelease']
-assert any('没有可用的随堂练习' in line for line in state['content']),state['content']
+assert any('随堂练习”还没有已审核的任务' in line for line in state['content']),state['content']
 
 # 判重本身：严格相等判不出来（这就是线上那节课的样子），放宽后必须判成同一道题，
 # 但模板句、只差数字的两道题不能被误判。

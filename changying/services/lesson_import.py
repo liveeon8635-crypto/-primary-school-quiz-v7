@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import html
+import hashlib
 import io
 import re
 import zipfile
@@ -196,28 +197,65 @@ def _pdf_page_figures(page: Any, page_number: int, regions: list[dict[str, Any]]
     return placed
 
 
-def _docx_figures(data: bytes) -> list[str]:
-    out: list[str] = []
+def _docx_figures(data: bytes) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             for name in sorted(z.namelist()):
-                if not name.startswith("word/media/") or not name.lower().endswith((".jpg", ".jpeg", ".png")):
+                if not name.startswith("word/media/") or name.endswith("/"):
+                    continue
+                if not name.lower().endswith((".jpg", ".jpeg", ".png")):
+                    out.append({"data_url": "", "source_name": name.rsplit("/", 1)[-1],
+                                "source_format": name.rsplit(".", 1)[-1].lower() if "." in name else "unknown"})
                     continue
                 try:
-                    url = _data_url(z.read(name))
+                    raw = z.read(name)
                 except Exception:  # noqa: BLE001
                     continue
+                source_hash = hashlib.sha256(raw).hexdigest()
+                try:
+                    preview = _image_preview(raw)
+                    url = _data_url(preview)
+                except Exception:  # noqa: BLE001
+                    # Keep an omission marker so the teacher receives an honest
+                    # count even when the embedded bytes are corrupt or unsupported.
+                    out.append({"data_url": "", "source_name": name.rsplit("/", 1)[-1],
+                                "source_sha256": source_hash,
+                                "source_format": "png" if name.lower().endswith(".png") else "jpeg"})
+                    continue
                 if url:
-                    out.append(url)
+                    out.append({"data_url": url, "source_name": name.rsplit("/", 1)[-1],
+                                "source_sha256": source_hash, "source_format": "png" if raw.startswith(b"\x89PNG") else "jpeg"})
+                else:
+                    out.append({"data_url": "", "source_name": name.rsplit("/", 1)[-1],
+                                "source_sha256": source_hash, "source_format": "unknown"})
     except Exception:  # noqa: BLE001
         return out
     return out
 
 
+def _image_preview(raw: bytes, *, max_side: int = 2200) -> bytes:
+    """Return a review-sized JPEG while leaving the uploaded office file untouched."""
+    if len(raw) <= 450_000:
+        return raw
+    from PIL import Image
+
+    with Image.open(io.BytesIO(raw)) as image:
+        width, height = image.size
+        if width <= 0 or height <= 0 or width * height > 50_000_000:
+            raise ValueError("embedded image dimensions exceed the safe preview limit")
+        image = image.convert("RGB")
+        image.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+        out = io.BytesIO()
+        image.save(out, format="JPEG", quality=78, optimize=True)
+        return out.getvalue()
+
+
 def _data_url(raw: bytes) -> str:
-    # JPEG only: the question figure field and its renderer accept data:image/jpeg.
     if raw.startswith(b"\xff\xd8\xff"):
         return "data:image/jpeg;base64," + base64.b64encode(raw).decode()
+    if raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "data:image/png;base64," + base64.b64encode(raw).decode()
     return ""
 
 
@@ -240,9 +278,12 @@ def extract(ext: str, data: bytes) -> dict[str, Any]:
     ext = ext.lower()
     slides: list[str] = []
     figures: list[dict[str, Any]] = []
+    source_figure_count = 0
     if ext == ".docx":
         text = _docx(data)
-        figures = [{"page": 0, "data_url": url} for url in _docx_figures(data)]
+        source_figures = _docx_figures(data)
+        source_figure_count = len(source_figures)
+        figures = [{"page": 0, **item} for item in source_figures]
     elif ext == ".pptx":
         slides = _pptx(data)
         text = "\n".join(f"第{i}页：{s}" for i, s in enumerate(slides, start=1))
@@ -256,11 +297,13 @@ def extract(ext: str, data: bytes) -> dict[str, Any]:
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     if len(text) > MAX_TEXT_CHARS:
         raise ValueError("教案文字超过20万字，请拆分文件后导入；未截断或保存任何内容")
-    return {"text": text, "slides": slides, "images": _budget_figures(figures)}
+    images = _budget_figures(figures)
+    return {"text": text, "slides": slides, "images": images,
+            "omittedImages": max(0, source_figure_count - len(images))}
 
 
 def _budget_figures(figures: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Keep the first figures that fit the count and size budget; drop the rest silently."""
+    """Keep figures that fit the per-image and per-lesson request budget."""
     kept: list[dict[str, Any]] = []
     total = 0
     for item in figures:
@@ -269,9 +312,13 @@ def _budget_figures(figures: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         if len(kept) >= MAX_FIGURES or total + len(url) > MAX_TOTAL_FIGURE_CHARS:
             break
-        kept.append({"page": int(item.get("page") or 0), "data_url": url,
+        kept_item = {"page": int(item.get("page") or 0), "data_url": url,
                      "question_no": item.get("question_no") if isinstance(item.get("question_no"), int) else None,
-                     "question_source_text": str(item.get("question_source_text") or "")[:MAX_TEXT_CHARS]})
+                     "question_source_text": str(item.get("question_source_text") or "")[:MAX_TEXT_CHARS]}
+        for key in ("source_name", "source_sha256", "source_format"):
+            if item.get(key):
+                kept_item[key] = str(item[key])[:160]
+        kept.append(kept_item)
         total += len(url)
     return kept
 

@@ -31,12 +31,12 @@ else:
     raw=buf.getvalue()
 with TestClient(app) as client:
     th, sh, student_id, school_id=setup(client)
-    # Deliberately omit all written questions in the AI response. Literal
-    # extraction must retain the nine actual paper questions anyway.
-    replies.append(json.dumps({'title':'民间故事阅读','coreTarget':'概括与复述','teacherPlan':'阅读并作答','ppt':['目标'], 'examples':[], 'questions':[]},ensure_ascii=False))
-    r=client.post('/teacher/weekend/lessons/import',headers=th,data={'subject':'语文','lessonNo':'17'},files={'file':('reading.docx',raw,'application/octet-stream')})
+    # Chinese originals are never sent to an external model: the nine paper
+    # questions must still be extracted from the document itself.
+    r=client.post('/teacher/weekend/lessons/import',headers=th,data={'subject':'语文','lessonNo':'17','courseType':'reading'},files={'file':('reading.docx',raw,'application/octet-stream')})
     assert r.status_code==200,r.text
-    assert r.json()['writtenQuestionsFound']==9,r.text
+    assert r.json()['engine']=='local' and r.json()['writtenQuestionsFound']==9,r.text
+    assert not calls,'Chinese lesson originals must never be sent to an external model'
     lid=r.json()['lessonId'];url=f'/teacher/weekend/lessons/{lid}/written/questions'
     full=client.get(f'/teacher/weekend/lessons/{lid}',headers=th).json()
     assert '神泉与金鹿' in full['sourceText'] and '鲁班造锯' in full['sourceText']
@@ -53,9 +53,10 @@ with TestClient(app) as client:
         if link:link.class_id=cls.id
         else:db.add(legacy.ClassStudent(class_id=cls.id,student_id=student_id))
         db.commit()
-    # Unapproved templates never enter a classroom.
-    s0=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid}).json()['id']
-    assert client.get(f'/teacher/weekend/sessions/{s0}/written',headers=th).json()['questions']==[]
+    # Unapproved templates never enter a classroom, and a Chinese course type
+    # refuses to open a classroom while no practice task is approved yet.
+    refused=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid})
+    assert refused.status_code==409 and '没有已审核的课堂任务' in refused.text,refused.text
     q=questions[0]
     r=client.put(url+'/'+str(q['id']),headers=th,json={'stem':q['stem'],'reference':'教师专用评分秘密','hints':['找人物','找事件','组织句子']})
     assert r.status_code==200,r.text
@@ -66,7 +67,7 @@ with TestClient(app) as client:
     session=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid}).json()['id']
     base=f'/teacher/weekend/sessions/{session}'
     assert len(client.get(base+'/written',headers=th).json()['questions'])==9
-    client.post(base+'/start',headers=th);client.post(base+'/goto',headers=th,json={'stage':4})
+    client.post(base+'/start',headers=th);client.post(base+'/goto',headers=th,json={'stage':5})
     # This scenario explicitly opens its exercises before testing student work.
     for ordinal in range(1, client.get(base, headers=th).json()['answerRelease']['total'] + 1):
         assert client.post(base+'/practice-question', headers=th, json={'question':ordinal}).status_code == 200

@@ -24,7 +24,11 @@ from pydantic import BaseModel
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Table, Text, UniqueConstraint, desc, insert, select, update
 
 from changying.services.weekend_stages import (
-    MAX_EXTEND_MIN, STAGE_COUNT, STAGES, remaining_seconds, stage_by_no, stage_content,
+    MAX_EXTEND_MIN, STAGE_COUNT, STAGES, remaining_seconds, stage_by_no, stage_content, stages_for,
+)
+from changying.services.weekend_course_types import (
+    course_type_for, frozen_session, lesson_snapshot, practice_stage,
+    register_weekend_course_type_tables, workflow_for,
 )
 from changying.services.weekend_answers import count_practice_ready, practice_deck, practice_cursor, session_question_ids
 from changying.web.weekend_pages import board_page_html, control_page_html
@@ -131,6 +135,9 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         return app.state.weekend_router
     t = register_weekend_tables(implementation)
     sessions, log, slide_t, session_q = t["sessions"], t["log"], t["slide"], t["session_questions"]
+    workflow_tables = register_weekend_course_type_tables(implementation)
+    session_workflows = workflow_tables["frozen"]
+    imported_materials = workflow_tables["materials"]
     Lesson = implementation.TeachingLesson
     current_user, get_db, need = implementation.current_user, implementation.get_db, implementation.need
     router = APIRouter()
@@ -140,7 +147,16 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         if row is None or int(row.school_id) != int(school_id):
             raise HTTPException(404, "没有找到这节课")
         return {c: getattr(row, c) for c in ("id", "subject", "lesson_no", "unit", "title", "core_target", "duration_min",
-                                             "teacher_plan", "examples_json", "ppt_json", "closure_training", "reading_plan")}
+                                             "teacher_plan", "examples_json", "ppt_json", "closure_training", "reading_plan",
+                                             "writing_plan", "essay_review")}
+
+    def session_course(db: Any, row: Any) -> dict[str, Any]:
+        frozen = frozen_session(db, implementation, int(row.id))
+        if frozen is not None:
+            return frozen
+        # Pre-upgrade sessions keep their original seven-stage behavior and content.
+        return {"courseType": "legacy", "revision": 0,
+                "lesson": lesson_dict(db, int(row.school_id), int(row.lesson_id))}
 
     def mine(db: Any, u: Any, sid: int) -> Any:
         row = db.execute(select(sessions).where(sessions.c.id == sid, sessions.c.school_id == u.school_id).with_for_update()).first()
@@ -152,14 +168,37 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         return db.execute(select(log).where(log.c.session_id == sid, log.c.ended_at.is_(None)).order_by(desc(log.c.id))).first()
 
     def begin_stage(db: Any, row: Any, stage_no: int, now: datetime) -> None:
+        course_type = session_course(db, row)["courseType"]
         cur = open_log(db, row.id)
         if cur is not None:
             db.execute(update(log).where(log.c.id == cur.id).values(ended_at=now))
-        st = stage_by_no(stage_no)
+        st = stage_by_no(stage_no, course_type)
+        if st is None:
+            raise HTTPException(400, "没有这个课型环节")
         db.execute(insert(log).values(school_id=row.school_id, session_id=row.id, stage_no=stage_no, planned_min=st["minutes"], extend_min=0, started_at=now))
         db.execute(update(sessions).where(sessions.c.id == row.id).values(current_stage=stage_no))
 
-    def deck_for(lesson: dict[str, Any], stage_no: int) -> list[str]:
+    def deck_for(lesson: dict[str, Any], stage_no: int, course_type: str = "math") -> list[str]:
+        if course_type == "reading":
+            key = {2: "reading_plan", 3: "ppt_json", 5: "closure_training"}.get(stage_no)
+            raw = lesson.get(key) if key else ""
+            if isinstance(raw, str):
+                try:
+                    raw = json.loads(raw)
+                except (TypeError, ValueError):
+                    raw = [line.strip() for line in raw.splitlines() if line.strip()]
+            return [str(item.get("title") or item.get("text") or item.get("content") or item.get("stem") or "").strip()
+                    if isinstance(item, dict) else str(item).strip() for item in raw] if isinstance(raw, list) else []
+        if course_type == "writing":
+            key = {2: "examples_json", 3: "ppt_json", 4: "reading_plan", 5: "writing_plan"}.get(stage_no)
+            raw = lesson.get(key) if key else ""
+            if isinstance(raw, str):
+                try:
+                    raw = json.loads(raw)
+                except (TypeError, ValueError):
+                    raw = [line.strip() for line in raw.splitlines() if line.strip()]
+            return [str(item.get("title") or item.get("text") or item.get("content") or item.get("stem") or "").strip()
+                    if isinstance(item, dict) else str(item).strip() for item in raw] if isinstance(raw, list) else []
         from changying.services.weekend_presentation import lesson_deck
         return lesson_deck(lesson, stage_no)
 
@@ -192,28 +231,33 @@ def install_weekend_views(implementation: Any) -> APIRouter:
 
     def state(db: Any, row: Any, *, board: bool = False) -> dict[str, Any]:
         now = datetime.utcnow()
-        lesson = lesson_dict(db, int(row.school_id), int(row.lesson_id))
+        course = session_course(db, row)
+        course_type = course["courseType"]
+        lesson = course["lesson"]
         cur = open_log(db, row.id) if row.status == "running" else None
         no = int(row.current_stage or 0)
-        stage = stage_by_no(no)
+        stages_for_session = stages_for(course_type)
+        stage = stage_by_no(no, course_type)
         timer = None
         if stage and cur is not None:
             timer = remaining_seconds(cur.planned_min, cur.extend_min, cur.started_at, now)
         out: dict[str, Any] = {
             "id": row.id, "title": row.title, "status": row.status, "covered": bool(row.covered),
             "currentStage": no, "stageName": stage["name"] if stage else "", "goal": stage["goal"] if stage else "",
-            "remainingSeconds": timer, "stageCount": STAGE_COUNT,
-            "content": stage_content(no, lesson) if stage and row.status == "running" else [],
+            "remainingSeconds": timer, "stageCount": len(stages_for_session), "courseType": course_type,
+            "courseRevision": int(course["revision"]),
+            "content": stage_content(no, lesson, course_type) if stage and row.status == "running" else [],
         }
-        if no in (2, 3) and row.status == "running":
-            deck = deck_for(lesson, no)
+        media_stages = (2, 3) if course_type in ("math", "legacy", "reading") else (2, 3, 4)
+        if no in media_stages and row.status == "running":
+            deck = deck_for(lesson, no, course_type)
             if deck:
                 st_row = db.execute(select(slide_t).where(slide_t.c.session_id == row.id)).first()
                 idx = int(st_row.idx) if st_row is not None and int(st_row.stage_no) == no else 0
                 idx = max(0, min(idx, len(deck) - 1))
                 out["deck"] = {"total": len(deck), "index": idx}
                 out["content"] = [deck[idx]]
-        if no == 5 and row.status == "running":
+        if course_type in ("math", "legacy") and no == 5 and row.status == "running":
             # 练习复盘: name the pupil asked to explain, and the question — never the pupils who got it wrong.
             peer_t = implementation.Base.metadata.tables.get("weekend_peer_help")
             if peer_t is not None:
@@ -230,21 +274,22 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                     if who and stem:
                         lines.append(f"请 {who} 同学来讲：{stem}")
                 out["content"] = out["content"] + lines
-        if no == 4 and row.status == "running":
+        practice_no = practice_stage(course_type)
+        if no == practice_no and row.status == "running":
             deck, count, idx, total = practice_deck(implementation, db, row)
             out["answersPublished"] = bool(total) and count == total
             out["answerRelease"] = {"published": count, "total": total, "nextQuestion": count+1 if count < total else None}
-            out["content"] = ["随堂练习来自“习题审核”；与本节例题重复的题目不会再次发放。",
+            task_label = "随堂练习" if course_type in ("math", "legacy") else "综合练习" if course_type == "reading" else "写作练习"
+            out["content"] = [f"{task_label}任务来自已审核内容；尚未开放的题目和答案不会发给学生。",
                               "已公布题目请听老师讲评，其余题目继续作答。" if count else "请先独立作答并提交，等待老师逐题公布答案。"]
             if not total:
-                # 无题不是“正常空白”：告诉老师缺在哪，以及去哪里补。
-                out["content"] = ["本节课第4环节还没有可用的随堂练习：习题审核里没有已通过、又不与例题重复的题。",
-                                  "请到“周末备课 → 这节课 → 习题审核”里通过几道练习，或点“单独导入随堂练习”。"]
+                out["content"] = [f"本节课“{task_label}”还没有已审核的任务。",
+                                  "请返回备课页导入或配置任务、确认素材关系并完成审核。"]
             if deck:
                 out["deck"] = {"total": len(deck), "index": idx}
                 out["answerRelease"].update({"currentQuestion": deck[idx]["question"], "currentPublished": deck[idx]["published"]})
                 out["content"].append(deck[idx]["text"])
-        if no in (4, 5) and row.status == "running":
+        if course_type in ("math", "legacy") and no in (practice_no, practice_no + 1) and row.status == "running":
             from changying.web.weekend_written import register_written_tables
             written_q = register_written_tables(implementation)['questions']
             peer_t = implementation.Base.metadata.tables.get('weekend_peer_help')
@@ -256,7 +301,7 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                         out['content'].append(f"请 {who} 同学来讲：{stem.split(chr(10)+chr(10))[-1]}")
         if row.status == "running" and not (board and row.covered):
             from changying.web.weekend_courseware import courseware_for_session
-            courseware, notice = courseware_for_session(implementation, db, row, out["deck"]["index"] if "deck" in out else None)
+            courseware, notice = courseware_for_session(implementation, db, row, out.get("deck", {}).get("index"))
             if courseware is not None:
                 out["courseware"] = courseware
             if notice and not board:
@@ -264,9 +309,25 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         if board:
             if row.covered:
                 out["content"] = []
+            elif course_type in ("reading", "writing") and no != practice_no:
+                # The legacy lesson fields can contain a complete teacher document,
+                # including answers. They are not reviewed student-facing nodes:
+                # only approved courseware of this page may reach the board.
+                out["content"] = [courseware["kindLabel"]] if "courseware" in out else []
+                out.pop("deck", None)
+            elif course_type in ("reading", "writing") and no == practice_no and "deck" in out:
+                from changying.services.weekend_answers import practice_items, question_is_open
+                items = practice_items(implementation, db, row)
+                question = int(out.get("answerRelease", {}).get("currentQuestion") or 0)
+                item = items[question - 1] if 1 <= question <= len(items) else None
+                if item is None or not question_is_open(implementation, db, row, item["kind"], item["id"]):
+                    out["content"] = ["请等待教师开放本题。"]
+                    out.pop("courseware", None)
+                    out.pop("deck", None)
+                    out.pop("answerRelease", None)
             return out
         stages = []
-        for s in STAGES:
+        for s in stages_for_session:
             done = db.execute(select(log).where(log.c.session_id == row.id, log.c.stage_no == s["no"]).order_by(log.c.id)).all()
             stages.append({"no": s["no"], "name": s["name"], "minutes": s["minutes"], "goal": s["goal"],
                            "visited": bool(done), "extendMin": sum(int(d.extend_min) for d in done)})
@@ -313,17 +374,36 @@ def install_weekend_views(implementation: Any) -> APIRouter:
             class_members(implementation, db, u, b.classId)
         lesson = lesson_dict(db, int(u.school_id), b.lessonId)
         lesson_row = db.get(Lesson, b.lessonId)
-        if b.requireReady and count_practice_ready(db, implementation, int(u.school_id), int(u.id), lesson_row) == 0:
-            raise HTTPException(
-                409,
-                "第4环节实际可用的随堂练习为 0 道（可能尚未通过练习，或已通过的题都与本课例题重复），暂时不能开课。"
-                "请先在“习题审核”里通过至少 1 道不与例题重复的随堂练习。",
-            )
+        workflow = workflow_for(db, implementation, lesson_row)
+        course_type = "math" if lesson_row.subject == "数学" else (str(workflow.course_type) if workflow else "")
+        if lesson_row.subject == "语文" and course_type not in ("reading", "writing"):
+            raise HTTPException(409, "这节语文课还未选择课型；请先在备课工作栏选择“阅读课”或“作文课”并保存。")
+        if course_type in ("reading", "writing") and db.execute(select(imported_materials.c.id).where(
+            imported_materials.c.school_id == int(u.school_id), imported_materials.c.lesson_id == int(lesson_row.id),
+            imported_materials.c.status == "pending",
+        ).limit(1)).first():
+            raise HTTPException(409, "\u672c\u8bfe\u8fd8\u6709\u5bfc\u5165\u7d20\u6750\u5f85\u786e\u8ba4\uff0c\u8bf7\u5b8c\u6210\u7d20\u6750\u5ba1\u6838\u540e\u518d\u521b\u5efa\u8bfe\u5802\u3002")
+        if b.requireReady or course_type in ("reading", "writing"):
+            if course_type in ("reading", "writing"):
+                if count_practice_ready(db, implementation, int(u.school_id), int(u.id), lesson_row) == 0:
+                    raise HTTPException(409, "还不能开课：当前课型没有已审核的课堂任务；请先在“审改 → 习题审核”中确认任务。")
+            elif count_practice_ready(db, implementation, int(u.school_id), int(u.id), lesson_row) == 0:
+                raise HTTPException(
+                    409,
+                    "第4环节实际可用的随堂练习为 0 道（可能尚未通过练习，或已通过的题都与本课例题重复），暂时不能开课。"
+                    "请先在“习题审核”里通过至少 1 道不与例题重复的随堂练习。",
+                )
         db.execute(select(Lesson.id).where(Lesson.id == b.lessonId).with_for_update()).first()
         now = datetime.utcnow()
         sid = int(db.execute(insert(sessions).values(
             school_id=u.school_id, teacher_id=u.id, lesson_id=b.lessonId, status="planned", current_stage=0, covered=False,
             title=f"{lesson['subject']} 第{lesson['lesson_no']}课 {lesson['title']}"[:220], created_at=now)).inserted_primary_key[0])
+        if course_type in ("reading", "writing"):
+            revision = int(workflow.revision) if workflow else 0
+            db.execute(insert(session_workflows).values(
+                session_id=sid, school_id=u.school_id, lesson_id=b.lessonId, course_type=course_type,
+                revision=revision, lesson_json=lesson_snapshot(lesson_row), created_at=now,
+            ))
         # New classrooms start closed; only pre-upgrade classrooms lack a gate.
         # Persist this in the classroom creation transaction, before it is visible.
         opened = implementation.Base.metadata.tables["weekend_open_questions"]
@@ -444,7 +524,8 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         need(u, "teacher")
         row = mine(db, u, sid)
         running(row)
-        if int(row.current_stage) >= STAGE_COUNT:
+        course_type = session_course(db, row)["courseType"]
+        if int(row.current_stage) >= len(stages_for(course_type)):
             return finish_session(db, u, row)
         begin_stage(db, row, int(row.current_stage) + 1, datetime.utcnow())
         db.commit()
@@ -466,8 +547,9 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         need(u, "teacher")
         row = mine(db, u, sid)
         running(row)
-        if stage_by_no(b.stage) is None:
-            raise HTTPException(400, "没有这个环节")
+        course_type = session_course(db, row)["courseType"]
+        if stage_by_no(b.stage, course_type) is None:
+            raise HTTPException(400, "没有这个课型环节")
         if b.stage != int(row.current_stage):
             begin_stage(db, row, b.stage, datetime.utcnow())
             db.commit()
@@ -492,16 +574,23 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         row = mine(db, u, sid)
         running(row)
         no = int(row.current_stage)
-        deck = practice_deck(implementation, db, row)[0] if no == 4 else deck_for(lesson_dict(db, int(row.school_id), int(row.lesson_id)), no) if no in (2, 3) else []
+        course_type = session_course(db, row)["courseType"]
+        practice_no = practice_stage(course_type)
+        media_stages = (2, 3) if course_type in ("math", "legacy", "reading") else (2, 3, 4)
+        deck = practice_deck(implementation, db, row)[0] if no == practice_no else deck_for(session_course(db, row)["lesson"], no, course_type) if no in media_stages else []
         if not deck:
             raise HTTPException(409, "这个环节没有可翻页的内容")
         cur = state(db, row)["deck"]["index"]
         target = b.index if b.index is not None else cur + b.delta
         target = max(0, min(int(target), len(deck) - 1))
-        if no == 4:
-            from changying.services.weekend_answers import open_practice_question
+        if no == practice_no:
+            from changying.services.weekend_answers import open_practice_question, practice_release
+            # Opening a question keeps the answers that were already released; a
+            # later board move never wins over a publish, so going back cannot
+            # erase answers the class has already seen.
             open_practice_question(implementation, db, row, deck[target]['question'])
-            target = practice_cursor(practice_deck(implementation, db, row)[1], target)
+            count = practice_release(implementation, db, row)[1]
+            target = practice_cursor(count, target)
         ex = db.execute(select(slide_t.c.id).where(slide_t.c.session_id == sid)).first()
         if ex:
             db.execute(update(slide_t).where(slide_t.c.id == ex.id).values(stage_no=no, idx=target))
@@ -516,7 +605,8 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         db.execute(select(sessions.c.id).where(sessions.c.id == sid, sessions.c.school_id == u.school_id).with_for_update()).first()
         row = mine(db, u, sid)
         running(row)
-        if row.current_stage != 4:
+        practice_no = practice_stage(session_course(db, row)["courseType"])
+        if row.current_stage != practice_no:
             raise HTTPException(409, "请在随堂练习环节选择题目")
         deck, count, _, total = practice_deck(implementation, db, row)
         if not 1 <= b.question <= total:
@@ -527,9 +617,9 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         value = practice_cursor(count, page)
         cursor = db.execute(select(slide_t.c.id).where(slide_t.c.session_id == sid)).first()
         if cursor:
-            db.execute(update(slide_t).where(slide_t.c.id == cursor.id).values(stage_no=4, idx=value))
+            db.execute(update(slide_t).where(slide_t.c.id == cursor.id).values(stage_no=practice_no, idx=value))
         else:
-            db.execute(insert(slide_t).values(school_id=row.school_id, session_id=sid, stage_no=4, idx=value))
+            db.execute(insert(slide_t).values(school_id=row.school_id, session_id=sid, stage_no=practice_no, idx=value))
         db.commit()
         return state(db, mine(db, u, sid))
 
@@ -539,7 +629,8 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         row = mine(db, u, sid)
         db.execute(select(sessions.c.id).where(sessions.c.id == sid).with_for_update()).first()
         running(row)
-        if int(row.current_stage) != 4:
+        practice_no = practice_stage(session_course(db, row)["courseType"])
+        if int(row.current_stage) != practice_no:
             raise HTTPException(409, "请在随堂练习环节公布答案")
         deck, count, _, total = practice_deck(implementation, db, row)
         if not 1 <= b.question <= total:
@@ -555,9 +646,9 @@ def install_weekend_views(implementation: Any) -> APIRouter:
             cursor = db.execute(select(slide_t.c.id).where(slide_t.c.session_id == sid)).first()
             value = practice_cursor(count, page)
             if cursor:
-                db.execute(update(slide_t).where(slide_t.c.id == cursor.id).values(stage_no=4, idx=value))
+                db.execute(update(slide_t).where(slide_t.c.id == cursor.id).values(stage_no=practice_no, idx=value))
             else:
-                db.execute(insert(slide_t).values(school_id=row.school_id, session_id=sid, stage_no=4, idx=value))
+                db.execute(insert(slide_t).values(school_id=row.school_id, session_id=sid, stage_no=practice_no, idx=value))
             db.commit()
         return state(db, mine(db, u, sid))
 

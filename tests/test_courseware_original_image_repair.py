@@ -47,12 +47,14 @@ function all(e){return [e,...e.children.flatMap(c=>c instanceof E?all(c):[])]}
 function find(e,text){return all(e).find(x=>x.tag==='button'&&x.a.text===text)}
 var document={},confirm=()=>true,prompt=()=>null,sent=null;
 var figure={type:'uploaded_image',data_url:'data:image/jpeg;base64,'+'A'.repeat(40),alt:'原卷插图'};
-var data={subject:'数学',templates:['steps'],kindLabels:{steps:'分步讲解'},pages:{'3':['第1题']},items:[{stage:3,page:0,kind:'steps',status:'draft',params:{title:'原题',problem:'题目',steps:['一','二'],answer:'4',figure:figure}}]};
+var data={subject:'数学',courseType:'math',stageOptions:[{no:3,name:'例题讲解'},4,5,6,7].map(function(n){return typeof n==='number'?{no:n,name:'环节'+n}:n}),templates:['steps'],kindLabels:{steps:'分步讲解'},pages:{'3':['第1题']},
+ cached:{'3:0':{stage:3,page:0,kind:'steps',status:'draft',params:{title:'原题',problem:'题目',steps:['一','二'],answer:'4',figure:figure}}},
+ items:[{stage:3,page:0,kind:'steps',status:'draft',params:{title:'原题',problem:'题目',steps:['一','二'],answer:'4',figure:figure}}]};
 function api(path,opts){if(opts&&opts.method==='PUT'){sent=opts.json;return Promise.resolve(data)}return Promise.resolve(data)}
 '''
     exercise = r'''
 (async()=>{let root=new E('div');cwPlan(root,1,null);await Promise.resolve();await Promise.resolve();
- let open=find(root,'预览／修改');assert(open);open.a.onclick();
+ let open=find(root,'预览／修改');assert(open,'the page button offers preview once it has courseware');open.a.onclick();await Promise.resolve();
  assert(all(root).some(x=>x.tag==='img'&&x.a.src===figure.data_url));
  let save=find(root,'保存修改（需重新审核）');assert(save);
  let editorBox=save.parentNode.parentNode;

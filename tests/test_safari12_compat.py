@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from changying.web.safari12 import ASSETS, compatible_html, safari12_agent, script_key, SCRIPTS
@@ -44,6 +45,7 @@ def test_asset_folder_holds_exactly_the_compiled_manifest_scripts():
 
 
 def test_actual_entry_cache_and_modern_representation(tmp_path):
+    rendered = Path(tempfile.gettempdir()) / 'safari12-rendered.html'
     if isolated('test_actual_entry_cache_and_modern_representation', tmp_path): return
     from app import app
     from fastapi.testclient import TestClient
@@ -65,7 +67,7 @@ def test_actual_entry_cache_and_modern_representation(tmp_path):
             assert path.rsplit('/',1)[1] in dynamic.text
         gz = client.get('/v1', headers={'User-Agent':IPAD, 'Accept-Encoding':'gzip'})
         assert gz.text == old.text
-        Path('/tmp/safari12-rendered.html').write_text(old.text)
+        rendered.write_text(old.text)
         for homework, quick in [('0','0'),('0','1'),('1','0'),('1','1')]:
             os.environ['HOMEWORK_ASSISTANT'] = homework
             os.environ['CLASSROOM_QUICK_LOGIN'] = quick

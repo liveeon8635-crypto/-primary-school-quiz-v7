@@ -69,8 +69,16 @@ def question_is_open(implementation, db, session, kind, question_id):
     value = _read_gate(db, table, session)
     # Existing classrooms without an explicit gate retain the historical workflow.
     if not value:
+        from changying.services.weekend_course_types import frozen_session
+        frozen = frozen_session(db, implementation, int(session.id), metadata=getattr(implementation, "Base", None) and implementation.Base.metadata)
+        return not frozen or frozen.get("courseType") not in ("reading", "writing")
+    opened = json.loads(value)
+    if f'{kind}:{question_id}' in opened:
         return True
-    return f'{kind}:{question_id}' in json.loads(value)
+    # 文字题的板书序号按“选择题在前、文字题在后”排，但老师在大屏上点的那一题序号属于当堂那次点名；
+    # 点名记录（weekend_open_questions.ordinal）保存的就是这次点名的来源，和文字题自己记录的来源号一致。
+    # 否则阅读/作文课的随堂练习永远只开放得了一题，其余文字题学生永远提交不了。
+    return kind == "written" and f'choice:{question_id}' in opened
 
 _LABEL = re.compile(r'^\s*[A-Da-d]\s*[．.、:：)）]\s*')
 
@@ -204,12 +212,14 @@ def practice_items(implementation, db, session):
 
 
 def practice_release(implementation, db, session):
+    from changying.services.weekend_course_types import frozen_session, practice_stage
+
     table = implementation.Base.metadata.tables['weekend_slide_state']
     cursor = db.execute(select(table).where(table.c.session_id == session.id,
         table.c.school_id == session.school_id)).first()
     items = practice_items(implementation, db, session)
     count, page = 0, 0
-    if cursor is not None and cursor.stage_no == 4:
+    if cursor is not None and cursor.stage_no == practice_stage((frozen_session(db, implementation, session.id, metadata=getattr(implementation, "Base", None) and implementation.Base.metadata) or {}).get("courseType")):
         value = int(cursor.idx)
         if value >= CURSOR_VERSION:
             count, page = divmod(value-CURSOR_VERSION, CURSOR_PAGES)

@@ -85,7 +85,7 @@ with TestClient(app) as client:
         db.add(legacy.ClassStudent(class_id=cls.id, student_id=sid))
         math = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=93, title="分层综合提升：旋转",
                                      core_target="旋转三要素", teacher_plan="讲例题", examples_json=json.dumps(examples, ensure_ascii=False))
-        chin = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="语文", lesson_no=94, title="阅读·家国情怀", core_target="提取文本依据",
+        chin = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="语文", lesson_no=12, title="阅读·家国情怀", core_target="提取文本依据",
                                      reading_plan=SOURCE)
         db.add_all([math, chin]); db.flush()
         for lesson in (math, chin):
@@ -220,22 +220,29 @@ with TestClient(app) as client:
     client.post(b3 + "/finish", headers=th)
 
     # ---- 语文: the reading template still keeps the original text and hides the evidence
+    selected = client.put("/teacher/weekend/schedule/语文/12/course-type", headers=th,
+                          json={"courseType": "reading", "expectedRevision": 0})
+    assert selected.status_code == 200, selected.text
+    assert selected.json()["courseType"] == "reading"
     cbase = f"/teacher/weekend/lessons/{cid}/courseware"
     assert client.get(cbase, headers=th).json()["templates"] == ["reading", "steps"]
+    flow = client.get(cbase, headers=th).json()
+    assert flow["courseType"] == "reading" and flow["practiceStage"] == 5
+    assert [s["name"] for s in flow["stageOptions"]] == ["点名与回顾", "短文阅读", "长文阅读", "考点总结", "综合练习", "课后反馈"]
     replies.append(json.dumps({"template": "clock", "start": 1, "direction": "cw", "angle": 30}))           # not allowed for 语文
-    assert client.post(cbase + "/generate", headers=th, json={"stageNo": 2}).status_code == 502
+    assert client.post(cbase + "/generate", headers=th, json={"stageNo": 2, "page": 0}).status_code == 502
     replies.append(json.dumps({"template": "reading", "title": "找文本依据", "passage": PASSAGE, "question": "哪句话最能说明外公热爱祖国？",
                                "evidence": [2], "reference": "语言描写"}, ensure_ascii=False))
-    d = client.post(cbase + "/generate", headers=th, json={"stageNo": 2}).json()
-    assert d["items"][0]["page"] is None and d["items"][0]["kind"] == "reading"
-    client.post(cbase + "/approve", headers=th, json={"stageNo": 2})
+    d = client.post(cbase + "/generate", headers=th, json={"stageNo": 2, "page": 0}).json()
+    assert d["items"][0]["page"] == 0 and d["items"][0]["kind"] == "reading"
+    client.post(cbase + "/approve", headers=th, json={"stageNo": 2, "page": 0})
     s4 = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": cid, "classId": cls_id}).json()["id"]
     client.post(f"/teacher/weekend/sessions/{s4}/start", headers=th); client.post(f"/teacher/weekend/sessions/{s4}/goto", headers=th, json={"stage": 2})
     c = client.get(f"/teacher/weekend/sessions/{s4}/board", headers=th).json()["courseware"]
     assert c["kind"] == "reading" and "evidence" not in c["params"] and "reference" not in c["params"]
 
     plan = client.get("/v1/weekend-plan").text
-    for text in ("为本环节全部", "全部草稿审核通过", "包括已有课件的页", "审核后同时生成学生书面作答题", "/courseware/remove", "cwPlan("):
+    for text in ("为本环节全部", "全部草稿审核通过", "包括已有课件的页", "审核后同时生成学生书面作答任务", "/courseware/remove", "cwPlan("):
         assert text in plan, text
     board = client.get("/v1/weekend-board").text
     assert "cwClock(" in board and "cwSteps(" in board and "cwRender(cwBox,d.courseware" in board

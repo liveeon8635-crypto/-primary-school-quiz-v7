@@ -29,6 +29,10 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import Column, DateTime, Integer, String, Table, UniqueConstraint, delete, func, insert, select, update
 
 from changying.services import lesson_markdown, weekend_plan_history as history
+from changying.services.weekend_course_types import (
+    COURSE_TYPES, WorkflowRevisionConflict, compare_and_set_course_type, course_type_for, store_pending_materials,
+    register_weekend_course_type_tables, workflow_for,
+)
 from changying.services import weekend_question_gen as qg
 from changying.services.weekend_presentation import literal_numbered_questions
 from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUPPORTED, detect_lesson_no, extract
@@ -38,6 +42,9 @@ from changying.services.lesson_written import (MAX_KNOWLEDGE, lesson_goals, lite
 from changying.web.weekend_courseware import PreparedPagesBody, import_prepared_courseware
 
 AI_FEATURE = "weekend_lesson_draft"
+# A paper question starts with "3.【复述】", "C1.【对比】" or "1、概括…"; headings never do.
+_PAPER_QUESTION = re.compile(r"^\s*([A-Za-z]?\d+|[（(]\s*\d+\s*[)）])\s*[.．、:：)）]?\s*【?")
+_PAPER_ANSWER = "教师评分秘密："
 SUBJECTS = ("语文", "数学")
 LESSONS = 18
 MAX_BATCH_FILES = 18
@@ -123,6 +130,9 @@ class PlanLessonBody(BaseModel):
     title: str = Field(default="", max_length=180)
     coreTarget: str = Field(default="", max_length=1000)
     teacherPlan: str = Field(default="", max_length=MAX_TEXT_CHARS)
+    courseType: Literal["reading", "writing"] | None = None
+    readingPlan: str = Field(default="", max_length=MAX_TEXT_CHARS)
+    writingPlan: str = Field(default="", max_length=MAX_TEXT_CHARS)
     ppt: list[str] = Field(default_factory=list)
     examples: list[str] = Field(default_factory=list)
     closureTraining: str = Field(default="", max_length=MAX_TEXT_CHARS)
@@ -141,6 +151,19 @@ class StructuredImportBody(BaseModel):
     # Optional pre-authored courseware that belongs to the single lesson in this
     # envelope. It is imported as draft pages in the same transaction.
     courseware: PreparedPagesBody | None = None
+
+
+class CourseTypeBody(BaseModel):
+    courseType: Literal["reading", "writing"]
+    expectedRevision: int = Field(default=0, ge=0)
+
+
+class ImportedMaterialReviewBody(BaseModel):
+    status: Literal["confirmed", "ignored"]
+    relationship: Literal["short_reading", "long_reading", "article_illustration", "model_essay", "picture_writing", "writing_method", "task", "question_figure", "other"] = "other"
+    stageNo: int | None = Field(default=None, ge=1, le=7)
+    sortOrder: int = Field(default=0, ge=0, le=999)
+    expectedRevision: int = Field(ge=1)
 
 
 class DraftBody(BaseModel):
@@ -486,7 +509,7 @@ def has_real_plan(lesson: Any) -> bool:
         return False
 
 
-_FIGURE_URL = re.compile(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}")
+_FIGURE_URL = re.compile(r"data:image/(?:jpeg|png);base64,[A-Za-z0-9+/]+={0,2}")
 MAX_FIGURE_DATA_URL = 700_000
 
 
@@ -591,6 +614,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     courseware_table = register_courseware_table(implementation)
     versions = history.register_history(implementation.Base.metadata)
     sched = register_plan_tables(implementation)
+    workflow_tables = register_weekend_course_type_tables(implementation)
+    workflows = workflow_tables["config"]
     example_reviews = register_example_review_table(implementation)
     Lesson, TQ, Program = implementation.TeachingLesson, implementation.TeachingQuestion, implementation.TeachingProgram
     User, ClassStudent, SchoolClass = implementation.User, implementation.ClassStudent, implementation.SchoolClass
@@ -701,8 +726,21 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     def get_schedule(subject: str = "数学", u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         check_subject(subject)
+        p = program(db, int(u.school_id))
         rows = {int(r.lesson_no): r for r in db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == subject)).all()}
-        lessons = {int(l.lesson_no): l for l in db.scalars(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.subject == subject)).all()}
+        lessons = {int(l.lesson_no): l for l in db.scalars(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == subject)).all()}
+        configured = {int(w.lesson_no): w for w in db.execute(select(workflows).where(
+            workflows.c.school_id == u.school_id, workflows.c.program_id == p.id,
+            workflows.c.subject == subject,
+        )).all()}
+        pending_materials = {}
+        if subject == "\u8bed\u6587":
+            pending_materials = {int(lesson_id): int(count) for lesson_id, count in db.execute(
+                select(workflow_tables["materials"].c.lesson_id, func.count(workflow_tables["materials"].c.id))
+                .where(workflow_tables["materials"].c.school_id == int(u.school_id),
+                       workflow_tables["materials"].c.status == "pending")
+                .group_by(workflow_tables["materials"].c.lesson_id)
+            ).all()}
         out = []
         for n in range(1, LESSONS + 1):
             r, l = rows.get(n), lessons.get(n)
@@ -711,8 +749,41 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 "lessonId": None, "title": "", "hasPlan": False, "approvedQuestions": 0, "draftQuestions": 0,
                 "taught": False, "practiceReady": 0, "coursewareStatus": "", "coursewareApproved": False,
             })
+            wf = configured.get(n)
+            item["courseType"] = "math" if subject == "数学" else (str(wf.course_type) if wf else None)
+            item["workflowRevision"] = int(wf.revision) if wf else 0
+            item["workflowLabel"] = {"math": "数学七环节", "reading": "阅读课", "writing": "作文课"}.get(item["courseType"], "待选择课型")
+            item["pendingMaterials"] = pending_materials.get(int(l.id), 0) if l else 0
             out.append(item)
         return {"subject": subject, "items": out}
+
+    @router.put("/teacher/weekend/schedule/{subject}/{lesson_no}/course-type")
+    def save_course_type(subject: str, lesson_no: int, b: CourseTypeBody,
+                         u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        check_subject(subject)
+        if subject != "语文":
+            raise HTTPException(400, "数学课程继续使用原有七环节，不需要选择语文课型")
+        if not 1 <= lesson_no <= LESSONS:
+            raise HTTPException(400, f"课次需要在 1–{LESSONS} 之间")
+        p = program(db, int(u.school_id))
+        lesson = db.scalar(select(Lesson).where(
+            Lesson.school_id == u.school_id, Lesson.program_id == p.id,
+            Lesson.subject == subject, Lesson.lesson_no == lesson_no,
+        ))
+        now = datetime.utcnow()
+        try:
+            revision = compare_and_set_course_type(
+                db, implementation, school_id=int(u.school_id), program_id=int(p.id),
+                lesson_no=lesson_no, lesson_id=int(lesson.id) if lesson else None,
+                course_type=b.courseType, expected_revision=b.expectedRevision,
+                updated_by=int(u.id), updated_at=now,
+            )
+        except WorkflowRevisionConflict as exc:
+            raise HTTPException(409, "课型已被其他页面修改，请刷新后重新选择") from exc
+        db.commit()
+        return {"lessonNo": lesson_no, "courseType": b.courseType, "workflowRevision": revision,
+                "workflowLabel": "阅读课" if b.courseType == "reading" else "作文课"}
 
     @router.put("/teacher/weekend/schedule")
     def put_schedule(b: ScheduleBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -1012,20 +1083,43 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     def _apply_lesson_plan(db: Any, u: Any, subject: str, lessonNo: int, data: dict[str, Any], source_text: str,
                            *, slides_hint: list[str] | None = None, use_literal: bool = True, overwrite: bool = False,
                            courseware_pages: list[Any] | None = None,
-                           courseware_replace_existing: bool = False) -> dict[str, Any]:
+                           courseware_replace_existing: bool = False,
+                           source_materials: list[dict[str, Any]] | None = None,
+                           source_file: str = "") -> dict[str, Any]:
         """Write one structured lesson plan plus its draft questions, then commit.
 
         Shared by the AI import, the structured JSON import and the Markdown import, so all
         three keep exactly the same validation and write behaviour.
         """
         p = program(db, int(u.school_id))
+        wf = db.execute(select(workflows).where(
+            workflows.c.school_id == u.school_id, workflows.c.program_id == p.id,
+            workflows.c.subject == subject, workflows.c.lesson_no == lessonNo,
+        ).with_for_update()).first()
+        declared_type = str(data.get("courseType") or "").strip()
+        if subject == "语文":
+            if wf is None and declared_type in COURSE_TYPES:
+                db.execute(insert(workflows).values(
+                    school_id=u.school_id, program_id=p.id, subject=subject, lesson_no=lessonNo,
+                    lesson_id=None, course_type=declared_type, revision=1, updated_by=u.id, updated_at=datetime.utcnow(),
+                ))
+                wf = db.execute(select(workflows).where(
+                    workflows.c.school_id == u.school_id, workflows.c.program_id == p.id,
+                    workflows.c.subject == subject, workflows.c.lesson_no == lessonNo,
+                ).with_for_update()).first()
+            if wf is None or str(wf.course_type) not in COURSE_TYPES:
+                raise HTTPException(409, "请先在本课工作栏选择并保存“阅读课”或“作文课”，再导入教案。")
+            if declared_type and declared_type != str(wf.course_type):
+                raise HTTPException(409, "整包声明的课型与工作栏已保存的课型不一致，请先核对后再导入。")
         lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == subject, Lesson.lesson_no == lessonNo).with_for_update().execution_options(populate_existing=True))
         slides = slides_hint or _content_lines(data.get("ppt"))
         original_examples = literal_numbered_questions(source_text) if use_literal else []
         row = db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == subject, sched.c.lesson_no == lessonNo)).first()
         now = datetime.utcnow()
         fields = dict(title=(str(data.get("title") or "").strip() or f"{subject}第{lessonNo}课")[:180], core_target=str(data.get("coreTarget") or "")[:1000],
-                      teacher_plan=str(data.get("teacherPlan") or ""), reading_plan=source_text, ppt_json=json.dumps(slides, ensure_ascii=False),
+                      teacher_plan=str(data.get("teacherPlan") or ""),
+                      reading_plan=str(data.get("readingPlan") or source_text),
+                      ppt_json=json.dumps(slides, ensure_ascii=False),
                       examples_json=json.dumps(original_examples or _content_lines(data.get("examples")), ensure_ascii=False),
                       closure_training=_homework_from_source(source_text, str(data.get("closureTraining") or "")),
                       unit=(row.school_unit if row and row.school_unit else "")[:120] or "待配置单元", published=False, updated_at=now)
@@ -1033,7 +1127,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             fields["core_target"] = fields["title"]            # a real (non-placeholder) target, so the lesson counts as prepared
         before = None
         if lesson is None:
-            lesson = Lesson(school_id=u.school_id, program_id=p.id, subject=subject, lesson_no=lessonNo, duration_min=120, **fields)
+            lesson = Lesson(school_id=u.school_id, program_id=p.id, subject=subject, lesson_no=lessonNo, duration_min=120,
+                            writing_plan=str(data.get("writingPlan") or ""), **fields)
             db.add(lesson)
             db.flush()
         else:
@@ -1044,6 +1139,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             invalidate_courseware_on_reimport(db, courseware_table, lesson.id)  # preserve drafts, revoke stale approvals
             for k, v in fields.items():
                 setattr(lesson, k, v)
+            if "writingPlan" in data:
+                lesson.writing_plan = str(data.get("writingPlan") or "")
             db.execute(delete(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(False)))
         qs = _valid_questions(data.get("questions"))
         wqs = valid_written_questions(data.get("writtenQuestions"))
@@ -1080,12 +1177,19 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         if before is not None:
             db.execute(insert(versions).values(school_id=u.school_id, teacher_id=u.id, lesson_id=lesson.id,
                 before_json=history.serialize(before), after_hash=history.digest(plan_state(db, u, lesson))))
+        if wf is not None:
+            db.execute(update(workflows).where(workflows.c.id == wf.id).values(lesson_id=lesson.id, updated_at=now))
+        pending_materials = store_pending_materials(
+            db, implementation, school_id=int(u.school_id), lesson_id=int(lesson.id),
+            source_file=source_file or "pasted-text", created_by=int(u.id), figures=source_materials or [],
+        )
         db.commit()
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs) + len(wqs), "writtenQuestionsFound": len(wqs),
                 "coursewarePagesFound": len(courseware_pages or []),
+                "materialsPending": pending_materials,
                 "sourceChars": len(source_text), "message": f"原文 {len(source_text)} 字已完整保留（含阅读材料及非选择题）。已导入：{len(slides)} 页 PPT 内容、{len(qs)} 道选择题、{len(wqs)} 道简答/写作题（草稿，需你审核）。没有习题的话，点“AI 出习题（保留教案）”。"}
 
-    def _apply_lesson_extract(db: Any, u: Any, subject: str, lessonNo: int, force: str, extracted: dict[str, Any]) -> dict[str, Any]:
+    def _apply_lesson_extract(db: Any, u: Any, subject: str, lessonNo: int, force: str, extracted: dict[str, Any], *, source_file: str = "") -> dict[str, Any]:
         """AI tidies the extracted text into one lesson plus its draft questions, then commits."""
         p = program(db, int(u.school_id))
         lesson = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == subject, Lesson.lesson_no == lessonNo))
@@ -1093,8 +1197,43 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             raise HTTPException(409, "这节课已经有教案了。导入会覆盖教案文字（已通过的习题保留）。")
         plan = _markdown_plan(extracted)
         if plan is not None:
-            got = _apply_lesson_plan(db, u, subject, lessonNo, plan, extracted["text"], use_literal=False, overwrite=force == "1")
+            got = _apply_lesson_plan(db, u, subject, lessonNo, plan, extracted["text"], use_literal=False, overwrite=force == "1",
+                                     source_materials=extracted.get("images") or [], source_file=source_file)
             got["engine"] = "markdown"
+            return got
+        if subject == "语文":
+            # Chinese originals stay on the server, but their paper questions must
+            # still become reviewable drafts: keep the teacher's own references and
+            # use the source text's line order to find each article for its question.
+            paper = literal_written_questions(extracted["text"])
+            lines = [line.strip() for line in extracted["text"].splitlines()]
+            headings = [(index, line) for index, line in enumerate(lines)
+                        if len(line) >= 8 and "。" not in line and not _PAPER_QUESTION.search(line)
+                        and not line.startswith(_PAPER_ANSWER)]
+            answers = [(index, line) for index, line in enumerate(lines) if line.startswith(_PAPER_ANSWER)]
+            for question in paper:
+                # The source is read top-down, so the last heading before a question
+                # names the article or section that question belongs to.
+                body = question["stem"].split("\n")[-1].strip()
+                position = next((index for index, line in enumerate(lines) if line and line in question["stem"]), 0)
+                after = [line for index, line in reversed(headings) if index <= position]
+                article = after[0] if after and len(after[0]) >= 12 else ""
+                source_answer = [line for index, line in answers if index > position]
+                # valid_written_questions() re-joins material and stem, so the stem
+                # must not repeat the heading itself.
+                question["material"] = article
+                question["stem"] = body
+                if source_answer and not question.get("reference"):
+                    question["reference"] = source_answer[0][len(_PAPER_ANSWER):].strip()
+            note = (f"原文已在本地保存为草稿，并从中拆出 {len(paper)} 道简答/写作题（待审核，参考答案按原文逐行对应）。"
+                    if paper else "原文已在本地保存为草稿，尚未自动拆分习题或匹配图片；请核对原文及待确认素材。")
+            plan = {"title": f"{subject}第{lessonNo}课", "teacherPlan": extracted["text"],
+                    "courseType": extracted.get("courseType") or "", "questions": [], "writtenQuestions": paper}
+            got = _apply_lesson_plan(db, u, subject, lessonNo, plan, extracted["text"],
+                                     slides_hint=extracted.get("slides") or None, use_literal=False,
+                                     overwrite=force == "1", source_materials=extracted.get("images") or [],
+                                     source_file=source_file)
+            got.update(engine="local", importMode="local", message=note)
             return got
         figures = extracted.get("images") or []
         figure_note = ""
@@ -1122,9 +1261,12 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             timeout=150 if figures else 90,
         ))
         attached_figures = _attach_figures(data, figures)
+        if extracted.get("courseType") and isinstance(data, dict):
+            data["courseType"] = extracted["courseType"]
         if not isinstance(data, dict) or not (str(data.get("title") or "").strip() or str(data.get("coreTarget") or "").strip() or _lines(data.get("examples"))):
             raise HTTPException(502, "AI 没能整理出教案，请再试一次，或在“审改”里手动填写")
-        got = _apply_lesson_plan(db, u, subject, lessonNo, data, extracted["text"], slides_hint=extracted["slides"] or None, overwrite=force == "1")
+        got = _apply_lesson_plan(db, u, subject, lessonNo, data, extracted["text"], slides_hint=extracted["slides"] or None, overwrite=force == "1",
+                                 source_materials=figures, source_file=source_file)
         if figures and attached_figures < len(figures):
             unmatched = len(figures) - attached_figures
             got["figureWarning"] = f"有 {unmatched} 张原卷图未能与题目唯一核对，系统没有自动挂到题目上，请老师复核。"
@@ -1133,7 +1275,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         return got
 
     @router.post("/teacher/weekend/lessons/import")
-    def import_lesson(subject: str = Form(...), lessonNo: int = Form(...), force: str = Form("0"), text: str = Form(""), file: UploadFile | None = File(None),
+    def import_lesson(subject: str = Form(...), lessonNo: int = Form(...), force: str = Form("0"), text: str = Form(""), courseType: str = Form(""), file: UploadFile | None = File(None),
                             u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Import one lesson file; a JSON bundle can carry the plan, questions and courseware together."""
         need(u, "teacher")
@@ -1185,8 +1327,23 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         # If the guardian-consent guard explicitly denies this unregistered feature, preserve
         # the source locally as a draft instead of sending it to an external service.
         extracted = _extract_upload(file, text)
+        if courseType:
+            if courseType not in COURSE_TYPES:
+                raise HTTPException(422, "无效的语文课型")
+            extracted["courseType"] = courseType
         try:
-            return _apply_lesson_extract(db, u, subject, lessonNo, force, extracted)
+            result = _apply_lesson_extract(db, u, subject, lessonNo, force, extracted, source_file=filename or "pasted-text")
+            visible_images = len(extracted.get("images") or [])
+            omitted_images = int(extracted.get("omittedImages") or 0)
+            if omitted_images or (visible_images and result.get("engine") != "ai"):
+                result["imageReviewRequired"] = visible_images + omitted_images
+                if result.get("engine") == "ai":
+                    detail = f"有 {omitted_images} 张图片超出当前单图预算，未送入整理流程；请核对原始文件。"
+                else:
+                    detail = (f"检测到 {visible_images + omitted_images} 张图片（其中 {omitted_images} 张未提取）；"
+                              f"{result.get('materialsPending', 0)} 张已保存为待确认预览，请逐张确认用途；原始文件未修改。")
+                result["message"] = str(result.get("message") or "") + " 图片检查：" + detail
+            return result
         except HTTPException as exc:
             if (
                 exc.status_code != 403
@@ -1203,19 +1360,29 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             "closureTraining": "",
             "questions": [],
             "writtenQuestions": [],
+            "courseType": courseType,
         }
         result = _apply_lesson_plan(
             db, u, subject, lessonNo, plan, extracted["text"],
             slides_hint=extracted.get("slides") or None,
             use_literal=False,
             overwrite=force == "1",
+            source_materials=extracted.get("images") or [], source_file=filename or "pasted-text",
         )
         result["importMode"] = "local"
         result["message"] = (
-            "AI 功能当前未获准发送这份教案，原文已在本地保存为草稿。"
+            "教案原文已在本地保存为草稿。"
             "系统没有自动拆分习题或匹配图片；请在“审改”中核对并补充，"
             "或上传结构化 JSON 整包。"
         )
+        visible_images = len(extracted.get("images") or [])
+        omitted_images = int(extracted.get("omittedImages") or 0)
+        if visible_images or omitted_images:
+            result["imageReviewRequired"] = visible_images + omitted_images
+            result["message"] += (
+                f" 图片检查：检测到 {visible_images + omitted_images} 张图片（其中 {omitted_images} 张超出当前单图预算）；"
+                f"其中 {result['materialsPending']} 张已保存为待确认预览，请在导入素材审核中核对；未提取的图片请对照原文件。原始文件未修改。"
+            )
         return result
 
     @router.post("/teacher/weekend/lessons/{lid}/practice/import")
@@ -1408,12 +1575,14 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 "ready": sum(1 for i in items if i["ok"] and i["lessonNo"])}
 
     @router.post("/teacher/weekend/lessons/import/batch")
-    def import_lessons(subject: str = Form(...), force: str = Form("0"), files: list[UploadFile] = File(...),
+    def import_lessons(subject: str = Form(...), force: str = Form("0"), courseType: str = Form(""), files: list[UploadFile] = File(...),
                             u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """Import several lesson plans in one go: each file's 课次 comes from its name (第03课 / lesson-03).
         One bad file never stops the others and every file reports its own result."""
         need(u, "teacher")
         check_subject(subject)
+        if subject == "语文" and courseType not in COURSE_TYPES:
+            raise HTTPException(409, "语文批量导入请先选择课型；同一批次仅导入同一课型。")
         if not files:
             raise HTTPException(400, "请至少选择一个文件")
         if len(files) > MAX_BATCH_FILES:
@@ -1425,7 +1594,10 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             try:
                 if lesson_no is None:
                     raise HTTPException(400, "没能从文件名看出课次，请把文件命名为「第03课」或「lesson-03」")
-                got = _apply_lesson_extract(db, u, subject, lesson_no, force, _extract_upload(item, ""))
+                extracted = _extract_upload(item, "")
+                if courseType:
+                    extracted["courseType"] = courseType
+                got = _apply_lesson_extract(db, u, subject, lesson_no, force, extracted, source_file=name)
                 items.append({"filename": name, "lessonNo": lesson_no, "ok": True, "lessonId": got["lessonId"],
                               "sourceChars": got["sourceChars"], "engine": got.get("engine", ""), "error": ""})
             except HTTPException as exc:
@@ -1464,6 +1636,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                             "reference": w.reference.strip(), "hints": hints,
                             "figure": w.figure.model_dump(exclude_none=True) if w.figure else {}})
         plan = {"title": item.title.strip(), "coreTarget": item.coreTarget.strip(), "teacherPlan": item.teacherPlan,
+                "courseType": item.courseType, "readingPlan": item.readingPlan, "writingPlan": item.writingPlan,
                 "ppt": [str(x) for x in item.ppt], "examples": [str(x) for x in item.examples],
                 "closureTraining": item.closureTraining, "questions": questions, "writtenQuestions": written}
         if not (plan["title"] or plan["coreTarget"] or plan["examples"] or plan["ppt"] or questions or written):
@@ -1472,7 +1645,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
 
     def _plan_fingerprint(plan: dict[str, Any]) -> str:
         """Content hash of the payload only; the identity (subject / lessonNo) stays out of it."""
-        payload = json.dumps({k: plan.get(k) for k in ("title", "coreTarget", "teacherPlan", "ppt", "examples",
+        payload = json.dumps({k: plan.get(k) for k in ("title", "coreTarget", "teacherPlan", "courseType", "readingPlan", "writingPlan", "ppt", "examples",
                                                        "closureTraining", "questions", "writtenQuestions")},
                              ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(lesson_markdown.canonical(payload).encode("utf-8")).hexdigest()
@@ -1743,6 +1916,65 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         return {"previousImportId": saved["id"] if saved and saved["teacher_id"] == u.id else None,
                 "id": lesson.id, "title": lesson.title, "coreTarget": lesson.core_target, "teacherPlan": lesson.teacher_plan, "sourceText": lesson.reading_plan or "", "closureTraining": lesson.closure_training,
                 "examples": lst(lesson.examples_json), "ppt": lst(lesson.ppt_json)}
+
+    @router.get("/teacher/weekend/lessons/{lid}/imported-materials")
+    def imported_materials(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Teacher-only review queue for embedded source images; students never receive this data."""
+        need(u, "teacher")
+        lesson = my_lesson(db, u, lid)
+        table = workflow_tables["materials"]
+        rows = db.execute(select(table).where(
+            table.c.school_id == int(u.school_id), table.c.lesson_id == int(lesson.id),
+        ).order_by(table.c.sort_order, table.c.id)).all()
+        return {"courseType": course_type_for(db, implementation, lesson),
+                "items": [{"id": int(row.id), "sourceFile": row.source_file, "sourcePart": row.source_part,
+                           "sourceSha256": row.source_sha256, "sourceFormat": row.source_format,
+                           "mediaType": row.media_type, "dataUrl": row.data_url, "status": row.status,
+                           "relationship": row.relationship, "stageNo": row.stage_no,
+                           "sortOrder": int(row.sort_order), "revision": int(row.revision)} for row in rows]}
+
+    @router.put("/teacher/weekend/lessons/{lid}/imported-materials/{material_id}")
+    def review_imported_material(lid: int, material_id: int, b: ImportedMaterialReviewBody,
+                                 u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Explicitly bind or ignore an imported picture with optimistic concurrency."""
+        need(u, "teacher")
+        lesson = my_lesson(db, u, lid)
+        if lesson.subject != "语文":
+            raise HTTPException(409, "仅语文课使用语文素材关系审核")
+        course_type = course_type_for(db, implementation, lesson)
+        if course_type not in COURSE_TYPES:
+            raise HTTPException(409, "请先选择并保存阅读课或作文课型")
+        allowed = {"reading": {1, 2, 3, 4, 5, 6}, "writing": {1, 2, 3, 4, 5, 6}}[course_type]
+        if b.status == "confirmed" and (b.stageNo not in allowed or b.relationship == "other"):
+            raise HTTPException(422, "确认素材前必须选择流程环节和素材关系")
+        if b.status == "confirmed" and course_type == "reading" and b.relationship in {"model_essay", "picture_writing", "writing_method"}:
+            raise HTTPException(422, "该素材关系属于作文课")
+        if b.status == "confirmed" and course_type == "writing" and b.relationship in {"short_reading", "long_reading", "article_illustration"}:
+            raise HTTPException(422, "该素材关系属于阅读课")
+        table = workflow_tables["materials"]
+        result = db.execute(update(table).where(
+            table.c.id == int(material_id), table.c.school_id == int(u.school_id),
+            table.c.lesson_id == int(lesson.id), table.c.revision == int(b.expectedRevision),
+        ).values(status=b.status, relationship=b.relationship if b.status == "confirmed" else "",
+                 stage_no=b.stageNo if b.status == "confirmed" else None, sort_order=b.sortOrder,
+                 revision=table.c.revision + 1, reviewed_by=int(u.id), reviewed_at=datetime.utcnow()))
+        if result.rowcount != 1:
+            db.rollback()
+            raise HTTPException(409, "素材审核记录已变化或不存在，请刷新后重试")
+        db.commit()
+        return {"id": int(material_id), "status": b.status, "revision": int(b.expectedRevision) + 1}
+
+    @router.get("/teacher/weekend/lessons/{lid}/imported-materials/review", response_class=HTMLResponse)
+    def imported_materials_review_page(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        my_lesson(db, u, lid)
+        return HTMLResponse("""<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>导入素材审核</title><main style="max-width:980px;margin:24px auto;padding:16px;font:16px system-ui;color:#172b4d">
+<h1>导入素材审核</h1><p id="state">正在读取素材…</p><section id="items"></section></main>
+<script>(function(){'use strict';var lid=LOCATION_ID,root=document.getElementById('items'),state=document.getElementById('state');
+function node(tag,text){var n=document.createElement(tag);if(text)n.textContent=text;return n}
+function api(url,method,body){return fetch(url,{method:method||'GET',credentials:'same-origin',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined}).then(function(r){return r.json().then(function(d){if(!r.ok)throw Error(d.detail||r.statusText);return d})})}
+function load(){api('/teacher/weekend/lessons/'+lid+'/imported-materials').then(function(d){root.textContent='';state.textContent='课型：'+(d.courseType==='reading'?'阅读课':d.courseType==='writing'?'作文课':'待选择课型')+'；素材 '+d.items.length+' 项。待确认素材不会进入学生端。';d.items.forEach(function(x){var card=node('article');card.style.cssText='border:1px solid #d7dee8;border-radius:10px;padding:14px;margin:12px 0';card.appendChild(node('strong',x.sourceFile+' / '+x.sourcePart));card.appendChild(node('p','状态：'+x.status+'；来源 SHA-256：'+x.sourceSha256));var img=node('img');img.src=x.dataUrl;img.alt='导入素材预览';img.style.cssText='display:block;max-width:100%;max-height:440px;margin:10px 0';card.appendChild(img);var rel=node('select');[['short_reading','短文/文章配图'],['long_reading','长文/文章配图'],['article_illustration','阅读文章配图'],['model_essay','范文配图'],['picture_writing','看图写话图片'],['writing_method','写作方法配图'],['task','任务素材'],['question_figure','题目配图']].forEach(function(v){var o=node('option',v[1]);o.value=v[0];rel.appendChild(o)});var stage=node('select');for(var i=1;i<=6;i++){var o=node('option','第'+i+'环节');o.value=String(i);stage.appendChild(o)}var order=node('input');order.type='number';order.min='0';order.max='999';order.value=String(x.sortOrder);order.setAttribute('aria-label','排序');var confirm=node('button','确认绑定');confirm.type='button';confirm.onclick=function(){confirm.disabled=true;api('/teacher/weekend/lessons/'+lid+'/imported-materials/'+x.id,'PUT',{status:'confirmed',relationship:rel.value,stageNo:Number(stage.value),sortOrder:Number(order.value)||0,expectedRevision:x.revision}).then(load).catch(function(e){state.textContent=e.message;confirm.disabled=false})};var ignore=node('button','忽略');ignore.type='button';ignore.style.marginLeft='8px';ignore.onclick=function(){ignore.disabled=true;api('/teacher/weekend/lessons/'+lid+'/imported-materials/'+x.id,'PUT',{status:'ignored',expectedRevision:x.revision}).then(load).catch(function(e){state.textContent=e.message;ignore.disabled=false})};card.appendChild(rel);card.appendChild(stage);card.appendChild(order);card.appendChild(confirm);card.appendChild(ignore);root.appendChild(card)})}).catch(function(e){state.textContent='素材读取失败：'+e.message})}load()})();</script>""".replace("LOCATION_ID", str(int(lid))))
 
     @router.get("/teacher/weekend/lessons/{lid}/questions")
     def lesson_questions(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):

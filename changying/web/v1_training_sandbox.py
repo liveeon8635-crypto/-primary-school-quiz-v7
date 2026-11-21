@@ -176,6 +176,8 @@ STEP_RELATIONSHIPS: dict[str, dict[str, str]] = {
 STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 已有教案可在互动课件中预检导入预制课件包；默认不覆盖，勾选替换可保留上一版并生成待审核草稿，不改教案和习题。"
 STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 如果只需要上传一个文件，可在课次行点“导入教案/整包”上传 JSON，一次带入教案、随堂题和互动课件草稿；按整包内容识别，扩展名丢失也可导入；普通 Word/PDF 本地提取，约定格式可本地拆题；其他内容只有功能门禁允许时才调用 AI，门禁拒绝时保存原文草稿，不自动拆题或匹配图片；题目与课件仍要分别审核。"
 STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 第4环节按已通过的随堂练习逐题配置课件；课堂公布该题答案后才展示对应讲解。"
+STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 语文课先选择并保存阅读课或作文课型；没有课型的旧课显示待选择，不会被系统猜测。课型和导入成功不代表素材关系或学生可见权限已验收。"
+STEP_RELATIONSHIPS["teacher_weekend_class"]["communication_tip"] += " 数学继续七环节；阅读课和作文课使用各自六环节。新课堂冻结创建时的流程配置，已经创建的课堂不会随课型选择变化。语文素材分组与学生端逐步开放仍在开发，不能把教师大屏内容视为学生接口已通过权限验收。"
 
 SCENARIO_PRESETS: dict[str, dict[str, Any]] = {
     "empty": {"title": "从零开始", "description": "从建立班级开始完整练习。"},
