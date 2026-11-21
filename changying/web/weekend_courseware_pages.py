@@ -984,7 +984,13 @@ function cwPlan(box,lessonId,refresh){
       });
       box.appendChild(overview);
     }
-    box.appendChild(el('div',{class:'row'},genAllBtn,previewAllBtn));
+    var approveAllStagesBtn=d.subject==='语文'?el('button',{class:'primary',text:'一键审核全部待确认课件',onclick:function(){
+      var drafts=d.items.filter(function(it){return it.status==='draft'});
+      if(!drafts.length){msg.textContent='当前没有待确认的课件草稿';return}
+      if(!confirm('确认已整体预览这 '+drafts.length+' 个环节的课件内容？确认后即可用于课堂大屏展示。'))return;
+      run(drafts,function(it){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:it.stage,page:it.page}})},'审核');
+    }}):null;
+    box.appendChild(el('div',{class:'row'},genAllBtn,previewAllBtn,approveAllStagesBtn));
     box.appendChild(wholePreviewWrap);
     var stageSel=el('select',{'aria-label':'环节'});CW_STAGES.forEach(function(x){stageSel.appendChild(el('option',{value:x.no,text:'第'+x.no+'环节：'+x.name+((d.pages[String(x.no)]||[]).length?'（'+(d.pages[String(x.no)]||[]).length+' 项）':'')}))});
     stageSel.value=stageNo;stageSel.onchange=function(){stageNo=stageSel.value;paint(data)};
@@ -1031,7 +1037,7 @@ function cwPlan(box,lessonId,refresh){
     }});
     var actionRow=el('div',{class:'row'},stageSel);
     if(stageNo===practiceNo)actionRow.appendChild(el('span',{class:'muted',text:'课堂任务课件请导入预制包或手动填写，此环节不调用 AI。'}));
-    else {actionRow.appendChild(all);actionRow.appendChild(el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})));}
+    else if(d.subject!=='语文'){actionRow.appendChild(all);actionRow.appendChild(el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})));}
     actionRow.appendChild(approveAll);
     var host=d.subject==='语文'?el('section',{'aria-label':'本环节课件审核',style:'margin-top:10px'}):box;
     if(d.subject==='语文')box.appendChild(host);

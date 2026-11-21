@@ -34,9 +34,10 @@ def chinese_lesson_readiness(implementation, db, lesson, teacher_id):
         stage = int(spec["no"])
         pages = [s[0] for s in sources] if stage == 5 else stage_pages(lesson, stage, course_type)
         candidates = [i for i in items if i.get("stage") == stage]
-        missing = not candidates or (stage == 5 and not sources)
+        has_whole_stage_slide = stage == 5 and any(i.get("kind") == "slide" and i.get("page") is None for i in candidates)
+        missing = not candidates or (stage == 5 and not sources and not has_whole_stage_slide)
         valid = bool(candidates) and not missing
-        if pages and any(not any(i.get("page") == p for i in candidates) for p in range(len(pages))):
+        if pages and not has_whole_stage_slide and any(not any(i.get("page") == p for i in candidates) for p in range(len(pages))):
             missing = True
             valid = False
         hint = ""
