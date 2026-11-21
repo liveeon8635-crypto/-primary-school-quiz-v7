@@ -42,6 +42,9 @@ from changying.services.lesson_written import (MAX_KNOWLEDGE, lesson_goals, lite
 from changying.web.weekend_courseware import PreparedPagesBody, import_prepared_courseware
 
 AI_FEATURE = "weekend_lesson_draft"
+# A paper question starts with "3.【复述】", "C1.【对比】" or "1、概括…"; headings never do.
+_PAPER_QUESTION = re.compile(r"^\s*([A-Za-z]?\d+|[（(]\s*\d+\s*[)）])\s*[.．、:：)）]?\s*【?")
+_PAPER_ANSWER = "教师评分秘密："
 SUBJECTS = ("语文", "数学")
 LESSONS = 18
 MAX_BATCH_FILES = 18
@@ -1199,14 +1202,38 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             got["engine"] = "markdown"
             return got
         if subject == "语文":
+            # Chinese originals stay on the server, but their paper questions must
+            # still become reviewable drafts: keep the teacher's own references and
+            # use the source text's line order to find each article for its question.
+            paper = literal_written_questions(extracted["text"])
+            lines = [line.strip() for line in extracted["text"].splitlines()]
+            headings = [(index, line) for index, line in enumerate(lines)
+                        if len(line) >= 8 and "。" not in line and not _PAPER_QUESTION.search(line)
+                        and not line.startswith(_PAPER_ANSWER)]
+            answers = [(index, line) for index, line in enumerate(lines) if line.startswith(_PAPER_ANSWER)]
+            for question in paper:
+                # The source is read top-down, so the last heading before a question
+                # names the article or section that question belongs to.
+                body = question["stem"].split("\n")[-1].strip()
+                position = next((index for index, line in enumerate(lines) if line and line in question["stem"]), 0)
+                after = [line for index, line in reversed(headings) if index <= position]
+                article = after[0] if after and len(after[0]) >= 12 else ""
+                source_answer = [line for index, line in answers if index > position]
+                # valid_written_questions() re-joins material and stem, so the stem
+                # must not repeat the heading itself.
+                question["material"] = article
+                question["stem"] = body
+                if source_answer and not question.get("reference"):
+                    question["reference"] = source_answer[0][len(_PAPER_ANSWER):].strip()
+            note = (f"原文已在本地保存为草稿，并从中拆出 {len(paper)} 道简答/写作题（待审核，参考答案按原文逐行对应）。"
+                    if paper else "原文已在本地保存为草稿，尚未自动拆分习题或匹配图片；请核对原文及待确认素材。")
             plan = {"title": f"{subject}第{lessonNo}课", "teacherPlan": extracted["text"],
-                    "courseType": extracted.get("courseType") or "", "questions": [], "writtenQuestions": []}
+                    "courseType": extracted.get("courseType") or "", "questions": [], "writtenQuestions": paper}
             got = _apply_lesson_plan(db, u, subject, lessonNo, plan, extracted["text"],
                                      slides_hint=extracted.get("slides") or None, use_literal=False,
                                      overwrite=force == "1", source_materials=extracted.get("images") or [],
                                      source_file=source_file)
-            got.update(engine="local", importMode="local", message=(
-                "原文已在本地保存为草稿，尚未自动拆分习题或匹配图片；请核对原文及待确认素材。"))
+            got.update(engine="local", importMode="local", message=note)
             return got
         figures = extracted.get("images") or []
         figure_note = ""

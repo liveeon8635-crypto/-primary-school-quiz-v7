@@ -166,6 +166,6 @@ def test_two_opens_in_flight_do_not_erase_each_other(tmp_path):
     current = client.get('/student/weekend/current', headers=sh)
     assert [q['id'] for q in current.json()['questions']] == [qid, second_id], current.text
     written = client.get(f'/student/weekend/sessions/{sid}/written', headers=sh)
-    assert [q['id'] for q in written.json()['questions']] == [wid], written.text
+    assert [q['id'] for q in written.json()['questions']] == [wid, written_second], written.text
     print('OK')
 ''')

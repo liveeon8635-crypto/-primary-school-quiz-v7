@@ -32,6 +32,16 @@ with TestClient(app) as client:
     selected = client.put('/teacher/weekend/schedule/语文/12/course-type', headers=th,
                           json={'courseType':'reading','expectedRevision':0})
     assert selected.status_code == 200, selected.text
+    # 阅读课开课前必须先有一道已审核的课堂任务；先维护一道选择题并通过。
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        db.add(legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=lid, stage="4", subject="语文", level="A",
+                                       knowledge="民间故事", stem="海力布为什么愿意牺牲自己？",
+                                       options_json=json.dumps(["想出名", "救乡亲", "赚钱", "没想过"], ensure_ascii=False),
+                                       correct_index=1, explanation="他为了救乡亲。", active=False))
+        db.commit()
+        ready = db.scalar(select(legacy.TeachingQuestion.id).where(legacy.TeachingQuestion.lesson_id == lid))
+    assert client.post('/teacher/weekend/lessons/%d/questions' % lid, headers=th, json={'approve': [ready]}).status_code == 200
     s = client.post('/teacher/weekend/sessions', headers=th, json={'lessonId':lid}).json()['id']
     base = f'/teacher/weekend/sessions/{s}'
     student = f'/student/weekend/sessions/{s}/written'
@@ -44,6 +54,7 @@ with TestClient(app) as client:
     assert client.get(student, headers=sh).json()['questions'] == []
     assert client.post(url, headers=sh, data={'text':'答案'}).status_code == 409
     client.post(base+'/start', headers=th);client.post(base+'/goto', headers=th, json={'stage':5})
+    # 随堂练习逐题开放：老师上到第 5 环节后开放第 1 道文字题，学生才能看到并提交。
     assert client.post(base+'/practice-question', headers=th, json={'question':1}).status_code == 200
     assert client.post(base+'/written/questions', headers=th, json={'stem':'late'}).status_code == 409
     page = client.get('/v1/weekend-practice').text
@@ -111,8 +122,15 @@ with TestClient(app) as client:
     assert client.post(review, headers=th, json={'revision':5,'result':'correct','comment':'完整'}).status_code == 200
     before = client.get(base+'/board', headers=th)
     assert '舍己救人' not in before.text
+    # 随堂练习逐题开放：第 1 题是选择题（画面上是它的题干），
+    # 老师翻到第 1 题就把它开放，并把这道文字题的参考答案一起公布。
+    deck = client.get(base+'/board', headers=th).json()['deck']
+    assert client.post(base+'/slide', headers=th, json={'delta': deck['index'] - 1}).status_code == 200
     published = client.post(base+'/publish-answers', headers=th, json={'question':1})
     assert published.status_code == 200, published.text
+    # 逐题公布：第 2 题（文字题）也公布后，板书才翻到第 2 题的答案页。
+    assert client.post(base+'/publish-answers', headers=th, json={'question':2}).status_code == 200
+    assert client.post(base+'/slide', headers=th, json={'index': 1}).status_code == 200
     assert '舍己救人' in client.get(base+'/board', headers=th).text
     assert client.get('/student/weekend/explain',headers=sh).json()['items'][0]['reference']=='舍己救人'
     candidates=client.get(base+'/peer-suggest',headers=th).json()['questions'][0]['submitted']
@@ -123,6 +141,17 @@ with TestClient(app) as client:
     d = client.get(student, headers=sh).json()
     assert d['canSubmit'] is False and d['questions'][0]['submission']['comment'] == '完整'
     assert client.post(url, headers=sh, data={'text':'late','revision':4}).status_code == 409
+    # 每次开课都要有已审核的课堂任务；上一节已下课，这里再通过一道选择题供新课堂使用。
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        db.add(legacy.TeachingQuestion(school_id=school_id, program_id=p.id, lesson_id=lid, stage="4", subject="语文", level="A",
+                                       knowledge="民间故事", stem="海力布把石头吐出来时说了什么？",
+                                       options_json=json.dumps(["高声唤醒乡亲", "请求帮助", "告诉家人", "什么也没说"], ensure_ascii=False),
+                                       correct_index=0, explanation="他让大家快跑。", active=False))
+        db.commit()
+        ready2 = db.scalar(select(legacy.TeachingQuestion.id).where(legacy.TeachingQuestion.lesson_id == lid,
+                                                                  legacy.TeachingQuestion.stem.like("海力布把石头%")).order_by(legacy.TeachingQuestion.id.desc()))
+    assert client.post('/teacher/weekend/lessons/%d/questions' % lid, headers=th, json={'approve': [ready2]}).status_code == 200
     next_s = client.post('/teacher/weekend/sessions', headers=th, json={'lessonId':lid}).json()['id']
     assert client.get(f'/teacher/weekend/sessions/{next_s}/written', headers=th).json()['questions'] == []
     # Another teacher cannot read or grade this session's answers.

@@ -27,14 +27,15 @@ def waiting_ai(*args,**kwargs):
     return original_ai(*args,**kwargs)
 
 legacy._ai_call=waiting_ai
+# 国语课的原文已改为本地导入（不发给外部 AI），因此这里用数学还有 AI 路径的学科验证「导入不阻塞应用」。
 with TestClient(app) as client, ThreadPoolExecutor(max_workers=2) as pool:
     th,sh,sid,school_id=setup(client)
     for mode,no in [('paste',17),('file',18)]:
         entered.clear();release.clear()
-        replies.append(json.dumps({'title':'阅读教案','coreTarget':'理解故事内容','teacherPlan':'阅读后讨论','ppt':['目标'], 'examples':[], 'questions':[]},ensure_ascii=False))
-        source='这是一份老师自己的教案。阅读故事以后，练习概括故事起因、经过和结果。'
+        replies.append(json.dumps({'title':'数学教案','coreTarget':'两位数减一位数','teacherPlan':'先计算再检查','ppt':['目标'], 'examples':[], 'questions':[]},ensure_ascii=False))
+        source='这是一份老师自己的数学教案。练习 12-5 这类退位减法。'
         def submit():
-            data={'subject':'语文','lessonNo':str(no),'courseType':'reading'}
+            data={'subject':'数学','lessonNo':str(no)}
             files=None
             if mode=='paste':data['text']=source
             else:files={'file':('lesson.txt',source.encode(),'text/plain')}
@@ -42,7 +43,7 @@ with TestClient(app) as client, ThreadPoolExecutor(max_workers=2) as pool:
         importing=pool.submit(submit)
         assert entered.wait(3),'Import did not reach AI'
         def browse():
-            return [client.get('/health'),client.get('/v1/weekend-plan'),client.get('/teacher/weekend/schedule?subject=语文',headers=th)]
+            return [client.get('/health'),client.get('/v1/weekend-plan'),client.get('/teacher/weekend/schedule?subject=数学',headers=th)]
         browsing=pool.submit(browse)
         responsive=False
         try:

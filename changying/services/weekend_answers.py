@@ -72,7 +72,13 @@ def question_is_open(implementation, db, session, kind, question_id):
         from changying.services.weekend_course_types import frozen_session
         frozen = frozen_session(db, implementation, int(session.id), metadata=getattr(implementation, "Base", None) and implementation.Base.metadata)
         return not frozen or frozen.get("courseType") not in ("reading", "writing")
-    return f'{kind}:{question_id}' in json.loads(value)
+    opened = json.loads(value)
+    if f'{kind}:{question_id}' in opened:
+        return True
+    # 文字题的板书序号按“选择题在前、文字题在后”排，但老师在大屏上点的那一题序号属于当堂那次点名；
+    # 点名记录（weekend_open_questions.ordinal）保存的就是这次点名的来源，和文字题自己记录的来源号一致。
+    # 否则阅读/作文课的随堂练习永远只开放得了一题，其余文字题学生永远提交不了。
+    return kind == "written" and f'choice:{question_id}' in opened
 
 _LABEL = re.compile(r'^\s*[A-Da-d]\s*[．.、:：)）]\s*')
 

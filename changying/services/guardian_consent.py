@@ -65,6 +65,13 @@ _PURE_TEACHING_QGEN_FEATURES: frozenset[str] = frozenset({
     "question_generation_repair",
 })
 
+# Teacher-authored material only: the prompt carries the teacher's own lesson text or
+# a document they uploaded for this lesson — never a student record. These stay inside
+# the week's review scope instead of being refused as an unregistered feature.
+TEACHING_DOCUMENT_AI_FEATURES: frozenset[str] = frozenset({
+    "weekend_lesson_draft",
+})
+
 _VERIFIED_PURE_TEACHING_QGEN: contextvars.ContextVar[bool] = contextvars.ContextVar(
     "guardian_consent_verified_pure_teaching_qgen",
     default=False,
@@ -100,6 +107,7 @@ FEATURE_TO_SCOPE: dict[str, str] = {
     "weekend_written_score": "weekend_review",
     "weekend_written_precheck": "weekend_review",
     "weekend_written_precheck_ocr": "weekend_review",
+    "weekend_lesson_draft": "weekend_review",
     "knowledge_map_student_ai": "knowledge_map_ai",
     "knowledge_map": "knowledge_map_ai",
     "exam_prep_student_ai": "exam_prep_ai",
@@ -787,6 +795,7 @@ def install_ai_egress_guard(implementation: Any) -> None:
             (
                 (feature in TEACHING_ONLY_AI_FEATURES)
                 or (feature in _PURE_TEACHING_QGEN_FEATURES and verified_pure_qgen)
+                or (feature in TEACHING_DOCUMENT_AI_FEATURES and not imgs)
             )
             and not student_ids
             and not imgs

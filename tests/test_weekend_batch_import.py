@@ -62,15 +62,15 @@ with TestClient(app) as client:
     assert not calls, 'preview must not call the model'
     assert not any(row['hasPlan'] for row in client.get('/teacher/weekend/schedule?subject=语文', headers=th).json()['items'])
 
-    # The batch imports the three named files and reports the unnamed one without stopping.
-    replies.extend([reply('第一课'), reply('第二课'), reply('第三课')])
+    # The batch saves the three named files locally (Chinese lessons never leave the server)
+    # and reports the unnamed one without stopping.
     r = client.post('/teacher/weekend/lessons/import/batch', headers=th, data={'subject': '语文', 'courseType':'reading'}, files=files)
     assert r.status_code == 200, r.text
     got = r.json()
     assert got['imported'] == 3 and got['failed'] == 1, got
     assert [i['lessonNo'] for i in got['items']] == [1, 2, 3, None]
     assert got['items'][3]['ok'] is False and '课次' in got['items'][3]['error']
-    assert len(calls) == 3
+    assert not calls, 'Chinese lesson originals must never be sent to an external model'
 
     # Each imported lesson kept its own complete original text.
     schedule = client.get('/teacher/weekend/schedule?subject=语文', headers=th).json()

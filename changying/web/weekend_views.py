@@ -584,9 +584,13 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         target = b.index if b.index is not None else cur + b.delta
         target = max(0, min(int(target), len(deck) - 1))
         if no == practice_no:
-            from changying.services.weekend_answers import open_practice_question
+            from changying.services.weekend_answers import open_practice_question, practice_release
+            # Opening a question keeps the answers that were already released; a
+            # later board move never wins over a publish, so going back cannot
+            # erase answers the class has already seen.
             open_practice_question(implementation, db, row, deck[target]['question'])
-            target = practice_cursor(practice_deck(implementation, db, row)[1], target)
+            count = practice_release(implementation, db, row)[1]
+            target = practice_cursor(count, target)
         ex = db.execute(select(slide_t.c.id).where(slide_t.c.session_id == sid)).first()
         if ex:
             db.execute(update(slide_t).where(slide_t.c.id == ex.id).values(stage_no=no, idx=target))
