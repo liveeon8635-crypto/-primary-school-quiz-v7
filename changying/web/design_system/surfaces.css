@@ -9,12 +9,18 @@ html[data-cy-ui] {
   --cy-radius: 12px;
 }
 
-[data-cy-ui] a:focus,
-[data-cy-ui] button:focus,
+[data-cy-ui] a:focus:not(:focus-visible),
+[data-cy-ui] button:focus:not(:focus-visible),
+[data-cy-ui] summary:focus:not(:focus-visible) {
+  outline: none;
+}
+
+[data-cy-ui] a:focus-visible,
+[data-cy-ui] button:focus-visible,
 [data-cy-ui] input:focus,
 [data-cy-ui] select:focus,
 [data-cy-ui] textarea:focus,
-[data-cy-ui] summary:focus {
+[data-cy-ui] summary:focus-visible {
   outline: 2px solid var(--cy-focus);
   outline-offset: 2px;
 }
