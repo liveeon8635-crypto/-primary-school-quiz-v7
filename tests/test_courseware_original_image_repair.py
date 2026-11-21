@@ -220,7 +220,7 @@ function button(label){return Array.from(document.querySelectorAll('button')).fi
 let phase=0;
 let timer=setInterval(()=>{
   let undo=button('恢复重新导入前的整份教案');
-  if(phase===0&&button('审改')){button('审改').click();phase=1}
+  if(phase===0&&button('教案与题目审核')){button('教案与题目审核').click();phase=1}
   else if(phase===1&&undo){undo.click();if(posts)throw Error('cancel');confirmed=true;undo.click();phase=2}
   else if(phase===2&&!undo&&posts===1&&Array.from(document.querySelectorAll('input')).some(i=>i.value==='旧教案')){
     document.body.setAttribute('data-restore-result','passed');clearInterval(timer);

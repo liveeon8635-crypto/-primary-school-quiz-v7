@@ -47,7 +47,7 @@ async function settle(){for(let i=0;i<20;i++)await Promise.resolve()}
 ''' + PLAN_JS + r'''
 (async()=>{
  plan();await settle();
- all(root,'button').find(n=>n.textContent==='审改').attrs.onclick();await settle();
+ all(root,'button').find(n=>n.textContent==='教案与题目审核').attrs.onclick();await settle();
  all(root,'button').filter(n=>n.attrs.role==='tab')[1].attrs.onclick();
  const review=all(root,'div').find(n=>n.attrs['data-review-list']==='true');
  assert(review,'the combined review list must be rendered');

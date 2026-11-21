@@ -202,4 +202,4 @@ with TestClient(app) as client:
     written = client.get(f"/teacher/weekend/lessons/{lid}/written/questions", headers=th).json()["items"]
     assert len(written) == 1 and "三分之一" in written[0]["stem"]
 print('OK')
-''')
+''', {"TEACHING_DOCUMENT_AI_EGRESS_APPROVED": "1"})
