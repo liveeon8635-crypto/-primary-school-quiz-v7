@@ -903,6 +903,21 @@ function cwPlan(box,lessonId,refresh){
     data=d;rowEls={};box.textContent='';
     box.appendChild(el('p',{class:'muted',text:d.subject==='语文'?'导入教案后已自动生成整套互动课件；你可以整体预览各环节效果，或按需微调后直接开课。':'讲解、例题和已通过的随堂练习可逐题配置互动课件。你需逐页预览、修改、审核；随堂练习在课堂公布该题答案后才显示对应讲解。上课翻页和操作不调用 AI。'}));
     var wholePreviewWrap=el('div',{hidden:true});
+    function renderWholePreview(){
+      wholePreviewWrap.textContent='';
+      if(!d.items.length){wholePreviewWrap.appendChild(el('div',{class:'notice warn',text:'当前还没有生成课件，请先点“一键生成整套课件”。'}));return}
+      CW_STAGES.forEach(function(st){
+        var stageItems=d.items.filter(function(it){return Number(it.stage)===Number(st.no)});
+        if(!stageItems.length)return;
+        var sec=el('div',{class:'card'});
+        sec.appendChild(el('h3',{text:'第'+st.no+'环节：'+st.name}));
+        stageItems.forEach(function(it){
+          var previewHost=el('div');sec.appendChild(previewHost);
+          cwPreview(previewHost,{kind:it.kind,params:it.approved||it.params,kindLabel:it.kindLabel||d.kindLabels[it.kind]||it.kind});
+        });
+        wholePreviewWrap.appendChild(sec);
+      });
+    }
     var genAllBtn=el('button',{class:'primary',text:'一键生成整套课件',onclick:function(){
       if(busy)return;busy=true;msg.className='';msg.textContent='正在整套生成互动课件…';
       api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate-all',{json:{}}).then(function(res){busy=false;paint(res);msg.textContent=res.notice||'已生成整套课件';if(refresh)refresh()}).catch(function(e){busy=false;msg.textContent=e.message});
@@ -910,22 +925,13 @@ function cwPlan(box,lessonId,refresh){
     var previewAllBtn=el('button',{text:'整体预览整套课件',onclick:function(){
       wholePreviewWrap.hidden=!wholePreviewWrap.hidden;
       previewAllBtn.textContent=wholePreviewWrap.hidden?'整体预览整套课件':'收起整体预览';
-      if(!wholePreviewWrap.hidden){
-        wholePreviewWrap.textContent='';
-        if(!d.items.length){wholePreviewWrap.appendChild(el('div',{class:'notice warn',text:'当前还没有生成课件，请先点“一键生成整套课件”。'}));return}
-        CW_STAGES.forEach(function(st){
-          var stageItems=d.items.filter(function(it){return Number(it.stage)===Number(st.no)});
-          if(!stageItems.length)return;
-          var sec=el('div',{class:'card'});
-          sec.appendChild(el('h3',{text:'第'+st.no+'环节：'+st.name}));
-          stageItems.forEach(function(it){
-            var previewHost=el('div');sec.appendChild(previewHost);
-            cwPreview(previewHost,{kind:it.kind,params:it.approved||it.params,kindLabel:it.kindLabel||d.kindLabels[it.kind]||it.kind});
-          });
-          wholePreviewWrap.appendChild(sec);
-        });
-      }
+      if(!wholePreviewWrap.hidden)renderWholePreview();
     }});
+    if(d.subject==='语文'&&d.items.length){
+      wholePreviewWrap.hidden=false;
+      previewAllBtn.textContent='收起整体预览';
+      renderWholePreview();
+    }
     box.appendChild(el('div',{class:'row'},genAllBtn,previewAllBtn));
     box.appendChild(wholePreviewWrap);
     var stageSel=el('select',{'aria-label':'环节'});CW_STAGES.forEach(function(x){stageSel.appendChild(el('option',{value:x.no,text:'第'+x.no+'环节：'+x.name+((d.pages[String(x.no)]||[]).length?'（'+(d.pages[String(x.no)]||[]).length+' 项）':'')}))});
