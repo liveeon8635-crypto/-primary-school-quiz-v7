@@ -515,7 +515,16 @@ def clean_slide(raw: Any) -> dict[str, Any]:
                     if pst or psc or pev:
                         plot.append({"stage": pst, "scene": psc, "event": pev, "feeling": pfl})
         fig_cleaned = clean_figure(item.get("figure")) if item.get("figure") else {}
-        if not heading and not body and not cards and not steps and not qa and not characters and not plot and not fig_cleaned:
+        gallery_raw = item.get("gallery") or []
+        gallery = []
+        if isinstance(gallery_raw, list):
+            for g in gallery_raw[:3]:
+                if isinstance(g, dict) and g.get("data_url"):
+                    g_caption = _text(g.get("caption"), 80)
+                    g_alt = _text(g.get("alt") or g_caption, 80) or "课文插图"
+                    g_fig = clean_figure({"type": "uploaded_image", "data_url": g.get("data_url"), "alt": g_alt})
+                    gallery.append({"data_url": g_fig["data_url"], "caption": g_caption, "alt": g_fig["alt"]})
+        if not heading and not body and not cards and not steps and not qa and not characters and not plot and not fig_cleaned and not gallery:
             raise ValueError("每页幻灯片至少需要标题或正文")
         audio_url = str(item.get("audioUrl") or "").strip()
         if audio_url and not (
@@ -540,8 +549,9 @@ def clean_slide(raw: Any) -> dict[str, Any]:
             "highlight": _text(item.get("highlight"), 360),
             "audioLabel": _text(item.get("audioLabel"), 80),
             "audioUrl": audio_url,
-            "audioText": _text(item.get("audioText"), 600),
+            "audioText": _text(item.get("audioText"), 2000),
             "figure": fig_cleaned,
+            "gallery": gallery,
         }
         slides.append(slide_obj)
     return {
@@ -575,7 +585,13 @@ def clean(kind: str, raw: Any, source_text: str = "") -> dict[str, Any]:
 def public_params(kind: str, params: dict[str, Any]) -> dict[str, Any]:
     """What the classroom screen receives: no reference answer, no evidence key."""
     if kind == "slide":
-        return {k: v for k, v in params.items() if k != "teacherNotes"}
+        cleaned = {k: v for k, v in params.items() if k != "teacherNotes"}
+        if isinstance(cleaned.get("slides"), list):
+            cleaned["slides"] = [
+                {k: v for k, v in sl.items() if k != "audioText"} if isinstance(sl, dict) else sl
+                for sl in cleaned["slides"]
+            ]
+        return cleaned
     hidden = {"reference", "evidence"} if kind == "reading" else {"reference"}
     return {k: v for k, v in params.items() if k not in hidden}
 

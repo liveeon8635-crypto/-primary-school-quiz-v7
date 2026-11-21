@@ -827,6 +827,16 @@ function cwAppendRichText(node,text){
     }
   });
 }
+function cwBindSingleAudio(au){
+  if(!au||!au.addEventListener)return;
+  au.addEventListener('play',function(){
+    if(typeof document==='undefined'||!document.querySelectorAll)return;
+    var allAudios=document.querySelectorAll('audio');
+    for(var i=0;i<allAudios.length;i++){
+      if(allAudios[i]!==au&&allAudios[i].pause){try{allAudios[i].pause()}catch(_e){}}
+    }
+  });
+}
 function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
   var isCover=cur.layout==='cover';
   var isReading=cur.layout==='reading';
@@ -858,10 +868,21 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
     var audioBar=el('div',{style:'background:#fff5f5;border:1px solid #fecaca;border-radius:10px;padding:8px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;text-align:left'});
     audioBar.appendChild(el('span',{style:'font-weight:700;color:#991b1b;white-space:nowrap;'+(big?'font-size:2.1vh':'font-size:13px'),text:'🎧 '+(cur.audioLabel||'课文／讲解配音朗读')}));
     var au=el('audio',{controls:true,preload:'metadata',src:cur.audioUrl,style:'flex:1;min-width:210px;height:36px'});
+    cwBindSingleAudio(au);
     var audioNote=el('span',{hidden:true,style:'color:#b45309;font-size:12px',text:'若大屏未自动出声，请轻点页面后点播放'});
     audioBar.appendChild(au);
     audioBar.appendChild(audioNote);
+    var scriptBox=null;
+    if(teacher&&cur.audioText){
+      scriptBox=el('div',{hidden:true,style:'background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;color:#451a03;font-size:13px;line-height:1.7;white-space:pre-wrap;text-align:left',text:cur.audioText});
+      var scriptToggle=el('button',{type:'button',style:'font-size:12px;padding:4px 10px',text:'对照朗读原稿',onclick:function(){
+        scriptBox.hidden=!scriptBox.hidden;
+        scriptToggle.textContent=scriptBox.hidden?'对照朗读原稿':'收起朗读原稿';
+      }});
+      audioBar.appendChild(scriptToggle);
+    }
     main.appendChild(audioBar);
+    if(scriptBox)main.appendChild(scriptBox);
     if(big&&view){
       if(view.audioPlaying){
         try{
@@ -872,6 +893,17 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
         try{au.pause()}catch(_e2){}
       }
     }
+  }
+  if(Array.isArray(cur.gallery)&&cur.gallery.length){
+    var galGrid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;text-align:left'});
+    cur.gallery.forEach(function(g){
+      if(!g||!g.data_url)return;
+      var gcard=el('div',{style:'background:#fff;border:1px solid #eadcc4;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;box-shadow:0 2px 8px rgba(120,53,15,0.06)'});
+      gcard.appendChild(el('img',{src:g.data_url,alt:g.alt||g.caption||'分镜插图',style:'display:block;width:100%;max-height:'+(big?'30vh':'195px')+';object-fit:contain;background:#fff;border-radius:6px'}));
+      if(g.caption)gcard.appendChild(el('div',{style:'font-size:12px;color:#6b4f3a;text-align:center;line-height:1.45',text:g.caption}));
+      galGrid.appendChild(gcard);
+    });
+    main.appendChild(galGrid);
   }
   var contentHost=main;
   if(hasUploadedImg&&!isCover){
@@ -1104,7 +1136,7 @@ function cwControl(box,c,sid){
 COURSEWARE_PLAN_JS = r"""
 var CW_STAGES=[];
 function cwPlan(box,lessonId,refresh){
-  var stageNo='',practiceNo='4',msg=el('div',{role:'status','aria-live':'polite'}),data=null,busy=false,editorBox=null,notes={},rowEls={};
+  var stageNo='',practiceNo='4',msg=el('div',{role:'status','aria-live':'polite'}),data=null,busy=false,editorBox=null,notes={},rowEls={},audioAuditOpen=false;
   function load(){api('/teacher/weekend/lessons/'+lessonId+'/courseware').then(paint).catch(function(e){box.textContent='';box.appendChild(el('div',{class:'notice error',text:e.message}))})}
   function itemAt(page){return (data.items||[]).filter(function(i){return String(i.stage)===stageNo&&i.page===page})[0]}
   function paint(d){
@@ -1138,6 +1170,78 @@ function cwPlan(box,lessonId,refresh){
       if(busy)return;busy=true;msg.className='';msg.textContent='正在补充课件草稿…';
       api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate-all',{json:{}}).then(function(res){busy=false;paint(res);msg.textContent=res.notice||'已生成整套课件';if(refresh)refresh()}).catch(function(e){busy=false;msg.textContent=e.message});
     }});
+    var totalSlides=0,audioCount=0;
+    d.items.forEach(function(it){
+      if(it.kind!=='slide')return;
+      var prm=it.params||it.approved||{};
+      var sls=Array.isArray(prm.slides)?prm.slides:[];
+      totalSlides+=sls.length;
+      sls.forEach(function(sl){if(sl&&sl.audioUrl)audioCount++});
+    });
+    var audioAuditWrap=el('div',{hidden:!audioAuditOpen});
+    function renderAudioAudit(){
+      audioAuditWrap.textContent='';
+      var panel=el('div',{class:'card',style:'border:1px solid #fecaca;background:#fffaf8'});
+      panel.appendChild(el('h3',{text:'🎧 音频配套核对总表（已配音 '+audioCount+' / '+totalSlides+' 页）'}));
+      panel.appendChild(el('p',{class:'muted',text:'按六环节列出整套 PPT 的朗读音频与逐字原稿；点播一条时会自动暂停其余音频，方便核对或逐页上传替换 .mp3。'}));
+      if(!totalSlides){panel.appendChild(el('div',{class:'notice warn',text:'当前还没有幻灯片课件，请先导入整包或添加幻灯片。'}));audioAuditWrap.appendChild(panel);return}
+      CW_STAGES.forEach(function(st){
+        var entries=d.items.filter(function(it){return Number(it.stage)===Number(st.no)&&it.kind==='slide'});
+        entries.forEach(function(it){
+          var prm=it.params||it.approved||{};
+          var sls=Array.isArray(prm.slides)?prm.slides:[];
+          sls.forEach(function(sl,sIdx){
+            var row=el('div',{class:'card',style:'margin:8px 0;padding:10px 12px;background:#fff'});
+            var top=el('div',{class:'row',style:'justify-content:space-between;align-items:center'});
+            top.appendChild(el('b',{text:'第'+st.no+'环节（'+st.name+'）· 第 '+(sIdx+1)+'/'+sls.length+' 页：'+(sl.heading||'幻灯片')}));
+            top.appendChild(el('span',{class:'tag '+(sl.audioUrl?'ok':'warn'),text:sl.audioUrl?'已配音':'未配音'}));
+            row.appendChild(top);
+            if(sl.audioLabel)row.appendChild(el('div',{class:'muted',style:'margin:4px 0',text:'配音标题：'+sl.audioLabel}));
+            var ctrlRow=el('div',{class:'row',style:'margin-top:6px;align-items:center'});
+            if(sl.audioUrl){
+              var au=el('audio',{controls:true,preload:'metadata',src:sl.audioUrl,style:'flex:1;min-width:220px;height:34px'});
+              cwBindSingleAudio(au);
+              ctrlRow.appendChild(au);
+            }
+            var trBox=el('div',{hidden:true,style:'margin-top:8px;padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;font-size:13px;line-height:1.7;white-space:pre-wrap',text:sl.audioText||'（未填写逐字朗读原稿）'});
+            var trBtn=el('button',{type:'button',text:'对照朗读原稿',onclick:function(){
+              trBox.hidden=!trBox.hidden;
+              trBtn.textContent=trBox.hidden?'对照朗读原稿':'收起朗读原稿';
+            }});
+            var repIn=el('input',{type:'file',accept:'audio/mpeg,audio/mp3,audio/*',hidden:true});
+            var repStatus=el('span',{class:'muted',style:'font-size:12px'});
+            var repBtn=el('button',{type:'button',text:'替换 .mp3',onclick:function(){repIn.click()}});
+            repIn.addEventListener('change',function(){
+              var f=repIn.files&&repIn.files[0];if(!f)return;
+              if(f.size>1350000){repStatus.textContent='音频文件不能超过 1.3 MB';repIn.value='';return}
+              repBtn.disabled=true;repStatus.textContent='正在读取并保存…';
+              var reader=new FileReader();
+              reader.onload=function(){
+                var copy=JSON.parse(JSON.stringify(prm));
+                if(Array.isArray(copy.slides)&&copy.slides[sIdx]){
+                  copy.slides[sIdx].audioUrl=String(reader.result||'');
+                  api('/teacher/weekend/lessons/'+lessonId+'/courseware',{method:'PUT',json:{stageNo:it.stage,page:it.page,kind:it.kind,params:copy,writtenTask:!!it.writtenTask}})
+                    .then(function(updated){audioAuditOpen=true;msg.textContent='已替换第'+st.no+'环节第'+(sIdx+1)+'页音频（保存为草稿，需重新审核）';paint(updated);if(refresh)refresh()})
+                    .catch(function(e){repStatus.textContent=e.message;repBtn.disabled=false});
+                }
+              };
+              reader.readAsDataURL(f);
+            });
+            ctrlRow.appendChild(trBtn);ctrlRow.appendChild(repBtn);ctrlRow.appendChild(repIn);ctrlRow.appendChild(repStatus);
+            row.appendChild(ctrlRow);row.appendChild(trBox);
+            panel.appendChild(row);
+          });
+        });
+      });
+      audioAuditWrap.appendChild(panel);
+    }
+    if(audioAuditOpen)renderAudioAudit();
+    var audioAuditBtn=el('button',{text:(audioAuditOpen?'收起音频核对总表':'🎧 核对音频配套（'+audioCount+'/'+totalSlides+'）'),onclick:function(){
+      audioAuditOpen=!audioAuditOpen;
+      audioAuditWrap.hidden=!audioAuditOpen;
+      audioAuditBtn.textContent=audioAuditOpen?'收起音频核对总表':'🎧 核对音频配套（'+audioCount+'/'+totalSlides+'）';
+      if(audioAuditOpen)renderAudioAudit();
+    }});
     var previewAllBtn=el('button',{text:'整体预览整套课件',onclick:function(){
       wholePreviewWrap.hidden=!wholePreviewWrap.hidden;
       previewAllBtn.textContent=wholePreviewWrap.hidden?'整体预览整套课件':'收起整体预览';
@@ -1161,7 +1265,8 @@ function cwPlan(box,lessonId,refresh){
       if(!confirm('确认已整体预览这 '+drafts.length+' 个环节的课件内容？确认后即可用于课堂大屏展示。'))return;
       run(drafts,function(it){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:it.stage,page:it.page}})},'审核');
     }}):null;
-    box.appendChild(el('div',{class:'row'},genAllBtn,previewAllBtn,approveAllStagesBtn));
+    box.appendChild(el('div',{class:'row'},genAllBtn,previewAllBtn,audioAuditBtn,approveAllStagesBtn));
+    box.appendChild(audioAuditWrap);
     box.appendChild(wholePreviewWrap);
     var stageSel=el('select',{'aria-label':'环节'});CW_STAGES.forEach(function(x){stageSel.appendChild(el('option',{value:x.no,text:'第'+x.no+'环节：'+x.name+((d.pages[String(x.no)]||[]).length?'（'+(d.pages[String(x.no)]||[]).length+' 项）':'')}))});
     stageSel.value=stageNo;stageSel.onchange=function(){stageNo=stageSel.value;paint(data)};
@@ -1460,6 +1565,7 @@ function cwPlan(box,lessonId,refresh){
             var hdr=el('div',{class:'row',style:'justify-content:space-between'});
             var badges=[];
             if(sl.figure&&sl.figure.type)badges.push('配图');
+            if(Array.isArray(sl.gallery)&&sl.gallery.length)badges.push('多图分镜');
             if(sl.audioUrl)badges.push('真人配音');
             if(Array.isArray(sl.characters)&&sl.characters.length)badges.push('人物档案');
             if(Array.isArray(sl.plot)&&sl.plot.length)badges.push('情节脉络');
@@ -1468,11 +1574,21 @@ function cwPlan(box,lessonId,refresh){
             hdr.appendChild(el('b',{text:'第 '+(sIdx+1)+' 页幻灯片'+(badges.length?'（含：'+badges.join(' / ')+'）':'')}));
             if(p.slides.length>1)hdr.appendChild(el('button',{type:'button',text:'删除本页',onclick:function(){p.slides.splice(sIdx,1);renderSlideFields();show()}}));
             scard.appendChild(hdr);
-            var hIn=input(sl.heading||''),subIn=input(sl.subtitle||''),bIn=area((sl.body||[]).join('\n')),hlIn=input(sl.highlight||''),alIn=input(sl.audioLabel||''),auIn=input(sl.audioUrl||'');
-            [['页标题',hIn,function(){sl.heading=hIn.value}],['副标题',subIn,function(){sl.subtitle=subIn.value}],['正文段落（每行一段，可用 ==重点== 高亮）',bIn,function(){sl.body=lines(bIn)}],['重点／答题模板（高亮框）',hlIn,function(){sl.highlight=hlIn.value}],['配音标题',alIn,function(){sl.audioLabel=alIn.value}],['真人音频链接或 data:audio URL',auIn,function(){sl.audioUrl=auIn.value}]].forEach(function(row){
+            var hIn=input(sl.heading||''),subIn=input(sl.subtitle||''),bIn=area((sl.body||[]).join('\n')),hlIn=input(sl.highlight||''),alIn=input(sl.audioLabel||''),atIn=area(sl.audioText||''),auIn=input(sl.audioUrl||'');
+            [['页标题',hIn,function(){sl.heading=hIn.value}],['副标题',subIn,function(){sl.subtitle=subIn.value}],['正文段落（每行一段，可用 ==重点== 高亮）',bIn,function(){sl.body=lines(bIn)}],['重点／答题模板（高亮框）',hlIn,function(){sl.highlight=hlIn.value}],['配音标题',alIn,function(){sl.audioLabel=alIn.value}],['逐字朗读原稿（核对音频用）',atIn,function(){sl.audioText=atIn.value}],['真人音频链接或 data:audio URL',auIn,function(){sl.audioUrl=auIn.value}]].forEach(function(row){
               var fn=function(){row[2]();show()};row[1].addEventListener('input',fn);row[1].addEventListener('change',fn);
               scard.appendChild(el('label',{class:'field'},el('span',{text:row[0]}),row[1]));
             });
+            var mp3In=el('input',{type:'file',accept:'audio/mpeg,audio/mp3,audio/*',hidden:true});
+            var mp3Btn=el('button',{type:'button',text:'上传本地 .mp3',onclick:function(){mp3In.click()}});
+            mp3In.addEventListener('change',function(){
+              var f=mp3In.files&&mp3In.files[0];if(!f)return;
+              if(f.size>1350000){mp3In.value='';return}
+              var reader=new FileReader();
+              reader.onload=function(){sl.audioUrl=String(reader.result||'');auIn.value=sl.audioUrl;renderSlideFields();show()};
+              reader.readAsDataURL(f);
+            });
+            scard.appendChild(el('div',{class:'row',style:'margin-top:4px'},mp3Btn,mp3In));
             slidesBox.appendChild(scard);
           });
           if(p.slides.length<12)slidesBox.appendChild(el('button',{type:'button',text:'+ 添加一页幻灯片',onclick:function(){p.slides.push({layout:'standard',heading:'新页面',body:[],highlight:'',audioLabel:'',audioUrl:''});renderSlideFields();show()}}));
@@ -1538,7 +1654,8 @@ function cwPlan(box,lessonId,refresh){
               audioLabel:sl.audioLabel||'',
               audioText:sl.audioText||'',
               audioUrl:sl.audioUrl||'',
-              figure:sl.figure||{}
+              figure:sl.figure||{},
+              gallery:Array.isArray(sl.gallery)?sl.gallery:[]
             };
           }),
           teacherNotes:fields.teacherNotes?fields.teacherNotes.value:''
