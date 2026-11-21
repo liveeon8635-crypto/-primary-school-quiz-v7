@@ -129,15 +129,32 @@ def _presentation_pages(raw: Any) -> list[str]:
     return presentation_pages(raw, preserve_pages=False, source="")
 
 
+def _whole_stage_pages(raw: Any) -> list[str]:
+    """Keep a Chinese stage's text as one whole page instead of splitting into dozens of tiny chunks."""
+    text = str(raw or "").strip()
+    if not text:
+        return []
+    if text.lstrip().startswith("["):
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                items = [str(x).strip() for x in parsed if str(x).strip()]
+                if items:
+                    return items
+        except Exception:
+            pass
+    return [text]
+
+
 def stage_pages(lesson: Any, stage_no: int, course_type: str | None = "math") -> list[str]:
     """The pages the big screen pages through in this stage (slides or worked examples); empty when it has none."""
     if course_type == "reading":
-        # The plan is the short-passage page; the long passage is its own import, never the plan.
+        # Keep each Chinese stage as one cohesive block rather than splitting a reading passage into 20+ fragments.
         raw = {2: lesson.reading_plan, 5: lesson.closure_training}.get(stage_no, "")
-        return _presentation_pages(raw)
+        return _whole_stage_pages(raw)
     if course_type == "writing":
         raw = {2: lesson.reading_plan, 5: lesson.writing_plan or lesson.closure_training}.get(stage_no, "")
-        return _presentation_pages(raw)
+        return _whole_stage_pages(raw)
     from changying.services.weekend_presentation import lesson_deck
     return lesson_deck({"ppt_json": lesson.ppt_json, "examples_json": lesson.examples_json, "reading_plan": lesson.reading_plan}, stage_no)
 
@@ -398,6 +415,136 @@ def import_prepared_courseware(
         "revision": revision,
         "replacing": len(selected & {(int(i['stage']), i.get('page')) for i in existing}),
     }
+
+
+def _extract_steps_from_text(text: str, fallback_title: str, fallback_goal: str) -> tuple[list[str], str]:
+    """Extract 2-5 concise teaching steps and a summary answer from stage text."""
+    raw_lines = [ln.strip(" \t\r\n•·-*") for ln in re.split(r"[\n。！？]+", str(text or ""))]
+    lines = []
+    for ln in raw_lines:
+        ln = re.sub(r"\s+", " ", ln).strip()
+        if len(ln) >= 4 and not re.fullmatch(r"第\s*\d+\s*步", ln):
+            lines.append(ln[:110])
+    # Deduplicate while preserving order.
+    seen: set[str] = set()
+    unique: list[str] = []
+    for ln in lines:
+        if ln not in seen:
+            seen.add(ln)
+            unique.append(ln)
+    if len(unique) < 2:
+        unique = [
+            f"{fallback_title}：{unique[0] if unique else (fallback_goal or '梳理本环节核心内容')}"[:110],
+            (fallback_goal or "结合课文与板书完成本环节互动讲解")[:110],
+        ]
+    steps = unique[:5]
+    answer = (unique[-1] if unique else fallback_goal or "完成本环节学习")[:190]
+    return steps, answer
+
+
+def auto_populate_courseware(
+    implementation: Any,
+    db: Any,
+    u: Any,
+    lesson: Any,
+    *,
+    replace_existing: bool = False,
+    approve: bool = True,
+    commit: bool = False,
+) -> int:
+    """Auto-build whole-lesson interactive courseware on lesson import or one-click generation."""
+    table = register_courseware_table(implementation)
+    course_type = course_type_for(db, implementation, lesson)
+    stage_specs = stages_for(course_type)
+    row = db.execute(
+        select(table).where(table.c.school_id == u.school_id, table.c.lesson_id == lesson.id).with_for_update()
+    ).first()
+    existing = items_of(row)
+    by_key = {(int(item["stage"]), item.get("page")): item for item in existing}
+    now_str = datetime.now(implementation.SCHOOL_TZ).strftime("%Y-%m-%d %H:%M")
+    lesson_title = str(lesson.title or "").strip()
+    core_target = str(lesson.core_target or "").strip()
+    teacher_plan = str(lesson.teacher_plan or "").strip()
+    reading_plan = str(lesson.reading_plan or "").strip()
+    writing_plan = str(getattr(lesson, "writing_plan", "") or "").strip()
+    closure = str(lesson.closure_training or "").strip()
+
+    def _stage_fallback_text(stage_no: int) -> str:
+        if course_type in ("reading", "writing"):
+            return {
+                1: "\n".join(x for x in (lesson_title, core_target) if x),
+                2: reading_plan or teacher_plan or core_target,
+                3: teacher_plan or reading_plan or core_target,
+                4: teacher_plan or core_target or lesson_title,
+                5: writing_plan or closure or teacher_plan,
+                6: closure or core_target or f"总结{lesson_title or '本课'}收获与课后任务",
+            }.get(stage_no, "")
+        return {
+            2: teacher_plan or core_target,
+            3: teacher_plan or core_target,
+        }.get(stage_no, "")
+
+    generated: list[dict[str, Any]] = []
+    for spec in stage_specs:
+        stage_no = int(spec["no"])
+        stage_name = str(spec["name"])
+        stage_goal = str(spec.get("goal") or "")
+        pages = stage_pages(lesson, stage_no, course_type)
+        targets: list[tuple[int | None, str]] = []
+        if pages:
+            targets = [(idx, txt) for idx, txt in enumerate(pages)]
+        elif course_type in ("reading", "writing") or lesson.subject == "语文":
+            fb = _stage_fallback_text(stage_no)
+            if fb.strip():
+                targets = [(None, fb)]
+        for page_idx, page_text in targets:
+            key = (stage_no, page_idx)
+            if not replace_existing and key in by_key:
+                continue
+            steps, answer = _extract_steps_from_text(page_text, stage_name, stage_goal)
+            title = f"{stage_name} · {lesson_title}" if lesson_title else stage_name
+            params = cw.clean(
+                "steps",
+                {"title": title[:40], "steps": steps, "answer": answer},
+                reading_plan,
+            )
+            item: dict[str, Any] = {
+                "stage": stage_no,
+                "page": page_idx,
+                "kind": "steps",
+                "params": params,
+                "writtenTask": False,
+                "status": "approved" if approve else "draft",
+                "approved": {"kind": "steps", "params": params, "writtenTask": False} if approve else None,
+                "templateId": None,
+                "pageText": page_text,
+                "updatedAt": now_str,
+            }
+            by_key[key] = item
+            generated.append(item)
+
+    if not generated:
+        return 0
+    items = sorted(by_key.values(), key=lambda item: (int(item["stage"]), -1 if item.get("page") is None else int(item["page"])))
+    approved = [[int(item["stage"]), item.get("page")] for item in items if item.get("approved") is not None]
+    values = dict(
+        teacher_id=u.id,
+        kind="multi",
+        stage_no=int(items[0]["stage"]),
+        status="approved" if approved else "draft",
+        params_json=json.dumps({"version": 2, "items": items}, ensure_ascii=False),
+        approved_json=json.dumps(approved) if approved else None,
+        approved_stage=None,
+        template_id=None,
+        updated_at=datetime.utcnow(),
+    )
+    if row is None:
+        db.execute(insert(table).values(school_id=u.school_id, lesson_id=lesson.id, live_json="{}", **values))
+    else:
+        db.execute(update(table).where(table.c.id == row.id).values(**values))
+    if commit:
+        db.commit()
+    return len(generated)
 
 def _short(text: str, limit: int = 40) -> str:
     line = " ".join(str(text or "").split())
@@ -1618,6 +1765,14 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         db.commit()
         return {**payload(db, lesson, u.id), "notice": notice}
 
+    @router.post("/teacher/weekend/lessons/{lid}/courseware/generate-all")
+    def generate_all(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        lesson = my_lesson(db, u, lid)
+        count = auto_populate_courseware(implementation, db, u, lesson, replace_existing=True, approve=True, commit=False)
+        implementation.audit(db, u, "weekend.courseware.generate_all", f"lesson={lid}:count={count}")
+        db.commit()
+        return {**payload(db, lesson, u.id), "generated": count, "notice": f"已一键生成整套互动课件（共 {count} 个环节），可直接整体预览后开课。"}
+
     @router.put("/teacher/weekend/lessons/{lid}/courseware")
     def save(lid: int, b: SaveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         lesson = my_lesson(db, u, lid)
@@ -1860,7 +2015,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     return router
 
 
-__all__ = ["courseware_for_session", "install_weekend_courseware", "items_of", "register_courseware_table",
+__all__ = ["auto_populate_courseware", "courseware_for_session", "install_weekend_courseware", "items_of", "register_courseware_table",
            "register_courseware_template_table", "stage_pages"]
 
 

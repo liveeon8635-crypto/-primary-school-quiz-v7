@@ -889,7 +889,7 @@ function cwControl(box,c,sid){
 COURSEWARE_PLAN_JS = r"""
 var CW_STAGES=[];
 function cwPlan(box,lessonId,refresh){
-  var stageNo='3',practiceNo='4',msg=el('div',{role:'status','aria-live':'polite'}),data=null,busy=false,editorBox=null,notes={},rowEls={};
+  var stageNo='',practiceNo='4',msg=el('div',{role:'status','aria-live':'polite'}),data=null,busy=false,editorBox=null,notes={},rowEls={};
   function load(){api('/teacher/weekend/lessons/'+lessonId+'/courseware').then(paint).catch(function(e){box.textContent='';box.appendChild(el('div',{class:'notice error',text:e.message}))})}
   function itemAt(page){return (data.items||[]).filter(function(i){return String(i.stage)===stageNo&&i.page===page})[0]}
   function paint(d){
@@ -899,13 +899,40 @@ function cwPlan(box,lessonId,refresh){
     CW_STAGES=d.stageOptions;
     practiceNo=String(d.practiceStage||4);
     if(!CW_STAGES.length){box.appendChild(el('div',{class:'notice warn',text:'语文课型尚未选择，暂不能配置课件。请先在备课工作栏选择阅读课或作文课。'}));return}
+    if(!stageNo||!CW_STAGES.some(function(x){return String(x.no)===stageNo})){stageNo=d.courseType&&d.courseType!=='math'?'2':'3';if(!CW_STAGES.some(function(x){return String(x.no)===stageNo}))stageNo=String(CW_STAGES[0].no);}
     data=d;rowEls={};box.textContent='';
-    box.appendChild(el('p',{class:'muted',text:'讲解、例题和已通过的随堂练习可逐题配置互动课件。你需逐页预览、修改、审核；随堂练习在课堂公布该题答案后才显示对应讲解。上课翻页和操作不调用 AI。'}));
-    var stageSel=el('select',{'aria-label':'环节'});CW_STAGES.forEach(function(x){stageSel.appendChild(el('option',{value:x.no,text:'第'+x.no+'环节：'+x.name+((d.pages[String(x.no)]||[]).length?'（'+d.pages[String(x.no)].length+' 项）':'')}))});
+    box.appendChild(el('p',{class:'muted',text:d.subject==='语文'?'导入教案后已自动生成整套互动课件；你可以整体预览各环节效果，或按需微调后直接开课。':'讲解、例题和已通过的随堂练习可逐题配置互动课件。你需逐页预览、修改、审核；随堂练习在课堂公布该题答案后才显示对应讲解。上课翻页和操作不调用 AI。'}));
+    var wholePreviewWrap=el('div',{hidden:true});
+    var genAllBtn=el('button',{class:'primary',text:'一键生成整套课件',onclick:function(){
+      if(busy)return;busy=true;msg.className='';msg.textContent='正在整套生成互动课件…';
+      api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate-all',{json:{}}).then(function(res){busy=false;paint(res);msg.textContent=res.notice||'已生成整套课件';if(refresh)refresh()}).catch(function(e){busy=false;msg.textContent=e.message});
+    }});
+    var previewAllBtn=el('button',{text:'整体预览整套课件',onclick:function(){
+      wholePreviewWrap.hidden=!wholePreviewWrap.hidden;
+      previewAllBtn.textContent=wholePreviewWrap.hidden?'整体预览整套课件':'收起整体预览';
+      if(!wholePreviewWrap.hidden){
+        wholePreviewWrap.textContent='';
+        if(!d.items.length){wholePreviewWrap.appendChild(el('div',{class:'notice warn',text:'当前还没有生成课件，请先点“一键生成整套课件”。'}));return}
+        CW_STAGES.forEach(function(st){
+          var stageItems=d.items.filter(function(it){return Number(it.stage)===Number(st.no)});
+          if(!stageItems.length)return;
+          var sec=el('div',{class:'card'});
+          sec.appendChild(el('h3',{text:'第'+st.no+'环节：'+st.name}));
+          stageItems.forEach(function(it){
+            var previewHost=el('div');sec.appendChild(previewHost);
+            cwPreview(previewHost,{kind:it.kind,params:it.approved?it.approved.params:it.params,kindLabel:it.kindLabel||d.kindLabels[it.kind]||it.kind});
+          });
+          wholePreviewWrap.appendChild(sec);
+        });
+      }
+    }});
+    box.appendChild(el('div',{class:'row'},genAllBtn,previewAllBtn));
+    box.appendChild(wholePreviewWrap);
+    var stageSel=el('select',{'aria-label':'环节'});CW_STAGES.forEach(function(x){stageSel.appendChild(el('option',{value:x.no,text:'第'+x.no+'环节：'+x.name+((d.pages[String(x.no)]||[]).length?'（'+(d.pages[String(x.no)]||[]).length+' 项）':'')}))});
     stageSel.value=stageNo;stageSel.onchange=function(){stageNo=stageSel.value;paint(data)};
     var pages=d.pages[stageNo]||[],list=pages.length?pages.map(function(x,i){return {page:i,text:x}}):(stageNo===practiceNo?[]:[{page:null,text:'整个环节'}]);
     if(stageNo===practiceNo&&itemAt(null))list.unshift({page:null,text:'整个环节（原有课件）'});
-    if(stageNo===practiceNo&&!pages.length)box.appendChild(el('div',{class:'notice warn',text:'暂无通过审核的课堂任务；请先导入任务并完成审核。'}));
+    if(stageNo===practiceNo&&!pages.length&&d.subject!=='语文')box.appendChild(el('div',{class:'notice warn',text:'暂无通过审核的课堂任务；请先导入任务并完成审核。'}));
     var redo=el('input',{type:'checkbox'});
     var all=el('button',{class:'primary',text:'为本环节全部 '+list.length+' 页生成',onclick:function(){
       var todo=list.filter(function(x){var it=itemAt(x.page);return redo.checked||!it});

@@ -383,11 +383,8 @@ def install_weekend_views(implementation: Any) -> APIRouter:
             imported_materials.c.status == "pending",
         ).limit(1)).first():
             raise HTTPException(409, "\u672c\u8bfe\u8fd8\u6709\u5bfc\u5165\u7d20\u6750\u5f85\u786e\u8ba4\uff0c\u8bf7\u5b8c\u6210\u7d20\u6750\u5ba1\u6838\u540e\u518d\u521b\u5efa\u8bfe\u5802\u3002")
-        if b.requireReady or course_type in ("reading", "writing"):
-            if course_type in ("reading", "writing"):
-                if count_practice_ready(db, implementation, int(u.school_id), int(u.id), lesson_row) == 0:
-                    raise HTTPException(409, "还不能开课：当前课型没有已审核的课堂任务；请先在“审改 → 习题审核”中确认任务。")
-            elif count_practice_ready(db, implementation, int(u.school_id), int(u.id), lesson_row) == 0:
+        if b.requireReady and course_type not in ("reading", "writing") and lesson_row.subject != "语文":
+            if count_practice_ready(db, implementation, int(u.school_id), int(u.id), lesson_row) == 0:
                 raise HTTPException(
                     409,
                     "第4环节实际可用的随堂练习为 0 道（可能尚未通过练习，或已通过的题都与本课例题重复），暂时不能开课。"

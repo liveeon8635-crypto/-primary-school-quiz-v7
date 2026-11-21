@@ -264,10 +264,15 @@ function picker(){
     stepsBox.appendChild(el('h2',{text:HSUBJ+' 第 '+x.lessonNo+' 次课'}));
     stepsBox.appendChild(el('div',{class:'muted',text:(x.schoolWeek?'学校第 '+x.schoolWeek+' 周 · ':'')+(x.schoolUnit||'学校进度还没填')+(x.plannedDate?' · '+x.plannedDate:'')}));
     var go=function(text){return el('a',{class:'btn',href:'/v1/weekend-plan',text:text})};
-    var ready=x.hasPlan&&x.practiceReady>0;
+    var isChinese=HSUBJ==='语文';
+    var ready=x.hasPlan&&(isChinese?!(x.pendingMaterials>0)&&!!x.courseType:x.practiceReady>0);
     stepsBox.appendChild(step(!!x.schoolUnit,'① 填学校进度','让系统知道这一周学校讲到哪里；学校调课可以一键顺延',go('去填')));
     stepsBox.appendChild(step(x.hasPlan,'② 准备教案','没有教案就点“AI 备课草稿”，生成后你改一改',go('去备课')));
-    stepsBox.appendChild(step(x.practiceReady>0,'③ 准备习题（可用练习 '+x.practiceReady+' 道'+(x.draftQuestions?'，待审核 '+x.draftQuestions+' 道':'')+'）','AI 出的题是草稿，逐题点“通过”且不与例题重复后学生才能做',go('去审核')));
+    if(isChinese){
+      stepsBox.appendChild(step(!!x.coursewareApproved,'③ 互动课件（'+(x.coursewareApproved?'已生成，可整体预览':'导入教案后自动生成')+'）','语文课无需逐题审核习题，导入教案后即可整体预览互动课件并开课',go('去预览')));
+    }else{
+      stepsBox.appendChild(step(x.practiceReady>0,'③ 准备习题（可用练习 '+x.practiceReady+' 道'+(x.draftQuestions?'，待审核 '+x.draftQuestions+' 道':'')+'）','AI 出的题是草稿，逐题点“通过”且不与例题重复后学生才能做',go('去审核')));
+    }
     var start=el('button',{class:'primary',text:'④ 开课',disabled:!ready,onclick:function(){
       createWeekendClassroom(x.lessonId);
     }});
@@ -835,11 +840,11 @@ function plan(){
         api('/teacher/weekend/lessons/'+r.lessonId+'/questions/generate',{json:{count:+qCount.value}}).then(function(g){note('ok','习题草稿已生成：'+genSummary(g)+' 展开“审改”逐题通过后才会给学生。');load()}).catch(function(e){note('error',e.message);qBtn.disabled=false});
       }}):null;
       var titleLabel=el('span',{class:'muted',text:r.title||''});
-      function refreshRow(st){Object.assign(r,st);titleLabel.textContent=r.title||'';go.disabled=!(r.lessonId&&r.hasPlan&&((r.practiceReady!=null?r.practiceReady:r.approvedQuestions)>0)&&!(r.pendingMaterials>0)&&(SUBJ!=='语文'||r.courseType));why.textContent=startReason(r);tag.textContent=r.taught?'已上':r.hasPlan?((r.workflowLabel?r.workflowLabel+' · ':'')+'有教案 · 例题 '+(r.exampleCount||0)+'（待审 '+(r.examplePending||0)+'）· 可用练习 '+(r.practiceReady||0)+'（待审 '+r.draftQuestions+'）'):'未备课'}
+      function refreshRow(st){Object.assign(r,st);titleLabel.textContent=r.title||'';var needsQ=SUBJ!=='语文';go.disabled=!(r.lessonId&&r.hasPlan&&(!needsQ||(r.practiceReady!=null?r.practiceReady:r.approvedQuestions)>0)&&!(r.pendingMaterials>0)&&(SUBJ!=='语文'||r.courseType));why.textContent=startReason(r);tag.textContent=r.taught?'已上':r.hasPlan?((r.workflowLabel?r.workflowLabel+' · ':'')+'有教案 · 例题 '+(r.exampleCount||0)+'（待审 '+(r.examplePending||0)+'）· 可用练习 '+(r.practiceReady||0)+'（待审 '+r.draftQuestions+'）'):'未备课';if(cwBtn)cwBtn.textContent=r.coursewareApproved?'互动课件预览':'生成互动课件'}
       var open=el('button',{text:'审改',disabled:!r.lessonId,onclick:function(){detail.hidden=!detail.hidden;if(!detail.hidden)lessonDetail(r,detail,refreshRow)}});
       var materialReviewBtn=SUBJ==='语文'&&r.lessonId?el('button',{text:'导入素材审核',onclick:function(){detail.hidden=false;reviewImportedMaterials(r,detail,refreshRow)}}):null;
-      var cwBtn=r.hasPlan&&r.lessonId?el('button',{text:'生成互动课件',onclick:function(){detail.hidden=false;lessonDetail(r,detail,refreshRow,3)}}):null;
-      var go=el('button',{class:'primary',text:'开课',title:'需选择课型、完成教案和审核任务',disabled:!(r.lessonId&&r.hasPlan&&((r.practiceReady!=null?r.practiceReady:r.approvedQuestions)>0)&&!(r.pendingMaterials>0)&&(SUBJ!=='语文'||r.courseType)),onclick:function(){
+      var cwBtn=r.hasPlan&&r.lessonId?el('button',{text:r.coursewareApproved?'互动课件预览':'生成互动课件',onclick:function(){detail.hidden=false;lessonDetail(r,detail,refreshRow,3)}}):null;
+      var go=el('button',{class:'primary',text:'开课',title:SUBJ==='语文'?'需选择课型并完成教案':'需选择课型、完成教案和审核任务',disabled:!(r.lessonId&&r.hasPlan&&(SUBJ==='语文'||(r.practiceReady!=null?r.practiceReady:r.approvedQuestions)>0)&&!(r.pendingMaterials>0)&&(SUBJ!=='语文'||r.courseType)),onclick:function(){
         createWeekendClassroom(r.lessonId)}});
       // Say why 开课 is grey right next to it: a tooltip is invisible on tablets and phones.
       var why=el('span',{class:'muted','data-start-reason':'1',style:'color:#b54708',text:startReason(r)});
@@ -903,6 +908,7 @@ function plan(){
     if(r.pendingMaterials>0)return '待审核：还有 '+r.pendingMaterials+' 项导入素材未确认；请打开“导入素材审核”。';
     if(SUBJ==='语文'&&!r.courseType)return '还差：先选择并保存“阅读课”或“作文课”';
     if(!r.lessonId||!r.hasPlan)return '还差：先导入教案或让 AI 写教案，才能开课';
+    if(SUBJ==='语文')return '';
     var ready=r.practiceReady!=null?r.practiceReady:r.approvedQuestions;
     if(!(ready>0)){
       if(r.approvedQuestions>0)return '不能开课：第4环节实际可用的随堂练习为 0 道（已通过的题都与本课例题重复），请在“习题审核”里通过至少 1 道不重复的练习';
