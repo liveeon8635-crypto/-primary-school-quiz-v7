@@ -457,8 +457,35 @@ def clean_slide(raw: Any) -> dict[str, Any]:
         body_raw = item.get("body") or []
         if isinstance(body_raw, str):
             body_raw = [x.strip() for x in body_raw.splitlines() if x.strip()]
-        body = [_text(x, 400) for x in body_raw if _text(x, 400)][:8]
-        if not heading and not body:
+        body = [_text(x, 500) for x in body_raw if _text(x, 500)][:12]
+        layout = str(item.get("layout") or "standard").strip()
+        if layout not in ("standard", "cover", "reading", "cards", "steps", "compare"):
+            layout = "standard"
+        cards_raw = item.get("cards") or []
+        cards = []
+        if isinstance(cards_raw, list):
+            for c in cards_raw[:4]:
+                if isinstance(c, dict):
+                    ct, ctag, cx = _text(c.get("title"), 60), _text(c.get("tag"), 30), _text(c.get("text"), 320)
+                    if ct or cx:
+                        cards.append({"title": ct, "tag": ctag, "text": cx})
+        steps_raw = item.get("steps") or []
+        steps = []
+        if isinstance(steps_raw, list):
+            for s in steps_raw[:5]:
+                if isinstance(s, dict):
+                    sl, sd = _text(s.get("label"), 40), _text(s.get("desc"), 220)
+                    if sl or sd:
+                        steps.append({"label": sl, "desc": sd})
+        qa_raw = item.get("qa") or []
+        qa = []
+        if isinstance(qa_raw, list):
+            for q in qa_raw[:4]:
+                if isinstance(q, dict):
+                    qq, qans = _text(q.get("q"), 260), _text(q.get("a"), 450)
+                    if qq:
+                        qa.append({"q": qq, "a": qans})
+        if not heading and not body and not cards and not steps and not qa:
             raise ValueError("每页幻灯片至少需要标题或正文")
         audio_url = str(item.get("audioUrl") or "").strip()
         if audio_url and not (
@@ -469,9 +496,15 @@ def clean_slide(raw: Any) -> dict[str, Any]:
         if len(audio_url) > 350000:
             raise ValueError("音频数据过大，请改用音频链接或压缩后上传")
         slide_obj: dict[str, Any] = {
+            "layout": layout,
+            "badge": _text(item.get("badge"), 40),
             "heading": heading or "幻灯片",
+            "subtitle": _text(item.get("subtitle"), 120),
             "body": body,
-            "highlight": _text(item.get("highlight"), 300),
+            "cards": cards,
+            "steps": steps,
+            "qa": qa,
+            "highlight": _text(item.get("highlight"), 360),
             "audioUrl": audio_url,
             "audioText": _text(item.get("audioText"), 600),
             "figure": clean_figure(item.get("figure")) if item.get("figure") else {},
