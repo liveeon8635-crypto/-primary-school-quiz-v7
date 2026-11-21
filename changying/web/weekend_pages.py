@@ -874,8 +874,21 @@ function plan(){
           if(!confirm('确认以下 '+items.length+' 个课堂只是调试，没有实际上课？\n'+names+'\n撤销会清除这些课堂的计时、翻页、班级绑定和课堂习题副本，保留教案、备课习题及操作留痕。之后可另点“删除教案”。已有学生作答、提示、积分或反馈时禁止撤销。')){deleteFeedback.textContent='未撤销';return}
           return api('/teacher/weekend/lessons/'+lid+'/cancel-debug-classrooms',{method:'POST',json:{subject:subject,lessonNo:r.lessonNo,confirmed:true,sessionIds:items.map(function(x){return x.id})}}).then(function(result){
             deleteFeedback.textContent=result.message;
+            if(typeof load==='function')load();
           });
-        }).catch(function(e){deleteFeedback.textContent=e.message}).then(function(){cancelDebugBtn.disabled=false});
+        }).catch(function(e){
+          if(e.message&&e.message.indexOf('不能按调试课堂撤销')>=0&&confirm(e.message+'\n\n是否强制作为测试课堂撤销？（将清除这些课堂的作答、积分、反馈与报告记录，保留教案、课件与已审核习题）')){
+            return api('/teacher/weekend/lessons/'+lid+'/debug-classrooms?includeAll=1').then(function(d2){
+              var items2=d2.items||[];
+              if(!items2.length){deleteFeedback.textContent='没有可撤销的课堂记录';return}
+              return api('/teacher/weekend/lessons/'+lid+'/cancel-debug-classrooms',{method:'POST',json:{subject:subject,lessonNo:r.lessonNo,confirmed:true,force:true,sessionIds:items2.map(function(x){return x.id})}}).then(function(result){
+                deleteFeedback.textContent=result.message;
+                if(typeof load==='function')load();
+              });
+            }).catch(function(e2){deleteFeedback.textContent=e2.message});
+          }
+          deleteFeedback.textContent=e.message;
+        }).then(function(){cancelDebugBtn.disabled=false});
       }});
       var deleteBtn=el('button',{text:'删除教案',disabled:!r.lessonId,onclick:function(){
         var subject=SUBJ;
@@ -886,8 +899,10 @@ function plan(){
           if(SUBJ===subject){note('ok',d.message);load()}
         }).catch(function(e){deleteFeedback.textContent=e.message;deleteBtn.disabled=false});
       }});
+      var mainMaterialBtn=SUBJ==='语文'&&(r.pendingMaterials>0)?materialReviewBtn:null;
+      var extraMaterialBtn=SUBJ==='语文'&&!(r.pendingMaterials>0)?materialReviewBtn:null;
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
-        el('div',{class:'row'},tag,workflowSelect,titleLabel,impBtn,fileIn,open,materialReviewBtn,pairedImportBtn,cwBtn,go,why),el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,cancelDebugBtn,deleteBtn)),importFeedback,deleteFeedback,detail));
+        el('div',{class:'row'},tag,workflowSelect,titleLabel,impBtn,fileIn,SUBJ==='语文'?null:open,mainMaterialBtn,cwBtn,go,why),el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,SUBJ==='语文'?open:null,extraMaterialBtn,pairedImportBtn,cancelDebugBtn,deleteBtn)),importFeedback,deleteFeedback,detail));
     });
     list.appendChild(el('button',{class:'primary',text:'保存进度表',onclick:function(){
       api('/teacher/weekend/schedule',{method:'PUT',json:{subject:SUBJ,rows:state.map(function(r){return {lessonNo:r.lessonNo,schoolWeek:r.schoolWeek,schoolUnit:r.schoolUnit||'',plannedDate:r.plannedDate||'',note:r.note||''}})}}).then(function(){note('ok','已保存');load()}).catch(function(e){note('error',e.message)})}}));
