@@ -503,15 +503,39 @@ def auto_populate_courseware(
                 continue
             steps, answer = _extract_steps_from_text(page_text, stage_name, stage_goal)
             title = f"{stage_name} · {lesson_title}" if lesson_title else stage_name
-            params = cw.clean(
-                "steps",
-                {"title": title[:40], "steps": steps, "answer": answer},
-                reading_plan,
-            )
+            kind = "steps"
+            params = None
+            if course_type == "reading" and stage_no == 2 and reading_plan:
+                try:
+                    parts = cw.sentences(reading_plan[:3000])
+                    if len(parts) >= 2:
+                        q_prompt = core_target[:200] or f"围绕《{lesson_title or '本课短文'}》，找出关键语句并体会作者情感。"
+                        params = cw.clean(
+                            "reading",
+                            {
+                                "title": (lesson_title or stage_name)[:40],
+                                "passage": reading_plan[:3000],
+                                "question": q_prompt,
+                                "evidence": [1] if len(parts) > 1 else [0],
+                                "material": teacher_plan[:600] or core_target[:600],
+                                "writingPrompt": "摘录你找到的原文依据，结合本课考点写出分析。",
+                                "reference": answer[:1000],
+                            },
+                            reading_plan,
+                        )
+                        kind = "reading"
+                except ValueError:
+                    params = None
+            if params is None:
+                params = cw.clean(
+                    "steps",
+                    {"title": title[:40], "steps": steps, "answer": answer},
+                    reading_plan,
+                )
             item: dict[str, Any] = {
                 "stage": stage_no,
                 "page": page_idx,
-                "kind": "steps",
+                "kind": kind,
                 "params": params,
                 "writtenTask": False,
                 "status": "approved" if approve else "draft",
