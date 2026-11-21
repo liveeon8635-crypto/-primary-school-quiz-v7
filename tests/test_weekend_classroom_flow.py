@@ -34,6 +34,9 @@ def test_class_snapshot_limits_questions_progress_grading_and_awards(tmp_path):
 from sqlalchemy import insert,update,delete
 with TestClient(app) as client:
     th,sh,student_id,school_id=setup(client)
+    def approve_courseware_gate(lid):
+        __import__('sys').path.insert(0, 'tests'); from test_chinese_readiness import prepare_reviewed_lesson
+        prepare_reviewed_lesson(client, th, legacy, lid)
     with legacy.SessionLocal() as db:
         teacher=db.scalar(select(legacy.User).where(legacy.User.username=='teacher1'))
         p=db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id==school_id))
@@ -57,6 +60,7 @@ with TestClient(app) as client:
     assert client.get('/teacher/weekend/classes',headers=sh).status_code==403
     assert client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid,'classId':999999}).status_code==404
     assert client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid,'classId':eid}).status_code==400
+    approve_courseware_gate(lid)
     created=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid,'classId':aid})
     assert created.status_code==200,created.text
     session=created.json()['id'];base=f'/teacher/weekend/sessions/{session}'
@@ -65,6 +69,11 @@ with TestClient(app) as client:
     assert w.status_code==200,w.text
     wid=w.json()['id']
     client.post(base+'/start',headers=th);client.post(base+'/goto',headers=th,json={'stage':2})
+    # Remove reviewed stage visuals after start to exercise safe empty-board fallback.
+    cb=f'/teacher/weekend/lessons/{lid}/courseware'
+    for item in client.get(cb,headers=th).json()['items']:
+        if item['stage'] in (2,3):
+            assert client.post(cb+'/remove',headers=th,json={'stageNo':item['stage'],'page':item.get('page')}).status_code==200
     board=client.get(base+'/board',headers=th).json()
     # 语文阅读课的大屏不再投影原始教案，只投影已审核的互动课件；没有课件时学生屏是空白的。
     assert 'deck' not in board and board['content']==[]

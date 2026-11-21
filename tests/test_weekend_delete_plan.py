@@ -12,7 +12,8 @@ sys.modules[spec.name] = helpers
 spec.loader.exec_module(helpers)
 
 
-def test_delete_misimported_plan_clears_approved_questions_and_keeps_progress(tmp_path):
+def test_delete_misimported_plan_clears_approved_questions_and_keeps_progress(tmp_path, monkeypatch):
+    monkeypatch.setenv("TEACHING_DOCUMENT_AI_EGRESS_APPROVED", "1")
     helpers.run_isolated(tmp_path, helpers.COMMON + r'''
 with TestClient(app) as client:
     th,sh,sid,school_id=setup(client)

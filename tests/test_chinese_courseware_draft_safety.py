@@ -44,6 +44,9 @@ with TestClient(app) as client:
     assert approved.status_code==200,approved.text
     again=client.post(base+'/generate-all',headers=th,json={}).json()
     assert again['generated']==0 and again['items'][0]['approved'] is not None
+    __import__('sys').path.insert(0, 'tests')
+    from test_chinese_readiness import prepare_reviewed_lesson
+    prepare_reviewed_lesson(client, th, legacy, lid)
     created=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid})
     assert created.status_code==200,created.text
     sb='/teacher/weekend/sessions/%d' % created.json()['id']

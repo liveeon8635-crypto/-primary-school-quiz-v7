@@ -40,6 +40,9 @@ from changying.web.weekend_pages import plan_page_html
 from changying.services.lesson_written import (MAX_KNOWLEDGE, lesson_goals, literal_written_questions, suggest_knowledge,
     valid_written_questions, replace_written_drafts, written_templates, template_meta, lesson_question_number)
 from changying.web.weekend_courseware import PreparedPagesBody, auto_populate_courseware, import_prepared_courseware
+from changying.services.guardian_consent import (
+    TEACHING_DOCUMENT_EGRESS_DENIED_DETAIL, teaching_document_ai_egress_approved,
+)
 
 AI_FEATURE = "weekend_lesson_draft"
 # A paper question starts with "3.【复述】", "C1.【对比】" or "1、概括…"; headings never do.
@@ -697,7 +700,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         return {"exampleCount": status["exampleCount"], "exampleApproved": status["exampleApproved"],
                 "examplePending": status["examplePending"], "practiceApproved": status["approvedQuestions"],
                 "practiceDraft": status["draftQuestions"], "practiceReady": status["practiceReady"],
-                "coursewareStatus": cw_status, "coursewareApproved": cw_status == "approved"}
+                "coursewareStatus": cw_status, "coursewareApproved": status["coursewareApproved"],
+                "courseType": status.get("courseType"), "canStart": status.get("canStart"),
+                "startReasons": status.get("startReasons", [])}
 
     def lesson_status(db: Any, u: Any, lesson: Any) -> dict[str, Any]:
         approved = db.scalar(select(func.count()).select_from(TQ).where(TQ.lesson_id == lesson.id, TQ.stage != REMOVED_STAGE, TQ.active.is_(True))) or 0
@@ -711,11 +716,15 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         example_approved = sum(1 for e in examples if e["status"] in ("approved", "legacy"))
         cw = db.execute(select(courseware_table).where(courseware_table.c.lesson_id == lesson.id)).first()
         cw_status = str(cw.status or "") if cw is not None else ""
+        readiness = {}
+        if lesson.subject == "语文":
+            from changying.services.chinese_lesson_readiness import chinese_lesson_readiness
+            readiness = chinese_lesson_readiness(implementation, db, lesson, u.id)
         return {"lessonId": lesson.id, "title": lesson.title, "hasPlan": has_real_plan(lesson),
                 "approvedQuestions": int(approved), "draftQuestions": int(draft), "taught": bool(ran),
                 "exampleCount": len(examples), "exampleApproved": example_approved,
                 "examplePending": len(examples) - example_approved, "practiceReady": practice_ready(db, u, lesson),
-                "coursewareStatus": cw_status, "coursewareApproved": cw_status == "approved"}
+                "coursewareStatus": cw_status, "coursewareApproved": cw_status == "approved", **readiness}
 
 
     @router.get("/v1/weekend-plan", include_in_schema=False)
@@ -771,6 +780,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             Lesson.school_id == u.school_id, Lesson.program_id == p.id,
             Lesson.subject == subject, Lesson.lesson_no == lesson_no,
         ))
+        old_type = course_type_for(db, implementation, lesson) if lesson is not None else None
         now = datetime.utcnow()
         try:
             revision = compare_and_set_course_type(
@@ -781,6 +791,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             )
         except WorkflowRevisionConflict as exc:
             raise HTTPException(409, "课型已被其他页面修改，请刷新后重新选择") from exc
+        if lesson is not None and old_type and old_type != b.courseType:
+            invalidate_courseware_on_reimport(db, courseware_table, lesson.id)
         db.commit()
         return {"lessonNo": lesson_no, "courseType": b.courseType, "workflowRevision": revision,
                 "workflowLabel": "阅读课" if b.courseType == "reading" else "作文课"}
@@ -1240,6 +1252,15 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                                      source_file=source_file)
             got.update(engine="local", importMode="local", message=note)
             return got
+        if not teaching_document_ai_egress_approved():
+            got = _apply_lesson_plan(db, u, subject, lessonNo,
+                {"title": f"{subject}第{lessonNo}课", "teacherPlan": extracted["text"]},
+                extracted["text"], slides_hint=extracted.get("slides") or None,
+                use_literal=False, overwrite=force == "1",
+                source_materials=extracted.get("images") or [], source_file=source_file)
+            got.update(engine="local", importMode="local",
+                message="教案原文已在本地保存为草稿，未外发。请核对原文、补充题目并审核素材；学生数据开关不能代替教案外发授权。")
+            return got
         figures = extracted.get("images") or []
         figure_note = ""
         if figures:
@@ -1350,10 +1371,10 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 result["message"] = str(result.get("message") or "") + " 图片检查：" + detail
             return result
         except HTTPException as exc:
-            if (
-                exc.status_code != 403
-                or str(exc.detail).strip()
-                != "未登记或未证明无学生数据的 AI 功能，默认拒绝向外部 AI 发送数据"
+            denied = str(exc.detail).strip()
+            if exc.status_code != 403 or denied not in (
+                "未登记或未证明无学生数据的 AI 功能，默认拒绝向外部 AI 发送数据",
+                TEACHING_DOCUMENT_EGRESS_DENIED_DETAIL,
             ):
                 raise
         plan = {
@@ -2151,10 +2172,23 @@ function load(){api('/teacher/weekend/lessons/'+lid+'/imported-materials').then(
     @router.get("/teacher/weekend/next")
     def next_up(u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
+        p = program(db, int(u.school_id))
         out = []
         for subject in SUBJECTS:
             lessons = {int(l.lesson_no): l for l in db.scalars(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.subject == subject)).all()}
             rows = {int(r.lesson_no): r for r in db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == subject)).all()}
+            configured = {int(w.lesson_no): w for w in db.execute(select(workflows).where(
+                workflows.c.school_id == u.school_id, workflows.c.program_id == p.id,
+                workflows.c.subject == subject,
+            )).all()}
+            pending_materials = {}
+            if subject == "语文":
+                pending_materials = {int(lesson_id): int(count) for lesson_id, count in db.execute(
+                    select(workflow_tables["materials"].c.lesson_id, func.count(workflow_tables["materials"].c.id))
+                    .where(workflow_tables["materials"].c.school_id == int(u.school_id),
+                           workflow_tables["materials"].c.status == "pending")
+                    .group_by(workflow_tables["materials"].c.lesson_id)
+                ).all()}
             nxt = None
             for n in range(1, LESSONS + 1):
                 st = lesson_status(db, u, lessons[n]) if n in lessons else None
@@ -2174,8 +2208,14 @@ function load(){api('/teacher/weekend/lessons/'+lid+'/imported-materials').then(
                 tips.append("还没有教案：可以用 AI 备课草稿")
             if st["approvedQuestions"] == 0 and subject != "语文":
                 tips.append("还没有审核通过的习题")
+            wf = configured.get(nxt)
+            item_course_type = "math" if subject == "数学" else (str(wf.course_type) if wf else None)
             out.append({"subject": subject, "lessonNo": nxt, "schoolWeek": r.school_week if r else None, "schoolUnit": r.school_unit if r else "", "plannedDate": r.planned_date if r else "",
-                        **st, "weakKnowledge": weak_knowledge(db, u, subject), "tips": tips})
+                        **st, "weakKnowledge": weak_knowledge(db, u, subject), "tips": tips,
+                        "courseType": item_course_type,
+                        "workflowRevision": int(wf.revision) if wf else 0,
+                        "workflowLabel": {"math": "数学七环节", "reading": "阅读课", "writing": "作文课"}.get(item_course_type, "待选择课型"),
+                        "pendingMaterials": pending_materials.get(int(l.id), 0) if l else 0})
         return {"items": out}
 
     app.include_router(router)

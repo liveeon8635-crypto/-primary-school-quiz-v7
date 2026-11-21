@@ -29,6 +29,10 @@ def counts(db):
             ("weekend_answers", "weekend_written_submissions", "weekend_awards", "weekend_briefs")} | {
             "ledger": db.scalar(select(func.count()).select_from(legacy.PointLedger))}
 
+def approve_courseware_gate(lid):
+    __import__('sys').path.insert(0, 'tests'); from test_chinese_readiness import prepare_reviewed_lesson
+    prepare_reviewed_lesson(client, th, legacy, lid)
+
 with TestClient(app) as client:
     th, a_h, a_id, school_id = setup(client)
     with legacy.SessionLocal() as db:
@@ -72,6 +76,7 @@ with TestClient(app) as client:
             selected = client.put(f"/teacher/weekend/schedule/语文/{lesson_no}/course-type", headers=th,
                                   json={"courseType": "reading", "expectedRevision": 0})
             assert selected.status_code == 200, selected.text
+            approve_courseware_gate(lid)
         s = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid, "classId": cls_id}).json()["id"]
         wids = [client.post(f"/teacher/weekend/sessions/{s}/written/questions", headers=th, json={"stem": stem, "reference": "评分要点：秘密参考"}).json()["id"]
                 for stem in written]

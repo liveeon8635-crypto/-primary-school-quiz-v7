@@ -41,6 +41,9 @@ def test_chinese_course_type_persists_and_freezes_per_classroom(tmp_path):
 with TestClient(app) as client:
     from changying.services.weekend_answers import count_practice_ready
     th, sh, sid, school_id = setup(client)
+    def approve_courseware_gate(lid):
+        __import__('sys').path.insert(0, 'tests'); from test_chinese_readiness import prepare_reviewed_lesson
+        prepare_reviewed_lesson(client, th, legacy, lid)
     with legacy.SessionLocal() as db:
         from sqlalchemy import func
         p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
@@ -75,6 +78,7 @@ with TestClient(app) as client:
     if not needs_reviewed_tasks():
         assert "没有已审核的课堂任务" not in client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).text
     summary = client.get("/teacher/weekend/lessons/%d/questions" % lid, headers=th).json()["summary"]
+    approve_courseware_gate(lid)
     first_reply = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid})
     assert first_reply.status_code == 200, (first_reply.text, summary)
     first = first_reply.json()
@@ -86,6 +90,7 @@ with TestClient(app) as client:
     assert client.get(session_url, headers=th).json()["courseType"] == "reading"
     stale = client.put(path, headers=th, json={"courseType":"reading", "expectedRevision":1})
     assert stale.status_code == 409
+    approve_courseware_gate(lid)
     second = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()
     assert second["courseType"] == "writing" and second["stageCount"] == 6
     writing_cw = client.get(f"/teacher/weekend/lessons/{lid}/courseware", headers=th).json()
@@ -578,7 +583,8 @@ with TestClient(app) as client:
     )
 
 
-def test_import_own_lesson_plan_docx_pptx(tmp_path):
+def test_import_own_lesson_plan_docx_pptx(tmp_path, monkeypatch):
+    monkeypatch.setenv("TEACHING_DOCUMENT_AI_EGRESS_APPROVED", "1")
     helpers.run_isolated(
         tmp_path,
         helpers.COMMON

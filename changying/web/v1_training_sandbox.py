@@ -179,6 +179,7 @@ STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 如果只�
 STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 第4环节按已通过的随堂练习逐题配置课件；课堂公布该题答案后才展示对应讲解。"
 STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 语文课先选择并保存阅读课或作文课型；没有课型的旧课显示待选择，不会被系统猜测。课型和导入成功不代表素材关系或学生可见权限已验收。"
 STEP_RELATIONSHIPS["teacher_weekend_class"]["communication_tip"] += " 数学继续七环节；阅读课和作文课使用各自六环节。新课堂冻结创建时的流程配置，已经创建的课堂不会随课型选择变化。语文素材分组与学生端逐步开放仍在开发，不能把教师大屏内容视为学生接口已通过权限验收。"
+STEP_RELATIONSHIPS["teacher_weekend_class"]["communication_tip"] += " 创建和开始语文课堂均检查六环节缺项及逐页审核；普通教案默认本地导入，外发需要独立授权。完整课件冻结版本仍待施工，请勿在授课中修改备课课件。"
 
 SCENARIO_PRESETS: dict[str, dict[str, Any]] = {
     "empty": {"title": "从零开始", "description": "从建立班级开始完整练习。"},

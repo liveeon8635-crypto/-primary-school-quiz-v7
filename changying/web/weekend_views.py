@@ -399,6 +399,11 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                     "第4环节实际可用的随堂练习为 0 道（可能尚未通过练习，或已通过的题都与本课例题重复），暂时不能开课。"
                     "请先在“习题审核”里通过至少 1 道不与例题重复的随堂练习。",
                 )
+        if lesson_row.subject == "语文":
+            from changying.services.chinese_lesson_readiness import chinese_lesson_readiness
+            readiness = chinese_lesson_readiness(implementation, db, lesson_row, u.id)
+            if not readiness["canStart"]:
+                raise HTTPException(409, "不能开课：" + "；".join(readiness["startReasons"]))
         db.execute(select(Lesson.id).where(Lesson.id == b.lessonId).with_for_update()).first()
         now = datetime.utcnow()
         sid = int(db.execute(insert(sessions).values(
@@ -518,6 +523,12 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         row = mine(db, u, sid)
         if row.status != "planned":
             raise HTTPException(409, "这节课已经开始过了")
+        if session_course(db, row)["courseType"] in ("reading", "writing"):
+            from changying.services.chinese_lesson_readiness import chinese_lesson_readiness
+            lesson = db.get(Lesson, row.lesson_id)
+            ready = chinese_lesson_readiness(implementation, db, lesson, u.id)
+            if (not ready["canStart"] or ready["courseType"] != session_course(db, row)["courseType"]):
+                raise HTTPException(409, "备课内容或审核已变化，请重新核对并创建课堂：" + "；".join(ready["startReasons"]))
         now = datetime.utcnow()
         db.execute(update(sessions).where(sessions.c.id == sid).values(status="running", started_at=now))
         row = mine(db, u, sid)

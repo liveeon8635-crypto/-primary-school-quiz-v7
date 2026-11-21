@@ -72,6 +72,20 @@ TEACHING_DOCUMENT_AI_FEATURES: frozenset[str] = frozenset({
     "weekend_lesson_draft",
 })
 
+# Teacher-authored lesson material is default-deny for external AI and needs its own
+# opt-in. The student-data switch (allow_student_data) must never stand in for this
+# authorization: lesson plans are not student records, and a plan that carries images
+# still leaves the school on the teaching-document path, not the student path.
+TEACHING_DOCUMENT_AI_EGRESS_FLAG = "TEACHING_DOCUMENT_AI_EGRESS_APPROVED"
+
+TEACHING_DOCUMENT_EGRESS_DENIED_DETAIL = (
+    "教案外发到外部 AI 尚未开启专门授权；请使用本地导入或手动整理。学生数据开关不能代替教案外发授权。"
+)
+
+
+def teaching_document_ai_egress_approved() -> bool:
+    return os.getenv(TEACHING_DOCUMENT_AI_EGRESS_FLAG, "").strip().lower() in {"1", "true", "yes", "on"}
+
 _VERIFIED_PURE_TEACHING_QGEN: contextvars.ContextVar[bool] = contextvars.ContextVar(
     "guardian_consent_verified_pure_teaching_qgen",
     default=False,
@@ -791,17 +805,24 @@ def install_ai_egress_guard(implementation: Any) -> None:
         unverified_free_text = bool(kwargs.pop("unverified_free_text", False)) or bool(_UNVERIFIED_FREE_TEXT.get())
         verified_pure_qgen = bool(_VERIFIED_PURE_TEACHING_QGEN.get())
         imgs = images or []
-        is_teaching_only = (
+        is_teaching_document = feature in TEACHING_DOCUMENT_AI_FEATURES
+        if is_teaching_document:
+            if not teaching_document_ai_egress_approved():
+                raise HTTPException(403, TEACHING_DOCUMENT_EGRESS_DENIED_DETAIL)
+        if is_teaching_document and getattr(u, "role", "") in ("teacher", "admin") and not student_ids and not unverified_free_text:
+            # Lesson-plan material uses a dedicated authorization. Its images are part of
+            # the teacher's own document, so they never fall back to the student-data switch.
+            if not teaching_document_ai_egress_approved():
+                raise HTTPException(403, TEACHING_DOCUMENT_EGRESS_DENIED_DETAIL)
+        elif not (
             (
                 (feature in TEACHING_ONLY_AI_FEATURES)
                 or (feature in _PURE_TEACHING_QGEN_FEATURES and verified_pure_qgen)
-                or (feature in TEACHING_DOCUMENT_AI_FEATURES and not imgs)
             )
             and not student_ids
             and not imgs
             and not unverified_free_text
-        )
-        if not is_teaching_only:
+        ):
             ctx_sid = _REQUEST_STUDENT_ID.get() if feature == "reinforcement_generate" else None
             target_sids = (
                 tuple(student_ids)

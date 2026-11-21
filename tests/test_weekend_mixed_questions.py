@@ -31,6 +31,9 @@ else:
     raw=buf.getvalue()
 with TestClient(app) as client:
     th, sh, student_id, school_id=setup(client)
+    def approve_courseware_gate(lid):
+        __import__('sys').path.insert(0, 'tests'); from test_chinese_readiness import prepare_reviewed_lesson
+        prepare_reviewed_lesson(client, th, legacy, lid)
     # Chinese originals are never sent to an external model: the nine paper
     # questions must still be extracted from the document itself.
     r=client.post('/teacher/weekend/lessons/import',headers=th,data={'subject':'语文','lessonNo':'17','courseType':'reading'},files={'file':('reading.docx',raw,'application/octet-stream')})
@@ -56,8 +59,7 @@ with TestClient(app) as client:
     # Chinese lessons can open a classroom without approving exercises first,
     # while unapproved templates still never enter the classroom.
     pre_session=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid})
-    assert pre_session.status_code==200,pre_session.text
-    assert len(client.get(f"/teacher/weekend/sessions/{pre_session.json()['id']}/written",headers=th).json()['questions'])==0
+    assert pre_session.status_code==409,pre_session.text
     q=questions[0]
     r=client.put(url+'/'+str(q['id']),headers=th,json={'stem':q['stem'],'reference':'教师专用评分秘密','hints':['找人物','找事件','组织句子']})
     assert r.status_code==200,r.text
@@ -65,6 +67,7 @@ with TestClient(app) as client:
     assert approved.status_code==200 and approved.json()['approvedQuestions']==9,approved.text
     schedule=client.get('/teacher/weekend/schedule?subject=语文',headers=th).json()['items']
     assert next(x for x in schedule if x['lessonId']==lid)['approvedQuestions']==9
+    approve_courseware_gate(lid)
     session=client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid}).json()['id']
     base=f'/teacher/weekend/sessions/{session}'
     assert len(client.get(base+'/written',headers=th).json()['questions'])==9
@@ -146,7 +149,7 @@ async function settle(){for(let i=0;i<15;i++)await Promise.resolve()}
 ''' + PLAN_JS + r'''
 (async()=>{
  plan();await settle();let go=all(root,'button').find(x=>x.textContent==='开课');assert(go.disabled);
- all(root,'button').find(x=>x.textContent==='审改').attrs.onclick();await settle();
+ all(root,'button').find(x=>x.textContent==='教案与题目审核').attrs.onclick();await settle();
  const tabs=all(root,'button').filter(x=>x.attrs.role==='tab');assert.equal(tabs.length,4);assert.equal(tabs[3].textContent,'互动课件');
  let panes=all(root,'div').find(x=>x.attrs.role==='tablist');
  const form=all(root,'textarea').find(x=>x.value==='流程');form.value='尚未保存的编辑';
