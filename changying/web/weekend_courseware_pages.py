@@ -945,25 +945,26 @@ function cwPlan(box,lessonId,refresh){
     if(!CW_STAGES.length){box.appendChild(el('div',{class:'notice warn',text:'语文课型尚未选择，暂不能配置课件。请先在备课工作栏选择阅读课或作文课。'}));return}
     if(!stageNo||!CW_STAGES.some(function(x){return String(x.no)===stageNo})){stageNo=d.courseType&&d.courseType!=='math'?'2':'3';if(!CW_STAGES.some(function(x){return String(x.no)===stageNo}))stageNo=String(CW_STAGES[0].no);}
     data=d;rowEls={};box.textContent='';
-    box.appendChild(el('p',{class:'muted',text:d.subject==='语文'?'导入教案后已自动生成整套互动课件；你可以整体预览各环节效果，或按需微调后直接开课。':'讲解、例题和已通过的随堂练习可逐题配置互动课件。你需逐页预览、修改、审核；随堂练习在课堂公布该题答案后才显示对应讲解。上课翻页和操作不调用 AI。'}));
+    box.appendChild(el('p',{class:'muted',text:d.subject==='语文'?'课件生成结果是待确认草稿。按六环节核对原文、题目与素材，再逐页审核；缺项不会用其他环节内容填充。':'讲解、例题和已通过的随堂练习可逐题配置互动课件。你需逐页预览、修改、审核；随堂练习在课堂公布该题答案后才显示对应讲解。上课翻页和操作不调用 AI。'}));
     var wholePreviewWrap=el('div',{hidden:true});
     function renderWholePreview(){
       wholePreviewWrap.textContent='';
-      if(!d.items.length){wholePreviewWrap.appendChild(el('div',{class:'notice warn',text:'当前还没有生成课件，请先点“一键生成整套课件”。'}));return}
       CW_STAGES.forEach(function(st){
         var stageItems=d.items.filter(function(it){return Number(it.stage)===Number(st.no)});
-        if(!stageItems.length)return;
+
         var sec=el('div',{class:'card'});
         sec.appendChild(el('h3',{text:'第'+st.no+'环节：'+st.name}));
+        if(!stageItems.length)sec.appendChild(el('p',{class:'notice warn',text:'缺少素材：请配置本环节内容并审核。'}));
         stageItems.forEach(function(it){
+          sec.appendChild(el('p',{class:'muted',text:it.approved?'已审核版本（教师预览）':'已导入 · 待确认草稿（教师预览）'}));
           var previewHost=el('div');sec.appendChild(previewHost);
           cwRender(previewHost,{kind:it.kind,params:it.approved||it.params,kindLabel:it.kindLabel||d.kindLabels[it.kind]||it.kind},{},false,true);
         });
         wholePreviewWrap.appendChild(sec);
       });
     }
-    var genAllBtn=el('button',{class:'primary',text:'一键生成整套课件',onclick:function(){
-      if(busy)return;busy=true;msg.className='';msg.textContent='正在整套生成互动课件…';
+    var genAllBtn=el('button',{class:'primary',text:'补充课件草稿',onclick:function(){
+      if(busy)return;busy=true;msg.className='';msg.textContent='正在补充课件草稿…';
       api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate-all',{json:{}}).then(function(res){busy=false;paint(res);msg.textContent=res.notice||'已生成整套课件';if(refresh)refresh()}).catch(function(e){busy=false;msg.textContent=e.message});
     }});
     var previewAllBtn=el('button',{text:'整体预览整套课件',onclick:function(){
@@ -971,10 +972,15 @@ function cwPlan(box,lessonId,refresh){
       previewAllBtn.textContent=wholePreviewWrap.hidden?'整体预览整套课件':'收起整体预览';
       if(!wholePreviewWrap.hidden)renderWholePreview();
     }});
-    if(d.subject==='语文'&&d.items.length){
-      wholePreviewWrap.hidden=false;
-      previewAllBtn.textContent='收起整体预览';
-      renderWholePreview();
+    if(d.subject==='语文'){
+      var overview=el('div',{'aria-label':'六环节课件状态'});
+      CW_STAGES.forEach(function(st){
+        var entries=d.items.filter(function(it){return Number(it.stage)===Number(st.no)});
+        var approved=entries.filter(function(it){return !!it.approved}).length;
+        var label=!entries.length?'缺少素材':approved===entries.length?'已审核':'已导入 · 待确认';
+        overview.appendChild(el('button',{text:st.no+'. '+st.name+' · '+label,onclick:function(){stageNo=String(st.no);paint(data)}}));
+      });
+      box.appendChild(overview);
     }
     box.appendChild(el('div',{class:'row'},genAllBtn,previewAllBtn));
     box.appendChild(wholePreviewWrap);
@@ -1025,7 +1031,7 @@ function cwPlan(box,lessonId,refresh){
     if(stageNo===practiceNo)actionRow.appendChild(el('span',{class:'muted',text:'课堂任务课件请导入预制包或手动填写，此环节不调用 AI。'}));
     else {actionRow.appendChild(all);actionRow.appendChild(el('label',{class:'row'},redo,el('span',{text:'包括已有课件的页'})));}
     actionRow.appendChild(approveAll);
-    var host=d.subject==='语文'?el('details',{style:'margin-top:10px'},el('summary',{text:'高级：按环节手动微调或补传课件'})):box;
+    var host=d.subject==='语文'?el('section',{'aria-label':'本环节课件审核',style:'margin-top:10px'}):box;
     if(d.subject==='语文')box.appendChild(host);
     host.appendChild(actionRow);
     host.appendChild(el('div',{class:'muted',text:'这里只用于补传课件包。若文件同时包含教案、习题和课件，请退出审改，在本次课列表点“导入教案/整包”，一次完成导入。'}));

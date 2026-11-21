@@ -449,10 +449,11 @@ def auto_populate_courseware(
     lesson: Any,
     *,
     replace_existing: bool = False,
-    approve: bool = True,
+    approve: bool = False,
     commit: bool = False,
 ) -> int:
-    """Auto-build whole-lesson interactive courseware on lesson import or one-click generation."""
+    """Build drafts only; generation is never a teacher review."""
+    approve = False
     table = register_courseware_table(implementation)
     course_type = course_type_for(db, implementation, lesson)
     stage_specs = stages_for(course_type)
@@ -471,14 +472,8 @@ def auto_populate_courseware(
 
     def _stage_fallback_text(stage_no: int) -> str:
         if course_type in ("reading", "writing"):
-            return {
-                1: "\n".join(x for x in (lesson_title, core_target) if x),
-                2: reading_plan or teacher_plan or core_target,
-                3: teacher_plan or reading_plan or core_target,
-                4: teacher_plan or core_target or lesson_title,
-                5: writing_plan or closure or teacher_plan,
-                6: closure or core_target or f"总结{lesson_title or '本课'}收获与课后任务",
-            }.get(stage_no, "")
+            # Missing stage material must stay missing, never borrow another stage.
+            return ""
         return {
             2: teacher_plan or core_target,
             3: teacher_plan or core_target,
@@ -506,43 +501,16 @@ def auto_populate_courseware(
             kind = "steps"
             params = None
             if course_type in ("reading", "writing") or lesson.subject == "语文":
-                raw_paras = [p.strip() for p in str(page_text or "").splitlines() if p.strip()]
-                slides_payload: list[dict[str, Any]] = []
-                if stage_no == 2 and reading_plan:
-                    passage_paras = [p.strip() for p in reading_plan.splitlines() if p.strip()]
-                    slides_payload.append({
-                        "heading": passage_paras[0][:80] if passage_paras else stage_name,
-                        "body": passage_paras[:6] or [reading_plan[:380]],
-                        "highlight": f"本节核心目标：{core_target[:260]}" if core_target else stage_goal,
-                        "audioText": reading_plan[:580],
-                    })
-                    try:
-                        ex_list = json.loads(lesson.examples_json or "[]")
-                    except Exception:
-                        ex_list = []
-                    for ex_i, ex_item in enumerate(ex_list[:4], 1):
-                        ex_str = str(ex_item or "").strip()
-                        if not ex_str:
-                            continue
-                        ex_parts = [p.strip() for p in ex_str.split("｜") if p.strip()]
-                        slides_payload.append({
-                            "heading": f"考点例题 {ex_i}",
-                            "body": [p[:380] for p in ex_parts[:4]],
-                            "highlight": ex_parts[-1][:280] if len(ex_parts) > 1 else "",
-                            "audioText": ex_str[:580],
-                        })
-                else:
-                    slides_payload.append({
-                        "heading": stage_name,
-                        "body": [p[:380] for p in raw_paras[:6]] or steps,
-                        "highlight": stage_goal[:280] if stage_goal else "",
-                        "audioText": (page_text or stage_goal)[:580],
-                    })
-                try:
-                    params = cw.clean("slide", {"title": title[:60], "slides": slides_payload}, reading_plan)
-                    kind = "slide"
-                except ValueError:
-                    params = None
+                # Preserve every paragraph; never turn the last sentence into an answer.
+                chunks = [p[i:i + 400] for p in str(page_text or "").splitlines()
+                          if p.strip() for i in range(0, len(p), 400)]
+                slides_payload = [{"heading": stage_name, "body": chunks[i:i + 8]}
+                                  for i in range(0, len(chunks), 8)]
+                if not slides_payload or len(slides_payload) > 12:
+                    raise HTTPException(422, "材料超出单组课件容量，请拆分并核对原文；未保存截断课件。")
+                params = cw.clean("slide", {"title": title[:60], "slides": slides_payload,
+                    "teacherNotes": "未配对的原文草稿；须核对教师答案、文章边界及素材关系。"}, reading_plan)
+                kind = "slide"
             if params is None:
                 params = cw.clean(
                     "steps",
@@ -1810,10 +1778,10 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
     @router.post("/teacher/weekend/lessons/{lid}/courseware/generate-all")
     def generate_all(lid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         lesson = my_lesson(db, u, lid)
-        count = auto_populate_courseware(implementation, db, u, lesson, replace_existing=True, approve=True, commit=False)
+        count = auto_populate_courseware(implementation, db, u, lesson, replace_existing=False, approve=False, commit=False)
         implementation.audit(db, u, "weekend.courseware.generate_all", f"lesson={lid}:count={count}")
         db.commit()
-        return {**payload(db, lesson, u.id), "generated": count, "notice": f"已一键生成整套互动课件（共 {count} 个环节），可直接整体预览后开课。"}
+        return {**payload(db, lesson, u.id), "generated": count, "notice": f"已补充 {count} 项课件草稿，未覆盖已有课件。请逐页核对和审核；缺少素材的环节仍需配置。"}
 
     @router.put("/teacher/weekend/lessons/{lid}/courseware")
     def save(lid: int, b: SaveBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):

@@ -182,6 +182,8 @@ const TOURS={
   parent_exam_report:['在“孩子学情”页顶部点“考试提分报告”。','看到得分变化、失分点、专项练习和再测对比，以及老师的话。','看不到答案和其他孩子的信息。']
 };
 TOURS.teacher_weekend_plan.push('语文课先保存“阅读课”或“作文课”型；旧课的待选课型不会自动猜测。结构化整包可声明 courseType、readingPlan、writingPlan，但目前不会自动拆成已审核素材节点。');
+TOURS.teacher_weekend_plan.push('语文课在六环节课件与审核中逐项核对；补充课件只生成草稿，不自动审核或覆盖已有课件。AI 辅助和课堂维护在更多操作中。');
+TOURS.teacher_weekend_plan.push('创建及开始语文课堂都要通过六环节缺项与逐页审核检查；普通教案默认本地导入，外发需要单独的教案授权。学生数据开关不能代替。');
 TOURS.teacher_weekend_class[0]='课堂按课型推进：数学七环节；阅读课和作文课各六环节。进入环节不代表语文内容已经在学生端开放；语文素材分步显示和接口权限仍需开发与验收。';
 TOURS.teacher_weekend_plan.push('已有教案可在“互动课件”预检导入课件包；默认不覆盖，勾选替换可保留上一版并生成待审核草稿，不改教案或习题。');
 TOURS.teacher_weekend_plan.push('如果网站一次只能选一个文件，就在课次行点“导入教案/整包”，上传 JSON 单文件整包；系统会同时建立教案、随堂题和互动课件草稿，随后分别审核。');

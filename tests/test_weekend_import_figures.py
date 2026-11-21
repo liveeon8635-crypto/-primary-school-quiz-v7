@@ -175,7 +175,7 @@ def test_the_weekend_page_renders_the_imported_picture():
     from changying.web.weekend_pages import COMMON_JS, PLAN_JS
 
     for script in (COMMON_JS, PLAN_JS):
-        assert "questionFigureImg" in script, "both the 审改 page and the student page must show it"
+        assert "questionFigureImg" in script, "both the review page and the student page must show it"
     assert "data:image\\/(jpeg|png);base64," in COMMON_JS
 
 

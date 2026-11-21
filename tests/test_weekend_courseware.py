@@ -236,6 +236,9 @@ with TestClient(app) as client:
     d = client.post(cbase + "/generate", headers=th, json={"stageNo": 2, "page": 0}).json()
     assert d["items"][0]["page"] == 0 and d["items"][0]["kind"] == "reading"
     client.post(cbase + "/approve", headers=th, json={"stageNo": 2, "page": 0})
+    __import__('sys').path.insert(0, 'tests')
+    from test_chinese_readiness import prepare_reviewed_lesson
+    prepare_reviewed_lesson(client, th, legacy, cid)
     s4 = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": cid, "classId": cls_id}).json()["id"]
     client.post(f"/teacher/weekend/sessions/{s4}/start", headers=th); client.post(f"/teacher/weekend/sessions/{s4}/goto", headers=th, json={"stage": 2})
     c = client.get(f"/teacher/weekend/sessions/{s4}/board", headers=th).json()["courseware"]

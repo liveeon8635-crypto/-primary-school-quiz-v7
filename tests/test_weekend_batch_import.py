@@ -124,4 +124,4 @@ with TestClient(app) as client:
     assert '没有读到足够的文字' in got['items'][1]['error']
     assert len(calls) == 1, 'the unreadable file must not reach the model'
 print('OK')
-''')
+''', {"TEACHING_DOCUMENT_AI_EGRESS_APPROVED": "1"})

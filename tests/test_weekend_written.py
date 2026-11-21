@@ -19,6 +19,9 @@ from sqlalchemy import update
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5WQAAAAASUVORK5CYII=")
 with TestClient(app) as client:
     th, sh, sid, school_id = setup(client)
+    def approve_courseware_gate(lid):
+        __import__('sys').path.insert(0, 'tests'); from test_chinese_readiness import prepare_reviewed_lesson
+        prepare_reviewed_lesson(client, th, legacy, lid)
     with legacy.SessionLocal() as db:
         p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
         l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="语文", lesson_no=12, title="民间故事", core_target="概括情节")
@@ -42,6 +45,7 @@ with TestClient(app) as client:
         db.commit()
         ready = db.scalar(select(legacy.TeachingQuestion.id).where(legacy.TeachingQuestion.lesson_id == lid))
     assert client.post('/teacher/weekend/lessons/%d/questions' % lid, headers=th, json={'approve': [ready]}).status_code == 200
+    approve_courseware_gate(lid)
     s = client.post('/teacher/weekend/sessions', headers=th, json={'lessonId':lid}).json()['id']
     base = f'/teacher/weekend/sessions/{s}'
     student = f'/student/weekend/sessions/{s}/written'
@@ -152,6 +156,7 @@ with TestClient(app) as client:
         ready2 = db.scalar(select(legacy.TeachingQuestion.id).where(legacy.TeachingQuestion.lesson_id == lid,
                                                                   legacy.TeachingQuestion.stem.like("海力布把石头%")).order_by(legacy.TeachingQuestion.id.desc()))
     assert client.post('/teacher/weekend/lessons/%d/questions' % lid, headers=th, json={'approve': [ready2]}).status_code == 200
+    approve_courseware_gate(lid)
     next_s = client.post('/teacher/weekend/sessions', headers=th, json={'lessonId':lid}).json()['id']
     assert client.get(f'/teacher/weekend/sessions/{next_s}/written', headers=th).json()['questions'] == []
     # Another teacher cannot read or grade this session's answers.

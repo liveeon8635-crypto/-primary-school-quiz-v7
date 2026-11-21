@@ -11,7 +11,8 @@ sys.modules[spec.name] = helpers
 spec.loader.exec_module(helpers)
 
 
-def test_slow_lesson_import_keeps_health_and_teacher_pages_responsive(tmp_path):
+def test_slow_lesson_import_keeps_health_and_teacher_pages_responsive(tmp_path, monkeypatch):
+    monkeypatch.setenv("TEACHING_DOCUMENT_AI_EGRESS_APPROVED", "1")
     helpers.run_isolated(tmp_path, helpers.COMMON + r'''
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
