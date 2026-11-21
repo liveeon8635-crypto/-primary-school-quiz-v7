@@ -1721,7 +1721,12 @@ function cwPlan(box,lessonId,refresh){
     }
     kindSel.onchange=build;build();
     var m2=el('div',{role:'status'});
-    var save=el('button',{text:'保存修改（需重新审核）',onclick:function(){api('/teacher/weekend/lessons/'+lessonId+'/courseware',{method:'PUT',json:{stageNo:+stageNo,page:x.page,kind:kind,params:collect(),writtenTask:task.checked}}).then(function(d){paint(d);m2.textContent='已保存为草稿'}).catch(function(e){m2.textContent=e.message})}});
+    var save=el('button',{text:'保存修改（需重新审核）',onclick:function(){
+      if(busy)return;
+      var params;try{params=collect()}catch(e){m2.textContent='无法保存：'+(e.message||'请检查课件内容');return}
+      busy=true;save.disabled=true;save.textContent='正在保存…';m2.textContent='正在保存，请稍候，完成后仍需审核。';
+      api('/teacher/weekend/lessons/'+lessonId+'/courseware',{method:'PUT',json:{stageNo:+stageNo,page:x.page,kind:kind,params:params,writtenTask:task.checked}}).then(function(d){busy=false;paint(d);msg.textContent='第'+(x.page==null?'整个环节':(x.page+1)+'页')+'课件已保存为草稿，请核对后点击审核通过。'}).catch(function(e){busy=false;save.disabled=false;save.textContent='保存修改（需重新审核）';m2.textContent='保存未确认：'+e.message+'。请检查后重试。'})
+    }});
     card.appendChild(el('div',{class:'row'},save));card.appendChild(m2);
     if(it&&it.writtenTaskPreview)card.appendChild(el('details',{},el('summary',{text:'学生书面作答题（勾选后审核时生成）'}),el('pre',{style:'white-space:pre-wrap;font:inherit',text:it.writtenTaskPreview.stem}),el('pre',{style:'white-space:pre-wrap;font:inherit;color:#667085',text:'参考答案（仅老师可见）：'+it.writtenTaskPreview.reference})));
     box2.appendChild(card);card.scrollIntoView&&card.scrollIntoView();
