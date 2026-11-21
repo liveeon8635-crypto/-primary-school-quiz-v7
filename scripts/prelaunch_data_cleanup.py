@@ -38,6 +38,7 @@ DELETE_TABLES = (
     "weekend_session_workflows",  # DELETE: frozen snapshots belong to individual classroom sessions
     "weekend_lesson_materials",  # DELETE: imported review materials are temporary prelaunch activity
     "weekend_open_questions",  # per-session question release state
+    "node_reveal_states",  # DELETE: per-classroom reveal/retract state belongs to one classroom instance
     "classroom_events", "weekend_class_rosters", "weekend_sessions", "weekend_stage_log", "weekend_hint_log", "weekend_answers", "weekend_written_submissions", "weekend_written_hint_log", "weekend_peer_help", "weekend_awards", "weekend_metrics", "weekend_briefs", "weekend_reports", "weekend_schedule", "weekend_slide_state", "weekend_session_questions", "classroom_sessions", "classroom_segments", "classroom_quick_checks",
     "classroom_quick_check_responses", "classroom_presenter_turns", "classroom_presentation_reviews",
     "classroom_review_handouts", "classroom_handout_releases", "class_todos",
@@ -65,6 +66,7 @@ KEEP_TABLES = (
     "point_rules", "class_point_rules", "reward_items", "auto_reward_rules",
     "homework_ai_knowledge",
     "kp_cards", "weekend_hints", "weekend_written_questions", "weekend_courseware", "weekend_courseware_template", "weekend_plan_import_history",
+    "lesson_nodes", "node_approvals",  # KEEP: node identity and its approved content are teaching content
     "weekend_example_reviews",
     "weekend_lesson_workflows",  # KEEP: lesson type is persistent course configuration
     "knowledge_maps",

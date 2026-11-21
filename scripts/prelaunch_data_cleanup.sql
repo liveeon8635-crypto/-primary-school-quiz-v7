@@ -89,6 +89,7 @@ WITH d AS (DELETE FROM weekend_briefs RETURNING 1) INSERT INTO _deleted SELECT '
 WITH d AS (DELETE FROM weekend_awards RETURNING 1) INSERT INTO _deleted SELECT 'weekend_awards', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_answers RETURNING 1) INSERT INTO _deleted SELECT 'weekend_answers', COUNT(*) FROM d;
 WITH d AS (DELETE FROM student_transition_plans RETURNING 1) INSERT INTO _deleted SELECT 'student_transition_plans', COUNT(*) FROM d;
+WITH d AS (DELETE FROM node_reveal_states RETURNING 1) INSERT INTO _deleted SELECT 'node_reveal_states', COUNT(*) FROM d;
 WITH d AS (DELETE FROM classroom_sessions RETURNING 1) INSERT INTO _deleted SELECT 'classroom_sessions', COUNT(*) FROM d;
 WITH d AS (DELETE FROM classroom_segments RETURNING 1) INSERT INTO _deleted SELECT 'classroom_segments', COUNT(*) FROM d;
 WITH d AS (DELETE FROM classroom_review_handouts RETURNING 1) INSERT INTO _deleted SELECT 'classroom_review_handouts', COUNT(*) FROM d;
