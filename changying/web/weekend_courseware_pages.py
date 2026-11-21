@@ -1268,12 +1268,34 @@ function cwPlan(box,lessonId,refresh){
         }else if(f.type==='table'){
           field('figA','数表（每行一行，格子用 | 隔开）',area((f.rows||[]).map(function(r){return r.join(' | ')}).join('\n')));
         }
+      }else if(kind==='slide'){
+        if(!Array.isArray(p.slides)||!p.slides.length)p.slides=[{heading:p.title||'幻灯片',body:[x.text||''],highlight:'',audioText:'',audioUrl:''}];
+        var slidesBox=el('div');form.appendChild(slidesBox);
+        function renderSlideFields(){
+          slidesBox.textContent='';
+          p.slides.forEach(function(sl,sIdx){
+            var scard=el('div',{class:'card',style:'margin:8px 0;padding:10px'});
+            var hdr=el('div',{class:'row',style:'justify-content:space-between'});
+            hdr.appendChild(el('b',{text:'第 '+(sIdx+1)+' 页幻灯片'}));
+            if(p.slides.length>1)hdr.appendChild(el('button',{type:'button',text:'删除本页',onclick:function(){p.slides.splice(sIdx,1);renderSlideFields();show()}}));
+            scard.appendChild(hdr);
+            var hIn=input(sl.heading||''),bIn=area((sl.body||[]).join('\n')),hlIn=input(sl.highlight||''),atIn=area(sl.audioText||''),auIn=input(sl.audioUrl||'');
+            [['页标题',hIn,function(){sl.heading=hIn.value}],['正文段落（每行一段）',bIn,function(){sl.body=lines(bIn)}],['重点／答题模板（高亮框）',hlIn,function(){sl.highlight=hlIn.value}],['朗读稿（点“朗读本页”播放）',atIn,function(){sl.audioText=atIn.value}],['音频链接（可选 .mp3 URL）',auIn,function(){sl.audioUrl=auIn.value}]].forEach(function(row){
+              var fn=function(){row[2]();show()};row[1].addEventListener('input',fn);row[1].addEventListener('change',fn);
+              scard.appendChild(el('label',{class:'field'},el('span',{text:row[0]}),row[1]));
+            });
+            slidesBox.appendChild(scard);
+          });
+          if(p.slides.length<12)slidesBox.appendChild(el('button',{type:'button',text:'+ 添加一页幻灯片',onclick:function(){p.slides.push({heading:'新页面',body:[],highlight:'',audioText:'',audioUrl:''});renderSlideFields();show()}}));
+        }
+        renderSlideFields();
+        field('teacherNotes','教师备课提示（仅老师可见）',area(p.teacherNotes||''));
       }else{
         field('passage','阅读材料（必须是原文中的连续段落）',area(p.passage));field('question','阅读问题',area(p.question));
         field('material','补充资料（请核实）',area(p.material));field('writingPrompt','书面解释要求',area(p.writingPrompt));p.evidence=p.evidence||[];
       }
-      if(kind!=='reading')field('question','学生书面作答问题',area(p.question));
-      field('reference','评分要点（仅老师可见）',area(p.reference));
+      if(kind!=='reading'&&kind!=='slide')field('question','学生书面作答问题',area(p.question));
+      if(kind!=='slide')field('reference','评分要点（仅老师可见）',area(p.reference));
       show();
     }
     function lines(n){return n.value.split('\n').map(function(v){return v.trim()}).filter(Boolean)}
@@ -1307,7 +1329,14 @@ function cwPlan(box,lessonId,refresh){
     }
     function pt(v){return String(v).split(/[,，]/).map(function(x){return Number(x.trim())})}
     function collect(){
-      var v={title:fields.title.value,question:fields.question.value,reference:fields.reference.value};
+      if(kind==='slide'){
+        return {
+          title:fields.title.value,
+          slides:(p.slides||[]).map(function(sl){return {heading:sl.heading||'',body:Array.isArray(sl.body)?sl.body:[],highlight:sl.highlight||'',audioText:sl.audioText||'',audioUrl:sl.audioUrl||'',figure:sl.figure||{}}}),
+          teacherNotes:fields.teacherNotes?fields.teacherNotes.value:''
+        };
+      }
+      var v={title:fields.title.value,question:fields.question?fields.question.value:'',reference:fields.reference?fields.reference.value:''};
       if(kind==='rotation'){v.width=+fields.width.value;v.height=+fields.height.value;v.shape=fields.shape.value.split(/[;；]/).filter(function(x){return x.trim()}).map(pt);v.center=pt(fields.center.value);v.direction=fields.direction.value;v.angle=+fields.angle.value;v.steps=lines(fields.steps)}
       else if(kind==='clock'){v.start=+fields.start.value;v.direction=fields.direction.value;v.angle=+fields.angle.value;v.steps=lines(fields.steps)}
       else if(kind==='steps'){v.problem=fields.problem.value;v.sourceProblem=p.sourceProblem||'';v.steps=lines(fields.steps);v.answer=fields.answer.value;v.figure=figure();v.sourceFigure=p.sourceFigure||{};v.stepFigures=(p.stepFigures||[]).length===v.steps.length+1?p.stepFigures:[]}
@@ -1316,7 +1345,10 @@ function cwPlan(box,lessonId,refresh){
     }
     function show(){
       var v=collect(),title=el('b',{text:'预览（教师视角，含答案）'}),view=el('div');preview.textContent='';preview.appendChild(el('div',{class:'row',style:'justify-content:space-between'},title,el('span',{class:'tag',text:cwPreviewFigureTag(kind,v)})));preview.appendChild(view);
-      if(kind==='rotation'){if(!(v.shape.length>=3&&v.center.length===2&&v.shape.every(function(q){return q.length===2&&isFinite(q[0])&&isFinite(q[1])}))){view.appendChild(el('div',{class:'notice warn',text:'坐标格式不完整'}));return}
+      if(kind==='slide'){
+        previewState.slideIndex=Math.max(0,Math.min((v.slides||[]).length-1,Number(previewState.slideIndex||0)));
+        cwRender(view,{kind:'slide',params:v},previewState,false,true);
+      }else if(kind==='rotation'){if(!(v.shape.length>=3&&v.center.length===2&&v.shape.every(function(q){return q.length===2&&isFinite(q[0])&&isFinite(q[1])}))){view.appendChild(el('div',{class:'notice warn',text:'坐标格式不完整'}));return}
         v.rotated=v.shape.map(function(q){return cwRotate(q,v.center,v.direction,v.angle)});cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,showCenter:true,step:v.steps.length},false,true)}
       else if(kind==='clock'){var t=v.angle/30*(v.direction==='cw'?1:-1);v.end=((v.start-1+t)%12+12)%12+1;cwRender(view,{kind:kind,params:v},{angle:v.angle,showResult:true,step:v.steps.length},false,true)}
       else if(kind==='steps'){
