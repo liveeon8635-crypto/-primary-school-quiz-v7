@@ -39,6 +39,11 @@ def test_clean_slide_rich_pedagogy_and_media_limits():
                         {"data_url": tiny_jpeg, "caption": "分镜一：缝补校服"},
                         {"data_url": tiny_jpeg, "caption": "分镜二：换冷毛巾"},
                     ],
+                    "audioScenes": [
+                        {"at": 62, "data_url": tiny_jpeg, "label": "雨夜晚归", "caption": "第三幕", "paraIndex": 2},
+                        {"at": 5.54, "data_url": tiny_jpeg, "label": "深夜台灯", "caption": "第一幕", "paraIndex": 0},
+                        {"at": 31, "data_url": tiny_jpeg, "label": "半夜高烧", "caption": "第二幕", "paraIndex": 1},
+                    ],
                     "body": ["第一段背景说明。"],
                     "audioLabel": "课文配音朗读",
                     "audioText": long_script,
@@ -77,6 +82,9 @@ def test_clean_slide_rich_pedagogy_and_media_limits():
     assert cleaned["slides"][0]["figure"]["type"] == "uploaded_image"
     assert len(cleaned["slides"][0]["gallery"]) == 2
     assert cleaned["slides"][0]["gallery"][1]["caption"] == "分镜二：换冷毛巾"
+    assert [sc["at"] for sc in cleaned["slides"][0]["audioScenes"]] == [5.5, 31.0, 62.0]
+    assert [sc["paraIndex"] for sc in cleaned["slides"][0]["audioScenes"]] == [0, 1, 2]
+    assert cleaned["slides"][0]["audioScenes"][0]["label"] == "深夜台灯"
     assert len(cleaned["slides"][0]["audioText"]) > 600
     assert len(cleaned["slides"][1]["characters"]) == 1
     assert cleaned["slides"][1]["characters"][0]["traits"] == ["勤劳", "温柔"]
@@ -88,6 +96,7 @@ def test_clean_slide_rich_pedagogy_and_media_limits():
     assert len(pub["slides"]) == 3
     assert "audioText" not in pub["slides"][0]
     assert len(pub["slides"][0]["gallery"]) == 2
+    assert len(pub["slides"][0]["audioScenes"]) == 3
 
     try:
         cw.clean("slide", {"slides": [{"heading": "超长音频", "body": ["正文"], "audioUrl": too_big_mp3}]})
@@ -389,6 +398,77 @@ apiHandler = (path, opts) => {{
   await new Promise(r => setTimeout(r, 20));
   assert.deepStrictEqual(removeReq, {{ stageNo: 5, page: 0 }});
   assert.equal(refreshCalls, 1, 'deleting orphan must invoke refresh()');
+
+  // 5. Verify audioScenes dynamic hero switching on timeupdate, thumbnail click seeking, paragraph highlight, and editor collect() preservation.
+  const syncedSlide = {{
+    title: '短文精读',
+    slides: [{{
+      layout: 'reading',
+      badge: '短文一',
+      heading: '《母亲的那盏灯》动态配音',
+      body: ['第一段深夜写作业。', '第二段半夜高烧。', '第三段大雨晚归。'],
+      audioLabel: '课文朗读',
+      audioUrl: 'data:audio/mpeg;base64,SUQz',
+      audioScenes: [
+        {{ at: 0, data_url: 'data:image/jpeg;base64,SC0=', label: '深夜台灯', caption: '台灯下缝补校服', paraIndex: 0 }},
+        {{ at: 35.5, data_url: 'data:image/jpeg;base64,SC1=', label: '半夜高烧', caption: '床边换冷毛巾', paraIndex: 1 }},
+        {{ at: 60.0, data_url: 'data:image/jpeg;base64,SC2=', label: '雨夜晚归', caption: '窗户暖光亮着', paraIndex: 2 }},
+      ]
+    }}]
+  }};
+  const syncHost = el('div');
+  cwRender(syncHost, {{ kind: 'slide', params: syncedSlide }}, {{ showAllSlides: true }}, false, true);
+  const heroImg = () => all(syncHost, n => n.tagName === 'IMG')[0];
+  const syncAu = all(syncHost, n => n.tagName === 'AUDIO')[0];
+  const paras = all(syncHost, n => n.tagName === 'P');
+  assert(heroImg() && syncAu && paras.length === 3);
+  assert.equal(heroImg().src, 'data:image/jpeg;base64,SC0=');
+  assert(all(syncHost, n => String(n.textContent).includes('画面 1 / 3')).length >= 1);
+  assert.equal(paras[0].style.borderLeft, '3px solid #8b1e24');
+
+  syncAu.currentTime = 40;
+  syncAu.dispatchEvent('timeupdate');
+  assert.equal(heroImg().src, 'data:image/jpeg;base64,SC1=');
+  assert(all(syncHost, n => String(n.textContent).includes('画面 2 / 3')).length >= 1);
+  assert.equal(paras[1].style.borderLeft, '3px solid #8b1e24');
+  assert.equal(paras[0].style.borderLeft, 'none');
+
+  syncAu.currentTime = 65;
+  syncAu.dispatchEvent('timeupdate');
+  assert.equal(heroImg().src, 'data:image/jpeg;base64,SC2=');
+  assert(all(syncHost, n => String(n.textContent).includes('画面 3 / 3')).length >= 1);
+  assert.equal(paras[2].style.borderLeft, '3px solid #8b1e24');
+
+  const thumb0 = all(syncHost, n => n.tagName === 'BUTTON' && all(n, c => String(c.textContent).includes('深夜台灯 0:00')).length > 0)[0];
+  assert(thumb0, 'expected clickable scene 0 thumbnail button');
+  thumb0.onclick();
+  assert.equal(heroImg().src, 'data:image/jpeg;base64,SC0=');
+  assert.equal(syncAu.currentTime, 0, 'clicking scene thumbnail must seek audio back to scene timestamp');
+
+  let savedSynced = null;
+  apiHandler = (path, opts) => {{
+    if (opts && opts.method === 'PUT') {{
+      savedSynced = opts.json;
+      return Promise.resolve({{ items: [] }});
+    }}
+    return Promise.resolve({{
+      subject: '语文',
+      courseType: 'reading',
+      practiceStage: 5,
+      stageOptions: [{{ no: 2, key: 'short_reading', name: '短文阅读', minutes: 20 }}],
+      pages: {{ '2': ['短文页'] }},
+      kindLabels: {{ slide: '图文幻灯片', reading: '阅读依据', steps: '分步讲解' }},
+      templates: ['slide', 'reading', 'steps'],
+      items: [{{ stage: 2, page: 0, kind: 'slide', status: 'draft', writtenTask: false, params: syncedSlide }}]
+    }});
+  }};
+  const edBox = el('div');
+  cwPlan(edBox, 12, () => {{}});
+  await new Promise(r => setTimeout(r, 20));
+  all(edBox, n => n.tagName === 'BUTTON' && n.textContent === '预览／修改')[0].onclick();
+  all(edBox, n => n.tagName === 'BUTTON' && String(n.textContent).includes('保存修改'))[0].onclick();
+  await new Promise(r => setTimeout(r, 20));
+  assert(savedSynced && savedSynced.params.slides[0].audioScenes.length === 3, 'editor collect() must preserve audioScenes');
 }})().catch(e => {{ console.error(e); process.exitCode = 1; }});
 '''
     res = subprocess.run(["node", "-"], input=js_script, text=True, capture_output=True, timeout=20)

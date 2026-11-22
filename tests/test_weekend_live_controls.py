@@ -106,3 +106,70 @@ function tick(){return new Promise(resolve=>setImmediate(resolve))}
     result = subprocess.run(['node', '-e', script], text=True, capture_output=True, encoding='utf-8', timeout=20)
     assert result.returncode == 0, result.stderr + result.stdout
     assert 'OK' in result.stdout
+
+
+def test_slide_pager_badge_disabled_edges_and_next_stage_button():
+    script = r'''
+const assert = require('assert');
+function el(tag, a) { return {tag:tag, attrs:a||{}, children:[], appendChild:function(x){this.children.push(x)}, textContent:''}; }
+let requests=[], resolvers=[], nextStageCalls=0, CW_PENDING=0, CW_VERSION=0;
+function api(path, opts) { requests.push(opts.json); return new Promise(resolve => resolvers.push(resolve)); }
+function cwRender() {}
+''' + COURSEWARE_JS[COURSEWARE_JS.index('function cwControl('):] + r'''
+(async function(){
+  // 1. Single-slide stage: prev/next disabled, badge shows 1/1, 进入下一环节 › immediately visible.
+  let root1 = el('div');
+  cwControl(root1, {
+    kind: 'slide',
+    kindLabel: '图文幻灯片',
+    stageNo: 1,
+    page: null,
+    params: {title: '导入', slides: [{heading: '导入页', body: ['欢迎']}]},
+    view: {slideIndex: 0, audioPlaying: false}
+  }, 19, {canNextStage: true, onNextStage: () => { nextStageCalls++; }});
+  let bar1 = root1.children[1].children;
+  let prev1 = bar1.find(x => x.attrs.text === '‹ 上一页');
+  let badge1 = bar1.find(x => x.tag === 'span');
+  let next1 = bar1.find(x => x.attrs.text === '下一页 ›');
+  let nextStage1 = bar1.find(x => x.attrs.text === '进入下一环节 ›');
+  assert.equal(prev1.disabled, true);
+  assert.equal(next1.disabled, true);
+  assert.equal(badge1.textContent, '本环节 第 1 / 1 页');
+  assert(nextStage1 && !nextStage1.hidden, 'single-page stage should immediately show 进入下一环节 ›');
+  next1.attrs.onclick();
+  assert.equal(requests.length, 0, 'boundary click on disabled next must not fire request');
+  nextStage1.attrs.onclick();
+  assert.equal(nextStageCalls, 1);
+
+  // 2. Two-slide stage: 进入下一环节 › hidden on slide 1, visible on slide 2.
+  let root2 = el('div');
+  cwControl(root2, {
+    kind: 'slide',
+    kindLabel: '图文幻灯片',
+    stageNo: 2,
+    page: 0,
+    params: {title: '短文', slides: [{heading: '第1页', body: ['a']}, {heading: '第2页', body: ['b']}]},
+    view: {slideIndex: 0, audioPlaying: false}
+  }, 19, {canNextStage: true, onNextStage: () => { nextStageCalls++; }});
+  let bar2 = root2.children[1].children;
+  let prev2 = bar2.find(x => x.attrs.text === '‹ 上一页');
+  let badge2 = bar2.find(x => x.tag === 'span');
+  let next2 = bar2.find(x => x.attrs.text === '下一页 ›');
+  let nextStage2 = bar2.find(x => x.attrs.text === '进入下一环节 ›');
+  assert.equal(prev2.disabled, true);
+  assert.equal(next2.disabled, false);
+  assert.equal(badge2.textContent, '本环节 第 1 / 2 页');
+  assert.equal(nextStage2.hidden, true);
+  next2.attrs.onclick();
+  assert.equal(prev2.disabled, false);
+  assert.equal(next2.disabled, true);
+  assert.equal(badge2.textContent, '本环节 第 2 / 2 页');
+  assert.equal(nextStage2.hidden, false);
+  nextStage2.attrs.onclick();
+  assert.equal(nextStageCalls, 2);
+  console.log('OK');
+})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+    result = subprocess.run(['node', '-e', script], text=True, capture_output=True, encoding='utf-8', timeout=20)
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert 'OK' in result.stdout
