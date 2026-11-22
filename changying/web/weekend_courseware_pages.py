@@ -1192,7 +1192,8 @@ function cwPlan(box,lessonId,refresh){
         stageItems.forEach(function(it){
           sec.appendChild(el('p',{class:'muted',text:it.approved?'已审核版本（教师预览）':'已导入 · 待确认草稿（教师预览）'}));
           var previewHost=el('div');sec.appendChild(previewHost);
-          cwRender(previewHost,{kind:it.kind,params:it.approved||it.params,kindLabel:it.kindLabel||d.kindLabels[it.kind]||it.kind},{showAllSlides:true},false,true);
+          var previewParams=(it.status==='approved'||!it.approved||(it.kind==='slide'&&!(it.approved.slides&&it.approved.slides.length)))?(it.params||it.approved):it.approved;
+          cwRender(previewHost,{kind:it.kind,params:previewParams,kindLabel:it.kindLabel||d.kindLabels[it.kind]||it.kind},{showAllSlides:true},false,true);
         });
         wholePreviewWrap.appendChild(sec);
       });
