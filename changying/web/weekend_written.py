@@ -248,13 +248,38 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         return {"level": level, "text": levels[level - 1]}
 
     async def _read_image(file_obj: UploadFile) -> tuple[bytes, str]:
-        raw = await file_obj.read(3 * 1024 * 1024 + 1)
-        if len(raw) > 3 * 1024 * 1024:
+        import io
+        max_upload = 8 * 1024 * 1024
+        max_stored = 3 * 1024 * 1024
+        raw = await file_obj.read(max_upload + 1)
+        if len(raw) > max_upload:
+            raise HTTPException(413, "照片不能超过8MB，请裁剪后重试")
+        # Accept JPEG/PNG even when mobile cameras/browsers append trailing padding after EOI/IEND
+        if raw.startswith(b"\xff\xd8\xff") and b"\xff\xd9" in raw[-128:]:
+            trimmed = raw[: raw.rfind(b"\xff\xd9") + 2]
+            if len(trimmed) <= max_stored:
+                return trimmed, "image/jpeg"
+        elif raw.startswith(b"\x89PNG\r\n\x1a\n") and b"IEND\xaeB`\x82" in raw[-128:]:
+            trimmed = raw[: raw.rfind(b"IEND\xaeB`\x82") + 8]
+            if len(trimmed) <= max_stored:
+                return trimmed, "image/png"
+        # Normalize oversized JPEG/PNG or WEBP photos into a <= 3MB JPEG
+        try:
+            from PIL import Image, ImageOps
+            with Image.open(io.BytesIO(raw)) as im:
+                im = ImageOps.exif_transpose(im).convert("RGB")
+                for max_side, quality in ((1600, 85), (1400, 75), (1200, 65), (960, 55)):
+                    copy_im = im.copy()
+                    copy_im.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+                    buf = io.BytesIO()
+                    copy_im.save(buf, format="JPEG", quality=quality, optimize=True)
+                    encoded = buf.getvalue()
+                    if len(encoded) <= max_stored:
+                        return encoded, "image/jpeg"
+        except Exception:
+            pass
+        if len(raw) > max_stored:
             raise HTTPException(413, "照片不能超过3MB，请裁剪后重试")
-        if raw.startswith(b"\xff\xd8\xff") and raw.endswith(b"\xff\xd9"):
-            return raw, "image/jpeg"
-        if raw.startswith(b"\x89PNG\r\n\x1a\n") and raw.endswith(b"IEND\xaeB`\x82"):
-            return raw, "image/png"
         raise HTTPException(400, "请上传有效的JPEG或PNG照片")
 
     @router.post("/student/weekend/sessions/{sid}/written/{qid}")
