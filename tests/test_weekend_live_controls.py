@@ -212,6 +212,18 @@ assert(gridsCmp[0].children[1].children.length > 0, 'right textCol must hold car
 const imgOnly = cwRenderOneSlide({title: '纯图'}, {layout: 'standard', heading: '插图', figure: fig}, 0, 1, false, {}, true);
 const gridsImg = findAll(imgOnly, n => n.attrs && String(n.attrs.style || '').includes('minmax(260px,1fr)'));
 assert.equal(gridsImg.length, 0, 'image-only slide must not render empty 2-column splitGrid');
+
+// 4. Reading slide with body + plot -> slideEl has flex:none, and plot renders full-width in main below splitGrid (not crammed in textCol)!
+const s5 = cwRenderOneSlide({title: '综合练习'}, {
+  layout: 'reading', heading: '陌上枸杞红',
+  audioScenes: [{at: 0, data_url: fig.data_url, label: '第1幕', paraIndex: 0}],
+  body: ['段落一', '段落二'],
+  plot: [{stage: '白天', scene: '摘枸杞', event: '踏露', feeling: '半信半疑'}]
+}, 0, 1, true, {}, false);
+assert(String(s5.attrs.style || '').includes('flex:none'), 'slideEl must have flex:none so tall slides never overflow card background');
+const grids5 = findAll(s5, n => n.attrs && String(n.attrs.style || '').includes('minmax(260px,1fr)'));
+assert.equal(grids5.length, 1);
+assert.equal(grids5[0].children[1].children.length, 1, 'textCol holds only bodyWrap when body+plot both exist');
 console.log('OK');
 '''
     result = subprocess.run(['node'], input=script, text=True, capture_output=True, encoding='utf-8', timeout=20)
