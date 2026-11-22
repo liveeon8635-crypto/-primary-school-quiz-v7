@@ -421,7 +421,7 @@ var SID=+(new URLSearchParams(location.search).get('s')||0);
 function board(){
   if(!SID){msg('缺少课堂编号');return}
   document.body.style.background='#0f172a';document.body.style.overflow='hidden';
-  var wrap=el('div',{style:'color:#fff;padding:2vh 4vw;height:100vh;box-sizing:border-box;display:flex;flex-direction:column;gap:1vh;overflow:hidden'});root.textContent='';root.style.maxWidth='none';root.style.margin='0';root.style.padding='0';document.body.style.margin='0';root.appendChild(wrap);
+  var wrap=el('div',{style:'color:#fff;padding:1.2vh 2.2vw;height:100vh;box-sizing:border-box;display:flex;flex-direction:column;gap:0.9vh;overflow:hidden'});root.textContent='';root.style.maxWidth='none';root.style.margin='0';root.style.padding='0';document.body.style.margin='0';root.appendChild(wrap);
   var remain=null,lastRenderKey='',lastViewKey='',scrollBody=null,clockNode=null;
   function renderKey(d){
     return JSON.stringify({
@@ -465,15 +465,21 @@ function board(){
     var oldScroll=keepScroll?scrollBody.scrollTop:0;
     var keepFocus=keepScroll&&document.activeElement===scrollBody;
     wrap.textContent='';scrollBody=null;clockNode=null;
-    wrap.appendChild(el('div',{style:'opacity:.7;font-size:2.4vh',text:d.title}));
-    if(d.status==='planned'){wrap.appendChild(el('div',{style:'font-size:6vh;margin-top:20vh;text-align:center',text:'马上开始上课'}));lastRenderKey=nextKey;lastViewKey=viewKey(d);return}
-    if(d.status==='finished'){wrap.appendChild(el('div',{style:'font-size:6vh;margin-top:20vh;text-align:center',text:'下课了，谢谢大家'}));lastRenderKey=nextKey;lastViewKey=viewKey(d);return}
-    if(d.covered){wrap.appendChild(el('div',{style:'font-size:6vh;margin-top:20vh;text-align:center',text:'请看老师'}));lastRenderKey=nextKey;lastViewKey=viewKey(d);return}
-    clockNode=el('div',{id:'bclock',style:'font-size:6vh;font-weight:700',text:remain==null?'':fmt(remain)});
-    wrap.appendChild(el('div',{style:'display:flex;justify-content:space-between;align-items:baseline'},
-      el('div',{style:'font-size:6vh;font-weight:700',text:d.currentStage+'. '+d.stageName}),clockNode));
-    wrap.appendChild(el('div',{style:'font-size:3vh;opacity:.8;margin:1vh 0 3vh',text:d.goal}));
-    if(d.deck)wrap.appendChild(el('div',{style:'opacity:.6;font-size:2.4vh',text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}));
+    if(d.status==='planned'||d.status==='finished'||d.covered){
+      wrap.appendChild(el('div',{style:'opacity:.75;font-size:2.2vh',text:d.title}));
+      var waitText=d.status==='planned'?'马上开始上课':d.status==='finished'?'下课了，谢谢大家':'请看老师';
+      wrap.appendChild(el('div',{style:'font-size:6vh;margin-top:24vh;text-align:center',text:waitText}));
+      lastRenderKey=nextKey;lastViewKey=viewKey(d);return;
+    }
+    clockNode=el('div',{id:'bclock',style:'font-size:2.8vh;font-weight:700;font-variant-numeric:tabular-nums;color:#f8fafc;white-space:nowrap',text:remain==null?'':fmt(remain)});
+    var headLeft=el('div',{style:'display:flex;align-items:center;gap:0.9vw;min-width:0;flex:1;overflow:hidden'});
+    headLeft.appendChild(el('span',{style:'font-size:2.1vh;font-weight:700;padding:0.3vh 0.85vw;border-radius:999px;background:rgba(59,130,246,.22);border:1px solid rgba(147,197,253,.45);color:#e0f2fe;white-space:nowrap;flex:none',text:d.currentStage+'. '+d.stageName}));
+    headLeft.appendChild(el('span',{style:'font-size:2vh;font-weight:600;color:rgba(255,255,255,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis',text:d.title}));
+    if(d.goal)headLeft.appendChild(el('span',{style:'font-size:1.7vh;color:rgba(255,255,255,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis',text:'· '+d.goal}));
+    var headRight=el('div',{style:'display:flex;align-items:center;gap:0.9vw;flex:none'});
+    if(d.deck)headRight.appendChild(el('span',{style:'font-size:1.85vh;color:rgba(255,255,255,.82);background:rgba(255,255,255,.1);padding:0.25vh 0.8vw;border-radius:999px;white-space:nowrap',text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}));
+    headRight.appendChild(clockNode);
+    wrap.appendChild(el('div',{class:'board-topbar',style:'display:flex;justify-content:space-between;align-items:center;gap:1.2vw;padding-bottom:0.7vh;border-bottom:1px solid rgba(255,255,255,.14);flex:none'},headLeft,headRight));
     var body=el('div',{tabindex:'0',role:'region','aria-label':'课堂投影内容',style:'flex:1;min-height:0;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere;line-height:1.45'});
     body.style.overflow='auto';
     wrap.appendChild(body);
@@ -483,7 +489,7 @@ function board(){
       // The approved courseware already prints its title and source problem. Suppress an identical
       // slide line so the question is not repeated and the diagram stays above the fold.
       var topContent=boardCoursewareContent(d);
-      if(topContent.length){var top=el('div',{style:'font-size:2.6vh'});body.appendChild(top);boardLayout(top,topContent,false)}
+      if(topContent.length){var top=el('div',{style:'font-size:2vh;margin-bottom:0.8vh'});body.appendChild(top);boardLayout(top,topContent,false)}
       var cwBox=el('div');body.appendChild(cwBox);cwRender(cwBox,d.courseware,d.courseware.view,true,false);
       scrollBody=body;lastRenderKey=nextKey;lastViewKey=viewKey(d);
       if(keepScroll)body.scrollTop=oldScroll;

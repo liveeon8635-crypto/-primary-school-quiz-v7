@@ -271,6 +271,62 @@ async function flush(){await new Promise(resolve=>setImmediate(resolve))}
 })().catch(error=>{console.error(error);process.exitCode=1});
 '''
     harness = harness.replace('__BOARD_JS__', json.dumps(BOARD_JS, ensure_ascii=False))
-    out = subprocess.run(["node", "-e", harness], capture_output=True, text=True, timeout=30)
+    out = subprocess.run(["node"], input=harness, capture_output=True, text=True, encoding="utf-8", timeout=30)
     assert out.returncode == 0, out.stdout + out.stderr
     assert "OK" in out.stdout
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_board_content_first_compact_topbar_and_wide_split():
+    from changying.web.weekend_courseware_pages import COURSEWARE_JS
+
+    html = board_page_html()
+    assert "board-topbar" in html
+    assert "cw-big-split" in html
+
+    harness = (
+        "function el(tag,attrs,...kids){const n={tag,attrs:attrs||{},children:[],style:{},appendChild(c){if(c)this.children.push(c);return c}};kids.forEach(k=>n.appendChild(k));return n}\n"
+        "function all(n){return [n,...n.children.flatMap(all)]}\n"
+        "global.window={innerWidth:1920,innerHeight:1080};\n"
+        "global.document={createElementNS:null};\n"
+        + COURSEWARE_JS
+        + r"""
+const p={
+  title:'例1｜双梯形倍拼推导公式',
+  steps:['第一步','第二步'],
+  answer:'25 cm²',
+  stepFigures:[
+    {type:'uploaded_image',data_url:'data:image/jpeg;base64,/9j/2Q==',alt:'图0'},
+    {type:'uploaded_image',data_url:'data:image/jpeg;base64,/9j/2Q==',alt:'图1'},
+    {type:'uploaded_image',data_url:'data:image/jpeg;base64,/9j/2Q==',alt:'图2'}
+  ]
+};
+const bigBox=el('div');cwSteps(bigBox,p,{step:1,showAnswer:true},true,false);
+const bigNodes=all(bigBox);
+const bigSplit=bigNodes.find(n=>n.attrs.class==='cw-big-split');
+const bigImg=bigNodes.find(n=>n.tag==='img');
+const smallBox=el('div');cwSteps(smallBox,p,{step:1,showAnswer:true},false,true);
+const smallNodes=all(smallBox);
+const smallSplit=smallNodes.find(n=>n.attrs.class==='cw-big-split');
+const smallImg=smallNodes.find(n=>n.tag==='img');
+console.log(JSON.stringify({
+  hasBigSplit:!!bigSplit,
+  bigFullWidth:bigBox.children[0].attrs.style.includes('max-width:none'),
+  bigImgHeight68:bigImg.attrs.style.includes('max-height:68vh'),
+  hasSmallSplit:!!smallSplit,
+  smallMax980:smallBox.children[0].attrs.style.includes('max-width:980px'),
+  smallImgHeight300:smallImg.attrs.style.includes('max-height:300px')
+}));
+"""
+    )
+    out = subprocess.run(["node"], input=harness, capture_output=True, text=True, encoding="utf-8", timeout=30)
+    assert out.returncode == 0, out.stdout + out.stderr
+    res = json.loads(out.stdout)
+    assert res == {
+        "hasBigSplit": True,
+        "bigFullWidth": True,
+        "bigImgHeight68": True,
+        "hasSmallSplit": False,
+        "smallMax980": True,
+        "smallImgHeight300": True,
+    }
