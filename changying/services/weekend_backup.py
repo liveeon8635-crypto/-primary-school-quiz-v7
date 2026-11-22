@@ -15,7 +15,7 @@ from changying.services.weekend_roster import session_class, session_roster
 
 
 def _uploaded_figure(value):
-    """Keep only a bounded, embedded JPEG figure already attached to a question."""
+    """Keep only a bounded, embedded JPEG/PNG figure already attached to a question."""
     if isinstance(value, str):
         try:
             value = json.loads(value or '{}')
@@ -24,14 +24,20 @@ def _uploaded_figure(value):
     if not isinstance(value, dict) or value.get('type') != 'uploaded_image':
         return {}
     url = str(value.get('data_url') or '')
-    if len(url) > 700000 or not re.fullmatch(r'data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}', url):
+    match = re.fullmatch(r'data:image/(jpeg|png);base64,([A-Za-z0-9+/]+={0,2})', url)
+    if len(url) > 700000 or not match:
         raise HTTPException(409, '原题图片数据无效，请重新上传题图后再生成 Word 备用版')
+    fmt, encoded = match.group(1), match.group(2)
     try:
-        image = base64.b64decode(url.split(',', 1)[1], validate=True)
+        image = base64.b64decode(encoded, validate=True)
     except (ValueError, TypeError):
         raise HTTPException(409, '原题图片数据损坏，请重新上传题图后再生成 Word 备用版')
-    if not image.startswith(b'\xff\xd8\xff') or not image.endswith(b'\xff\xd9'):
-        raise HTTPException(409, '原题图片不是有效 JPEG，请重新上传题图后再生成 Word 备用版')
+    if fmt == 'jpeg':
+        if not image.startswith(b'\xff\xd8\xff') or not image.endswith(b'\xff\xd9'):
+            raise HTTPException(409, '原题图片不是有效 JPEG，请重新上传题图后再生成 Word 备用版')
+    else:
+        if not image.startswith(b'\x89PNG\r\n\x1a\n') or b'IEND\xaeB`\x82' not in image[-16:]:
+            raise HTTPException(409, '原题图片不是有效 PNG，请重新上传题图后再生成 Word 备用版')
     return {'type': 'uploaded_image', 'data_url': url, 'alt': str(value.get('alt') or '原卷插图')[:80]}
 
 

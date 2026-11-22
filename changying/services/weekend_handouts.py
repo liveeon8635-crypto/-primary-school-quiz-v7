@@ -72,32 +72,51 @@ def _jpeg_dimensions(data):
     return None
 
 
+def _png_dimensions(data):
+    """Read PNG dimensions from the IHDR header without adding a runtime imaging dependency."""
+    if len(data) < 24 or not data.startswith(b'\x89PNG\r\n\x1a\n') or data[12:16] != b'IHDR':
+        return None
+    width = int.from_bytes(data[16:20], 'big')
+    height = int.from_bytes(data[20:24], 'big')
+    if width > 0 and height > 0:
+        return width, height
+    return None
+
+
 def _figure_image(figure):
-    """Decode only validated embedded JPEG data; never put an external image URL in Word."""
+    """Decode only validated embedded JPEG/PNG data; never put an external image URL in Word."""
     if not isinstance(figure, dict) or figure.get('type') != 'uploaded_image':
         return None
     data_url = str(figure.get('data_url') or '')
     if len(data_url) > 700000:
         return None
-    match = re.fullmatch(r'data:image/jpeg;base64,([A-Za-z0-9+/]+={0,2})', data_url)
+    match = re.fullmatch(r'data:image/(jpeg|png);base64,([A-Za-z0-9+/]+={0,2})', data_url)
     if not match:
         return None
+    fmt, encoded = match.group(1), match.group(2)
     try:
-        data = base64.b64decode(match.group(1), validate=True)
+        data = base64.b64decode(encoded, validate=True)
     except (ValueError, TypeError):
         return None
-    if not data.startswith(b'\xff\xd8\xff') or not data.endswith(b'\xff\xd9'):
-        return None
-    dimensions = _jpeg_dimensions(data)
+    if fmt == 'jpeg':
+        if not data.startswith(b'\xff\xd8\xff') or not data.endswith(b'\xff\xd9'):
+            return None
+        dimensions = _jpeg_dimensions(data)
+        ext = 'jpg'
+    else:
+        if not data.startswith(b'\x89PNG\r\n\x1a\n') or b'IEND\xaeB`\x82' not in data[-16:]:
+            return None
+        dimensions = _png_dimensions(data)
+        ext = 'png'
     if dimensions:
         width, height = dimensions
         cx, cy = width * 9525, height * 9525
         scale = min(1.0, 5669280 / cx, 3840480 / cy)
         cx, cy = max(1, int(cx * scale)), max(1, int(cy * scale))
     else:
-        # Keep an image visible even if a nonstandard JPEG omits a readable SOF segment.
+        # Keep an image visible even if a nonstandard image omits readable dimensions.
         cx, cy = 4572000, 2743200
-    return {'data': data, 'alt': str(figure.get('alt') or '题目插图')[:80], 'cx': cx, 'cy': cy}
+    return {'data': data, 'alt': str(figure.get('alt') or '题目插图')[:80], 'cx': cx, 'cy': cy, 'ext': ext}
 
 
 def _image_paragraph(parent, image, drawing_id):
@@ -193,7 +212,11 @@ def _package(document, footer=None, images=None):
         return ET.tostring(element, encoding='utf-8', xml_declaration=True)
 
     has_footer = footer is not None
-    image_type = '<Default Extension="jpg" ContentType="image/jpeg"/>' if images else ''
+    image_exts = {image.get('ext', 'jpg') for image in images}
+    image_type = (
+        ('<Default Extension="jpg" ContentType="image/jpeg"/>' if 'jpg' in image_exts else '')
+        + ('<Default Extension="png" ContentType="image/png"/>' if 'png' in image_exts else '')
+    )
     types = ('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
         '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
         '<Default Extension="xml" ContentType="application/xml"/>'
@@ -250,7 +273,7 @@ def question_document(material, audience):
         if digest not in image_by_hash:
             index = len(images) + 1
             image['rid'] = 'rIdImage' + str(index)
-            image['filename'] = 'image' + str(index) + '.jpg'
+            image['filename'] = 'image' + str(index) + '.' + image.get('ext', 'jpg')
             images.append(image)
             image_by_hash[digest] = image
         drawing_count += 1
