@@ -15,6 +15,13 @@ jobs:
   automation-boundary-guard:
     name: automation-boundary-guard
     runs-on: ubuntu-latest
+    # A newer push to the same PR replaces its older run. Without this, a
+    # superseded guard kept polling an obsolete head_sha until its own
+    # workflowDeadline expired -- minutes of billed runner time per push.
+    concurrency:
+      group: automation-boundary-guard-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+
     # This job waits for the smoke suite, so its timeout must stay above the
     # suite's real duration. The internal polling deadline below is the
     # first-class budget; this outer timeout is only the last resort.
