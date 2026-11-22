@@ -260,8 +260,46 @@ def install_teacher_dashboard_current_student_count(implementation: ModuleType) 
     implementation._teacher_dashboard_current_student_count_installed = True
 
 
+def _harden_postgres_engine(implementation: ModuleType) -> None:
+    """Tune PostgreSQL pooling and TCP keepalives for managed Render instances.
+
+    Render's managed PostgreSQL proxy drops idle TCP connections well before the
+    legacy 1800s recycle window, and small basic-256mb instances can drop SSL
+    connections under oversized pools. Rebinding ``SessionLocal`` in place keeps
+    every caller on the hardened engine without modifying ``app_v924.py``.
+    """
+    if getattr(implementation, "_postgres_pool_hardened", False):
+        return
+    raw_url = str(getattr(implementation, "raw_url", "") or "")
+    if not raw_url.startswith("postgresql"):
+        return
+    old_engine = getattr(implementation, "engine", None)
+    new_engine = implementation.create_engine(
+        raw_url,
+        pool_pre_ping=True,
+        pool_recycle=240,
+        pool_size=3,
+        max_overflow=5,
+        pool_timeout=30,
+        connect_args={
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
+        },
+    )
+    implementation.engine = new_engine
+    session_factory = getattr(implementation, "SessionLocal", None)
+    if session_factory is not None and hasattr(session_factory, "configure"):
+        session_factory.configure(bind=new_engine)
+    if old_engine is not None and hasattr(old_engine, "dispose"):
+        old_engine.dispose()
+    implementation._postgres_pool_hardened = True
+
+
 def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str) -> None:
     """Install extracted helpers while preserving legacy runtime configuration."""
+    _harden_postgres_engine(implementation)
     implementation.MANIFEST = build_manifest(asset_version=asset_version)
     implementation.ICON_SVG = ICON_SVG
     implementation.ICON_180_PNG = ICON_180_PNG

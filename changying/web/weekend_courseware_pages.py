@@ -1396,7 +1396,14 @@ function cwPlan(box,lessonId,refresh){
           .then(function(r){msg.textContent='已存为模板：'+r.name}).catch(function(e){msg.textContent=e.message});
       }}));
       line.appendChild(el('button',{text:'套用模板',onclick:function(){pickTemplate(x)}}));
-      if(it&&it.status==='draft')line.appendChild(el('button',{class:'primary',text:'审核通过',onclick:function(){run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:y.page}})},'审核')}}));
+      if(it&&it.status==='draft')line.appendChild(el('button',{class:'primary',text:'审核通过',onclick:function(e){
+        if(busy){note.className='notice warn';note.textContent='正在处理另一页，请等它完成后再点。';return}
+        var btn=e&&e.target;if(btn){btn.disabled=true;btn.textContent='审核中…'}
+        note.className='notice';note.textContent='正在审核这一页，请稍候…';
+        run([x],function(y){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:y.page}})},'审核',function(ok){
+          if(!ok&&btn){btn.disabled=false;btn.textContent='审核通过'}
+        });
+      }}));
       if(it)line.appendChild(el('button',{text:'删除',onclick:function(){if(confirm('删除这一页的课件？'))api('/teacher/weekend/lessons/'+lessonId+'/courseware/remove',{json:{stageNo:+stageNo,page:x.page}}).then(paint).catch(function(e){msg.textContent=e.message})}}));
       rows.appendChild(line);line.appendChild(note);rowEls[String(x.page)]=line;
     });
@@ -1442,10 +1449,10 @@ function cwPlan(box,lessonId,refresh){
       });
     }).catch(function(e){listBox.appendChild(el('div',{class:'notice error',text:e.message}))});
   }
-  function run(todo,call,label){
+  function run(todo,call,label,done){
     if(busy)return;busy=true;var failed=[],i=0,last=null;
     function next(){
-      if(i>=todo.length){busy=false;if(last)paint(last);msg.textContent=label+'完成 '+(todo.length-failed.length)+'/'+todo.length+' 页'+(failed.length?'。未完成：\n'+failed.join('\n'):'');if(refresh)refresh();
+      if(i>=todo.length){busy=false;if(last)paint(last);msg.textContent=label+'完成 '+(todo.length-failed.length)+'/'+todo.length+' 页'+(failed.length?'。未完成：\n'+failed.join('\n'):'');if(done)done(failed.length===0);if(refresh)refresh();
         return}
       var x=todo[i++];msg.textContent='正在'+label+'第 '+i+'/'+todo.length+' 页…';
       call(x).then(function(d){last=d}).catch(function(e){failed.push(e.message)}).then(next);
@@ -1721,7 +1728,12 @@ function cwPlan(box,lessonId,refresh){
     }
     kindSel.onchange=build;build();
     var m2=el('div',{role:'status'});
-    var save=el('button',{text:'保存修改（需重新审核）',onclick:function(){api('/teacher/weekend/lessons/'+lessonId+'/courseware',{method:'PUT',json:{stageNo:+stageNo,page:x.page,kind:kind,params:collect(),writtenTask:task.checked}}).then(function(d){paint(d);m2.textContent='已保存为草稿'}).catch(function(e){m2.textContent=e.message})}});
+    var save=el('button',{text:'保存修改（需重新审核）',onclick:function(){
+      if(busy)return;
+      var params;try{params=collect()}catch(e){m2.textContent='无法保存：'+(e.message||'请检查课件内容');return}
+      busy=true;save.disabled=true;save.textContent='正在保存…';m2.textContent='正在保存，请稍候，完成后仍需审核。';
+      api('/teacher/weekend/lessons/'+lessonId+'/courseware',{method:'PUT',json:{stageNo:+stageNo,page:x.page,kind:kind,params:params,writtenTask:task.checked}}).then(function(d){busy=false;paint(d);msg.textContent='第'+(x.page==null?'整个环节':(x.page+1)+'页')+'课件已保存为草稿，请核对后点击审核通过。'}).catch(function(e){busy=false;save.disabled=false;save.textContent='保存修改（需重新审核）';m2.textContent='保存未确认：'+e.message+'。请检查后重试。'})
+    }});
     card.appendChild(el('div',{class:'row'},save));card.appendChild(m2);
     if(it&&it.writtenTaskPreview)card.appendChild(el('details',{},el('summary',{text:'学生书面作答题（勾选后审核时生成）'}),el('pre',{style:'white-space:pre-wrap;font:inherit',text:it.writtenTaskPreview.stem}),el('pre',{style:'white-space:pre-wrap;font:inherit;color:#667085',text:'参考答案（仅老师可见）：'+it.writtenTaskPreview.reference})));
     box2.appendChild(card);card.scrollIntoView&&card.scrollIntoView();
