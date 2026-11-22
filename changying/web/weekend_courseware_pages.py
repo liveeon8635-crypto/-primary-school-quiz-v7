@@ -1134,9 +1134,20 @@ function cwControl(box,c,sid){
   var view=JSON.parse(JSON.stringify(c.view||{})),stage=el('div'),bar=el('div',{class:'row'}),msg=el('div',{role:'status'});
   box.textContent='';box.appendChild(el('h2',{text:'互动课件：'+c.kindLabel+'（大屏同步，约3秒）'}));box.appendChild(bar);box.appendChild(stage);box.appendChild(msg);
   var pending=Promise.resolve(),revision=0,syncSteps=null;
-  function send(){var publicState={};Object.keys(view).forEach(function(k){if(k.charAt(0)!=='_')publicState[k]=view[k]});publicState=JSON.parse(JSON.stringify(publicState));var seq=++revision;CW_PENDING++;CW_VERSION++;
-    pending=pending.then(function(){return api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:publicState,stageNo:c.stageNo,page:c.page}})}).then(function(r){if(seq===revision){view=r.view;msg.textContent='';draw()}}).catch(function(e){msg.textContent=e.message}).then(function(){CW_PENDING--});}
+  function publicView(v){var out={};Object.keys(v||{}).sort().forEach(function(k){if(k.charAt(0)!=='_')out[k]=v[k]});return out}
+  function send(){var publicState=JSON.parse(JSON.stringify(publicView(view))),sentJson=JSON.stringify(publicState);var seq=++revision;CW_PENDING++;CW_VERSION++;
+    pending=pending.then(function(){return api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:publicState,stageNo:c.stageNo,page:c.page}})}).then(function(r){if(seq===revision){var nextClean=publicView(r.view),same=JSON.stringify(nextClean)===sentJson;view=r.view;msg.textContent='';if(!same)draw()}}).catch(function(e){msg.textContent=e.message}).then(function(){CW_PENDING--});}
   function draw(){if(syncSteps)syncSteps();if(c.kind==='steps'&&c.params.figure&&c.params.figure.type==='calendar_compare')view._calendarOnChange=send;cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
+  box._cwSyncView=function(nextView){
+    if(!nextView||CW_PENDING)return;
+    var curJson=JSON.stringify(publicView(view));
+    var nextClean=publicView(nextView);
+    var nextJson=JSON.stringify(nextClean);
+    if(nextJson===curJson)return;
+    var sameSlide=c.kind==='slide'&&Number(nextClean.slideIndex||0)===Number(view.slideIndex||0);
+    view=JSON.parse(nextJson);
+    if(!sameSlide)draw();
+  };
   function button(text,fn){bar.appendChild(el('button',{text:text,style:'min-height:44px;min-width:44px',onclick:function(){fn();draw();send()}}))}
   if(c.kind==='rotation'){
     var p=c.params,range=el('input',{type:'range',min:0,max:p.angle,step:15,value:view.angle||0,style:'width:220px;min-height:44px','aria-label':'旋转角度'});
@@ -1179,7 +1190,12 @@ function cwControl(box,c,sid){
     function slideNow(){return Math.max(0,Math.min(scount-1,Number(view.slideIndex||0)))}
     button('‹ 上一页',function(){view.slideIndex=Math.max(0,slideNow()-1);view.audioPlaying=false});
     button('下一页 ›',function(){view.slideIndex=Math.min(scount-1,slideNow()+1);view.audioPlaying=false});
-    button('🔊 大屏播放/暂停朗读',function(){view.audioPlaying=!view.audioPlaying});
+    bar.appendChild(el('button',{text:'🔊 大屏播放/暂停朗读',style:'min-height:44px;min-width:44px',onclick:function(){
+      view.slideIndex=slideNow();
+      view.audioPlaying=!view.audioPlaying;
+      send();
+      msg.textContent=view.audioPlaying?'已通知大屏播放本页朗读（约3秒同步）':'已通知大屏暂停本页朗读（约3秒同步）';
+    }}));
   }else{
     bar.appendChild(el('span',{class:'muted',text:'点句子＝在大屏上高亮为同学们找到的依据'}));
     button('显示/隐藏补充资料',function(){view.showMaterial=!view.showMaterial});
