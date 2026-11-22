@@ -186,7 +186,7 @@ def clean_figure(raw: Any) -> dict[str, Any]:
     kind = str(raw.get("type") or "")
     if kind == "uploaded_image":
         url = str(raw.get("data_url") or "")
-        if len(url) > 700000 or not re.fullmatch(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}", url):
+        if len(url) > 700000 or not re.fullmatch(r"data:image/(?:jpeg|png);base64,[A-Za-z0-9+/]+={0,2}", url):
             raise ValueError("原卷图片格式不正确")
         return {"type": "uploaded_image", "data_url": url, "alt": _text(raw.get("alt"), 80) or "原卷插图"}
     if kind == "segment":
