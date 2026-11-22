@@ -50,9 +50,9 @@ with TestClient(app) as client:
     with legacy.SessionLocal() as db:
         cls = db.query(legacy.SchoolClass).first()
         cid = cls.id
-    opened = client.post(f"/teacher/weekend/lessons/{lid}/open", headers=th, json={"classId": cid})
+    opened = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid, "classId": cid, "requireReady": False})
     assert opened.status_code == 200, opened.text
-    sess_id = opened.json()["sessionId"]
+    sess_id = opened.json().get("sessionId") or opened.json().get("id")
     qadd = client.post(
         f"/teacher/weekend/sessions/{sess_id}/written/questions",
         headers=th,
@@ -60,9 +60,12 @@ with TestClient(app) as client:
     )
     assert qadd.status_code == 200, qadd.text
     qid = qadd.json()["id"]
-    for st_no in (2, 3, 4):
-        st_res = client.post(f"/teacher/weekend/sessions/{sess_id}/stage", headers=th, json={"stage": st_no})
-        assert st_res.status_code == 200, st_res.text
+    started = client.post(f"/teacher/weekend/sessions/{sess_id}/start", headers=th)
+    assert started.status_code == 200, started.text
+    goto_res = client.post(f"/teacher/weekend/sessions/{sess_id}/goto", headers=th, json={"stage": 4})
+    assert goto_res.status_code == 200, goto_res.text
+    pq_res = client.post(f"/teacher/weekend/sessions/{sess_id}/practice-question", headers=th, json={"question": 1})
+    assert pq_res.status_code == 200, pq_res.text
 
     # 1) JPEG with trailing EXIF/padding bytes after EOI (\xff\xd9)
     jbuf = io.BytesIO()
