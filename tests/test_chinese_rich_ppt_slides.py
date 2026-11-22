@@ -305,6 +305,32 @@ apiHandler = (path, opts) => {{
   assert.equal(s1.plot[0].feeling, '温馨');
   assert.equal(s1.cards[0].tag, '考点14');
   assert.equal(s1.qa[0].a, '母爱的无微不至。');
+
+  // 3. Verify renderWholePreview uses full it.params when it.status === 'approved' and _slim_response_item omits slides from it.approved.
+  apiHandler = () => Promise.resolve({{
+    subject: '语文',
+    courseType: 'reading',
+    practiceStage: 5,
+    stageOptions: [{{ no: 2, key: 'short_reading', name: '短文阅读', minutes: 20 }}],
+    pages: {{ '2': ['测试页面'] }},
+    kindLabels: {{ slide: '图文幻灯片', reading: '阅读依据', steps: '分步讲解' }},
+    templates: ['slide', 'reading', 'steps'],
+    items: [{{
+      stage: 2, page: 0, kind: 'slide', status: 'approved', writtenTask: false,
+      params: {json.dumps(sample, ensure_ascii=False)},
+      approved: {{ title: '短文精读' }}
+    }}]
+  }});
+  const apBox = el('div');
+  cwPlan(apBox, 12, () => {{}});
+  await new Promise(r => setTimeout(r, 20));
+  const wholeBtn = all(apBox, n => n.tagName === 'BUTTON' && n.textContent === '整体预览整套课件')[0];
+  assert(wholeBtn, 'expected 整体预览整套课件 button');
+  wholeBtn.onclick();
+  const apImgs = all(apBox, n => n.tagName === 'IMG');
+  const apAudios = all(apBox, n => n.tagName === 'AUDIO');
+  assert.equal(apImgs.length, 3, 'approved slimmed item must still render all slide images');
+  assert.equal(apAudios.length, 2, 'approved slimmed item must still render all slide audios');
 }})().catch(e => {{ console.error(e); process.exitCode = 1; }});
 '''
     res = subprocess.run(["node", "-"], input=js_script, text=True, capture_output=True, timeout=20)
@@ -480,6 +506,120 @@ with TestClient(app) as client:
     assert v2.status_code == 200, v2.text
     b2 = client.get(f'/teacher/weekend/sessions/{sid}/board', headers=th).json()['courseware']
     assert b2['params']['slides'][2]['plot'][0]['stage'] == '开端'
+print('OK')
+''',
+    )
+
+
+def test_chinese_overwrite_reimport_prunes_history_and_preserves_readiness(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+from copy import deepcopy
+from sqlalchemy import func, select
+from changying.web.weekend_courseware import items_of, register_courseware_table
+
+def make_bundle(tag: str, reading_text: str):
+    tiny_jpeg = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP///8Q" + ("AAAA" if tag == "v1" else "BBBB") + "=="
+    tiny_mp3 = "data:audio/mpeg;base64,SUQzAwAAAAAA" + ("CCCC" if tag == "v1" else "DDDD")
+    return {
+        "schemaVersion": 1,
+        "subject": "语文",
+        "dryRun": False,
+        "onConflict": "overwrite",
+        "items": [
+            {
+                "lessonNo": 12,
+                "title": f"第12课-{tag}",
+                "coreTarget": "把握细节描写。",
+                "teacherPlan": f"教案-{tag}",
+                "courseType": "reading",
+                "readingPlan": reading_text,
+                "writingPlan": "",
+                "ppt": [reading_text],
+                "examples": [],
+                "closureTraining": "巩固练习。",
+                "questions": [],
+                "writtenQuestions": [],
+            }
+        ],
+        "courseware": {
+            "pages": [
+                {"stageNo": 1, "page": None, "expectedPageText": "导入", "kind": "slide",
+                 "params": {"title": f"1-{tag}", "slides": [{"heading": f"导入-{tag}", "body": ["热身"], "audioUrl": tiny_mp3}]}, "writtenTask": False},
+                {"stageNo": 2, "page": 0, "expectedPageText": reading_text, "kind": "slide",
+                 "params": {"title": f"2-{tag}", "slides": [{"heading": f"短文-{tag}", "body": [reading_text], "figure": {"type": "uploaded_image", "data_url": tiny_jpeg, "alt": "图"}}]}, "writtenTask": False},
+                {"stageNo": 3, "page": None, "expectedPageText": "长文", "kind": "slide",
+                 "params": {"title": f"3-{tag}", "slides": [{"heading": f"长文-{tag}", "body": ["精读"]}]}, "writtenTask": False},
+                {"stageNo": 4, "page": None, "expectedPageText": "总结", "kind": "slide",
+                 "params": {"title": f"4-{tag}", "slides": [{"heading": f"总结-{tag}", "body": ["公式"]}]}, "writtenTask": False},
+                {"stageNo": 5, "page": None, "expectedPageText": "练习", "kind": "slide",
+                 "params": {"title": f"5-{tag}", "slides": [{"heading": f"练习-{tag}", "body": ["迁移"]}]}, "writtenTask": False},
+                {"stageNo": 6, "page": None, "expectedPageText": "反馈", "kind": "slide",
+                 "params": {"title": f"6-{tag}", "slides": [{"heading": f"反馈-{tag}", "body": ["作业"]}]}, "writtenTask": False},
+            ]
+        },
+    }
+
+with TestClient(app) as client:
+    th, sh, student_id, school_id = setup(client)
+    b1 = make_bundle("v1", "短文原文一")
+    r1 = client.post('/teacher/weekend/lessons/import', headers=th,
+                     data={'subject': '语文', 'lessonNo': '12', 'force': '0', 'courseType': 'reading'},
+                     files={'file': ('v1.json', json.dumps(b1, ensure_ascii=False).encode('utf-8'), 'application/json')})
+    assert r1.status_code == 200, r1.text
+    lid = r1.json()['lessonId']
+
+    items = client.get(f'/teacher/weekend/lessons/{lid}/courseware', headers=th).json()['items']
+    for it in items:
+        ap = client.post(f'/teacher/weekend/lessons/{lid}/courseware/approve', headers=th, json={'stageNo': it['stage'], 'page': it['page']})
+        assert ap.status_code == 200, ap.text
+
+    # Unhydrated readiness check via schedule endpoint must report approved and canStart=True
+    sched = client.get('/teacher/weekend/schedule?subject=语文', headers=th)
+    assert sched.status_code == 200, sched.text
+    row12 = [x for x in sched.json()['items'] if x['lessonNo'] == 12][0]
+    assert row12['coursewareApproved'] is True
+    assert row12['canStart'] is True
+
+    # Three sequential overwrite imports must keep at most 2 latest undoable history rows and drop old previousDraft blobs
+    b2 = make_bundle("v2", "短文原文二")
+    r2 = client.post('/teacher/weekend/lessons/import', headers=th,
+                     data={'subject': '语文', 'lessonNo': '12', 'force': '1', 'courseType': 'reading'},
+                     files={'file': ('v2.json', json.dumps(b2, ensure_ascii=False).encode('utf-8'), 'application/json')})
+    assert r2.status_code == 200, r2.text
+
+    b3 = make_bundle("v3", "短文原文三")
+    r3 = client.post('/teacher/weekend/lessons/import', headers=th,
+                     data={'subject': '语文', 'lessonNo': '12', 'force': '1', 'courseType': 'reading'},
+                     files={'file': ('v3.json', json.dumps(b3, ensure_ascii=False).encode('utf-8'), 'application/json')})
+    assert r3.status_code == 200, r3.text
+
+    b4 = make_bundle("v4", "短文原文四")
+    r4 = client.post('/teacher/weekend/lessons/import', headers=th,
+                     data={'subject': '语文', 'lessonNo': '12', 'force': '1', 'courseType': 'reading'},
+                     files={'file': ('v4.json', json.dumps(b4, ensure_ascii=False).encode('utf-8'), 'application/json')})
+    assert r4.status_code == 200, r4.text
+
+    hist_table = legacy.Base.metadata.tables['weekend_plan_import_history']
+    cw_table = register_courseware_table(legacy)
+    with legacy.SessionLocal() as db:
+        hist_rows = db.execute(select(hist_table.c.id).where(hist_table.c.lesson_id == lid).order_by(hist_table.c.id.asc())).all()
+        assert len(hist_rows) == 2, f"expected bounded 2 history rows, got {len(hist_rows)}"
+        cw_row = db.execute(select(cw_table).where(cw_table.c.lesson_id == lid)).first()
+        unhydrated = items_of(cw_row, hydrate=False)
+        assert all('previousDraft' not in x for x in unhydrated)
+        assert all(x['approved'] is None and x['status'] == 'draft' for x in unhydrated)
+        prev_vid, latest_vid = hist_rows[0][0], hist_rows[1][0]
+
+    # Undo restore must still cleanly roll back v4 -> v3 and preserve previousImportId
+    restored = client.post(f'/teacher/weekend/lessons/{lid}/import-history/{latest_vid}/restore', headers=th)
+    assert restored.status_code == 200, restored.text
+    assert restored.json()['title'] == '第12课-v3'
+    after_restore = client.get(f'/teacher/weekend/lessons/{lid}', headers=th)
+    assert after_restore.status_code == 200, after_restore.text
+    assert after_restore.json()['previousImportId'] == prev_vid
 print('OK')
 ''',
     )

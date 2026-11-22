@@ -696,8 +696,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     def practice_summary(db: Any, u: Any, lesson: Any) -> dict[str, Any]:
         """习题审核页顶部：例题、可用练习、待审核各多少，外加课件审核状态（两套审核分开显示）。"""
         status = lesson_status(db, u, lesson)
-        cw = db.execute(select(courseware_table).where(courseware_table.c.lesson_id == lesson.id)).first()
-        cw_status = str(cw.status or "") if cw is not None else ""
+        cw_status = str(db.scalar(select(courseware_table.c.status).where(courseware_table.c.lesson_id == lesson.id)) or "")
         return {"exampleCount": status["exampleCount"], "exampleApproved": status["exampleApproved"],
                 "examplePending": status["examplePending"], "practiceApproved": status["approvedQuestions"],
                 "practiceDraft": status["draftQuestions"], "practiceReady": status["practiceReady"],
@@ -715,8 +714,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         ran = db.scalar(select(func.count()).select_from(sessions).where(sessions.c.lesson_id == lesson.id, sessions.c.teacher_id == u.id, sessions.c.status != "planned")) or 0
         examples = example_items(db, lesson)
         example_approved = sum(1 for e in examples if e["status"] in ("approved", "legacy"))
-        cw = db.execute(select(courseware_table).where(courseware_table.c.lesson_id == lesson.id)).first()
-        cw_status = str(cw.status or "") if cw is not None else ""
+        cw_status = str(db.scalar(select(courseware_table.c.status).where(courseware_table.c.lesson_id == lesson.id)) or "")
         readiness = {}
         if lesson.subject == "语文":
             from changying.services.chinese_lesson_readiness import chinese_lesson_readiness
@@ -1149,7 +1147,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 raise HTTPException(409, "这节课已有教案，请确认覆盖后重新导入。")
             _assert_lesson_not_in_use(db, lesson)
             before = plan_state(db, u, lesson)
-            invalidate_courseware_on_reimport(db, courseware_table, lesson.id)  # preserve drafts, revoke stale approvals
+            if not (courseware_pages and courseware_replace_existing):
+                invalidate_courseware_on_reimport(db, courseware_table, lesson.id)  # preserve drafts, revoke stale approvals
             for k, v in fields.items():
                 setattr(lesson, k, v)
             if "writingPlan" in data:
@@ -1186,6 +1185,8 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 allow_pending_practice=True,
                 commit=False,
                 audit_detail=f"lesson={lesson.id}:pages={len(courseware_pages)}:bundle=1",
+                keep_previous_draft=not courseware_replace_existing,
+                revoke_existing_approvals=courseware_replace_existing,
             )
         elif subject == "语文":
             auto_populate_courseware(
@@ -1193,6 +1194,22 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 replace_existing=True, approve=False, commit=False,
             )
         if before is not None:
+            # Keep at most 2 undo snapshots per lesson (the newly inserted row plus one
+            # prior snapshot) so restoring an overwrite returns the previous state's
+            # previousImportId while bounding Postgres storage across repeated re-imports.
+            keep_ids = list(db.scalars(
+                select(versions.c.id)
+                .where(versions.c.school_id == u.school_id, versions.c.lesson_id == lesson.id)
+                .order_by(versions.c.id.desc())
+                .limit(1)
+            ))
+            prune_stmt = delete(versions).where(
+                versions.c.school_id == u.school_id,
+                versions.c.lesson_id == lesson.id,
+            )
+            if keep_ids:
+                prune_stmt = prune_stmt.where(versions.c.id.notin_(keep_ids))
+            db.execute(prune_stmt)
             db.execute(insert(versions).values(school_id=u.school_id, teacher_id=u.id, lesson_id=lesson.id,
                 before_json=history.serialize(before), after_hash=history.digest(plan_state(db, u, lesson))))
         if wf is not None:
@@ -1334,6 +1351,10 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 body = StructuredImportBody.model_validate(payload)
             except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as exc:
                 raise HTTPException(422, "JSON 整包格式不正确，请使用网站导出的单文件整包") from exc
+            finally:
+                raw = b""
+                bundle_payload = None
+                payload = None
             if body.subject != subject:
                 raise HTTPException(422, f"整包学科是“{body.subject}”，与当前“{subject}”不一致")
             if len(body.items) != 1 or body.items[0].lessonNo != lessonNo:

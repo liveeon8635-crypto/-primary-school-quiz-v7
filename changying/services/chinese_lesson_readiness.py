@@ -25,7 +25,7 @@ def chinese_lesson_readiness(implementation, db, lesson, teacher_id):
     row = db.execute(select(table).where(table.c.school_id == lesson.school_id,
                                         table.c.lesson_id == lesson.id)).first()
     try:
-        items = items_of(row)
+        items = items_of(row, hydrate=False)
     except (TypeError, ValueError, KeyError):
         items = []
     sources = practice_courseware_sources(implementation, db, lesson, teacher_id)
