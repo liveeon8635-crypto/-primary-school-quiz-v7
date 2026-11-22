@@ -596,10 +596,10 @@ function cwObtuseTriangleHeight(box,f,view,big,teacher,stepCount){
 function cwFigure(wrap,f,big,view,teacher,stepCount){
   view=view||{};
   if(!f||!f.type)return;
-  var box=el('div',{style:'margin:8px 0'});wrap.appendChild(box);
+  var box=el('div',{style:big?'margin:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center':'margin:8px 0'});wrap.appendChild(box);
   if(!cwFigureOk(f)){box.appendChild(el('div',{class:'notice warn',text:'图示还没填完整'}));return}
   if(f.type==='uploaded_image'){
-    box.appendChild(el('img',{src:f.data_url,alt:f.alt||'原卷插图',style:'display:block;width:100%;max-width:100%;max-height:'+(big?'68vh':'300px')+';object-fit:contain;margin:0 auto;border:1px solid #e5e8f0;border-radius:10px;background:#fff'}));
+    box.appendChild(el('img',{src:f.data_url,alt:f.alt||'原卷插图',style:'display:block;max-width:100%;max-height:'+(big?'75vh':'300px')+';'+(big?'width:100%;height:100%;':'')+'object-fit:contain;margin:0 auto;border:1px solid #e5e8f0;border-radius:10px;background:#fff'}));
     return;
   }
   if(f.type==='equal_base_height'){cwEqualBaseHeight(box,f,view,big,teacher,stepCount);return}
@@ -765,17 +765,17 @@ function cwSteps(box,p,view,big,teacher){
   p=p||{};view=view||{};
   var steps=Array.isArray(p.steps)?p.steps:[];
   var hasStepFigs=Array.isArray(p.stepFigures)&&p.stepFigures.length===steps.length+1;
-  var hasVisual=hasStepFigs||!!(p.figure&&p.figure.type);
-  var wideBig=!!(big&&hasVisual&&(typeof window==='undefined'||window.innerWidth>=1024));
-  var card=el('div',{style:(big?'width:100%;max-width:none;margin:0;padding:1.2vh 1.6vw;font-size:2.3vh;line-height:1.55;':'max-width:980px;margin:0 auto;padding:12px;line-height:1.75;')+'background:#fff;color:#111;border-radius:14px;box-sizing:border-box'});box.appendChild(card);
+  var card=el('div',{style:(big?'flex:1;min-height:0;width:100%;max-width:none;margin:0;padding:1vh 1.4vw;display:flex;flex-direction:column;gap:0.8vh;font-size:2.3vh;line-height:1.5;':'max-width:980px;margin:0 auto;padding:12px;line-height:1.75;')+'background:#fff;color:#111;border-radius:14px;box-sizing:border-box'});box.appendChild(card);
   // 预览和课堂用同一套展开规则：新题从 0 步开始，点一下“下一步”只多展开 1 步。
   var shown=teacher?(view.previewMode?(view.step||0):steps.length):(view.step||0);
   shown=Math.max(0,Math.min(steps.length,shown));
   if(big){
-    var hdr=el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:1vw;margin-bottom:0.8vh;padding-bottom:0.6vh;border-bottom:1px solid #e5e7eb'});
-    hdr.appendChild(el('b',{style:'font-size:2.4vh;color:#0f172a',text:p.title||'分步讲解'}));
-    hdr.appendChild(el('span',{style:'font-size:1.85vh;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;padding:0.2vh 0.8vw;border-radius:999px;white-space:nowrap',text:'已展开 '+shown+' / '+steps.length+' 步'}));
-    card.appendChild(hdr);
+    if(!hasStepFigs){
+      var hdr=el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:1vw;padding-bottom:0.5vh;border-bottom:1px solid #e5e7eb;flex:none'});
+      hdr.appendChild(el('b',{style:'font-size:2.3vh;color:#0f172a',text:p.title||'分步讲解'}));
+      hdr.appendChild(el('span',{style:'font-size:1.8vh;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;padding:0.2vh 0.8vw;border-radius:999px;white-space:nowrap',text:'已展开 '+shown+' / '+steps.length+' 步'}));
+      card.appendChild(hdr);
+    }
   }else{
     card.appendChild(el('b',{text:p.title||'分步讲解'}));
   }
@@ -784,14 +784,9 @@ function cwSteps(box,p,view,big,teacher){
     var tableHeader=sourceProblem.lastIndexOf('正方形边长',sourceProblem.indexOf('对应面积'));
     if(tableHeader>0)sourceProblem=sourceProblem.slice(0,tableHeader).trim();
   }
-  var wrap=card,stepsHost=card;
-  if(wideBig){
-    var split=el('div',{class:'cw-big-split',style:'display:grid;grid-template-columns:minmax(0,2.2fr) minmax(260px,1fr);gap:1.6vw;align-items:start'});
-    wrap=el('div',{style:'min-width:0'});
-    stepsHost=el('div',{style:'min-width:0'});
-    split.appendChild(wrap);split.appendChild(stepsHost);card.appendChild(split);
-  }
-  if(sourceProblem)stepsHost.appendChild(el('p',{style:'white-space:pre-wrap;margin:0 0 0.8vh',text:sourceProblem}));
+  if(sourceProblem)card.appendChild(el('p',{style:'white-space:pre-wrap;margin:0;flex:none',text:sourceProblem}));
+  var wrap=big?el('div',{class:'cw-big-stage',style:'flex:1;min-height:0;width:100%;display:flex;flex-direction:column;justify-content:center;align-items:center'}):card;
+  if(big)card.appendChild(wrap);
   if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
   if(p.figureUnverified){
     // 图示和题干数据对不上时不能当正确图展示，改成黄底提示让老师先核对。
@@ -803,19 +798,32 @@ function cwSteps(box,p,view,big,teacher){
   }else if(!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
   if(p.figureNotice&&!p.figureUnverified)wrap.appendChild(el('div',{class:'muted',style:'margin-top:6px',text:p.figureNotice}));
   if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
-  if(!big){
-    stepsHost.appendChild(el('div',{style:'margin:12px 0 2px;color:#475467;font-weight:600',text:'已展开 '+shown+' / '+steps.length+' 步'}));
-    stepsHost.appendChild(el('div',{class:'muted',text:'点“下一步”只多展开 1 步'}));
-  }
-  var list=el('ol',{style:'padding-left:1.5em;margin:'+(big?'0.4vh 0':'8px 0')+';'+(big?'font-size:2.1vh;line-height:1.55':'')});
-  steps.forEach(function(s,i){
-    if(i<shown)list.appendChild(el('li',{style:(i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:2px 6px;':'')+(big?'margin-bottom:0.6vh':''),text:s}));
-    else list.appendChild(el('li',{style:'color:#98a2b3;'+(big?'margin-bottom:0.4vh':''),text:'第 '+(i+1)+' 步'}));
-  });
-  stepsHost.appendChild(list);
   // 答案和步骤分开：只有点了“显示答案”（或老师整题全展开）才出现，不跟 step 联动。
   var answerVisible=!!view.showAnswer||(teacher&&!view.previewMode);
-  if(answerVisible&&p.answer)stepsHost.appendChild(el('p',{style:big?'font-weight:700;color:#b42318;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:0.8vh 1vw;margin:1vh 0 0':'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
+  if(big){
+    var bar=el('div',{class:'cw-big-focusbar',style:'flex:none;display:flex;align-items:center;gap:1.1vw;padding:0.9vh 1.2vw;border-radius:12px;background:#f8fafc;border:1px solid #dbe4f0'});
+    var pills=el('div',{style:'display:flex;align-items:center;gap:0.45vw;flex:none;flex-wrap:wrap'});
+    pills.appendChild(el('span',{style:'font-size:1.75vh;font-weight:700;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;padding:0.25vh 0.7vw;border-radius:999px;white-space:nowrap',text:'已展开 '+shown+'/'+steps.length}));
+    steps.forEach(function(_,i){
+      var isCur=i===shown-1,isDone=i<shown-1;
+      pills.appendChild(el('span',{style:'min-width:2.1em;text-align:center;font-size:1.7vh;font-weight:'+(isCur?'800':'600')+';padding:0.2vh 0.55vw;border-radius:999px;white-space:nowrap;'+(isCur?'background:#1d4ed8;color:#fff':isDone?'background:#dbeafe;color:#1e40af':'background:#e2e8f0;color:#64748b'),text:'第'+(i+1)+'步'}));
+    });
+    bar.appendChild(pills);
+    var focusText=shown>0?('第 '+shown+' 步：'+steps[shown-1]):'请先观察图示，思考解题思路…';
+    bar.appendChild(el('div',{style:'flex:1;min-width:0;font-size:2.25vh;line-height:1.4;font-weight:'+(shown>0?'700':'500')+';color:'+(shown>0?'#0f172a':'#64748b')+';padding-left:0.9vw;border-left:4px solid '+(shown>0?'#f59e0b':'#cbd5e1'),text:focusText}));
+    if(answerVisible&&p.answer)bar.appendChild(el('div',{style:'flex:none;max-width:34%;font-size:2.15vh;font-weight:800;color:#b42318;background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:0.55vh 0.95vw;line-height:1.35',text:'答案：'+p.answer}));
+    card.appendChild(bar);
+    return;
+  }
+  card.appendChild(el('div',{style:'margin:12px 0 2px;color:#475467;font-weight:600',text:'已展开 '+shown+' / '+steps.length+' 步'}));
+  card.appendChild(el('div',{class:'muted',text:'点“下一步”只多展开 1 步'}));
+  var list=el('ol',{style:'padding-left:1.5em;margin:8px 0'});
+  steps.forEach(function(s,i){
+    if(i<shown)list.appendChild(el('li',{style:i===shown-1?'background:#fff2cc;font-weight:700;border-radius:6px;padding:2px 6px':'',text:s}));
+    else list.appendChild(el('li',{style:'color:#98a2b3',text:'第 '+(i+1)+' 步'}));
+  });
+  card.appendChild(list);
+  if(answerVisible&&p.answer)card.appendChild(el('p',{style:'font-weight:700;color:#b42318',text:'答案：'+p.answer}));
 }
 function cwClock(box,p,view,big){
   var wrap=el('div',{style:'background:#fff;color:#111;border-radius:12px;padding:8px'});box.appendChild(wrap);
