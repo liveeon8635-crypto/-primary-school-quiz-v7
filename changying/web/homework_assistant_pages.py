@@ -399,10 +399,18 @@ function cropPhoto(file){
       function done(){overlay.remove();URL.revokeObjectURL(url);window.removeEventListener('resize',layout);window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',end)}
       var cancel=el('button',{text:'取消',onclick:function(){done();var e=new Error('已取消');e.cancelled=true;reject(e)}});
       function out(sx,sy,sw,sh){
-        var k=Math.min(1,1600/Math.max(sw,sh)),c=document.createElement('canvas');
-        c.width=Math.max(1,Math.round(sw*k));c.height=Math.max(1,Math.round(sh*k));
-        c.getContext('2d').drawImage(img,sx,sy,sw,sh,0,0,c.width,c.height);
-        c.toBlob(function(b){done();b?resolve(b):reject(new Error('图片处理失败'))},'image/jpeg',0.88);
+        var steps=[[1600,0.85],[1400,0.75],[1200,0.65],[960,0.55]];
+        function attempt(idx){
+          var maxSide=steps[idx][0],q=steps[idx][1],k=Math.min(1,maxSide/Math.max(sw,sh)),c=document.createElement('canvas');
+          c.width=Math.max(1,Math.round(sw*k));c.height=Math.max(1,Math.round(sh*k));
+          c.getContext('2d').drawImage(img,sx,sy,sw,sh,0,0,c.width,c.height);
+          c.toBlob(function(b){
+            if(!b){done();reject(new Error('图片处理失败'));return}
+            if((b.size||0)>2600000&&idx+1<steps.length){attempt(idx+1);return}
+            done();resolve(b);
+          },'image/jpeg',q);
+        }
+        attempt(0);
       }
       var whole=el('button',{text:'不裁剪，用整张',onclick:function(){out(0,0,NW,NH)}});
       var ok=el('button',{class:'primary',style:'flex:1',text:'确定，识别这一块',onclick:function(){out((r.x-ox)/sc,(r.y-oy)/sc,r.w/sc,r.h/sc)}});

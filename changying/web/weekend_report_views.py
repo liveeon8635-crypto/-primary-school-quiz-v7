@@ -69,6 +69,35 @@ class PublishBody(BaseModel):
     revision: int = Field(ge=1)
 
 
+def _normalize_practice_figure(raw: Any) -> dict[str, Any]:
+    """Convert PNG uploaded_image figures into <=700k-char JPEG so student assignments render them."""
+    if not isinstance(raw, dict):
+        return {}
+    if str(raw.get("type") or "").strip().lower() != "uploaded_image":
+        return raw
+    url = str(raw.get("data_url") or "")
+    if url.startswith("data:image/jpeg;base64,") and len(url) <= 700_000:
+        return raw
+    if not url.startswith("data:image/png;base64,"):
+        return {}
+    try:
+        import base64
+        import io
+        from PIL import Image
+        raw_bytes = base64.b64decode(url.split(",", 1)[1], validate=True)
+        with Image.open(io.BytesIO(raw_bytes)) as im:
+            rgb = im.convert("RGB")
+            for quality in (92, 82, 70):
+                buf = io.BytesIO()
+                rgb.save(buf, format="JPEG", quality=quality, subsampling=0, optimize=True)
+                out_url = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+                if len(out_url) <= 700_000:
+                    return {"type": "uploaded_image", "data_url": out_url, "alt": str(raw.get("alt") or "题目插图")[:80]}
+    except Exception:
+        return {}
+    return {}
+
+
 def register_report_table(implementation: Any) -> Table:
     md = implementation.Base.metadata
     if "weekend_reports" not in md.tables:
@@ -281,6 +310,63 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
         for p in parts:
             out.update(wr.source_questions(wr.session_facts(implementation, db, my_session(db, u, p["sessionId"]))))
         return out
+
+    def course_figures_for(db: Any, u: Any, parts: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        """Collect normalized figures from TeachingQuestion.figure_json and Stage-4 courseware stepFigures[0]."""
+        from changying.web.weekend_courseware import items_of, register_courseware_table
+        by_stem: dict[str, dict[str, Any]] = {}
+        TQ = implementation.TeachingQuestion
+        cw_table = register_courseware_table(implementation)
+        for p in parts:
+            s = my_session(db, u, p["sessionId"])
+            for tq in db.scalars(select(TQ).where(TQ.lesson_id == s.lesson_id, TQ.school_id == u.school_id)).all():
+                try:
+                    fig = _normalize_practice_figure(json.loads(getattr(tq, "figure_json", "") or "{}"))
+                except Exception:
+                    fig = {}
+                if fig:
+                    by_stem[wr._norm(tq.stem)] = fig
+            cw_row = db.execute(select(cw_table).where(cw_table.c.lesson_id == s.lesson_id, cw_table.c.school_id == u.school_id)).first()
+            if cw_row is not None:
+                for it in items_of(cw_row):
+                    if int(it.get("stage") or 0) != 4:
+                        continue
+                    prm = it.get("approved") or it.get("params") or {}
+                    sfs = prm.get("stepFigures") or []
+                    cand = sfs[0] if sfs else (prm.get("figure") or {})
+                    fig = _normalize_practice_figure(cand)
+                    key_text = wr._norm(it.get("pageText") or prm.get("problem") or "")
+                    if fig and key_text and key_text not in by_stem:
+                        by_stem[key_text] = fig
+        return by_stem
+
+    def enrich_practice_figure(raw: dict[str, Any], group: dict[str, Any], sources: dict[str, dict[str, Any]], course_figs: dict[str, dict[str, Any]]) -> dict[str, Any]:
+        if group.get("subject") != "数学":
+            return raw
+        item = dict(raw)
+        existing = _normalize_practice_figure(item.get("figure") or {})
+        if existing:
+            item["figure"] = existing
+            return item
+        from changying.web.reinforcement_quality import infer_reinforcement_figure
+        inferred = infer_reinforcement_figure({
+            "subject": "数学",
+            "knowledge": item.get("knowledge") or group.get("knowledge") or "",
+            "text": item.get("text") or "",
+        })
+        if inferred:
+            item["figure"] = inferred
+            return item
+        for e in group.get("items") or []:
+            src_key = str(e.get("key") or "").split(":", 1)[-1]
+            src_full = wr._norm((sources.get(src_key) or {}).get("full") or "")
+            if not src_full:
+                continue
+            for stem_norm, fig in course_figs.items():
+                if stem_norm == src_full or (len(stem_norm) >= 12 and (stem_norm in src_full or src_full in stem_norm)):
+                    item["figure"] = fig
+                    return item
+        return item
 
     def ai_allowed(db: Any, u: Any) -> bool:
         cfg = implementation.ai_config_for(db, u.school_id, False)
@@ -509,6 +595,7 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
         if not ai_allowed(db, u):
             raise HTTPException(400, "学校未开启 AI 或未允许发送学生学习数据，无法自动出新题；已有报告和题目未改动，可手动添加题目")
         sources = sources_for(db, u, parts)
+        course_figs = course_figures_for(db, u, parts)
         stu = db.get(implementation.User, int(r.student_id))
         grade = int(getattr(stu, "grade", 0) or 5)
         try:
@@ -528,7 +615,8 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
                 valid, reasons = [], []
                 for raw in (returned.get(g["key"]) or {}).get("questions") or []:
                     try:
-                        q = wr.clean_question(raw, g, sources, implementation._sanitize_figure)
+                        enriched = enrich_practice_figure(raw, g, sources, course_figs) if isinstance(raw, dict) else raw
+                        q = wr.clean_question(enriched, g, sources, implementation._sanitize_figure)
                     except ValueError as err:
                         reasons.append(str(err))
                         continue
@@ -570,7 +658,8 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
             questions = []
             for i, raw in enumerate(edit.get("questions") or [], 1):
                 try:
-                    questions.append(wr.clean_question(raw, g, sources, implementation._sanitize_figure))
+                    normalized = {**raw, "figure": _normalize_practice_figure(raw.get("figure") or {})} if isinstance(raw, dict) else raw
+                    questions.append(wr.clean_question(normalized, g, sources, implementation._sanitize_figure))
                 except ValueError as err:
                     raise HTTPException(400, f"{g['topic']} 第{i}题：{err}")
             base = current.get(key) or {k: g[k] for k in ("key", "sessionId", "subject", "topic", "knowledge", "count", "basis")}
@@ -609,7 +698,7 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
                 questions=[{"grade": grade, "subject": subject, "textbook": textbook.get(subject, ""), "semester": "上册", "unit": unit,
                             "knowledge": q["knowledge"], "text": q["text"], "options": q["options"], "correct_index": q["correct_index"],
                             "explanation": q["explanation"], "question_type": q["question_type"], "answer": q["answer"],
-                            "accepted_answers": q["accepted_answers"], "figure": q["figure"]} for q in mine],
+                            "accepted_answers": q["accepted_answers"], "figure": _normalize_practice_figure(q.get("figure") or {})} for q in mine],
                 title=title, due_date=b.dueDate.strip(), wrong_ids=[],
                 instructions="根据周末课错题生成的针对性练习，请独立完成后提交。")
             try:
