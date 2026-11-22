@@ -334,3 +334,80 @@ console.log(JSON.stringify({
         "smallMax980": True,
         "smallImgHeight300": True,
     }
+
+
+def test_board_slide_audio_toggle_and_resize_do_not_rebuild_dom():
+    harness = r'''
+const assert=require('assert');
+class E{
+  constructor(tag,attrs){this.tag=tag;this.attrs=attrs||{};this.children=[];this.style={};this.scrollTop=0}
+  appendChild(node){this.children.push(node);return node}
+  set textContent(value){this._text=String(value||'');this.children=[]}
+  get textContent(){return this._text||''}
+  querySelector(sel){
+    if(this.tag===sel)return this;
+    for(const c of this.children){if(c&&c.querySelector){const hit=c.querySelector(sel);if(hit)return hit}}
+    return null;
+  }
+}
+function el(tag,attrs,...children){const node=new E(tag,attrs);children.forEach(child=>node.appendChild(child));return node}
+function find(node,predicate){if(predicate(node))return node;for(const child of node.children){const got=find(child,predicate);if(got)return got}return null}
+const root=new E('div'),bodyElement=new E('body'),intervals=[],handlers={};
+const window={innerWidth:1280,innerHeight:800,addEventListener:(name,fn)=>{handlers[name]=fn}};
+const document={body:bodyElement,activeElement:bodyElement,getElementById:id=>find(root,n=>n.attrs.id===id)};
+let cwCalls=0,playCalls=0,pauseCalls=0;
+const data={
+  id:1,title:'语文第12课',status:'running',covered:false,currentStage:2,stageName:'短文阅读',goal:'精读',
+  remainingSeconds:900,content:['图文幻灯片'],
+  courseware:{id:9,kind:'slide',kindLabel:'图文幻灯片',stageNo:2,page:0,
+    params:{title:'短文',slides:[{heading:'第1页',audioUrl:'data:audio/mpeg;base64,SUQz'},{heading:'第2页'}]},
+    view:{slideIndex:0,audioPlaying:false}}
+};
+function api(){return Promise.resolve(JSON.parse(JSON.stringify(data)))}
+function setInterval(fn,ms){intervals.push({fn,ms});return intervals.length}
+function requestAnimationFrame(fn){fn()}
+function boot(fn){fn()}
+function fmt(v){return String(v)}
+function msg(v){root.textContent=v}
+function boardLayout(box,c){box.appendChild(el('div',{text:(c||[]).join('|')}))}
+function cwRender(box){
+  cwCalls++;
+  const au=el('audio',{});
+  au.play=function(){playCalls++;return Promise.resolve()};
+  au.pause=function(){pauseCalls++};
+  box.appendChild(au);
+}
+const source=__BOARD_JS__;
+const makeBoard=new Function('URLSearchParams','location','document','window','el','root','api','setInterval','requestAnimationFrame','boot','fmt','boardLayout','cwRender','msg',source+';return board;');
+makeBoard(URLSearchParams,{search:'?s=1'},document,window,el,root,api,setInterval,requestAnimationFrame,boot,fmt,boardLayout,cwRender,msg);
+function scrollBody(){return find(root,n=>n.style&&n.style.overflow==='auto')}
+async function flush(){await new Promise(resolve=>setImmediate(resolve))}
+(async()=>{
+  await flush();
+  assert.equal(cwCalls,1);
+  const firstBody=scrollBody();
+  data.courseware.view.audioPlaying=true;
+  intervals.find(x=>x.ms===3000).fn();
+  await flush();
+  assert.equal(cwCalls,1,'toggling audioPlaying on slide must NOT rebuild DOM');
+  assert.strictEqual(scrollBody(),firstBody);
+  assert.equal(playCalls,1);
+  data.courseware.view.audioPlaying=false;
+  intervals.find(x=>x.ms===3000).fn();
+  await flush();
+  assert.equal(cwCalls,1,'pausing audioPlaying on slide must NOT rebuild DOM');
+  assert.equal(pauseCalls,1);
+  handlers.resize();
+  assert.equal(cwCalls,1,'resize on slide courseware must NOT rebuild DOM');
+  assert.strictEqual(scrollBody(),firstBody);
+  data.courseware.view.slideIndex=1;
+  intervals.find(x=>x.ms===3000).fn();
+  await flush();
+  assert.equal(cwCalls,2,'changing slideIndex MUST repaint');
+  console.log('OK');
+})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+    harness = harness.replace('__BOARD_JS__', json.dumps(BOARD_JS, ensure_ascii=False))
+    out = subprocess.run(["node"], input=harness, capture_output=True, text=True, encoding="utf-8", timeout=30)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert "OK" in out.stdout
