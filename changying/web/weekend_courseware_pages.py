@@ -1323,6 +1323,15 @@ function cwPlan(box,lessonId,refresh){
     stageSel.value=stageNo;stageSel.onchange=function(){stageNo=stageSel.value;paint(data)};
     var pages=d.pages[stageNo]||[],list=pages.length?pages.map(function(x,i){return {page:i,text:x}}):(stageNo===practiceNo?[]:[{page:null,text:'整个环节'}]);
     if(stageNo===practiceNo&&itemAt(null))list.unshift({page:null,text:'整个环节（原有课件）'});
+    var seenPages={};list.forEach(function(x){seenPages[x.page===null?'null':String(x.page)]=true});
+    d.items.forEach(function(it){
+      if(String(it.stage)!==String(stageNo))return;
+      var pk=(it.page===null||it.page===undefined)?'null':String(it.page);
+      if(!seenPages[pk]){
+        seenPages[pk]=true;
+        list.push({page:(it.page===undefined?null:it.page),text:(it.pageText||'历史残留课件（可删除）'),orphan:true});
+      }
+    });
     if(stageNo===practiceNo&&!pages.length&&d.subject!=='语文')box.appendChild(el('div',{class:'notice warn',text:'暂无通过审核的课堂任务；请先导入任务并完成审核。'}));
     var redo=el('input',{type:'checkbox'});
     var all=el('button',{class:'primary',text:'为本环节全部 '+list.length+' 页生成',onclick:function(){
@@ -1379,7 +1388,7 @@ function cwPlan(box,lessonId,refresh){
     }
     var rows=el('div'),editor=el('div');host.appendChild(rows);box.appendChild(editor);editorBox=editor;notes={};rowEls={};
     list.forEach(function(x){
-      var it=itemAt(x.page),tag=!it?['','未生成']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
+      var it=itemAt(x.page),tag=!it?['','未生成']:x.orphan?['warn','历史残留 · 建议删除']:it.status==='approved'?['ok','已审核']:it.approved?['warn','已审核·有新草稿']:['warn','草稿'];
       var line=el('div',{class:'item'},el('span',{class:'t'},el('b',{text:(x.page==null?'':'第'+(x.page+1)+'页：')+x.text}),
         el('div',{class:'row'},el('span',{class:'tag '+tag[0],text:tag[1]}),it?el('span',{class:'muted',text:(d.kindLabels[it.kind]||'课件')+(it.writtenTask?' · 含学生作答题':'')}):null)));
        if(data.courseType==='math'&&stageNo==='3'&&d.qualityAudit&&x.page!=null){
@@ -1424,7 +1433,7 @@ function cwPlan(box,lessonId,refresh){
           if(!ok&&btn){btn.disabled=false;btn.textContent='审核通过'}
         });
       }}));
-      if(it)line.appendChild(el('button',{text:'删除',onclick:function(){if(confirm('删除这一页的课件？'))api('/teacher/weekend/lessons/'+lessonId+'/courseware/remove',{json:{stageNo:+stageNo,page:x.page}}).then(paint).catch(function(e){msg.textContent=e.message})}}));
+      if(it)line.appendChild(el('button',{text:'删除',onclick:function(){if(confirm('删除这一页的课件？'))api('/teacher/weekend/lessons/'+lessonId+'/courseware/remove',{json:{stageNo:+stageNo,page:x.page}}).then(function(d2){paint(d2);if(refresh)refresh()}).catch(function(e){msg.textContent=e.message})}}));
       rows.appendChild(line);line.appendChild(note);rowEls[String(x.page)]=line;
     });
   }

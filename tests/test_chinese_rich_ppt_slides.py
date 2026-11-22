@@ -200,6 +200,7 @@ function all(node, pred, out = []) {{
 }}
 let apiHandler = () => Promise.resolve({{}});
 function api(p, o) {{ return apiHandler(p, o); }}
+function confirm() {{ return true; }}
 
 {COURSEWARE_JS}
 {COURSEWARE_PLAN_JS}
@@ -331,6 +332,63 @@ apiHandler = (path, opts) => {{
   const apAudios = all(apBox, n => n.tagName === 'AUDIO');
   assert.equal(apImgs.length, 3, 'approved slimmed item must still render all slide images');
   assert.equal(apAudios.length, 2, 'approved slimmed item must still render all slide audios');
+
+  // 4. Verify orphan items on Stage 5 (e.g. page=0 while pages['5']==[]) render with a delete action that calls /remove and refresh().
+  let removeReq = null;
+  let refreshCalls = 0;
+  const stage5Resp = {{
+    subject: '语文',
+    courseType: 'reading',
+    practiceStage: 5,
+    stageOptions: [
+      {{ no: 2, key: 'short_reading', name: '短文阅读', minutes: 20 }},
+      {{ no: 5, key: 'practice', name: '综合练习', minutes: 15 }},
+    ],
+    pages: {{ '2': ['测试页面'], '5': [] }},
+    kindLabels: {{ slide: '图文幻灯片', reading: '阅读依据', steps: '分步讲解' }},
+    templates: ['slide', 'reading', 'steps'],
+    items: [
+      {{
+        stage: 5, page: null, kind: 'slide', status: 'approved', writtenTask: false,
+        params: {json.dumps(sample, ensure_ascii=False)},
+        approved: {{ title: '综合练习整页' }}
+      }},
+      {{
+        stage: 5, page: 0, kind: 'slide', status: 'draft', writtenTask: false,
+        reimportReviewRequired: true, pageText: '第1题 原练习',
+        params: {{ title: '旧残留第1题', slides: [{{ heading: '残留', body: ['旧内容'] }}] }},
+        approved: null
+      }}
+    ]
+  }};
+  apiHandler = (path, opts) => {{
+    if (path.endsWith('/courseware/remove')) {{
+      removeReq = opts.json;
+      return Promise.resolve({{
+        ...stage5Resp,
+        items: [stage5Resp.items[0]]
+      }});
+    }}
+    return Promise.resolve(stage5Resp);
+  }};
+  const orphBox = el('div');
+  cwPlan(orphBox, 12, () => {{ refreshCalls++; }});
+  await new Promise(r => setTimeout(r, 20));
+  const stage5Pill = all(orphBox, n => n.tagName === 'BUTTON' && String(n.textContent).startsWith('5. 综合练习'))[0];
+  assert(stage5Pill, 'expected 5. 综合练习 pill button');
+  stage5Pill.onclick();
+  const orphanRow = all(orphBox, n =>
+    n.tagName === 'DIV'
+    && (n.attrs.class || '') === 'item'
+    && all(n, c => String(c.textContent).includes('历史残留 · 建议删除')).length > 0
+  )[0];
+  assert(orphanRow, 'expected orphan item row labeled 历史残留 · 建议删除');
+  const delBtn = all(orphanRow, n => n.tagName === 'BUTTON' && n.textContent === '删除')[0];
+  assert(delBtn, 'expected 删除 button inside orphan row');
+  delBtn.onclick();
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepStrictEqual(removeReq, {{ stageNo: 5, page: 0 }});
+  assert.equal(refreshCalls, 1, 'deleting orphan must invoke refresh()');
 }})().catch(e => {{ console.error(e); process.exitCode = 1; }});
 '''
     res = subprocess.run(["node", "-"], input=js_script, text=True, capture_output=True, timeout=20)
@@ -620,6 +678,183 @@ with TestClient(app) as client:
     after_restore = client.get(f'/teacher/weekend/lessons/{lid}', headers=th)
     assert after_restore.status_code == 200, after_restore.text
     assert after_restore.json()['previousImportId'] == prev_vid
+print('OK')
+''',
+    )
+
+
+def test_chinese_bundle_overwrite_prunes_stale_stage5_orphan_and_allows_start_with_approved_questions(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r'''
+from sqlalchemy import select, update
+from changying.web.weekend_courseware import _serialize_courseware_items, items_of, register_courseware_table
+
+def make_bundle(lesson_no: int, tag: str, reading_text: str):
+    return {
+        "schemaVersion": 1,
+        "subject": "语文",
+        "dryRun": False,
+        "onConflict": "overwrite",
+        "items": [
+            {
+                "lessonNo": lesson_no,
+                "title": f"第{lesson_no}课-{tag}",
+                "coreTarget": "体会人物情感与细节。",
+                "teacherPlan": f"教案-{tag}",
+                "courseType": "reading",
+                "readingPlan": reading_text,
+                "writingPlan": "",
+                "ppt": [reading_text],
+                "examples": [],
+                "closureTraining": "完成综合练习。",
+                "questions": [
+                    {
+                        "stem": f"下列对《母亲的那盏灯》细节理解正确的一项是（）（{tag}）",
+                        "options": ["台灯象征母亲的守候", "只是普通电器"],
+                        "correctIndex": 0,
+                        "explanation": "台灯贯穿全文细节。",
+                        "knowledge": "细节描写",
+                    }
+                ],
+                "writtenQuestions": [
+                    {
+                        "type": "short_answer",
+                        "material": reading_text,
+                        "stem": f"结合文本说说“一直在亮着”的含义（{tag}）。",
+                        "reference": "写出了母亲深沉而持久的关爱。",
+                        "hints": [],
+                    }
+                ],
+            }
+        ],
+        "courseware": {
+            "replaceExisting": True,
+            "pages": [
+                {"stageNo": 1, "page": None, "expectedPageText": "导入", "kind": "slide",
+                 "params": {"title": f"1-{tag}", "slides": [{"heading": f"导入-{tag}", "body": ["热身"]}]}, "writtenTask": False},
+                {"stageNo": 2, "page": 0, "expectedPageText": reading_text, "kind": "slide",
+                 "params": {"title": f"2-{tag}", "slides": [{"heading": f"短文-{tag}", "body": [reading_text]}]}, "writtenTask": False},
+                {"stageNo": 3, "page": None, "expectedPageText": "长文", "kind": "slide",
+                 "params": {"title": f"3-{tag}", "slides": [{"heading": f"长文-{tag}", "body": ["精读"]}]}, "writtenTask": False},
+                {"stageNo": 4, "page": None, "expectedPageText": "总结", "kind": "slide",
+                 "params": {"title": f"4-{tag}", "slides": [{"heading": f"总结-{tag}", "body": ["方法"]}]}, "writtenTask": False},
+                {"stageNo": 5, "page": None, "expectedPageText": "综合练习", "kind": "slide",
+                 "params": {"title": f"5-{tag}", "slides": [{"heading": f"综合练习-{tag}", "body": ["全套练习指导"]}]}, "writtenTask": False},
+                {"stageNo": 6, "page": None, "expectedPageText": "反馈", "kind": "slide",
+                 "params": {"title": f"6-{tag}", "slides": [{"heading": f"反馈-{tag}", "body": ["作业"]}]}, "writtenTask": False},
+            ]
+        },
+    }
+
+with TestClient(app) as client:
+    th, sh, student_id, school_id = setup(client)
+
+    # Scenario 1: Unlinked stale (stage=5, page=0) draft item must be pruned on full-bundle overwrite.
+    b1 = make_bundle(12, "old", "旧短文内容。")
+    r1 = client.post('/teacher/weekend/lessons/import', headers=th,
+                     data={'subject': '语文', 'lessonNo': '12', 'force': '0', 'courseType': 'reading'},
+                     files={'file': ('old.json', json.dumps(b1, ensure_ascii=False).encode('utf-8'), 'application/json')})
+    assert r1.status_code == 200, r1.text
+    lid = r1.json()['lessonId']
+
+    cw_table = register_courseware_table(legacy)
+    with legacy.SessionLocal() as db:
+        cw_row = db.execute(select(cw_table).where(cw_table.c.lesson_id == lid)).first()
+        items = items_of(cw_row)
+        items.append({
+            "stage": 5,
+            "page": 0,
+            "kind": "slide",
+            "status": "approved",
+            "params": {"title": "旧第5环节残留第0页", "slides": [{"heading": "旧残页", "body": ["旧题目"]}]},
+            "approved": {"title": "旧第5环节残留第0页", "slides": [{"heading": "旧残页", "body": ["旧题目"]}]},
+            "writtenTask": False,
+            "templateId": None,
+            "pageText": "旧第1题",
+        })
+        db.execute(update(cw_table).where(cw_table.c.id == cw_row.id).values(params_json=_serialize_courseware_items(items)))
+        db.commit()
+
+    b2 = make_bundle(12, "new", "新短文内容。")
+    r2 = client.post('/teacher/weekend/lessons/import', headers=th,
+                     data={'subject': '语文', 'lessonNo': '12', 'force': '1', 'courseType': 'reading'},
+                     files={'file': ('new.json', json.dumps(b2, ensure_ascii=False).encode('utf-8'), 'application/json')})
+    assert r2.status_code == 200, r2.text
+
+    cw_data = client.get(f'/teacher/weekend/lessons/{lid}/courseware', headers=th).json()
+    assert len(cw_data['items']) == 6, f"expected stale unlinked (5,0) pruned, got {[(i['stage'], i.get('page')) for i in cw_data['items']]}"
+    assert {(i['stage'], i.get('page')) for i in cw_data['items']} == {(1, None), (2, 0), (3, None), (4, None), (5, None), (6, None)}
+    assert not any(i.get('reimportReviewRequired') for i in cw_data['items'])
+
+    # All 6 stages approve cleanly via one-click loop
+    for it in cw_data['items']:
+        ap = client.post(f'/teacher/weekend/lessons/{lid}/courseware/approve', headers=th, json={'stageNo': it['stage'], 'page': it['page']})
+        assert ap.status_code == 200, f"approve failed for {it['stage']}/{it.get('page')}: {ap.text}"
+
+    sched = client.get('/teacher/weekend/schedule?subject=语文', headers=th).json()
+    row12 = [x for x in sched['items'] if x['lessonNo'] == 12][0]
+    assert row12['coursewareApproved'] is True, row12
+    assert row12['canStart'] is True, row12
+
+    # Approving choice + written questions produces non-empty stage 5 practice sources;
+    # whole-stage stage 5 slide (kind='slide', page=None) must NOT be flagged as 页号越界.
+    qs = client.get(f'/teacher/weekend/lessons/{lid}/questions', headers=th).json()['items']
+    wqs = client.get(f'/teacher/weekend/lessons/{lid}/written/questions', headers=th).json()['items']
+    assert len(qs) == 1 and len(wqs) == 1
+    ap_q = client.post(f'/teacher/weekend/lessons/{lid}/questions', headers=th, json={'approve': [qs[0]['id']]})
+    assert ap_q.status_code == 200, ap_q.text
+    ap_wq = client.post(f'/teacher/weekend/lessons/{lid}/written/questions', headers=th, json={'approve': [wqs[0]['id']]})
+    assert ap_wq.status_code == 200, ap_wq.text
+
+    sched2 = client.get('/teacher/weekend/schedule?subject=语文', headers=th).json()
+    row12_after = [x for x in sched2['items'] if x['lessonNo'] == 12][0]
+    assert row12_after['coursewareApproved'] is True, row12_after
+    assert row12_after['canStart'] is True, row12_after
+
+    sess = client.post('/teacher/weekend/sessions', headers=th, json={'lessonId': lid})
+    assert sess.status_code == 200, sess.text
+    sid = sess.json()['id']
+    started = client.post(f'/teacher/weekend/sessions/{sid}/start', headers=th)
+    assert started.status_code == 200, started.text
+
+    # Scenario 2: Legacy item at (stage=5, page=0) WITH templateId=999 must be retained safely.
+    b3 = make_bundle(11, "old11", "第十一课旧短文。")
+    r3 = client.post('/teacher/weekend/lessons/import', headers=th,
+                     data={'subject': '语文', 'lessonNo': '11', 'force': '0', 'courseType': 'reading'},
+                     files={'file': ('old11.json', json.dumps(b3, ensure_ascii=False).encode('utf-8'), 'application/json')})
+    assert r3.status_code == 200, r3.text
+    lid11 = r3.json()['lessonId']
+
+    with legacy.SessionLocal() as db:
+        cw_row11 = db.execute(select(cw_table).where(cw_table.c.lesson_id == lid11)).first()
+        items11 = items_of(cw_row11)
+        items11.append({
+            "stage": 5,
+            "page": 0,
+            "kind": "slide",
+            "status": "approved",
+            "params": {"title": "关联旧书面题", "slides": [{"heading": "旧书面题", "body": ["保留项"]}]},
+            "approved": {"title": "关联旧书面题", "slides": [{"heading": "旧书面题", "body": ["保留项"]}]},
+            "writtenTask": True,
+            "templateId": 999,
+            "pageText": "旧关联练习",
+        })
+        db.execute(update(cw_table).where(cw_table.c.id == cw_row11.id).values(params_json=_serialize_courseware_items(items11)))
+        db.commit()
+
+    b4 = make_bundle(11, "new11", "第十一课新短文。")
+    r4 = client.post('/teacher/weekend/lessons/import', headers=th,
+                     data={'subject': '语文', 'lessonNo': '11', 'force': '1', 'courseType': 'reading'},
+                     files={'file': ('new11.json', json.dumps(b4, ensure_ascii=False).encode('utf-8'), 'application/json')})
+    assert r4.status_code == 200, r4.text
+
+    cw11 = client.get(f'/teacher/weekend/lessons/{lid11}/courseware', headers=th).json()
+    retained_item = next((i for i in cw11['items'] if i['stage'] == 5 and i.get('page') == 0), None)
+    assert retained_item is not None, "legacy templateId-linked (5,0) item must be preserved"
+    assert retained_item['templateId'] == 999
+    assert retained_item['status'] == 'draft' and retained_item['approved'] is None
 print('OK')
 ''',
     )

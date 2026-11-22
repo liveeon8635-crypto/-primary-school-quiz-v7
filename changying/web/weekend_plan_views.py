@@ -1187,6 +1187,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 audit_detail=f"lesson={lesson.id}:pages={len(courseware_pages)}:bundle=1",
                 keep_previous_draft=not courseware_replace_existing,
                 revoke_existing_approvals=courseware_replace_existing,
+                prune_unselected=courseware_replace_existing,
             )
         elif subject == "语文":
             auto_populate_courseware(
