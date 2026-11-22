@@ -898,6 +898,12 @@ with TestClient(app) as client:
     sid = sess.json()['id']
     started = client.post(f'/teacher/weekend/sessions/{sid}/start', headers=th)
     assert started.status_code == 200, started.text
+    g5 = client.post(f'/teacher/weekend/sessions/{sid}/goto', headers=th, json={'stage': 5})
+    assert g5.status_code == 200, g5.text
+    s5_state = client.get(f'/teacher/weekend/sessions/{sid}', headers=th).json()
+    s5_board = client.get(f'/teacher/weekend/sessions/{sid}/board', headers=th).json()
+    assert s5_state.get('courseware') and s5_state['courseware']['params']['title'] == '5-new', s5_state
+    assert s5_board.get('courseware') and s5_board['courseware']['params']['title'] == '5-new', s5_board
 
     # Scenario 2: Legacy item at (stage=5, page=0) WITH templateId=999 must be retained safely.
     b3 = make_bundle(11, "old11", "第十一课旧短文。")

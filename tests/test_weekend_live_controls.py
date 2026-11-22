@@ -103,7 +103,7 @@ function tick(){return new Promise(resolve=>setImmediate(resolve))}
   console.log('OK');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
-    result = subprocess.run(['node', '-e', script], text=True, capture_output=True, encoding='utf-8', timeout=20)
+    result = subprocess.run(['node'], input=script, text=True, capture_output=True, encoding='utf-8', timeout=20)
     assert result.returncode == 0, result.stderr + result.stdout
     assert 'OK' in result.stdout
 
@@ -170,6 +170,50 @@ function cwRender() {}
   console.log('OK');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
-    result = subprocess.run(['node', '-e', script], text=True, capture_output=True, encoding='utf-8', timeout=20)
+    result = subprocess.run(['node'], input=script, text=True, capture_output=True, encoding='utf-8', timeout=20)
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert 'OK' in result.stdout
+
+
+def test_slide_layout_fills_right_column_when_body_absent():
+    script = r'''
+const assert = require('assert');
+function el(tag, a, ...kids) {
+  const n = {tag, attrs: a || {}, children: [], style: {}, appendChild(x){ if(x) this.children.push(x); return x; }, textContent: ''};
+  kids.forEach(k => n.appendChild(k));
+  return n;
+}
+function findAll(n, pred, out=[]) { if (pred(n)) out.push(n); (n.children||[]).forEach(c => { if (c && typeof c === 'object') findAll(c, pred, out); }); return out; }
+global.window = {innerWidth: 1366, innerHeight: 900};
+global.document = {createElementNS: null, createTextNode: s => String(s)};
+''' + COURSEWARE_JS + r'''
+const fig = {type: 'uploaded_image', data_url: 'data:image/jpeg;base64,/9j/2Q==', alt: '插图'};
+// 1. Stage 4 / Stage 6 style: figure + steps (+ optional cards), no body -> steps go into right textCol so no empty column!
+const s4 = cwRenderOneSlide({title: '考点总结'}, {
+  layout: 'cards', heading: '公式总览', figure: fig,
+  cards: [{tag: '考点14', title: '细节描写', text: '公式1'}],
+  steps: [{label: '一审题干', desc: '看清要求'}, {label: '二定原句', desc: '圈关键词'}]
+}, 0, 1, false, {}, true);
+const grids4 = findAll(s4, n => n.attrs && String(n.attrs.style || '').includes('minmax(260px,1fr)'));
+assert.equal(grids4.length, 1);
+assert.equal(grids4[0].children.length, 2);
+assert(grids4[0].children[1].children.length > 0, 'right textCol must hold steps when body is absent');
+
+// 2. Compare style: figure + cards only -> cards go into right textCol!
+const cmp = cwRenderOneSlide({title: '对比'}, {
+  layout: 'compare', heading: '双维度对比', figure: fig,
+  cards: [{tag: '内容上', title: '主旨', text: '留白'}, {tag: '结构上', title: '呼应', text: '总结'}]
+}, 0, 1, false, {}, true);
+const gridsCmp = findAll(cmp, n => n.attrs && String(n.attrs.style || '').includes('minmax(260px,1fr)'));
+assert.equal(gridsCmp.length, 1);
+assert(gridsCmp[0].children[1].children.length > 0, 'right textCol must hold cards when body and steps are absent');
+
+// 3. Image-only slide -> no 2-column splitGrid with empty sibling!
+const imgOnly = cwRenderOneSlide({title: '纯图'}, {layout: 'standard', heading: '插图', figure: fig}, 0, 1, false, {}, true);
+const gridsImg = findAll(imgOnly, n => n.attrs && String(n.attrs.style || '').includes('minmax(260px,1fr)'));
+assert.equal(gridsImg.length, 0, 'image-only slide must not render empty 2-column splitGrid');
+console.log('OK');
+'''
+    result = subprocess.run(['node'], input=script, text=True, capture_output=True, encoding='utf-8', timeout=20)
     assert result.returncode == 0, result.stderr + result.stdout
     assert 'OK' in result.stdout

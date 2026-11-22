@@ -155,12 +155,21 @@ function control(){
         }});
         content.appendChild(el('div',{class:'row'},syncBtn,el('span',{class:'muted',text:'仅把新通过的练习补进本节课堂，已有作答与记录保持不变'})));
       }
-      if(d.deck){
+      var isSlideDeckCw=!!(d.courseware&&d.courseware.kind==='slide'&&(d.courseType==='reading'||d.courseType==='writing'||(d.deck&&d.deck.total<=1)));
+      if(d.deck&&!isSlideDeckCw){
         content.appendChild(el('div',{class:'row'},el('button',{text:'‹ 上一页',disabled:d.deck.index<=0,onclick:function(){post('slide',{delta:-1})}}),
           el('b',{text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}),el('button',{class:'primary',text:'下一页 ›',disabled:d.deck.index>=d.deck.total-1,onclick:function(){post('slide',{delta:1})}})));
       }
       if(!d.content.length&&!d.courseware)content.appendChild(el('div',{class:'muted',text:running?(d.covered?'大屏遮盖中':'这个环节没有内容'):'开始上课后显示'}));
-      d.content.forEach(function(x){content.appendChild(el('p',{text:x}))});
+      if(d.content.length){
+        if(isSlideDeckCw){
+          var rawDet=el('details',{style:'margin:4px 0 8px'},el('summary',{class:'muted',style:'cursor:pointer;font-size:13px',text:'查看本环节原始教案文字（仅教师参考）'}));
+          d.content.forEach(function(x){rawDet.appendChild(el('p',{style:'margin:6px 0;white-space:pre-wrap',text:x}))});
+          content.appendChild(rawDet);
+        }else{
+          d.content.forEach(function(x){content.appendChild(el('p',{text:x}))});
+        }
+      }
       if(d.coursewareNotice)content.appendChild(el('div',{class:'notice warn',text:d.coursewareNotice}));
       if(d.courseware){var cwBox=el('div');content.appendChild(cwBox);activeCwBox=cwBox;cwControl(cwBox,d.courseware,SID,{canNextStage:canNextStage,onNextStage:function(){post('next')}})}
       lastContentKey=contentKey;
@@ -449,12 +458,27 @@ function board(){
   if(!SID){msg('缺少课堂编号');return}
   document.body.style.background='#0f172a';document.body.style.overflow='hidden';
   var wrap=el('div',{style:'color:#fff;padding:1.2vh 2.2vw;height:100vh;box-sizing:border-box;display:flex;flex-direction:column;gap:0.9vh;overflow:hidden'});root.textContent='';root.style.maxWidth='none';root.style.margin='0';root.style.padding='0';document.body.style.margin='0';root.appendChild(wrap);
-  var remain=null,lastRenderKey='',lastViewKey='',scrollBody=null,clockNode=null;
+  var remain=null,lastRenderKey='',lastViewKey='',scrollBody=null,clockNode=null,activeCwBox=null,lastAudioPlaying=null;
+  function boardCoursewareKey(cw){
+    if(!cw)return null;
+    if(cw.kind!=='slide')return cw;
+    var viewCopy={};
+    if(cw.view){
+      Object.keys(cw.view).forEach(function(k){
+        if(k!=='audioPlaying')viewCopy[k]=cw.view[k];
+      });
+    }
+    return {
+      id:cw.id||null,kind:cw.kind,kindLabel:cw.kindLabel||'',
+      stageNo:cw.stageNo,page:cw.page===undefined?null:cw.page,
+      params:cw.params||null,view:viewCopy
+    };
+  }
   function renderKey(d){
     return JSON.stringify({
       title:d.title||'',status:d.status||'',covered:!!d.covered,
       currentStage:d.currentStage||0,stageName:d.stageName||'',goal:d.goal||'',
-      deck:d.deck||null,content:d.content||[],courseware:d.courseware||null,
+      deck:d.deck||null,content:d.content||[],courseware:boardCoursewareKey(d.courseware),
       answersPublished:!!d.answersPublished,answerRelease:d.answerRelease||null
     });
   }
@@ -464,6 +488,19 @@ function board(){
   }
   function updateClock(){
     if(clockNode&&remain!=null)clockNode.textContent=fmt(remain);
+  }
+  function syncBoardAudio(d){
+    if(!d||!d.courseware||d.courseware.kind!=='slide'||!activeCwBox)return;
+    var wantPlay=!!(d.courseware.view&&d.courseware.view.audioPlaying);
+    if(wantPlay===lastAudioPlaying)return;
+    lastAudioPlaying=wantPlay;
+    var au=activeCwBox.querySelector?activeCwBox.querySelector('audio'):null;
+    if(!au)return;
+    if(wantPlay){
+      try{var pr=au.play();if(pr&&pr.catch)pr.catch(function(){})}catch(_e){}
+    }else{
+      try{au.pause()}catch(_e2){}
+    }
   }
   function boardCoursewareContent(d){
     var lines=Array.isArray(d.content)?d.content.slice():[];
@@ -487,11 +524,11 @@ function board(){
   }
   function paint(d,force){
     var nextKey=renderKey(d);
-    if(!force&&nextKey===lastRenderKey){updateClock();return}
+    if(!force&&nextKey===lastRenderKey){updateClock();syncBoardAudio(d);return}
     var keepScroll=!!scrollBody&&viewKey(d)===lastViewKey;
     var oldScroll=keepScroll?scrollBody.scrollTop:0;
     var keepFocus=keepScroll&&document.activeElement===scrollBody;
-    wrap.textContent='';scrollBody=null;clockNode=null;
+    wrap.textContent='';scrollBody=null;clockNode=null;activeCwBox=null;lastAudioPlaying=null;
     if(d.status==='planned'||d.status==='finished'||d.covered){
       wrap.appendChild(el('div',{style:'opacity:.75;font-size:2.2vh',text:d.title}));
       var waitText=d.status==='planned'?'马上开始上课':d.status==='finished'?'下课了，谢谢大家':'请看老师';
@@ -519,6 +556,7 @@ function board(){
       var topContent=boardCoursewareContent(d);
       if(topContent.length){var top=el('div',{style:'font-size:1.85vh;margin-bottom:0.6vh;flex:none'});body.appendChild(top);boardLayout(top,topContent,false)}
       var cwBox=el('div',{style:'flex:1;min-height:0;display:flex;flex-direction:column'});body.appendChild(cwBox);cwRender(cwBox,d.courseware,d.courseware.view,true,false);
+      activeCwBox=cwBox;lastAudioPlaying=!!(d.courseware.view&&d.courseware.view.audioPlaying);
       scrollBody=body;lastRenderKey=nextKey;lastViewKey=viewKey(d);
       if(keepScroll)body.scrollTop=oldScroll;
       updateClock();return;
@@ -538,7 +576,7 @@ function board(){
   }
   var last=null,requestNo=0;
   function load(){var request=++requestNo;api('/teacher/weekend/sessions/'+SID+'/board').then(function(d){if(request!==requestNo)return;last=d;remain=d.remainingSeconds;paint(d,false)}).catch(function(e){if(request===requestNo&&!last)msg(e.message)})}
-  window.addEventListener('resize',function(){if(last)paint(last,true)});
+  window.addEventListener('resize',function(){if(last&&!(last.courseware&&last.courseware.kind==='slide'))paint(last,true)});
   load();setInterval(load,3000);
   setInterval(function(){if(remain!=null){remain-=1;updateClock()}},1000);
 }

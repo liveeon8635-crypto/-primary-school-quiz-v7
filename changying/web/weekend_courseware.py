@@ -1409,7 +1409,10 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
     approved = [i for i in items_of(c) if i.get("approved") is not None and int(i["stage"]) == stage]
     if not approved:
         return None, ""
-    if stage == practice_no:
+    is_chinese_stage_slide = course_type in ("reading", "writing") and all(
+        item.get("page") is None and item.get("kind") == "slide" for item in approved
+    )
+    if stage == practice_no and not is_chinese_stage_slide:
         # Legacy whole-stage slides and new per-question slides share the release gate.
         from changying.services.weekend_answers import practice_deck
         deck, released, index, total = practice_deck(implementation, db, row)
@@ -1441,7 +1444,7 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
         return {"id": c.id, "kind": item['kind'], "kindLabel": cw.KIND_LABEL[item['kind']], "stageNo": stage,
                 "page": item.get('page'), "params": cw.public_params(item['kind'], params), "view": view}, ""
     pages = stage_pages(lesson, stage, course_type)
-    if pages:
+    if pages and not is_chinese_stage_slide:
         # Each courseware belongs to one slide or worked example; other pages keep their own content.
         bound = [i for i in approved if i.get("page") is not None and 0 <= int(i["page"]) < len(pages)]
         # The board always walks page one first (page_index None or 0), so an approved courseware of

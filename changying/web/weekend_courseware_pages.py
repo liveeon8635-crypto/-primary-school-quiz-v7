@@ -965,9 +965,20 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
     });
     main.appendChild(galGrid);
   }
+  var hasSplitMedia=(audioScenes.length>0||hasUploadedImg)&&!isCover;
+  var hasBody=!!(cur.body&&cur.body.length);
+  var hasChars=!!(Array.isArray(cur.characters)&&cur.characters.length);
+  var hasPlot=!!(Array.isArray(cur.plot)&&cur.plot.length);
+  var hasCards=!!(Array.isArray(cur.cards)&&cur.cards.length);
+  var hasSteps=!!(Array.isArray(cur.steps)&&cur.steps.length);
+  var hasQa=!!(Array.isArray(cur.qa)&&cur.qa.length);
+  var hasPrimarySide=hasBody||hasChars||hasPlot;
+  var stepsInSide=hasSplitMedia&&!hasPrimarySide&&hasSteps;
+  var cardsInSide=hasSplitMedia&&!hasPrimarySide&&!stepsInSide&&hasCards;
+  var qaInSide=hasSplitMedia&&!hasPrimarySide&&!stepsInSide&&!cardsInSide&&hasQa;
+  var hasAnySide=hasPrimarySide||stepsInSide||cardsInSide||qaInSide;
   var contentHost=main,bodyParas=[],sceneCtrl=null;
-  if((audioScenes.length>0||hasUploadedImg)&&!isCover){
-    var splitGrid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;align-items:start;text-align:left'});
+  if(hasSplitMedia){
     var figCol=el('div',{style:'background:#fff;border:1px solid #eadcc4;border-radius:12px;padding:8px;box-shadow:0 3px 10px rgba(120,53,15,0.06)'});
     if(audioScenes.length){
       sceneCtrl=(function(){
@@ -1046,11 +1057,16 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
       figCol.appendChild(el('img',{src:cur.figure.data_url,alt:cur.figure.alt||cur.heading||'课文插图',style:'display:block;width:100%;max-height:'+(big?'45vh':'290px')+';object-fit:cover;border-radius:8px'}));
       if(cur.caption)figCol.appendChild(el('div',{style:'margin-top:6px;font-size:12px;color:#6b4f3a;text-align:center;line-height:1.5',text:cur.caption}));
     }
-    var textCol=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
-    splitGrid.appendChild(figCol);
-    splitGrid.appendChild(textCol);
-    main.appendChild(splitGrid);
-    contentHost=textCol;
+    if(hasAnySide){
+      var splitGrid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;align-items:start;text-align:left'});
+      var textCol=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
+      splitGrid.appendChild(figCol);
+      splitGrid.appendChild(textCol);
+      main.appendChild(splitGrid);
+      contentHost=textCol;
+    }else{
+      main.appendChild(figCol);
+    }
   }
   if((cur.body||[]).length){
     var bodyWrap=el('div',{style:isReading?'background:#fff;border:1px solid #eadcc4;border-radius:10px;padding:12px 16px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.03)':''});
@@ -1129,7 +1145,7 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
     contentHost.appendChild(plGrid);
   }
   if(Array.isArray(cur.cards)&&cur.cards.length){
-    var grid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;text-align:left'});
+    var grid=el('div',{style:'display:grid;grid-template-columns:'+(cardsInSide?'1fr':'repeat(auto-fit,minmax(210px,1fr))')+';gap:12px;text-align:left'});
     var accents=['#8b1e24','#b45309','#1d4ed8','#15803d'];
     cur.cards.forEach(function(cd,ci){
       var accent=accents[ci%accents.length];
@@ -1143,10 +1159,10 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
       }
       grid.appendChild(card);
     });
-    main.appendChild(grid);
+    (cardsInSide?contentHost:main).appendChild(grid);
   }
   if(Array.isArray(cur.steps)&&cur.steps.length){
-    var srow=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;text-align:left'});
+    var srow=el('div',{style:'display:grid;grid-template-columns:'+(stepsInSide?'1fr':'repeat(auto-fit,minmax(170px,1fr))')+';gap:10px;text-align:left'});
     cur.steps.forEach(function(st,si){
       var sc=el('div',{style:'background:#fff;border:1px solid #e7decb;border-radius:10px;padding:10px 12px;display:flex;align-items:flex-start;gap:9px'});
       sc.appendChild(el('span',{style:'flex:none;width:24px;height:24px;border-radius:999px;background:#8b1e24;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px',text:String(si+1)}));
@@ -1156,7 +1172,7 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
       sc.appendChild(sb);
       srow.appendChild(sc);
     });
-    main.appendChild(srow);
+    (stepsInSide?contentHost:main).appendChild(srow);
   }
   if(hasOtherFig)cwFigure(main,cur.figure,big,view,teacher,1);
   if(Array.isArray(cur.qa)&&cur.qa.length){
@@ -1179,7 +1195,7 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
       if(ansBox)qbox.appendChild(ansBox);
       qaWrap.appendChild(qbox);
     });
-    main.appendChild(qaWrap);
+    (qaInSide?contentHost:main).appendChild(qaWrap);
   }
   slideEl.appendChild(main);
   if(cur.highlight){

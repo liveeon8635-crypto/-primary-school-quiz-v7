@@ -330,8 +330,14 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                 question = int(out.get("answerRelease", {}).get("currentQuestion") or 0)
                 item = items[question - 1] if 1 <= question <= len(items) else None
                 if item is None or not question_is_open(implementation, db, row, item["kind"], item["id"]):
-                    out["content"] = ["请等待教师开放本题。"]
-                    out.pop("courseware", None)
+                    is_stage_slide = bool(
+                        out.get("courseware")
+                        and out["courseware"].get("kind") == "slide"
+                        and out["courseware"].get("page") is None
+                    )
+                    out["content"] = [out["courseware"]["kindLabel"]] if is_stage_slide else ["请等待教师开放本题。"]
+                    if not is_stage_slide:
+                        out.pop("courseware", None)
                     out.pop("deck", None)
                     out.pop("answerRelease", None)
             return out
