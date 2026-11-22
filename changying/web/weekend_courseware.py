@@ -236,6 +236,8 @@ def _build_prepared_courseware(
     existing: list[dict[str, Any]],
     replace_existing: bool,
     allow_pending_practice: bool,
+    keep_previous_draft: bool = True,
+    revoke_existing_approvals: bool = False,
 ) -> tuple[list[dict[str, Any]], set[tuple[int, int | None]]]:
     """Validate a prepared bundle against the lesson currently locked by the caller."""
     payload_size = len(json.dumps([_prepared_page_dict(x) for x in incoming_pages], ensure_ascii=False))
@@ -320,12 +322,17 @@ def _build_prepared_courseware(
         }
         if old:
             replacement = dict(old)
-            replacement['previousDraft'] = {
-                key: old.get(key) for key in ('kind', 'params', 'writtenTask', 'pageText')
-            }
+            if keep_previous_draft:
+                replacement['previousDraft'] = {
+                    key: old.get(key) for key in ('kind', 'params', 'writtenTask', 'pageText')
+                }
+            else:
+                replacement.pop('previousDraft', None)
             replacement.update(ready_item)
-            replacement['approved'] = old.get('approved')
+            replacement['approved'] = None if revoke_existing_approvals else old.get('approved')
             replacement.pop('reimportReviewRequired', None)
+            if revoke_existing_approvals:
+                replacement.pop('approvedPageText', None)
             ready_item = replacement
         ready.append(ready_item)
     return ready, selected
@@ -344,6 +351,8 @@ def import_prepared_courseware(
     allow_pending_practice: bool = False,
     commit: bool = True,
     audit_detail: str = "",
+    keep_previous_draft: bool = True,
+    revoke_existing_approvals: bool = False,
 ) -> dict[str, Any]:
     """Validate and atomically write prepared pages for one lesson.
 
@@ -367,6 +376,8 @@ def import_prepared_courseware(
         existing=existing,
         replace_existing=replace_existing,
         allow_pending_practice=allow_pending_practice,
+        keep_previous_draft=keep_previous_draft,
+        revoke_existing_approvals=revoke_existing_approvals,
     )
     if dry_run:
         return {
@@ -387,6 +398,12 @@ def import_prepared_courseware(
         item for item in existing
         if (int(item['stage']), item.get('page')) not in selected
     ]
+    if revoke_existing_approvals:
+        for item in retained:
+            item["status"] = "draft"
+            item["approved"] = None
+            item["reimportReviewRequired"] = True
+            item.pop("approvedPageText", None)
     items = sorted(retained + ready, key=lambda item: (
         int(item["stage"]),
         -1 if item.get("page") is None else int(item["page"]),
@@ -634,7 +651,7 @@ def _short(text: str, limit: int = 40) -> str:
     return line if len(line) <= limit else line[:limit] + "…"
 
 
-def items_of(row: Any) -> list[dict[str, Any]]:
+def items_of(row: Any, *, hydrate: bool = True) -> list[dict[str, Any]]:
     """Every page item of a lesson's courseware row; a pilot row (single courseware) becomes one or two items."""
     if row is None:
         return []
@@ -642,7 +659,7 @@ def items_of(row: Any) -> list[dict[str, Any]]:
     if isinstance(data, dict) and data.get("version") == 2:
         items = list(data.get("items") or [])
         media = data.get("media")
-        if isinstance(media, dict) and media:
+        if hydrate and isinstance(media, dict) and media:
             items = _hydrate_media(items, media)
         return items
     draft = data if isinstance(data, dict) else {}
