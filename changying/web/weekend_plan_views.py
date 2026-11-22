@@ -1194,9 +1194,22 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 replace_existing=True, approve=False, commit=False,
             )
         if before is not None:
-            # Only the single latest undoable import snapshot is ever restorable;
-            # prune superseded snapshots so Postgres stays compact across re-imports.
-            db.execute(delete(versions).where(versions.c.school_id == u.school_id, versions.c.lesson_id == lesson.id))
+            # Keep at most 2 undo snapshots per lesson (the newly inserted row plus one
+            # prior snapshot) so restoring an overwrite returns the previous state's
+            # previousImportId while bounding Postgres storage across repeated re-imports.
+            keep_ids = list(db.scalars(
+                select(versions.c.id)
+                .where(versions.c.school_id == u.school_id, versions.c.lesson_id == lesson.id)
+                .order_by(versions.c.id.desc())
+                .limit(1)
+            ))
+            prune_stmt = delete(versions).where(
+                versions.c.school_id == u.school_id,
+                versions.c.lesson_id == lesson.id,
+            )
+            if keep_ids:
+                prune_stmt = prune_stmt.where(versions.c.id.notin_(keep_ids))
+            db.execute(prune_stmt)
             db.execute(insert(versions).values(school_id=u.school_id, teacher_id=u.id, lesson_id=lesson.id,
                 before_json=history.serialize(before), after_hash=history.digest(plan_state(db, u, lesson))))
         if wf is not None:

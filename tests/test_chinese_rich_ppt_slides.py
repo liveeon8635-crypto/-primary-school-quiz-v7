@@ -583,7 +583,7 @@ with TestClient(app) as client:
     assert row12['coursewareApproved'] is True
     assert row12['canStart'] is True
 
-    # Two sequential overwrite imports must keep only the single latest undoable history row and drop old previousDraft blobs
+    # Three sequential overwrite imports must keep at most 2 latest undoable history rows and drop old previousDraft blobs
     b2 = make_bundle("v2", "短文原文二")
     r2 = client.post('/teacher/weekend/lessons/import', headers=th,
                      data={'subject': '语文', 'lessonNo': '12', 'force': '1', 'courseType': 'reading'},
@@ -596,21 +596,30 @@ with TestClient(app) as client:
                      files={'file': ('v3.json', json.dumps(b3, ensure_ascii=False).encode('utf-8'), 'application/json')})
     assert r3.status_code == 200, r3.text
 
+    b4 = make_bundle("v4", "短文原文四")
+    r4 = client.post('/teacher/weekend/lessons/import', headers=th,
+                     data={'subject': '语文', 'lessonNo': '12', 'force': '1', 'courseType': 'reading'},
+                     files={'file': ('v4.json', json.dumps(b4, ensure_ascii=False).encode('utf-8'), 'application/json')})
+    assert r4.status_code == 200, r4.text
+
     hist_table = legacy.Base.metadata.tables['weekend_plan_import_history']
     cw_table = register_courseware_table(legacy)
     with legacy.SessionLocal() as db:
-        hist_rows = db.execute(select(hist_table.c.id).where(hist_table.c.lesson_id == lid)).all()
-        assert len(hist_rows) == 1, f"expected pruned 1 history row, got {len(hist_rows)}"
+        hist_rows = db.execute(select(hist_table.c.id).where(hist_table.c.lesson_id == lid).order_by(hist_table.c.id.asc())).all()
+        assert len(hist_rows) == 2, f"expected bounded 2 history rows, got {len(hist_rows)}"
         cw_row = db.execute(select(cw_table).where(cw_table.c.lesson_id == lid)).first()
         unhydrated = items_of(cw_row, hydrate=False)
         assert all('previousDraft' not in x for x in unhydrated)
         assert all(x['approved'] is None and x['status'] == 'draft' for x in unhydrated)
-        vid = hist_rows[0][0]
+        prev_vid, latest_vid = hist_rows[0][0], hist_rows[1][0]
 
-    # Undo restore must still cleanly roll back v3 -> v2
-    restored = client.post(f'/teacher/weekend/lessons/{lid}/import-history/{vid}/restore', headers=th)
+    # Undo restore must still cleanly roll back v4 -> v3 and preserve previousImportId
+    restored = client.post(f'/teacher/weekend/lessons/{lid}/import-history/{latest_vid}/restore', headers=th)
     assert restored.status_code == 200, restored.text
-    assert restored.json()['title'] == '第12课-v2'
+    assert restored.json()['title'] == '第12课-v3'
+    after_restore = client.get(f'/teacher/weekend/lessons/{lid}', headers=th)
+    assert after_restore.status_code == 200, after_restore.text
+    assert after_restore.json()['previousImportId'] == prev_vid
 print('OK')
 ''',
     )
