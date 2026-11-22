@@ -977,7 +977,7 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
   var cardsInSide=hasSplitMedia&&!hasPrimarySide&&!stepsInSide&&hasCards;
   var qaInSide=hasSplitMedia&&!hasPrimarySide&&!stepsInSide&&!cardsInSide&&hasQa;
   var hasAnySide=hasPrimarySide||stepsInSide||cardsInSide||qaInSide;
-  var contentHost=main,bodyParas=[],sceneCtrl=null;
+  var contentHost=main,bodyParas=[],bodyWrap=null,sceneCtrl=null;
   if(hasSplitMedia){
     var figCol=el('div',{style:'min-width:0;background:#fff;border:1px solid #eadcc4;border-radius:12px;padding:8px;box-shadow:0 3px 10px rgba(120,53,15,0.06)'});
     if(audioScenes.length){
@@ -1045,6 +1045,15 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
                   pNode.style.borderRadius=hl?'4px':'0px';
                 }
               });
+              if(bodyWrap&&bodyParas[startP]&&typeof bodyWrap.scrollTop==='number'){
+                var pEl=bodyParas[startP];
+                var relTop=(pEl.offsetParent===bodyWrap)?(pEl.offsetTop||0):((pEl.offsetTop||0)-(bodyWrap.offsetTop||0));
+                var targetTop=Math.max(0,relTop-10);
+                if(nextIdx>0||shouldSeek||bodyWrap.scrollTop>0){
+                  if(bodyWrap.scrollTo){try{bodyWrap.scrollTo({top:targetTop,behavior:'smooth'})}catch(_eScr){bodyWrap.scrollTop=targetTop}}
+                  else{bodyWrap.scrollTop=targetTop}
+                }
+              }
             }
           }
           if(shouldSeek&&au){
@@ -1069,7 +1078,8 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
     }
   }
   if((cur.body||[]).length){
-    var bodyWrap=el('div',{style:isReading?'background:#fff;border:1px solid #eadcc4;border-radius:10px;padding:12px 16px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.03)':''});
+    var readingScrollCss=(isReading&&hasSplitMedia)?('max-height:'+(big?'60vh':'430px')+';overflow-y:auto;position:relative;scroll-behavior:smooth;'):'';
+    bodyWrap=el('div',{style:isReading?(readingScrollCss+'background:#fff;border:1px solid #eadcc4;border-radius:10px;padding:12px 16px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.03)'):''});
     (cur.body||[]).forEach(function(line){
       var para=el('p',{style:'margin:6px 0;line-height:1.85;white-space:pre-wrap;'+(isReading?'text-indent:2em;':'')+(big?'font-size:2.3vh':'font-size:15px')});
       cwAppendRichText(para,line);
