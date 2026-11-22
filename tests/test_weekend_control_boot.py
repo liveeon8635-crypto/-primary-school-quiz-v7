@@ -290,7 +290,75 @@ global.fetch = (path, opts) => {
   const audiosAfterPoll1 = nodes(rootNode).filter(n => n.tag === 'audio');
   assert.equal(audiosAfterPoll1.length, 1);
   assert.strictEqual(audiosAfterPoll1[0], audio1, '15s poll must preserve slide 2 audio element');
+
+  // Verify slide position badge and 进入下一环节 › action advance Stage 1 -> Stage 2 on routed page.
   console.log('OK');
+})().catch(e => { console.error(e); process.exitCode = 1; });
+"""
+    result = subprocess.run(['node'], input=harness + extra + '\n' + scripts + '\n' + check, text=True, capture_output=True, timeout=20)
+    assert result.returncode == 0, result.stdout + result.stderr
+print("OK")
+''')
+
+
+def test_control_single_slide_stage_advances_via_next_stage_button(tmp_path):
+    helpers.run_isolated(tmp_path, helpers.COMMON + '\nharness=' + repr(HARNESS) + '\n' + r'''
+import re, subprocess
+with TestClient(app) as client:
+    response = client.get('/v1/weekend?s=42')
+    assert response.status_code == 200
+    scripts = '\n'.join(re.findall(r'<script[^>]*>(.*?)</script>', response.text, re.S))
+    extra = r"""
+status = 'running';
+let stage = 1;
+let nextCalls = 0;
+const makeStageState = () => ({
+  ...state(),
+  status: 'running',
+  currentStage: stage,
+  stageCount: 6,
+  stageName: stage === 1 ? '点名与导入' : '短文阅读',
+  goal: '导入与精读',
+  stages: [
+    {no: 1, name: '点名与导入', minutes: 10, extendMin: 0, visited: stage > 1},
+    {no: 2, name: '短文阅读', minutes: 20, extendMin: 0, visited: false}
+  ],
+  courseware: {
+    id: 7,
+    stageNo: stage,
+    page: stage === 1 ? null : 0,
+    kind: 'slide',
+    kindLabel: '图文幻灯片',
+    view: {slideIndex: 0, audioPlaying: false},
+    params: {
+      title: stage === 1 ? '导学' : '短文',
+      slides: [{heading: '第1页', body: ['正文'], audioUrl: 'data:audio/mpeg;base64,SUQz'}]
+    }
+  }
+});
+const origFetch = global.fetch;
+global.fetch = (path, opts) => {
+  if (path === '/teacher/weekend/sessions/42') return Promise.resolve({ok: true, json: () => Promise.resolve(makeStageState())});
+  if (path === '/teacher/weekend/sessions/42/next') {
+    nextCalls++;
+    stage = 2;
+    return Promise.resolve({ok: true, json: () => Promise.resolve(makeStageState())});
+  }
+  return origFetch(path, opts);
+};
+"""
+    check = r"""
+(async () => {
+  await settle();
+  assert(rootNode.textContent.includes('本环节 第 1 / 1 页'), 'expected slide count badge');
+  const nextSlideBtn = nodes(rootNode).find(n => n.tag === 'button' && n.textContent === '下一页 ›');
+  const nextStageBtn = nodes(rootNode).find(n => n.tag === 'button' && n.textContent === '进入下一环节 ›');
+  assert(nextSlideBtn && nextSlideBtn.disabled === true, '1-slide stage must disable 下一页 ›');
+  assert(nextStageBtn && !nextStageBtn.hidden, '1-slide stage must surface 进入下一环节 ›');
+  nextStageBtn.onclick();
+  await settle();
+  assert.equal(nextCalls, 1, 'clicking 进入下一环节 › must POST /next');
+  assert.equal(stage, 2);
 })().catch(e => { console.error(e); process.exitCode = 1; });
 """
     result = subprocess.run(['node'], input=harness + extra + '\n' + scripts + '\n' + check, text=True, capture_output=True, timeout=20)

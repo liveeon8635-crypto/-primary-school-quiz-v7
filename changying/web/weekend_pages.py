@@ -129,8 +129,9 @@ function control(){
       lastStagesKey=stagesKey;
     }
     var cw=d.courseware||null;
+    var canNextStage=running&&d.currentStage<d.stageCount;
     var contentKey=JSON.stringify({
-      status:d.status||'',covered:!!d.covered,currentStage:d.currentStage||0,
+      status:d.status||'',covered:!!d.covered,currentStage:d.currentStage||0,canNextStage:canNextStage,
       answerRelease:d.answerRelease||null,pendingPracticeSync:d.pendingPracticeSync||0,
       deck:d.deck||null,content:d.content||[],coursewareNotice:d.coursewareNotice||'',
       cw:cw?{id:cw.id||null,kind:cw.kind||'',kindLabel:cw.kindLabel||'',stageNo:cw.stageNo,page:cw.page===undefined?null:cw.page,params:cw.params||null}:null
@@ -161,7 +162,7 @@ function control(){
       if(!d.content.length&&!d.courseware)content.appendChild(el('div',{class:'muted',text:running?(d.covered?'大屏遮盖中':'这个环节没有内容'):'开始上课后显示'}));
       d.content.forEach(function(x){content.appendChild(el('p',{text:x}))});
       if(d.coursewareNotice)content.appendChild(el('div',{class:'notice warn',text:d.coursewareNotice}));
-      if(d.courseware){var cwBox=el('div');content.appendChild(cwBox);activeCwBox=cwBox;cwControl(cwBox,d.courseware,SID)}
+      if(d.courseware){var cwBox=el('div');content.appendChild(cwBox);activeCwBox=cwBox;cwControl(cwBox,d.courseware,SID,{canNextStage:canNextStage,onNextStage:function(){post('next')}})}
       lastContentKey=contentKey;
     }else if(cw&&activeCwBox&&activeCwBox._cwSyncView){
       activeCwBox._cwSyncView(cw.view);

@@ -921,11 +921,13 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
   if(cur.subtitle){
     main.appendChild(el('div',{style:'color:#6b4f3a;font-weight:600;'+(big?'font-size:2.2vh':'font-size:14px'),text:cur.subtitle}));
   }
+  var au=null;
+  var audioScenes=Array.isArray(cur.audioScenes)?cur.audioScenes.filter(function(sc){return sc&&sc.data_url}):[];
   if(cur.audioUrl){
     var audioBar=el('div',{style:'background:#fff5f5;border:1px solid #fecaca;border-radius:10px;padding:8px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;text-align:left'});
     audioBar.appendChild(el('span',{style:'font-weight:700;color:#991b1b;white-space:nowrap;'+(big?'font-size:2.1vh':'font-size:13px'),text:'🎧 '+(cur.audioLabel||'课文／讲解配音朗读')}));
     var audioErr=el('span',{hidden:true,style:'flex-basis:100%;color:#b42318;font-size:12px;font-weight:600'});
-    var au=cwCreateAudio(cur.audioUrl,'flex:1;min-width:210px;height:36px',audioErr);
+    au=cwCreateAudio(cur.audioUrl,'flex:1;min-width:210px;height:36px',audioErr);
     var audioNote=el('span',{hidden:true,style:'color:#b45309;font-size:12px',text:'若大屏未自动出声，请轻点页面后点播放'});
     audioBar.appendChild(au);
     audioBar.appendChild(audioNote);
@@ -963,12 +965,87 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
     });
     main.appendChild(galGrid);
   }
-  var contentHost=main;
-  if(hasUploadedImg&&!isCover){
+  var contentHost=main,bodyParas=[],sceneCtrl=null;
+  if((audioScenes.length>0||hasUploadedImg)&&!isCover){
     var splitGrid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;align-items:start;text-align:left'});
     var figCol=el('div',{style:'background:#fff;border:1px solid #eadcc4;border-radius:12px;padding:8px;box-shadow:0 3px 10px rgba(120,53,15,0.06)'});
-    figCol.appendChild(el('img',{src:cur.figure.data_url,alt:cur.figure.alt||cur.heading||'课文插图',style:'display:block;width:100%;max-height:'+(big?'45vh':'290px')+';object-fit:cover;border-radius:8px'}));
-    if(cur.caption)figCol.appendChild(el('div',{style:'margin-top:6px;font-size:12px;color:#6b4f3a;text-align:center;line-height:1.5',text:cur.caption}));
+    if(audioScenes.length){
+      sceneCtrl=(function(){
+        var activeSceneIdx=-1;
+        var headerBar=el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap'});
+        var sceneBadge=el('span',{style:'background:#8b1e24;color:#fff;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700',text:'画面 1 / '+audioScenes.length});
+        var sceneHint=el('span',{class:'muted',style:'font-size:12px',text:audioScenes.length>1?'随配音进度自动切换 · 点击分镜可跳转':''});
+        headerBar.appendChild(sceneBadge);
+        if(audioScenes.length>1)headerBar.appendChild(sceneHint);
+        figCol.appendChild(headerBar);
+        var sceneImg=el('img',{src:audioScenes[0].data_url,alt:audioScenes[0].alt||audioScenes[0].caption||cur.heading||'课文插图',style:'display:block;width:100%;max-height:'+(big?'48vh':'320px')+';object-fit:contain;background:#fdfaf3;border-radius:8px'});
+        figCol.appendChild(sceneImg);
+        var sceneCap=el('div',{style:'margin-top:6px;font-size:12px;color:#6b4f3a;text-align:center;line-height:1.5',text:audioScenes[0].caption||''});
+        figCol.appendChild(sceneCap);
+        var sceneBtns=[];
+        function fmtAt(sec){
+          var t=Math.max(0,Math.floor(Number(sec||0)));
+          var m=Math.floor(t/60),s=t%60;
+          return m+':'+(s<10?'0':'')+s;
+        }
+        if(audioScenes.length>1){
+          var strip=el('div',{style:'display:grid;grid-template-columns:repeat('+Math.min(audioScenes.length,3)+',minmax(0,1fr));gap:6px;margin-top:8px'});
+          audioScenes.forEach(function(sc,si){
+            var btn=el('button',{type:'button','aria-pressed':si===0?'true':'false',style:'display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px;border-radius:8px;border:1px solid #eadcc4;background:#fff;color:#4b5563;cursor:pointer;text-align:center;min-width:0',onclick:function(){
+              applyScene(si,true);
+            }});
+            btn.appendChild(el('img',{src:sc.data_url,alt:sc.alt||sc.label||sc.caption||('画面'+(si+1)),style:'display:block;width:100%;height:'+(big?'64px':'48px')+';object-fit:cover;border-radius:5px'}));
+            btn.appendChild(el('span',{style:'font-size:11px;font-weight:700;line-height:1.3;word-break:break-word',text:(sc.label||('第'+(si+1)+'幕'))+' '+fmtAt(sc.at)}));
+            sceneBtns.push(btn);
+            strip.appendChild(btn);
+          });
+          figCol.appendChild(strip);
+        }
+        function applyScene(nextIdx,shouldSeek){
+          if(nextIdx<0||nextIdx>=audioScenes.length)return;
+          var sc=audioScenes[nextIdx];
+          if(nextIdx!==activeSceneIdx){
+            activeSceneIdx=nextIdx;
+            sceneImg.src=sc.data_url;
+            sceneImg.alt=sc.alt||sc.caption||cur.heading||'课文插图';
+            sceneBadge.textContent='画面 '+(nextIdx+1)+' / '+audioScenes.length+(sc.label?' · '+sc.label:'');
+            sceneCap.textContent=sc.caption||'';
+            sceneCap.hidden=!sceneCap.textContent;
+            sceneBtns.forEach(function(b,bi){
+              var active=bi===nextIdx;
+              if(b.setAttribute)b.setAttribute('aria-pressed',active?'true':'false');
+              if(b.style){
+                b.style.border=active?'2px solid #8b1e24':'1px solid #eadcc4';
+                b.style.background=active?'#fff5f5':'#fff';
+                b.style.color=active?'#8b1e24':'#4b5563';
+              }
+            });
+            if(bodyParas.length&&typeof sc.paraIndex==='number'){
+              var startP=sc.paraIndex,endP=bodyParas.length;
+              for(var ni=nextIdx+1;ni<audioScenes.length;ni++){
+                if(typeof audioScenes[ni].paraIndex==='number'){endP=audioScenes[ni].paraIndex;break}
+              }
+              bodyParas.forEach(function(pNode,pi){
+                var hl=pi>=startP&&pi<endP;
+                if(pNode.style){
+                  pNode.style.borderLeft=hl?'3px solid #8b1e24':'none';
+                  pNode.style.background=hl?'#fffbeb':'transparent';
+                  pNode.style.paddingLeft=hl?'8px':'0px';
+                  pNode.style.borderRadius=hl?'4px':'0px';
+                }
+              });
+            }
+          }
+          if(shouldSeek&&au){
+            try{au.currentTime=Number(sc.at||0)}catch(_eSeek){}
+          }
+        }
+        return {applyScene:applyScene};
+      })();
+    }else{
+      figCol.appendChild(el('img',{src:cur.figure.data_url,alt:cur.figure.alt||cur.heading||'课文插图',style:'display:block;width:100%;max-height:'+(big?'45vh':'290px')+';object-fit:cover;border-radius:8px'}));
+      if(cur.caption)figCol.appendChild(el('div',{style:'margin-top:6px;font-size:12px;color:#6b4f3a;text-align:center;line-height:1.5',text:cur.caption}));
+    }
     var textCol=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
     splitGrid.appendChild(figCol);
     splitGrid.appendChild(textCol);
@@ -980,9 +1057,25 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
     (cur.body||[]).forEach(function(line){
       var para=el('p',{style:'margin:6px 0;line-height:1.85;white-space:pre-wrap;'+(isReading?'text-indent:2em;':'')+(big?'font-size:2.3vh':'font-size:15px')});
       cwAppendRichText(para,line);
+      bodyParas.push(para);
       bodyWrap.appendChild(para);
     });
     contentHost.appendChild(bodyWrap);
+  }
+  if(sceneCtrl){
+    sceneCtrl.applyScene(0,false);
+    if(audioScenes.length>1&&au&&au.addEventListener){
+      var syncFromAudio=function(){
+        var t=Number(au.currentTime||0),pick=0;
+        for(var si=0;si<audioScenes.length;si++){
+          if(t>=Number(audioScenes[si].at||0)-0.15)pick=si;
+        }
+        sceneCtrl.applyScene(pick,false);
+      };
+      au.addEventListener('timeupdate',syncFromAudio);
+      au.addEventListener('seeked',syncFromAudio);
+      au.addEventListener('play',syncFromAudio);
+    }
   }
   if(Array.isArray(cur.characters)&&cur.characters.length){
     var chGrid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;text-align:left'});
@@ -1130,14 +1223,15 @@ function cwRender(box,c,view,big,teacher,onTap){
   }
 }
 var CW_PENDING=0,CW_VERSION=0;
-function cwControl(box,c,sid){
+function cwControl(box,c,sid,opts){
+  opts=opts||{};
   var view=JSON.parse(JSON.stringify(c.view||{})),stage=el('div'),bar=el('div',{class:'row'}),msg=el('div',{role:'status'});
   box.textContent='';box.appendChild(el('h2',{text:'互动课件：'+c.kindLabel+'（大屏同步，约3秒）'}));box.appendChild(bar);box.appendChild(stage);box.appendChild(msg);
-  var pending=Promise.resolve(),revision=0,syncSteps=null;
+  var pending=Promise.resolve(),revision=0,syncSteps=null,syncSlide=null;
   function publicView(v){var out={};Object.keys(v||{}).sort().forEach(function(k){if(k.charAt(0)!=='_')out[k]=v[k]});return out}
   function send(){var publicState=JSON.parse(JSON.stringify(publicView(view))),sentJson=JSON.stringify(publicState);var seq=++revision;CW_PENDING++;CW_VERSION++;
     pending=pending.then(function(){return api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:publicState,stageNo:c.stageNo,page:c.page}})}).then(function(r){if(seq===revision){var nextClean=publicView(r.view),same=JSON.stringify(nextClean)===sentJson;view=r.view;msg.textContent='';if(!same)draw()}}).catch(function(e){msg.textContent=e.message}).then(function(){CW_PENDING--});}
-  function draw(){if(syncSteps)syncSteps();if(c.kind==='steps'&&c.params.figure&&c.params.figure.type==='calendar_compare')view._calendarOnChange=send;cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
+  function draw(){if(syncSteps)syncSteps();if(syncSlide)syncSlide();if(c.kind==='steps'&&c.params.figure&&c.params.figure.type==='calendar_compare')view._calendarOnChange=send;cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
   box._cwSyncView=function(nextView){
     if(!nextView||CW_PENDING)return;
     var curJson=JSON.stringify(publicView(view));
@@ -1188,14 +1282,26 @@ function cwControl(box,c,sid){
   }else if(c.kind==='slide'){
     var sl=((c.params&&c.params.slides)||[]),scount=sl.length||1;
     function slideNow(){return Math.max(0,Math.min(scount-1,Number(view.slideIndex||0)))}
-    button('‹ 上一页',function(){view.slideIndex=Math.max(0,slideNow()-1);view.audioPlaying=false});
-    button('下一页 ›',function(){view.slideIndex=Math.min(scount-1,slideNow()+1);view.audioPlaying=false});
+    function slideNavBtn(text,fn){var b=el('button',{text:text,style:'min-height:44px;min-width:44px',onclick:function(){if(!fn())return;draw();send()}});bar.appendChild(b);return b}
+    var prevSlideBtn=slideNavBtn('‹ 上一页',function(){var cur=slideNow();if(cur<=0)return false;view.slideIndex=cur-1;view.audioPlaying=false;return true});
+    var slidePosBadge=el('span',{style:'display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:#f3f4f6;color:#374151;font-size:13px;font-weight:700',text:''});
+    bar.appendChild(slidePosBadge);
+    var nextSlideBtn=slideNavBtn('下一页 ›',function(){var cur=slideNow();if(cur>=scount-1)return false;view.slideIndex=cur+1;view.audioPlaying=false;return true});
+    var nextStageBtn=(opts.canNextStage&&opts.onNextStage)?el('button',{class:'primary',text:'进入下一环节 ›',style:'min-height:44px;min-width:44px',onclick:function(){opts.onNextStage()}}):null;
+    if(nextStageBtn)bar.appendChild(nextStageBtn);
     bar.appendChild(el('button',{text:'🔊 大屏播放/暂停朗读',style:'min-height:44px;min-width:44px',onclick:function(){
       view.slideIndex=slideNow();
       view.audioPlaying=!view.audioPlaying;
       send();
       msg.textContent=view.audioPlaying?'已通知大屏播放本页朗读（约3秒同步）':'已通知大屏暂停本页朗读（约3秒同步）';
     }}));
+    syncSlide=function(){
+      var curIdx=slideNow();
+      prevSlideBtn.disabled=curIdx<=0;
+      nextSlideBtn.disabled=curIdx>=scount-1;
+      slidePosBadge.textContent='本环节 第 '+(curIdx+1)+' / '+scount+' 页';
+      if(nextStageBtn)nextStageBtn.hidden=curIdx<scount-1;
+    };
   }else{
     bar.appendChild(el('span',{class:'muted',text:'点句子＝在大屏上高亮为同学们找到的依据'}));
     button('显示/隐藏补充资料',function(){view.showMaterial=!view.showMaterial});
@@ -1784,7 +1890,8 @@ function cwPlan(box,lessonId,refresh){
               audioText:sl.audioText||'',
               audioUrl:sl.audioUrl||'',
               figure:sl.figure||{},
-              gallery:Array.isArray(sl.gallery)?sl.gallery:[]
+              gallery:Array.isArray(sl.gallery)?sl.gallery:[],
+              audioScenes:Array.isArray(sl.audioScenes)?sl.audioScenes:[]
             };
           }),
           teacherNotes:fields.teacherNotes?fields.teacherNotes.value:''

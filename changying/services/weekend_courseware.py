@@ -524,7 +524,33 @@ def clean_slide(raw: Any) -> dict[str, Any]:
                     g_alt = _text(g.get("alt") or g_caption, 80) or "课文插图"
                     g_fig = clean_figure({"type": "uploaded_image", "data_url": g.get("data_url"), "alt": g_alt})
                     gallery.append({"data_url": g_fig["data_url"], "caption": g_caption, "alt": g_fig["alt"]})
-        if not heading and not body and not cards and not steps and not qa and not characters and not plot and not fig_cleaned and not gallery:
+        audio_scenes_raw = item.get("audioScenes") or []
+        audio_scenes: list[dict[str, Any]] = []
+        if isinstance(audio_scenes_raw, list):
+            for sc in audio_scenes_raw[:6]:
+                if isinstance(sc, dict) and sc.get("data_url"):
+                    sc_caption = _text(sc.get("caption"), 120)
+                    sc_label = _text(sc.get("label"), 32)
+                    sc_alt = _text(sc.get("alt") or sc_caption or sc_label, 80) or "课文插图"
+                    sc_fig = clean_figure({"type": "uploaded_image", "data_url": sc.get("data_url"), "alt": sc_alt})
+                    try:
+                        at_val = float(sc.get("at", 0))
+                    except (TypeError, ValueError):
+                        at_val = 0.0
+                    at_val = round(max(0.0, min(3600.0, at_val)), 1) if at_val == at_val else 0.0
+                    sc_entry: dict[str, Any] = {
+                        "at": at_val,
+                        "data_url": sc_fig["data_url"],
+                        "caption": sc_caption,
+                        "alt": sc_fig["alt"],
+                        "label": sc_label,
+                    }
+                    para_idx = sc.get("paraIndex")
+                    if isinstance(para_idx, int) and not isinstance(para_idx, bool) and para_idx >= 0:
+                        sc_entry["paraIndex"] = int(para_idx)
+                    audio_scenes.append(sc_entry)
+            audio_scenes.sort(key=lambda s: float(s["at"]))
+        if not heading and not body and not cards and not steps and not qa and not characters and not plot and not fig_cleaned and not gallery and not audio_scenes:
             raise ValueError("每页幻灯片至少需要标题或正文")
         audio_url = str(item.get("audioUrl") or "").strip()
         if audio_url and not (
@@ -552,6 +578,7 @@ def clean_slide(raw: Any) -> dict[str, Any]:
             "audioText": _text(item.get("audioText"), 2000),
             "figure": fig_cleaned,
             "gallery": gallery,
+            "audioScenes": audio_scenes,
         }
         slides.append(slide_obj)
     return {
