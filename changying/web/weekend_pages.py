@@ -555,7 +555,7 @@ function board(){
       body.style.display='flex';body.style.flexDirection='column';
       var topContent=boardCoursewareContent(d);
       if(topContent.length){var top=el('div',{style:'font-size:1.85vh;margin-bottom:0.6vh;flex:none'});body.appendChild(top);boardLayout(top,topContent,false)}
-      var cwBox=el('div',{style:'flex:1;min-height:0;display:flex;flex-direction:column'});body.appendChild(cwBox);cwRender(cwBox,d.courseware,d.courseware.view,true,false);
+      var cwBox=el('div',{style:d.courseware.kind==='slide'?'flex:0 0 auto;width:100%':'flex:1;min-height:0;display:flex;flex-direction:column'});body.appendChild(cwBox);cwRender(cwBox,d.courseware,d.courseware.view,true,false);
       activeCwBox=cwBox;lastAudioPlaying=!!(d.courseware.view&&d.courseware.view.audioPlaying);
       scrollBody=body;lastRenderKey=nextKey;lastViewKey=viewKey(d);
       if(keepScroll)body.scrollTop=oldScroll;

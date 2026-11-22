@@ -899,7 +899,7 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
   var isReading=cur.layout==='reading';
   var hasUploadedImg=!!(cur.figure&&cur.figure.type==='uploaded_image'&&cwFigureOk(cur.figure));
   var hasOtherFig=!!(cur.figure&&cur.figure.type&&cur.figure.type!=='uploaded_image');
-  var cardStyle='background:linear-gradient(135deg,#fffdf9 0%,#fbf4e6 100%);color:#1f2937;border:1px solid #e6d8be;border-top:5px solid #8b1e24;border-radius:14px;padding:'+(big?'26px 32px':'18px 22px')+';box-shadow:0 6px 20px rgba(120,53,15,0.09);min-height:'+(big?'64vh':'320px')+';display:flex;flex-direction:column;justify-content:space-between;gap:12px;margin-bottom:16px';
+  var cardStyle='background:linear-gradient(135deg,#fffdf9 0%,#fbf4e6 100%);color:#1f2937;border:1px solid #e6d8be;border-top:5px solid #8b1e24;border-radius:14px;padding:'+(big?'26px 32px':'18px 22px')+';box-shadow:0 6px 20px rgba(120,53,15,0.09);min-height:'+(big?'64vh':'320px')+';display:flex;flex-direction:column;justify-content:space-between;gap:12px;margin-bottom:16px;flex:none;box-sizing:border-box;width:100%';
   var slideEl=el('div',{style:cardStyle});
   var topBar=el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #efe3cc;padding-bottom:8px'});
   var leftMeta=el('div',{style:'display:flex;align-items:center;gap:8px;flex-wrap:wrap'});
@@ -979,7 +979,7 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
   var hasAnySide=hasPrimarySide||stepsInSide||cardsInSide||qaInSide;
   var contentHost=main,bodyParas=[],sceneCtrl=null;
   if(hasSplitMedia){
-    var figCol=el('div',{style:'background:#fff;border:1px solid #eadcc4;border-radius:12px;padding:8px;box-shadow:0 3px 10px rgba(120,53,15,0.06)'});
+    var figCol=el('div',{style:'min-width:0;background:#fff;border:1px solid #eadcc4;border-radius:12px;padding:8px;box-shadow:0 3px 10px rgba(120,53,15,0.06)'});
     if(audioScenes.length){
       sceneCtrl=(function(){
         var activeSceneIdx=-1;
@@ -1059,7 +1059,7 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
     }
     if(hasAnySide){
       var splitGrid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;align-items:start;text-align:left'});
-      var textCol=el('div',{style:'display:flex;flex-direction:column;gap:10px'});
+      var textCol=el('div',{style:'min-width:0;display:flex;flex-direction:column;gap:10px'});
       splitGrid.appendChild(figCol);
       splitGrid.appendChild(textCol);
       main.appendChild(splitGrid);
@@ -1123,7 +1123,7 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
       }
       chGrid.appendChild(chCard);
     });
-    contentHost.appendChild(chGrid);
+    (hasBody?main:contentHost).appendChild(chGrid);
   }
   if(Array.isArray(cur.plot)&&cur.plot.length){
     var plGrid=el('div',{style:'display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;text-align:left'});
@@ -1142,7 +1142,7 @@ function cwRenderOneSlide(p,cur,idx,total,big,view,teacher){
       if(pl.feeling)plCard.appendChild(el('div',{style:'margin-top:auto;padding:4px 8px;border-radius:6px;background:#fffbeb;color:#92400e;font-size:12px;font-weight:700',text:'情感：'+pl.feeling}));
       plGrid.appendChild(plCard);
     });
-    contentHost.appendChild(plGrid);
+    (hasBody?main:contentHost).appendChild(plGrid);
   }
   if(Array.isArray(cur.cards)&&cur.cards.length){
     var grid=el('div',{style:'display:grid;grid-template-columns:'+(cardsInSide?'1fr':'repeat(auto-fit,minmax(210px,1fr))')+';gap:12px;text-align:left'});
