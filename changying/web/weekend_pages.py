@@ -488,9 +488,10 @@ function board(){
     if(d.courseware){
       // The approved courseware already prints its title and source problem. Suppress an identical
       // slide line so the question is not repeated and the diagram stays above the fold.
+      body.style.display='flex';body.style.flexDirection='column';
       var topContent=boardCoursewareContent(d);
-      if(topContent.length){var top=el('div',{style:'font-size:2vh;margin-bottom:0.8vh'});body.appendChild(top);boardLayout(top,topContent,false)}
-      var cwBox=el('div');body.appendChild(cwBox);cwRender(cwBox,d.courseware,d.courseware.view,true,false);
+      if(topContent.length){var top=el('div',{style:'font-size:1.85vh;margin-bottom:0.6vh;flex:none'});body.appendChild(top);boardLayout(top,topContent,false)}
+      var cwBox=el('div',{style:'flex:1;min-height:0;display:flex;flex-direction:column'});body.appendChild(cwBox);cwRender(cwBox,d.courseware,d.courseware.view,true,false);
       scrollBody=body;lastRenderKey=nextKey;lastViewKey=viewKey(d);
       if(keepScroll)body.scrollTop=oldScroll;
       updateClock();return;

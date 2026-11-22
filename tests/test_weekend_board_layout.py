@@ -282,7 +282,8 @@ def test_board_content_first_compact_topbar_and_wide_split():
 
     html = board_page_html()
     assert "board-topbar" in html
-    assert "cw-big-split" in html
+    assert "cw-big-stage" in html
+    assert "cw-big-focusbar" in html
 
     harness = (
         "function el(tag,attrs,...kids){const n={tag,attrs:attrs||{},children:[],style:{},appendChild(c){if(c)this.children.push(c);return c}};kids.forEach(k=>n.appendChild(k));return n}\n"
@@ -303,17 +304,19 @@ const p={
 };
 const bigBox=el('div');cwSteps(bigBox,p,{step:1,showAnswer:true},true,false);
 const bigNodes=all(bigBox);
-const bigSplit=bigNodes.find(n=>n.attrs.class==='cw-big-split');
+const bigStage=bigNodes.find(n=>n.attrs.class==='cw-big-stage');
+const bigFocus=bigNodes.find(n=>n.attrs.class==='cw-big-focusbar');
 const bigImg=bigNodes.find(n=>n.tag==='img');
 const smallBox=el('div');cwSteps(smallBox,p,{step:1,showAnswer:true},false,true);
 const smallNodes=all(smallBox);
-const smallSplit=smallNodes.find(n=>n.attrs.class==='cw-big-split');
+const smallFocus=smallNodes.find(n=>n.attrs.class==='cw-big-focusbar');
 const smallImg=smallNodes.find(n=>n.tag==='img');
 console.log(JSON.stringify({
-  hasBigSplit:!!bigSplit,
+  hasBigStage:!!bigStage,
+  hasBigFocus:!!bigFocus,
   bigFullWidth:bigBox.children[0].attrs.style.includes('max-width:none'),
-  bigImgHeight68:bigImg.attrs.style.includes('max-height:68vh'),
-  hasSmallSplit:!!smallSplit,
+  bigImgHeight75:bigImg.attrs.style.includes('max-height:75vh'),
+  hasSmallFocus:!!smallFocus,
   smallMax980:smallBox.children[0].attrs.style.includes('max-width:980px'),
   smallImgHeight300:smallImg.attrs.style.includes('max-height:300px')
 }));
@@ -323,10 +326,11 @@ console.log(JSON.stringify({
     assert out.returncode == 0, out.stdout + out.stderr
     res = json.loads(out.stdout)
     assert res == {
-        "hasBigSplit": True,
+        "hasBigStage": True,
+        "hasBigFocus": True,
         "bigFullWidth": True,
-        "bigImgHeight68": True,
-        "hasSmallSplit": False,
+        "bigImgHeight75": True,
+        "hasSmallFocus": False,
         "smallMax980": True,
         "smallImgHeight300": True,
     }
