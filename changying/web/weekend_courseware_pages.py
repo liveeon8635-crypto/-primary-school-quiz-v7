@@ -1245,7 +1245,7 @@ function cwControl(box,c,sid,opts){
   box.textContent='';box.appendChild(el('h2',{text:'互动课件：'+c.kindLabel+'（大屏同步，约3秒）'}));box.appendChild(bar);box.appendChild(stage);box.appendChild(msg);
   var pending=Promise.resolve(),revision=0,syncSteps=null,syncSlide=null;
   function publicView(v){var out={};Object.keys(v||{}).sort().forEach(function(k){if(k.charAt(0)!=='_')out[k]=v[k]});return out}
-  function send(){var publicState=JSON.parse(JSON.stringify(publicView(view))),sentJson=JSON.stringify(publicState);var seq=++revision;CW_PENDING++;CW_VERSION++;
+  function send(){var publicState={};Object.keys(view||{}).sort().forEach(function(k){if(k.charAt(0)!=='_')publicState[k]=view[k]});publicState=JSON.parse(JSON.stringify(publicState));var sentJson=JSON.stringify(publicState);var seq=++revision;CW_PENDING++;CW_VERSION++;
     pending=pending.then(function(){return api('/teacher/weekend/sessions/'+sid+'/courseware/view',{json:{view:publicState,stageNo:c.stageNo,page:c.page}})}).then(function(r){if(seq===revision){var nextClean=publicView(r.view),same=JSON.stringify(nextClean)===sentJson;view=r.view;msg.textContent='';if(!same)draw()}}).catch(function(e){msg.textContent=e.message}).then(function(){CW_PENDING--});}
   function draw(){if(syncSteps)syncSteps();if(syncSlide)syncSlide();if(c.kind==='steps'&&c.params.figure&&c.params.figure.type==='calendar_compare')view._calendarOnChange=send;cwRender(stage,c,view,false,false,c.kind==='reading'?function(i){var k=view.highlight.indexOf(i);if(k>=0)view.highlight.splice(k,1);else view.highlight.push(i);draw();send()}:null)}
   box._cwSyncView=function(nextView){
