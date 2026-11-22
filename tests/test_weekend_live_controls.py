@@ -44,3 +44,65 @@ function tick(){return new Promise(resolve=>setImmediate(resolve))}
 '''
     result = subprocess.run(['node', '-e', script], text=True, capture_output=True, encoding='utf-8', timeout=20)
     assert result.returncode == 0, result.stderr
+
+
+def test_slide_controls_do_not_redraw_audio_on_unchanged_server_ack_or_big_screen_toggle():
+    script = r'''
+const assert = require('assert');
+function el(tag, a) { return {tag:tag, attrs:a||{}, children:[], appendChild:function(x){this.children.push(x)}, textContent:''}; }
+let requests=[], resolvers=[], cwRenderCalls=0, CW_PENDING=0, CW_VERSION=0;
+function api(path, opts) { requests.push(opts.json); return new Promise(resolve => resolvers.push(resolve)); }
+function cwRender(stage, c, view) { cwRenderCalls++; stage.textContent = 'slide:' + (view.slideIndex || 0); }
+function tick(){return new Promise(resolve=>setImmediate(resolve))}
+''' + COURSEWARE_JS[COURSEWARE_JS.index('function cwControl('):] + r'''
+(async function(){
+  let root = el('div');
+  let c = {
+    kind: 'slide',
+    kindLabel: '图文幻灯片',
+    stageNo: 2,
+    page: 0,
+    params: {
+      title: '母亲的那盏灯',
+      slides: [
+        {heading: '第1页', body: ['段落一'], audioUrl: 'data:audio/mpeg;base64,SUQz'},
+        {heading: '第2页', body: ['段落二'], audioUrl: 'data:audio/mpeg;base64,SUQz'}
+      ]
+    },
+    view: {slideIndex: 0, audioPlaying: false}
+  };
+  cwControl(root, c, 19);
+  assert.equal(cwRenderCalls, 1, 'initial mount renders once');
+  let buttons = root.children[1].children;
+  let nextBtn = buttons.find(x => x.attrs.text === '下一页 ›');
+  let bigAudioBtn = buttons.find(x => x.attrs.text === '🔊 大屏播放/暂停朗读');
+  assert(nextBtn && bigAudioBtn);
+
+  nextBtn.attrs.onclick();
+  assert.equal(cwRenderCalls, 2, 'slide change redraws once immediately');
+  await Promise.resolve();
+  assert.equal(requests.length, 1);
+  assert.deepStrictEqual(requests[0].view, {audioPlaying: false, slideIndex: 1});
+  resolvers.shift()({view: {slideIndex: 1, audioPlaying: false}});
+  await tick();
+  assert.equal(cwRenderCalls, 2, 'identical server ack (even different key order) must NOT redraw control audio');
+
+  bigAudioBtn.attrs.onclick();
+  assert.equal(cwRenderCalls, 2, 'toggling big-screen playback must NOT redraw control audio');
+  await Promise.resolve();
+  assert.deepStrictEqual(requests[1].view, {audioPlaying: true, slideIndex: 1});
+  resolvers.shift()({view: {slideIndex: 1, audioPlaying: true}});
+  await tick();
+  assert.equal(cwRenderCalls, 2, 'big-screen toggle ack must NOT redraw control audio');
+
+  root._cwSyncView({slideIndex: 1, audioPlaying: true});
+  assert.equal(cwRenderCalls, 2, '15s poll matching active slide must NOT redraw control audio');
+
+  root._cwSyncView({slideIndex: 0, audioPlaying: false});
+  assert.equal(cwRenderCalls, 3, 'remote slide change via 15s poll should update control view');
+  console.log('OK');
+})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+    result = subprocess.run(['node', '-e', script], text=True, capture_output=True, encoding='utf-8', timeout=20)
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert 'OK' in result.stdout

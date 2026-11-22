@@ -88,63 +88,89 @@ function control(){
   var writtenBox=el('div',{class:'card'});root.appendChild(writtenBox);var updateWritten=writtenTeacher(writtenBox);
   var backupBox=el('div',{class:'card'});root.appendChild(backupBox);backupTeacher(backupBox);
   function post(path,body){return api('/teacher/weekend/sessions/'+SID+'/'+path,{json:body||{}}).then(paint).catch(function(e){msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
+  var lastHeadKey='',lastStagesKey='',lastContentKey='',activeCwBox=null,clockNode=null;
   function paint(d){
-    head.textContent='';stagesBox.textContent='';content.textContent='';remain=d.remainingSeconds;progress(progBox,d);
+    remain=d.remainingSeconds;progress(progBox,d);
     var running=d.status==='running';updateWritten(d.status,d.class?d.class.id:0);
-    head.appendChild(el('h2',{text:d.title}));
-    head.appendChild(el('div',{class:d.class?'notice ok':'notice warn',text:d.class?'上课班级：'+d.class.name+' · '+d.class.studentCount+'人':'本节课尚未指定班级，请先选择班级'}));
-    head.appendChild(el('button',{text:d.class?'更换上课班级':'选择上课班级',onclick:function(){chooseWeekendClass(function(classId){return api('/teacher/weekend/sessions/'+SID+'/class',{method:'PUT',json:{classId:classId}}).then(paint)})}}));
-    var clock=el('div',{style:'font-size:44px;font-weight:700;line-height:1.2',id:'clock',text:running&&remain!=null?fmt(remain):'--:--'});
-    head.appendChild(el('div',{class:'muted',text:d.status==='planned'?'还没开始':d.status==='finished'?'已结束':'第 '+d.currentStage+'/'+d.stageCount+' 环节：'+d.stageName+' · '+d.goal}));
-    head.appendChild(clock);
-    var row=el('div',{class:'row'});
-    if(d.status==='planned')row.appendChild(el('button',{class:'primary',text:'开始上课',disabled:!d.class,onclick:function(){post('start')}}));
-    if(running){
-      row.appendChild(el('button',{text:'‹ 上一环节',onclick:function(){post('prev')}}));
-      row.appendChild(el('button',{class:'primary',text:d.currentStage>=d.stageCount?'结束这节课':'下一环节 ›',onclick:function(){post('next')}}));
-      row.appendChild(el('button',{text:'延长 5 分钟',onclick:function(){post('extend',{minutes:5})}}));
-      row.appendChild(el('button',{class:d.covered?'on':'',text:d.covered?'大屏已遮盖（点击恢复）':'遮盖大屏',onclick:function(){post('cover',{covered:!d.covered})}}));
-      row.appendChild(el('button',{text:'提前结束',onclick:function(){if(confirm('确定提前结束这节课？'))post('finish')}}));
+    var headKey=JSON.stringify({title:d.title||'',cls:d.class||null,status:d.status||'',currentStage:d.currentStage||0,stageCount:d.stageCount||0,stageName:d.stageName||'',goal:d.goal||'',covered:!!d.covered});
+    if(headKey!==lastHeadKey){
+      head.textContent='';
+      head.appendChild(el('h2',{text:d.title}));
+      head.appendChild(el('div',{class:d.class?'notice ok':'notice warn',text:d.class?'上课班级：'+d.class.name+' · '+d.class.studentCount+'人':'本节课尚未指定班级，请先选择班级'}));
+      head.appendChild(el('button',{text:d.class?'更换上课班级':'选择上课班级',onclick:function(){chooseWeekendClass(function(classId){return api('/teacher/weekend/sessions/'+SID+'/class',{method:'PUT',json:{classId:classId}}).then(paint)})}}));
+      clockNode=el('div',{style:'font-size:44px;font-weight:700;line-height:1.2',id:'clock',text:running&&remain!=null?fmt(remain):'--:--'});
+      head.appendChild(el('div',{class:'muted',text:d.status==='planned'?'还没开始':d.status==='finished'?'已结束':'第 '+d.currentStage+'/'+d.stageCount+' 环节：'+d.stageName+' · '+d.goal}));
+      head.appendChild(clockNode);
+      var row=el('div',{class:'row'});
+      if(d.status==='planned')row.appendChild(el('button',{class:'primary',text:'开始上课',disabled:!d.class,onclick:function(){post('start')}}));
+      if(running){
+        row.appendChild(el('button',{text:'‹ 上一环节',onclick:function(){post('prev')}}));
+        row.appendChild(el('button',{class:'primary',text:d.currentStage>=d.stageCount?'结束这节课':'下一环节 ›',onclick:function(){post('next')}}));
+        row.appendChild(el('button',{text:'延长 5 分钟',onclick:function(){post('extend',{minutes:5})}}));
+        row.appendChild(el('button',{class:d.covered?'on':'',text:d.covered?'大屏已遮盖（点击恢复）':'遮盖大屏',onclick:function(){post('cover',{covered:!d.covered})}}));
+        row.appendChild(el('button',{text:'提前结束',onclick:function(){if(confirm('确定提前结束这节课？'))post('finish')}}));
+      }
+      row.appendChild(el('a',{class:'btn',href:'/v1/weekend-board?s='+SID,target:'_blank','data-cy-open-window':'1',text:'打开大屏'}));
+      head.appendChild(row);
+      head.appendChild(el('details',{},el('summary',{text:'投影与异屏控制怎么用'}),el('p',{text:'同一台电脑：将显示模式设为“扩展”，把大屏窗口拖到投影／第二显示器并全屏，老师控制页留在电脑上。'}),el('p',{text:'手机／平板控制另一台电脑：两台设备各自登录同一老师账号，进入同一节课堂；电脑打开大屏，手机／平板操作控制页。翻页、环节和遮盖约3秒内同步，网络延迟时可能更久。'})));
+      lastHeadKey=headKey;
+    }else if(clockNode){
+      clockNode.textContent=running&&remain!=null?fmt(remain):'--:--';
     }
-    row.appendChild(el('a',{class:'btn',href:'/v1/weekend-board?s='+SID,target:'_blank','data-cy-open-window':'1',text:'打开大屏'}));
-    head.appendChild(row);
-    head.appendChild(el('details',{},el('summary',{text:'投影与异屏控制怎么用'}),el('p',{text:'同一台电脑：将显示模式设为“扩展”，把大屏窗口拖到投影／第二显示器并全屏，老师控制页留在电脑上。'}),el('p',{text:'手机／平板控制另一台电脑：两台设备各自登录同一老师账号，进入同一节课堂；电脑打开大屏，手机／平板操作控制页。翻页、环节和遮盖约3秒内同步，网络延迟时可能更久。'})));
-    stagesBox.appendChild(el('h2',{text:'环节'}));
-    d.stages.forEach(function(s){
-      var b=el('button',{class:s.no===d.currentStage&&running?'on':'',text:s.no+'. '+s.name+'（'+(s.minutes+s.extendMin)+'分）'+(s.visited&&s.no!==d.currentStage?' ✓':''),
-        onclick:function(){if(running)post('goto',{stage:s.no})}});
-      stagesBox.appendChild(el('div',{class:'row'},b,el('span',{class:'muted',text:s.goal})));
+    var stagesKey=JSON.stringify({status:d.status||'',currentStage:d.currentStage||0,stages:d.stages||[]});
+    if(stagesKey!==lastStagesKey){
+      stagesBox.textContent='';
+      stagesBox.appendChild(el('h2',{text:'环节'}));
+      d.stages.forEach(function(s){
+        var b=el('button',{class:s.no===d.currentStage&&running?'on':'',text:s.no+'. '+s.name+'（'+(s.minutes+s.extendMin)+'分）'+(s.visited&&s.no!==d.currentStage?' ✓':''),
+          onclick:function(){if(running)post('goto',{stage:s.no})}});
+        stagesBox.appendChild(el('div',{class:'row'},b,el('span',{class:'muted',text:s.goal})));
+      });
+      lastStagesKey=stagesKey;
+    }
+    var cw=d.courseware||null;
+    var contentKey=JSON.stringify({
+      status:d.status||'',covered:!!d.covered,currentStage:d.currentStage||0,
+      answerRelease:d.answerRelease||null,pendingPracticeSync:d.pendingPracticeSync||0,
+      deck:d.deck||null,content:d.content||[],coursewareNotice:d.coursewareNotice||'',
+      cw:cw?{id:cw.id||null,kind:cw.kind||'',kindLabel:cw.kindLabel||'',stageNo:cw.stageNo,page:cw.page===undefined?null:cw.page,params:cw.params||null}:null
     });
-    content.appendChild(el('h2',{text:'当前环节大屏内容'}));
-    if(running&&d.currentStage===4&&d.answerRelease){
-      var release=d.answerRelease,current=release.currentQuestion;
-      content.appendChild(el('div',{class:'notice',text:'已公布 '+release.published+' / '+release.total+' 题；只停止已公布题目的提交，其他题继续作答。'}));
-      content.appendChild(el('button',{class:'primary',text:release.currentPublished?'第 '+current+' 题答案已公布':'统一公布第 '+current+' 题答案',disabled:!!release.currentPublished||current!==release.nextQuestion,onclick:function(){if(confirm('公布第 '+current+' 题答案后，仅本题停止接收提交，其他题可继续作答。确定公布吗？'))post('publish-answers',{question:current})}}));
-      if(release.nextQuestion&&current!==release.nextQuestion)content.appendChild(el('button',{text:'继续第 '+release.nextQuestion+' 题',onclick:function(){post('practice-question',{question:release.nextQuestion})}}));
+    if(contentKey!==lastContentKey){
+      content.textContent='';activeCwBox=null;
+      content.appendChild(el('h2',{text:'当前环节大屏内容'}));
+      if(running&&d.currentStage===4&&d.answerRelease){
+        var release=d.answerRelease,current=release.currentQuestion;
+        content.appendChild(el('div',{class:'notice',text:'已公布 '+release.published+' / '+release.total+' 题；只停止已公布题目的提交，其他题继续作答。'}));
+        content.appendChild(el('button',{class:'primary',text:release.currentPublished?'第 '+current+' 题答案已公布':'统一公布第 '+current+' 题答案',disabled:!!release.currentPublished||current!==release.nextQuestion,onclick:function(){if(confirm('公布第 '+current+' 题答案后，仅本题停止接收提交，其他题可继续作答。确定公布吗？'))post('publish-answers',{question:current})}}));
+        if(release.nextQuestion&&current!==release.nextQuestion)content.appendChild(el('button',{text:'继续第 '+release.nextQuestion+' 题',onclick:function(){post('practice-question',{question:release.nextQuestion})}}));
+      }
+      if(d.pendingPracticeSync>0&&d.status!=='finished'){
+        var syncBtn=el('button',{class:'primary','data-sync-practice':'1',text:'同步新增练习（+'+d.pendingPracticeSync+' 题）',onclick:function(){
+          syncBtn.disabled=true;
+          api('/teacher/weekend/sessions/'+SID+'/sync-practice',{json:{}}).then(function(res){
+            msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice',text:res.message||'已同步新增练习'}));
+            paint(res);
+          }).catch(function(e){syncBtn.disabled=false;msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))});
+        }});
+        content.appendChild(el('div',{class:'row'},syncBtn,el('span',{class:'muted',text:'仅把新通过的练习补进本节课堂，已有作答与记录保持不变'})));
+      }
+      if(d.deck){
+        content.appendChild(el('div',{class:'row'},el('button',{text:'‹ 上一页',disabled:d.deck.index<=0,onclick:function(){post('slide',{delta:-1})}}),
+          el('b',{text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}),el('button',{class:'primary',text:'下一页 ›',disabled:d.deck.index>=d.deck.total-1,onclick:function(){post('slide',{delta:1})}})));
+      }
+      if(!d.content.length&&!d.courseware)content.appendChild(el('div',{class:'muted',text:running?(d.covered?'大屏遮盖中':'这个环节没有内容'):'开始上课后显示'}));
+      d.content.forEach(function(x){content.appendChild(el('p',{text:x}))});
+      if(d.coursewareNotice)content.appendChild(el('div',{class:'notice warn',text:d.coursewareNotice}));
+      if(d.courseware){var cwBox=el('div');content.appendChild(cwBox);activeCwBox=cwBox;cwControl(cwBox,d.courseware,SID)}
+      lastContentKey=contentKey;
+    }else if(cw&&activeCwBox&&activeCwBox._cwSyncView){
+      activeCwBox._cwSyncView(cw.view);
     }
-    if(d.pendingPracticeSync>0&&d.status!=='finished'){
-      var syncBtn=el('button',{class:'primary','data-sync-practice':'1',text:'同步新增练习（+'+d.pendingPracticeSync+' 题）',onclick:function(){
-        syncBtn.disabled=true;
-        api('/teacher/weekend/sessions/'+SID+'/sync-practice',{json:{}}).then(function(res){
-          msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice',text:res.message||'已同步新增练习'}));
-          paint(res);
-        }).catch(function(e){syncBtn.disabled=false;msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))});
-      }});
-      content.appendChild(el('div',{class:'row'},syncBtn,el('span',{class:'muted',text:'仅把新通过的练习补进本节课堂，已有作答与记录保持不变'})));
-    }
-    if(d.deck){
-      content.appendChild(el('div',{class:'row'},el('button',{text:'‹ 上一页',disabled:d.deck.index<=0,onclick:function(){post('slide',{delta:-1})}}),
-        el('b',{text:'第 '+(d.deck.index+1)+' / '+d.deck.total+' 页'}),el('button',{class:'primary',text:'下一页 ›',disabled:d.deck.index>=d.deck.total-1,onclick:function(){post('slide',{delta:1})}})));
-    }
-    if(!d.content.length&&!d.courseware)content.appendChild(el('div',{class:'muted',text:running?(d.covered?'大屏遮盖中':'这个环节没有内容'):'开始上课后显示'}));
-    d.content.forEach(function(x){content.appendChild(el('p',{text:x}))});
-    if(d.coursewareNotice)content.appendChild(el('div',{class:'notice warn',text:d.coursewareNotice}));
-    if(d.courseware){var cwBox=el('div');content.appendChild(cwBox);cwControl(cwBox,d.courseware,SID)}
   }
   function load(){var version=CW_VERSION;api('/teacher/weekend/sessions/'+SID).then(function(d){if(!CW_PENDING&&version===CW_VERSION)paint(d)}).catch(function(e){msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
   load();
   if(tick)clearInterval(tick);
-  tick=setInterval(function(){if(remain!=null){remain-=1;var c=document.getElementById('clock');if(c)c.textContent=fmt(remain)}},1000);
+  tick=setInterval(function(){if(remain!=null){remain-=1;if(clockNode)clockNode.textContent=fmt(remain)}},1000);
   if(timer)clearInterval(timer);
   timer=setInterval(load,15000);
 }

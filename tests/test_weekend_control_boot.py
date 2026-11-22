@@ -200,3 +200,100 @@ fetch=(path,opts)=>Promise.resolve({ok:true,json:()=>Promise.resolve(path==='/se
     assert result.returncode==0,result.stdout+result.stderr
 print('OK')
 ''')
+
+
+def test_control_15s_poll_preserves_playing_audio_element(tmp_path):
+    helpers.run_isolated(tmp_path, helpers.COMMON + '\nharness=' + repr(HARNESS) + '\n' + r'''
+import re, subprocess
+with TestClient(app) as client:
+    response = client.get('/v1/weekend?s=42')
+    assert response.status_code == 200
+    scripts = '\n'.join(re.findall(r'<script[^>]*>(.*?)</script>', response.text, re.S))
+    extra = r"""
+status = 'running';
+let cwView = {slideIndex: 0, audioPlaying: false};
+let remSec = 600;
+const pollIntervals = [];
+global.setInterval = (fn, ms) => { pollIntervals.push({fn, ms}); return pollIntervals.length; };
+const cwPayload = () => ({
+  id: 7,
+  stageNo: 2,
+  page: 0,
+  kind: 'slide',
+  kindLabel: '图文幻灯片',
+  view: {...cwView},
+  params: {
+    title: '母亲的那盏灯',
+    slides: [
+      {heading: '第1页', body: ['段落一'], audioLabel: '第1段朗读', audioUrl: 'data:audio/mpeg;base64,SUQz'},
+      {heading: '第2页', body: ['段落二'], audioLabel: '第2段朗读', audioUrl: 'data:audio/mpeg;base64,SUQzQQ=='}
+    ]
+  }
+});
+const slideState = () => ({
+  ...state(),
+  status: 'running',
+  remainingSeconds: remSec,
+  currentStage: 2,
+  stageName: '短文阅读',
+  goal: '朗读与精读',
+  stages: [
+    {no: 1, name: '导入', minutes: 10, extendMin: 0, visited: true},
+    {no: 2, name: '短文阅读', minutes: 20, extendMin: 0, visited: false}
+  ],
+  courseware: cwPayload()
+});
+const origFetch = global.fetch;
+global.fetch = (path, opts) => {
+  if (path === '/teacher/weekend/sessions/42') return Promise.resolve({ok: true, json: () => Promise.resolve(slideState())});
+  if (path === '/teacher/weekend/sessions/42/courseware/view') {
+    const req = JSON.parse(opts.body);
+    cwView = {...req.view};
+    return Promise.resolve({ok: true, json: () => Promise.resolve({view: {...cwView}})});
+  }
+  return origFetch(path, opts);
+};
+"""
+    check = r"""
+(async () => {
+  await settle();
+  const poll15 = pollIntervals.find(x => x.ms === 15000);
+  const tick1 = pollIntervals.find(x => x.ms === 1000);
+  assert(poll15 && tick1, 'expected both 15s poll and 1s clock tick');
+
+  const audios0 = nodes(rootNode).filter(n => n.tag === 'audio');
+  assert.equal(audios0.length, 1, 'expected 1 active audio player on slide 1');
+  const audio0 = audios0[0];
+
+  // Simulate 1s clock ticks and 15s status poll returning decremented timer
+  tick1.fn();
+  remSec = 585;
+  poll15.fn();
+  await settle();
+  const audiosAfterPoll0 = nodes(rootNode).filter(n => n.tag === 'audio');
+  assert.equal(audiosAfterPoll0.length, 1);
+  assert.strictEqual(audiosAfterPoll0[0], audio0, '15s poll must NOT recreate playing audio element on slide 1');
+
+  // Switch to slide 2, verify new audio survives server ack AND subsequent 15s poll
+  const nextBtn = nodes(rootNode).find(n => n.tag === 'button' && n.textContent === '下一页 ›');
+  assert(nextBtn, 'expected 下一页 › button');
+  nextBtn.onclick();
+  await settle();
+  const audios1 = nodes(rootNode).filter(n => n.tag === 'audio');
+  assert.equal(audios1.length, 1);
+  const audio1 = audios1[0];
+  assert.notStrictEqual(audio1, audio0, 'slide 2 should mount slide 2 audio');
+
+  remSec = 570;
+  poll15.fn();
+  await settle();
+  const audiosAfterPoll1 = nodes(rootNode).filter(n => n.tag === 'audio');
+  assert.equal(audiosAfterPoll1.length, 1);
+  assert.strictEqual(audiosAfterPoll1[0], audio1, '15s poll must preserve slide 2 audio element');
+  console.log('OK');
+})().catch(e => { console.error(e); process.exitCode = 1; });
+"""
+    result = subprocess.run(['node'], input=harness + extra + '\n' + scripts + '\n' + check, text=True, capture_output=True, timeout=20)
+    assert result.returncode == 0, result.stdout + result.stderr
+print("OK")
+''')
