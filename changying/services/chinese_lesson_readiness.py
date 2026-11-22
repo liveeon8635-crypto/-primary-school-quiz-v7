@@ -44,7 +44,8 @@ def chinese_lesson_readiness(implementation, db, lesson, teacher_id):
         for item in candidates:
             page = item.get("page")
             text = pages[page] if isinstance(page, int) and 0 <= page < len(pages) else ""
-            bad_page = bool(pages) and (not isinstance(page, int) or not 0 <= page < len(pages))
+            is_whole_stage_slide = stage == 5 and item.get("kind") == "slide" and page is None
+            bad_page = bool(pages) and not is_whole_stage_slide and (not isinstance(page, int) or not 0 <= page < len(pages))
             if item.get("reimportReviewRequired"):
                 hint = hint or "重新导入后需重新审核"
                 valid = False

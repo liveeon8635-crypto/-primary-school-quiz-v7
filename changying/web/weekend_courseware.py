@@ -353,6 +353,7 @@ def import_prepared_courseware(
     audit_detail: str = "",
     keep_previous_draft: bool = True,
     revoke_existing_approvals: bool = False,
+    prune_unselected: bool = False,
 ) -> dict[str, Any]:
     """Validate and atomically write prepared pages for one lesson.
 
@@ -397,6 +398,7 @@ def import_prepared_courseware(
     retained = [
         item for item in existing
         if (int(item['stage']), item.get('page')) not in selected
+        and (not prune_unselected or item.get('templateId') is not None)
     ]
     if revoke_existing_approvals:
         for item in retained:
