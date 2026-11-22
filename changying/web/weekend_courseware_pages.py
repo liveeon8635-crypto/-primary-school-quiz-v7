@@ -767,7 +767,7 @@ function cwSteps(box,p,view,big,teacher){
   var hasStepFigs=Array.isArray(p.stepFigures)&&p.stepFigures.length===steps.length+1;
   var hasVisual=hasStepFigs||!!(p.figure&&p.figure.type);
   var wideBig=!!(big&&hasVisual&&(typeof window==='undefined'||window.innerWidth>=1024));
-  var wrap=el('div',{style:(big?'width:100%;max-width:none;margin:0;padding:1.2vh 1.6vw;font-size:2.3vh;line-height:1.55;':'max-width:980px;margin:0 auto;padding:12px;line-height:1.75;')+'background:#fff;color:#111;border-radius:14px;box-sizing:border-box'});box.appendChild(wrap);
+  var card=el('div',{style:(big?'width:100%;max-width:none;margin:0;padding:1.2vh 1.6vw;font-size:2.3vh;line-height:1.55;':'max-width:980px;margin:0 auto;padding:12px;line-height:1.75;')+'background:#fff;color:#111;border-radius:14px;box-sizing:border-box'});box.appendChild(card);
   // 预览和课堂用同一套展开规则：新题从 0 步开始，点一下“下一步”只多展开 1 步。
   var shown=teacher?(view.previewMode?(view.step||0):steps.length):(view.step||0);
   shown=Math.max(0,Math.min(steps.length,shown));
@@ -775,34 +775,34 @@ function cwSteps(box,p,view,big,teacher){
     var hdr=el('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:1vw;margin-bottom:0.8vh;padding-bottom:0.6vh;border-bottom:1px solid #e5e7eb'});
     hdr.appendChild(el('b',{style:'font-size:2.4vh;color:#0f172a',text:p.title||'分步讲解'}));
     hdr.appendChild(el('span',{style:'font-size:1.85vh;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;padding:0.2vh 0.8vw;border-radius:999px;white-space:nowrap',text:'已展开 '+shown+' / '+steps.length+' 步'}));
-    wrap.appendChild(hdr);
+    card.appendChild(hdr);
   }else{
-    wrap.appendChild(el('b',{text:p.title||'分步讲解'}));
+    card.appendChild(el('b',{text:p.title||'分步讲解'}));
   }
   var sourceProblem=String(p.sourceProblem||'');
   if(p.figure&&p.figure.type==='table'&&sourceProblem.indexOf('对应面积')>=0&&sourceProblem.indexOf('平方千米')>=0&&sourceProblem.indexOf('公顷')>=0){
     var tableHeader=sourceProblem.lastIndexOf('正方形边长',sourceProblem.indexOf('对应面积'));
     if(tableHeader>0)sourceProblem=sourceProblem.slice(0,tableHeader).trim();
   }
-  var visualHost=wrap,stepsHost=wrap;
+  var wrap=card,stepsHost=card;
   if(wideBig){
     var split=el('div',{class:'cw-big-split',style:'display:grid;grid-template-columns:minmax(0,2.2fr) minmax(260px,1fr);gap:1.6vw;align-items:start'});
-    visualHost=el('div',{style:'min-width:0'});
+    wrap=el('div',{style:'min-width:0'});
     stepsHost=el('div',{style:'min-width:0'});
-    split.appendChild(visualHost);split.appendChild(stepsHost);wrap.appendChild(split);
+    split.appendChild(wrap);split.appendChild(stepsHost);card.appendChild(split);
   }
   if(sourceProblem)stepsHost.appendChild(el('p',{style:'white-space:pre-wrap;margin:0 0 0.8vh',text:sourceProblem}));
   if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
   if(p.figureUnverified){
     // 图示和题干数据对不上时不能当正确图展示，改成黄底提示让老师先核对。
-    visualHost.appendChild(el('div',{style:'margin:10px 0 0;padding:10px 12px;border-radius:10px;background:#fff7ed;border:1px solid #f59e0b;color:#92400e;font-weight:700',text:'本题需要老师确认配图'}));
-    visualHost.appendChild(el('div',{style:'margin:6px 0 10px;padding:12px;border-radius:10px;background:#fef3c7;border:1px solid #f59e0b;color:#78350f',text:p.figureNotice||'图示待确认：题干与图示不一致，请老师核对'}));
+    wrap.appendChild(el('div',{style:'margin:10px 0 0;padding:10px 12px;border-radius:10px;background:#fff7ed;border:1px solid #f59e0b;color:#92400e;font-weight:700',text:'本题需要老师确认配图'}));
+    wrap.appendChild(el('div',{style:'margin:6px 0 10px;padding:12px;border-radius:10px;background:#fef3c7;border:1px solid #f59e0b;color:#78350f',text:p.figureNotice||'图示待确认：题干与图示不一致，请老师核对'}));
   }else if(hasStepFigs){
     var frameStep=teacher&&!view.previewMode?steps.length:(view.step||0);
-    cwFigure(visualHost,p.stepFigures[Math.max(0,Math.min(steps.length,frameStep))],big,view,teacher,p.steps.length);
-  }else if(!cwLesson10Geometry(visualHost,p,view,big,teacher)&&!cwLesson10RemainingFigure(visualHost,p,view,big,teacher))cwFigure(visualHost,p.figure,big,view,teacher,p.steps.length);
-  if(p.figureNotice&&!p.figureUnverified)visualHost.appendChild(el('div',{class:'muted',style:'margin-top:6px',text:p.figureNotice}));
-  if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')visualHost.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
+    cwFigure(wrap,p.stepFigures[Math.max(0,Math.min(steps.length,frameStep))],big,view,teacher,p.steps.length);
+  }else if(!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
+  if(p.figureNotice&&!p.figureUnverified)wrap.appendChild(el('div',{class:'muted',style:'margin-top:6px',text:p.figureNotice}));
+  if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
   if(!big){
     stepsHost.appendChild(el('div',{style:'margin:12px 0 2px;color:#475467;font-weight:600',text:'已展开 '+shown+' / '+steps.length+' 步'}));
     stepsHost.appendChild(el('div',{class:'muted',text:'点“下一步”只多展开 1 步'}));
