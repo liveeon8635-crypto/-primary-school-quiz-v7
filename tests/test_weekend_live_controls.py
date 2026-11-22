@@ -224,6 +224,8 @@ assert(String(s5.attrs.style || '').includes('flex:none'), 'slideEl must have fl
 const grids5 = findAll(s5, n => n.attrs && String(n.attrs.style || '').includes('minmax(260px,1fr)'));
 assert.equal(grids5.length, 1);
 assert.equal(grids5[0].children[1].children.length, 1, 'textCol holds only bodyWrap when body+plot both exist');
+const bodyWrap5 = grids5[0].children[1].children[0];
+assert(String(bodyWrap5.attrs.style || '').includes('overflow-y:auto') && String(bodyWrap5.attrs.style || '').includes('max-height:60vh'), 'reading bodyWrap must scroll to match image height');
 console.log('OK');
 '''
     result = subprocess.run(['node'], input=script, text=True, capture_output=True, encoding='utf-8', timeout=20)
