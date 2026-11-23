@@ -276,6 +276,10 @@ def session_facts(impl: Any, db: Any, row: Any) -> dict[str, Any]:
 
     student_ids = set(members) | {s for s, _ in choice} | {s for s, _ in written}
     week = week_work_map(impl, db, school_id=int(row.school_id), student_ids=[int(s) for s in student_ids], day=local_date(impl, row))
+    from changying.web.weekend_stage6 import stage6_check_map
+    s6_checks = stage6_check_map(impl, db, int(row.id))
+    s6_teacher = s6_checks["teacher"]
+    s6_student = s6_checks["student"]
     students: dict[int, dict[str, Any]] = {}
     for sid in sorted(student_ids, key=lambda x: (members.get(x, ("学生",))[0], x)):
         items = []
@@ -301,6 +305,16 @@ def session_facts(impl: Any, db: Any, row: Any) -> dict[str, Any]:
                                 attempts=attempts.get((sid, "written", q["id"]), 1), answer=str(a.answer_text or ""),
                                 hasPhoto=bool(a.has_photo), submissionId=int(a.id), comment=str(a.comment or ""),
                                 revision=int(a.revision), submittedAt=a.submitted_at, reviewedAt=a.reviewed_at)
+            qkey_s6 = f"{q['kind']}:{int(q['id'])}"
+            t_s6 = s6_teacher.get(qkey_s6, "")
+            stu_s6 = s6_student.get((qkey_s6, int(sid)), {})
+            if item["status"] in ("revise", "partial"):
+                if t_s6 == "mastered" and stu_s6.get("status") != "doubt":
+                    item["resolvedInStage6"] = True
+                if stu_s6.get("status") == "doubt":
+                    item["stage6Doubt"] = True
+                    if stu_s6.get("note"):
+                        item["stage6Note"] = str(stu_s6.get("note") or "")[:300]
             items.append(item)
         counts = {k: sum(1 for i in items if i["status"] == k) for k in STATUS_LABEL}
         counts["total"] = len(items) - counts["later"]
@@ -357,7 +371,7 @@ def student_facts(facts: dict[str, Any], student_id: int) -> dict[str, Any] | No
     return {k: facts[k] for k in ("sessionId", "date", "subject", "lessonTitle", "unit", "coreTarget", "className", "settled", "cutoff")} | {
         "questions": [{k: q[k] for k in ("key", "no", "kind", "stem", "knowledge", "task", "material")} for q in facts["questions"]],
         **{k: pupil[k] for k in ("studentId", "name", "participated", "counts", "explained", "followups", "points", "weekWork")},
-        "items": [{k: i.get(k, "") for k in ("key", "no", "kind", "status", "attempts", "hint", "knowledge", "answer", "comment")} for i in pupil["items"]]}
+        "items": [{k: i.get(k, "") for k in ("key", "no", "kind", "status", "attempts", "hint", "knowledge", "answer", "comment", "resolvedInStage6", "stage6Doubt", "stage6Note")} for i in pupil["items"]]}
 
 
 def source_questions(facts: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -400,7 +414,9 @@ def evidence_items(parts: list[dict[str, Any]], previous: list[dict[str, Any]] |
                  "status": item["status"], "task": q.get("task") or q["stem"], "material": q.get("material") or "",
                  "answer": str(item.get("answer") or "")[:300], "comment": str(item.get("comment") or "")[:300],
                  "knowledge": item["knowledge"], "knowledgeSource": "question" if item["knowledge"] else "none",
-                 "cause": "", "causeSource": ""}
+                 "cause": "", "causeSource": "",
+                 "resolvedInStage6": bool(item.get("resolvedInStage6")),
+                 "stage6Note": str(item.get("stage6Note") or "")[:300]}
             old = kept.get(key)
             if old:
                 if e["knowledgeSource"] == "none" and old.get("knowledgeSource") in ("teacher", "ai") and old.get("knowledge"):
@@ -443,10 +459,10 @@ def describe(e: dict[str, Any]) -> str:
 
 
 def weak_groups(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Wrong and partly right answers merged by lesson and knowledge point, so one weakness is practised once."""
+    """Wrong and partly right answers still unresolved after Stage 5/6, merged by lesson and knowledge point."""
     groups: dict[str, dict[str, Any]] = {}
     for e in sorted(evidence, key=lambda x: (x["status"] != "revise", x["sessionId"], x["no"])):
-        if e["status"] not in ("revise", "partial"):
+        if e["status"] not in ("revise", "partial") or e.get("resolvedInStage6"):
             continue
         confirmed = e.get("knowledge") and e.get("knowledgeSource") in ("question", "teacher")
         gkey = f"{e['sessionId']}:" + (f"k:{e['knowledge']}" if confirmed else f"q:{e['key']}")

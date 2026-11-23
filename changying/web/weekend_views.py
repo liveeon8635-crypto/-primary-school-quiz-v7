@@ -265,17 +265,38 @@ def install_weekend_views(implementation: Any) -> APIRouter:
             # 练习复盘: show only the latest active explanation prompt so the board never crowds.
             peer_t = implementation.Base.metadata.tables.get("weekend_peer_help")
             if peer_t is not None:
-                from changying.web.weekend_scoring_views import _explain_review_of
+                from changying.web.weekend_scoring_views import _explain_response_of, _explain_review_of
+                from changying.services.weekend_answers import practice_items, practice_question_figure
                 User, TQ = implementation.User, implementation.TeachingQuestion
                 for p in db.execute(select(peer_t.c.tutor_id, peer_t.c.question_id, peer_t.c.followup_json).where(peer_t.c.session_id == row.id, peer_t.c.question_id > 0).order_by(peer_t.c.id.desc())).all():
                     rev = _explain_review_of(p.followup_json)
-                    if rev and rev.get("finished"):
+                    resp = _explain_response_of(p.followup_json)
+                    if (rev and rev.get("finished")) or (resp and resp.get("decision") == "decline"):
                         continue
                     who = db.scalar(select(User.name).where(User.id == p.tutor_id))
                     stem = db.scalar(select(TQ.stem).where(TQ.id == p.question_id))
                     if who and stem:
                         out["content"] = out["content"] + [f"请 {who} 同学来讲：{_short_explain_stem(stem)}"]
+                        if "practiceFigure" not in out:
+                            match_item = next((it for it in practice_items(implementation, db, row) if it["kind"] == "choice" and int(it["id"]) == int(p.question_id)), None)
+                            if match_item is not None:
+                                e_fig = practice_question_figure(implementation, db, row, match_item)
+                                if e_fig:
+                                    out["practiceFigure"] = e_fig
                         break
+        if course_type in ("math", "legacy") and no == 6 and row.status == "running":
+            from changying.web.weekend_stage6 import stage6_unresolved_items
+            s6_items = stage6_unresolved_items(implementation, db, row)
+            if s6_items:
+                mastered = sum(1 for it in s6_items if it["teacherStatus"] == "mastered")
+                hw = sum(1 for it in s6_items if it["teacherStatus"] == "homework")
+                pending = len(s6_items) - mastered - hw
+                out["content"] = [
+                    f"课堂互动 · 全班达标确认：共 {len(s6_items)} 道待巩固题（已达标 {mastered} · 留入课后 {hw} · 待讨论 {pending}）"
+                ] + [
+                    f"第 {it['no']} 题（{'已达标 ✓' if it['teacherStatus']=='mastered' else '留入课后' if it['teacherStatus']=='homework' else '讨论中'}）：{_short_explain_stem(it['stem'])}"
+                    for it in s6_items[:6]
+                ]
         practice_no = practice_stage(course_type)
         if no == practice_no and row.status == "running":
             deck, count, idx, total = practice_deck(implementation, db, row)
@@ -302,18 +323,26 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                         out["practiceFigure"] = p_fig
         if course_type in ("math", "legacy") and no in (practice_no, practice_no + 1) and row.status == "running":
             from changying.web.weekend_written import register_written_tables
-            from changying.web.weekend_scoring_views import _explain_review_of
+            from changying.web.weekend_scoring_views import _explain_response_of, _explain_review_of
+            from changying.services.weekend_answers import practice_items, practice_question_figure
             written_q = register_written_tables(implementation)['questions']
             peer_t = implementation.Base.metadata.tables.get('weekend_peer_help')
             if peer_t is not None:
                 for p in db.execute(select(peer_t).where(peer_t.c.session_id == row.id, peer_t.c.question_id < 0).order_by(peer_t.c.id.desc())):
                     rev = _explain_review_of(p.followup_json)
-                    if rev and rev.get("finished"):
+                    resp = _explain_response_of(p.followup_json)
+                    if (rev and rev.get("finished")) or (resp and resp.get("decision") == "decline"):
                         continue
                     who = db.scalar(select(implementation.User.name).where(implementation.User.id == p.tutor_id))
                     stem = db.scalar(select(written_q.c.stem).where(written_q.c.id == -p.question_id, written_q.c.session_id == row.id))
                     if who and stem:
                         out['content'].append(f"请 {who} 同学来讲：{_short_explain_stem(stem)}")
+                        if no == practice_no + 1 and "practiceFigure" not in out:
+                            wq_id = -int(p.question_id)
+                            match_item = next((it for it in practice_items(implementation, db, row) if it["kind"] == "written" and int(it["id"]) == wq_id), None)
+                            e_fig = practice_question_figure(implementation, db, row, match_item or {"kind": "written", "id": wq_id, "bindingStem": str(stem).split("\n\n")[-1].strip()})
+                            if e_fig:
+                                out["practiceFigure"] = e_fig
                         break
         if row.status == "running" and not (board and row.covered):
             from changying.web.weekend_courseware import courseware_for_session
