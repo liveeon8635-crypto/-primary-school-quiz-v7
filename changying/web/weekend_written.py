@@ -225,7 +225,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
     @router.post("/student/weekend/sessions/{sid}/written/{qid}/hint")
     def student_hint(sid: int, qid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
-        if row.status != "running" or row.current_stage != task_stage(db, row) or answers_published(implementation, db, row, qid, "written"):
+        if row.status != "running" or answers_published(implementation, db, row, qid, "written"):
             raise HTTPException(409, "现在不是随堂练习时间")
         q = next((q for q in question_rows(db, row) if q.id == qid), None)
         if q is None or not question_is_open(implementation, db, row, 'written', qid):
@@ -290,7 +290,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
                      orientation: int = Form(1), removePhoto: bool = Form(False),
                      u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
-        if row.status != "running" or row.current_stage != task_stage(db, row) or answers_published(implementation, db, row, qid, "written"):
+        if row.status != "running" or answers_published(implementation, db, row, qid, "written"):
             raise HTTPException(409, "现在不是随堂练习时间")
         if not any(q.id == qid for q in question_rows(db, row)) or not question_is_open(implementation, db, row, 'written', qid):
             raise HTTPException(404, "没有找到这道题")
@@ -309,6 +309,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
                 "mime": img_mime,
                 "orientation": max(1, min(8, int(orientation or 1))),
                 "dataUrl": f"data:{img_mime};base64,{base64.b64encode(raw_bytes).decode('ascii')}",
+                "originalBase64": base64.b64encode(raw_bytes).decode("ascii"),
             })
         old = db.execute(select(submissions).where(submissions.c.session_id == sid, submissions.c.question_id == qid,
             submissions.c.student_id == u.id)).first()
@@ -316,7 +317,8 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             data, mime = old.photo, old.photo_type
             if data and mime:
                 extra_photos = [{"mime": mime, "orientation": max(1, min(8, int(orientation or 1))),
-                                 "dataUrl": f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"}]
+                                 "dataUrl": f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}",
+                                 "originalBase64": base64.b64encode(data).decode("ascii")} ]
         if not text and not data: raise HTTPException(400,'请填写答案或拍照提交')
         attempts = submission_attempts(implementation, db, u, sid, 'written', qid, old is not None)
         if old and old.answer_text == text and old.photo == data and len(uploads) <= 1:
