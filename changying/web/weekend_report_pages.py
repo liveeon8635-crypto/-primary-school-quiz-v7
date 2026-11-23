@@ -124,12 +124,23 @@ function reportPage(){
     var kd=el('details',{},el('summary',{text:'考点表现与对应题目'}));
     s.knowledge.forEach(function(k){kd.appendChild(el('div',{class:'row'},el('b',{text:k.knowledge}),el('span',{class:'muted',text:'第'+k.questions.join('、')+'题 · 正确 '+k.correct+' · 部分正确 '+k.partial+' · 需订正 '+k.revise+' · 待批 '+k.pending+' · 未提交 '+k.unsubmitted})))});
     classBox.appendChild(kd);
-    var qd=el('details',{},el('summary',{text:'逐题统计（文字题可在这里标考点）'})),marks={},unmarked=0;
-    (d.marks||[]).forEach(function(m){marks[m.no]=m;if(!m.knowledge)unmarked++});
-    if(unmarked)classBox.appendChild(el('div',{class:'notice warn',text:'有 '+unmarked+' 道文字题还没标考点。展开“逐题统计”，确认系统建议或从训练目标里选，标一次所有班级通用；标完点“刷新数据”。'}));
-    s.questions.forEach(function(q){qd.appendChild(el('div',{class:'row'},el('b',{text:'第'+q.no+'题（'+(q.kind==='choice'?'选择':'文字／照片')+'）'}),el('span',{text:q.stem}),el('span',{class:'muted',text:q.knowledge+' · 正确 '+q.correct+' · 部分正确 '+q.partial+' · 需订正 '+q.revise+' · 待批 '+q.pending+' · 未提交 '+q.unsubmitted+(q.later?' · 课后题未交 '+q.later:'')})));
+    var qd=el('details',{},el('summary',{text:'逐题统计（共 '+s.questions.length+' 题，点击展开查看或标注考点）'})),marks={},unmarked=0,suggestable=[];
+    (d.marks||[]).forEach(function(m){marks[m.no]=m;if(!m.knowledge){unmarked++;if(m.suggestedKnowledge)suggestable.push(m)}});
+    if(unmarked)classBox.appendChild(el('div',{class:'notice warn',text:'有 '+unmarked+' 道文字题还没标考点（默认折叠，不影响查看学生与生成课后练习）；如需按考点归类，可展开下方“逐题统计”标注。'}));
+    if(suggestable.length){
+      var batchMsg=el('span',{class:'muted',role:'status'});
+      var batchBtn=el('button',{text:'一键采用系统建议考点（'+suggestable.length+' 题）',onclick:function(){
+        batchBtn.disabled=true;batchMsg.textContent='正在批量保存考点…';
+        var chain=Promise.resolve();
+        suggestable.forEach(function(m){
+          chain=chain.then(function(){return api('/teacher/weekend/lessons/'+d.lessonId+'/written/questions/'+m.id+'/marks',{method:'PUT',json:{knowledge:m.suggestedKnowledge,afterClass:!!m.afterClass}})});
+        });
+        chain.then(function(){batchMsg.textContent='已批量保存 '+suggestable.length+' 道题考点，正在刷新…';load()}).catch(function(e){batchBtn.disabled=false;batchMsg.textContent=e.message});
+      }});
+      qd.appendChild(el('div',{class:'row',style:'margin:6px 0'},batchBtn,batchMsg));
+    }
+    s.questions.forEach(function(q){qd.appendChild(el('div',{class:'row'},el('b',{text:'第'+q.no+'题（'+(q.kind==='choice'?'选择':'文字／照片')+'）'}),el('span',{style:'overflow-wrap:anywhere',text:q.stem}),el('span',{class:'muted',text:q.knowledge+' · 正确 '+q.correct+' · 部分正确 '+q.partial+' · 需订正 '+q.revise+' · 待批 '+q.pending+' · 未提交 '+q.unsubmitted+(q.later?' · 课后题未交 '+q.later:'')})));
       if(marks[q.no])qd.appendChild(markBox(d.lessonId,marks[q.no],d.goals));});
-    if(unmarked)qd.open=true;
     classBox.appendChild(qd);
   }
   function paintList(d){
@@ -308,24 +319,79 @@ function reportPage(){
       correct_index:+ci.value,answer:answer.value,accepted_answers:q.accepted_answers||[],figure:q.figure||{},explanation:exp.value,knowledge:know.value}}};
   }
   function practicePanel(card,r,ed,refresh){
-    var p=r.draft.practice||{},box=el('div',{class:'card'}),msg=el('div',{role:'status','aria-live':'polite'}),dirty=false;
+    var p=r.draft.practice||{},box=el('div',{class:'card'}),topMsg=el('div',{role:'status','aria-live':'polite'}),msg=el('div',{role:'status','aria-live':'polite'}),dirty=false,generating=false;
     var stored={};(p.groups||[]).forEach(function(g){stored[g.key]=g});
-    box.appendChild(el('h2',{text:'针对性练习 · '+(r.practiceLabels[p.state||'none']||'未生成')}));
-    box.appendChild(el('div',{class:'muted',text:'按本报告中需订正、部分正确的题，为'+r.studentName+'单独出新题（不重发原题）。生成和发布报告都不会布置；审核后点“确认并布置”，才会通过现有针对性练习发到该生的“作业”。'}));
-    if(!r.practiceGroups.length&&!(p.groups||[]).length){box.appendChild(el('div',{class:'muted',text:'本报告没有需订正或部分正确的题，不需要针对性练习。'}));card.appendChild(box);return}
-    var locked=['assigning','assigned','graded','partial'].indexOf(p.state)>=0,counts={},editors=[];
-    function changed(){dirty=true;msg.textContent='练习有未保存的修改'}
+    box.appendChild(el('h2',{text:'针对性练习 · '+(r.practiceLabels[p.state||'none']||'未生成')+(r.practiceGroups.length?'（共 '+r.practiceGroups.length+' 个待练薄弱点）':'')}));
+    box.appendChild(el('div',{class:'muted',text:'按第 5、6 环节后仍需订正或部分正确的遗留错题，为'+r.studentName+'单独出新题（不重发原题）。生成和发布报告都不会布置；审核后点“审核确认并布置”，才会发到该生的“作业”。'}));
+    if(r.resolvedStage6Count>0)box.appendChild(el('div',{class:'notice ok',text:'已自动排除第 6 环节已确认达标的 '+r.resolvedStage6Count+' 道题，仅保留以下仍需课后巩固的薄弱点。'}));
+    if(!r.practiceGroups.length&&!(p.groups||[]).length){box.appendChild(el('div',{class:'notice ok',text:'本报告没有遗留的需订正或部分正确题目，不需要再布置针对性练习。'}));card.appendChild(box);return}
+    var locked=['assigning','assigned','graded','partial'].indexOf(p.state)>=0,counts={},editors=[],genButtons=[],cardMsgs={};
+    function showNotice(target,kind,text){
+      if(!target)return;
+      target.textContent='';
+      if(text)target.appendChild(el('div',{class:'notice'+(kind?' '+kind:''),style:'margin:6px 0',text:text}));
+    }
+    function setAllStatus(kind,text,cardKey){
+      showNotice(topMsg,kind,text);
+      showNotice(msg,kind,text);
+      if(cardKey&&cardMsgs[cardKey])showNotice(cardMsgs[cardKey],kind,text);
+    }
+    function setGenBusy(busy,activeBtn){
+      generating=busy;
+      genButtons.forEach(function(b){
+        b.el.disabled=busy;
+        b.el.textContent=busy&&b.el===activeBtn?'正在生成（约半分钟）…':b.label;
+      });
+    }
+    function changed(){dirty=true;setAllStatus('warn','练习有未保存的修改，请先点击“保存练习修改”。')}
+    function generate(keys,activeBtn,cardKey){
+      if(generating)return;
+      if(dirty&&!confirm('练习有未保存的修改，重新生成会替换所选薄弱点的题目。确定吗？'))return;
+      if(ed.dirty){setAllStatus('warn','报告草稿有未保存的修改，请先点击下方“保存草稿”，再生成练习。',cardKey);return}
+      var c={};Object.keys(counts).forEach(function(k){c[k]=+counts[k].value||2});
+      setGenBusy(true,activeBtn);
+      setAllStatus('',keys&&keys.length?'正在为本薄弱点生成衍生新题（约 15-45 秒），请稍候…':'正在批量生成针对性练习（约半分钟），请稍候…',cardKey);
+      var ctrl=typeof AbortController==='function'?new AbortController():null;
+      var timer=ctrl?setTimeout(function(){ctrl.abort()},95000):null;
+      api('/teacher/weekend/reports/'+r.id+'/practice/generate',{json:{revision:r.draft.revision,groupKeys:keys||[],counts:c},signal:ctrl?ctrl.signal:undefined}).then(function(d){
+        if(timer)clearTimeout(timer);
+        setGenBusy(false,null);
+        refresh(d.report);
+        if(d.problems&&d.problems.length)alert('部分题目没有生成：\n'+d.problems.join('\n'));
+      }).catch(function(e){
+        if(timer)clearTimeout(timer);
+        setGenBusy(false,null);
+        var errText=(e&&e.name==='AbortError')?'生成超时（超过 95 秒），请稍后重试或减少单次生成的薄弱点数量。':((e&&e.message)||'生成失败，请稍后重试');
+        setAllStatus('error',errText,cardKey);
+      });
+    }
+    var topActions=el('div',{class:'row',style:'margin:8px 0'});
+    if(!locked){
+      var topGenLabel=(p.groups||[]).length?'全部重新生成':'一键生成全部薄弱点（不会布置）';
+      var topGenBtn=el('button',{class:'primary',text:topGenLabel,onclick:function(){generate([],topGenBtn,null)}});
+      genButtons.push({el:topGenBtn,label:topGenLabel});
+      topActions.appendChild(topGenBtn);
+    }
+    box.appendChild(topActions);
+    box.appendChild(topMsg);
     r.practiceGroups.forEach(function(g){
-      var sg=stored[g.key]||{},gb=el('div',{class:'card'});
-      gb.appendChild(el('b',{text:g.subject+' · 薄弱点：'+g.topic}));
-      gb.appendChild(el('div',{class:'muted',text:'错题依据：'+g.basis}));
+      var sg=stored[g.key]||{},gb=el('div',{class:'card',style:'overflow-wrap:anywhere;word-break:break-word'});
+      var qCount=(sg.questions||[]).length;
+      gb.appendChild(el('b',{style:'display:block;overflow-wrap:anywhere;word-break:break-word',text:g.subject+' · 薄弱点：'+g.topic+(qCount?'（已生成 '+qCount+' 题）':'')}));
+      gb.appendChild(el('div',{class:'muted',style:'overflow-wrap:anywhere;word-break:break-word',text:'错题依据：'+g.basis}));
+      var cMsg=el('div',{role:'status','aria-live':'polite'});
+      cardMsgs[g.key]=cMsg;
       if(!locked){
         var n=el('input',{type:'number',min:1,max:5,value:sg.count||g.count,style:'width:70px'});counts[g.key]=n;
-        gb.appendChild(el('div',{class:'row'},el('span',{class:'muted',text:'题数'}),n,el('button',{text:(sg.questions||[]).length?'重新生成本薄弱点':'生成本薄弱点',onclick:function(){generate([g.key])}})));
+        var gLabel=qCount?'重新生成本薄弱点':'生成本薄弱点';
+        var gBtn=el('button',{text:gLabel,onclick:function(){generate([g.key],gBtn,g.key)}});
+        genButtons.push({el:gBtn,label:gLabel});
+        gb.appendChild(el('div',{class:'row',style:'margin-top:6px'},el('span',{class:'muted',text:'题数'}),n,gBtn));
+        gb.appendChild(cMsg);
       }
       var list=[];
       (sg.questions||[]).forEach(function(q,i){
-        if(locked){gb.appendChild(el('p',{style:'white-space:pre-wrap',text:(i+1)+'. ['+(QT[q.question_type]||'')+'] '+q.text+(q.options.length?'\n'+q.options.map(function(o,j){return String.fromCharCode(65+j)+'. '+o}).join('　'):'')+'\n答案：'+(q.question_type==='single_choice'||q.question_type==='true_false'?String.fromCharCode(65+q.correct_index):q.answer)+(q.explanation?'　解析：'+q.explanation:'')}));return}
+        if(locked){gb.appendChild(el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere',text:(i+1)+'. ['+(QT[q.question_type]||'')+'] '+q.text+(q.options.length?'\n'+q.options.map(function(o,j){return String.fromCharCode(65+j)+'. '+o}).join('　'):'')+'\n答案：'+(q.question_type==='single_choice'||q.question_type==='true_false'?String.fromCharCode(65+q.correct_index):q.answer)+(q.explanation?'　解析：'+q.explanation:'')}));return}
         var qe=questionEditor(q,changed),holder=el('div');holder.appendChild(qe.box);
         holder.appendChild(el('button',{text:'删除这题',onclick:function(){holder.remove();list.splice(list.indexOf(qe),1);changed()}}));
         list.push(qe);gb.appendChild(holder);
@@ -333,26 +399,23 @@ function reportPage(){
       editors.push({key:g.key,list:list});
       box.appendChild(gb);
     });
-    function generate(keys){
-      if(dirty&&!confirm('练习有未保存的修改，重新生成会替换所选薄弱点的题目。确定吗？'))return;
-      if(ed.dirty){msg.textContent='请先保存报告草稿，再生成练习';return}
-      var c={};Object.keys(counts).forEach(function(k){c[k]=+counts[k].value||2});
-      msg.textContent='正在出题，约半分钟…';
-      api('/teacher/weekend/reports/'+r.id+'/practice/generate',{json:{revision:r.draft.revision,groupKeys:keys||[],counts:c}}).then(function(d){refresh(d.report);if(d.problems.length)alert('部分题目没有生成：\n'+d.problems.join('\n'))}).catch(function(e){msg.textContent=e.message});
-    }
     var actions=el('div',{class:'row'});
     if(!locked){
-      actions.appendChild(el('button',{text:(p.groups||[]).length?'全部重新生成':'生成针对性练习（不会布置）',onclick:function(){generate([])}}));
+      var botGenLabel=(p.groups||[]).length?'全部重新生成':'生成针对性练习（不会布置）';
+      var botGenBtn=el('button',{text:botGenLabel,onclick:function(){generate([],botGenBtn,null)}});
+      genButtons.push({el:botGenBtn,label:botGenLabel});
+      actions.appendChild(botGenBtn);
       if((p.groups||[]).length){
         actions.appendChild(el('button',{text:'保存练习修改',onclick:function(){
-          if(ed.dirty){msg.textContent='请先保存报告草稿';return}
-          api('/teacher/weekend/reports/'+r.id+'/practice',{method:'PUT',json:{revision:r.draft.revision,groups:editors.map(function(x){return {key:x.key,questions:x.list.map(function(q){return q.value()})}})}}).then(refresh).catch(function(e){msg.textContent=e.message});
+          if(ed.dirty){setAllStatus('warn','请先保存报告草稿');return}
+          setAllStatus('','正在保存练习修改…');
+          api('/teacher/weekend/reports/'+r.id+'/practice',{method:'PUT',json:{revision:r.draft.revision,groups:editors.map(function(x){return {key:x.key,questions:x.list.map(function(q){return q.value()})}})}}).then(refresh).catch(function(e){setAllStatus('error',e.message)});
         }}));
         var due=el('input',{type:'text',placeholder:'截止日期（可空，默认3天）',style:'width:190px'}),go=el('button',{class:'primary',text:'审核确认并布置给'+r.studentName,onclick:function(){
-          if(dirty||ed.dirty){msg.textContent='请先保存修改，再布置';return}
+          if(dirty||ed.dirty){setAllStatus('warn','请先保存修改，再布置');return}
           if(!confirm('确认题目、答案和解析都已审核？将只布置给'+r.studentName+'，布置后不能再修改，也不会重复布置。'))return;
-          go.disabled=true;msg.textContent='正在布置…';
-          api('/teacher/weekend/reports/'+r.id+'/practice/assign',{json:{revision:r.draft.revision,dueDate:due.value}}).then(refresh).catch(function(e){msg.textContent=e.message;go.disabled=false});
+          go.disabled=true;setAllStatus('','正在布置…');
+          api('/teacher/weekend/reports/'+r.id+'/practice/assign',{json:{revision:r.draft.revision,dueDate:due.value}}).then(refresh).catch(function(e){setAllStatus('error',e.message);go.disabled=false});
         }});
         actions.appendChild(due);actions.appendChild(go);
       }

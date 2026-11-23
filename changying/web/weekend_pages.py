@@ -188,35 +188,52 @@ function control(){
       if(d.courseware){var cwBox=el('div');content.appendChild(cwBox);activeCwBox=cwBox;cwControl(cwBox,d.courseware,SID,{canNextStage:canNextStage,onNextStage:function(){post('next')}})}
       else if(d.practiceFigure){var pfBox=el('div',{style:'margin:8px 0'});content.appendChild(pfBox);renderQuestionFigure(pfBox,d.practiceFigure,false)}
       if(running&&d.currentStage===6){
-        var s6Wrap=el('div',{style:'margin-top:10px'});content.appendChild(s6Wrap);
+        var s6Wrap=el('div',{style:'margin-top:10px'}),s6Filter='pending',s6Data=null;content.appendChild(s6Wrap);
         function renderStage6(s6){
-          s6Wrap.textContent='';
+          s6Data=s6;s6Wrap.textContent='';
           s6Wrap.appendChild(el('h3',{text:'第 6 环节 · 逐题讨论达标确认'}));
           s6Wrap.appendChild(el('div',{class:'notice',text:'共 '+s6.total+' 道待巩固题 · 已达标 '+s6.mastered+' · 留入课后 '+s6.homework+' · 待讨论 '+s6.pending+(s6.doubtCount?' · 学生提问 '+s6.doubtCount+' 人次':'')}));
           if(!s6.items.length){s6Wrap.appendChild(el('div',{class:'notice ok',text:'本节所有随堂题均已当堂掌握，无需留入课后练习。'}));return}
-          s6.items.forEach(function(it){
+          if(s6Filter==='pending'&&!s6.pending)s6Filter='all';
+          var tabs=el('div',{class:'tabs',style:'margin:8px 0'});
+          [['pending','待讨论（'+s6.pending+'）'],['all','全部（'+s6.total+'）'],['mastered','已达标（'+s6.mastered+'）'],['homework','留入课后（'+s6.homework+'）']].forEach(function(f){
+            tabs.appendChild(el('button',{class:s6Filter===f[0]?'on':'',text:f[1],onclick:function(){s6Filter=f[0];renderStage6(s6Data)}}));
+          });
+          s6Wrap.appendChild(tabs);
+          var list=s6.items.filter(function(it){
+            if(s6Filter==='all')return true;
+            if(s6Filter==='pending')return !it.teacherStatus;
+            return it.teacherStatus===s6Filter;
+          });
+          if(!list.length)s6Wrap.appendChild(el('div',{class:'muted',text:'当前筛选下没有题目，可切换上方标签查看。'}));
+          list.forEach(function(it){
             var card=el('div',{class:'card'});
-            card.appendChild(el('b',{text:'第 '+it.no+' 题：'+it.stem}));
+            card.appendChild(el('b',{style:'display:block;overflow-wrap:anywhere',text:'第 '+it.no+' 题：'+it.stem}));
             if(it.wrongStudents&&it.wrongStudents.length)card.appendChild(el('div',{class:'muted',text:'待巩固同学：'+it.wrongStudents.join('、')}));
             (it.studentFeedback||[]).forEach(function(fb){
               card.appendChild(el('div',{class:fb.status==='doubt'?'notice warn':'notice ok',style:'margin:4px 0',text:fb.name+'：'+(fb.status==='doubt'?'还是不懂（留课后/提问）':'已听懂 ✓')+(fb.note?' — '+fb.note:'')}));
             });
             var rowBtn=el('div',{class:'row',style:'margin-top:6px'});
-            var mBtn=el('button',{class:it.teacherStatus==='mastered'?'primary':'',text:it.teacherStatus==='mastered'?'讨论后已达标 ✓':'标记讨论后已达标',onclick:function(){markS6(it.questionKey,'mastered')}});
-            var hBtn=el('button',{class:it.teacherStatus==='homework'?'primary':'',text:it.teacherStatus==='homework'?'已留入课后练习 ✓':'仍有疑问 → 留入课后练习',onclick:function(){markS6(it.questionKey,'homework')}});
+            var mBtn=el('button',{class:it.teacherStatus==='mastered'?'primary':'',text:it.teacherStatus==='mastered'?'讨论后已达标 ✓':'标记讨论后已达标',onclick:function(){mBtn.disabled=true;hBtn.disabled=true;mBtn.textContent='保存中…';markS6(it.questionKey,'mastered')}});
+            var hBtn=el('button',{class:it.teacherStatus==='homework'?'primary':'',text:it.teacherStatus==='homework'?'已留入课后练习 ✓':'仍有疑问 → 留入课后练习',onclick:function(){mBtn.disabled=true;hBtn.disabled=true;hBtn.textContent='保存中…';markS6(it.questionKey,'homework')}});
             rowBtn.appendChild(mBtn);rowBtn.appendChild(hBtn);card.appendChild(rowBtn);
             s6Wrap.appendChild(card);
           });
           s6Wrap.appendChild(el('button',{text:'刷新学生提问与达标进度',onclick:loadStage6}));
         }
-        function markS6(qkey,st){api('/teacher/weekend/sessions/'+SID+'/stage6-checks',{json:{questionKey:qkey,status:st}}).then(function(res){renderStage6(res);load()}).catch(function(e){alert(e.message)})}
+        function markS6(qkey,st){api('/teacher/weekend/sessions/'+SID+'/stage6-checks',{json:{questionKey:qkey,status:st}}).then(function(res){renderStage6(res);load()}).catch(function(e){alert(e.message);loadStage6()})}
         function loadStage6(){api('/teacher/weekend/sessions/'+SID+'/stage6-checks').then(renderStage6).catch(function(){})}
         loadStage6();
       }
       if(running&&d.currentStage>=7){
+        var s7Summary=el('div',{class:'muted',style:'margin-top:6px',text:'正在汇总第 6 环节遗留错题…'});
         content.appendChild(el('div',{class:'notice ok',style:'margin-top:10px'},
           el('div',{text:'个性化课后练习已自动排除第 5 环节订正正确与第 6 环节已确认达标的题目，仅针对五六环节仍未解决的个人遗留错题生成带图衍生练习：'}),
+          s7Summary,
           el('div',{class:'row',style:'margin-top:8px'},el('a',{class:'btn primary',href:'/v1/weekend-report?s='+SID,text:'按遗留错题生成并布置个性化课后练习'}))));
+        api('/teacher/weekend/sessions/'+SID+'/stage6-checks').then(function(s6){
+          s7Summary.textContent='第 6 环节汇总：共 '+s6.total+' 道待巩固题 · 已确认达标 '+s6.mastered+' 题 · 留入课后 '+s6.homework+' 题 · 待讨论 '+s6.pending+' 题'+(s6.doubtCount?' · 学生提问 '+s6.doubtCount+' 人次':'');
+        }).catch(function(){s7Summary.textContent=''});
       }
       lastContentKey=contentKey;
     }else if(cw&&activeCwBox&&activeCwBox._cwSyncView){
