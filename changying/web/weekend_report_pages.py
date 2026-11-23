@@ -124,7 +124,7 @@ function reportPage(){
     var kd=el('details',{},el('summary',{text:'考点表现与对应题目'}));
     s.knowledge.forEach(function(k){kd.appendChild(el('div',{class:'row'},el('b',{text:k.knowledge}),el('span',{class:'muted',text:'第'+k.questions.join('、')+'题 · 正确 '+k.correct+' · 部分正确 '+k.partial+' · 需订正 '+k.revise+' · 待批 '+k.pending+' · 未提交 '+k.unsubmitted})))});
     classBox.appendChild(kd);
-    var qd=el('details',{},el('summary',{text:'逐题统计（共 '+s.questions.length+' 题，点击展开查看或标注考点）'})),marks={},unmarked=0,suggestable=[];
+    var qd=el('details',{},el('summary',{text:'逐题统计（文字题可在这里标考点） · 共 '+s.questions.length+' 题，点击展开'})),marks={},unmarked=0,suggestable=[];
     (d.marks||[]).forEach(function(m){marks[m.no]=m;if(!m.knowledge){unmarked++;if(m.suggestedKnowledge)suggestable.push(m)}});
     if(unmarked)classBox.appendChild(el('div',{class:'notice warn',text:'有 '+unmarked+' 道文字题还没标考点（默认折叠，不影响查看学生与生成课后练习）；如需按考点归类，可展开下方“逐题统计”标注。'}));
     if(suggestable.length){
