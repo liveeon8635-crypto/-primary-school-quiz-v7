@@ -280,39 +280,56 @@ def _valid_question_figure(fig):
     return dict(fig)
 
 
-def practice_question_figure(implementation, db, session, item):
-    """Resolve the question-only diagram (never steps/answers) for a practice item.
+def practice_question_figures(implementation, db, session, items):
+    """Batch-resolve question-only diagrams (never steps/answers) for practice items.
 
-    Lookup order:
-      1. Uploaded question figure on TeachingQuestion (choice) or lesson written template (written).
-      2. Approved stage-4 courseware initial diagram (sourceFigure -> stepFigures[0] -> figure).
+    Loads lesson written templates and approved stage-4 courseware at most ONCE per
+    request so sessions with 20+ questions never repeat heavy JSON/base64 parsing.
     """
-    if not item:
+    valid_items = [it for it in (items or []) if it and it.get("kind") and it.get("id") is not None]
+    if not valid_items:
         return {}
-    kind = item.get("kind")
-    qid = item.get("id")
-    if kind == "choice" and qid is not None:
-        tq = db.get(implementation.TeachingQuestion, int(qid))
-        if tq is not None:
+
+    out = {}
+    choice_ids = [int(it["id"]) for it in valid_items if it.get("kind") == "choice"]
+    if choice_ids:
+        TQ = implementation.TeachingQuestion
+        for tq in db.scalars(select(TQ).where(TQ.id.in_(choice_ids))).all():
             try:
                 fig = _valid_question_figure(json.loads(getattr(tq, "figure_json", "") or "{}"))
             except (TypeError, ValueError):
                 fig = {}
             if fig:
-                return fig
-    elif kind == "written":
+                out[("choice", int(tq.id))] = fig
+
+    written_items = [it for it in valid_items if it.get("kind") == "written"]
+    if written_items:
         from changying.services.lesson_written import template_meta, written_templates
         from changying.web.weekend_written import register_written_tables
         written_t = register_written_tables(implementation)["questions"]
-        binding_stem = str(item.get("bindingStem") or "").strip()
-        binding_key = question_key(binding_stem) if binding_stem else ""
+        tpl_by_exact = {}
+        tpl_by_key = {}
         for tpl in written_templates(db, written_t, session.school_id, session.teacher_id, session.lesson_id):
+            fig = _valid_question_figure(template_meta(tpl).get("figure"))
+            if not fig:
+                continue
             tpl_stem = str(tpl.stem or "").split("\n\n")[-1].strip()
-            if tpl_stem == binding_stem or (binding_key and question_key(tpl_stem) == binding_key):
-                fig = _valid_question_figure(template_meta(tpl).get("figure"))
-                if fig:
-                    return fig
-    # Fallback: approved stage-4 courseware initial figure (never leaks steps or answer).
+            if tpl_stem and tpl_stem not in tpl_by_exact:
+                tpl_by_exact[tpl_stem] = fig
+            k = question_key(tpl_stem) if tpl_stem else ""
+            if k and k not in tpl_by_key:
+                tpl_by_key[k] = fig
+        for it in written_items:
+            binding_stem = str(it.get("bindingStem") or "").strip()
+            fig = tpl_by_exact.get(binding_stem) or (tpl_by_key.get(question_key(binding_stem)) if binding_stem else None)
+            if fig:
+                out[("written", int(it["id"]))] = fig
+
+    missing = [it for it in valid_items if (it["kind"], int(it["id"])) not in out]
+    if not missing:
+        return out
+
+    # Fallback: load approved stage-4 courseware ONCE and match remaining items in memory.
     from changying.services.weekend_course_types import frozen_session, practice_stage
     from changying.web.weekend_courseware import items_of, register_courseware_table, _repair_courseware_visual, _courseware_visual_text
     frozen = frozen_session(db, implementation, int(session.id), metadata=getattr(implementation, "Base", None) and implementation.Base.metadata)
@@ -324,26 +341,49 @@ def practice_question_figure(implementation, db, session, item):
         cw_t.c.approved_json.isnot(None),
     )).first()
     if cw_row is None:
-        return {}
+        return out
     approved = [i for i in items_of(cw_row) if i.get("approved") is not None and int(i.get("stage") or 0) == practice_no and i.get("page") is not None]
-    stem = str(item.get("bindingStem") or "").strip()
-    if not approved or not stem:
+    if not approved:
+        return out
+
+    exact_map: dict[str, list[dict]] = {}
+    key_map: dict[str, list[dict]] = {}
+    for cw_item in approved:
+        txt = str(cw_item.get("approvedPageText", cw_item.get("pageText")) or "").strip()
+        if not txt:
+            continue
+        exact_map.setdefault(txt, []).append(cw_item)
+        k = question_key(txt)
+        if k:
+            key_map.setdefault(k, []).append(cw_item)
+
+    for it in missing:
+        stem = str(it.get("bindingStem") or "").strip()
+        if not stem:
+            continue
+        matches = exact_map.get(stem) or []
+        if len(matches) != 1:
+            k = question_key(stem)
+            matches = key_map.get(k) or [] if k else []
+        if len(matches) != 1:
+            continue
+        matched = matches[0]
+        params = _repair_courseware_visual(matched["approved"], _courseware_visual_text(matched, matched["approved"], matched.get("pageText") or ""))
+        candidates = [params.get("sourceFigure")]
+        step_figs = params.get("stepFigures")
+        if isinstance(step_figs, list) and step_figs:
+            candidates.append(step_figs[0])
+        candidates.append(params.get("figure"))
+        for cand in candidates:
+            fig = _valid_question_figure(cand)
+            if fig:
+                out[(it["kind"], int(it["id"]))] = fig
+                break
+    return out
+
+
+def practice_question_figure(implementation, db, session, item):
+    """Resolve the question-only diagram (never steps/answers) for a single practice item."""
+    if not item or not item.get("kind") or item.get("id") is None:
         return {}
-    matches = [i for i in approved if str(i.get("approvedPageText", i.get("pageText")) or "").strip() == stem]
-    if len(matches) != 1:
-        key = question_key(stem)
-        matches = [i for i in approved if key and question_key(str(i.get("approvedPageText", i.get("pageText")) or "")) == key]
-    if len(matches) != 1:
-        return {}
-    matched = matches[0]
-    params = _repair_courseware_visual(matched["approved"], _courseware_visual_text(matched, matched["approved"], matched.get("pageText") or ""))
-    candidates = [params.get("sourceFigure")]
-    step_figs = params.get("stepFigures")
-    if isinstance(step_figs, list) and step_figs:
-        candidates.append(step_figs[0])
-    candidates.append(params.get("figure"))
-    for cand in candidates:
-        fig = _valid_question_figure(cand)
-        if fig:
-            return fig
-    return {}
+    return practice_question_figures(implementation, db, session, [item]).get((item["kind"], int(item["id"])), {})
