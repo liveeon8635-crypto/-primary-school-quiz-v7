@@ -304,3 +304,10 @@ def test_pdf_verified_question_number_survives_storage_and_courseware_rewording(
                                 SimpleNamespace(id=3), written_table)
     assert candidates[0]["number"] == 13
     assert match_figure(candidates, "\u7b2c 13 \u9898 \u6708\u5386\u5341\u5b57\u6846\u4e2d\u7684\u5b57\u6bcd\u8868\u793a\u4e0e\u6c42\u503c")["data_url"] == FIG_URL
+
+
+def test_courseware_writing_image_gallery_links_to_material_review():
+    from changying.web.weekend_courseware_pages import COURSEWARE_JS
+    assert "作文素材与审核" in COURSEWARE_JS
+    assert "/v1/weekend-writing?lesson=" in COURSEWARE_JS
+    assert "尚未确认" in COURSEWARE_JS
