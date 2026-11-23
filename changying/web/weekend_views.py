@@ -261,10 +261,14 @@ def install_weekend_views(implementation: Any) -> APIRouter:
             # 练习复盘: name the pupil asked to explain, and the question — never the pupils who got it wrong.
             peer_t = implementation.Base.metadata.tables.get("weekend_peer_help")
             if peer_t is not None:
+                from changying.web.weekend_scoring_views import _explain_review_of
                 User, TQ = implementation.User, implementation.TeachingQuestion
                 seen: set[tuple[int, int]] = set()
                 lines = []
-                for p in db.execute(select(peer_t.c.tutor_id, peer_t.c.question_id).where(peer_t.c.session_id == row.id).order_by(peer_t.c.id)).all():
+                for p in db.execute(select(peer_t.c.tutor_id, peer_t.c.question_id, peer_t.c.followup_json).where(peer_t.c.session_id == row.id, peer_t.c.question_id > 0).order_by(peer_t.c.id)).all():
+                    rev = _explain_review_of(p.followup_json)
+                    if rev and rev.get("finished"):
+                        continue
                     key = (int(p.tutor_id), int(p.question_id))
                     if key in seen:
                         continue
@@ -300,10 +304,14 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                         out["practiceFigure"] = p_fig
         if course_type in ("math", "legacy") and no in (practice_no, practice_no + 1) and row.status == "running":
             from changying.web.weekend_written import register_written_tables
+            from changying.web.weekend_scoring_views import _explain_review_of
             written_q = register_written_tables(implementation)['questions']
             peer_t = implementation.Base.metadata.tables.get('weekend_peer_help')
             if peer_t is not None:
                 for p in db.execute(select(peer_t).where(peer_t.c.session_id == row.id, peer_t.c.question_id < 0).order_by(peer_t.c.id)):
+                    rev = _explain_review_of(p.followup_json)
+                    if rev and rev.get("finished"):
+                        continue
                     who = db.scalar(select(implementation.User.name).where(implementation.User.id == p.tutor_id))
                     stem = db.scalar(select(written_q.c.stem).where(written_q.c.id == -p.question_id, written_q.c.session_id == row.id))
                     if who and stem:
