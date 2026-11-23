@@ -219,13 +219,34 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         open_qs = [q for q in question_rows(db, row) if question_is_open(implementation, db, row, 'written', q.id)]
         fig_inputs = [item_by_id.get(q.id) or {"kind": "written", "id": q.id, "bindingStem": str(q.stem or "").split("\n\n")[-1].strip()} for q in open_qs]
         fig_map = practice_question_figures(implementation, db, row, fig_inputs)
+        q_items = []
+        for q in open_qs:
+            sub = ans.get(q.id)
+            can_revise = (
+                row.status == "running"
+                and row.current_stage in (practice_no, practice_no + 1)
+                and sub is not None
+                and sub.result in ("revise", "partial")
+            )
+            q_can_submit = (row.status == "running" and row.current_stage == practice_no and q.id not in released) or can_revise
+            q_items.append({
+                "id": q.id,
+                "answersPublished": q.id in released,
+                "canSubmit": q_can_submit,
+                "canRevise": can_revise,
+                "stem": numbered_student_stem(source, q.stem),
+                "figure": fig_map.get(("written", int(q.id)), {}),
+                "hasHints": bool(json.loads(q.hints_json)),
+                "hintUsed": used.get(q.id, 0),
+                "hintTexts": json.loads(q.hints_json)[:used.get(q.id, 0)],
+                "submission": ({**submission_dict(sub), 'attempts': submission_attempts(implementation, db, u, sid, 'written', q.id, True), **({} if q.id in released else {"result": "pending", "comment": ""})}) if sub is not None else None,
+            })
+        page_can_submit = (row.status == "running" and row.current_stage == practice_no and not all_released) or any(it["canRevise"] for it in q_items)
         return {"status": row.status, "stage": row.current_stage, "practiceStage": practice_no,
                 "questionAvailability": practice_question_availability(implementation, db, row),
-                "canSubmit": row.status == "running" and row.current_stage == practice_no and not all_released,
+                "canSubmit": page_can_submit,
                 "answersPublished": all_released,
-                 "questions": [{"id": q.id, "answersPublished": q.id in released, "canSubmit": row.status == "running" and row.current_stage == practice_no and q.id not in released, "stem": numbered_student_stem(source, q.stem), "figure": fig_map.get(("written", int(q.id)), {}), "hasHints": bool(json.loads(q.hints_json)), "hintUsed": used.get(q.id, 0),
-                               "hintTexts": json.loads(q.hints_json)[:used.get(q.id, 0)],
-                               "submission": ({**submission_dict(ans[q.id]), 'attempts':submission_attempts(implementation,db,u,sid,'written',q.id,True), **({} if q.id in released else {"result": "pending", "comment": ""})}) if q.id in ans else None} for q in open_qs]}
+                "questions": q_items}
 
     @router.post("/student/weekend/sessions/{sid}/written/{qid}/hint")
     def student_hint(sid: int, qid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -295,7 +316,16 @@ def install_weekend_written(implementation: Any) -> APIRouter:
                      orientation: int = Form(1), removePhoto: bool = Form(False),
                      u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
-        if row.status != "running" or answers_published(implementation, db, row, qid, "written"):
+        practice_no = task_stage(db, row)
+        old = db.execute(select(submissions).where(submissions.c.session_id == sid, submissions.c.question_id == qid,
+            submissions.c.student_id == u.id)).first()
+        is_revision = (
+            row.status == "running"
+            and row.current_stage in (practice_no, practice_no + 1)
+            and old is not None
+            and old.result in ("revise", "partial")
+        )
+        if not is_revision and (row.status != "running" or row.current_stage != practice_no or answers_published(implementation, db, row, qid, "written")):
             raise HTTPException(409, "现在不是随堂练习时间")
         if not any(q.id == qid for q in question_rows(db, row)) or not question_is_open(implementation, db, row, 'written', qid):
             raise HTTPException(404, "没有找到这道题")
@@ -316,8 +346,6 @@ def install_weekend_written(implementation: Any) -> APIRouter:
                 "dataUrl": f"data:{img_mime};base64,{base64.b64encode(raw_bytes).decode('ascii')}",
                 "originalBase64": base64.b64encode(raw_bytes).decode("ascii"),
             })
-        old = db.execute(select(submissions).where(submissions.c.session_id == sid, submissions.c.question_id == qid,
-            submissions.c.student_id == u.id)).first()
         if old and not uploads and not removePhoto:
             data, mime = old.photo, old.photo_type
             if data and mime:

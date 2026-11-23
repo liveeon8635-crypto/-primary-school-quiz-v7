@@ -157,11 +157,11 @@ function writtenStudent(box){
           var draft=drafts[q.id];text.value=draft?draft.text:(a?a.text:'');photo=draft?draft.photo:null;removeExisting=!!(draft&&draft.removeExisting);
           function saveDraft(){drafts[q.id]={text:text.value,photo:photo,removeExisting:removeExisting};dirty=true;editRevision++}
           text.oninput=saveDraft;card.appendChild(text);
-          var file=el('input',{type:'file',accept:'image/*',style:'display:none'}),photoBtn=el('button',{text:'拍照／选择照片',onclick:function(){if(submissionOpen&&!closedQuestions[q.id])file.click()}});
+          var file=el('input',{type:'file',accept:'image/*',style:'display:none'}),photoBtn=el('button',{text:'拍照／选择照片',onclick:function(){if(q.canRevise||(submissionOpen&&!closedQuestions[q.id]))file.click()}});
           file.onchange=function(){var f=file.files[0];file.value='';if(!f)return;busy=true;photoBtn.disabled=true;
             cropPhoto(f).then(function(blob){if(blob.size>3*1024*1024)throw new Error('照片超过3MB，请缩小取景范围');photo=blob;saveDraft();if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(blob);preview.textContent='';preview.appendChild(el('img',{src:url,alt:'待提交答案预览',style:'max-width:100%;height:auto'}));preview.appendChild(el('button',{text:'移除照片',onclick:function(){photo=null;saveDraft();URL.revokeObjectURL(url);url=null;preview.textContent=''}}))}).catch(function(e){if(!e.cancelled)alert(e.message)}).then(function(){busy=false;photoBtn.disabled=false});
           };
-          controls.push({questionId:q.id,button:photoBtn,blocked:function(){return busy}});
+          controls.push({questionId:q.id,button:photoBtn,canRevise:!!q.canRevise,blocked:function(){return busy}});
           card.appendChild(file);card.appendChild(photoBtn);card.appendChild(preview);
           if(photo){url=URL.createObjectURL(photo);preview.appendChild(el('img',{src:url,alt:'待提交答案预览',style:'max-width:100%;height:auto'}))}
           if(a&&a.hasPhoto){card.appendChild(el('div',{class:'muted',text:'未重新选择照片时保留原图；修改提交后需要老师重新批改。'}));var removeOld=el('button',{text:removeExisting?'重提时移除原照片':'移除已交照片',onclick:function(){removeExisting=!removeExisting;removeOld.textContent=removeExisting?'重提时移除原照片':'移除已交照片';saveDraft()}});card.appendChild(removeOld)}
@@ -169,15 +169,15 @@ function writtenStudent(box){
           if(q.hasHints&&!a){var level=q.hintUsed||0,hout=el('div');(q.hintTexts||[]).forEach(function(t){hout.appendChild(el('div',{class:'notice warn',text:t}))});var hint=el('button',{text:'要提示（'+level+'/3）',disabled:level>=3,onclick:function(){
             if(!submissionOpen||closedQuestions[q.id])return;hint.disabled=true;api('/student/weekend/sessions/'+c.sessionId+'/written/'+q.id+'/hint',{method:'POST'}).then(function(h){level=h.level;hout.appendChild(el('div',{class:'notice warn',text:h.text}));hint.textContent='要提示（'+level+'/3）';hint.disabled=level>=3}).catch(function(e){alert(e.message);hint.disabled=false});
           }});controls.push({questionId:q.id,button:hint,blocked:function(){return level>=3}});card.appendChild(hint);card.appendChild(hout)}
-          var sendLabel=a?'重新提交答案':'提交答案';
+          var sendLabel=q.canRevise?'提交订正':(a?'重新提交答案':'提交答案');
           var send=el('button',{class:'primary',text:sendLabel,onclick:function(){
-            if(busy)return;if(!submissionOpen||closedQuestions[q.id]){alert('老师已关闭作答，你的草稿仍保留在页面上');return}if(!text.value.trim()&&!photo&&!(a&&a.hasPhoto&&!removeExisting)){alert('请填写答案或拍照');return}
+            if(busy)return;if(!q.canRevise&&(!submissionOpen||closedQuestions[q.id])){alert('老师已关闭作答，你的草稿仍保留在页面上');return}if(!text.value.trim()&&!photo&&!(a&&a.hasPhoto&&!removeExisting)){alert('请填写答案或拍照');return}
             busy=true;send.disabled=true;send.textContent='正在提交…';ackNotice.className='';ackNotice.textContent='';
             var fd=new FormData();fd.append('text',text.value);fd.append('revision',a?a.revision:0);fd.append('removePhoto',removeExisting?'true':'false');if(photo)fd.append('photo',photo,'answer.jpg');
             var reqOpts={method:'POST',body:fd},ctrl=typeof AbortController==='function'?new AbortController():null,reqTimer=null;
             if(ctrl){reqOpts.signal=ctrl.signal;reqTimer=setTimeout(function(){try{ctrl.abort()}catch(_e){}},30000)}
             api('/student/weekend/sessions/'+c.sessionId+'/written/'+q.id,reqOpts).then(function(saved){if(reqTimer)clearTimeout(reqTimer);if(!saved.submitted||!saved.submission||saved.submission.questionId!==q.id)throw Error('未收到本题保存回执，请刷新核对；草稿已保留');if(url)URL.revokeObjectURL(url);busy=false;delete drafts[q.id];dirty=Object.keys(drafts).length>0;var receipt=saved.submission;receipt.attempts=saved.attempts;receipts[c.sessionId+':'+q.id]=receipt;a=receipt;q.submission=receipt;sendLabel='重新提交答案';send.textContent='已提交 '+saved.attempts+'/3次';ackNotice.className='notice ok';ackNotice.textContent='已提交并保存到服务器（'+saved.attempts+'/3次）';phaseNote.textContent='本题已保存到服务器（'+saved.attempts+'/3次）';lastSignature='';load(true)}).catch(function(e){if(reqTimer)clearTimeout(reqTimer);busy=false;send.disabled=false;send.textContent=sendLabel;var msgText=(e&&e.name==='AbortError'?'提交超时，请检查网络后重试':(e&&e.message)||'提交失败，请重试')+'；本题草稿已保留。';ackNotice.className='notice error';ackNotice.textContent=msgText;phaseNote.textContent=msgText;if(e&&e.status===409){lastSignature='';load(true)}});
-          }});controls.push({questionId:q.id,button:send,blocked:function(){return busy}});card.appendChild(send);
+          }});controls.push({questionId:q.id,button:send,canRevise:!!q.canRevise,blocked:function(){return busy}});card.appendChild(send);
         });
       });
     }).catch(function(e){alert(e.message)});
@@ -188,8 +188,9 @@ function writtenStudent(box){
     api('/student/weekend/current').then(function(c){
       submissionOpen=!!(c.active&&c.practice&&c.canSubmit!==false&&c.sessionId===lastSid);
       closedQuestions={};(c.publishedWrittenQuestionIds||[]).forEach(function(id){closedQuestions[id]=true});
-      phaseNote.textContent=submissionOpen?'':'老师已关闭当前作答；未提交草稿保留在此页，请勿关闭或刷新。';
-      controls.forEach(function(x){x.button.disabled=!submissionOpen||!!closedQuestions[x.questionId]||x.blocked()});
+      var hasRevise=controls.some(function(x){return x.canRevise});
+      phaseNote.textContent=submissionOpen?'':(hasRevise?'请继续订正老师标记为“需订正”的题目；草稿保留在此页。':'老师已关闭当前作答；未提交草稿保留在此页，请勿关闭或刷新。');
+      controls.forEach(function(x){x.button.disabled=(!x.canRevise&&(!submissionOpen||!!closedQuestions[x.questionId]))||x.blocked()});
     }).catch(function(){phaseNote.textContent='课堂状态暂时读取失败，未提交草稿仍保留。'});
   },5000);
 }
