@@ -596,10 +596,10 @@ function cwObtuseTriangleHeight(box,f,view,big,teacher,stepCount){
 function cwFigure(wrap,f,big,view,teacher,stepCount){
   view=view||{};
   if(!f||!f.type)return;
-  var box=el('div',{style:big?'margin:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center':'margin:8px 0'});wrap.appendChild(box);
+  var box=el('div',{style:big?(f.type==='uploaded_image'?'margin:0;width:100%;flex:0 0 auto;display:flex;align-items:center;justify-content:center':'margin:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center'):'margin:8px 0'});wrap.appendChild(box);
   if(!cwFigureOk(f)){box.appendChild(el('div',{class:'notice warn',text:'图示还没填完整'}));return}
   if(f.type==='uploaded_image'){
-    box.appendChild(el('img',{src:f.data_url,alt:f.alt||'原卷插图',style:'display:block;max-width:100%;max-height:'+(big?'75vh':'300px')+';'+(big?'width:100%;height:100%;':'')+'object-fit:contain;margin:0 auto;border:1px solid #e5e8f0;border-radius:10px;background:#fff'}));
+    box.appendChild(el('img',{src:f.data_url,alt:f.alt||'原卷插图',style:'display:block;width:auto;height:auto;max-width:100%;max-height:'+(big?'75vh':'300px')+';object-fit:contain;margin:0 auto;border:1px solid #e5e8f0;border-radius:10px;background:#fff'}));
     return;
   }
   if(f.type==='equal_base_height'){cwEqualBaseHeight(box,f,view,big,teacher,stepCount);return}
@@ -785,7 +785,7 @@ function cwSteps(box,p,view,big,teacher){
     if(tableHeader>0)sourceProblem=sourceProblem.slice(0,tableHeader).trim();
   }
   if(sourceProblem)card.appendChild(el('p',{style:'white-space:pre-wrap;margin:0;flex:none',text:sourceProblem}));
-  var wrap=big?el('div',{class:'cw-big-stage',style:'flex:1;min-height:0;width:100%;display:flex;flex-direction:column;justify-content:center;align-items:center'}):card;
+  var wrap=big?el('div',{class:'cw-big-stage',style:'flex:1;min-height:0;width:100%;overflow:auto;display:flex;flex-direction:column;justify-content:flex-start;align-items:center;gap:1vh;padding:0.5vh 0'}):card;
   if(big)card.appendChild(wrap);
   if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
   if(p.figureUnverified){
@@ -797,7 +797,7 @@ function cwSteps(box,p,view,big,teacher){
     cwFigure(wrap,p.stepFigures[Math.max(0,Math.min(steps.length,frameStep))],big,view,teacher,p.steps.length);
   }else if(!cwLesson10Geometry(wrap,p,view,big,teacher)&&!cwLesson10RemainingFigure(wrap,p,view,big,teacher))cwFigure(wrap,p.figure,big,view,teacher,p.steps.length);
   if(p.figureNotice&&!p.figureUnverified)wrap.appendChild(el('div',{class:'muted',style:'margin-top:6px',text:p.figureNotice}));
-  if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'margin:10px 0'},el('summary',{text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;max-width:100%;max-height:'+(big?'32vh':'260px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px'})));
+  if(p.sourceFigure&&p.sourceFigure.type==='uploaded_image')wrap.appendChild(el('details',{style:'width:100%;flex:none;margin:6px 0;text-align:center'},el('summary',{style:'cursor:pointer;font-weight:600;color:#334155',text:'\u67e5\u770b\u539f\u9898\u56fe\u7247\uff08\u5bf9\u7167\uff09'}),el('img',{src:p.sourceFigure.data_url,alt:p.sourceFigure.alt||'\u539f\u9898\u56fe\u7247',style:'display:block;width:auto;height:auto;max-width:100%;max-height:'+(big?'65vh':'360px')+';object-fit:contain;margin:8px auto;border:1px solid #e5e8f0;border-radius:8px;background:#fff'})));
   // 答案和步骤分开：只有点了“显示答案”（或老师整题全展开）才出现，不跟 step 联动。
   var answerVisible=!!view.showAnswer||(teacher&&!view.previewMode);
   if(big){
