@@ -170,6 +170,83 @@ with TestClient(app) as client:
 ''')
 
 
+def test_math_practice_empty_states_sync_gate_and_photo_submission(tmp_path):
+    helpers.run_isolated(tmp_path, helpers.COMMON + r'''
+import base64
+from sqlalchemy import select
+PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5WQAAAAASUVORK5CYII=")
+with TestClient(app) as client:
+    th, sh, student_id, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        teacher = db.scalar(select(legacy.User).where(legacy.User.username == "teacher1"))
+        program = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        cls = legacy.SchoolClass(school_id=school_id, name="隔离数学练习班", grade=5, teacher_id=teacher.id)
+        lesson = legacy.TeachingLesson(school_id=school_id, program_id=program.id, subject="数学", lesson_no=19,
+                                       title="梯形与组合图形面积", core_target="会计算组合图形面积")
+        db.add_all([cls, lesson]); db.flush()
+        db.add(legacy.ClassStudent(class_id=cls.id, student_id=student_id))
+        first = legacy.TeachingQuestion(school_id=school_id, program_id=program.id, lesson_id=lesson.id, stage="4",
+                                        subject="数学", level="A", knowledge="梯形面积", stem="计算图形面积一",
+                                        options_json=json.dumps(["12", "18"]), correct_index=0, active=True)
+        db.add(first); db.commit()
+        lesson_id, class_id, first_id, program_id = lesson.id, cls.id, first.id, program.id
+
+    session_id = client.post("/teacher/weekend/sessions", headers=th,
+                             json={"lessonId": lesson_id, "classId": class_id}).json()["id"]
+    base = f"/teacher/weekend/sessions/{session_id}"
+    written = client.post(base + "/written/questions", headers=th,
+                          json={"stem": "写出梯形面积的计算过程", "reference": "底和×高÷2"})
+    assert written.status_code == 200, written.text
+    written_id = written.json()["id"]
+    assert client.post(base + "/start", headers=th).status_code == 200
+    assert client.post(base + "/goto", headers=th, json={"stage": 4}).status_code == 200
+
+    with legacy.SessionLocal() as db:
+        late = legacy.TeachingQuestion(school_id=school_id, program_id=program_id, lesson_id=lesson_id, stage="4",
+                                       subject="数学", level="A", knowledge="梯形面积", stem="计算图形面积二",
+                                       options_json=json.dumps(["24", "30"]), correct_index=1, active=True)
+        db.add(late); db.commit()
+
+    current = client.get("/student/weekend/current", headers=sh).json()
+    assert current["practice"] and current["questions"] == []
+    assert current["questionAvailability"]["state"] == "waiting_for_teacher"
+    assert current["questionAvailability"]["written"] == {"total": 1, "open": 0}
+    written_view = client.get(f"/student/weekend/sessions/{session_id}/written", headers=sh).json()
+    assert written_view["questions"] == [] and written_view["questionAvailability"]["written"] == {"total": 1, "open": 0}
+
+    control = client.get(base, headers=th).json()
+    assert control["pendingPracticeSync"] == 1
+    page = client.get("/v1/weekend-practice").text
+    assert "习题审核" in page and "同步新增练习" in page and "学生首页“作业”" in page
+    synced = client.post(base + "/sync-practice", headers=th, json={})
+    assert synced.status_code == 200 and synced.json()["addedChoices"] == 1
+    current = client.get("/student/weekend/current", headers=sh).json()
+    assert current["questionAvailability"]["choice"] == {"total": 2, "open": 0}
+    assert client.post(base + "/practice-question", headers=th, json={"question": 1}).status_code == 200
+    assert len(client.get("/student/weekend/current", headers=sh).json()["questions"]) == 1
+    hidden_written = client.get(f"/student/weekend/sessions/{session_id}/written", headers=sh).json()
+    assert len(hidden_written["questions"]) == 1
+    assert hidden_written["questions"][0]["canSubmit"] is True
+    assert client.post(base + "/practice-question", headers=th, json={"question": 2}).status_code == 200
+    assert len(client.get("/student/weekend/current", headers=sh).json()["questions"]) == 2
+    assert client.post(base + "/practice-question", headers=th, json={"question": 3}).status_code == 200
+    written_view = client.get(f"/student/weekend/sessions/{session_id}/written", headers=sh).json()
+    assert [q["id"] for q in written_view["questions"]] == [written_id]
+    submitted = client.post(f"/student/weekend/sessions/{session_id}/written/{written_id}", headers=sh,
+                            data={"text": "", "revision": "0"}, files={"photo": ("answer.png", PNG, "image/png")})
+    assert submitted.status_code == 200 and submitted.json()["submission"]["hasPhoto"]
+    refreshed = client.get(f"/student/weekend/sessions/{session_id}/written", headers=sh).json()
+    assert refreshed["questions"][0]["submission"]["hasPhoto"]
+    teacher_answers = client.get(base + "/written", headers=th).json()["items"]
+    photo_answer = next(item for item in teacher_answers if item["studentId"] == student_id)
+    reviewed = client.post(base + "/written/review-batch", headers=th,
+                           json={"items": [{"id": photo_answer["id"], "revision": photo_answer["revision"],
+                                            "result": "partial", "comment": "补全高的对应边"}]})
+    assert reviewed.status_code == 200 and reviewed.json()["items"][0]["result"] == "partial"
+    print("OK")
+''')
+
+
 def test_student_keeps_other_question_drafts_when_submitting(tmp_path):
     from changying.web.weekend_written_pages import WRITTEN_JS
 
