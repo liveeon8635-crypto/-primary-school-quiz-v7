@@ -204,8 +204,20 @@ with TestClient(app) as client:
     assert len([n for n in generated if n['role']=='model_image' and n['targets']])==3
     assert not data['readiness']['canStart']
     assert client.post('/teacher/weekend/sessions',headers=th,json={'lessonId':lid,'requireReady':False}).status_code==409
+    bulk=f'/teacher/weekend/lessons/{lid}/writing/bulk-review'
+    confirmed=client.post(bulk,headers=th,json={'expectedRevision':data['revision'],'action':'confirm_assigned'})
+    assert confirmed.status_code==200,confirmed.text
+    data=confirmed.json()
+    ignored=client.post(bulk,headers=th,json={'expectedRevision':data['revision'],'action':'ignore_unassigned'})
+    assert ignored.status_code==200,ignored.text
+    data=ignored.json();assert data['readiness']['pendingMaterials']==0
+    reviewed=client.put(f'/teacher/weekend/lessons/{lid}/writing',headers=th,json={
+        'expectedRevision':data['revision'],'nodes':data['package']['nodes'],
+        'title':data['package']['title'],'approve':True})
+    assert reviewed.status_code==200,reviewed.text
+    assert reviewed.json()['readiness']['canStart'],reviewed.json()['readiness']['startReasons']
     assert not calls
-    print('OK bundle imported with original sources, table, generated scenes and review gate')
+    print('OK bundle imported, batch reviewed, and passed all six real-course readiness checks')
 ''')
 
 
@@ -397,3 +409,75 @@ with TestClient(app) as client:
     assert client.get('/v1/weekend-writing').status_code==200
     print('OK')
 ''')
+
+
+def test_writing_bundle_bulk_review_routes_and_start_gate(tmp_path):
+    helpers.run_isolated(tmp_path,helpers.COMMON+r'''
+import base64, io
+from datetime import datetime
+from PIL import Image
+from fastapi.testclient import TestClient
+from app import app
+image=io.BytesIO();Image.new('RGB',(8,8),'orange').save(image,format='PNG')
+data_url='data:image/png;base64,'+base64.b64encode(image.getvalue()).decode()
+model_text='秋天的果园里，苹果在阳光下发亮。'+('我沿着田埂慢慢向前，听见风吹麦浪的沙沙声，也闻到桂花淡淡的香气。'*8)
+nodes=[
+ {'id':'review','kind':'text','role':'review','text':'回顾上次的观察记录。','status':'pending'},
+ {'id':'model','kind':'text','role':'model','text':model_text,'status':'pending'},
+ {'id':'model-pic','kind':'image','role':'model_image','text':'','dataUrl':data_url,'targets':['model'],'status':'pending'},
+ {'id':'picture','kind':'image','role':'picture','text':'','dataUrl':data_url,'targets':[],'status':'pending'},
+ {'id':'method','kind':'text','role':'method','text':'按空间顺序描写，并调动多种感官。','status':'pending'},
+ {'id':'task','kind':'text','role':'task','text':'我最喜欢的季节','status':'pending'},
+ {'id':'feedback','kind':'text','role':'feedback','text':'检查描写顺序和感官细节。','status':'pending'},
+ {'id':'unassigned','kind':'text','role':'pending','text':'本次课程暂不使用的原始练习页。','status':'pending'},
+]
+bundle={'schemaVersion':1,'subject':'语文','items':[{'lessonNo':13,'writingPackage':{'title':'我最喜欢的季节','nodes':nodes}}]}
+with TestClient(app) as client:
+ th,sh,student,school=setup(client)
+ imported=client.post('/teacher/weekend/lessons/import',headers=th,data={'subject':'语文','lessonNo':'13','courseType':'writing'},files={'file':('writing.json',json.dumps(bundle,ensure_ascii=False).encode(),'application/json')})
+ assert imported.status_code==200,imported.text
+ lid=imported.json()['lessonId'];url=f'/teacher/weekend/lessons/{lid}/writing';data=client.get(url,headers=th).json()
+ assert data['readiness']['pendingMaterials']==8 and not data['readiness']['canStart']
+ with legacy.SessionLocal() as db:
+  from changying.services.weekend_course_types import register_weekend_course_type_tables
+  from sqlalchemy import insert
+  materials=register_weekend_course_type_tables(legacy)['materials']
+  teacher_id=client.get('/session',headers=th).json()['userID']
+  for status,part in [('confirmed','confirmed-scene.png'),('pending','pending-scene.png')]:
+   db.execute(insert(materials).values(school_id=school,lesson_id=lid,source_file='lesson.docx',source_part=part,
+    source_sha256=(part.encode().hex()+'0'*64)[:64],source_format='docx',media_type='image/png',data_url=data_url,
+    status=status,relationship='picture_writing' if status=='confirmed' else '',stage_no=3 if status=='confirmed' else None,
+    sort_order=1,revision=1,created_by=teacher_id,created_at=datetime.utcnow()))
+  db.commit()
+ imported_images=client.post(url+'/imported-images',headers=th)
+ assert imported_images.status_code==200,imported_images.text
+ data=imported_images.json();assert data['created']==1 and data['revision']==2
+ added=next(n for n in data['package']['nodes'] if n.get('importedMaterialId'))
+ assert added['status']=='pending' and added['role']=='picture' and not added['targets']
+ repeated=client.post(url+'/imported-images',headers=th)
+ assert repeated.status_code==200 and repeated.json()['created']==0 and repeated.json()['revision']==2
+ bulk=f'/teacher/weekend/lessons/{lid}/writing/bulk-review'
+ assert client.post(bulk,headers=sh,json={'expectedRevision':data['revision'],'action':'confirm_assigned'}).status_code==403
+ first=client.post(bulk,headers=th,json={'expectedRevision':data['revision'],'action':'confirm_assigned'})
+ assert first.status_code==200,first.text
+ data=first.json();assert data['updated']==8 and data['revision']==3 and not data['package']['approved']
+ assert data['readiness']['pendingMaterials']==1 and not data['readiness']['canStart']
+ assert client.post(bulk,headers=th,json={'expectedRevision':2,'action':'ignore_unassigned'}).status_code==409
+ second=client.post(bulk,headers=th,json={'expectedRevision':data['revision'],'action':'ignore_unassigned'})
+ assert second.status_code==200,second.text
+ data=second.json();assert data['updated']==1 and data['readiness']['pendingMaterials']==0
+ assert not data['readiness']['canStart'] and not data['package']['approved']
+ nodes=data['package']['nodes']
+ ignored=next(n for n in nodes if n['role']=='pending')
+ assert ignored['status']=='ignored' and '原始练习页' in ignored['text']
+ model=next(n for n in nodes if n['role']=='model')
+ model_pic=next(n for n in nodes if n['role']=='model_image')
+ assert model_pic['targets']==[model['id']]
+ saved=client.put(url,headers=th,json={'expectedRevision':data['revision'],'nodes':nodes,'title':'我最喜欢的季节','approve':True})
+ assert saved.status_code==200,saved.text
+ assert saved.json()['readiness']['canStart'] and saved.json()['package']['approved']
+ assert len(saved.json()['package']['history'])==3
+ assert not calls
+ print('OK: bulk review is teacher-only, revision guarded, auditable, and preserves final approval gate')
+''')
+
