@@ -140,6 +140,75 @@ with TestClient(app) as client:
     assert "开放第 " in control_html and "renderQuestionFigure" in control_html
     assert "practiceFigure" in board_html and "renderQuestionFigure" in board_html
     assert "function cwFigure" in student_html and "renderQuestionFigure" in student_html
+    assert "提交订正" in student_html
+    print("OK")
+""",
+        {"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
+    )
+
+
+def test_teacher_revise_unlocks_student_revision_in_stage4_and_stage5(tmp_path):
+    helpers.run_isolated(
+        tmp_path,
+        helpers.COMMON
+        + r"""
+with TestClient(app) as client:
+    th, sh, student_id, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        p = db.scalar(select(legacy.TeachingProgram).where(legacy.TeachingProgram.school_id == school_id))
+        l = legacy.TeachingLesson(school_id=school_id, program_id=p.id, subject="数学", lesson_no=95, title="梯形订正闭环")
+        db.add(l); db.flush(); lid = l.id
+        tid = db.scalar(select(legacy.User.id).where(legacy.User.username == "teacher1"))
+        cls = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id))
+        cls.teacher_id = tid
+        link = db.scalar(select(legacy.ClassStudent).where(legacy.ClassStudent.student_id == student_id))
+        if link is None:
+            db.add(legacy.ClassStudent(class_id=cls.id, student_id=student_id))
+        else:
+            link.class_id = cls.id
+        db.commit()
+    sid = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()["id"]
+    base = f"/teacher/weekend/sessions/{sid}"
+    student = f"/student/weekend/sessions/{sid}/written"
+    q1 = client.post(base + "/written/questions", headers=th, json={"stem": "第1题 求梯形面积", "reference": "40平方厘米"}).json()["id"]
+    assert client.post(base + "/start", headers=th).status_code == 200
+    assert client.post(base + "/goto", headers=th, json={"stage": 4}).status_code == 200
+    assert client.post(base + "/practice-question", headers=th, json={"question": 1}).status_code == 200
+
+    # Student submits wrong answer, teacher publishes answer -> locked while still pending.
+    s1 = client.post(f"{student}/{q1}", headers=sh, data={"text": "1"})
+    assert s1.status_code == 200, s1.text
+    sub_id = s1.json()["submission"]["id"]
+    assert client.post(base + "/publish-answers", headers=th, json={"question": 1}).status_code == 200
+    locked = client.get(student, headers=sh).json()
+    assert locked["questions"][0]["canSubmit"] is False
+    assert locked["questions"][0]["canRevise"] is False
+    assert client.post(f"{student}/{q1}", headers=sh, data={"text": "偷改", "revision": 1}).status_code == 409
+
+    # Teacher grades as 'revise' -> student can revise even after answer release in Stage 4.
+    rev = client.post(base + "/written/review-batch", headers=th, json={"items": [{"id": sub_id, "revision": 1, "result": "revise", "comment": "请用梯形面积公式重算"}]})
+    assert rev.status_code == 200, rev.text
+    st4 = client.get(student, headers=sh).json()
+    assert st4["canSubmit"] is True
+    assert st4["questions"][0]["canSubmit"] is True
+    assert st4["questions"][0]["canRevise"] is True
+
+    # Moving to Stage 5 (练习复盘) still allows student to submit revision.
+    assert client.post(base + "/goto", headers=th, json={"stage": 5}).status_code == 200
+    st5 = client.get(student, headers=sh).json()
+    assert st5["canSubmit"] is True
+    assert st5["questions"][0]["canSubmit"] is True
+    assert st5["questions"][0]["canRevise"] is True
+    cur_rev = st5["questions"][0]["submission"]["revision"]
+    s2 = client.post(f"{student}/{q1}", headers=sh, data={"text": "(6+10)*5/2=40平方厘米", "revision": cur_rev})
+    assert s2.status_code == 200, s2.text
+    assert s2.json()["attempts"] == 2
+    assert s2.json()["result"] == "pending"
+
+    # After submitting revision (now pending again), cannot keep editing until teacher reviews again.
+    after = client.get(student, headers=sh).json()
+    assert after["questions"][0]["canSubmit"] is False
+    assert after["questions"][0]["canRevise"] is False
     print("OK")
 """,
         {"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
