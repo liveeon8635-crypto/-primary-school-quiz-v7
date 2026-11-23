@@ -17,6 +17,12 @@ function paintEditor(){
  data.readiness.stageReadiness.forEach(function(s){root.appendChild(el('p',{text:s.name+'：'+s.status+(s.missing.length?'（'+s.missing.join('、')+'）':'')}))});
  root.appendChild(el('p',{text:data.readiness.startReasons.join('；')}));
  root.appendChild(button('保存草稿',function(){return save(false)}));root.appendChild(button('审核通过',function(){return save(true)}));
+ var assigned=data.package.nodes.filter(function(n){return n.status==='pending'&&n.role&&n.role!=='pending'}).length;
+ var unassigned=data.package.nodes.filter(function(n){return n.status==='pending'&&(!n.role||n.role==='pending')}).length;
+ root.appendChild(el('p',{text:'批量处理只作用于待审核项；已分类素材由老师逐项检查后确认，未分类内容由老师决定忽略。每次操作都会记录在修订历史中。'}));
+ root.appendChild(button('确认已分类素材（'+assigned+'项）',function(){if(!assigned)throw Error('没有待确认的已分类素材');if(!confirm('确认你已检查并同意这 '+assigned+' 项素材的归属及内容吗？审核通过仍需另行操作。'))return;return api('/teacher/weekend/lessons/'+lid+'/writing/bulk-review',{method:'POST',json:{expectedRevision:data.revision,action:'confirm_assigned'}}).then(function(d){data=d;paintEditor();message('已确认 '+d.updated+' 项；课程仍未审核通过')})}));
+ root.appendChild(button('忽略未分类素材（'+unassigned+'项）',function(){if(!unassigned)throw Error('没有待处理的未分类素材');if(!confirm('确认这 '+unassigned+' 项不纳入本次作文课？素材会保留在原始记录和修订历史中。'))return;return api('/teacher/weekend/lessons/'+lid+'/writing/bulk-review',{method:'POST',json:{expectedRevision:data.revision,action:'ignore_unassigned'}}).then(function(d){data=d;paintEditor();message('已将 '+d.updated+' 项标为忽略；可以在素材列表中恢复审核')})}));
+ root.appendChild(button('导入已确认的配图',function(){return api('/teacher/weekend/lessons/'+lid+'/writing/imported-images',{method:'POST',json:{}}).then(function(d){data=d;paintEditor();message(d.created?'已将 '+d.created+' 张图片加入作文包；请逐张确认并绑定范文段落':'没有新的已确认配图可导入')})}));
  root.appendChild(button('新增素材',function(){data.package.nodes.push({id:'manual-'+Date.now(),kind:'text',text:'',role:'pending',status:'pending',targets:[]});paintEditor()}));
  var file=el('input',{type:'file',accept:'image/*','aria-label':'补充图片'});root.appendChild(file);
  root.appendChild(button('上传图片',function(){if(!file.files[0])throw Error('请先选择图片');return save(false).then(function(){var fd=new FormData();fd.append('file',file.files[0]);fd.append('expectedRevision',data.revision);return api('/teacher/weekend/lessons/'+lid+'/writing/images',{method:'POST',body:fd})}).then(function(d){data=d;paintEditor()})}));
@@ -129,3 +135,4 @@ obtainToken().then(function(t){
  return sid?loadClass():prepare();
 }).catch(function(e){root.textContent=e.message});
 ''', True, ('/v1/weekend-plan','返回备课'))
+
