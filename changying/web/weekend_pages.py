@@ -662,7 +662,7 @@ function practice(){
     d.questions.forEach(function(q,qi){
       var locked=q.canSubmit===false||(q.attempts||0)>=3,card=el('div',{class:'card'}),out=el('div'),hintsOut=el('div');
       card.appendChild(el('b',{text:/^\s*第\s*\d+\s*题/.test(q.stem)?q.stem:(qi+1)+'. '+q.stem}));
-      renderQuestionFigure(card,q.figure,false);
+      if(typeof renderQuestionFigure==='function')renderQuestionFigure(card,q.figure,false);
       var selectionKey=d.sessionId+':'+q.id,chosen=selectedAnswers[selectionKey]==null?(q.answered?q.selected:-1):selectedAnswers[selectionKey],opts=el('div');
       q.options.forEach(function(o,i){
         var b=el('button',{style:'display:block;width:100%;text-align:left;margin:6px 0',text:optText(i,o)});
