@@ -130,11 +130,14 @@ function writtenStudent(box){
         if(request!==loadNo||!force&&(busy||revision!==editRevision))return;
         var signature=lastSid+':'+JSON.stringify(d);if(signature===lastSignature)return;lastSignature=signature;
         dirty=Object.keys(drafts).length>0;submissionOpen=!!d.canSubmit;closedQuestions={};controls=[];phaseNote.textContent='';out.textContent='';
-        if(d.status==='planned'||d.status==='running'&&d.stage<4){box.hidden=true;out.appendChild(el('p',{class:'muted',text:'老师正在讲解，随堂练习开放后这里会显示作答题。'}));return}
-        out.appendChild(el('p',{class:'muted',text:d.canSubmit?'阅读材料只显示一次。按题输入答案或拍照提交，批改后在这里查看反馈和订正。':'本节作答已关闭，可查看已提交答案与老师反馈。'}));
+        if(d.status==='planned'||d.status==='running'&&d.stage<d.practiceStage){box.hidden=true;out.appendChild(el('p',{class:'muted',text:'老师正在讲解；进入随堂练习并逐题开放后，这里会显示文字／照片题。'}));return}
+        out.appendChild(el('p',{class:'muted',text:d.canSubmit?'这是本课随堂作答：逐题输入答案或拍照提交，批改后在这里看反馈。课后针对性练习经老师审核布置后，请到学生首页“作业”完成。':'本节作答已关闭，可查看已提交答案与老师反馈。课后针对性练习请到学生首页“作业”查看。'}));
         var groups={};
-        box.hidden=!d.questions.length;
-        if(!d.questions.length){out.appendChild(el('div',{class:'muted',text:'本节课没有简答题'}));return}
+        box.hidden=!d.questions.length&&!(d.status==='running'&&d.stage===d.practiceStage);
+        if(!d.questions.length){
+          var availability=d.questionAvailability||{},written=availability.written||{},emptyText=written.total?'老师尚未在大屏开放本课文字／照片题；开放后可在此输入答案或上传照片。':'本课目前没有已同步的文字／照片题；如老师已通过相关练习，请老师检查“同步新增练习”。课后针对性练习请到学生首页“作业”完成。';
+          out.appendChild(el('div',{class:'notice',role:'status',text:emptyText}));return
+        }
         d.questions.forEach(function(q){
           var stem=q.stem||'',cut=stem.lastIndexOf('\n\n'),material=cut>=0?stem.slice(0,cut):'',question=cut>=0?stem.slice(cut+2):stem,target=out;
           if(material){
