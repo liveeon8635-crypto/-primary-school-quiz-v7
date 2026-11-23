@@ -214,11 +214,13 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         released = {q["id"] for q in release_items[:release_count] if q["kind"] == "written"}
         all_released = bool(release_items) and release_count == len(release_items)
         practice_no = task_stage(db, row)
+        from changying.services.weekend_answers import practice_question_figure
+        item_by_id = {it["id"]: it for it in release_items if it["kind"] == "written"}
         return {"status": row.status, "stage": row.current_stage, "practiceStage": practice_no,
                 "questionAvailability": practice_question_availability(implementation, db, row),
                 "canSubmit": row.status == "running" and row.current_stage == practice_no and not all_released,
                 "answersPublished": all_released,
-                 "questions": [{"id": q.id, "answersPublished": q.id in released, "canSubmit": row.status == "running" and row.current_stage == practice_no and q.id not in released, "stem": numbered_student_stem(source, q.stem), "hasHints": bool(json.loads(q.hints_json)), "hintUsed": used.get(q.id, 0),
+                 "questions": [{"id": q.id, "answersPublished": q.id in released, "canSubmit": row.status == "running" and row.current_stage == practice_no and q.id not in released, "stem": numbered_student_stem(source, q.stem), "figure": practice_question_figure(implementation, db, row, item_by_id.get(q.id) or {"kind": "written", "id": q.id, "bindingStem": str(q.stem or "").split("\n\n")[-1].strip()}), "hasHints": bool(json.loads(q.hints_json)), "hintUsed": used.get(q.id, 0),
                                "hintTexts": json.loads(q.hints_json)[:used.get(q.id, 0)],
                                "submission": ({**submission_dict(ans[q.id]), 'attempts':submission_attempts(implementation,db,u,sid,'written',q.id,True), **({} if q.id in released else {"result": "pending", "comment": ""})}) if q.id in ans else None} for q in question_rows(db, row) if question_is_open(implementation, db, row, 'written', q.id)]}
 

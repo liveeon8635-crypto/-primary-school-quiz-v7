@@ -303,12 +303,15 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         release_items, release_count, _ = practice_release(implementation, db, row)
         released_choices = {q["id"] for q in release_items[:release_count] if q["kind"] == "choice"}
         published = bool(release_items) and release_count == len(release_items)
+        from changying.services.weekend_answers import practice_question_figure
+        choice_items = {it["id"]: it for it in release_items if it["kind"] == "choice"}
         qs = []
         for q in lesson_questions(db, int(u.school_id), int(row.lesson_id), int(row.id)):
             if not question_is_open(implementation, db, row, 'choice', q.id):
                 continue
             a = mine.get(q.id)
-            item = {"id": q.id, "stem": numbered_student_stem(source, q.stem), "options": options(q), "figure": figure_of(q), "answersPublished": q.id in released_choices, "canSubmit": q.id not in released_choices, "hintUsed": used.get(q.id, 0), "levelNames": level_names(q.subject)}
+            fig = figure_of(q) or practice_question_figure(implementation, db, row, choice_items.get(q.id))
+            item = {"id": q.id, "stem": numbered_student_stem(source, q.stem), "options": options(q), "figure": fig, "answersPublished": q.id in released_choices, "canSubmit": q.id not in released_choices, "hintUsed": used.get(q.id, 0), "levelNames": level_names(q.subject)}
             if used.get(q.id):
                 hs = hint_rows(db, int(u.school_id), q.id)
                 item["hintTexts"] = [hs[i].text for i in range(1, used[q.id] + 1) if i in hs]
