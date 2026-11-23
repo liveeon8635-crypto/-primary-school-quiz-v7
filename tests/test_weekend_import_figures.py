@@ -307,7 +307,7 @@ def test_pdf_verified_question_number_survives_storage_and_courseware_rewording(
 
 
 def test_courseware_writing_image_gallery_links_to_material_review():
-    from changying.web.weekend_courseware_pages import COURSEWARE_JS
-    assert "作文素材与审核" in COURSEWARE_JS
-    assert "/v1/weekend-writing?lesson=" in COURSEWARE_JS
-    assert "尚未确认" in COURSEWARE_JS
+    from changying.web.weekend_courseware_pages import COURSEWARE_PLAN_JS
+    assert "作文素材与审核" in COURSEWARE_PLAN_JS
+    assert "/v1/weekend-writing?lesson=" in COURSEWARE_PLAN_JS
+    assert "尚未确认" in COURSEWARE_PLAN_JS
