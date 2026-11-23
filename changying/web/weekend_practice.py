@@ -303,14 +303,14 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         release_items, release_count, _ = practice_release(implementation, db, row)
         released_choices = {q["id"] for q in release_items[:release_count] if q["kind"] == "choice"}
         published = bool(release_items) and release_count == len(release_items)
-        from changying.services.weekend_answers import practice_question_figure
+        from changying.services.weekend_answers import practice_question_figures
         choice_items = {it["id"]: it for it in release_items if it["kind"] == "choice"}
+        open_choices = [q for q in lesson_questions(db, int(u.school_id), int(row.lesson_id), int(row.id)) if question_is_open(implementation, db, row, 'choice', q.id)]
+        fig_map = practice_question_figures(implementation, db, row, [choice_items[q.id] for q in open_choices if q.id in choice_items])
         qs = []
-        for q in lesson_questions(db, int(u.school_id), int(row.lesson_id), int(row.id)):
-            if not question_is_open(implementation, db, row, 'choice', q.id):
-                continue
+        for q in open_choices:
             a = mine.get(q.id)
-            fig = figure_of(q) or practice_question_figure(implementation, db, row, choice_items.get(q.id))
+            fig = figure_of(q) or fig_map.get(("choice", int(q.id)), {})
             item = {"id": q.id, "stem": numbered_student_stem(source, q.stem), "options": options(q), "figure": fig, "answersPublished": q.id in released_choices, "canSubmit": q.id not in released_choices, "hintUsed": used.get(q.id, 0), "levelNames": level_names(q.subject)}
             if used.get(q.id):
                 hs = hint_rows(db, int(u.school_id), q.id)
