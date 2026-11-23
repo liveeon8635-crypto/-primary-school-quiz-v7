@@ -38,6 +38,7 @@ DELETE_TABLES = (
     "weekend_session_workflows",  # DELETE: frozen snapshots belong to individual classroom sessions
     "weekend_lesson_materials",  # DELETE: imported review materials are temporary prelaunch activity
     "weekend_open_questions",  # per-session question release state
+    "weekend_stage6_checks",  # per-session stage 6 mastery checks and student doubts
     "node_reveal_states",  # DELETE: per-classroom reveal/retract state belongs to one classroom instance
     "weekend_written_submission_versions", "weekend_written_annotations",  # DELETE: student written versions & teacher annotations
     "classroom_events", "weekend_class_rosters", "weekend_sessions", "weekend_stage_log", "weekend_hint_log", "weekend_answers", "weekend_written_submissions", "weekend_written_hint_log", "weekend_peer_help", "weekend_awards", "weekend_metrics", "weekend_briefs", "weekend_reports", "weekend_schedule", "weekend_slide_state", "weekend_session_questions", "classroom_sessions", "classroom_segments", "classroom_quick_checks",

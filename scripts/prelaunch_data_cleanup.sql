@@ -78,6 +78,7 @@ WITH d AS (DELETE FROM weekend_session_workflows RETURNING 1) INSERT INTO _delet
 -- DELETE: imported review materials are prelaunch activity, not persistent course configuration.
 WITH d AS (DELETE FROM weekend_lesson_materials RETURNING 1) INSERT INTO _deleted SELECT 'weekend_lesson_materials', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_open_questions RETURNING 1) INSERT INTO _deleted SELECT 'weekend_open_questions', COUNT(*) FROM d;
+WITH d AS (DELETE FROM weekend_stage6_checks RETURNING 1) INSERT INTO _deleted SELECT 'weekend_stage6_checks', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_sessions RETURNING 1) INSERT INTO _deleted SELECT 'weekend_sessions', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_schedule RETURNING 1) INSERT INTO _deleted SELECT 'weekend_schedule', COUNT(*) FROM d;
 WITH d AS (DELETE FROM weekend_reports RETURNING 1) INSERT INTO _deleted SELECT 'weekend_reports', COUNT(*) FROM d;

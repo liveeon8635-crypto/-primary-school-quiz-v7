@@ -172,6 +172,7 @@ from changying.web.exam_prep_views import install_exam_prep_views
 from changying.web.weekend_plan_views import install_weekend_plan
 from changying.web.weekend_practice import install_weekend_practice
 from changying.web.weekend_scoring_views import install_weekend_scoring
+from changying.web.weekend_stage6 import install_weekend_stage6
 from changying.web.weekend_report_views import install_weekend_reports
 from changying.web.weekend_courseware import install_weekend_courseware
 from changying.web.weekend_node_reveal import install_weekend_node_reveal
@@ -560,6 +561,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_weekend_views(implementation)
     install_weekend_practice(implementation)
     install_weekend_scoring(implementation)
+    install_weekend_stage6(implementation)
     install_weekend_reports(implementation)
     install_weekend_plan(implementation)
     install_weekend_courseware(implementation)
