@@ -14,7 +14,7 @@ IPAD = 'Mozilla/5.0 (iPad; CPU OS 12_5_8 like Mac OS X) AppleWebKit/605.1.15 Ver
 def isolated(name, tmp_path):
     if os.environ.get('CY_SAFARI_TEST_CHILD'):
         return False
-    env = dict(os.environ, CY_SAFARI_TEST_CHILD='1', HOMEWORK_ASSISTANT='1', CLASSROOM_QUICK_LOGIN='0' if 'disabled' in name else '1', DATABASE_URL='sqlite:///'+str(tmp_path/'safari.sqlite3'))
+    env = dict(os.environ, CY_SAFARI_TEST_CHILD='1', HOMEWORK_ASSISTANT='1', CLASSROOM_QUICK_LOGIN='0' if 'disabled' in name else '1', DATABASE_URL='sqlite:///'+str(tmp_path/'safari.sqlite3'), PYTHONUTF8='1')
     code = "import runpy; m=runpy.run_path('tests/test_safari12_compat.py'); m[%r](None)" % name
     result = subprocess.run([sys.executable, '-c', code], env=env, text=True, capture_output=True, timeout=120)
     assert result.returncode == 0, result.stdout+result.stderr
@@ -67,7 +67,7 @@ def test_actual_entry_cache_and_modern_representation(tmp_path):
             assert path.rsplit('/',1)[1] in dynamic.text
         gz = client.get('/v1', headers={'User-Agent':IPAD, 'Accept-Encoding':'gzip'})
         assert gz.text == old.text
-        rendered.write_text(old.text)
+        rendered.write_text(old.text, encoding='utf-8')
         for homework, quick in [('0','0'),('0','1'),('1','0'),('1','1')]:
             os.environ['HOMEWORK_ASSISTANT'] = homework
             os.environ['CLASSROOM_QUICK_LOGIN'] = quick
