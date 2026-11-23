@@ -54,6 +54,7 @@
 | [`weekend-course/2-数据设计稿.md`](weekend-course/2-数据设计稿.md) | 周末课：新增表设计（均带 school_id） | 设计稿 |
 | [`weekend-course/3-口径文档.md`](weekend-course/3-口径文档.md) | 周末课：指标口径（完成率 / 提示依赖 / 进步分） | 默认值，上课后调 |
 | [`weekend-course/chinese-workflow-implementation.md`](weekend-course/chinese-workflow-implementation.md) | 语文阅读课/作文课流程与当前实现边界 | 开发中；不可作为全流程验收通过 |
+| [`weekend-course/writing-lesson13-acceptance.md`](weekend-course/writing-lesson13-acceptance.md) | 第13次作文课本地导入、补图、课堂和浏览器验收证据 | 核对作文分支及上线前人工审核 |
 
 ## 5. 历史与验收记录
 

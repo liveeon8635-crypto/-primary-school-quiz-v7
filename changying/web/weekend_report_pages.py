@@ -404,6 +404,7 @@ function paintChildren(list){
   if(!items.length){root.appendChild(el('div',{class:'card'},el('h2',{text:'还没有关联孩子'})));return}
   items.forEach(function(c){
     var id=c.id||c.studentID||c.studentId,box=el('div',{class:'card'},el('h2',{text:(c.name||'孩子')+' 的周末课学情反馈'}));
+    box.appendChild(el('a',{href:'/v1/weekend-writing?student='+id,text:'查看作文课已发布反馈'}));
     root.appendChild(box);
     api('/parent/children/'+id+'/weekend-briefs').then(function(d){
       var reports=d.reports||[];

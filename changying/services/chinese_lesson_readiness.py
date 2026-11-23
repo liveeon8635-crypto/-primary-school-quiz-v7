@@ -10,6 +10,10 @@ def chinese_lesson_readiness(implementation, db, lesson, teacher_id):
         items_of, register_courseware_table, stage_pages, practice_courseware_sources,
     )
     course_type = course_type_for(db, implementation, lesson)
+    if course_type == "writing":
+        from changying.services.writing_lesson import writing_package, writing_readiness
+        _, package = writing_package(implementation, db, lesson.id)
+        return writing_readiness(package)
     reasons = []
     if course_type not in ("reading", "writing"):
         reasons.append("先选择并保存阅读课或作文课")

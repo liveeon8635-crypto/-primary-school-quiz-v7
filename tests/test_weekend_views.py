@@ -91,8 +91,10 @@ with TestClient(app) as client:
     stale = client.put(path, headers=th, json={"courseType":"reading", "expectedRevision":1})
     assert stale.status_code == 409
     approve_courseware_gate(lid)
-    second = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid}).json()
-    assert second["courseType"] == "writing" and second["stageCount"] == 6
+    second = client.post("/teacher/weekend/sessions", headers=th, json={"lessonId": lid})
+    # Reading slides cannot satisfy the writing inventory/illustration review gate.
+    # A complete writing classroom is exercised in test_writing_workflow.py.
+    assert second.status_code == 409 and "范文" in second.text
     writing_cw = client.get(f"/teacher/weekend/lessons/{lid}/courseware", headers=th).json()
     assert writing_cw["courseType"] == "writing" and writing_cw["practiceStage"] == 5
     assert [s["name"] for s in writing_cw["stageOptions"]] == ["点名与回顾", "范文导览", "看图写话", "技法梳理", "随堂练习", "课后反馈"]

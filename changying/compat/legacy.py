@@ -565,6 +565,8 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_weekend_courseware(implementation)
     install_weekend_node_reveal(implementation)
     install_weekend_paired_import(implementation)
+    from changying.web.weekend_writing import install_weekend_writing
+    install_weekend_writing(implementation)
     install_cube_figure_storage(implementation)
     install_knowledge_map_views(implementation)
     install_knowledge_map_student(implementation)

@@ -1402,6 +1402,8 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
     from changying.services.weekend_course_types import frozen_session
     frozen = frozen_session(db, implementation, int(row.id), metadata=getattr(implementation, "Base", None) and implementation.Base.metadata)
     course_type = frozen["courseType"] if frozen else "legacy"
+    if frozen and frozen["lesson"].get("writingPackage"):
+        return None, "请在作文课堂中按冻结版本展示与开放图文。"
     practice_no = practice_stage(course_type)
     lesson = db.get(implementation.TeachingLesson, row.lesson_id)
     if course_type in ("math", "legacy") and stage == 3 and source_page_mismatch(lesson)[1]:
