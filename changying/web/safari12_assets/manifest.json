@@ -427,7 +427,7 @@
       "5ee2ab4fa8d56f4db9a842adb1bbb73314995feb8ba2b3642533e721a1725408"
     ],
     "/v1/weekend-writing": [
-      "ee8fffbfb1432810537804b5eaf16d035e7783b616073b1c253fa673234c976c"
+      "398c4d1e38a30383e6bb03378052d12d22ef0ad840cc6675764aa14e33c284b6"
     ],
     "/v1/workspace": [
       "f8f56c33f77910ed27ccfcd07ceabe918d7a478077bf789b962e71dc84f0b6cd",
@@ -540,6 +540,11 @@
       "unchanged": true,
       "sourceBytes": 2291,
       "compiledBytes": 2291
+    },
+    "398c4d1e38a30383e6bb03378052d12d22ef0ad840cc6675764aa14e33c284b6": {
+      "unchanged": true,
+      "sourceBytes": 27963,
+      "compiledBytes": 27963
     },
     "41566b57e73502bc3258788239b6b06a1ab0f3a3be2541faf36e78e331abbed9": {
       "unchanged": false,
@@ -766,11 +771,6 @@
       "sourceBytes": 7290,
       "compiledBytes": 7085
     },
-    "ee8fffbfb1432810537804b5eaf16d035e7783b616073b1c253fa673234c976c": {
-      "unchanged": true,
-      "sourceBytes": 24848,
-      "compiledBytes": 24848
-    },
     "f8d61738cb6111ae65b48181018f520c2b31a8c3c63cdfcf4bb8302b3cfa3bb3": {
       "unchanged": false,
       "sourceBytes": 119379,
@@ -783,4 +783,3 @@
     }
   }
 }
-
