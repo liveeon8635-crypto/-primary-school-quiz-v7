@@ -325,7 +325,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             and old is not None
             and old.result in ("revise", "partial")
         )
-        if not is_revision and (row.status != "running" or row.current_stage != practice_no or answers_published(implementation, db, row, qid, "written")):
+        if not is_revision and (row.status != "running" or answers_published(implementation, db, row, qid, "written")):
             raise HTTPException(409, "现在不是随堂练习时间")
         if not any(q.id == qid for q in question_rows(db, row)) or not question_is_open(implementation, db, row, 'written', qid):
             raise HTTPException(404, "没有找到这道题")
