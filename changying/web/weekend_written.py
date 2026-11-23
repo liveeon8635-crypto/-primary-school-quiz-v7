@@ -309,6 +309,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
                 "mime": img_mime,
                 "orientation": max(1, min(8, int(orientation or 1))),
                 "dataUrl": f"data:{img_mime};base64,{base64.b64encode(raw_bytes).decode('ascii')}",
+                "originalBase64": base64.b64encode(raw_bytes).decode("ascii"),
             })
         old = db.execute(select(submissions).where(submissions.c.session_id == sid, submissions.c.question_id == qid,
             submissions.c.student_id == u.id)).first()
@@ -316,7 +317,8 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             data, mime = old.photo, old.photo_type
             if data and mime:
                 extra_photos = [{"mime": mime, "orientation": max(1, min(8, int(orientation or 1))),
-                                 "dataUrl": f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"}]
+                                 "dataUrl": f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}",
+                                 "originalBase64": base64.b64encode(data).decode("ascii")} ]
         if not text and not data: raise HTTPException(400,'请填写答案或拍照提交')
         attempts = submission_attempts(implementation, db, u, sid, 'written', qid, old is not None)
         if old and old.answer_text == text and old.photo == data and len(uploads) <= 1:
