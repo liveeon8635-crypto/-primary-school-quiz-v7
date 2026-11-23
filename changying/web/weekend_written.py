@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from changying.services.weekend_answers import answers_published, practice_release, question_is_open
+from changying.services.weekend_answers import answers_published, practice_question_availability, practice_release, question_is_open
 from changying.services.lesson_written import numbered_student_stem
 from changying.services.weekend_submissions import submission_attempts, record_submission, require_unsettled
 
@@ -43,7 +43,6 @@ class ReviewBatch(BaseModel):
 
 class AnnotationShape(BaseModel):
     kind: Literal["circle", "arrow", "rect", "text"]
-    photoIndex: int = Field(default=0, ge=0, le=5)
     x: float = 0
     y: float = 0
     w: float = 0
@@ -203,32 +202,30 @@ def install_weekend_written(implementation: Any) -> APIRouter:
     @router.get("/student/weekend/sessions/{sid}/written")
     def student_list(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
-        from changying.services.writing_lesson import writing_task_open
-        writing_open = writing_task_open(implementation, db, row)
         if row.status == "planned":
             return {"questions": [], "canSubmit": False, "status": row.status, "stage": row.current_stage}
         ans = {a.question_id: a for a in db.execute(select(submissions).where(submissions.c.session_id == sid,
             submissions.c.student_id == u.id, submissions.c.school_id == u.school_id)).all()}
         lesson = db.get(implementation.TeachingLesson, row.lesson_id)
-        source = "" if writing_open else lesson.reading_plan if lesson is not None else ""
+        source = lesson.reading_plan if lesson is not None else ""
         used = dict(db.execute(select(hint_log.c.question_id, func.max(hint_log.c.level)).where(
             hint_log.c.session_id == sid, hint_log.c.student_id == u.id).group_by(hint_log.c.question_id)).all())
         release_items, release_count, _ = practice_release(implementation, db, row)
         released = {q["id"] for q in release_items[:release_count] if q["kind"] == "written"}
         all_released = bool(release_items) and release_count == len(release_items)
         practice_no = task_stage(db, row)
-        return {"status": row.status, "stage": row.current_stage, "canSubmit": row.status == "running" and (row.current_stage == practice_no or writing_open) and not all_released,
+        return {"status": row.status, "stage": row.current_stage, "practiceStage": practice_no,
+                "questionAvailability": practice_question_availability(implementation, db, row),
+                "canSubmit": row.status == "running" and row.current_stage == practice_no and not all_released,
                 "answersPublished": all_released,
-                 "questions": [{"id": q.id, "answersPublished": q.id in released, "canSubmit": row.status == "running" and (row.current_stage == practice_no or writing_open) and q.id not in released, "stem": numbered_student_stem(source, q.stem), "hasHints": bool(json.loads(q.hints_json)), "hintUsed": used.get(q.id, 0),
+                 "questions": [{"id": q.id, "answersPublished": q.id in released, "canSubmit": row.status == "running" and row.current_stage == practice_no and q.id not in released, "stem": numbered_student_stem(source, q.stem), "hasHints": bool(json.loads(q.hints_json)), "hintUsed": used.get(q.id, 0),
                                "hintTexts": json.loads(q.hints_json)[:used.get(q.id, 0)],
                                "submission": ({**submission_dict(ans[q.id]), 'attempts':submission_attempts(implementation,db,u,sid,'written',q.id,True), **({} if q.id in released else {"result": "pending", "comment": ""})}) if q.id in ans else None} for q in question_rows(db, row) if question_is_open(implementation, db, row, 'written', q.id)]}
 
     @router.post("/student/weekend/sessions/{sid}/written/{qid}/hint")
     def student_hint(sid: int, qid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
-        from changying.services.writing_lesson import writing_task_open
-        writing_open = writing_task_open(implementation, db, row)
-        if row.status != "running" or (row.current_stage != task_stage(db, row) and not writing_open) or answers_published(implementation, db, row, qid, "written"):
+        if row.status != "running" or row.current_stage != task_stage(db, row) or answers_published(implementation, db, row, qid, "written"):
             raise HTTPException(409, "现在不是随堂练习时间")
         q = next((q for q in question_rows(db, row) if q.id == qid), None)
         if q is None or not question_is_open(implementation, db, row, 'written', qid):
@@ -293,9 +290,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
                      orientation: int = Form(1), removePhoto: bool = Form(False),
                      u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
-        from changying.services.writing_lesson import writing_task_open
-        writing_open = writing_task_open(implementation, db, row)
-        if row.status != "running" or (row.current_stage != task_stage(db, row) and not writing_open) or answers_published(implementation, db, row, qid, "written"):
+        if row.status != "running" or row.current_stage != task_stage(db, row) or answers_published(implementation, db, row, qid, "written"):
             raise HTTPException(409, "现在不是随堂练习时间")
         if not any(q.id == qid for q in question_rows(db, row)) or not question_is_open(implementation, db, row, 'written', qid):
             raise HTTPException(404, "没有找到这道题")
@@ -306,28 +301,11 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         extra_photos: list[dict[str, Any]] = []
         uploads = ([photo] if photo is not None else []) + [p for p in photos if p is not None]
         data, mime = None, ""
-        if len(uploads) > 6:
-            raise HTTPException(422, "一次最多6张照片，请分次提交")
-        for idx, up in enumerate(uploads):
-            original = await up.read(8 * 1024 * 1024 + 1)
-            if len(original) > 8 * 1024 * 1024: raise HTTPException(413, "照片超过8MB")
-            await up.seek(0)
+        for idx, up in enumerate(uploads[:6]):
             raw_bytes, img_mime = await _read_image(up)
-            if writing_open:
-                import io
-                from PIL import Image, ImageOps
-                try:
-                    with Image.open(io.BytesIO(original)) as image:
-                        image = ImageOps.exif_transpose(image).convert("RGB")
-                        image.thumbnail((1800, 1800))
-                        buffer = io.BytesIO(); image.save(buffer, format="JPEG", quality=85)
-                        raw_bytes, img_mime = buffer.getvalue(), "image/jpeg"
-                except Exception as exc: raise HTTPException(422, "照片无法解码，请重拍") from exc
             if idx == 0:
                 data, mime = raw_bytes, img_mime
             extra_photos.append({
-                "originalBase64": base64.b64encode(original).decode("ascii"),
-                "originalSha256": __import__("hashlib").sha256(original).hexdigest(),
                 "mime": img_mime,
                 "orientation": max(1, min(8, int(orientation or 1))),
                 "dataUrl": f"data:{img_mime};base64,{base64.b64encode(raw_bytes).decode('ascii')}",
@@ -339,18 +317,14 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             if data and mime:
                 extra_photos = [{"mime": mime, "orientation": max(1, min(8, int(orientation or 1))),
                                  "dataUrl": f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"}]
-        if writing_open and old and not uploads and not removePhoto:
-            previous = db.execute(select(sub_versions.c.photos_json).where(sub_versions.c.session_id == sid,
-                sub_versions.c.question_id == qid, sub_versions.c.student_id == u.id).order_by(sub_versions.c.version_no.desc()).limit(1)).first()
-            if previous: extra_photos = json.loads(previous.photos_json)
         if not text and not data: raise HTTPException(400,'请填写答案或拍照提交')
         attempts = submission_attempts(implementation, db, u, sid, 'written', qid, old is not None)
-        if not writing_open and old and old.answer_text == text and old.photo == data and len(uploads) <= 1:
+        if old and old.answer_text == text and old.photo == data and len(uploads) <= 1:
             response = {"submitted":True,"revision":old.revision,"attempts":attempts,"submission":{**submission_dict(old),"result":"pending","comment":""}}
             db.rollback()
             if old.result == "pending": tasks.add_task(prechecks.run, old.id, old.revision)
             return response
-        if attempts >= 3 and not writing_open: raise HTTPException(409, '本题已提交3次，不能继续修改')
+        if attempts >= 3: raise HTTPException(409, '本题已提交3次，不能继续修改')
         now = datetime.utcnow()
         values = dict(answer_text=text, photo=data, photo_type=mime, result="pending", comment="",
                       revision=revision + 1, submitted_at=now, reviewed_at=None)
@@ -403,7 +377,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         saved = db.execute(select(submissions).where(submissions.c.session_id==sid,submissions.c.question_id==qid,submissions.c.student_id==u.id)).first()
         response = {"submitted": True, "revision":saved.revision, "versionId": version_id, "versionNo": next_ver, "attempts":attempts+1, "submission":{**submission_dict(saved),"result":"pending","comment":""}, "result": "pending"}
         db.rollback()
-        if not writing_open: tasks.add_task(prechecks.run, saved.id, saved.revision)
+        tasks.add_task(prechecks.run, saved.id, saved.revision)
         return response
 
     def apply_reviews(sid, items, u, db):
