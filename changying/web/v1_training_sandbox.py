@@ -57,6 +57,7 @@ ROLE_FLOW: dict[str, list[dict[str, str]]] = {
         {"id": "teacher_homework", "page": "/v1/homework", "title": "晚托作业助手：通知与学生补救求助"},
         {"id": "teacher_follow_ups", "page": "/v1/homework", "title": "晚托作业助手：待跟进（试点）"},
         {"id": "teacher_weekend_plan", "page": "/v1/weekend-plan", "title": "周末课备课：导入与恢复教案、审核习题和课件"},
+        {"id": "teacher_weekend_writing_review", "page": "/v1/weekend-writing", "title": "作文课：六环节素材审核与开课检查"},
         {"id": "teacher_weekend_class", "page": "/v1/weekend", "title": "周末课上课：控制页、大屏、作答与预批进度"},
         {"id": "teacher_weekend_report", "page": "/v1/weekend", "title": "周末课课后：学情反馈与纸质备用"},
         {"id": "teacher_knowledge_map", "page": "/v1/knowledge-map", "title": "知识地图：建图、配题、发布"},
@@ -180,6 +181,9 @@ STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 第4环节�
 STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 语文课先选择并保存阅读课或作文课型；没有课型的旧课显示待选择，不会被系统猜测。课型和导入成功不代表素材关系或学生可见权限已验收。"
 STEP_RELATIONSHIPS["teacher_weekend_class"]["communication_tip"] += " 数学继续七环节；阅读课和作文课使用各自六环节。新课堂冻结创建时的流程配置，已经创建的课堂不会随课型选择变化。语文素材分组与学生端逐步开放仍在开发，不能把教师大屏内容视为学生接口已通过权限验收。"
 STEP_RELATIONSHIPS["teacher_weekend_class"]["communication_tip"] += " 创建和开始语文课堂均检查六环节缺项及逐页审核；普通教案默认本地导入，外发需要独立授权。完整课件冻结版本仍待施工，请勿在授课中修改备课课件。"
+
+STEP_RELATIONSHIPS["teacher_weekend_writing_review"] = {"who": "教师", "creates": "作文课六环节的审核素材与开课资格", "visible_to": "教师；确认且审核通过后才会冻结进新课堂", "other_role_sees": "学生和家长只会看到教师在课堂逐项开放的内容", "communication_tip": "导入作文整包后按素材归属检查内容。可批量确认已分类的待审核项，也可批量忽略未分类项；两种操作都需教师明确确认并记入修订历史。忽略项仍可在素材列表恢复。最后仍须单独点审核通过；缺少六环节内容、范文未达要求或配图未绑定范文段落时不能开课。", "next": "作文课开课检查"}
+STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 作文整包导入后，进入作文素材与审核逐项查看；可对已分类素材批量确认、对未分类项批量忽略，操作会记录修订历史且不代替最终审核通过。"
 
 SCENARIO_PRESETS: dict[str, dict[str, Any]] = {
     "empty": {"title": "从零开始", "description": "从建立班级开始完整练习。"},
@@ -994,5 +998,6 @@ __all__ = [
     "apply_training_action",
     "install_v1_training_sandbox_routes",
 ]
+
 
 

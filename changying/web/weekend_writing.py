@@ -23,6 +23,11 @@ class WritingSave(BaseModel):
     approve: bool = False
 
 
+class WritingBulkReview(BaseModel):
+    expectedRevision: int = Field(ge=1)
+    action: Literal["confirm_assigned", "ignore_unassigned"]
+
+
 class WritingRelease(BaseModel):
     expectedRevision: int = Field(ge=0)
     nodeIds: list[str] = Field(max_length=500)
@@ -108,6 +113,67 @@ def install_weekend_writing(implementation):
         lesson_context(db,u,lid)
         row,package=writing_package(implementation,db,lid)
         return dict(package=package,revision=row.revision if row else 0,readiness=writing_readiness(package))
+
+    @router.post('/teacher/weekend/lessons/{lid}/writing/bulk-review')
+    def bulk_review_package(lid:int,b:WritingBulkReview,u:Any=Depends(current_user),db:Any=Depends(get_db)):
+        lesson_context(db,u,lid)
+        row,package=writing_package(implementation,db,lid)
+        if row is None or row.revision!=b.expectedRevision:
+            raise HTTPException(409,'课程已更新，请刷新后重新核对')
+        nodes=package.get('nodes',[])
+        if b.action=='confirm_assigned':
+            selected=[n for n in nodes if n.get('status')=='pending' and n.get('role') not in ('pending',None,'')]
+            for n in selected: n['status']='confirmed'
+            label='教师批量确认已分类素材'
+        else:
+            selected=[n for n in nodes if n.get('status')=='pending' and n.get('role') in ('pending',None,'')]
+            for n in selected: n['status']='ignored'
+            label='教师批量忽略未分类素材'
+        if not selected:
+            return dict(updated=0,package=package,revision=row.revision,readiness=writing_readiness(package))
+        package['approved']=False
+        package['history']=package.get('history',[])+[dict(revision=row.revision,at=datetime.utcnow().isoformat(),
+            by=u.id,action=b.action,updated=len(selected),title=package.get('title',''))]
+        changed=db.execute(update(pairs).where(pairs.c.id==row.id,pairs.c.revision==b.expectedRevision).values(
+            meta_json=json.dumps(package,ensure_ascii=False),revision=row.revision+1,updated_at=datetime.utcnow()))
+        if changed.rowcount!=1:
+            db.rollback()
+            raise HTTPException(409,'课程已被其他操作更新，请刷新后重试')
+        db.commit()
+        row,package=writing_package(implementation,db,lid)
+        return dict(updated=len(selected),action=label,package=package,revision=row.revision,
+                    readiness=writing_readiness(package))
+
+    @router.post('/teacher/weekend/lessons/{lid}/writing/imported-images')
+    def import_confirmed_images(lid:int,u:Any=Depends(current_user),db:Any=Depends(get_db)):
+        """Copy reviewed picture assets into the writing package as pending, teacher-reviewable nodes."""
+        lesson=lesson_context(db,u,lid)
+        row,package=writing_package(implementation,db,lid)
+        if row is None: raise HTTPException(409,'请先导入作文教案或作文课整包')
+        materials=register_weekend_course_type_tables(implementation)['materials']
+        imported=db.execute(select(materials).where(
+            materials.c.school_id==int(u.school_id),materials.c.lesson_id==int(lesson.id),
+            materials.c.status=='confirmed',materials.c.relationship.in_(['model_essay','picture_writing'])
+        ).order_by(materials.c.sort_order,materials.c.id)).all()
+        existing={n.get('importedMaterialId') for n in package.get('nodes',[]) if n.get('importedMaterialId')}
+        created=0
+        for material in imported:
+            if int(material.id) in existing: continue
+            role='model_image' if material.relationship=='model_essay' else 'picture'
+            nid='imported-material-'+str(material.id)
+            package.setdefault('nodes',[]).append(dict(id=nid,kind='image',role=role,status='pending',text='',
+                targets=[],dataUrl=material.data_url,importedMaterialId=int(material.id),
+                source=dict(file=material.source_file,part=material.source_part,sha256=material.source_sha256),
+                reason='来自已确认的导入图片；已加入作文包，仍需教师确认并完成范文段落绑定。'))
+            created+=1
+        if not created: return dict(created=0,package=package,revision=row.revision,readiness=writing_readiness(package))
+        package['approved']=False
+        changed=db.execute(update(pairs).where(pairs.c.id==row.id,pairs.c.revision==row.revision).values(
+            meta_json=json.dumps(package,ensure_ascii=False),revision=row.revision+1,updated_at=datetime.utcnow()))
+        if changed.rowcount!=1: raise HTTPException(409,'课程已被其他操作更新，请刷新后重试')
+        db.commit()
+        row,package=writing_package(implementation,db,lid)
+        return dict(created=created,package=package,revision=row.revision,readiness=writing_readiness(package))
 
     @router.put('/teacher/weekend/lessons/{lid}/writing')
     def save_package(lid:int,b:WritingSave,u:Any=Depends(current_user),db:Any=Depends(get_db)):
@@ -271,3 +337,4 @@ def install_weekend_writing(implementation):
 
     implementation.app.include_router(router)
     return router
+
