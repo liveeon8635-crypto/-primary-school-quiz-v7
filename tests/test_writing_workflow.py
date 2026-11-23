@@ -62,9 +62,15 @@ def test_writing_workbench_and_classroom_render_in_browser(tmp_path):
                 lambda route:route.fulfill(status=200,content_type='application/json',body=json.dumps(sample,ensure_ascii=False)))
             page.goto('https://changying.test/v1/weekend-writing?lesson=13')
             page.get_by_role('heading',name='作文素材与审核').wait_for()
+            assert page.get_by_role('navigation',name='作文六环节').count()==1
+            assert page.get_by_role('navigation',name='作文六环节').get_by_role('button').count()==7
             assert page.get_by_text('范文配图组缺失').count()>0
             assert page.get_by_text('看图写话图片组缺失').count()>0
             assert page.get_by_role('button',name='审核通过',exact=True).count()==1
+            assert page.get_by_label('素材归属').count()==1
+            page.get_by_role('button',name='3. 看图写话').click()
+            assert page.get_by_text('本环节还没有素材。').count()==1
+            page.get_by_role('button',name='2. 范文导览').click()
             assert page.get_by_label('素材归属').count()==1
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             page.screenshot(path=str(tmp_path/'writing-workbench-mobile.png'),full_page=True)
