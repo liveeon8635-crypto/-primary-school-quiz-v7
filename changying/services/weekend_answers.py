@@ -266,3 +266,84 @@ def practice_deck(implementation, db, session):
         for text in presentation_pages([item['answer'] if index < count else item['question']], preserve_pages=True):
             deck.append({'text': text, 'question': index+1, 'published': index < count})
     return deck, count, min(page, max(0, len(deck)-1)), len(items)
+
+
+def _valid_question_figure(fig):
+    """Return a clean student-safe question figure dict, or {} if empty/invalid."""
+    if not isinstance(fig, dict) or not fig.get("type"):
+        return {}
+    if fig.get("type") == "uploaded_image":
+        url = str(fig.get("data_url") or "")
+        if not url.startswith(("data:image/jpeg;base64,", "data:image/png;base64,")):
+            return {}
+        return {"type": "uploaded_image", "data_url": url, "alt": str(fig.get("alt") or "题目插图")[:80]}
+    return dict(fig)
+
+
+def practice_question_figure(implementation, db, session, item):
+    """Resolve the question-only diagram (never steps/answers) for a practice item.
+
+    Lookup order:
+      1. Uploaded question figure on TeachingQuestion (choice) or lesson written template (written).
+      2. Approved stage-4 courseware initial diagram (sourceFigure -> stepFigures[0] -> figure).
+    """
+    if not item:
+        return {}
+    kind = item.get("kind")
+    qid = item.get("id")
+    if kind == "choice" and qid is not None:
+        tq = db.get(implementation.TeachingQuestion, int(qid))
+        if tq is not None:
+            try:
+                fig = _valid_question_figure(json.loads(getattr(tq, "figure_json", "") or "{}"))
+            except (TypeError, ValueError):
+                fig = {}
+            if fig:
+                return fig
+    elif kind == "written":
+        from changying.services.lesson_written import template_meta, written_templates
+        from changying.web.weekend_written import register_written_tables
+        written_t = register_written_tables(implementation)["questions"]
+        binding_stem = str(item.get("bindingStem") or "").strip()
+        binding_key = question_key(binding_stem) if binding_stem else ""
+        for tpl in written_templates(db, written_t, session.school_id, session.teacher_id, session.lesson_id):
+            tpl_stem = str(tpl.stem or "").split("\n\n")[-1].strip()
+            if tpl_stem == binding_stem or (binding_key and question_key(tpl_stem) == binding_key):
+                fig = _valid_question_figure(template_meta(tpl).get("figure"))
+                if fig:
+                    return fig
+    # Fallback: approved stage-4 courseware initial figure (never leaks steps or answer).
+    from changying.services.weekend_course_types import frozen_session, practice_stage
+    from changying.web.weekend_courseware import items_of, register_courseware_table, _repair_courseware_visual, _courseware_visual_text
+    frozen = frozen_session(db, implementation, int(session.id), metadata=getattr(implementation, "Base", None) and implementation.Base.metadata)
+    practice_no = practice_stage((frozen or {}).get("courseType"))
+    cw_t = register_courseware_table(implementation)
+    cw_row = db.execute(select(cw_t).where(
+        cw_t.c.school_id == session.school_id,
+        cw_t.c.lesson_id == session.lesson_id,
+        cw_t.c.approved_json.isnot(None),
+    )).first()
+    if cw_row is None:
+        return {}
+    approved = [i for i in items_of(cw_row) if i.get("approved") is not None and int(i.get("stage") or 0) == practice_no and i.get("page") is not None]
+    stem = str(item.get("bindingStem") or "").strip()
+    if not approved or not stem:
+        return {}
+    matches = [i for i in approved if str(i.get("approvedPageText", i.get("pageText")) or "").strip() == stem]
+    if len(matches) != 1:
+        key = question_key(stem)
+        matches = [i for i in approved if key and question_key(str(i.get("approvedPageText", i.get("pageText")) or "")) == key]
+    if len(matches) != 1:
+        return {}
+    matched = matches[0]
+    params = _repair_courseware_visual(matched["approved"], _courseware_visual_text(matched, matched["approved"], matched.get("pageText") or ""))
+    candidates = [params.get("sourceFigure")]
+    step_figs = params.get("stepFigures")
+    if isinstance(step_figs, list) and step_figs:
+        candidates.append(step_figs[0])
+    candidates.append(params.get("figure"))
+    for cand in candidates:
+        fig = _valid_question_figure(cand)
+        if fig:
+            return fig
+    return {}

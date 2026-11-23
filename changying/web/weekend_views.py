@@ -286,9 +286,18 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                 out["content"] = [f"本节课“{task_label}”还没有已审核的任务。",
                                   "请返回备课页导入或配置任务、确认素材关系并完成审核。"]
             if deck:
+                from changying.services.weekend_answers import practice_items, practice_question_figure, question_is_open
+                p_items = practice_items(implementation, db, row)
+                cur_qno = deck[idx]["question"]
+                cur_item = p_items[cur_qno - 1] if 1 <= cur_qno <= len(p_items) else None
+                cur_open = bool(cur_item and question_is_open(implementation, db, row, cur_item["kind"], cur_item["id"]))
                 out["deck"] = {"total": len(deck), "index": idx}
-                out["answerRelease"].update({"currentQuestion": deck[idx]["question"], "currentPublished": deck[idx]["published"]})
+                out["answerRelease"].update({"currentQuestion": cur_qno, "currentPublished": deck[idx]["published"], "currentOpen": cur_open})
                 out["content"].append(deck[idx]["text"])
+                if cur_item is not None and not deck[idx]["published"]:
+                    p_fig = practice_question_figure(implementation, db, row, cur_item)
+                    if p_fig:
+                        out["practiceFigure"] = p_fig
         if course_type in ("math", "legacy") and no in (practice_no, practice_no + 1) and row.status == "running":
             from changying.web.weekend_written import register_written_tables
             written_q = register_written_tables(implementation)['questions']
@@ -318,12 +327,14 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                 ]}
             if row.covered:
                 out["content"] = []
+                out.pop("practiceFigure", None)
             elif course_type in ("reading", "writing") and no != practice_no:
                 # The legacy lesson fields can contain a complete teacher document,
                 # including answers. They are not reviewed student-facing nodes:
                 # only approved courseware of this page may reach the board.
                 out["content"] = [courseware["kindLabel"]] if "courseware" in out else []
                 out.pop("deck", None)
+                out.pop("practiceFigure", None)
             elif course_type in ("reading", "writing") and no == practice_no and "deck" in out:
                 from changying.services.weekend_answers import practice_items, question_is_open
                 items = practice_items(implementation, db, row)
@@ -340,6 +351,7 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                         out.pop("courseware", None)
                     out.pop("deck", None)
                     out.pop("answerRelease", None)
+                    out.pop("practiceFigure", None)
             return out
         stages = []
         for s in stages_for_session:

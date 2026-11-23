@@ -150,7 +150,7 @@ function writtenStudent(box){
             }
             target=groups[key];
           }
-          var receipt=receipts[c.sessionId+':'+q.id];if(receipt&&(!q.submission||q.submission.revision<receipt.revision))q.submission=receipt;var a=q.submission,card=el('div',{class:'card'},el('div',{style:'white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;font-weight:600',text:question}));target.appendChild(card);
+          var receipt=receipts[c.sessionId+':'+q.id];if(receipt&&(!q.submission||q.submission.revision<receipt.revision))q.submission=receipt;var a=q.submission,card=el('div',{class:'card'},el('div',{style:'white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;font-weight:600',text:question}));if(typeof renderQuestionFigure==='function')renderQuestionFigure(card,q.figure,false);target.appendChild(card);
           if(a){card.appendChild(el('div',{class:'notice',text:(a.result==='pending'&&!q.answersPublished?'已提交，请等待老师统一在大屏公布答案。':WRITTEN_RESULT[a.result])+' · 已提交 '+(a.attempts||1)+'/3次'}));card.appendChild(el('p',{text:a.text}));writtenPhoto(card,a);if(a.comment)card.appendChild(el('p',{text:'老师评语：'+a.comment}))}
           if(!d.canSubmit||q.canSubmit===false||a&&(a.attempts||1)>=3)return;
           var ackNotice=el('div',{role:'status'});card.appendChild(ackNotice);var text=el('textarea',{placeholder:'填写答案，也可以用键盘听写或拍照提交',maxlength:4000}),photo=null,removeExisting=false,preview=el('div'),url=null;

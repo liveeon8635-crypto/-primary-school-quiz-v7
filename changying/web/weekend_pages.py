@@ -18,6 +18,13 @@ function questionFigureImg(fig){
   if(!fig||fig.type!=='uploaded_image'||!/^data:image\/(jpeg|png);base64,/.test(String(fig.data_url||'')))return null;
   return el('img',{src:fig.data_url,alt:fig.alt||'原卷插图',style:'display:block;max-width:100%;max-height:320px;object-fit:contain;margin:8px 0;border:1px solid #e5e8f0;border-radius:8px'});
 }
+function renderQuestionFigure(box,fig,big){
+  if(!box||!fig||!fig.type)return false;
+  if(!big&&fig.type==='uploaded_image'){var img=questionFigureImg(fig);if(img){box.appendChild(img);return true}return false}
+  if(typeof cwFigure==='function'){cwFigure(box,fig,!!big,{step:0},false,0);return true}
+  var fallback=questionFigureImg(fig);if(fallback){box.appendChild(fallback);return true}
+  return false;
+}
 var el=function(tag,attrs){
   var n=document.createElement(tag);
   Object.keys(attrs||{}).forEach(function(k){
@@ -134,16 +141,23 @@ function control(){
       status:d.status||'',covered:!!d.covered,currentStage:d.currentStage||0,canNextStage:canNextStage,
       answerRelease:d.answerRelease||null,pendingPracticeSync:d.pendingPracticeSync||0,
       deck:d.deck||null,content:d.content||[],coursewareNotice:d.coursewareNotice||'',
+      practiceFigure:d.practiceFigure||null,
       cw:cw?{id:cw.id||null,kind:cw.kind||'',kindLabel:cw.kindLabel||'',stageNo:cw.stageNo,page:cw.page===undefined?null:cw.page,params:cw.params||null}:null
     });
     if(contentKey!==lastContentKey){
       content.textContent='';activeCwBox=null;
       content.appendChild(el('h2',{text:'当前环节大屏内容'}));
-      if(running&&d.currentStage===4&&d.answerRelease){
+      if(running&&d.answerRelease&&d.answerRelease.currentQuestion){
         var release=d.answerRelease,current=release.currentQuestion;
         content.appendChild(el('div',{class:'notice',text:'已公布 '+release.published+' / '+release.total+' 题；只停止已公布题目的提交，其他题继续作答。'}));
-        content.appendChild(el('button',{class:'primary',text:release.currentPublished?'第 '+current+' 题答案已公布':'统一公布第 '+current+' 题答案',disabled:!!release.currentPublished||current!==release.nextQuestion,onclick:function(){if(confirm('公布第 '+current+' 题答案后，仅本题停止接收提交，其他题可继续作答。确定公布吗？'))post('publish-answers',{question:current})}}));
-        if(release.nextQuestion&&current!==release.nextQuestion)content.appendChild(el('button',{text:'继续第 '+release.nextQuestion+' 题',onclick:function(){post('practice-question',{question:release.nextQuestion})}}));
+        var actRow=el('div',{class:'row'});
+        if(!release.currentPublished&&release.currentOpen===false){
+          actRow.appendChild(el('button',{class:'primary',text:'开放第 '+current+' 题给学生作答',onclick:function(){post('practice-question',{question:current})}}));
+        }
+        actRow.appendChild(el('button',{class:release.currentOpen===false?'':'primary',text:release.currentPublished?'第 '+current+' 题答案已公布':'统一公布第 '+current+' 题答案',disabled:!!release.currentPublished||current!==release.nextQuestion,onclick:function(){if(confirm('公布第 '+current+' 题答案后，仅本题停止接收提交，其他题可继续作答。确定公布吗？'))post('publish-answers',{question:current})}}));
+        if(release.nextQuestion&&current!==release.nextQuestion)actRow.appendChild(el('button',{text:'继续第 '+release.nextQuestion+' 题',onclick:function(){post('practice-question',{question:release.nextQuestion})}}));
+        content.appendChild(actRow);
+        if(!release.currentPublished&&release.currentOpen===false)content.appendChild(el('div',{class:'notice warn',text:'第 '+current+' 题尚未开放给学生，点击“开放第 '+current+' 题给学生作答”后学生端即可同步看到本题。'}));
       }
       if(d.pendingPracticeSync>0&&d.status!=='finished'){
         var syncBtn=el('button',{class:'primary','data-sync-practice':'1',text:'同步新增练习（+'+d.pendingPracticeSync+' 题）',onclick:function(){
@@ -172,6 +186,7 @@ function control(){
       }
       if(d.coursewareNotice)content.appendChild(el('div',{class:'notice warn',text:d.coursewareNotice}));
       if(d.courseware){var cwBox=el('div');content.appendChild(cwBox);activeCwBox=cwBox;cwControl(cwBox,d.courseware,SID,{canNextStage:canNextStage,onNextStage:function(){post('next')}})}
+      else if(d.practiceFigure){var pfBox=el('div',{style:'margin:8px 0'});content.appendChild(pfBox);renderQuestionFigure(pfBox,d.practiceFigure,false)}
       lastContentKey=contentKey;
     }else if(cw&&activeCwBox&&activeCwBox._cwSyncView){
       activeCwBox._cwSyncView(cw.view);
@@ -479,6 +494,7 @@ function board(){
       title:d.title||'',status:d.status||'',covered:!!d.covered,
       currentStage:d.currentStage||0,stageName:d.stageName||'',goal:d.goal||'',
       deck:d.deck||null,content:d.content||[],courseware:boardCoursewareKey(d.courseware),
+      practiceFigure:d.practiceFigure||null,
       answersPublished:!!d.answersPublished,answerRelease:d.answerRelease||null
     });
   }
@@ -561,6 +577,15 @@ function board(){
       if(keepScroll)body.scrollTop=oldScroll;
       updateClock();return;
     }
+    if(d.practiceFigure){
+      body.style.display='flex';body.style.flexDirection='column';body.style.gap='1vh';
+      var qTop=el('div',{style:'font-size:2.4vh;line-height:1.45;flex:none'});body.appendChild(qTop);boardLayout(qTop,d.content,false);
+      var figBox=el('div',{style:'flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:12px;padding:12px;overflow:auto'});
+      body.appendChild(figBox);renderQuestionFigure(figBox,d.practiceFigure,true);
+      scrollBody=body;lastRenderKey=nextKey;lastViewKey=viewKey(d);
+      if(keepScroll)body.scrollTop=oldScroll;
+      updateClock();return;
+    }
     // Side by side when it fits; when the two columns would make the text smaller, stack them (the larger text wins).
     function laid(wide){body.textContent='';boardLayout(body,d.content,wide);fitText(body);return parseFloat(body.style.fontSize)||0}
     window.blRefit=function(){fitText(body)};          // a shown answer makes the page longer: fit it again
@@ -637,7 +662,7 @@ function practice(){
     d.questions.forEach(function(q,qi){
       var locked=q.canSubmit===false||(q.attempts||0)>=3,card=el('div',{class:'card'}),out=el('div'),hintsOut=el('div');
       card.appendChild(el('b',{text:/^\s*第\s*\d+\s*题/.test(q.stem)?q.stem:(qi+1)+'. '+q.stem}));
-      var qfig=typeof questionFigureImg==='function'?questionFigureImg(q.figure):null;if(qfig)card.appendChild(qfig);
+      renderQuestionFigure(card,q.figure,false);
       var selectionKey=d.sessionId+':'+q.id,chosen=selectedAnswers[selectionKey]==null?(q.answered?q.selected:-1):selectedAnswers[selectionKey],opts=el('div');
       q.options.forEach(function(o,i){
         var b=el('button',{style:'display:block;width:100%;text-align:left;margin:6px 0',text:optText(i,o)});
@@ -1473,7 +1498,7 @@ function boot_student(run){
 
 
 def practice_page_html() -> str:
-    return _page("课堂练习", STUDENT_BOOT + WRITTEN_JS + PRACTICE_JS, True)
+    return _page("课堂练习", STUDENT_BOOT + COURSEWARE_JS + WRITTEN_JS + PRACTICE_JS, True)
 
 
 def plan_page_html() -> str:
