@@ -239,6 +239,11 @@ function peerCard(box){
             holder.appendChild(el('span',{class:'tag ok',text:r.name+' 已结束讲解 · '+r.explainReview.label+' · 讲题积分 +'+r.explainReview.points+(r.explainReview.comment?'（'+r.explainReview.comment+'）':'')}));
             evalBox.appendChild(holder);return;
           }
+          if(r.explainResponse&&r.explainResponse.decision==='decline'){
+            holder.appendChild(el('span',{class:'tag warn',text:r.name+'：'+r.explainResponse.label+'（可改请其他同学）'}));
+          }else if(r.explainResponse&&r.explainResponse.decision==='accept'){
+            holder.appendChild(el('span',{class:'tag ok',text:r.name+'：'+r.explainResponse.label}));
+          }
           var sel=el('select');
           [['clear','思路清晰（+2分）'],['basic','基本讲清（+1分）'],['guided','需引导·鼓励参与（+1分）']].forEach(function(opt){sel.appendChild(el('option',{value:opt[0],text:opt[1]}))});
           var cmt=el('input',{placeholder:'给 '+r.name+' 的简短评语（选填）',maxlength:300,style:'min-width:180px'});
@@ -279,7 +284,9 @@ function scoreCard(box){
     out.appendChild(el('div',{class:'muted',text:'班级完成率 '+d.preRate+'% → 巩固后 '+d.postRate+'%'+(d.prevPostRate==null?'（首次课，没有上一次可比）':'（上一次 '+d.prevPostRate+'%）')+' · 团队分 '+d.teamPoints}));
     d.items.forEach(function(i){
       var parts=Object.keys(PART).map(function(k){return i.parts[k]?PART[k]+' +'+i.parts[k]:null}).filter(Boolean).join('，')||'本节没有加分';
-      out.appendChild(el('div',{class:'row'},el('b',{text:i.name+'  共 '+i.total+' 分'}),el('span',{class:'muted',text:parts+(i.why.progress.reason&&i.why.progress.reason!=='ok'?' · '+i.why.progress.reason:'')})));
+      var expDetails=((i.why&&i.why.tutor&&i.why.tutor.explained)||[]).map(function(x){return '讲题('+x.label+' +'+x.points+'分'+(x.comment?'：'+x.comment:'')+')'}).join('、');
+      var extra=expDetails?(' · '+expDetails):'';
+      out.appendChild(el('div',{class:'row'},el('b',{text:i.name+'  共 '+i.total+' 分'}),el('span',{class:'muted',text:parts+extra+(i.why.progress.reason&&i.why.progress.reason!=='ok'?' · '+i.why.progress.reason:'')})));
     });
     if(d.settled){out.appendChild(el('div',{class:'notice ok',text:'已结算，积分已写入。'}));return}
     if(d.pendingFollowups>0)out.appendChild(el('div',{class:'notice warn',text:'还有 '+d.pendingFollowups+' 位同学的巩固题没做完。现在结算，小老师这部分的分会拿不到（只能结算一次），建议等他们做完再结算。'}));
@@ -638,11 +645,32 @@ boot(board);
 PRACTICE_JS = r"""
 var LETTERS='ABCDEFGH',wait=null;
 function optText(i,o){return LETTERS[i]+'. '+String(o).replace(/^\s*[A-Da-d]\s*[．.、:：)）]\s*/,'')}   // imported options may carry their own letter
-function invitationCard(q){
+function invitationCard(q,sid,onResponded){
   var card=el('div',{class:'card'}),stem=String(q.stem||''),cut=stem.lastIndexOf('\n\n');
   card.appendChild(el('h2',{text:q.explainReview&&q.explainReview.finished?'本次讲题已完成':'老师请你给大家讲这道题'}));
   if(q.explainReview&&q.explainReview.finished){
     card.appendChild(el('div',{class:'notice ok',text:'老师评价：'+q.explainReview.label+' · 讲题积分 +'+q.explainReview.points+(q.explainReview.comment?' · 评语：'+q.explainReview.comment:'')}));
+  }else if(sid){
+    var respBox=el('div',{class:'row',style:'margin:6px 0'});
+    function showResp(resp){
+      respBox.textContent='';
+      respBox.appendChild(el('div',{class:resp.decision==='accept'?'notice ok':'notice warn',text:resp.label}));
+    }
+    if(q.explainResponse&&q.explainResponse.decision){
+      showResp(q.explainResponse);
+    }else{
+      var acceptBtn=el('button',{class:'primary',text:'我来讲（同意）',onclick:function(){sendResp('accept')}});
+      var declineBtn=el('button',{text:'暂不讲解（拒绝）',onclick:function(){sendResp('decline')}});
+      function sendResp(decision){
+        acceptBtn.disabled=true;declineBtn.disabled=true;
+        api('/student/weekend/explain/respond',{json:{sessionId:sid,questionId:q.questionId,questionType:q.questionType||'choice',decision:decision}}).then(function(r){
+          showResp(r.explainResponse);
+          if(typeof onResponded==='function')onResponded();
+        }).catch(function(e){alert(e.message);acceptBtn.disabled=false;declineBtn.disabled=false});
+      }
+      respBox.appendChild(acceptBtn);respBox.appendChild(declineBtn);
+    }
+    card.appendChild(respBox);
   }
   function folded(title,text){return el('details',{},el('summary',{text:title}),el('div',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font-weight:400;line-height:1.7',text:text}))}
   if(cut>0){card.appendChild(folded('阅读材料（展开查看）',stem.slice(0,cut)));card.appendChild(el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere',text:stem.slice(cut+2)}))}
@@ -737,14 +765,17 @@ function practice(){
       card.appendChild(hintsOut);card.appendChild(out);box.appendChild(card);
     });
   }
-  var ebox=el('div');root.insertBefore(ebox,box);
-  function explain(){
+  var ebox=el('div'),lastExplainSignature='';root.insertBefore(ebox,box);
+  function explain(force){
     var sid=currentSession,request=++explainNo;
-    if(!sid||(currentStage!==4&&currentStage!==5)){ebox.textContent='';return}
+    if(!sid||(currentStage!==4&&currentStage!==5)){lastExplainSignature='';ebox.textContent='';return}
     api('/student/weekend/explain?sessionId='+sid).then(function(d){
       if(request!==explainNo||sid!==currentSession||d.sessionId!==sid)return;
-      ebox.textContent='';d.items.forEach(function(q){ebox.appendChild(invitationCard(q))});
-    }).catch(function(){if(request===explainNo)ebox.textContent=''});
+      var sig=sid+':'+JSON.stringify(d.items||[]);
+      if(!force&&sig===lastExplainSignature)return;
+      lastExplainSignature=sig;
+      ebox.textContent='';d.items.forEach(function(q){ebox.appendChild(invitationCard(q,sid,function(){lastExplainSignature=''}))});
+    }).catch(function(){if(request===explainNo&&!lastExplainSignature)ebox.textContent=''});
   }
   var fbox=el('div');root.insertBefore(fbox,box);
   function followup(){

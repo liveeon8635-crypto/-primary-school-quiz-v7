@@ -57,7 +57,15 @@ with TestClient(app) as client:
     bd_during = client.get(base + "/board", headers=th).json()
     assert any("同学来讲" in line for line in bd_during["content"])
 
-    # Finish explanation with rating & comment -> board clears invitation, teacher & student see review + points.
+    # Student declines -> board hides prompt; then student accepts -> board shows prompt again.
+    dec = client.post("/student/weekend/explain/respond", headers=sh, json={"sessionId": sid, "questionId": q1, "questionType": "written", "decision": "decline"})
+    assert dec.status_code == 200, dec.text
+    assert not any("同学来讲" in line for line in client.get(base + "/board", headers=th).json()["content"])
+    acc = client.post("/student/weekend/explain/respond", headers=sh, json={"sessionId": sid, "questionId": q1, "questionType": "written", "decision": "accept"})
+    assert acc.status_code == 200, acc.text
+    assert any("同学来讲" in line for line in client.get(base + "/board", headers=th).json()["content"])
+
+    # Finish explanation with rating & comment -> board clears invitation, teacher & student see review + points, and settle-preview includes the points.
     fin = client.post(
         base + "/explain/finish",
         headers=th,
@@ -76,9 +84,17 @@ with TestClient(app) as client:
     assert stu_exp[0]["explainReview"]["finished"] is True
     assert stu_exp[0]["explainReview"]["points"] == 2
     assert stu_exp[0]["explainReview"]["comment"] == "步骤完整，表达清楚"
+    assert stu_exp[0]["explainResponse"]["decision"] == "accept"
 
     sug = client.get(base + "/peer-suggest", headers=th).json()["questions"]
     assert sug[0]["submitted"][0]["explainReview"]["finished"] is True
+
+    # Settle preview must include teacher-evaluated explain points in tutor parts and why.tutor.explained!
+    pre = client.get(base + "/settle-preview", headers=th).json()
+    me = next(x for x in pre["items"] if x["studentId"] == student_id)
+    assert me["parts"]["tutor"] >= 2 and me["total"] >= 2
+    assert me["why"]["tutor"]["explained"][0]["points"] == 2
+    assert me["why"]["tutor"]["explained"][0]["label"] == "思路清晰"
 
     # Stage 5, 6, 7 student sync returns distinct stage content and Stage 7 homeworkUrl.
     c5 = client.get("/student/weekend/current", headers=sh).json()
@@ -98,6 +114,8 @@ with TestClient(app) as client:
     assert "按学生作答生成并布置个性化课后练习" in control_html
     assert "前往首页“作业”查看专属课后练习" in practice_html
     assert "本次讲题已完成" in practice_html
+    assert "lastExplainSignature" in practice_html
+    assert "我来讲（同意）" in practice_html and "暂不讲解（拒绝）" in practice_html
     print("OK")
 """,
         {"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},

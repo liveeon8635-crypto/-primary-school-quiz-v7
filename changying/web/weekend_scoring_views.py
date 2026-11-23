@@ -68,10 +68,22 @@ class ExplainFinishBody(BaseModel):
     comment: str = ""
 
 
+class ExplainRespondBody(BaseModel):
+    sessionId: int
+    questionId: int
+    questionType: str = "choice"
+    decision: str
+
+
 EXPLAIN_RATINGS: dict[str, tuple[str, int]] = {
     "clear": ("思路清晰", 2),
     "basic": ("基本讲清", 1),
     "guided": ("需引导（鼓励参与）", 1),
+}
+
+EXPLAIN_DECISIONS: dict[str, str] = {
+    "accept": "已同意讲解，准备发言",
+    "decline": "暂不讲解，请老师换人",
 }
 
 
@@ -84,6 +96,18 @@ def _explain_review_of(raw: str | None) -> dict[str, Any] | None:
         return None
     if isinstance(data, dict) and isinstance(data.get("explainReview"), dict):
         return data["explainReview"]
+    return None
+
+
+def _explain_response_of(raw: str | None) -> dict[str, Any] | None:
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return None
+    if isinstance(data, dict) and isinstance(data.get("explainResponse"), dict):
+        return data["explainResponse"]
     return None
 
 
@@ -293,12 +317,61 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
             for it in items:
                 if it["studentId"] == int(p.tutor_id):
                     old = it["parts"]["tutor"]
-                    it["parts"]["tutor"] = (old[0] + pts, {"helped": (old[1].get("helped", []) + [{"tuteeId": int(p.tutee_id), "followupCorrect": p.followup_correct}])})
+                    it["parts"]["tutor"] = (old[0] + pts, {**old[1], "helped": (old[1].get("helped", []) + [{"tuteeId": int(p.tutee_id), "followupCorrect": p.followup_correct}])})
+        # Include teacher-evaluated explanation points (for both written and choice invitations).
+        all_peer_rows = db.execute(select(peer).where(peer.c.session_id == int(row.id)).order_by(peer.c.id)).all()
+        seen_explain_award: set[tuple[int, int]] = set()
+        items_by_stu = {it["studentId"]: it for it in items}
+        for p in all_peer_rows:
+            rev = _explain_review_of(p.followup_json)
+            if not rev or not rev.get("finished"):
+                continue
+            key = (int(p.tutor_id), int(p.question_id))
+            if key in seen_explain_award:
+                continue
+            seen_explain_award.add(key)
+            e_pts = max(0, int(rev.get("points") or 0))
+            if not e_pts:
+                continue
+            tid_stu = int(p.tutor_id)
+            it = items_by_stu.get(tid_stu)
+            if it is None and tid_stu in names:
+                it = {
+                    "studentId": tid_stu,
+                    "name": names[tid_stu][0],
+                    "parts": {
+                        "progress": (0, {"reason": "仅记参与"}),
+                        "completion": (0, {"completion": 0}),
+                        "tutor": (0, {}),
+                        "team": (team, {"postRate": post_rate, "prevPostRate": prev_post}),
+                    },
+                }
+                items.append(it)
+                items_by_stu[tid_stu] = it
+            if it is not None:
+                old = it["parts"]["tutor"]
+                explained = list(old[1].get("explained", []))
+                explained.append({
+                    "questionId": abs(int(p.question_id)),
+                    "questionType": "written" if int(p.question_id) < 0 else "choice",
+                    "label": str(rev.get("label") or "讲题"),
+                    "points": e_pts,
+                    "comment": str(rev.get("comment") or ""),
+                })
+                it["parts"]["tutor"] = (old[0] + e_pts, {**old[1], "explained": explained})
         for it in items:
             it["total"] = sum(v[0] for v in it["parts"].values())
         items.sort(key=lambda x: x["name"])
+        def _has_real_followup(raw_json: str | None) -> bool:
+            if not raw_json:
+                return False
+            try:
+                d = json.loads(raw_json)
+                return isinstance(d, dict) and bool(d.get("stem"))
+            except Exception:  # noqa: BLE001
+                return False
         return {"items": items, "preRate": pre_rate, "postRate": post_rate, "prevPostRate": prev_post, "teamPoints": team,
-                "pendingFollowups": sum(1 for p in pairs if p.followup_json and p.followup_correct is None),
+                "pendingFollowups": sum(1 for p in pairs if _has_real_followup(p.followup_json) and p.followup_correct is None),
                 "settled": bool(db.scalar(select(func.count()).select_from(awards).where(awards.c.session_id == row.id)))}
 
     def public(result: dict[str, Any]) -> dict[str, Any]:
@@ -333,13 +406,14 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         submissions = db.execute(select(wt['submissions']).where(wt['submissions'].c.session_id == row.id,
             wt['submissions'].c.school_id == row.school_id)).all()
         asked_rows = db.execute(select(peer).where(peer.c.session_id == row.id, peer.c.question_id < 0)).all()
-        asked_map = {(int(p.question_id), int(p.tutor_id)): _explain_review_of(p.followup_json) for p in asked_rows}
+        asked_map = {(int(p.question_id), int(p.tutor_id)): (_explain_review_of(p.followup_json), _explain_response_of(p.followup_json)) for p in asked_rows}
         items = []
         for no, q in enumerate(db.execute(select(wt['questions']).where(wt['questions'].c.session_id == row.id,
                 wt['questions'].c.school_id == row.school_id, wt['questions'].c.teacher_id == row.teacher_id).order_by(wt['questions'].c.id)), 1):
             mine = [{'studentId': int(a.student_id), 'name': names[int(a.student_id)][0], 'result': a.result,
                      'asked': (-int(q.id), int(a.student_id)) in asked_map,
-                     'explainReview': asked_map.get((-int(q.id), int(a.student_id)))}
+                     'explainReview': (asked_map.get((-int(q.id), int(a.student_id))) or (None, None))[0],
+                     'explainResponse': (asked_map.get((-int(q.id), int(a.student_id))) or (None, None))[1]}
                     for a in submissions if a.question_id == q.id and int(a.student_id) in names]
             if mine:
                 items.append({'questionType':'written', 'questionId':q.id, 'no':no,
@@ -365,12 +439,14 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         if all(r == 0 for r in rates):
             return {"mode": "peer" if written else "teacher", "message": written_message if written else "这几题大家都没做对：建议老师集中讲，只记参与", "questions": written}
         qs = {int(q.id): q for q in db.scalars(select(TQ).where(TQ.school_id == u.school_id, TQ.lesson_id == row.lesson_id, TQ.active.is_(True)).order_by(TQ.id)).all()}
-        asked_choice: dict[tuple[int, int], dict[str, Any] | None] = {}
+        asked_choice: dict[tuple[int, int], tuple[dict[str, Any] | None, dict[str, Any] | None]] = {}
         for p in peer_rows(db, sid):
             key = (int(p.question_id), int(p.tutor_id))
             rev = _explain_review_of(p.followup_json)
-            if key not in asked_choice or rev is not None:
-                asked_choice[key] = rev
+            resp = _explain_response_of(p.followup_json)
+            if key not in asked_choice or rev is not None or resp is not None:
+                prev_rev, prev_resp = asked_choice.get(key, (None, None))
+                asked_choice[key] = (rev or prev_rev, resp or prev_resp)
         right: dict[int, list[dict[str, Any]]] = {}
         wrong: dict[int, list[dict[str, Any]]] = {}
         for a in db.execute(select(answers_t).where(answers_t.c.session_id == sid).order_by(answers_t.c.id)).all():
@@ -381,7 +457,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         items = []
         for no, (qid, q) in enumerate(qs.items(), start=1):
             if right.get(qid) and wrong.get(qid):
-                items.append({"questionId": qid, "no": no, "stem": q.stem, "right": [dict(w, asked=(qid, w["studentId"]) in asked_choice, explainReview=asked_choice.get((qid, w["studentId"]))) for w in right[qid]], "wrong": wrong[qid]})
+                items.append({"questionId": qid, "no": no, "stem": q.stem, "right": [dict(w, asked=(qid, w["studentId"]) in asked_choice, explainReview=(asked_choice.get((qid, w["studentId"])) or (None, None))[0], explainResponse=(asked_choice.get((qid, w["studentId"])) or (None, None))[1]) for w in right[qid]], "wrong": wrong[qid]})
         return {"mode": "peer", "message": "选一道题，请做对的同学来讲；讲完，没做对的同学会收到一道类似的小题。", "questions": items + written}
 
     @router.post("/teacher/weekend/sessions/{sid}/explain")
@@ -506,7 +582,8 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
                 if q is not None and a is not None:
                     item = {"questionType":"written", "questionId":q.id, "stem":q.stem,
                             "answerText":a.answer_text, "submission":{"id":a.id,"hasPhoto":a.photo is not None},
-                            "explainReview": _explain_review_of(p.followup_json)}
+                            "explainReview": _explain_review_of(p.followup_json),
+                            "explainResponse": _explain_response_of(p.followup_json)}
                     if answers_published(implementation, db, row, q.id, "written"):
                         item['reference'] = q.reference
                     items.append(item)
@@ -518,8 +595,47 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
                 opts = json.loads(q.options_json or "[]")
             except Exception:  # noqa: BLE001
                 opts = []
-            items.append({"questionId": q.id, "stem": q.stem, "options": opts, "correctIndex": int(q.correct_index), "explanation": q.explanation or "", "explainReview": _explain_review_of(p.followup_json)})
+            items.append({"questionId": q.id, "stem": q.stem, "options": opts, "correctIndex": int(q.correct_index), "explanation": q.explanation or "", "explainReview": _explain_review_of(p.followup_json), "explainResponse": _explain_response_of(p.followup_json)})
         return {"sessionId": current.id, "items": items}
+
+    @router.post("/student/weekend/explain/respond")
+    def respond_explain(b: ExplainRespondBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Allow an invited student to accept or decline explaining a question."""
+        need(u, "student")
+        if b.decision not in EXPLAIN_DECISIONS:
+            raise HTTPException(400, "请选择同意或暂不讲解")
+        current = current_student_session(implementation, db, u)
+        if current is None or int(current.id) != int(b.sessionId):
+            raise HTTPException(404, "现在没有正在上的课")
+        stored_qid = -int(b.questionId) if b.questionType == "written" else int(b.questionId)
+        targets = db.execute(select(peer).where(
+            peer.c.session_id == int(b.sessionId),
+            peer.c.school_id == u.school_id,
+            peer.c.tutor_id == u.id,
+            peer.c.question_id == stored_qid,
+        )).all()
+        if not targets:
+            raise HTTPException(404, "没有找到你的讲题邀请")
+        for p in targets:
+            rev = _explain_review_of(p.followup_json)
+            if rev and rev.get("finished"):
+                raise HTTPException(409, "老师已结束本次讲解评价")
+        resp = {
+            "decision": b.decision,
+            "label": EXPLAIN_DECISIONS[b.decision],
+            "respondedAt": datetime.utcnow().isoformat(timespec="seconds"),
+        }
+        for p in targets:
+            try:
+                payload = json.loads(p.followup_json) if p.followup_json else {}
+                if not isinstance(payload, dict):
+                    payload = {}
+            except Exception:  # noqa: BLE001
+                payload = {}
+            payload["explainResponse"] = resp
+            db.execute(update(peer).where(peer.c.id == p.id).values(followup_json=json.dumps(payload, ensure_ascii=False)))
+        db.commit()
+        return {"ok": True, "explainResponse": resp, "message": resp["label"]}
 
     @router.post("/teacher/weekend/sessions/{sid}/peer-help")
     def pair(sid: int, b: PairBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
