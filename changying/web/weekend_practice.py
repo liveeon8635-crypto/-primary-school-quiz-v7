@@ -293,7 +293,33 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         base = {"active": True, "sessionId": row.id, "title": row.title, "stage": int(row.current_stage),
                 "stageName": stage["name"] if stage else "", "className": bound.class_name if bound else ""}
         if int(row.current_stage) != practice_no:
-            return {**base, "practice": False, "message": "还没到随堂练习，请看大屏听老师讲" if int(row.current_stage) < practice_no else "随堂练习已关闭，可查看已提交答案与老师反馈"}
+            cur_no = int(row.current_stage)
+            if cur_no < practice_no:
+                return {**base, "practice": False, "message": "还没到随堂练习，请看大屏听老师讲"}
+            from changying.services.weekend_stages import stage_content
+            lesson_obj = db.get(implementation.TeachingLesson, row.lesson_id)
+            lesson_dict = {
+                "title": getattr(lesson_obj, "title", "") or "",
+                "core_target": getattr(lesson_obj, "core_target", "") or "",
+                "teacher_plan": getattr(lesson_obj, "teacher_plan", "") or "",
+                "examples_json": getattr(lesson_obj, "examples_json", "") or "",
+                "ppt_json": getattr(lesson_obj, "ppt_json", "") or "",
+                "closure_training": getattr(lesson_obj, "closure_training", "") or "",
+                "reading_plan": getattr(lesson_obj, "reading_plan", "") or "",
+                "writing_plan": getattr(lesson_obj, "writing_plan", "") or "",
+                "essay_review": getattr(lesson_obj, "essay_review", "") or "",
+            } if lesson_obj is not None else {}
+            s_content = stage_content(cur_no, lesson_dict, course_type)
+            if cur_no == practice_no + 1:
+                msg = "当前进入“练习复盘”环节：请听老师和同学讲评；标为“需订正”的题目可在下方直接提交订正。"
+            elif cur_no >= 7:
+                msg = "当前进入“布置课后”环节：请查看本课课后任务；老师根据你的作答布置的专属补充练习请到学生首页“作业”查看。"
+            else:
+                msg = f"当前进入“{base['stageName'] or '课堂互动'}”环节：请配合老师和大屏完成本环节目标。"
+            extra = {"stageContent": s_content}
+            if cur_no >= 7:
+                extra["homeworkUrl"] = "/v1"
+            return {**base, "practice": False, "message": msg, **extra}
         lesson = db.get(implementation.TeachingLesson, row.lesson_id)
         source = lesson.reading_plan if lesson is not None else ""
         mine = {int(a.question_id): a for a in db.execute(select(answers).where(answers.c.session_id == row.id, answers.c.student_id == u.id)).all()}

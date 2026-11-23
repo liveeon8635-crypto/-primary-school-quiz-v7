@@ -187,6 +187,11 @@ function control(){
       if(d.coursewareNotice)content.appendChild(el('div',{class:'notice warn',text:d.coursewareNotice}));
       if(d.courseware){var cwBox=el('div');content.appendChild(cwBox);activeCwBox=cwBox;cwControl(cwBox,d.courseware,SID,{canNextStage:canNextStage,onNextStage:function(){post('next')}})}
       else if(d.practiceFigure){var pfBox=el('div',{style:'margin:8px 0'});content.appendChild(pfBox);renderQuestionFigure(pfBox,d.practiceFigure,false)}
+      if(running&&d.currentStage>=7){
+        content.appendChild(el('div',{class:'notice ok',style:'margin-top:10px'},
+          el('div',{text:'个性化课后练习已按本节每位学生的实际作答与批改记录自动归类错题：'}),
+          el('div',{class:'row',style:'margin-top:8px'},el('a',{class:'btn primary',href:'/v1/weekend-report?s='+SID,text:'按学生作答生成并布置个性化课后练习'}))));
+      }
       lastContentKey=contentKey;
     }else if(cw&&activeCwBox&&activeCwBox._cwSyncView){
       activeCwBox._cwSyncView(cw.view);
@@ -227,15 +232,37 @@ function peerCard(box){
         var row=el('div',{class:'card'},el('b',{text:'第 '+q.no+' 题：'+q.stem}),
           el('div',{class:'muted',text:q.questionType==='written'?'文字／照片题 · '+q.submitted.map(function(x){return x.name+'（'+({pending:'待批改',correct:'正确',partial:'部分正确',revise:'需订正'}[x.result]||'已提交')+'）'}).join('、'):'做对：'+q.right.map(function(x){return x.name}).join('、')+'　·　没做对：'+q.wrong.map(function(x){return x.name}).join('、')}));
         var act=el('div',{class:'row'});
+        var evalBox=el('div',{style:'margin-top:8px'});
+        function renderFinishControl(r){
+          var holder=el('div',{class:'row',style:'margin-top:6px;align-items:center;flex-wrap:wrap;gap:6px'});
+          if(r.explainReview&&r.explainReview.finished){
+            holder.appendChild(el('span',{class:'tag ok',text:r.name+' 已结束讲解 · '+r.explainReview.label+' · 讲题积分 +'+r.explainReview.points+(r.explainReview.comment?'（'+r.explainReview.comment+'）':'')}));
+            evalBox.appendChild(holder);return;
+          }
+          var sel=el('select');
+          [['clear','思路清晰（+2分）'],['basic','基本讲清（+1分）'],['guided','需引导·鼓励参与（+1分）']].forEach(function(opt){sel.appendChild(el('option',{value:opt[0],text:opt[1]}))});
+          var cmt=el('input',{placeholder:'给 '+r.name+' 的简短评语（选填）',maxlength:300,style:'min-width:180px'});
+          var doneBtn=el('button',{class:'primary',text:'结束 '+r.name+' 讲解并评价',onclick:function(){
+            doneBtn.disabled=true;msg.textContent='';
+            api('/teacher/weekend/sessions/'+SID+'/explain/finish',{json:{tutorId:r.studentId,questionId:q.questionId,questionType:q.questionType||'choice',rating:sel.value,comment:cmt.value}}).then(function(res){
+              msg.appendChild(el('div',{class:'notice ok',text:res.message}));
+              r.explainReview=res.review;holder.textContent='';
+              holder.appendChild(el('span',{class:'tag ok',text:r.name+' 已结束讲解 · '+res.review.label+' · 讲题积分 +'+res.review.points+(res.review.comment?'（'+res.review.comment+'）':'')}));
+            }).catch(function(e){msg.appendChild(el('div',{class:'notice error',text:e.message}));doneBtn.disabled=false});
+          }});
+          holder.appendChild(el('span',{class:'muted',text:r.name+' 讲题中：'}));holder.appendChild(sel);holder.appendChild(cmt);holder.appendChild(doneBtn);
+          evalBox.appendChild(holder);
+        }
         (q.questionType==='written'?q.submitted:q.right).forEach(function(r){
           var b=el('button',{text:r.asked?'已请 '+r.name+' 讲过':'请 '+r.name+' 来讲',disabled:r.asked,onclick:function(){
             b.disabled=true;msg.textContent='';
-            api('/teacher/weekend/sessions/'+SID+'/explain',{json:{tutorId:r.studentId,questionId:q.questionId,questionType:q.questionType||"choice"}}).then(function(res){msg.appendChild(el('div',{class:'notice ok',text:res.message}));b.textContent='已请 '+r.name+' 讲过'})
+            api('/teacher/weekend/sessions/'+SID+'/explain',{json:{tutorId:r.studentId,questionId:q.questionId,questionType:q.questionType||"choice"}}).then(function(res){msg.appendChild(el('div',{class:'notice ok',text:res.message}));b.textContent='已请 '+r.name+' 讲过';r.asked=true;renderFinishControl(r)})
               .catch(function(e){msg.appendChild(el('div',{class:'notice error',text:e.message}));b.disabled=false});
           }});
           act.appendChild(b);
+          if(r.asked)renderFinishControl(r);
         });
-        row.appendChild(act);out.appendChild(row);
+        row.appendChild(act);row.appendChild(evalBox);out.appendChild(row);
       });
     }).catch(function(e){out.appendChild(el('div',{class:'notice error',text:e.message}))});
   }
@@ -613,7 +640,10 @@ var LETTERS='ABCDEFGH',wait=null;
 function optText(i,o){return LETTERS[i]+'. '+String(o).replace(/^\s*[A-Da-d]\s*[．.、:：)）]\s*/,'')}   // imported options may carry their own letter
 function invitationCard(q){
   var card=el('div',{class:'card'}),stem=String(q.stem||''),cut=stem.lastIndexOf('\n\n');
-  card.appendChild(el('h2',{text:'老师请你给大家讲这道题'}));
+  card.appendChild(el('h2',{text:q.explainReview&&q.explainReview.finished?'本次讲题已完成':'老师请你给大家讲这道题'}));
+  if(q.explainReview&&q.explainReview.finished){
+    card.appendChild(el('div',{class:'notice ok',text:'老师评价：'+q.explainReview.label+' · 讲题积分 +'+q.explainReview.points+(q.explainReview.comment?' · 评语：'+q.explainReview.comment:'')}));
+  }
   function folded(title,text){return el('details',{},el('summary',{text:title}),el('div',{style:'white-space:pre-wrap;overflow-wrap:anywhere;font-weight:400;line-height:1.7',text:text}))}
   if(cut>0){card.appendChild(folded('阅读材料（展开查看）',stem.slice(0,cut)));card.appendChild(el('p',{style:'white-space:pre-wrap;overflow-wrap:anywhere',text:stem.slice(cut+2)}))}
   else if(stem.length>360)card.appendChild(folded('完整题目与阅读材料（展开查看）',stem));
@@ -646,7 +676,18 @@ function practice(){
     var signature=JSON.stringify(d);if(signature===lastPracticeSignature)return;lastPracticeSignature=signature;
     box.textContent='';
     if(!d.active||!d.practice){
-      box.appendChild(el('div',{class:'card'},el('h2',{text:d.title||'课堂练习'}),el('div',{class:'muted',text:d.message||''})));
+      var info=el('div',{class:'card'},el('h2',{text:d.title||'课堂练习'}));
+      if(d.active&&d.stage&&d.stageName)info.appendChild(el('div',{class:'tag ok',style:'display:inline-block;margin-bottom:6px',text:'第 '+d.stage+' 环节：'+d.stageName}));
+      info.appendChild(el('div',{class:'muted',text:d.message||''}));
+      if(Array.isArray(d.stageContent)&&d.stageContent.length){
+        var scBox=el('div',{style:'margin-top:8px;padding-top:8px;border-top:1px solid #eef2f6'});
+        d.stageContent.forEach(function(line){scBox.appendChild(el('p',{style:'margin:4px 0;white-space:pre-wrap',text:line}))});
+        info.appendChild(scBox);
+      }
+      if(d.homeworkUrl){
+        info.appendChild(el('div',{class:'row',style:'margin-top:10px'},el('a',{class:'btn primary',href:d.homeworkUrl,text:'前往首页“作业”查看专属课后练习'})));
+      }
+      box.appendChild(info);
       return;
     }
     box.appendChild(el('div',{class:'card'},el('h2',{text:d.title}),el('div',{class:'muted',text:'按老师要求完成本节练习；各题的作答方式和提交状态显示在题目旁。'})));

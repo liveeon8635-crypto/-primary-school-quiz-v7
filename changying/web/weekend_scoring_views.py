@@ -60,6 +60,33 @@ class ExplainBody(BaseModel):
     questionType: str = "choice"
 
 
+class ExplainFinishBody(BaseModel):
+    tutorId: int
+    questionId: int
+    questionType: str = "choice"
+    rating: str = "clear"
+    comment: str = ""
+
+
+EXPLAIN_RATINGS: dict[str, tuple[str, int]] = {
+    "clear": ("思路清晰", 2),
+    "basic": ("基本讲清", 1),
+    "guided": ("需引导（鼓励参与）", 1),
+}
+
+
+def _explain_review_of(raw: str | None) -> dict[str, Any] | None:
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return None
+    if isinstance(data, dict) and isinstance(data.get("explainReview"), dict):
+        return data["explainReview"]
+    return None
+
+
 class BriefBody(BaseModel):
     texts: dict[str, str] = {}
 
@@ -305,12 +332,14 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         wt = register_written_tables(implementation)
         submissions = db.execute(select(wt['submissions']).where(wt['submissions'].c.session_id == row.id,
             wt['submissions'].c.school_id == row.school_id)).all()
-        asked = {(int(p.question_id), int(p.tutor_id)) for p in db.execute(select(peer).where(peer.c.session_id == row.id, peer.c.question_id < 0))}
+        asked_rows = db.execute(select(peer).where(peer.c.session_id == row.id, peer.c.question_id < 0)).all()
+        asked_map = {(int(p.question_id), int(p.tutor_id)): _explain_review_of(p.followup_json) for p in asked_rows}
         items = []
         for no, q in enumerate(db.execute(select(wt['questions']).where(wt['questions'].c.session_id == row.id,
                 wt['questions'].c.school_id == row.school_id, wt['questions'].c.teacher_id == row.teacher_id).order_by(wt['questions'].c.id)), 1):
             mine = [{'studentId': int(a.student_id), 'name': names[int(a.student_id)][0], 'result': a.result,
-                     'asked': (-int(q.id), int(a.student_id)) in asked}
+                     'asked': (-int(q.id), int(a.student_id)) in asked_map,
+                     'explainReview': asked_map.get((-int(q.id), int(a.student_id)))}
                     for a in submissions if a.question_id == q.id and int(a.student_id) in names]
             if mine:
                 items.append({'questionType':'written', 'questionId':q.id, 'no':no,
@@ -336,7 +365,12 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         if all(r == 0 for r in rates):
             return {"mode": "peer" if written else "teacher", "message": written_message if written else "这几题大家都没做对：建议老师集中讲，只记参与", "questions": written}
         qs = {int(q.id): q for q in db.scalars(select(TQ).where(TQ.school_id == u.school_id, TQ.lesson_id == row.lesson_id, TQ.active.is_(True)).order_by(TQ.id)).all()}
-        asked = {(int(p.question_id), int(p.tutor_id)) for p in peer_rows(db, sid)}
+        asked_choice: dict[tuple[int, int], dict[str, Any] | None] = {}
+        for p in peer_rows(db, sid):
+            key = (int(p.question_id), int(p.tutor_id))
+            rev = _explain_review_of(p.followup_json)
+            if key not in asked_choice or rev is not None:
+                asked_choice[key] = rev
         right: dict[int, list[dict[str, Any]]] = {}
         wrong: dict[int, list[dict[str, Any]]] = {}
         for a in db.execute(select(answers_t).where(answers_t.c.session_id == sid).order_by(answers_t.c.id)).all():
@@ -347,7 +381,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         items = []
         for no, (qid, q) in enumerate(qs.items(), start=1):
             if right.get(qid) and wrong.get(qid):
-                items.append({"questionId": qid, "no": no, "stem": q.stem, "right": [dict(w, asked=(qid, w["studentId"]) in asked) for w in right[qid]], "wrong": wrong[qid]})
+                items.append({"questionId": qid, "no": no, "stem": q.stem, "right": [dict(w, asked=(qid, w["studentId"]) in asked_choice, explainReview=asked_choice.get((qid, w["studentId"]))) for w in right[qid]], "wrong": wrong[qid]})
         return {"mode": "peer", "message": "选一道题，请做对的同学来讲；讲完，没做对的同学会收到一道类似的小题。", "questions": items + written}
 
     @router.post("/teacher/weekend/sessions/{sid}/explain")
@@ -403,6 +437,45 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
         return {"followup": bool(follow), "tutees": len(tutees), "message": f"已请 {names[b.tutorId][0]} 同学来讲这道题：大屏会显示，TA 的页面会收到题目和解析。" +
                 ("讲完后，没做对的同学会收到一道类似的小题。" if follow else "AI 没能出类似的小题，讲完后请你手动记录结果。")}
 
+    @router.post("/teacher/weekend/sessions/{sid}/explain/finish")
+    def finish_explain(sid: int, b: ExplainFinishBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """End a student's explanation, record teacher rating/comment and points, and clear it from the board."""
+        need(u, "teacher")
+        row = my_session(db, u, sid)
+        names = roster(db, u, row)
+        if b.rating not in EXPLAIN_RATINGS:
+            raise HTTPException(400, "请选择有效的讲题评价档位")
+        stored_qid = -int(b.questionId) if b.questionType == "written" else int(b.questionId)
+        targets = db.execute(select(peer).where(
+            peer.c.session_id == sid,
+            peer.c.school_id == u.school_id,
+            peer.c.question_id == stored_qid,
+            peer.c.tutor_id == int(b.tutorId),
+        )).all()
+        if not targets:
+            raise HTTPException(404, "没有找到这位同学的讲题邀请")
+        label, pts = EXPLAIN_RATINGS[b.rating]
+        review = {
+            "finished": True,
+            "rating": b.rating,
+            "label": label,
+            "points": pts,
+            "comment": b.comment.strip()[:300],
+            "finishedAt": datetime.utcnow().isoformat(timespec="seconds"),
+        }
+        for p in targets:
+            try:
+                payload = json.loads(p.followup_json) if p.followup_json else {}
+                if not isinstance(payload, dict):
+                    payload = {}
+            except Exception:  # noqa: BLE001
+                payload = {}
+            payload["explainReview"] = review
+            db.execute(update(peer).where(peer.c.id == p.id).values(followup_json=json.dumps(payload, ensure_ascii=False)))
+        db.commit()
+        who = names.get(int(b.tutorId), ("该同学",))[0]
+        return {"finished": True, "review": review, "message": f"已结束 {who} 同学的讲解（{label} · 讲题积分 +{pts}），大屏提示已撤下。"}
+
     @router.get("/student/weekend/explain")
     def my_explain(sessionId: int | None = None, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         """The question(s) the teacher asked me to explain to the class (I answered them correctly)."""
@@ -432,7 +505,8 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
                     wt['submissions'].c.question_id == -p.question_id, wt['submissions'].c.student_id == u.id)).first()
                 if q is not None and a is not None:
                     item = {"questionType":"written", "questionId":q.id, "stem":q.stem,
-                            "answerText":a.answer_text, "submission":{"id":a.id,"hasPhoto":a.photo is not None}}
+                            "answerText":a.answer_text, "submission":{"id":a.id,"hasPhoto":a.photo is not None},
+                            "explainReview": _explain_review_of(p.followup_json)}
                     if answers_published(implementation, db, row, q.id, "written"):
                         item['reference'] = q.reference
                     items.append(item)
@@ -444,7 +518,7 @@ def install_weekend_scoring(implementation: Any) -> APIRouter:
                 opts = json.loads(q.options_json or "[]")
             except Exception:  # noqa: BLE001
                 opts = []
-            items.append({"questionId": q.id, "stem": q.stem, "options": opts, "correctIndex": int(q.correct_index), "explanation": q.explanation or ""})
+            items.append({"questionId": q.id, "stem": q.stem, "options": opts, "correctIndex": int(q.correct_index), "explanation": q.explanation or "", "explainReview": _explain_review_of(p.followup_json)})
         return {"sessionId": current.id, "items": items}
 
     @router.post("/teacher/weekend/sessions/{sid}/peer-help")
