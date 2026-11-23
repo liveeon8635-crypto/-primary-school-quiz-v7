@@ -291,7 +291,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         stage = stage_by_no(int(row.current_stage), course_type)
         bound = session_class(implementation, db, row)
         base = {"active": True, "sessionId": row.id, "title": row.title, "stage": int(row.current_stage),
-                "stageName": stage["name"] if stage else "", "className": bound.class_name if bound else ""}
+                "stageName": stage["name"] if stage else "", "className": bound.class_name if bound else "", "courseType": course_type}
         if int(row.current_stage) != practice_no:
             return {**base, "practice": False, "message": "还没到随堂练习，请看大屏听老师讲" if int(row.current_stage) < practice_no else "随堂练习已关闭，可查看已提交答案与老师反馈"}
         lesson = db.get(implementation.TeachingLesson, row.lesson_id)

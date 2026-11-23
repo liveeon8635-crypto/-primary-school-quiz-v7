@@ -126,6 +126,9 @@ def install_weekend_paired_import(implementation: Any) -> APIRouter:
         db: Any = Depends(get_db),
     ) -> dict[str, Any]:
         lesson = _my_lesson(db, u, lid)
+        from changying.services.weekend_course_types import course_type_for
+        if course_type_for(db, implementation, lesson) == 'writing':
+            raise HTTPException(409, '作文课请使用工作栏导入教案/整包与作文素材审核')
         t_bytes = await teacherFile.read()
         s_bytes = await studentFile.read()
         if not t_bytes or not s_bytes:

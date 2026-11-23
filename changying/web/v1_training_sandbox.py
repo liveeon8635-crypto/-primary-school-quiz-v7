@@ -56,7 +56,7 @@ ROLE_FLOW: dict[str, list[dict[str, str]]] = {
         {"id": "transition", "page": "/v1/transition", "title": "升年级与衔接"},
         {"id": "teacher_homework", "page": "/v1/homework", "title": "晚托作业助手：通知与学生补救求助"},
         {"id": "teacher_follow_ups", "page": "/v1/homework", "title": "晚托作业助手：待跟进（试点）"},
-        {"id": "teacher_weekend_plan", "page": "/v1/weekend-plan", "title": "周末课备课：导入与恢复教案、审核习题和课件"},
+        {"id": "teacher_weekend_plan", "page": "/v1/weekend-plan", "title": "周末课备课：导入与恢复教案、审核习题和作文素材"},
         {"id": "teacher_weekend_class", "page": "/v1/weekend", "title": "周末课上课：控制页、大屏、作答与预批进度"},
         {"id": "teacher_weekend_report", "page": "/v1/weekend", "title": "周末课课后：学情反馈与纸质备用"},
         {"id": "teacher_knowledge_map", "page": "/v1/knowledge-map", "title": "知识地图：建图、配题、发布"},

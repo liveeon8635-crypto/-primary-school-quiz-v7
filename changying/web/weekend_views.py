@@ -421,6 +421,17 @@ def install_weekend_views(implementation: Any) -> APIRouter:
                 session_id=sid, school_id=u.school_id, lesson_id=b.lessonId, course_type=course_type,
                 revision=revision, lesson_json=lesson_snapshot(lesson_row), created_at=now,
             ))
+        writing_pkg = None
+        if course_type == "writing":
+            from changying.services.writing_lesson import writing_package
+            _, writing_pkg = writing_package(implementation, db, b.lessonId)
+        if course_type == "writing" and writing_pkg is not None:
+            content = json.loads(lesson_snapshot(lesson_row))
+            content["writingPackage"] = {"title": writing_pkg["title"], "approved": True, "nodes": [
+                {k:v for k,v in n.items() if k != "originalBase64"} for n in writing_pkg["nodes"] if n["status"] == "confirmed"]}
+            content["writingState"] = {"revision": 0, "open": [], "feedback": {}}
+            db.execute(update(session_workflows).where(session_workflows.c.session_id == sid).values(
+                lesson_json=json.dumps(content, ensure_ascii=False)))
         # New classrooms start closed; only pre-upgrade classrooms lack a gate.
         # Persist this in the classroom creation transaction, before it is visible.
         opened = implementation.Base.metadata.tables["weekend_open_questions"]
@@ -432,11 +443,17 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         examples = lesson_worked_examples(lesson_row)
         db.execute(insert(session_q).values(school_id=u.school_id, session_id=sid, question_id=0, added_at=now))
         TQ = implementation.TeachingQuestion
-        for q in db.scalars(select(TQ).where(TQ.school_id == u.school_id, TQ.lesson_id == b.lessonId,
-                                             TQ.stage != "removed", TQ.active.is_(True)).order_by(TQ.id)).all():
+        for q in ([] if course_type == "writing" and writing_pkg is not None else db.scalars(select(TQ).where(TQ.school_id == u.school_id, TQ.lesson_id == b.lessonId,
+                                             TQ.stage != "removed", TQ.active.is_(True)).order_by(TQ.id)).all()):
             if not duplicate_of(q.stem, question_options(q), examples, []):
                 db.execute(insert(session_q).values(school_id=u.school_id, session_id=sid, question_id=int(q.id), added_at=now))
-        snapshot_written_questions(db, register_written_tables(implementation)["questions"], u.school_id, u.id, b.lessonId, sid)
+        if course_type == "writing" and writing_pkg is not None:
+            task = next(n for n in writing_pkg["nodes"] if n["role"] == "task" and n["status"] == "confirmed")
+            db.execute(insert(register_written_tables(implementation)["questions"]).values(
+                school_id=u.school_id, teacher_id=u.id, lesson_id=b.lessonId, session_id=sid,
+                stem=task["text"], reference="", hints_json="[]"))
+        else:
+            snapshot_written_questions(db, register_written_tables(implementation)["questions"], u.school_id, u.id, b.lessonId, sid)
         if b.classId is not None:
             bind_class(implementation, db, mine(db, u, sid), u, b.classId)
         db.commit()
@@ -529,7 +546,7 @@ def install_weekend_views(implementation: Any) -> APIRouter:
         row = mine(db, u, sid)
         if row.status != "planned":
             raise HTTPException(409, "这节课已经开始过了")
-        if session_course(db, row)["courseType"] in ("reading", "writing"):
+        if session_course(db, row)["courseType"] in ("reading", "writing") and not session_course(db, row)["lesson"].get("writingPackage"):
             from changying.services.chinese_lesson_readiness import chinese_lesson_readiness
             lesson = db.get(Lesson, row.lesson_id)
             ready = chinese_lesson_readiness(implementation, db, lesson, u.id)

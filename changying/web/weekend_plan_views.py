@@ -1219,6 +1219,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             db, implementation, school_id=int(u.school_id), lesson_id=int(lesson.id),
             source_file=source_file or "pasted-text", created_by=int(u.id), figures=source_materials or [],
         )
+        if data.get("writingPackage"):
+            from changying.web.weekend_writing import store_writing_package
+            store_writing_package(implementation, db, u, lesson, data["writingPackage"])
         db.commit()
         return {"lessonId": lesson.id, "status": lesson_status(db, u, lesson), "slides": len(slides), "questionsFound": len(qs) + len(wqs), "writtenQuestionsFound": len(wqs),
                 "coursewarePagesFound": len(courseware_pages or []),
@@ -1347,6 +1350,21 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             pass
 
         if extension == ".json" or bundle_payload is not None:
+            if (isinstance(bundle_payload, dict) and len(bundle_payload.get('items',[])) == 1
+                    and bundle_payload['items'][0].get('writingPackage') is not None):
+                item = bundle_payload['items'][0]
+                if subject != '语文' or bundle_payload.get('subject') != subject or item.get('lessonNo') != lessonNo:
+                    raise HTTPException(422, '作文整包的学科与课次必须和当前工作栏一致')
+                from changying.services.writing_lesson import writing_inventory
+                try:
+                    package = writing_inventory(raw, 'writing.json')
+                except (ValueError, KeyError, TypeError) as exc:
+                    raise HTTPException(422, '作文整包内容无效：'+str(exc)) from exc
+                source = '\n'.join(n.get('text','') for n in package['nodes'])
+                if len(source)>MAX_TEXT_CHARS: raise HTTPException(413,'作文整包文字超限')
+                return _apply_lesson_plan(db,u,subject,lessonNo,
+                    {'title':package['title'],'teacherPlan':source,'courseType':'writing','writingPackage':package},
+                    source,use_literal=False,overwrite=force=='1',source_file=filename)
             try:
                 payload = bundle_payload if bundle_payload is not None else json.loads(raw.decode("utf-8-sig"))
                 body = StructuredImportBody.model_validate(payload)
@@ -1376,6 +1394,24 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         # If the guardian-consent guard explicitly denies this unregistered feature, preserve
         # the source locally as a draft instead of sending it to an external service.
         extracted = _extract_upload(file, text)
+        selected_type = courseType
+        if subject == "语文" and not selected_type:
+            p = program(db, int(u.school_id))
+            existing = db.scalar(select(Lesson).where(Lesson.school_id == u.school_id,
+                Lesson.program_id == p.id, Lesson.subject == subject, Lesson.lesson_no == lessonNo))
+            selected_type = course_type_for(db, implementation, existing) if existing else ""
+        if subject == "语文" and selected_type == "writing":
+            from changying.services.writing_lesson import writing_inventory
+            try:
+                package = writing_inventory(raw, filename or "pasted-text", extracted["text"])
+            except (ValueError, KeyError) as exc:
+                raise HTTPException(422, str(exc)) from exc
+            plan = {"title": f"作文第{lessonNo}课", "teacherPlan": extracted["text"],
+                    "courseType": "writing", "writingPackage": package, "questions": [], "writtenQuestions": []}
+            result = _apply_lesson_plan(db, u, subject, lessonNo, plan, extracted["text"],
+                use_literal=False, overwrite=force == "1", source_file=filename)
+            result.update(importMode="local", engine="local", message="作文素材已本地提取，未外发。请进入作文素材审核，核对范文、图片、方法与主题；缺项不能开课。")
+            return result
         if courseType:
             if courseType not in COURSE_TYPES:
                 raise HTTPException(422, "无效的语文课型")
