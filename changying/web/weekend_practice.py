@@ -16,7 +16,7 @@ on the spot and they are stored as "auto" (visible to students, flagged for teac
 
 from __future__ import annotations
 
-from changying.services.weekend_answers import answers_published, practice_release, question_is_open
+from changying.services.weekend_answers import answers_published, practice_question_availability, practice_release, question_is_open
 from changying.services.lesson_written import numbered_student_stem
 from changying.services.weekend_submissions import submission_attempts, record_submission, require_unsettled
 
@@ -291,7 +291,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
         stage = stage_by_no(int(row.current_stage), course_type)
         bound = session_class(implementation, db, row)
         base = {"active": True, "sessionId": row.id, "title": row.title, "stage": int(row.current_stage),
-                "stageName": stage["name"] if stage else "", "className": bound.class_name if bound else "", "courseType": course_type}
+                "stageName": stage["name"] if stage else "", "className": bound.class_name if bound else ""}
         if int(row.current_stage) != practice_no:
             return {**base, "practice": False, "message": "还没到随堂练习，请看大屏听老师讲" if int(row.current_stage) < practice_no else "随堂练习已关闭，可查看已提交答案与老师反馈"}
         lesson = db.get(implementation.TeachingLesson, row.lesson_id)
@@ -315,7 +315,7 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
             if a is not None:
                 item.update({"answered": True, "selected": int(a.selected), "attempts":submission_attempts(implementation,db,u,row.id,'choice',q.id,True)})
             qs.append(item)
-        return {**base, "publishedWrittenQuestionIds": [q["id"] for q in release_items[:release_count] if q["kind"] == "written"], "practice": True, "canSubmit": not published, "answersPublished": published, "questions": qs}
+        return {**base, "publishedWrittenQuestionIds": [q["id"] for q in release_items[:release_count] if q["kind"] == "written"], "practice": True, "canSubmit": not published, "answersPublished": published, "questionAvailability": practice_question_availability(implementation, db, row), "questions": qs}
 
     @router.post("/student/weekend/hint")
     def student_hint(b: StudentHintBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
