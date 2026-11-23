@@ -320,6 +320,14 @@ def test_variant_practice_is_per_pupil_reviewed_then_assigned_once_through_homew
     c_cw = next(i for i in w if i["studentId"] == c_id)
     client.post(f"/teacher/weekend/sessions/{ch}/written/review-batch", headers=th,
                 json={"items": [{"id": c_cw["id"], "revision": c_cw["revision"], "result": "revise", "comment": "只写了“爱国”，缺少原文依据"}]})
+    # The same pupil's original maths photo answer is graded through the teacher route.
+    b_math_written = next(i for i in client.get(f"/teacher/weekend/sessions/{m}/written", headers=th).json()["items"]
+                          if i["studentId"] == b_id)
+    assert b_math_written["hasPhoto"] and b_math_written["result"] == "pending"
+    graded_photo = client.post(f"/teacher/weekend/sessions/{m}/written/review-batch", headers=th,
+                               json={"items": [{"id": b_math_written["id"], "revision": b_math_written["revision"],
+                                                "result": "correct", "comment": "照片中的计算过程已核对"}]})
+    assert graded_photo.status_code == 200 and graded_photo.json()["items"][0]["result"] == "correct"
     def assignments():
         with legacy.SessionLocal() as db:
             return db.scalar(select(func.count()).select_from(legacy.Assignment))

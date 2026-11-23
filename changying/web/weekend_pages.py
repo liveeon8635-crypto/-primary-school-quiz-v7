@@ -121,7 +121,6 @@ function control(){
     if(stagesKey!==lastStagesKey){
       stagesBox.textContent='';
       stagesBox.appendChild(el('h2',{text:'环节'}));
-      if(d.courseType==='writing')stagesBox.appendChild(el('a',{href:'/v1/weekend-writing?session='+d.id,text:'作文图文课堂、学生提交与反馈'}));
       d.stages.forEach(function(s){
         var b=el('button',{class:s.no===d.currentStage&&running?'on':'',text:s.no+'. '+s.name+'（'+(s.minutes+s.extendMin)+'分）'+(s.visited&&s.no!==d.currentStage?' ✓':''),
           onclick:function(){if(running)post('goto',{stage:s.no})}});
@@ -621,13 +620,20 @@ function practice(){
   function paint(d){
     var signature=JSON.stringify(d);if(signature===lastPracticeSignature)return;lastPracticeSignature=signature;
     box.textContent='';
-    if(d.active&&d.courseType==='writing')box.appendChild(el('a',{href:'/v1/weekend-writing?session='+d.sessionId,text:'进入作文课堂：图文、拍照提交与反馈'}));
     if(!d.active||!d.practice){
       box.appendChild(el('div',{class:'card'},el('h2',{text:d.title||'课堂练习'}),el('div',{class:'muted',text:d.message||''})));
       return;
     }
     box.appendChild(el('div',{class:'card'},el('h2',{text:d.title}),el('div',{class:'muted',text:'按老师要求完成本节练习；各题的作答方式和提交状态显示在题目旁。'})));
     if(d.questions.length)box.appendChild(el('p',{class:'muted',text:'选择题：每题最多提交3次；老师公布本题答案后停止修改。'}));
+    if(!d.questions.length){
+      var availability=d.questionAvailability||{},choice=availability.choice||{},written=availability.written||{},emptyText='';
+      if(written.open)emptyText='当前开放的是文字／照片题，请在下方“文字／照片作答”区逐题提交；课后针对性练习经老师审核布置后，请到学生首页“作业”完成。';
+      else if(choice.total&&choice.open===0)emptyText='本课选择题已准备好，等待老师在大屏逐题开放；课后针对性练习经老师审核布置后，请到学生首页“作业”完成。';
+      else if(written.total)emptyText='本课有文字／照片题，等待老师在大屏逐题开放；开放后可在下方输入答案或上传照片。课后练习请到学生首页“作业”查看。';
+      else emptyText='本课还没有已同步开放的随堂题，请老师检查“习题审核”和“同步新增练习”；课后练习经老师审核布置后，请到学生首页“作业”查看。';
+      box.appendChild(el('div',{class:'card notice',role:'status',text:emptyText}));
+    }
     d.questions.forEach(function(q,qi){
       var locked=q.canSubmit===false||(q.attempts||0)>=3,card=el('div',{class:'card'}),out=el('div'),hintsOut=el('div');
       card.appendChild(el('b',{text:/^\s*第\s*\d+\s*题/.test(q.stem)?q.stem:(qi+1)+'. '+q.stem}));
@@ -976,7 +982,7 @@ function plan(){
       var mainMaterialBtn=SUBJ==='语文'&&(r.pendingMaterials>0)?materialReviewBtn:null;
       var extraMaterialBtn=SUBJ==='语文'&&!(r.pendingMaterials>0)?materialReviewBtn:null;
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
-        el('div',{class:'row'},tag,workflowSelect,titleLabel,impBtn,fileIn,SUBJ==='语文'?null:open,mainMaterialBtn,cwBtn,r.courseType==='writing'&&r.lessonId?el('a',{href:'/v1/weekend-writing?lesson='+r.lessonId,text:'作文素材与审核'}):null,go,why),el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,SUBJ==='语文'?open:null,extraMaterialBtn,pairedImportBtn,cancelDebugBtn,deleteBtn)),importFeedback,deleteFeedback,detail));
+        el('div',{class:'row'},tag,workflowSelect,titleLabel,impBtn,fileIn,SUBJ==='语文'?null:open,mainMaterialBtn,cwBtn,go,why),el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,SUBJ==='语文'?open:null,extraMaterialBtn,pairedImportBtn,cancelDebugBtn,deleteBtn)),importFeedback,deleteFeedback,detail));
     });
     list.appendChild(el('button',{class:'primary',text:'保存进度表',onclick:function(){
       api('/teacher/weekend/schedule',{method:'PUT',json:{subject:SUBJ,rows:state.map(function(r){return {lessonNo:r.lessonNo,schoolWeek:r.schoolWeek,schoolUnit:r.schoolUnit||'',plannedDate:r.plannedDate||'',note:r.note||''}})}}).then(function(){note('ok','已保存');load()}).catch(function(e){note('error',e.message)})}}));

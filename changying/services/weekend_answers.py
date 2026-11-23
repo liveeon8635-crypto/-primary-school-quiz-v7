@@ -211,6 +211,21 @@ def practice_items(implementation, db, session):
     return items
 
 
+def practice_question_availability(implementation, db, session):
+    items = practice_items(implementation, db, session)
+    counts = {}
+    for kind in ("choice", "written"):
+        matching = [item for item in items if item["kind"] == kind]
+        counts[kind] = {
+            "total": len(matching),
+            "open": sum(1 for item in matching if question_is_open(implementation, db, session, kind, item["id"])),
+        }
+    total = sum(item["total"] for item in counts.values())
+    opened = sum(item["open"] for item in counts.values())
+    state = "available" if opened else "waiting_for_teacher" if total else "review_or_sync"
+    return {"state": state, "total": total, "open": opened, **counts}
+
+
 def practice_release(implementation, db, session):
     from changying.services.weekend_course_types import frozen_session, practice_stage
 
