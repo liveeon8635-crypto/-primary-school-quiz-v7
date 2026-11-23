@@ -225,7 +225,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
     @router.post("/student/weekend/sessions/{sid}/written/{qid}/hint")
     def student_hint(sid: int, qid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
-        if row.status != "running" or row.current_stage != task_stage(db, row) or answers_published(implementation, db, row, qid, "written"):
+        if row.status != "running" or answers_published(implementation, db, row, qid, "written"):
             raise HTTPException(409, "现在不是随堂练习时间")
         q = next((q for q in question_rows(db, row) if q.id == qid), None)
         if q is None or not question_is_open(implementation, db, row, 'written', qid):
@@ -290,7 +290,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
                      orientation: int = Form(1), removePhoto: bool = Form(False),
                      u: Any = Depends(current_user), db: Any = Depends(get_db)):
         row = student_session(db, u, sid)
-        if row.status != "running" or row.current_stage != task_stage(db, row) or answers_published(implementation, db, row, qid, "written"):
+        if row.status != "running" or answers_published(implementation, db, row, qid, "written"):
             raise HTTPException(409, "现在不是随堂练习时间")
         if not any(q.id == qid for q in question_rows(db, row)) or not question_is_open(implementation, db, row, 'written', qid):
             raise HTTPException(404, "没有找到这道题")
