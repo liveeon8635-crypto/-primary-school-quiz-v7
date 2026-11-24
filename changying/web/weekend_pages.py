@@ -915,7 +915,7 @@ def _page(title: str, js: str, with_header: bool, back: tuple[str, str] = ("/v1"
 
 
 PLAN_JS = MARK_JS + r"""
-var planQuery=new URLSearchParams(location.search||'');
+var planQuery=new URLSearchParams(typeof location==='undefined'?'':location.search||'');
 var SUBJ=planQuery.get('subject')==='语文'?'语文':'数学';
 function genSummary(g){
   var names={choice:'选择',final_answer:'填空／计算',short_answer:'解决问题／简答',composition:'写作'},parts=[],lv=[];
@@ -1197,11 +1197,11 @@ function plan(){
       var writingLink=r.courseType==='writing'&&r.lessonId?el('a',{class:'btn primary',href:'/v1/weekend-writing?lesson='+encodeURIComponent(r.lessonId),text:'继续作文备课'}):null;
       var mainMaterialBtn=SUBJ==='语文'&&(r.pendingMaterials>0)?materialReviewBtn:null;
       var extraMaterialBtn=SUBJ==='语文'&&!(r.pendingMaterials>0)?materialReviewBtn:null;
-      list.appendChild(el('div',{class:'card',id:'lesson-'+r.lessonId},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
+      list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
         el('div',{class:'row'},tag,workflowSelect,titleLabel,writingLink,impBtn,fileIn,SUBJ==='语文'?null:open,mainMaterialBtn,cwBtn,go,why),el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,SUBJ==='语文'?open:null,extraMaterialBtn,pairedImportBtn,cancelDebugBtn,deleteBtn)),importFeedback,deleteFeedback,detail));
       if(planQuery.get('lesson')===String(r.lessonId)&&r.lessonId){
         if(planQuery.get('view')==='courseware'&&cwBtn)cwBtn.click();
-        document.getElementById('lesson-'+r.lessonId).scrollIntoView({block:'start'});
+        list.lastElementChild.scrollIntoView({block:'start'});
         planQuery.delete('lesson');
       }
     });
