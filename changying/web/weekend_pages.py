@@ -193,7 +193,11 @@ function control(){
           s6Data=s6;s6Wrap.textContent='';
           s6Wrap.appendChild(el('h3',{text:'第 6 环节 · 逐题讨论达标确认'}));
           s6Wrap.appendChild(el('div',{class:'notice',text:'共 '+s6.total+' 道待巩固题 · 已达标 '+s6.mastered+' · 留入课后 '+s6.homework+' · 待讨论 '+s6.pending+(s6.doubtCount?' · 学生提问 '+s6.doubtCount+' 人次':'')}));
-          if(!s6.items.length){s6Wrap.appendChild(el('div',{class:'notice ok',text:'本节所有随堂题均已当堂掌握，无需留入课后练习。'}));return}
+          if(s6.pendingReview>0)s6Wrap.appendChild(el('div',{class:'notice warn',text:'提醒：当前还有 '+s6.pendingReview+' 道文字／照片作答尚未批改（待批改不计为错题，在下方“学生作答与批改”标为“需订正／部分正确”后才会进入本清单与课后练习）。'}));
+          if(!s6.items.length){
+            if(s6.pendingReview>0){s6Wrap.appendChild(el('button',{text:'刷新学生提问与达标进度',onclick:loadStage6}));return}
+            s6Wrap.appendChild(el('div',{class:'notice ok',text:'本节已批改的随堂题均已当堂掌握，无需留入课后练习。'}));return;
+          }
           if(s6Filter==='pending'&&!s6.pending)s6Filter='all';
           var tabs=el('div',{class:'tabs',style:'margin:8px 0'});
           [['pending','待讨论（'+s6.pending+'）'],['all','全部（'+s6.total+'）'],['mastered','已达标（'+s6.mastered+'）'],['homework','留入课后（'+s6.homework+'）']].forEach(function(f){
@@ -232,7 +236,7 @@ function control(){
           s7Summary,
           el('div',{class:'row',style:'margin-top:8px'},el('a',{class:'btn primary',href:'/v1/weekend-report?s='+SID,text:'按遗留错题生成并布置个性化课后练习'}))));
         api('/teacher/weekend/sessions/'+SID+'/stage6-checks').then(function(s6){
-          s7Summary.textContent='第 6 环节汇总：共 '+s6.total+' 道待巩固题 · 已确认达标 '+s6.mastered+' 题 · 留入课后 '+s6.homework+' 题 · 待讨论 '+s6.pending+' 题'+(s6.doubtCount?' · 学生提问 '+s6.doubtCount+' 人次':'');
+          s7Summary.textContent='第 6 环节汇总：共 '+s6.total+' 道待巩固题 · 已确认达标 '+s6.mastered+' 题 · 留入课后 '+s6.homework+' 题 · 待讨论 '+s6.pending+' 题'+(s6.doubtCount?' · 学生提问 '+s6.doubtCount+' 人次':'')+(s6.pendingReview?' · 另有 '+s6.pendingReview+' 道作答尚未批改（请先批改再生成课后练习）':'');
         }).catch(function(){s7Summary.textContent=''});
       }
       lastContentKey=contentKey;
