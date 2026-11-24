@@ -4,16 +4,31 @@
 def writing_page():
     from changying.web.weekend_pages import _page
     html = _page('作文课', r'''
-var query=new URLSearchParams(location.search),lid=query.get('lesson'),sid=query.get('session'),data,editor,noteBox,activeStage=2;
+var query=new URLSearchParams(location.search),lid=query.get('lesson'),sid=query.get('session'),data,editor,noteBox,activeStage=2,coursewareSummary=null,summaryBox=null;
 var roles={pending:'待确认',review:'点名与回顾',model:'范文段落',model_image:'范文配图',picture:'看图写话图片',method:'写作方法与例句',task:'写作主题',feedback:'课后反馈要求'};
 var roleStage={review:1,model:2,model_image:2,picture:3,method:4,task:5,feedback:6};
 function message(e){noteBox.textContent=e.message||e;if(noteBox.scrollIntoView)noteBox.scrollIntoView({block:'nearest'})}
 function button(label,fn){return el('button',{text:label,onclick:function(){Promise.resolve().then(fn).catch(message)}})}
+function showCoverage(){
+ if(!summaryBox)return;
+ if(!coursewareSummary){summaryBox.textContent='正在核对六环节课件…';return}
+ if(coursewareSummary.error){summaryBox.textContent=coursewareSummary.error;return}
+ var required=[['review'],['model','model_image'],['picture'],['method'],['task'],['feedback']];
+ var present=data.package.nodes.filter(function(n){return n.status!=='ignored'});
+ var rows=data.readiness.stageReadiness||[],missing=[],pages=0;
+ rows.forEach(function(stage,i){
+   var slides=coursewareSummary.filter(function(item){return Number(item.stage)===i+1&&item.kind==='slide'}).reduce(function(sum,item){return sum+(((item.params||{}).slides||[]).length)},0);
+   pages+=slides;if(!slides)missing.push(stage.name+'缺课件页');
+   (required[i]||[]).forEach(function(role){if(!present.some(function(n){return n.role===role&&(n.kind==='image'?!!n.dataUrl:!!(n.text||'').trim())}))missing.push(stage.name+'缺'+roles[role])});
+ });
+ summaryBox.textContent='课件 '+pages+' 页。'+(missing.length?missing.join('；'):'六环节均有课件和所需类型的素材。')+' 教学内容和配图效果可在课堂预览中核对。';
+}
 function prepare(){return api('/teacher/weekend/lessons/'+lid+'/writing').then(function(d){data=d;
  var remembered=sessionStorage.getItem('writing-stage-'+lid);
  var first=(d.package&&d.package.nodes||[]).filter(function(n){return n.status==='pending'&&roleStage[n.role]}).map(function(n){return roleStage[n.role]}).sort()[0];
  activeStage=remembered==='pending'?'pending':Number(remembered)>=1&&Number(remembered)<=6?Number(remembered):first||1;
  paintEditor();
+ if(d.package)api('/teacher/weekend/lessons/'+lid+'/courseware').then(function(c){coursewareSummary=c.items||[];showCoverage()}).catch(function(){coursewareSummary={error:'课件页数读取失败，请重新打开备课页核对。'};showCoverage()});
  if(query.get('imported')==='1'){message('已导入备课草稿');query.delete('imported');history.replaceState(null,'',location.pathname+'?'+query.toString())}
  })}
 function selectStage(stage){
@@ -29,6 +44,10 @@ function paintEditor(){
  var back='/v1/weekend-plan?subject='+encodeURIComponent('语文')+'&lesson='+encodeURIComponent(lid);
  root.appendChild(el('a',{href:back,text:'返回本课课次行'}));
  if(data.package)root.appendChild(el('a',{href:back+'&view=courseware',style:'margin-left:16px',text:'审核本课六环节课件'}));
+ if(data.package){
+   root.appendChild(el('a',{href:back+'&view=preview',target:'_blank',rel:'noopener',class:'btn',text:'课堂投屏预览（新窗口）'}));
+   summaryBox=el('p',{role:'note'});root.appendChild(summaryBox);showCoverage();
+ }
  if(!data.package){message('请从备课工作栏导入作文教案。');return}
  var title=el('input',{'aria-label':'课程标题',value:data.package.title||''});title.oninput=function(){data.package.title=title.value};root.appendChild(el('label',{text:'课题名称'}));root.appendChild(title);
  root.appendChild(el('p',{class:'wr-intro',text:'按作文六环节整理材料。先选环节，再核对该环节的文字、图片与来源；改动后需重新审核，已创建课堂仍使用原冻结版本。'}));
@@ -41,7 +60,7 @@ function paintEditor(){
  });
  var pendingUnassigned=data.package.nodes.filter(function(n){return !roleStage[n.role]&&n.status==='pending'}).length;var ub=button('待分类',function(){selectStage('pending')});ub.className='wr-stage';ub.setAttribute('aria-pressed',String(activeStage==='pending'));ub.appendChild(el('small',{text:pendingUnassigned+'项待分类素材'}));nav.appendChild(ub);root.appendChild(nav);
  root.appendChild(el('p',{class:'wr-intro',text:'图片是否适合作文场景、段落是否完整，需要老师核对原件。图片截图和思维导图不会自动当作配图。'}));
- var actions=el('div',{class:'wr-review-actions'});actions.appendChild(button('保存草稿',function(){return save(false)}));actions.appendChild(button('审核通过',function(){return save(true)}));root.insertBefore(actions,nav);
+ var actions=el('div',{class:'wr-review-actions'});actions.appendChild(button('保存草稿',function(){return save(false)}));actions.appendChild(button('审核通过',function(){return save(true)}));root.insertBefore(actions,nav);actions.appendChild(noteBox);
  var assigned=data.package.nodes.filter(function(n){return n.status==='pending'&&n.role&&n.role!=='pending'}).length;
  var tools=el('details',{class:'wr-tools'});tools.appendChild(el('summary',{text:'补充或批量处理素材'}));tools.appendChild(el('p',{text:'批量操作会记入修订历史；确认素材归属不等于整课审核通过。'}));var toolrow=el('div',{class:'row'});
  toolrow.appendChild(button('确认已分类（'+assigned+'项）',function(){if(!assigned)throw Error('没有待确认的已分类素材');if(!confirm('确认你已检查并同意这 '+assigned+' 项素材的归属及内容吗？审核通过仍需另行操作。'))return;return api('/teacher/weekend/lessons/'+lid+'/writing/bulk-review',{method:'POST',json:{expectedRevision:data.revision,action:'confirm_assigned'}}).then(function(d){data=d;paintEditor();message('已确认 '+d.updated+' 项；课程仍未审核通过')})}));
@@ -55,6 +74,19 @@ function paintEditor(){
  var section=el('section',{class:'wr-stage-panel',tabindex:'-1'},el('h2',{text:activeStage==='pending'?'待分类素材':(readiness[Number(activeStage)-1]||{}).name||''}));
  var stageNodes=data.package.nodes.map(function(n,i){return {node:n,index:i}}).filter(function(x){return activeStage==='pending'?!roleStage[x.node.role]:Number(roleStage[x.node.role])===Number(activeStage)});
  if(!stageNodes.length)section.appendChild(el('p',{text:'本环节还没有素材。可从“补充或批量处理素材”添加文字或图片。'}));
+ var pendingHere=stageNodes.filter(function(entry){return entry.node.status==='pending'});
+ var materialList=section;
+ if(activeStage!=='pending'&&stageNodes.length){
+   var article=el('div',{class:'wr-reading'});
+   stageNodes.forEach(function(entry){
+     var n=entry.node;if(n.status==='ignored')return;
+     if(n.dataUrl){article.appendChild(el('img',{src:n.dataUrl,alt:roles[n.role]||'配图',style:'max-width:100%;max-height:240px'}));return}
+     if(n.text)article.appendChild(el('span',{text:n.text,style:n.role==='model'?'white-space:pre-wrap':'display:block;white-space:pre-wrap;margin-bottom:8px'}));
+   });
+   section.appendChild(article);
+   if(pendingHere.length)section.appendChild(button('确认本环节素材（'+pendingHere.length+'项）',function(){return save(false,pendingHere.map(function(entry){return entry.node.id}))}));
+   materialList=el('details',{});materialList.appendChild(el('summary',{text:'逐项修改文字、用途或配图绑定'}));section.appendChild(materialList);
+ }
  stageNodes.forEach(function(entry){var n=entry.node,i=entry.index;
   var card=el('section',{class:'wr-item'}),head=el('div',{class:'wr-item-head'}),role=el('select',{'aria-label':'素材归属'}),status=el('select',{'aria-label':'审核状态'}),text=el('textarea',{'aria-label':'素材正文'});
   Object.keys(roles).forEach(function(k){role.appendChild(el('option',{value:k,text:roles[k],selected:n.role===k}))});role.onchange=function(){n.role=role.value};
@@ -70,10 +102,24 @@ function paintEditor(){
   }
   var edit=el('details');edit.appendChild(el('summary',{text:'整理文字与顺序'}));edit.appendChild(button('上移',function(){if(i){data.package.nodes.splice(i,1);data.package.nodes.splice(i-1,0,n);paintEditor()}}));
   edit.appendChild(button('按换行拆分',function(){var pieces=(n.text||'').split(/\n+/).filter(Boolean);if(pieces.length<2)throw Error('请先用换行分段');n.status='ignored';pieces.forEach(function(t,j){data.package.nodes.splice(i+1+j,0,{id:'split-'+Date.now()+'-'+j,derivedFrom:n.id,kind:'text',text:t,role:n.role,status:'pending',targets:[]})});paintEditor()}));
-  edit.appendChild(button('与下一段合并',function(){var next=data.package.nodes[i+1];if(!next||next.kind==='image')throw Error('下一项不能合并');n.text+='\n'+next.text;next.status='ignored';n.status='pending';paintEditor()}));card.appendChild(edit);section.appendChild(card);
+  edit.appendChild(button('与下一段合并',function(){var next=data.package.nodes[i+1];if(!next||next.kind==='image')throw Error('下一项不能合并');n.text+='\n'+next.text;next.status='ignored';n.status='pending';paintEditor()}));card.appendChild(edit);materialList.appendChild(card);
  });root.insertBefore(section,nav.nextSibling);
 }
-function save(approve){return api('/teacher/weekend/lessons/'+lid+'/writing',{method:'PUT',json:{expectedRevision:data.revision,nodes:data.package.nodes,title:data.package.title||'',approve:approve}}).then(function(d){data=d;paintEditor();message(approve?'审核通过，后续课堂将冻结此版本':'草稿已保存')})}
+var saving=false;
+function save(approve,confirmIds){
+ if(saving)return;
+ var nodes=data.package.nodes.map(function(n){
+   return {id:n.id,derivedFrom:n.derivedFrom,text:n.text,role:n.role,status:confirmIds&&confirmIds.indexOf(n.id)>=0?'confirmed':n.status,targets:n.targets||[]};
+ });
+ var pending=nodes.filter(function(n){return n.status==='pending'});
+ if(approve&&pending.length){message('整课尚未通过：还有 '+pending.length+' 项待处理。核对各环节后点“确认本环节素材”；待分类内容可归类或忽略。');return}
+ saving=true;message(approve?'正在审核整课…':'正在保存…');
+ return api('/teacher/weekend/lessons/'+lid+'/writing',{method:'PUT',json:{expectedRevision:data.revision,nodes:nodes,title:data.package.title||'',approve:approve}})
+ .then(function(d){data=d;paintEditor();var left=d.package.nodes.filter(function(n){return n.status==='pending'}).length;
+ message(approve?'整课审核通过，可以选择班级开课':confirmIds?'本环节已确认 '+confirmIds.length+' 项，全课剩余 '+left+' 项待处理。':'草稿已保存，仍有 '+left+' 项素材待确认。')})
+ .catch(function(e){throw Error((approve?'整课未通过：':'保存失败：')+e.message)})
+ .finally(function(){saving=false});
+}
 function loadClass(){return api('/weekend/writing/sessions/'+sid).then(function(d){data=d;paintClass()})}
 function paintClass(){
  root.className='';root.textContent='';noteBox=el('p',{role:'status'});root.appendChild(el('h1',{text:data.title||'作文课'}));root.appendChild(noteBox);

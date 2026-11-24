@@ -1553,6 +1553,9 @@ function cwPlan(box,lessonId,refresh){
     box.appendChild(topCard);
     box.appendChild(audioAuditWrap);
     box.appendChild(wholePreviewWrap);
+    if(typeof location!=='undefined'&&new URLSearchParams(location.search||'').get('view')==='preview'&&!box.dataset.previewOpened&&String(lessonId)===new URLSearchParams(location.search||'').get('lesson')){
+      box.dataset.previewOpened='1';previewAllBtn.click();wholePreviewWrap.scrollIntoView({block:'start'});
+    }
     var stageTabs=el('div',{class:'row','aria-label':d.subject==='语文'?'六环节课件状态':'各环节课件状态',style:'margin:8px 0 10px;gap:8px;flex-wrap:wrap'});
     CW_STAGES.forEach(function(st){
       var server=(d.stageReadiness||[]).filter(function(x){return String(x.no)===String(st.no)})[0];
