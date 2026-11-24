@@ -514,7 +514,10 @@ def clean_slide(raw: Any) -> dict[str, Any]:
                     pfl = _text(pl.get("feeling"), 80)
                     if pst or psc or pev:
                         plot.append({"stage": pst, "scene": psc, "event": pev, "feeling": pfl})
-        fig_cleaned = clean_figure(item.get("figure")) if item.get("figure") else {}
+        figure = item.get("figure")
+        if isinstance(figure, dict) and figure.get("type") == "image":
+            figure = {**figure, "type": "uploaded_image"}
+        fig_cleaned = clean_figure(figure) if figure else {}
         gallery_raw = item.get("gallery") or []
         gallery = []
         if isinstance(gallery_raw, list):
