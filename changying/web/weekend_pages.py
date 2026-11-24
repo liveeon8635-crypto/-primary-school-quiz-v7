@@ -608,8 +608,9 @@ function board(){
     }
   }
   function boardCoursewareContent(d){
-    var lines=Array.isArray(d.content)?d.content.slice():[];
     var params=d.courseware&&d.courseware.params||{};
+    if(d.courseware&&d.courseware.kind==='steps'&&Array.isArray(params.stepFigures)&&params.stepFigures.length)return [];
+    var lines=Array.isArray(d.content)?d.content.slice():[];
     var keys=[params.sourceProblem,params.question,params.title].map(function(x){return String(x||'').replace(/\s+/g,'')})
       .filter(function(x){return x.length>0});
     return lines.filter(function(line){
