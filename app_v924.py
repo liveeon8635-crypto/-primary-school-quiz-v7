@@ -6300,6 +6300,9 @@ def teacher_reinforcement_generate(sid:int,b:AIReinforcementGenerateBody,u:User=
 
 @app.post("/teacher/students/{sid}/reinforcement/assign")
 def teacher_reinforcement_assign(sid:int,b:AIReinforcementAssignBody,u:User=Depends(current_user),db:Session=Depends(get_db)):
+    return _teacher_reinforcement_assign(sid,b,u,db)
+
+def _teacher_reinforcement_assign(sid:int,b:AIReinforcementAssignBody,u:User,db:Session,*,before_commit=None):
     need(u,"teacher");stu=can_manage_student_points(db,u,sid)
     c=db.scalar(select(SchoolClass).join(ClassStudent,ClassStudent.class_id==SchoolClass.id).where(
         SchoolClass.school_id==u.school_id,SchoolClass.teacher_id==u.id,ClassStudent.student_id==sid
@@ -6353,6 +6356,8 @@ def teacher_reinforcement_assign(sid:int,b:AIReinforcementAssignBody,u:User=Depe
     ensure_recipient(db,a,sid,"ai_reinforcement")
     db.add(ReinforcementLink(school_id=u.school_id,assignment_id=a.id,student_id=sid,wrong_ids_json=json.dumps(wrong_ids)))
     audit(db,u,"ai.reinforcement.assign",f"student={sid}:assignment={a.id}:questions={len(qids)}:wrong={len(wrong_ids)}")
+    # Callers may record an idempotency receipt in the same transaction as this assignment.
+    if before_commit is not None:before_commit(a)
     db.commit();db.refresh(a)
     return {"ok":True,"assignment":aj(db,a),"paperID":p.id,"questionIDs":qids,
             "recipientCount":1,"studentID":sid,"studentName":stu.name,"wrongIDs":wrong_ids}

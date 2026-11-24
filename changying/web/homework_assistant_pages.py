@@ -840,12 +840,19 @@ function practicePanel(box,sid){
       });
       editors.push({g:g,list:list});out.appendChild(gb);
     });
-    var due=el('input',{type:'text',placeholder:'截止日期（可空，默认3天）'}),assign=el('button',{class:'primary',text:'审核确认并布置',onclick:function(){
-      if(!confirm('确认题目、答案和解析都已审核？将只布置给这名学生，不会重复布置。'))return;
+    var approved=null,due=el('input',{type:'text',placeholder:'截止日期（可空，默认3天）'}),assign=el('button',{class:'primary',text:'审核确认并布置',onclick:function(){
+      if(!confirm(approved?'按首次审核的题目补布置未成功的科目？已发出的作业不会重复。':'确认题目、答案和解析都已审核？将只布置给这名学生，不会重复布置。'))return;
+      if(!approved)approved={requestId:requestId,dueDate:due.value,groups:editors.map(function(x){return {key:x.g.key,subject:x.g.subject,helpIds:x.g.helpIds,questions:x.list.map(function(q){return q.value()})}})};
       assign.disabled=true;status.textContent='正在布置…';
-      api('/teacher/homework/students/'+sid+'/practice/assign',{json:{requestId:requestId,dueDate:due.value,groups:editors.map(function(x){return {key:x.g.key,subject:x.g.subject,helpIds:x.g.helpIds,questions:x.list.map(function(q){return q.value()})}})}})
+      api('/teacher/homework/students/'+sid+'/practice/assign',{json:approved})
         .then(function(res){out.textContent='';out.appendChild(notice('ok','已布置：'+res.assigned.map(function(a){return a.title+'（'+a.questionCount+' 题）'}).join('、')+'。学生在“作业”中完成后，这里会显示结果。'))})
-        .catch(function(e){status.textContent=e.message;if(e.status!==409){requestId=newRequestId();assign.disabled=false}});
+        .catch(function(e){
+          status.textContent=e.message;
+          if(e.status===409&&e.message.indexOf('布置未全部完成')!==0)return;
+          if(e.status===400){approved=null;requestId=newRequestId();assign.textContent='审核确认并布置'}
+          else assign.textContent='重试未布置的科目';
+          assign.disabled=false;
+        });
     }});
     out.appendChild(el('div',{class:'row'},due,assign));out.appendChild(status);
   }

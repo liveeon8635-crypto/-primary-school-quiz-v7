@@ -54,7 +54,7 @@ ROLE_FLOW: dict[str, list[dict[str, str]]] = {
         {"id": "account", "page": "/v1/tool?page=account", "title": "我的账号与设备"},
         {"id": "history", "page": "/v1/history", "title": "往期教学"},
         {"id": "transition", "page": "/v1/transition", "title": "升年级与衔接"},
-        {"id": "teacher_homework", "page": "/v1/homework", "title": "晚托作业助手：通知与学生补救求助"},
+        {"id": "teacher_homework", "page": "/v1/homework", "title": "晚托作业助手：通知、求助与巩固练习"},
         {"id": "teacher_follow_ups", "page": "/v1/homework", "title": "晚托作业助手：待跟进（试点）"},
         {"id": "teacher_weekend_plan", "page": "/v1/weekend-plan", "title": "周末课备课：导入与恢复教案、审核习题和课件"},
         {"id": "teacher_weekend_writing_review", "page": "/v1/weekend-writing", "title": "作文课：六环节素材审核与开课检查"},
@@ -132,7 +132,7 @@ STEP_RELATIONSHIPS: dict[str, dict[str, str]] = {
     "teacher_audit": {"who": "教师查看", "creates": "无新增业务事实", "visible_to": "教师本人授权范围", "other_role_sees": "其他角色不直接看到教师操作记录", "communication_tip": "出现争议时用操作记录确认时间、对象和动作", "next": "核对教学事实"},
     "teacher_leaderboard": {"who": "系统汇总/教师查看", "creates": "班级展示排序", "visible_to": "按班级权限", "other_role_sees": "学生只看到允许公开的班级排行信息", "communication_tip": "排行榜用于激励，不应替代学习诊断或给学生贴标签", "next": "积分与学习反馈"},
     "student_home": {"who": "学生", "creates": "无新增业务写入", "visible_to": "学生本人", "other_role_sees": "教师通过自己的工作台看任务状态，不看到学生首页本身", "communication_tip": "首页是任务入口，不等于已经完成作业或课堂；断网时打开长缨辅学会落到“离线练习”，做的题只在本机判分、不上传，联网后再回首页正常登录", "next": "同步课堂/我的作业"},
-    "teacher_homework": {"who": "教师", "creates": "家庭作业清单（发布给选中的学生）；学生求助记录", "visible_to": "被选中的学生；教师本人班级学生的求助", "other_role_sees": "学生看到清单并勾选完成；家长暂时看不到", "communication_tip": "AI 整理的清单必须逐条核对后再发布；通知里的手机号等会先被隐藏。待跟进建议点开后自动定位对应学生与求助详情，核验后再决定是否布置巩固；圆面积学生求助会附卡点、图示补救轮次和当前状态；辅导确认不计正式成绩", "next": "学生完成与求助；教师安排审核后的独立验证题"},
+    "teacher_homework": {"who": "教师", "creates": "家庭作业清单（发布给选中的学生）；学生求助记录", "visible_to": "被选中的学生；教师本人班级学生的求助", "other_role_sees": "学生看到清单并勾选完成；家长暂时看不到", "communication_tip": "AI 整理的清单必须逐条核对后再发布；通知里的手机号等会先被隐藏。待跟进建议点开后自动定位对应学生与求助详情，核验后再决定是否布置巩固；审核后的巩固练习若部分科目布置失败，在原页面点“重试未布置的科目”，已发布的科目不会重复；圆面积学生求助会附卡点、图示补救轮次和当前状态；辅导确认不计正式成绩", "next": "学生完成与求助；教师安排审核后的独立验证题"},
     "student_homework": {"who": "学生", "creates": "勾选完成记录；拍题后确认的题目文字；AI 引导进度与圆面积补救过程；求助老师记录", "visible_to": "学生本人；点了“求助老师”的题目老师能看到", "other_role_sees": "教师只看到学生求助的题目、AI 引导及补救摘要，看不到没求助的提问；家长暂时看不到", "communication_tip": "普通求助照常讲解。六年级圆面积可选先补基础，或讲解后仍不会时看固定图示；同一卡点两轮补救未过就请老师。补救确认不计分、不改变掌握度；只拍一道题并框住题目，避开人脸和姓名", "next": "回原题；有审核新题时去小测，仍不会就求助老师"},
     # 待跟进（试点）：沙盒不模拟名额与求助，只讲清口径。口径以 homework_help.py 的 claim/_admit_follow_ups 为准。
     "teacher_follow_ups": {"who": "教师（只看自己班级学生的求助）", "creates": "当天的“已确认展示名额”记录（打开列表时系统先确认名额再显示，关闭页面也不返还）；“已处理”“今天先不提醒”的记录。不新建求助，也不改变求助状态", "visible_to": "只有教师本人", "other_role_sees": "学生和家长都看不到待跟进列表；老师点“已处理”后，学生那边的求助状态不变", "communication_tip": "每条建议写明原因（学生主动求助／AI 解答验算未通过，已转给老师／已讲解，尚无独立巩固结果）和验证状态（无法匹配知识点／尚无后续作答／题量不足待补充／已有结果尚未达标／无法判定；后续练习达到条件的自动移出）。名额口径：每个班每天最多 5 条；同一学生当天最多 1 条；点“已处理”或“今天先不提醒”都不返还名额；一个学生同时在两个班，会同时占两个班的名额。点“已处理”只收起这条建议，不改变求助本身的状态，求助仍要到求助列表里确认", "next": "点建议上的按钮去求助详情接着讲，或布置巩固后等独立验证结果"},
