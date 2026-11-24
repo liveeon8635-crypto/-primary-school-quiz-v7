@@ -247,7 +247,7 @@ function control(){
   tick=setInterval(function(){if(remain!=null){remain-=1;if(clockNode)clockNode.textContent=fmt(remain)}},1000);
   if(timer)clearInterval(timer);
   timer=setInterval(function(){if(!document.hidden){load()}},15000);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden){load()}});
+  if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('visibilitychange',function(){if(!document.hidden){load()}});
 }
 function progress(box,d){
   if(!d.class){box.textContent='';return}
@@ -682,7 +682,7 @@ function board(){
   function load(){if(boardBusy)return;boardBusy=true;var request=++requestNo;api('/teacher/weekend/sessions/'+SID+'/board').then(function(d){boardBusy=false;if(request!==requestNo)return;last=d;remain=d.remainingSeconds;paint(d,false)}).catch(function(e){boardBusy=false;if(request===requestNo&&!last)msg(e.message)})}
   window.addEventListener('resize',function(){if(last&&!(last.courseware&&last.courseware.kind==='slide'))paint(last,true)});
   load();setInterval(function(){if(!document.hidden){load()}},4000);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden){load()}});
+  if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('visibilitychange',function(){if(!document.hidden){load()}});
   setInterval(function(){if(remain!=null){remain-=1;updateClock()}},1000);
 }
 boot(board);
@@ -873,7 +873,7 @@ function practice(){
   var writtenBox=el('div',{class:'card'});root.appendChild(writtenBox);writtenStudent(writtenBox);
   load();
   wait=setInterval(function(){if(!document.hidden){load()}},8000);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden){load()}});
+  if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('visibilitychange',function(){if(!document.hidden){load()}});
 }
 boot_student(practice);
 """
