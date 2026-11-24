@@ -236,10 +236,11 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
             published = {"sections": body["sections"], "comment": body.get("comment", ""), "facts": json.loads(r.published_facts_json),
                          "version": int(r.published_version), "revision": int(r.published_revision),
                          "at": wr.local_dt(implementation, r.published_at).strftime("%Y-%m-%d %H:%M")}
-        draft["evidence"] = draft.get("evidence") or wr.evidence_items(parts)
+        draft["evidence"] = wr.evidence_items(parts, draft.get("evidence"))
         draft["practice"] = live_practice(implementation, db, draft.get("practice"), int(r.student_id))
         return {"id": r.id, "studentId": int(r.student_id), "studentName": parts[0]["name"], "date": r.report_date, "sessionIds": ids,
                 "practiceGroups": wr.practice_groups(draft["evidence"]), "practiceLabels": wr.PRACTICE_LABEL,
+                "resolvedStage6Count": sum(1 for e in draft["evidence"] if e.get("resolvedInStage6")),
                 "parentPractice": wr.practice_view(draft["practice"], "parent"),
                 "state": state, "stateLabel": STATE_LABEL[state], "facts": parts, "parentFacts": [wr.parent_facts(p) for p in parts],
                 "draft": {**draft, "revision": int(r.draft_revision), "savedAt": wr.local_dt(implementation, r.draft_saved_at).strftime("%Y-%m-%d %H:%M"),
@@ -578,7 +579,7 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
         state = (draft.get("practice") or {}).get("state")
         if state in ("assigning", "assigned") or (state == "partial" and not retry):
             raise HTTPException(409, "针对性练习已布置，不能再修改；如需调整请在作业中处理")
-        return parts, draft, draft.get("evidence") or wr.evidence_items(parts)
+        return parts, draft, wr.evidence_items(parts, draft.get("evidence"))
 
     @router.post("/teacher/weekend/reports/{rid}/practice/generate")
     def generate_practice(rid: int, b: PracticeGenerateBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):

@@ -194,11 +194,35 @@ with TestClient(app) as client:
     # Stage 7 report & practice groups exclude Stage-6 mastered q1 and keep unresolved q2!
     rep = client.post("/teacher/weekend/reports", headers=th, json={"sessionIds": [sid], "studentId": student_id})
     assert rep.status_code == 200, rep.text
-    groups = rep.json()["report"]["practiceGroups"]
+    report_body = rep.json()["report"]
+    rid = report_body["id"]
+    assert report_body["resolvedStage6Count"] == 1
+    groups = report_body["practiceGroups"]
     assert len(groups) == 1
     assert groups[0]["items"][0]["no"] == 2
     assert groups[0]["items"][0]["stage6Note"] == "为什么高是5不是5.5"
+
+    # Pre-existing draft immediately reflects later Stage-6 mastery updates on GET without recreating the draft!
+    assert client.post(f"/student/weekend/sessions/{sid}/stage6-checks", headers=sh, json={"questionKey": f"written:{q2}", "status": "understood"}).status_code == 200
+    assert client.post(base + "/stage6-checks", headers=th, json={"questionKey": f"written:{q2}", "status": "mastered"}).status_code == 200
+    refreshed = client.get(f"/teacher/weekend/reports/{rid}", headers=th)
+    assert refreshed.status_code == 200, refreshed.text
+    assert refreshed.json()["resolvedStage6Count"] == 2
+    assert refreshed.json()["practiceGroups"] == []
     print("OK")
 """,
         {"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
     )
+
+
+def test_report_practice_ux_and_stage67_declutter():
+    from changying.web.weekend_pages import CONTROL_JS
+    from changying.web.weekend_report_pages import REPORT_JS
+
+    assert "if(unmarked)qd.open=true" not in REPORT_JS
+    assert "cardMsgs" in REPORT_JS
+    assert "setGenBusy" in REPORT_JS
+    assert "AbortController" in REPORT_JS
+    assert "resolvedStage6Count" in REPORT_JS
+    assert "s6Filter" in CONTROL_JS
+    assert "s7Summary" in CONTROL_JS
