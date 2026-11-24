@@ -1367,11 +1367,22 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                     package = writing_inventory(raw, 'writing.json')
                 except (ValueError, KeyError, TypeError) as exc:
                     raise HTTPException(422, '作文整包内容无效：'+str(exc)) from exc
+                courseware_pages = []
+                courseware_replace_existing = False
+                if 'courseware' in bundle_payload:
+                    try:
+                        prepared = PreparedPagesBody.model_validate(bundle_payload['courseware'])
+                    except ValidationError as exc:
+                        raise HTTPException(422, '作文整包课件内容无效：请检查六环节课件页格式。') from exc
+                    courseware_pages = prepared.pages
+                    courseware_replace_existing = prepared.replaceExisting
                 source = '\n'.join(n.get('text','') for n in package['nodes'])
                 if len(source)>MAX_TEXT_CHARS: raise HTTPException(413,'作文整包文字超限')
                 return _apply_lesson_plan(db,u,subject,lessonNo,
                     {'title':package['title'],'teacherPlan':source,'courseType':'writing','writingPackage':package},
-                    source,use_literal=False,overwrite=force=='1',source_file=filename)
+                    source,use_literal=False,overwrite=force=='1',source_file=filename,
+                    courseware_pages=courseware_pages,
+                    courseware_replace_existing=courseware_replace_existing)
             try:
                 payload = bundle_payload if bundle_payload is not None else json.loads(raw.decode("utf-8-sig"))
                 body = StructuredImportBody.model_validate(payload)

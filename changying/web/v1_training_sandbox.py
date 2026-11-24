@@ -183,7 +183,7 @@ STEP_RELATIONSHIPS["teacher_weekend_class"]["communication_tip"] += " 数学继�
 STEP_RELATIONSHIPS["teacher_weekend_class"]["communication_tip"] += " 创建和开始语文课堂均检查六环节缺项及逐页审核；普通教案默认本地导入，外发需要独立授权。完整课件冻结版本仍待施工，请勿在授课中修改备课课件。"
 
 STEP_RELATIONSHIPS["teacher_weekend_writing_review"] = {"who": "教师", "creates": "作文课六环节的审核素材与开课资格", "visible_to": "教师；确认且审核通过后才会冻结进新课堂", "other_role_sees": "学生和家长只会看到教师在课堂逐项开放的内容", "communication_tip": "导入作文整包后按素材归属检查内容。可批量确认已分类的待审核项，也可批量忽略未分类项；两种操作都需教师明确确认并记入修订历史。忽略项仍可在素材列表恢复。最后仍须单独点审核通过；缺少六环节内容、范文未达要求或配图未绑定范文段落时不能开课。", "next": "作文课开课检查"}
-STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 作文整包导入后，进入作文素材与审核逐项查看；可对已分类素材批量确认、对未分类项批量忽略，操作会记录修订历史且不代替最终审核通过。"
+STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 作文整包预览后导入，直接进入素材审核；下次从课次行点“继续作文备课”返回；可对已分类素材批量确认、对未分类项批量忽略，操作会记录修订历史且不代替最终审核通过。"
 
 SCENARIO_PRESETS: dict[str, dict[str, Any]] = {
     "empty": {"title": "从零开始", "description": "从建立班级开始完整练习。"},

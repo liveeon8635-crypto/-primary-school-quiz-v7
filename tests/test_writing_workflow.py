@@ -144,7 +144,9 @@ def test_writing_workbar_renders_in_browser(tmp_path):
                     {'items':[row] if '语文' in unquote(route.request.url) else []},ensure_ascii=False)))
             page.goto('https://changying.test/v1/weekend-plan')
             page.get_by_role('button',name='语文',exact=True).click()
-            page.get_by_role('link',name='作文素材与审核').wait_for()
+            entry=page.get_by_role('link',name='继续作文备课')
+            entry.wait_for()
+            assert entry.get_attribute('href')=='/v1/weekend-writing?lesson=13'
             assert page.get_by_label('语文课型').input_value()=='writing'
             assert page.get_by_text('范文配图缺失').count()>0
             assert page.get_by_text('看图写话图片缺失').count()>0
@@ -152,6 +154,27 @@ def test_writing_workbar_renders_in_browser(tmp_path):
             assert page.get_by_placeholder('2026-09-12').input_value()=='2026-11-28'
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             page.screenshot(path=str(tmp_path/'writing-workbar-mobile.png'),full_page=True)
+            package={'schemaVersion':1,'subject':'语文','items':[{'lessonNo':13,'writingPackage':{'nodes':[{}]}}],
+                     'courseware':{'pages':[{'params':{'slides':[{},{}]}}]}}
+            uploads=[]
+            def uploaded(route):
+                uploads.append(route.request.method)
+                route.fulfill(json={'lessonId':13})
+            page.route('**/teacher/weekend/lessons/import',uploaded)
+            page.route('**/v1/weekend-writing?lesson=13&imported=1',
+                       lambda route:route.fulfill(content_type='text/html',body='<main></main>'))
+            file_input=page.locator('input[type=file][accept^=".docx"]:not([multiple])').last
+            file_input.set_input_files({'name':'季节.json','mimeType':'application/json',
+                                        'buffer':json.dumps(package).encode()})
+            preview=page.get_by_role('button',name='导入为备课草稿')
+            preview.wait_for()
+            assert '2页课件' in preview.locator('..').inner_text()
+            assert not uploads
+            page.once('dialog',lambda dialog:dialog.accept())
+            preview.click()
+            page.wait_for_url('**/v1/weekend-writing?lesson=13&imported=1')
+            assert uploads==['POST']
+
         finally:
             browser.close()
 

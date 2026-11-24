@@ -915,7 +915,8 @@ def _page(title: str, js: str, with_header: bool, back: tuple[str, str] = ("/v1"
 
 
 PLAN_JS = MARK_JS + r"""
-var SUBJ='数学';
+var planQuery=new URLSearchParams(location.search||'');
+var SUBJ=planQuery.get('subject')==='语文'?'语文':'数学';
 function genSummary(g){
   var names={choice:'选择',final_answer:'填空／计算',short_answer:'解决问题／简答',composition:'写作'},parts=[],lv=[];
   Object.keys(g.byType||{}).forEach(function(k){if(g.byType[k])parts.push(names[k]+' '+g.byType[k])});
@@ -1089,18 +1090,45 @@ function plan(){
       var importFeedback=el('div',{role:'status','aria-live':'polite','data-import-feedback':'1'});
       fileIn.addEventListener('change',function(){
         var f=fileIn.files&&fileIn.files[0];if(!f)return;
+        if(r.courseType==='writing'&&/\.json$/i.test(f.name)){
+          var reader=new FileReader();
+          impBtn.disabled=true;
+          function resetPreview(){impBtn.disabled=false;fileIn.value='';importFeedback.textContent=''}
+          reader.onerror=function(){resetPreview();importFeedback.textContent='文件读取失败，请重新选文件。'};
+          reader.onload=function(){
+            try{
+              var pkg=JSON.parse(String(reader.result).replace(/^\uFEFF/,'')),item=(pkg.items||[])[0];
+              if(!item||!item.writingPackage){resetPreview();submitFile();return}
+              if(pkg.subject!==SUBJ||item.lessonNo!==r.lessonNo)throw Error('文件属于'+pkg.subject+'第'+item.lessonNo+'次课，请在对应课次行导入。');
+              var stages=(pkg.courseware||{}).pages||[];
+              var slides=stages.reduce(function(n,g){return n+((g.params||{}).slides||[]).length},0);
+              importFeedback.textContent=f.name+' · 第'+r.lessonNo+'次课 · '+item.writingPackage.nodes.length+'项素材 · '+slides+'页课件。';
+              importFeedback.appendChild(el('button',{text:'导入为备课草稿',onclick:function(){resetPreview();submitFile()}}));
+              importFeedback.appendChild(el('button',{text:'取消',onclick:resetPreview}));
+            }catch(e){resetPreview();importFeedback.textContent=e.message}
+          };
+          reader.readAsText(f);return;
+        }
+        submitFile();
+        function submitFile(){
         if(r.hasPlan&&!confirm('这节课已有教案，导入会替换教案、草稿题和本课课件，已通过的习题保留。导入前的整份教案可在“审改”里恢复。确定导入吗？')){fileIn.value='';return}
         var fd=new FormData();fd.append('subject',SUBJ);fd.append('lessonNo',String(r.lessonNo));fd.append('force',r.hasPlan?'1':'0');if(r.courseType)fd.append('courseType',r.courseType);fd.append('file',f);
         impBtn.disabled=true;impBtn.textContent='正在导入…';
         importFeedback.className='muted';importFeedback.textContent='正在读取并整理你的教案（约半分钟）…';
         if(importFeedback.scrollIntoView)importFeedback.scrollIntoView({block:'nearest'});
-        api('/teacher/weekend/lessons/import',{method:'POST',body:fd}).then(function(d){note('ok',d.message);load()}).catch(function(e){
+        api('/teacher/weekend/lessons/import',{method:'POST',body:fd}).then(function(d){
+          if(d.lessonId&&SUBJ==='语文'&&(r.courseType==='writing'||(d.status||{}).courseType==='writing')){
+            location.href='/v1/weekend-writing?lesson='+encodeURIComponent(d.lessonId)+'&imported=1';return
+          }
+          note('ok',d.message);load()
+        }).catch(function(e){
           var status=e&&e.status?'（'+e.status+'）':'';
           importFeedback.className='notice error';
           importFeedback.textContent='导入失败'+status+'：'+(e&&e.message?e.message:'请重试')+'。你选的文件不会被改动，可以处理后再导入。';
           impBtn.disabled=false;impBtn.textContent='导入教案/整包';
           if(importFeedback.scrollIntoView)importFeedback.scrollIntoView({block:'center'});
         }).then(function(){fileIn.value=''});
+        }
       });
       var draftBtn=el('button',{text:r.hasPlan?'AI 重写':'没教案？AI 帮我写',onclick:function(){
         if(r.hasPlan&&!confirm('这节课已有教案，AI 重写会覆盖教案文字和未审核的草稿题，确定吗？'))return;
@@ -1126,6 +1154,10 @@ function plan(){
         createWeekendClassroom(r.lessonId)}});
       // Say why 开课 is grey right next to it: a tooltip is invisible on tablets and phones.
       var why=el('span',{class:'muted','data-start-reason':'1',style:'color:#b54708',text:startReason(r)});
+      if(r.courseType==='writing'&&r.startReasons&&r.startReasons.length){
+        why=el('details',{},el('summary',{text:'查看开课前待办'}));
+        r.startReasons.forEach(function(reason){why.appendChild(el('p',{text:reason}))});
+      }
       var deleteFeedback=el('div',{role:'status','aria-live':'polite'});
       var cancelDebugBtn=el('button',{text:'撤销调试课堂',disabled:!r.lessonId,onclick:function(){
         var subject=SUBJ,lid=r.lessonId;
@@ -1162,10 +1194,16 @@ function plan(){
           if(SUBJ===subject){note('ok',d.message);load()}
         }).catch(function(e){deleteFeedback.textContent=e.message;deleteBtn.disabled=false});
       }});
+      var writingLink=r.courseType==='writing'&&r.lessonId?el('a',{class:'btn primary',href:'/v1/weekend-writing?lesson='+encodeURIComponent(r.lessonId),text:'继续作文备课'}):null;
       var mainMaterialBtn=SUBJ==='语文'&&(r.pendingMaterials>0)?materialReviewBtn:null;
       var extraMaterialBtn=SUBJ==='语文'&&!(r.pendingMaterials>0)?materialReviewBtn:null;
-      list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
-        el('div',{class:'row'},tag,workflowSelect,titleLabel,impBtn,fileIn,SUBJ==='语文'?null:open,mainMaterialBtn,cwBtn,go,why),el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,SUBJ==='语文'?open:null,extraMaterialBtn,pairedImportBtn,cancelDebugBtn,deleteBtn)),importFeedback,deleteFeedback,detail));
+      list.appendChild(el('div',{class:'card',id:'lesson-'+r.lessonId},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
+        el('div',{class:'row'},tag,workflowSelect,titleLabel,writingLink,impBtn,fileIn,SUBJ==='语文'?null:open,mainMaterialBtn,cwBtn,go,why),el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,SUBJ==='语文'?open:null,extraMaterialBtn,pairedImportBtn,cancelDebugBtn,deleteBtn)),importFeedback,deleteFeedback,detail));
+      if(planQuery.get('lesson')===String(r.lessonId)&&r.lessonId){
+        if(planQuery.get('view')==='courseware'&&cwBtn)cwBtn.click();
+        document.getElementById('lesson-'+r.lessonId).scrollIntoView({block:'start'});
+        planQuery.delete('lesson');
+      }
     });
     list.appendChild(el('button',{class:'primary',text:'保存进度表',onclick:function(){
       api('/teacher/weekend/schedule',{method:'PUT',json:{subject:SUBJ,rows:state.map(function(r){return {lessonNo:r.lessonNo,schoolWeek:r.schoolWeek,schoolUnit:r.schoolUnit||'',plannedDate:r.plannedDate||'',note:r.note||''}})}}).then(function(){note('ok','已保存');load()}).catch(function(e){note('error',e.message)})}}));

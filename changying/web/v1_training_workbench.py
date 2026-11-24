@@ -187,7 +187,7 @@ TOURS.teacher_weekend_plan.push('创建及开始语文课堂都要通过六环�
 TOURS.teacher_weekend_class[0]='课堂按课型推进：数学七环节；阅读课和作文课各六环节。进入环节不代表语文内容已经在学生端开放；语文素材分步显示和接口权限仍需开发与验收。';
 TOURS.teacher_weekend_plan.push('已有教案可在“互动课件”预检导入课件包；默认不覆盖，勾选替换可保留上一版并生成待审核草稿，不改教案或习题。');
 TOURS.teacher_weekend_plan.push('如果网站一次只能选一个文件，就在课次行点“导入教案/整包”，上传 JSON 单文件整包；系统会同时建立教案、随堂题和互动课件草稿，随后分别审核。');
-TOURS.teacher_weekend_plan.push('作文整包导入后，进入“作文素材与审核”。检查后可批量确认已分类素材、批量忽略未分类内容；操作会记入修订历史，忽略项仍可恢复。最后仍须单独审核通过，六环节缺项或范文配图未绑定段落时不能开课。');
+TOURS.teacher_weekend_plan.push('作文课次行选择整包，核对预览后点“导入为备课草稿”。导入成功直接进入素材审核，以后从同一行点“继续作文备课”。检查后可批量确认已分类素材、批量忽略未分类内容；操作会记入修订历史，忽略项仍可恢复。最后仍须单独审核通过，六环节缺项或范文配图未绑定段落时不能开课。');
 TOURS.teacher_weekend_plan.push('第4环节可按已通过的随堂练习逐题配课件；课堂公布该题答案后才显示讲解，须逐题审核。');
 function tourPage(step,roleLabel,doneId='auxDone'){
   const rel=relation(step),lines=TOURS[step.id]||[];
