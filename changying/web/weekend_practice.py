@@ -311,9 +311,11 @@ def install_weekend_practice(implementation: Any) -> APIRouter:
             } if lesson_obj is not None else {}
             s_content = stage_content(cur_no, lesson_dict, course_type)
             if cur_no == practice_no + 1:
-                msg = "当前进入“练习复盘”环节：请听老师和同学讲评；标为“需订正”的题目可在下方直接提交订正。"
+                msg = "当前进入“练习复盘”环节（10–15分钟）：请听代表性同学讲评；标为“需订正”的题目可在下方直接提交订正。"
+            elif cur_no == practice_no + 2:
+                msg = "当前进入“课堂互动”环节（10–15分钟）：集中讨论第 5 环节未解决的共性错题；有疑问可提交给老师，仍需订正的题目在本环节内依然可以继续提交订正。"
             elif cur_no >= 7:
-                msg = "当前进入“布置课后”环节：请查看本课课后任务；老师根据你的作答布置的专属补充练习请到学生首页“作业”查看。"
+                msg = "当前进入“布置课后”环节：请听老师本课简短总结，课堂订正已截止；老师针对你未能订正的题目生成的专属巩固练习，将下发到学生首页“作业”中完成。"
             else:
                 msg = f"当前进入“{base['stageName'] or '课堂互动'}”环节：请配合老师和大屏完成本环节目标。"
             extra = {"stageContent": s_content}

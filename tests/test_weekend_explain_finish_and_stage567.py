@@ -171,10 +171,22 @@ with TestClient(app) as client:
     ]})
     assert rev.status_code == 200, rev.text
 
-    # Stage 6: both questions appear as needing mastery confirmation.
+    # Stage 6: both questions appear as needing mastery confirmation, and student can still submit revisions!
     assert client.post(base + "/goto", headers=th, json={"stage": 6}).status_code == 200
     t6 = client.get(base + "/stage6-checks", headers=th).json()
     assert t6["total"] == 2 and t6["pending"] == 2
+    assert all(it["wrongCount"] == 1 and it["isCommonError"] is False for it in t6["items"])
+    stu_w6 = client.get(f"/student/weekend/sessions/{sid}/written", headers=sh).json()
+    assert stu_w6["canSubmit"] is True
+    assert all(q["canRevise"] is True for q in stu_w6["questions"])
+    rev_s6 = client.post(f"{student_w}/{q1}", headers=sh, data={"text": "16"})
+    assert rev_s6.status_code == 200, rev_s6.text
+    # Re-grade q1 as revise so downstream Stage-6 mastery test still exercises both questions
+    rev_s6_id = rev_s6.json()["submission"]["id"]
+    rev_s6_ver = rev_s6.json()["submission"]["revision"]
+    assert client.post(base + "/written/review-batch", headers=th, json={"items": [
+        {"id": rev_s6_id, "revision": rev_s6_ver, "result": "revise", "comment": "再核对单位"},
+    ]}).status_code == 200
     stu6 = client.get(f"/student/weekend/sessions/{sid}/stage6-checks", headers=sh).json()
     assert len(stu6["items"]) == 2
 
@@ -209,6 +221,13 @@ with TestClient(app) as client:
     assert refreshed.status_code == 200, refreshed.text
     assert refreshed.json()["resolvedStage6Count"] == 2
     assert refreshed.json()["practiceGroups"] == []
+
+    # Entering Stage 7 closes classroom revision window
+    assert client.post(base + "/goto", headers=th, json={"stage": 7}).status_code == 200
+    stu_w7 = client.get(f"/student/weekend/sessions/{sid}/written", headers=sh).json()
+    assert stu_w7["canSubmit"] is False
+    assert all(q["canRevise"] is False for q in stu_w7["questions"])
+    assert client.post(f"{student_w}/{q2}", headers=sh, data={"text": "40"}).status_code == 409
     print("OK")
 """,
         {"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},

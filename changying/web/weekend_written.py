@@ -240,7 +240,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             sub = ans.get(q.id)
             can_revise = (
                 row.status == "running"
-                and row.current_stage in (practice_no, practice_no + 1)
+                and row.current_stage in (practice_no, practice_no + 1, practice_no + 2)
                 and sub is not None
                 and sub.result in ("revise", "partial")
             )
@@ -337,7 +337,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
             submissions.c.student_id == u.id)).first()
         is_revision = (
             row.status == "running"
-            and row.current_stage in (practice_no, practice_no + 1)
+            and row.current_stage in (practice_no, practice_no + 1, practice_no + 2)
             and old is not None
             and old.result in ("revise", "partial")
         )
