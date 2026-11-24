@@ -266,11 +266,11 @@ def install_weekend_writing(implementation):
         return get_package(lid,u,db)
 
     @router.post('/teacher/weekend/lessons/{lid}/writing/images')
-    async def add_image(lid:int,expectedRevision:int=Form(...),file:UploadFile=File(...),u:Any=Depends(current_user),db:Any=Depends(get_db)):
+    def add_image(lid:int,expectedRevision:int=Form(...),file:UploadFile=File(...),u:Any=Depends(current_user),db:Any=Depends(get_db)):
         lesson_context(db,u,lid)
         row,package=writing_package(implementation,db,lid)
         if row is None or row.revision!=expectedRevision: raise HTTPException(409,'课程已更新，请刷新')
-        raw=await file.read(8*1024*1024+1)
+        raw=file.file.read(8*1024*1024+1)
         if len(raw)>8*1024*1024: raise HTTPException(413,'图片超过8MB')
         from PIL import Image, ImageOps
         try:
@@ -384,4 +384,3 @@ def install_weekend_writing(implementation):
 
     implementation.app.include_router(router)
     return router
-

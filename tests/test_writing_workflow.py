@@ -540,3 +540,43 @@ with TestClient(app) as client:
  print('OK: bulk review is teacher-only, revision guarded, auditable, and preserves final approval gate')
 ''')
 
+
+def test_writing_inventory_separates_method_options_and_generic_topics():
+    from changying.services.writing_lesson import writing_inventory
+    sample_text = '\n'.join([
+        '写作主题：难忘的一次运动会',
+        '范文展示',
+        '起跑线前，心跳声咚咚作响。',
+        '发令枪响后，我像离弦的箭冲了出去。',
+        'A从多种感官角度写        B巧用修辞手法写        C写出“我”和景物的互动',
+        'E运用对比表达情感',
+    ])
+    pkg = writing_inventory(b'', 'lesson14.txt', text=sample_text)
+    assert pkg['title'] == '难忘的一次运动会'
+    roles_by_text = {n['text']: n['role'] for n in pkg['nodes']}
+    assert roles_by_text['起跑线前，心跳声咚咚作响。'] == 'model'
+    assert roles_by_text['发令枪响后，我像离弦的箭冲了出去。'] == 'model'
+    assert roles_by_text['A从多种感官角度写        B巧用修辞手法写        C写出“我”和景物的互动'] == 'method'
+    assert roles_by_text['E运用对比表达情感'] == 'method'
+    assert any(n['role'] == 'task' and n['text'] == '难忘的一次运动会' for n in pkg['nodes'])
+
+
+def test_writing_inventory_rejects_malformed_json_with_value_error():
+    from changying.services.writing_lesson import writing_inventory
+    with pytest.raises(ValueError, match='writingPackage'):
+        writing_inventory(b'{"items": []}', 'broken.json')
+    with pytest.raises(ValueError, match='JSON'):
+        writing_inventory(b'{not-valid-json', 'broken.json')
+
+
+def test_writing_page_avoids_hardcoded_season_and_supports_paired_preview():
+    from changying.web.writing_pages import writing_page
+    html = writing_page()
+    assert '用到自己选的季节' not in html
+    assert '最能说明季节特点' not in html
+    assert 'pairModelNodes' in html
+    assert 'renderStageContent' in html
+    assert 'paintPreview' in html
+    assert '开放本环节全部' in html
+    assert '撤销上一笔' in html
+    assert 'needs_revision' in html and '需修改' in html
