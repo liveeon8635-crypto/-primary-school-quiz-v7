@@ -171,10 +171,12 @@ def writing_readiness(package):
         3:[('picture','看图写话图片组')],4:[('method','写作方法组')],5:[('task','一个写作主题')],6:[('feedback','反馈要求')]}
     reasons=[]; stages=[]
     for spec in stages_for('writing'):
-        missing=[label for role,label in requirements[spec['no']] if not any(n.get('role')==role for n in confirmed)]
-        state='缺少素材' if missing else '已审核' if package and package.get('approved') else '待确认'
-        if missing: reasons.append(spec['name']+'：缺少或待确认'+ '、'.join(missing))
-        stages.append(dict(no=spec['no'],name=spec['name'],status=state,missing=missing))
+        truly_missing=[label for role,label in requirements[spec['no']] if not any(n.get('role')==role for n in active)]
+        unconfirmed=[label for role,label in requirements[spec['no']] if any(n.get('role')==role for n in active) and not any(n.get('role')==role for n in confirmed)]
+        state='缺少素材' if truly_missing else ('待确认' if unconfirmed or not (package and package.get('approved')) else '已审核')
+        if truly_missing: reasons.append(spec['name']+'：缺少'+ '、'.join(truly_missing))
+        elif unconfirmed: reasons.append(spec['name']+'：待确认'+ '、'.join(unconfirmed))
+        stages.append(dict(no=spec['no'],name=spec['name'],status=state,missing=truly_missing))
     pending=sum(n.get('status')!='confirmed' for n in active)
     if pending: reasons.append(f'{pending}项素材待确认或忽略')
     model_text=''.join(n.get('text','') for n in confirmed if n.get('role')=='model')
