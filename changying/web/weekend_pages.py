@@ -1241,11 +1241,11 @@ function plan(){
           if(SUBJ===subject){note('ok',d.message);load()}
         }).catch(function(e){deleteFeedback.textContent=e.message;deleteBtn.disabled=false});
       }});
-      var writingInlineBtn=r.courseType==='writing'&&r.lessonId?el('button',{class:'primary',text:'原地审核作文六环节',onclick:function(){
+      var writingInlineBtn=r.courseType==='writing'&&r.lessonId?el('button',{class:'primary',text:'审核与备课',onclick:function(){
         if(!detail.hidden&&detail.querySelector('iframe')){detail.hidden=true;detail.textContent='';return}
         openInlineWriting(r.lessonId,detail,false);
       }}):null;
-      var writingLink=r.courseType==='writing'&&r.lessonId?el('a',{class:'btn',href:'/v1/weekend-writing?lesson='+encodeURIComponent(r.lessonId),target:'_blank',rel:'noopener',text:'继续作文备课'}):null;
+      var writingLink=r.courseType==='writing'&&r.lessonId?el('a',{class:'btn',href:'/v1/weekend-writing?lesson='+encodeURIComponent(r.lessonId),target:'_blank',rel:'noopener',text:'新窗口打开作文页'}):null;
       var writingStageBar=null;
       if(r.courseType==='writing'){
         var sr=r.stageReadiness&&r.stageReadiness.length?r.stageReadiness:['点名与回顾','范文导览','看图写话','技法梳理','随堂练习','课后反馈'].map(function(nm,idx){return {no:idx+1,name:nm,status:r.hasPlan?'待确认':'缺少素材',missing:[]}});
@@ -1256,14 +1256,15 @@ function plan(){
           writingStageBar.appendChild(el('span',{class:'tag '+(ok?'ok':'warn'),text:st.no+'.'+st.name+'：'+st.status+miss}));
         });
       }
-      var mainMaterialBtn=SUBJ==='语文'&&(r.pendingMaterials>0)?materialReviewBtn:null;
+      var mainMaterialBtn=SUBJ==='语文'&&r.courseType!=='writing'&&(r.pendingMaterials>0)?materialReviewBtn:null;
       var extraMaterialBtn=SUBJ==='语文'&&!(r.pendingMaterials>0)?materialReviewBtn:null;
+      var mainCwBtn=r.courseType==='writing'?null:cwBtn;
       var lessonCard=el('div',{class:'card'});
       list.appendChild(lessonCard);lessonCards.push({lessonNo:r.lessonNo,row:r,card:lessonCard});
       lessonCard.appendChild(el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt));
       if(writingStageBar)lessonCard.appendChild(writingStageBar);
-      lessonCard.appendChild(el('div',{class:'row'},tag,workflowSelect,titleLabel,writingInlineBtn,writingLink,impBtn,fileIn,SUBJ==='语文'?null:open,mainMaterialBtn,cwBtn,go,why));
-      lessonCard.appendChild(el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,SUBJ==='语文'?open:null,extraMaterialBtn,pairedImportBtn,cancelDebugBtn,deleteBtn)));
+      lessonCard.appendChild(el('div',{class:'row'},tag,workflowSelect,titleLabel,writingInlineBtn,impBtn,fileIn,SUBJ==='语文'?null:open,mainMaterialBtn,mainCwBtn,go,why));
+      lessonCard.appendChild(el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},writingLink,draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,SUBJ==='语文'?open:null,extraMaterialBtn,pairedImportBtn,cancelDebugBtn,deleteBtn)));
       lessonCard.appendChild(importFeedback);lessonCard.appendChild(deleteFeedback);lessonCard.appendChild(detail);
       if(planQuery.get('lesson')===String(r.lessonId)&&r.lessonId){
         selectedLessonNo=r.lessonNo;PLAN_LESSON_SELECTION[SUBJ]=selectedLessonNo;userSelectedLesson=true;
