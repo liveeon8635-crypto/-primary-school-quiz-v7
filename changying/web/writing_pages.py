@@ -8,6 +8,7 @@ var query = new URLSearchParams(location.search);
 var lid = query.get('lesson');
 var sid = query.get('session');
 var viewMode = query.get('view');
+var embedMode = query.get('embed') === '1';
 var data = null;
 var noteBox = null;
 var activeStage = 2;
@@ -40,10 +41,21 @@ var verdictLabels = {
 };
 var methodOptionRe = /^[A-F][\.、\s]?[\u4e00-\u9fff]/;
 
+function notifyParent() {
+  if (embedMode && window.parent && window.parent !== window) {
+    try {
+      window.parent.postMessage({
+        type: 'writing-updated',
+        lessonId: Number(lid),
+        canStart: !!(data && data.readiness && data.readiness.canStart)
+      }, location.origin);
+    } catch (err) {}
+  }
+}
+
 function message(e) {
   if (!noteBox) return;
   noteBox.textContent = (e && e.message) ? e.message : String(e || '');
-  if (noteBox.scrollIntoView) noteBox.scrollIntoView({block: 'nearest'});
 }
 
 function button(label, fn, cls) {
@@ -339,15 +351,26 @@ function paintPreview() {
 }
 
 function paintEditor() {
-  root.className = 'writing-review';
+  var prevY = window.scrollY || 0;
+  if (embedMode && document.body) document.body.classList.add('wr-embedded');
+  root.className = 'writing-review' + (embedMode ? ' wr-embed-view' : '');
   root.textContent = '';
   noteBox = el('p', {role: 'status'});
-  root.appendChild(el('h1', {text: '作文素材与审核'}));
+  if (!embedMode) root.appendChild(el('h1', {text: '作文素材与审核'}));
   root.appendChild(noteBox);
 
   var back = '/v1/weekend-plan?subject=' + encodeURIComponent('语文') + '&lesson=' + encodeURIComponent(lid);
   var topLinks = el('div', {class: 'wr-top-links'});
-  topLinks.appendChild(el('a', {href: back, text: '返回本课课次行'}));
+  if (!embedMode) {
+    topLinks.appendChild(el('a', {href: back, text: '返回本课课次行'}));
+  } else {
+    topLinks.appendChild(el('a', {
+      href: '/v1/weekend-writing?lesson=' + encodeURIComponent(lid),
+      target: '_blank',
+      rel: 'noopener',
+      text: '新窗口全屏编辑'
+    }));
+  }
   if (data.package) {
     topLinks.appendChild(el('a', {
       href: '/v1/weekend-writing?lesson=' + encodeURIComponent(lid) + '&view=preview',
@@ -356,10 +379,12 @@ function paintEditor() {
       class: 'btn',
       text: '课堂投屏预览（新窗口）'
     }));
-    topLinks.appendChild(el('a', {
-      href: back + '&view=courseware',
-      text: '查看兼容课件页'
-    }));
+    if (!embedMode) {
+      topLinks.appendChild(el('a', {
+        href: back + '&view=courseware',
+        text: '查看兼容课件页'
+      }));
+    }
   }
   root.appendChild(topLinks);
 
@@ -390,20 +415,11 @@ function paintEditor() {
   });
   root.appendChild(summary);
 
-  var actions = el('div', {class: 'wr-review-actions'});
-  actions.appendChild(button('保存草稿', function() { return save(false); }));
-  actions.appendChild(button('审核通过', function() { return save(true); }, 'primary'));
-  actions.appendChild(noteBox);
-  root.appendChild(actions);
-
   var assigned = data.package.nodes.filter(function(n) { return n.status === 'pending' && n.role && n.role !== 'pending'; }).length;
   var pendingUnassigned = data.package.nodes.filter(function(n) { return !roleStage[n.role] && n.status === 'pending'; }).length;
 
-  var tools = el('details', {class: 'wr-tools'});
-  tools.appendChild(el('summary', {text: '补充或批量处理素材'}));
-  tools.appendChild(el('p', {text: '批量操作会记入修订历史；确认素材归属不等于整课审核通过。'}));
-  var toolrow = el('div', {class: 'row'});
-  toolrow.appendChild(button('确认已分类（' + assigned + '项）', function() {
+  var actions = el('div', {class: 'wr-review-actions'});
+  actions.appendChild(button('确认已分类（' + assigned + '项）', function() {
     if (!assigned) throw Error('没有待确认的已分类素材');
     if (!confirm('确认你已检查并同意这 ' + assigned + ' 项素材的归属及内容吗？审核通过仍需另行操作。')) return;
     return api('/teacher/weekend/lessons/' + lid + '/writing/bulk-review', {
@@ -412,10 +428,11 @@ function paintEditor() {
     }).then(function(d) {
       data = d;
       paintEditor();
+      notifyParent();
       message('已确认 ' + d.updated + ' 项；课程仍未审核通过');
     });
   }));
-  toolrow.appendChild(button('忽略待分类（' + pendingUnassigned + '项）', function() {
+  actions.appendChild(button('忽略待分类（' + pendingUnassigned + '项）', function() {
     if (!pendingUnassigned) throw Error('没有待处理的未分类素材');
     if (!confirm('确认这 ' + pendingUnassigned + ' 项不纳入本次作文课？素材会保留在原始记录和修订历史中。')) return;
     return api('/teacher/weekend/lessons/' + lid + '/writing/bulk-review', {
@@ -424,13 +441,24 @@ function paintEditor() {
     }).then(function(d) {
       data = d;
       paintEditor();
+      notifyParent();
       message('已将 ' + d.updated + ' 项标为忽略；可以在素材列表中恢复审核');
     });
   }));
+  actions.appendChild(button('保存草稿', function() { return save(false); }));
+  actions.appendChild(button('审核通过', function() { return save(true); }, 'primary'));
+  actions.appendChild(noteBox);
+  root.appendChild(actions);
+
+  var tools = el('details', {class: 'wr-tools'});
+  tools.appendChild(el('summary', {text: '补充或批量处理素材'}));
+  tools.appendChild(el('p', {text: '可补充新文字、上传新配图或同步导入的已确认配图；改动会记入修订历史。'}));
+  var toolrow = el('div', {class: 'row'});
   toolrow.appendChild(button('导入已确认配图', function() {
     return api('/teacher/weekend/lessons/' + lid + '/writing/imported-images', {method: 'POST', json: {}}).then(function(d) {
       data = d;
       paintEditor();
+      notifyParent();
       message(d.created ? '已将 ' + d.created + ' 张图片加入作文包；请逐张确认并绑定范文段落' : '没有新的已确认配图可导入');
     });
   }));
@@ -652,6 +680,7 @@ function paintEditor() {
     text: '预约日期在备课工作栏填写；保存待开课堂后，教师可在课堂页点击“立即开始”。修订 ' +
       data.revision + ' · 历史修改 ' + (data.package.history || []).length + ' 次。'
   }));
+  if (prevY > 0) window.scrollTo(0, prevY);
 }
 
 function save(approve, confirmIds) {
@@ -668,7 +697,7 @@ function save(approve, confirmIds) {
   });
   var pending = nodes.filter(function(n) { return n.status === 'pending'; });
   if (approve && pending.length) {
-    message('整课尚未通过：还有 ' + pending.length + ' 项待处理。核对各环节后点“确认本环节素材”；待分类内容可归类或忽略。');
+    message('整课尚未通过：还有 ' + pending.length + ' 项待处理。请先点“确认已分类”和“忽略待分类”，再点“审核通过”。');
     return;
   }
   saving = true;
@@ -679,6 +708,7 @@ function save(approve, confirmIds) {
   }).then(function(d) {
     data = d;
     paintEditor();
+    notifyParent();
     var left = d.package.nodes.filter(function(n) { return n.status === 'pending'; }).length;
     message(approve
       ? '整课审核通过，可以选择班级开课'
@@ -1115,6 +1145,8 @@ obtainToken().then(function(t) {
 });
 ''', True, ('/v1/weekend-plan', '返回备课'))
     css = """<style id="writing-review-workbench">
+body.wr-embedded .bar{display:none}
+#app.writing-review.wr-embed-view{max-width:none;padding:8px 4px 20px}
 #app.writing-review{max-width:1180px;margin:0 auto;padding:20px 18px 48px;color:#172b4d}
 #app.writing-review h1{font-size:26px;margin:4px 0 14px}
 #app.writing-review .wr-top-links{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:8px 0 12px}
