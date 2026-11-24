@@ -246,6 +246,8 @@ def test_report_practice_ux_and_stage67_declutter():
     assert "resolvedStage6Count" in REPORT_JS
     assert "pendingCnt" in REPORT_JS
     assert "去课堂批改" in REPORT_JS
+    assert "practiceFigurePreview" in REPORT_JS
+    assert "移除图示" in REPORT_JS
     assert "batchSize=3" in REPORT_JS
     assert "s6Filter" in CONTROL_JS
     assert "s7Summary" in CONTROL_JS
@@ -302,3 +304,45 @@ def test_courseware_lru_cache_hits_and_invalidates(tmp_path):
         assert items3 is not items1
         assert items3[0]["approved"]["title"] == "v2"
         assert len(_CW_ITEMS_CACHE) <= 6
+
+
+def test_practice_generation_produces_matching_geometry_figure_and_never_reuses_old_image():
+    from changying.services import weekend_reports as wr
+    from changying.web.reinforcement_quality import infer_reinforcement_figure
+
+    group = {
+        "key": "1:w10",
+        "subject": "数学",
+        "knowledge": "梯形面积",
+        "count": 2,
+        "items": [{"key": "1:w10", "no": 2, "answer": "1", "status": "revise", "comment": "漏了除以2", "cause": "", "causeSource": ""}],
+    }
+    sources = {"w10": {"full": "第2题 一个倒放着的梯形花坛如图所示，它的上底是 4.5 m，下底是 7.5 m，高是 6 m，面积是多少？", "options": [], "reference": "36"}}
+    prompt = wr.practice_prompt([group], sources, grade=5)
+    assert "trapezoid|triangle|parallelogram|composite_rect|rectangle" in prompt
+    assert '"上底":"6 cm"' in prompt
+
+    # Case 1: AI outputs a new derivative trapezoid question without figure -> inferred strictly from NEW stem numbers
+    raw_no_fig = {
+        "question_type": "calculation",
+        "level": 1,
+        "knowledge": "梯形面积",
+        "text": "一块梯形菜地的上底是 8 m，下底是 12 m，高是 5 m，如果每平方米收青菜 2 千克，这块菜地一共收青菜多少千克？",
+        "options": [],
+        "correct_index": -1,
+        "answer": "100千克",
+        "accepted_answers": ["100", "100kg"],
+        "figure": {},
+        "explanation": "先求面积 (8+12)×5÷2=50(平方米)，再乘 2 得 100 千克。",
+    }
+    fig = infer_reinforcement_figure({"subject": "数学", "knowledge": "梯形面积", "text": raw_no_fig["text"], "figure": {}})
+    assert fig.get("type") == "geometry"
+    assert fig.get("shape") == "trapezoid"
+    labels = fig.get("labels") or {}
+    assert "8" in str(labels.get("上底") or "")
+    assert "12" in str(labels.get("下底") or "")
+    assert "5" in str(labels.get("高") or "")
+    # Must pass clean_question without rejecting or leaking original 4.5/7.5/6 numbers
+    cleaned = wr.clean_question({**raw_no_fig, "figure": fig}, group, sources, lambda x: x)
+    assert cleaned["figure"]["shape"] == "trapezoid"
+    assert cleaned["answer"] == "100千克"
