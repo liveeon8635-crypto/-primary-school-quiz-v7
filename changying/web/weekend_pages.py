@@ -240,12 +240,14 @@ function control(){
       activeCwBox._cwSyncView(cw.view);
     }
   }
-  function load(){var version=CW_VERSION;api('/teacher/weekend/sessions/'+SID).then(function(d){if(!CW_PENDING&&version===CW_VERSION)paint(d)}).catch(function(e){msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
+  var pollBusy=false;
+  function load(){if(pollBusy)return;pollBusy=true;var version=CW_VERSION;api('/teacher/weekend/sessions/'+SID).then(function(d){pollBusy=false;if(!CW_PENDING&&version===CW_VERSION)paint(d)}).catch(function(e){pollBusy=false;msgBox.textContent='';msgBox.appendChild(el('div',{class:'notice error',text:e.message}))})}
   load();
   if(tick)clearInterval(tick);
   tick=setInterval(function(){if(remain!=null){remain-=1;if(clockNode)clockNode.textContent=fmt(remain)}},1000);
   if(timer)clearInterval(timer);
-  timer=setInterval(load,15000);
+  timer=setInterval(function(){if(!document.hidden){load()}},15000);
+  if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('visibilitychange',function(){if(!document.hidden){load()}});
 }
 function progress(box,d){
   if(!d.class){box.textContent='';return}
@@ -676,10 +678,11 @@ function board(){
     });
     updateClock();
   }
-  var last=null,requestNo=0;
-  function load(){var request=++requestNo;api('/teacher/weekend/sessions/'+SID+'/board').then(function(d){if(request!==requestNo)return;last=d;remain=d.remainingSeconds;paint(d,false)}).catch(function(e){if(request===requestNo&&!last)msg(e.message)})}
+  var last=null,requestNo=0,boardBusy=false;
+  function load(){if(boardBusy)return;boardBusy=true;var request=++requestNo;api('/teacher/weekend/sessions/'+SID+'/board').then(function(d){boardBusy=false;if(request!==requestNo)return;last=d;remain=d.remainingSeconds;paint(d,false)}).catch(function(e){boardBusy=false;if(request===requestNo&&!last)msg(e.message)})}
   window.addEventListener('resize',function(){if(last&&!(last.courseware&&last.courseware.kind==='slide'))paint(last,true)});
-  load();setInterval(load,3000);
+  load();setInterval(function(){if(!document.hidden){load()}},3000);
+  if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('visibilitychange',function(){if(!document.hidden){load()}});
   setInterval(function(){if(remain!=null){remain-=1;updateClock()}},1000);
 }
 boot(board);
@@ -869,7 +872,8 @@ function practice(){
   }
   var writtenBox=el('div',{class:'card'});root.appendChild(writtenBox);writtenStudent(writtenBox);
   load();
-  wait=setInterval(function(){if(!document.hidden){load()}},5000);
+  wait=setInterval(function(){if(!document.hidden){load()}},8000);
+  if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('visibilitychange',function(){if(!document.hidden){load()}});
 }
 boot_student(practice);
 """
