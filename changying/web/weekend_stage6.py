@@ -161,7 +161,19 @@ def install_weekend_stage6(implementation: Any) -> APIRouter:
             ))
         db.commit()
 
-    def _summary(items: list[dict[str, Any]]) -> dict[str, Any]:
+    def _pending_review_count(db: Any, row: Any) -> int:
+        from sqlalchemy import func
+        from changying.web.weekend_written import register_written_tables
+        written_s = register_written_tables(implementation)["submissions"]
+        return int(db.execute(
+            select(func.count()).select_from(written_s).where(
+                written_s.c.session_id == int(row.id),
+                written_s.c.school_id == int(row.school_id),
+                written_s.c.result == "pending",
+            )
+        ).scalar() or 0)
+
+    def _summary(db: Any, row: Any, items: list[dict[str, Any]]) -> dict[str, Any]:
         public_items = [{k: v for k, v in it.items() if k != "_rawItem"} for it in items]
         return {
             "total": len(public_items),
@@ -169,6 +181,7 @@ def install_weekend_stage6(implementation: Any) -> APIRouter:
             "homework": sum(1 for it in public_items if it["teacherStatus"] == "homework"),
             "pending": sum(1 for it in public_items if it["teacherStatus"] not in ("mastered", "homework")),
             "doubtCount": sum(1 for it in public_items for fb in it["studentFeedback"] if fb["status"] == "doubt"),
+            "pendingReview": _pending_review_count(db, row),
             "items": public_items,
         }
 
@@ -176,7 +189,7 @@ def install_weekend_stage6(implementation: Any) -> APIRouter:
     def teacher_list(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
         row = _teacher_session(db, u, sid)
-        return _summary(stage6_unresolved_items(implementation, db, row))
+        return _summary(db, row, stage6_unresolved_items(implementation, db, row))
 
     @router.post("/teacher/weekend/sessions/{sid}/stage6-checks")
     def teacher_mark(sid: int, b: TeacherStage6CheckBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -188,7 +201,7 @@ def install_weekend_stage6(implementation: Any) -> APIRouter:
         if b.questionKey not in valid_keys:
             raise HTTPException(404, "没有找到这道题")
         _upsert(db, int(u.school_id), int(sid), b.questionKey, 0, b.status, "")
-        return _summary(stage6_unresolved_items(implementation, db, row))
+        return _summary(db, row, stage6_unresolved_items(implementation, db, row))
 
     @router.get("/student/weekend/sessions/{sid}/stage6-checks")
     def student_list(sid: int, u: Any = Depends(current_user), db: Any = Depends(get_db)):

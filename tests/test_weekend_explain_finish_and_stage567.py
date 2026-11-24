@@ -224,9 +224,12 @@ def test_report_practice_ux_and_stage67_declutter():
     assert "setGenBusy" in REPORT_JS
     assert "AbortController" in REPORT_JS
     assert "resolvedStage6Count" in REPORT_JS
+    assert "pendingCnt" in REPORT_JS
+    assert "去课堂批改" in REPORT_JS
     assert "batchSize=3" in REPORT_JS
     assert "s6Filter" in CONTROL_JS
     assert "s7Summary" in CONTROL_JS
+    assert "pendingReview" in CONTROL_JS
     assert "pollBusy" in CONTROL_JS
     assert "boardBusy" in BOARD_JS
     assert "visibilitychange" in PRACTICE_JS

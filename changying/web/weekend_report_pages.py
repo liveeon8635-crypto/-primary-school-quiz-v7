@@ -324,7 +324,21 @@ function reportPage(){
     box.appendChild(el('h2',{text:'针对性练习 · '+(r.practiceLabels[p.state||'none']||'未生成')+(r.practiceGroups.length?'（共 '+r.practiceGroups.length+' 个待练薄弱点）':'')}));
     box.appendChild(el('div',{class:'muted',text:'按第 5、6 环节后仍需订正或部分正确的遗留错题，为'+r.studentName+'单独出新题（不重发原题）。生成和发布报告都不会布置；审核后点“审核确认并布置”，才会发到该生的“作业”。'}));
     if(r.resolvedStage6Count>0)box.appendChild(el('div',{class:'notice ok',text:'已自动排除第 6 环节已确认达标的 '+r.resolvedStage6Count+' 道题，仅保留以下仍需课后巩固的薄弱点。'}));
-    if(!r.practiceGroups.length&&!(p.groups||[]).length){box.appendChild(el('div',{class:'notice ok',text:'本报告没有遗留的需订正或部分正确题目，不需要再布置针对性练习。'}));card.appendChild(box);return}
+    var pendingCnt=0,unsubCnt=0;
+    (r.facts||[]).forEach(function(f){if(f.counts){pendingCnt+=(f.counts.pending||0);unsubCnt+=(f.counts.unsubmitted||0)}});
+    if(pendingCnt>0&&r.practiceGroups.length)box.appendChild(el('div',{class:'notice warn',text:'提醒：'+r.studentName+' 还有 '+pendingCnt+' 道文字／照片作答尚未批改（待批不计为错题，批改后可能会新增薄弱点）。'}));
+    if(!r.practiceGroups.length&&!(p.groups||[]).length){
+      if(pendingCnt>0){
+        box.appendChild(el('div',{class:'notice warn'},
+          el('div',{text:r.studentName+' 还有 '+pendingCnt+' 道文字／照片作答尚未批改（待批不计为错题，因此暂未识别出薄弱点）。请先回到课堂“学生作答与批改”标为“需订正／部分正确”，再点“刷新数据”。'}),
+          el('div',{class:'row',style:'margin-top:8px'},el('a',{class:'btn primary',href:'/v1/weekend?s='+SID,text:'去课堂批改'}))));
+      }else if(unsubCnt>0&&!(r.resolvedStage6Count>0)){
+        box.appendChild(el('div',{class:'notice',text:'已批改的题目中暂无遗留错题，但 '+r.studentName+' 还有 '+unsubCnt+' 道题未提交；如需巩固，请先补交并批改。'}));
+      }else{
+        box.appendChild(el('div',{class:'notice ok',text:'本报告所有已批改题目均已掌握（含第 5、6 环节订正与达标），无需再布置针对性练习。'}));
+      }
+      card.appendChild(box);return;
+    }
     var locked=['assigning','assigned','graded','partial'].indexOf(p.state)>=0,counts={},editors=[],genButtons=[],cardMsgs={};
     function showNotice(target,kind,text){
       if(!target)return;
