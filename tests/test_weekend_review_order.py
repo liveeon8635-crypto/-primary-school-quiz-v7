@@ -11,8 +11,8 @@ const assert=require('node:assert/strict');
 class Element {
  constructor(tag,attrs){this.tag=tag;this.attrs=attrs||{};this.children=[];this.value=this.attrs.value||'';this.hidden=!!this.attrs.hidden;this.disabled=!!this.attrs.disabled;this._text=this.attrs.text||'';this.open=false}
  appendChild(n){this.children.push(n);return n}
- set textContent(t){this._text=t;this.children=[]}get textContent(){return this._text}
- setAttribute(k,v){this.attrs[k]=v}addEventListener(){}querySelectorAll(tag){return all(this,tag)}
+ set textContent(t){this._text=t;this.children=[]}get textContent(){return this._text+this.children.map(n=>n&&n.textContent||'').join('')}
+ setAttribute(k,v){this.attrs[k]=v}getAttribute(k){return Object.prototype.hasOwnProperty.call(this.attrs,k)?this.attrs[k]:null}hasAttribute(k){return Object.prototype.hasOwnProperty.call(this.attrs,k)}addEventListener(){}querySelectorAll(tag){return all(this,tag)}
 }
 function all(n,tag){return n.children.flatMap(c=>c instanceof Element?[(c.tag===tag?c:null),...all(c,tag)].filter(Boolean):[])}
 function el(tag,attrs,...children){const n=new Element(tag,attrs);children.forEach(c=>n.appendChild(c));return n}
@@ -62,15 +62,35 @@ async function settle(){for(let i=0;i<20;i++)await Promise.resolve()}
  assert(all(group.children[1],'p').some(n=>!n.textContent.startsWith('（1）')),'question text does not duplicate part numbering');
  const note=all(root,'p').find(n=>n.textContent.includes('未能可靠识别原文序号'));
  assert(note && note.textContent.includes('1道题'),'unknown order must be marked rather than guessed');
+ const pages=review.children.filter(n=>n.attrs['data-review-group']||n.attrs['data-review-number']!==undefined);
+ assert.equal(pages[0].hidden,false,'default review opens the first whole numbered question');
+ assert(pages.slice(1).every(n=>n.hidden),'remaining questions are collapsed');
+ const top=all(root,'div').find(n=>n.attrs['data-review-navigation']==='top');
+ const topButtons=all(top,'button');
+ topButtons.find(n=>n.textContent==='下一题 ›').attrs.onclick();
+ assert.equal(pages[0].hidden,true);assert.equal(pages[1].hidden,false);
+ topButtons.find(n=>n.textContent==='‹ 上一题').attrs.onclick();
+ assert.equal(pages[0].hidden,false,'previous returns to the first grouped question');
+ let pills=all(top,'button').filter(n=>n.attrs['data-review-pill']==='true');
+ assert.deepEqual(pills.map(n=>n.textContent),['1','3','4','补充题']);
+ pills[2].attrs.onclick();assert.equal(pages[2].hidden,false,'question number pills jump directly');
+ all(top,'button').find(n=>n.textContent==='展开全部习题').attrs.onclick();
+ assert(pages.every(n=>!n.hidden),'expand shows every question without moving nodes');
+ all(top,'button').find(n=>n.textContent==='切回逐题查看').attrs.onclick();
+ assert.equal(pages[2].hidden,false);assert.equal(pages[0].hidden,true,'returning to single question preserves the selected question');
+ pills=all(top,'button').filter(n=>n.attrs['data-review-pill']==='true');pills[1].attrs.onclick();
  const cards=review.children.slice();
  const originalGets=gets;
  const approve=all(root,'button').filter(n=>n.textContent==='通过');
  assert.equal(approve.length,5);
  // Approval of a written card must not reorder/collapse other live cards.
- approve[0].attrs.onclick();await settle();
+ all(pages[1],'button').find(n=>n.textContent==='通过').attrs.onclick();await settle();
  assert.equal(posts,1);
  assert.equal(gets,originalGets);
  assert.deepEqual(review.children,cards);
+ assert.equal(pages[1].hidden,false,'approval remains on the current question');
+ pills=all(top,'button').filter(n=>n.attrs['data-review-pill']==='true');
+ assert.equal(pills[1].attrs.class.includes('ok'),true,'approval immediately recolors the current pill');
  assert.equal(all(root,'span').find(n=>n.attrs['data-start-reason']).textContent,'');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
