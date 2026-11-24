@@ -68,12 +68,32 @@ def test_writing_workbench_and_classroom_render_in_browser(tmp_path):
             assert page.get_by_text('看图写话图片组缺失').count()>0
             assert page.get_by_role('button',name='审核通过',exact=True).count()==1
             assert page.get_by_label('素材归属').count()==1
+            assert page.locator('.wr-stages + .wr-stage-panel').count()==1
+            assert page.get_by_role('button',name='忽略待分类（0项）',include_hidden=True).count()==1
+
             page.get_by_role('button',name='3. 看图写话').click()
             assert page.get_by_text('本环节还没有素材。').count()==1
             page.get_by_role('button',name='2. 范文导览').click()
             assert page.get_by_label('素材归属').count()==1
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             page.screenshot(path=str(tmp_path/'writing-workbench-mobile.png'),full_page=True)
+            sample['package']['nodes'].append({'id':'misc','kind':'text','role':'pending','status':'pending',
+                                               'text':'待判断的材料','targets':[]})
+            page.reload()
+            page.get_by_role('button',name='待分类').click()
+            assert page.get_by_label('素材正文').input_value()=='待判断的材料'
+            assert page.locator('.wr-stage-panel').evaluate('(p)=>document.activeElement===p')
+            page.get_by_text('补充或批量处理素材',exact=True).click()
+            def ignore(route):
+                assert route.request.post_data_json=={'expectedRevision':1,'action':'ignore_unassigned'}
+                sample['package']['nodes'][-1]['status']='ignored'
+                route.fulfill(json={**sample,'updated':1,'revision':2})
+            page.route('**/writing/bulk-review',ignore)
+            page.once('dialog',lambda dialog:dialog.accept())
+            page.get_by_role('button',name='忽略待分类（1项）').click()
+            page.get_by_role('status').filter(has_text='已将 1 项标为忽略').wait_for()
+            assert page.get_by_label('审核状态').input_value()=='ignored'
+
             classroom={'title':'我最喜欢的季节','status':'running','stage':2,'revision':0,
                 'teacher':True,'open':[],'students':[],'completion':{},'feedback':{},
                 'stages':[{'no':i+1,'name':name} for i,name in enumerate(
