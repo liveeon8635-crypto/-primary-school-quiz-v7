@@ -111,7 +111,7 @@ with TestClient(app) as client:
     control_html = client.get("/v1/weekend").text
     practice_html = client.get("/v1/weekend-practice").text
     assert "/explain/finish" in control_html
-    assert "按遗留错题生成并布置个性化课后练习" in control_html
+    assert "按未订正错题生成并下发个性化练习" in control_html
     assert "/stage6-checks" in control_html and "/stage6-checks" in practice_html
     assert "前往首页“作业”查看专属课后练习" in practice_html
     assert "本次讲题已完成" in practice_html
@@ -179,7 +179,7 @@ with TestClient(app) as client:
     stu_w6 = client.get(f"/student/weekend/sessions/{sid}/written", headers=sh).json()
     assert stu_w6["canSubmit"] is True
     assert all(q["canRevise"] is True for q in stu_w6["questions"])
-    rev_s6 = client.post(f"{student_w}/{q1}", headers=sh, data={"text": "16"})
+    rev_s6 = client.post(f"{student_w}/{q1}", headers=sh, data={"text": "16", "revision": "1"})
     assert rev_s6.status_code == 200, rev_s6.text
     # Re-grade q1 as revise so downstream Stage-6 mastery test still exercises both questions
     rev_s6_id = rev_s6.json()["submission"]["id"]
