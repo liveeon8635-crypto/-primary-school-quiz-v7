@@ -174,9 +174,9 @@ def test_writing_workbar_renders_in_browser(tmp_path):
                     {'items':[row] if '语文' in unquote(route.request.url) else []},ensure_ascii=False)))
             page.goto('https://changying.test/v1/weekend-plan')
             page.get_by_role('button',name='语文',exact=True).click()
-            entry=page.get_by_role('link',name='继续作文备课')
+            entry=page.get_by_role('button',name='审核与备课',exact=True)
             entry.wait_for()
-            assert entry.get_attribute('href')=='/v1/weekend-writing?lesson=13'
+            assert page.get_by_role('button',name='六环节课件与审核',exact=True).count()==0
             assert page.get_by_label('语文课型').input_value()=='writing'
             assert page.get_by_text('范文配图缺失').count()>0
             assert page.get_by_text('看图写话图片缺失').count()>0
@@ -191,7 +191,7 @@ def test_writing_workbar_renders_in_browser(tmp_path):
                 uploads.append(route.request.method)
                 route.fulfill(json={'lessonId':13})
             page.route('**/teacher/weekend/lessons/import',uploaded)
-            page.route('**/v1/weekend-writing?lesson=13&imported=1',
+            page.route('**/v1/weekend-writing?lesson=13&embed=1&imported=1',
                        lambda route:route.fulfill(content_type='text/html',body='<main></main>'))
             file_input=page.locator('input[type=file][accept^=".docx"]:not([multiple])').last
             file_input.set_input_files({'name':'季节.json','mimeType':'application/json',
@@ -202,7 +202,7 @@ def test_writing_workbar_renders_in_browser(tmp_path):
             assert not uploads
             page.once('dialog',lambda dialog:dialog.accept())
             preview.click()
-            page.wait_for_url('**/v1/weekend-writing?lesson=13&imported=1')
+            page.locator('iframe[src*="/v1/weekend-writing?lesson=13&embed=1&imported=1"]').wait_for()
             assert uploads==['POST']
 
         finally:
@@ -580,3 +580,23 @@ def test_writing_page_avoids_hardcoded_season_and_supports_paired_preview():
     assert '开放本环节全部' in html
     assert '撤销上一笔' in html
     assert 'needs_revision' in html and '需修改' in html
+
+
+def test_writing_readiness_distinguishes_pending_from_truly_missing():
+    from changying.services.writing_lesson import writing_readiness
+    pkg = {
+        'title': '我最喜欢的季节',
+        'approved': False,
+        'nodes': [
+            {'id': 'r1', 'kind': 'text', 'role': 'review', 'status': 'pending', 'text': '回顾观察'},
+            {'id': 'm1', 'kind': 'text', 'role': 'model', 'status': 'pending', 'text': '秋' * 130},
+            {'id': 't1', 'kind': 'text', 'role': 'task', 'status': 'pending', 'text': '我最喜欢的季节'},
+        ],
+    }
+    rd = writing_readiness(pkg)
+    by_no = {s['no']: s for s in rd['stageReadiness']}
+    assert by_no[1]['status'] == '待确认' and by_no[1]['missing'] == []
+    assert by_no[2]['status'] == '缺少素材' and '范文配图组' in by_no[2]['missing']
+    assert by_no[3]['status'] == '缺少素材' and '看图写话图片组' in by_no[3]['missing']
+    assert by_no[5]['status'] == '待确认' and by_no[5]['missing'] == []
+    assert not rd['canStart']

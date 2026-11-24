@@ -1113,6 +1113,16 @@ function plan(){
           .catch(function(e){workflowSelect.value=r.courseType||'';note('error',e.message)})
           .then(function(){workflowSelect.disabled=false});
       };
+      function openInlineWriting(lessonId,box,imported){
+        box.hidden=false;box.textContent='';
+        var bar=el('div',{class:'row',style:'justify-content:space-between;align-items:center;margin:10px 0 6px'});
+        bar.appendChild(el('strong',{text:'作文课六环节素材与审核（原地编辑，无需跳页）'}));
+        var ctrl=el('div',{class:'row',style:'margin:0'});
+        ctrl.appendChild(el('a',{class:'btn',href:'/v1/weekend-writing?lesson='+encodeURIComponent(lessonId)+'&view=preview',target:'_blank',rel:'noopener',text:'课堂投屏预览'}));
+        ctrl.appendChild(el('button',{text:'收起审核区',onclick:function(){box.hidden=true;box.textContent=''}}));
+        bar.appendChild(ctrl);box.appendChild(bar);
+        box.appendChild(el('iframe',{src:'/v1/weekend-writing?lesson='+encodeURIComponent(lessonId)+'&embed=1'+(imported?'&imported=1':''),title:'作文素材与审核',style:'width:100%;height:780px;border:1px solid #dbe3ed;border-radius:12px;background:#fff'}));
+      }
       var detail=el('div',{hidden:true});
       var fileIn=el('input',{type:'file',accept:'.docx,.pptx,.pdf,.txt,.md,.json,application/json',hidden:true});
       var impBtn=el('button',{class:r.hasPlan?'':'primary',text:'导入教案/整包',title:'支持 Word(.docx)、PPT(.pptx)、PDF、txt，或一个包含教案、习题和课件的 JSON 整包',onclick:function(){fileIn.click()}});
@@ -1130,10 +1140,11 @@ function plan(){
             try{
               var pkg=JSON.parse(String(reader.result).replace(/^\uFEFF/,'')),item=(pkg.items||[])[0];
               if(!item||!item.writingPackage){resetPreview();submitFile();return}
-              if(pkg.subject!==SUBJ||item.lessonNo!==r.lessonNo)throw Error('文件属于'+pkg.subject+'第'+item.lessonNo+'次课，请在对应课次行导入。');
+              var pkgSubj=pkg.subject||item.subject;
+              if(pkgSubj!==SUBJ||item.lessonNo!==r.lessonNo)throw Error('文件属于'+pkgSubj+'第'+item.lessonNo+'次课，请在对应课次行导入。');
               var stages=(pkg.courseware||{}).pages||[];
               var slides=stages.reduce(function(n,g){return n+((g.params||{}).slides||[]).length},0);
-              importFeedback.textContent=f.name+' · 第'+r.lessonNo+'次课 · '+item.writingPackage.nodes.length+'项素材 · '+slides+'页课件。';
+              importFeedback.textContent=f.name+' · 第'+r.lessonNo+'次课 · '+item.writingPackage.nodes.length+'项素材'+(slides?' · '+slides+'页课件':'')+'。';
               importFeedback.appendChild(el('button',{text:'导入为备课草稿',onclick:function(){resetPreview();submitFile()}}));
               importFeedback.appendChild(el('button',{text:'取消',onclick:resetPreview}));
             }catch(e){resetPreview();importFeedback.textContent=e.message}
@@ -1149,7 +1160,12 @@ function plan(){
         if(importFeedback.scrollIntoView)importFeedback.scrollIntoView({block:'nearest'});
         api('/teacher/weekend/lessons/import',{method:'POST',body:fd}).then(function(d){
           if(d.lessonId&&SUBJ==='语文'&&(r.courseType==='writing'||(d.status||{}).courseType==='writing')){
-            location.href='/v1/weekend-writing?lesson='+encodeURIComponent(d.lessonId)+'&imported=1';return
+            r.lessonId=d.lessonId;r.hasPlan=true;
+            impBtn.disabled=false;impBtn.textContent='导入教案/整包';
+            importFeedback.className='notice ok';
+            importFeedback.textContent='已导入备课草稿，请在下方原地审核六环节素材。';
+            openInlineWriting(d.lessonId,detail,true);
+            return
           }
           note('ok',d.message);load()
         }).catch(function(e){
@@ -1225,14 +1241,30 @@ function plan(){
           if(SUBJ===subject){note('ok',d.message);load()}
         }).catch(function(e){deleteFeedback.textContent=e.message;deleteBtn.disabled=false});
       }});
-      var writingLink=r.courseType==='writing'&&r.lessonId?el('a',{class:'btn primary',href:'/v1/weekend-writing?lesson='+encodeURIComponent(r.lessonId),text:'继续作文备课'}):null;
-      var mainMaterialBtn=SUBJ==='语文'&&(r.pendingMaterials>0)?materialReviewBtn:null;
+      var writingInlineBtn=r.courseType==='writing'&&r.lessonId?el('button',{class:'primary',text:'审核与备课',onclick:function(){
+        if(!detail.hidden&&detail.querySelector('iframe')){detail.hidden=true;detail.textContent='';return}
+        openInlineWriting(r.lessonId,detail,false);
+      }}):null;
+      var writingLink=r.courseType==='writing'&&r.lessonId?el('a',{class:'btn',href:'/v1/weekend-writing?lesson='+encodeURIComponent(r.lessonId),target:'_blank',rel:'noopener',text:'新窗口打开作文页'}):null;
+      var writingStageBar=null;
+      if(r.courseType==='writing'){
+        var sr=r.stageReadiness&&r.stageReadiness.length?r.stageReadiness:['点名与回顾','范文导览','看图写话','技法梳理','随堂练习','课后反馈'].map(function(nm,idx){return {no:idx+1,name:nm,status:r.hasPlan?'待确认':'缺少素材',missing:[]}});
+        writingStageBar=el('div',{class:'row','aria-label':'作文六环节状态',style:'gap:6px;margin:8px 0;flex-wrap:wrap'});
+        sr.forEach(function(st){
+          var ok=st.status==='已审核';
+          var miss=st.missing&&st.missing.length?'（缺'+st.missing.join('、')+'）':'';
+          writingStageBar.appendChild(el('span',{class:'tag '+(ok?'ok':'warn'),text:st.no+'.'+st.name+'：'+st.status+miss}));
+        });
+      }
+      var mainMaterialBtn=SUBJ==='语文'&&r.courseType!=='writing'&&(r.pendingMaterials>0)?materialReviewBtn:null;
       var extraMaterialBtn=SUBJ==='语文'&&!(r.pendingMaterials>0)?materialReviewBtn:null;
+      var mainCwBtn=r.courseType==='writing'?null:cwBtn;
       var lessonCard=el('div',{class:'card'});
       list.appendChild(lessonCard);lessonCards.push({lessonNo:r.lessonNo,row:r,card:lessonCard});
       lessonCard.appendChild(el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt));
-      lessonCard.appendChild(el('div',{class:'row'},tag,workflowSelect,titleLabel,writingLink,impBtn,fileIn,SUBJ==='语文'?null:open,mainMaterialBtn,cwBtn,go,why));
-      lessonCard.appendChild(el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,SUBJ==='语文'?open:null,extraMaterialBtn,pairedImportBtn,cancelDebugBtn,deleteBtn)));
+      if(writingStageBar)lessonCard.appendChild(writingStageBar);
+      lessonCard.appendChild(el('div',{class:'row'},tag,workflowSelect,titleLabel,writingInlineBtn,impBtn,fileIn,SUBJ==='语文'?null:open,mainMaterialBtn,mainCwBtn,go,why));
+      lessonCard.appendChild(el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},writingLink,draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,SUBJ==='语文'?open:null,extraMaterialBtn,pairedImportBtn,cancelDebugBtn,deleteBtn)));
       lessonCard.appendChild(importFeedback);lessonCard.appendChild(deleteFeedback);lessonCard.appendChild(detail);
       if(planQuery.get('lesson')===String(r.lessonId)&&r.lessonId){
         selectedLessonNo=r.lessonNo;PLAN_LESSON_SELECTION[SUBJ]=selectedLessonNo;userSelectedLesson=true;
@@ -1750,6 +1782,12 @@ function plan(){
     }).catch(function(e){box.appendChild(el('div',{class:'notice error',text:e.message}))});
   }
   function load(){api('/teacher/weekend/schedule?subject='+encodeURIComponent(SUBJ)).then(function(d){paintRows(d.items)}).catch(function(e){list.appendChild(el('div',{class:'notice error',text:e.message}))})}
+  if(typeof window!=='undefined'&&window.addEventListener){
+    window.addEventListener('message',function(ev){
+      if(ev.origin!==location.origin||!ev.data||ev.data.type!=='writing-updated')return;
+      if(ev.data.canStart){note('ok','作文课已审核通过，现在可以直接点击“开课”。');load()}
+    });
+  }
   load();
 }
 boot(plan);
