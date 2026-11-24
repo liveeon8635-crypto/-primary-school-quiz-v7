@@ -41,6 +41,10 @@ class PageBody(BaseModel):
     page: int | None = Field(default=None, ge=0)
 
 
+class ApproveAllBody(BaseModel):
+    stageNo: int | None = Field(default=None, ge=1, le=STAGE_COUNT)
+
+
 class SaveBody(PageBody):
     kind: str = Field(max_length=20)
     params: dict[str, Any]
@@ -2006,40 +2010,39 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             db.execute(delete(written).where(written.c.id == template_id, written.c.session_id == 0,
                                              written.c.lesson_id == lesson.id, written.c.school_id == u.school_id))
 
-    @router.post("/teacher/weekend/lessons/{lid}/courseware/approve")
-    def approve(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
-        """Teacher review done for one page: classrooms show it on that page; optional written task for pupils."""
-        lesson = my_lesson(db, u, lid)
-        course_type = course_type_for(db, implementation, lesson) or "pending"
-        practice_no = practice_stage(course_type)
-        if course_type == "math" and b.stageNo == 3 and source_page_mismatch(lesson)[1]:
+    def _approve_single_item(
+        db: Any,
+        u: Any,
+        lesson: Any,
+        item: dict[str, Any],
+        stage_no: int,
+        page: int | None,
+        *,
+        course_type: str,
+        practice_no: int,
+        pages: list[str],
+        stage3_mismatch: bool,
+        figures: list[dict[str, Any]],
+        practice_sources: list[tuple[str, str]] | None = None,
+    ) -> int | None:
+        if course_type == "math" and stage_no == 3 and stage3_mismatch:
             raise HTTPException(409, "原文题号与例题页数不符，已禁止审核或展示错误页。")
-        page = checked_page(db, lesson, b.stageNo, b.page, u.id)
-        locked = row_for(db, lesson, lock=True)
-        items = items_of(locked)
-        item = find(items, b.stageNo, page)
-        if item is None:
-            raise HTTPException(404, "这一页还没有课件，请先生成或填写")
         if item.get("reimportReviewRequired"):
             raise HTTPException(409, "教案已重新导入，图片可能变化；请重新生成或保存课件草稿，再逐页审核。")
-        pages = pages_for(db, lesson, b.stageNo, u.id)
         current_text = pages[page] if (pages and page is not None and 0 <= page < len(pages)) else ""
         if page is not None and item.get("pageText", "") != current_text:
             raise HTTPException(409, "教案原题已变化，旧课件不可直接审核；请重新生成或保存与本页一致的讲解。")
         answer_binding = None
-        if b.stageNo == practice_no:
+        if stage_no == practice_no:
             if item.get('templateId') is not None:
                 raise HTTPException(409, '旧课件关联了学生书面题，禁止自动改写或删除；请先人工核对')
             if item.get('writtenTask'):
-                # Historical whole-stage records defaulted to writtenTask=True.
-                # Allow safe re-approval only when no generated question is linked.
-                # Never create or silently delete an existing practice question.
                 if page is not None or item.get('templateId') is not None:
                     raise HTTPException(409, '旧课件关联了学生作答题，请先核对，不能重复生成或自动删除')
                 item['writtenTask'] = False
             if page is not None:
-                signatures = [signature for stem, signature in practice_courseware_sources(implementation, db, lesson, u.id)
-                              if stem == current_text]
+                sources = practice_sources if practice_sources is not None else practice_courseware_sources(implementation, db, lesson, u.id)
+                signatures = [signature for stem, signature in sources if stem == current_text]
                 if len(signatures) != 1:
                     raise HTTPException(409, '练习题干已变化或不唯一，请教师核对后再审核')
                 answer_binding = signatures[0]
@@ -2048,11 +2051,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         except ValueError as e:
             raise HTTPException(400, str(e))
         if item["kind"] == "steps":
-            params = attach_original_figure(
-                params, lesson_figures(implementation, db, lesson, written), item.get("pageText") or ""
-            )
-            # Source scans are attached when available. Their absence is a teacher-review warning,
-            # not a server-side approval lock; the page audit still flags missing known diagrams.
+            params = attach_original_figure(params, figures, item.get("pageText") or "")
         required_figure = required_visual_type(item.get("pageText") or "")
         saved_figure = primary_visual(params)
         if (not params.get("stepFigures")) and required_figure in ("equal_base_height", "parallelogram_thirds", "table") and saved_figure.get("type") != required_figure:
@@ -2060,16 +2059,12 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             if fallback_figure:
                 params = cw.clean(item["kind"], {**params, "figure": fallback_figure}, lesson.reading_plan or "")
                 saved_figure = primary_visual(params)
-        # A reviewed custom diagram may be better than our generic fallback.
-        # Prevent approval of the known old solved-answer calendar table, but
-        # never silently overwrite any teacher-authored drawing.
         if required_figure == "calendar_compare" and saved_figure.get("type") == "table":
             if any(
                 isinstance(row, list) and any(str(cell).strip() in ("正确", "错误") for cell in row)
                 for row in saved_figure.get("rows", [])
             ):
                 raise HTTPException(400, "月历判断表直接显示了正确/错误，请先改为不泄露答案的图示")
-        # 图示必须和题干对得上：缺图、图与数据不一致都不许通过审核。
         visual_text = _courseware_visual_text(item, params, item.get("pageText") or "")
         missing_reason = missing_visual_reason(item.get("pageText") or "", saved_figure)
         if missing_reason:
@@ -2088,7 +2083,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 stem, reference = cw.written_question(item["kind"], params, item.get("pageText") or "")
             except ValueError as e:
                 raise HTTPException(400, str(e))
-            meta = {"approved": True, "type": "short_answer", "hints": [], "courseware": f"{b.stageNo}:{page}"}
+            meta = {"approved": True, "type": "short_answer", "hints": [], "courseware": f"{stage_no}:{page}"}
             template = next((q for q in written_templates(db, written, u.school_id, u.id, lesson.id) if q.id == template_id), None)
             if template is not None and template_meta(template).get("courseware"):
                 db.execute(update(written).where(written.c.id == template.id).values(stem=stem, reference=reference,
@@ -2100,13 +2095,92 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
             drop_template(db, u, lesson, template_id)
             template_id = None
         item.update(status="approved", params=params, approved=params, approvedPageText=current_text, templateId=template_id)
-        if b.stageNo == practice_no:
+        if stage_no == practice_no:
             item['approvedAnswerBinding'] = answer_binding
         item.pop("reimportReviewRequired", None)
+        return template_id
+
+    @router.post("/teacher/weekend/lessons/{lid}/courseware/approve")
+    def approve(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Teacher review done for one page: classrooms show it on that page; optional written task for pupils."""
+        lesson = my_lesson(db, u, lid)
+        course_type = course_type_for(db, implementation, lesson) or "pending"
+        practice_no = practice_stage(course_type)
+        stage3_mismatch = source_page_mismatch(lesson)[1]
+        if course_type == "math" and b.stageNo == 3 and stage3_mismatch:
+            raise HTTPException(409, "原文题号与例题页数不符，已禁止审核或展示错误页。")
+        page = checked_page(db, lesson, b.stageNo, b.page, u.id)
+        locked = row_for(db, lesson, lock=True)
+        items = items_of(locked)
+        item = find(items, b.stageNo, page)
+        if item is None:
+            raise HTTPException(404, "这一页还没有课件，请先生成或填写")
+        pages = pages_for(db, lesson, b.stageNo, u.id)
+        figures = lesson_figures(implementation, db, lesson, written) if item["kind"] == "steps" else []
+        template_id = _approve_single_item(
+            db, u, lesson, item, b.stageNo, page,
+            course_type=course_type,
+            practice_no=practice_no,
+            pages=pages,
+            stage3_mismatch=stage3_mismatch,
+            figures=figures,
+        )
         items = write(db, u, lesson, items, reset_pages=[(b.stageNo, page)], commit=False, locked_row=locked)
         implementation.audit(db, u, "weekend.courseware.approve", f"lesson={lid}:stage={b.stageNo}:page={page}:template={template_id}")
         db.commit()
         return payload(db, lesson, u.id, preloaded_items=items)
+
+    @router.post("/teacher/weekend/lessons/{lid}/courseware/approve-all")
+    def approve_all(lid: int, b: ApproveAllBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        """Approve all draft courseware pages (or one stage's drafts) in a single DB transaction."""
+        lesson = my_lesson(db, u, lid)
+        course_type = course_type_for(db, implementation, lesson) or "pending"
+        practice_no = practice_stage(course_type)
+        stage3_mismatch = source_page_mismatch(lesson)[1]
+        locked = row_for(db, lesson, lock=True)
+        items = items_of(locked)
+        targets = [
+            it for it in items
+            if it.get("status") == "draft"
+            and (b.stageNo is None or int(it.get("stage") or 0) == int(b.stageNo))
+        ]
+        if not targets:
+            return {**payload(db, lesson, u.id, preloaded_items=items), "approvedCount": 0, "totalDrafts": 0, "failed": []}
+        pages_cache: dict[int, list[str]] = {}
+        practice_sources = practice_courseware_sources(implementation, db, lesson, u.id) if any(int(it.get("stage") or 0) == practice_no for it in targets) else None
+        figures = lesson_figures(implementation, db, lesson, written) if any(it.get("kind") == "steps" for it in targets) else []
+        approved_pages: list[tuple[int, int | None]] = []
+        failed: list[str] = []
+        for item in targets:
+            st = int(item.get("stage") or 0)
+            pg = item.get("page")
+            if st not in pages_cache:
+                pages_cache[st] = pages_for(db, lesson, st, u.id)
+            try:
+                checked = checked_page(db, lesson, st, pg, u.id)
+                _approve_single_item(
+                    db, u, lesson, item, st, checked,
+                    course_type=course_type,
+                    practice_no=practice_no,
+                    pages=pages_cache[st],
+                    stage3_mismatch=stage3_mismatch,
+                    figures=figures,
+                    practice_sources=practice_sources,
+                )
+                approved_pages.append((st, checked))
+            except HTTPException as exc:
+                label = f"第{st}环节" + (f"第{int(pg) + 1}页" if pg is not None else "")
+                failed.append(f"{label}：{exc.detail}")
+        if approved_pages:
+            items = write(db, u, lesson, items, reset_pages=approved_pages, commit=False, locked_row=locked)
+            implementation.audit(db, u, "weekend.courseware.approve_all", f"lesson={lid}:stage={b.stageNo}:count={len(approved_pages)}")
+            db.commit()
+        return {
+            **payload(db, lesson, u.id, preloaded_items=items),
+            "approvedCount": len(approved_pages),
+            "totalDrafts": len(targets),
+            "failed": failed,
+        }
 
     @router.post("/teacher/weekend/lessons/{lid}/courseware/remove")
     def remove(lid: int, b: PageBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):

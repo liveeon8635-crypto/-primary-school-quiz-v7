@@ -1496,11 +1496,11 @@ function cwPlan(box,lessonId,refresh){
       if(!wholePreviewWrap.hidden)renderWholePreview();
     }});
     var allDrafts=d.items.filter(function(it){return it.status==='draft'});
-    var approveAllStagesBtn=el('button',{class:allDrafts.length?'primary':'',disabled:!allDrafts.length,text:allDrafts.length?('一键审核全部待确认课件（'+allDrafts.length+'页）'):'全部课件已审核',onclick:function(){
+    var approveAllStagesBtn=el('button',{class:allDrafts.length?'primary':'',disabled:!allDrafts.length,text:allDrafts.length?('一键审核全部待确认课件（'+allDrafts.length+'页）'):'全部课件已审核',onclick:function(e){
       var drafts=d.items.filter(function(it){return it.status==='draft'});
       if(!drafts.length){msg.textContent='当前没有待确认的课件草稿';return}
       if(!confirm('确认已核对这 '+drafts.length+' 页待审核课件的内容和答案？通过后即可在课堂大屏显示。'))return;
-      run(drafts,function(it){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:it.stage,page:it.page}})},'审核');
+      approveBatch(null,drafts.length,e&&e.target);
     }});
     var preparedFile=el('input',{type:'file',accept:'.json,application/json','aria-label':'选择预制课件包',style:'display:none'});
     var fileLabel=el('span',{class:'muted',style:'font-size:13px',text:'未选择文件'});
@@ -1597,11 +1597,11 @@ function cwPlan(box,lessonId,refresh){
       run(todo,function(x){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/generate',{json:{stageNo:+stageNo,page:x.page}})},'生成');
     }});
     var stageDrafts=list.filter(function(x){var it=itemAt(x.page);return it&&it.status==='draft'});
-    var approveAll=el('button',{class:stageDrafts.length?'primary':'',disabled:!stageDrafts.length,text:stageDrafts.length?('全部草稿审核通过（本环节 '+stageDrafts.length+' 页）'):'全部草稿审核通过',onclick:function(){
+    var approveAll=el('button',{class:stageDrafts.length?'primary':'',disabled:!stageDrafts.length,text:stageDrafts.length?('全部草稿审核通过（本环节 '+stageDrafts.length+' 页）'):'全部草稿审核通过',onclick:function(e){
       var todo=list.filter(function(x){var it=itemAt(x.page);return it&&it.status==='draft'});
       if(!todo.length){msg.textContent='没有待审核的草稿';return}
       if(!confirm('确认已逐页预览这 '+todo.length+' 页课件的内容和答案？审核后会在大屏对应页显示。'))return;
-      run(todo,function(x){return api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve',{json:{stageNo:+stageNo,page:x.page}})},'审核');
+      approveBatch(+stageNo,todo.length,e&&e.target);
     }});
     var actionRow=el('div',{class:'row',style:'align-items:center;justify-content:space-between;margin:4px 0 8px'},
       el('div',{class:'row',style:'align-items:center;gap:8px'},stageSel,approveAll),
@@ -1716,6 +1716,28 @@ function cwPlan(box,lessonId,refresh){
           }})));
       });
     }).catch(function(e){listBox.appendChild(el('div',{class:'notice error',text:e.message}))});
+  }
+  function approveBatch(stageFilter,totalCount,btn){
+    if(busy)return;
+    busy=true;
+    var origText=btn?btn.textContent:'';
+    if(btn){btn.disabled=true;btn.textContent='正在批量审核…'}
+    msg.className='notice';
+    msg.textContent='正在一次性审核 '+totalCount+' 页课件，请稍候…';
+    var body=stageFilter!=null?{stageNo:+stageFilter}:{};
+    api('/teacher/weekend/lessons/'+lessonId+'/courseware/approve-all',{json:body}).then(function(d){
+      busy=false;
+      paint(d);
+      var failed=Array.isArray(d.failed)?d.failed:[];
+      msg.className=failed.length?'notice warn':'notice ok';
+      msg.textContent='审核完成 '+(d.approvedCount||0)+'/'+(d.totalDrafts||totalCount)+' 页'+(failed.length?'。未完成：\n'+failed.join('\n'):'');
+      if(refresh)refresh();
+    }).catch(function(e){
+      busy=false;
+      if(btn){btn.disabled=false;btn.textContent=origText}
+      msg.className='notice error';
+      msg.textContent='批量审核失败：'+(e&&e.message?e.message:'请重试');
+    });
   }
   function run(todo,call,label,done){
     if(busy)return;busy=true;var failed=[],i=0,last=null;

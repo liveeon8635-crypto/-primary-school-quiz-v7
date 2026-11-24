@@ -39,7 +39,9 @@ from changying.services.lesson_import import MAX_FILE_BYTES, MAX_TEXT_CHARS, SUP
 from changying.web.weekend_pages import plan_page_html
 from changying.services.lesson_written import (MAX_KNOWLEDGE, lesson_goals, literal_written_questions, suggest_knowledge,
     valid_written_questions, replace_written_drafts, written_templates, template_meta, lesson_question_number)
-from changying.web.weekend_courseware import PreparedPagesBody, auto_populate_courseware, import_prepared_courseware
+from changying.web.weekend_courseware import (
+    PreparedPagesBody, auto_populate_courseware, import_prepared_courseware, register_courseware_table,
+)
 from changying.services.guardian_consent import (
     TEACHING_DOCUMENT_EGRESS_DENIED_DETAIL, teaching_document_ai_egress_approved,
 )
@@ -2014,12 +2016,22 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 raise HTTPException(409, "这节课已有学生学习记录，不能删除教案")
         other = db.execute(select(written.c.id).where(written.c.lesson_id == lid, written.c.session_id == 0,
             written.c.teacher_id != u.id).limit(1)).first()
-        if other:
+        cw_table = register_courseware_table(implementation)
+        other_cw = db.execute(select(cw_table.c.id).where(
+            cw_table.c.school_id == u.school_id,
+            cw_table.c.lesson_id == lid,
+            cw_table.c.teacher_id != u.id,
+        ).limit(1)).first()
+        if other or other_cw:
             raise HTTPException(409, "其他老师也在使用这份教案，不能删除")
         # Retire question IDs rather than breaking foreign-key references.
         db.execute(update(TQ).where(TQ.lesson_id == lid).values(active=False, stage=REMOVED_STAGE))
         db.execute(delete(written).where(written.c.lesson_id == lid, written.c.session_id == 0,
             written.c.school_id == u.school_id, written.c.teacher_id == u.id))
+        db.execute(delete(cw_table).where(
+            cw_table.c.school_id == u.school_id,
+            cw_table.c.lesson_id == lid,
+        ))
         lesson.title = f"{lesson.subject}第{lesson.lesson_no}课"
         for field in ("core_target", "teacher_plan", "reading_plan", "writing_plan", "closure_training", "essay_review"):
             setattr(lesson, field, "")
@@ -2027,7 +2039,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
         lesson.published = False
         lesson.updated_at = datetime.utcnow()
         db.commit()
-        return {"message": "教案及本课习题已清除，课次和进度表保留，可重新导入", "status": lesson_status(db, u, lesson)}
+        return {"message": "教案、习题及本课互动课件已清除，课次和进度表保留，可重新导入", "status": lesson_status(db, u, lesson)}
 
     @router.put("/teacher/weekend/lessons/{lid}")
     def edit_lesson(lid: int, b: LessonEditBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
