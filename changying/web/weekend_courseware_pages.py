@@ -1355,7 +1355,46 @@ function cwPlan(box,lessonId,refresh){
     if(!stageNo||!CW_STAGES.some(function(x){return String(x.no)===stageNo})){stageNo=d.courseType&&d.courseType!=='math'?'2':'3';if(!CW_STAGES.some(function(x){return String(x.no)===stageNo}))stageNo=String(CW_STAGES[0].no);}
     data=d;rowEls={};box.textContent='';
     box.appendChild(el('p',{class:'muted',text:d.subject==='语文'?'课件生成结果是待确认草稿。按六环节核对原文、题目与素材，再逐页审核；缺项不会用其他环节内容填充。':'讲解、例题和已通过的随堂练习可逐题配置互动课件。你需逐页预览、修改、审核；随堂练习在课堂公布该题答案后才显示对应讲解。上课翻页和操作不调用 AI。'}));
-    function writingImageGallery(stage){var images=d.writingImages.filter(function(x){return Number(x.stage)===Number(stage)});if(!images.length)return null;var g=el('section',{class:'card','aria-label':stage==2?'范文配图核对':'看图写话图片核对',style:'margin:12px 0'});g.appendChild(el('h3',{text:stage==2?'范文配图核对（'+images.length+' 张）':'看图写话图片核对（'+images.length+' 张）'}));var pending=images.filter(function(x){return x.status!=='confirmed'}).length;if(pending){g.appendChild(el('p',{class:'notice warn',text:'有 '+pending+' 张图片尚未确认。图片只读展示，需进入“作文素材与审核”完成用途、环节、状态及范文段落绑定后，才能通过开课检查。'}));g.appendChild(el('a',{href:'/v1/weekend-writing?lesson='+encodeURIComponent(String(d.lessonId||'')),text:'去作文素材与审核',style:'display:inline-block;margin:4px 0 10px;color:#8b1e24;font-weight:700'}));}var grid=el('div',{style:'display:flex;flex-wrap:wrap;gap:12px'});images.forEach(function(x){var c=el('div',{style:'flex:1 1 240px;max-width:420px;border:1px solid #e5e7eb;border-radius:10px;padding:10px'});c.appendChild(el('img',{src:x.dataUrl,alt:stage==2?'范文配图':'看图写话图片',style:'display:block;width:100%;max-height:280px;object-fit:contain'}));c.appendChild(el('p',{text:'状态：'+(x.status==='confirmed'?'已确认':'待确认')+'；来源：'+((x.source||{}).file||'未标明')}));if(x.targets&&x.targets.length)c.appendChild(el('p',{text:'对应段落：'+x.targets.join('；').slice(0,240)}));grid.appendChild(c)});g.appendChild(grid);return g;}
+    function writingImageGallery(stage, editable){
+      var images=d.writingImages.filter(function(x){return Number(x.stage)===Number(stage)});
+      if(!images.length)return null;
+      var title=Number(stage)===2?'范文配图':'看图写话图片';
+      var gallery=el('section',{class:'card','aria-label':title+'核对'});
+      gallery.appendChild(el('h3',{text:title+'核对（'+images.length+' 张）'}));
+      var grid=el('div',{style:'display:flex;flex-wrap:wrap;gap:12px'});
+      images.forEach(function(x){
+        var card=el('div',{style:'flex:1 1 240px;max-width:420px;padding:10px'});
+        card.appendChild(el('img',{src:x.dataUrl,alt:title,style:'width:100%;max-height:280px;object-fit:contain'}));
+        card.appendChild(el('p',{text:'来源：'+((x.source||{}).file||'未标明')}));
+        var selected=(x.targetIds||[]).slice(), options=d.writingModels||{};
+        if(x.targets&&x.targets.length)card.appendChild(el('p',{text:'对应段落：'+x.targets.join('；')}));
+        if(editable&&Number(stage)===2){
+          var binding=el('details',{});
+          binding.open=!selected.length;
+          binding.appendChild(el('summary',{text:selected.length?'调整对应段落':'选择对应段落'}));
+          Object.keys(options).forEach(function(id){
+            var check=el('input',{type:'checkbox'});check.checked=selected.indexOf(id)>=0;
+            check.onchange=function(){selected=selected.filter(function(t){return t!==id});if(check.checked)selected.push(id);action.disabled=false;action.textContent='保存并确认配图'};
+            binding.appendChild(el('label',{style:'display:block'},check,options[id]));
+          });
+          if(!Object.keys(options).length)binding.appendChild(el('p',{text:'本课暂无范文段落，请在作文备课中补充范文。'}));
+          card.appendChild(binding);
+        }
+        if(editable){
+          var feedback=el('p',{role:'status'}),action=el('button',{class:'primary',text:x.status==='confirmed'?'已确认':('确认这张'+title),disabled:x.status==='confirmed'});
+          action.onclick=function(){
+            if(Number(stage)===2&&!selected.length){feedback.textContent='请先选择对应段落';binding.open=true;return}
+            action.disabled=true;
+            api('/teacher/weekend/lessons/'+lessonId+'/writing/images/'+encodeURIComponent(x.id)+'/confirm',{method:'POST',json:{expectedRevision:d.writingRevision,targets:selected}})
+              .then(function(){load();if(refresh)refresh()})
+              .catch(function(e){feedback.textContent=e.message;action.disabled=false});
+          };
+          card.appendChild(action);card.appendChild(feedback);
+        }
+        grid.appendChild(card);
+      });
+      gallery.appendChild(grid);return gallery;
+    }
     var wholePreviewWrap=el('div',{hidden:true});
     function renderWholePreview(){
       wholePreviewWrap.textContent='';
@@ -1534,7 +1573,7 @@ function cwPlan(box,lessonId,refresh){
     box.appendChild(stageTabs);
     var stageSel=el('select',{'aria-label':'环节',style:'display:none'});CW_STAGES.forEach(function(x){stageSel.appendChild(el('option',{value:x.no,text:'第'+x.no+'环节：'+x.name+((d.pages[String(x.no)]||[]).length?'（'+(d.pages[String(x.no)]||[]).length+' 项）':'')}))});
     stageSel.value=stageNo;stageSel.onchange=function(){stageNo=stageSel.value;paint(data)};
-    var currentImages=writingImageGallery(stageNo);if(currentImages)box.appendChild(currentImages);
+    var currentImages=writingImageGallery(stageNo,true);if(currentImages)box.appendChild(currentImages);
     var pages=d.pages[stageNo]||[],list=pages.length?pages.map(function(x,i){return {page:i,text:x}}):(stageNo===practiceNo?[]:[{page:null,text:'整个环节'}]);
     if(stageNo===practiceNo&&itemAt(null))list.unshift({page:null,text:'整个环节（原有课件）'});
     var seenPages={};list.forEach(function(x){seenPages[x.page===null?'null':String(x.page)]=true});
