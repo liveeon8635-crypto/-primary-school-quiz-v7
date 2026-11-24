@@ -20,7 +20,14 @@ def writing_inventory(raw, filename, text=""):
             source=dict(file=filename, part=part, sha256=digest),
             reason="原文提取；归属与图文关系需教师确认", **extra))
     if filename.lower().endswith('.json'):
-        supplied=json.loads(raw.decode('utf-8-sig'))['items'][0]['writingPackage']
+        try:
+            parsed=json.loads(raw.decode('utf-8-sig'))
+            items=parsed.get('items') if isinstance(parsed,dict) else None
+            supplied=items[0].get('writingPackage') if isinstance(items,list) and items and isinstance(items[0],dict) else None
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError('作文整包不是有效的UTF-8 JSON文件') from exc
+        if not isinstance(supplied,dict):
+            raise ValueError('作文整包格式不正确：缺少 items[0].writingPackage')
         if not isinstance(supplied.get('nodes'),list) or len(supplied['nodes'])>500:
             raise ValueError('作文整包最多500项素材')
         allowed={'pending','review','model','model_image','picture','method','task','feedback'}
@@ -88,22 +95,59 @@ def writing_inventory(raw, filename, text=""):
     else:
         for i, line in enumerate(text.splitlines()):
             if line.strip(): add(line, f"text:{i+1}")
+    model_start_re = re.compile(r'范文展示|范文赏析|范文导览|范文引路|优秀范文|例文赏析')
+    section_break_re = re.compile(
+        r'特色好开头|特色好结尾|【佳作】|佳作赏析|第[一二三四五六七八九十\d]+单元|'
+        r'写作技法|写作方法|技法梳理|写法指导|审题指导|看图写话|随堂练习|写作任务|习作要求|课后反馈'
+    )
+    method_option_re = re.compile(r'^[A-F][\.、\s]?[\u4e00-\u9fff]')
     in_model = False
     for n in nodes:
-        t = n['text']
+        t = n['text'].strip()
         if n['kind'] in ('image','unsupported'): continue
-        if '范文展示' in t: in_model = True
-        if re.search(r'特色好开头|【佳作】|第七单元',t) and not '范文展示' in t: in_model=False
-        if in_model and '范文展示' not in t:
-            n.update(role='model', reason='位于范文展示标题之后；原件分行不一定是自然段，请核对合并')
-        elif any(k in t for k in ('观察','顺序','感官','修辞','动静','情感','开头','结尾')):
+        is_model_heading = bool(model_start_re.search(t))
+        if is_model_heading:
+            in_model = True
+            continue
+        is_method_option = bool(method_option_re.match(t)) or len(re.findall(r'[A-F][\.、\s]?[\u4e00-\u9fff]{2,}', t)) >= 2
+        if is_method_option:
+            in_model = False
+            n.update(role='method', reason='含写作方法选项/旁批；已与范文正文分离，请核对')
+            continue
+        if section_break_re.search(t):
+            in_model = False
+        if in_model:
+            n.update(role='model', reason='位于范文标题之后；原件分行不一定是自然段，请核对合并')
+        elif any(k in t for k in ('观察','顺序','感官','修辞','动静','情感','开头','结尾','描写','方法','技法')):
             n.update(role='method', reason='含写作方法关键词；需核对方法与例句')
     title=''
-    heading=next((n for n in nodes if '最喜欢的季节' in n['text']),None)
-    if heading:
-        title='我最喜欢的季节'
-        add(title,heading['source']['part']+'#theme')
-        nodes[-1].update(role='task',reason='摘自原文季节写作标题；主题仍需教师确认')
+    topic_source=None
+    for n in nodes:
+        if n['kind'] in ('image','unsupported'): continue
+        t = n['text']
+        m = re.search(r'(?:写作主题|习作题目|作文题目|写作题目|习作主题|本次习作)[:：]\s*([^\n]{2,40})', t)
+        if m:
+            title = m.group(1).strip('《》“”"\' ')
+            topic_source = n
+            break
+    if not title:
+        for n in nodes:
+            if n['kind'] in ('image','unsupported'): continue
+            t = n['text']
+            if any(k in t for k in ('主题','题目','习作','作文','写作')):
+                m = re.search(r'《([^》]{2,30})》', t)
+                if m:
+                    title = m.group(1).strip()
+                    topic_source = n
+                    break
+    if not title:
+        heading = next((n for n in nodes if '最喜欢的季节' in n['text']), None)
+        if heading:
+            title = '我最喜欢的季节'
+            topic_source = heading
+    if title and topic_source:
+        add(title, topic_source['source']['part']+'#theme')
+        nodes[-1].update(role='task', reason='摘自原文写作主题标题；主题仍需教师确认')
     return dict(kind='writing', title=title, nodes=nodes, approved=False, history=[],
                 source=dict(file=filename, sha256=digest), originalNodes=json.loads(json.dumps(nodes)))
 
