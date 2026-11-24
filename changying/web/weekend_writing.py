@@ -23,6 +23,11 @@ class WritingSave(BaseModel):
     approve: bool = False
 
 
+class WritingImageReview(BaseModel):
+    expectedRevision: int = Field(ge=1)
+    targets: list[str] = Field(max_length=500)
+
+
 class WritingBulkReview(BaseModel):
     expectedRevision: int = Field(ge=1)
     action: Literal["confirm_assigned", "ignore_unassigned"]
@@ -143,6 +148,38 @@ def install_weekend_writing(implementation):
         row,package=writing_package(implementation,db,lid)
         return dict(updated=len(selected),action=label,package=package,revision=row.revision,
                     readiness=writing_readiness(package))
+
+    @router.post('/teacher/weekend/lessons/{lid}/writing/images/{node_id}/confirm')
+    def confirm_image(lid:int,node_id:str,b:WritingImageReview,u:Any=Depends(current_user),db:Any=Depends(get_db)):
+        lesson_context(db,u,lid)
+        row,package=writing_package(implementation,db,lid)
+        if row is None or row.revision!=b.expectedRevision:
+            raise HTTPException(409,'素材已更新，请刷新后重新核对')
+        nodes=package.get('nodes',[])
+        image=next((n for n in nodes if n.get('id')==node_id and n.get('kind')=='image'
+                    and n.get('role') in ('model_image','picture') and n.get('status')!='ignored'),None)
+        if image is None:
+            raise HTTPException(404,'本课没有这张待审核配图')
+        targets=image.get('targets',[])
+        if image['role']=='model_image':
+            models={n['id'] for n in nodes if n.get('role')=='model' and n.get('status')!='ignored'}
+            targets=list(dict.fromkeys(b.targets))
+            if not targets or not models.issuperset(targets):
+                raise HTTPException(422,'请选择本课有效的范文段落')
+        if image.get('status')=='confirmed' and targets==image.get('targets',[]):
+            return {'revision':row.revision}
+        package.setdefault('history',[]).append(dict(revision=row.revision,at=datetime.utcnow().isoformat(),
+            by=u.id,action='confirm_image',nodeId=node_id,previousStatus=image.get('status'),
+            previousTargets=image.get('targets',[]),previousApproved=package.get('approved',False)))
+        image.update(status='confirmed',targets=targets)
+        package['approved']=False
+        changed=db.execute(update(pairs).where(pairs.c.id==row.id,pairs.c.revision==b.expectedRevision).values(
+            meta_json=json.dumps(package,ensure_ascii=False),revision=row.revision+1,updated_at=datetime.utcnow()))
+        if changed.rowcount!=1:
+            db.rollback()
+            raise HTTPException(409,'素材已更新，请刷新后重新核对')
+        db.commit()
+        return {'revision':b.expectedRevision+1}
 
     @router.post('/teacher/weekend/lessons/{lid}/writing/imported-images')
     def import_confirmed_images(lid:int,u:Any=Depends(current_user),db:Any=Depends(get_db)):

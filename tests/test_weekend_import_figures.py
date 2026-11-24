@@ -306,8 +306,9 @@ def test_pdf_verified_question_number_survives_storage_and_courseware_rewording(
     assert match_figure(candidates, "\u7b2c 13 \u9898 \u6708\u5386\u5341\u5b57\u6846\u4e2d\u7684\u5b57\u6bcd\u8868\u793a\u4e0e\u6c42\u503c")["data_url"] == FIG_URL
 
 
-def test_courseware_writing_image_gallery_links_to_material_review():
-    from changying.web.weekend_courseware_pages import COURSEWARE_PLAN_JS
-    assert "作文素材与审核" in COURSEWARE_PLAN_JS
-    assert "/v1/weekend-writing?lesson=" in COURSEWARE_PLAN_JS
-    assert "尚未确认" in COURSEWARE_PLAN_JS
+def test_courseware_writing_image_gallery_has_inline_review():
+    from changying.web.weekend_pages import plan_page_html
+    page = plan_page_html()
+    assert "writingImageGallery(stageNo,true)" in page
+    assert "确认这张" in page and "保存并确认配图" in page
+    assert "去作文素材与审核" not in page

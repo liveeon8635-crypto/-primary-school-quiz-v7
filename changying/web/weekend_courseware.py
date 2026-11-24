@@ -1784,15 +1784,18 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         source_count, mismatch = source_page_mismatch(lesson)
         readiness = {}
         writing_images = []
+        models = {}
+        writing_revision = 0
         if lesson.subject == "语文":
             from changying.services.chinese_lesson_readiness import chinese_lesson_readiness
             readiness = chinese_lesson_readiness(implementation, db, lesson, teacher_id)
             if course_type == "writing":
                 from changying.services.writing_lesson import writing_package
-                _, package = writing_package(implementation, db, lesson.id)
+                writing_row, package = writing_package(implementation, db, lesson.id)
+                writing_revision = writing_row.revision if writing_row else 0
                 if package:
                     models = {n.get("id"): n.get("text", "") for n in package.get("nodes", []) if n.get("role") == "model" and n.get("status") != "ignored"}
-                    writing_images = [dict(id=n.get("id"), stage=2 if n.get("role") == "model_image" else 3, dataUrl=n.get("dataUrl"), status=n.get("status"), source=n.get("declaredSource") or n.get("source"), targets=[models[t] for t in n.get("targets", []) if t in models]) for n in package.get("nodes", []) if n.get("role") in ("model_image", "picture") and n.get("kind") == "image" and n.get("dataUrl") and n.get("status") != "ignored"]
+                    writing_images = [dict(id=n.get("id"), targetIds=n.get("targets", []), stage=2 if n.get("role") == "model_image" else 3, dataUrl=n.get("dataUrl"), status=n.get("status"), source=n.get("declaredSource") or n.get("source"), targets=[models[t] for t in n.get("targets", []) if t in models]) for n in package.get("nodes", []) if n.get("role") in ("model_image", "picture") and n.get("kind") == "image" and n.get("dataUrl") and n.get("status") != "ignored"]
         return {"lessonId": lesson.id, "subject": lesson.subject, "courseType": course_type,
                 "stageOptions": stage_options, "practiceStage": practice_no,
                 "templates": list(cw.TEMPLATES[lesson.subject]), "kindLabels": cw.KIND_LABEL,
@@ -1802,7 +1805,7 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
                 "stageReadiness": readiness.get("stageReadiness", []),
                 "startReasons": readiness.get("startReasons", []),
                 "canStart": readiness.get("canStart", True),
-                "writingImages": writing_images,
+                "writingImages": writing_images, "writingModels": models, "writingRevision": writing_revision,
                 "pages": {str(n): [_short(x, 80) for x in values] for n, values in page_cache.items()}}
 
     def upsert(db: Any, u: Any, lesson: Any, stage: int, page: int | None, kind: str, params: dict[str, Any],
