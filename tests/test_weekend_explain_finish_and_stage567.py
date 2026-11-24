@@ -179,7 +179,8 @@ with TestClient(app) as client:
     stu_w6 = client.get(f"/student/weekend/sessions/{sid}/written", headers=sh).json()
     assert stu_w6["canSubmit"] is True
     assert all(q["canRevise"] is True for q in stu_w6["questions"])
-    rev_s6 = client.post(f"{student_w}/{q1}", headers=sh, data={"text": "16", "revision": "1"})
+    q1_rev = next(q["submission"]["revision"] for q in stu_w6["questions"] if q["id"] == q1)
+    rev_s6 = client.post(f"{student_w}/{q1}", headers=sh, data={"text": "16", "revision": str(q1_rev)})
     assert rev_s6.status_code == 200, rev_s6.text
     # Re-grade q1 as revise so downstream Stage-6 mastery test still exercises both questions
     rev_s6_id = rev_s6.json()["submission"]["id"]
