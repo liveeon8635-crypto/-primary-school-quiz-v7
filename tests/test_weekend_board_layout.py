@@ -315,7 +315,7 @@ console.log(JSON.stringify({
   hasBigStage:!!bigStage,
   hasBigFocus:!!bigFocus,
   bigFullWidth:bigBox.children[0].attrs.style.includes('max-width:none'),
-  bigImgHeight75:bigImg.attrs.style.includes('max-height:75vh'),
+  bigImgFillsStage:bigImg.attrs.style.includes('height:100%;max-width:100%;max-height:100%')&&bigImg.attrs.style.includes('object-fit:contain'),
   hasSmallFocus:!!smallFocus,
   smallMax980:smallBox.children[0].attrs.style.includes('max-width:980px'),
   smallImgHeight300:smallImg.attrs.style.includes('max-height:300px')
@@ -329,7 +329,7 @@ console.log(JSON.stringify({
         "hasBigStage": True,
         "hasBigFocus": True,
         "bigFullWidth": True,
-        "bigImgHeight75": True,
+        "bigImgFillsStage": True,
         "hasSmallFocus": False,
         "smallMax980": True,
         "smallImgHeight300": True,
