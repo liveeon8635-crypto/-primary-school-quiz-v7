@@ -315,7 +315,7 @@ console.log(JSON.stringify({
   hasBigStage:!!bigStage,
   hasBigFocus:!!bigFocus,
   bigFullWidth:bigBox.children[0].attrs.style.includes('max-width:none'),
-  bigImgHeight75:bigImg.attrs.style.includes('max-height:75vh'),
+  bigImgHeight75:bigImg.attrs.style.includes('max-height:100%')&&bigImg.attrs.style.includes('height:100%'),
   hasSmallFocus:!!smallFocus,
   smallMax980:smallBox.children[0].attrs.style.includes('max-width:980px'),
   smallImgHeight300:smallImg.attrs.style.includes('max-height:300px')

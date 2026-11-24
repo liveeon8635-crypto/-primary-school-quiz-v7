@@ -64,7 +64,7 @@ def make_bundle(lesson_no, stems):
             "replaceExisting": True,
             "pages": [
                 page(2, 0, "知识点1：测试内容。", "结论"),
-                page(3, 0, "例1 测试例题。", "10"),
+                page(3, 0, "例1 测试例题。\n【答案】10。", "10"),
                 *[page(4, idx, s, "答案") for idx, s in enumerate(stems)],
             ],
         },
