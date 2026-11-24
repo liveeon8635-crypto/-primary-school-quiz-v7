@@ -719,11 +719,27 @@ function saveAllAndApprove() {
       text: n.text,
       role: n.role,
       status: st,
-      targets: n.targets || []
+      targets: (n.targets || []).slice()
     };
   });
+  var confirmedModels = nodes.filter(function(n) { return n.role === 'model' && n.status === 'confirmed' && (n.text || '').trim(); });
+  var modelIdSet = {};
+  confirmedModels.forEach(function(m) { modelIdSet[m.id] = true; });
+  var bodyModels = confirmedModels.filter(function(m) { return (m.text || '').trim().length >= 20; });
+  var bindPool = bodyModels.length ? bodyModels : confirmedModels;
+  var imgCursor = 0;
+  nodes.forEach(function(n) {
+    if (n.role === 'model_image' && n.status === 'confirmed') {
+      var valid = (n.targets || []).filter(function(tid) { return !!modelIdSet[tid]; });
+      if (!valid.length && bindPool.length) {
+        valid = [bindPool[Math.min(imgCursor, bindPool.length - 1)].id];
+        imgCursor += 1;
+      }
+      n.targets = valid;
+    }
+  });
   saving = true;
-  message('正在一键确认并审核整课…');
+  message('正在一键匹配图文并审核整课…');
   return api('/teacher/weekend/lessons/' + lid + '/writing', {
     method: 'PUT',
     json: {expectedRevision: data.revision, nodes: nodes, title: data.package.title || '', approve: true}
