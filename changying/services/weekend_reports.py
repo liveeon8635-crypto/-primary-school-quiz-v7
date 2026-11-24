@@ -654,7 +654,7 @@ def practice_prompt(groups: list[dict[str, Any]], sources: dict[str, dict[str, A
             "1. 保留原题的训练目标和考查方法，但不得照抄原题，也不能只把数字换掉：至少改变情境、问法或条件之一；难度由易到难递进（level 1、2、3）。\n"
             "2. 针对该学生的具体错误设计，例如学生选错的干扰项、批注指出的缺漏；不要出与错误无关的泛化练习。\n"
             "3. 语文阅读类题目：text 中必须包含完成题目所需的完整阅读材料（新写的短文或片段，不少于80字），再写问题；开放赏析改成单选、判断，或把所有等价答案列入 accepted_answers。\n"
-            "4. 数学涉及图形时提供 figure（type 只允许 coordinate_grid、geometry、line_segment、bar_chart、object_group），或在 text 中写全所有数据和位置条件；不要写“如图”却不给图。\n"
+            "4. 数学涉及图形时，给出与新题干数据完全一致的结构化 figure（type 只允许 coordinate_grid、geometry、line_segment、bar_chart、object_group）；例如几何图：{\"type\":\"geometry\",\"shape\":\"trapezoid|triangle|parallelogram|composite_rect|rectangle\",\"title\":\"示意图\",\"labels\":{\"上底\":\"6 cm\",\"下底\":\"10 cm\",\"高\":\"5 cm\"}}（三角形或平行四边形用“底”“高”，长方形用“长”“宽”）。复杂不规则图若无法用上述简单图形准确表达，就在 text 中写全所有数据和位置条件，且不要写“如图”。\n"
             "5. question_type 只允许 single_choice（4个选项，correct_index 0-3）、true_false（[\"正确\",\"错误\"]）、fill_blank、calculation、short_answer（语文不用 calculation/short_answer）；非选择题必须给简洁可判分的 answer。\n"
             "6. 每题写 explanation（给老师看的解析），knowledge 写具体考点。不要出现学生姓名。\n"
             "薄弱点与错题依据：" + json.dumps(rows, ensure_ascii=False) +
