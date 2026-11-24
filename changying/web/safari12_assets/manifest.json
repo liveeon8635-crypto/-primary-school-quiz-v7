@@ -412,7 +412,7 @@
       "567aeacfd69fd6ac74833a7792f3deca44b49db3a49a51280b3b3421f02c8400"
     ],
     "/v1/weekend-board": [
-      "3b9942a51e14cb8a9cc54887b5510909c6754a713170542d604cef623e27a9b2"
+      "89d9787e5c40684538ee82338c809732bf7ee98cac8a19d8133fd68d04df3f4b"
     ],
     "/v1/weekend-brief": [
       "418ff159d3df388ba130f0ff2c77d496e1c4773710e0aaaa6f884f770ee099cc"
@@ -536,11 +536,6 @@
       "sourceBytes": 2291,
       "compiledBytes": 2291
     },
-    "3b9942a51e14cb8a9cc54887b5510909c6754a713170542d604cef623e27a9b2": {
-      "unchanged": true,
-      "sourceBytes": 135923,
-      "compiledBytes": 135923
-    },
     "41566b57e73502bc3258788239b6b06a1ab0f3a3be2541faf36e78e331abbed9": {
       "unchanged": false,
       "sourceBytes": 5606,
@@ -650,6 +645,11 @@
       "unchanged": true,
       "sourceBytes": 33357,
       "compiledBytes": 33357
+    },
+    "89d9787e5c40684538ee82338c809732bf7ee98cac8a19d8133fd68d04df3f4b": {
+      "unchanged": true,
+      "sourceBytes": 136381,
+      "compiledBytes": 136381
     },
     "8a9730dec00a7b7aa4fd977604ba8a7cba1e21252cd201248c3b07efb81b842c": {
       "unchanged": false,

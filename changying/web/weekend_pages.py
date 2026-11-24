@@ -668,9 +668,16 @@ function board(){
       updateClock();return;
     }
     if(d.practiceFigure){
-      body.style.display='flex';body.style.flexDirection='column';body.style.gap='1vh';
-      var qTop=el('div',{style:'font-size:2.4vh;line-height:1.45;flex:none'});body.appendChild(qTop);boardLayout(qTop,d.content,false);
-      var figBox=el('div',{style:'flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:12px;padding:12px;overflow:auto'});
+      body.style.display='flex';body.style.flexDirection='column';body.style.gap='0.8vh';
+      var selfContained=d.practiceFigure.type==='uploaded_image'&&/含题干|第\s*\d+\s*题图形/.test(String(d.practiceFigure.alt||''));
+      if(!selfContained){
+        var pLines=(Array.isArray(d.content)?d.content:[]).filter(function(line){
+          var s=String(line||'').trim();
+          return s&&s.indexOf('随堂练习任务来自已审核内容')!==0&&s.indexOf('请先独立作答并提交')!==0;
+        });
+        if(pLines.length){var qTop=el('div',{style:'font-size:2.1vh;line-height:1.4;flex:none'});body.appendChild(qTop);boardLayout(qTop,pLines,false)}
+      }
+      var figBox=el('div',{style:'flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:12px;padding:1vh 1.2vw;overflow:hidden'});
       body.appendChild(figBox);renderQuestionFigure(figBox,d.practiceFigure,true);
       scrollBody=body;lastRenderKey=nextKey;lastViewKey=viewKey(d);
       if(keepScroll)body.scrollTop=oldScroll;
