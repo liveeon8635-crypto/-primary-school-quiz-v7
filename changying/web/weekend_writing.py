@@ -244,8 +244,18 @@ def install_weekend_writing(implementation):
             check=writing_readiness({**package,'approved':True})
             if not check['canStart']: raise HTTPException(409,'；'.join(check['startReasons']))
             package['approved']=True
-        package['history']=old.get('history',[])+[dict(revision=row.revision,at=datetime.utcnow().isoformat(),by=u.id,
-            title=old.get('title',''),approved=old.get('approved',False),nodes=old['nodes'])]
+        history_entry=dict(revision=row.revision,at=datetime.utcnow().isoformat(),by=u.id,
+                           title=old.get('title',''),approved=old.get('approved',False))
+        # Image bytes and source metadata are immutable in this editor. For ordinary
+        # review decisions record the previous statuses without duplicating all media.
+        status_only=len(nodes)==len(old['nodes']) and all(
+            previous=={**current,'status':previous.get('status')} for previous,current in zip(old['nodes'],nodes))
+        if status_only:
+            history_entry['previousStatuses']={p['id']:p.get('status') for p,n in zip(old['nodes'],nodes)
+                                               if p.get('status')!=n.get('status')}
+        else:
+            history_entry['nodes']=old['nodes']
+        package['history']=old.get('history',[])+[history_entry]
         encoded=json.dumps(package,ensure_ascii=False)
         if len(encoded)>60*1024*1024: raise HTTPException(413,'课程历史超过60MB，请另建课次保留历史')
         changed=db.execute(update(pairs).where(pairs.c.id==row.id,pairs.c.revision==b.expectedRevision).values(
