@@ -1781,10 +1781,12 @@ function plan(){
     }).catch(function(e){box.appendChild(el('div',{class:'notice error',text:e.message}))});
   }
   function load(){api('/teacher/weekend/schedule?subject='+encodeURIComponent(SUBJ)).then(function(d){paintRows(d.items)}).catch(function(e){list.appendChild(el('div',{class:'notice error',text:e.message}))})}
-  window.addEventListener('message',function(ev){
-    if(ev.origin!==location.origin||!ev.data||ev.data.type!=='writing-updated')return;
-    if(ev.data.canStart){note('ok','作文课已审核通过，现在可以直接点击“开课”。');load()}
-  });
+  if(typeof window!=='undefined'&&window.addEventListener){
+    window.addEventListener('message',function(ev){
+      if(ev.origin!==location.origin||!ev.data||ev.data.type!=='writing-updated')return;
+      if(ev.data.canStart){note('ok','作文课已审核通过，现在可以直接点击“开课”。');load()}
+    });
+  }
   load();
 }
 boot(plan);
