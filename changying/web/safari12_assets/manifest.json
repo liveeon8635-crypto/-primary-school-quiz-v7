@@ -424,7 +424,7 @@
       "ee604395cb211f37909346faa3c933372805f7bad00a790570423b678de4b73b"
     ],
     "/v1/weekend-report": [
-      "c31dd904d30e33f557a5d72d87aa08efa078e88b1bcce3014b3a919606dd37a7"
+      "5c149bfdce3b75fcdb4f8501a88977352d1e3424900d43f3288b4df8422d6fae"
     ],
     "/v1/weekend-writing": [
       "398c4d1e38a30383e6bb03378052d12d22ef0ad840cc6675764aa14e33c284b6"
@@ -576,6 +576,11 @@
       "sourceBytes": 277168,
       "compiledBytes": 285989
     },
+    "5c149bfdce3b75fcdb4f8501a88977352d1e3424900d43f3288b4df8422d6fae": {
+      "unchanged": true,
+      "sourceBytes": 89188,
+      "compiledBytes": 89188
+    },
     "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf": {
       "unchanged": false,
       "sourceBytes": 8661,
@@ -685,11 +690,6 @@
       "unchanged": false,
       "sourceBytes": 1670,
       "compiledBytes": 1691
-    },
-    "c31dd904d30e33f557a5d72d87aa08efa078e88b1bcce3014b3a919606dd37a7": {
-      "unchanged": true,
-      "sourceBytes": 88918,
-      "compiledBytes": 88918
     },
     "c5a40454e6e5f213dafa37a6faadb3fcd7902e3ebe3395ad9d66430b933f465d": {
       "unchanged": true,
