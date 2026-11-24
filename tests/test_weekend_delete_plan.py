@@ -90,7 +90,7 @@ with TestClient(app) as client:
 
 def test_delete_button_requires_confirmation_and_shows_server_failure_locally():
     from changying.web.weekend_pages import PLAN_JS
-    handler=PLAN_JS.split("      var deleteFeedback=el(",1)[1].split("      list.appendChild(el('div',{class:'card'}",1)[0]
+    handler=PLAN_JS.split("      var deleteFeedback=el(",1)[1].split("      var writingLink=",1)[0]
     script=r'''
 const assert=require('node:assert/strict');
 function el(tag,attrs){return {...attrs,textContent:attrs.text||'',disabled:!!attrs.disabled}}
