@@ -76,6 +76,16 @@ def test_writing_workbench_and_classroom_render_in_browser(tmp_path):
             page.get_by_role('button',name='2. 范文导览').click()
             assert page.get_by_label('素材归属').count()==1
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+            page.get_by_role('button',name='审核通过',exact=True).click()
+            page.get_by_role('status').filter(has_text='还有 1 项待处理').wait_for()
+            def confirm_stage(route):
+                payload=route.request.post_data_json
+                assert payload['nodes'][0]['status']=='confirmed' and not payload['approve']
+                route.fulfill(json={**sample,'package':{**sample['package'],'nodes':payload['nodes']},'revision':2})
+            page.route('**/teacher/weekend/lessons/13/writing',lambda route:confirm_stage(route) if route.request.method=='PUT' else route.fallback())
+            page.get_by_role('button',name='确认本环节素材（1项）').click()
+            page.get_by_role('status').filter(has_text='本环节已确认 1 项').wait_for()
+            assert 'view=preview' in page.get_by_role('link',name='课堂投屏预览（新窗口）').get_attribute('href')
             page.screenshot(path=str(tmp_path/'writing-workbench-mobile.png'),full_page=True)
             sample['package']['nodes'].append({'id':'misc','kind':'text','role':'pending','status':'pending',
                                                'text':'待判断的材料','targets':[]})

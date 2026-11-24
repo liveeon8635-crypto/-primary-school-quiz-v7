@@ -1200,7 +1200,7 @@ function plan(){
       list.appendChild(el('div',{class:'card'},el('div',{class:'row'},el('b',{text:'第 '+r.lessonNo+' 次'}),wk,un,dt),
         el('div',{class:'row'},tag,workflowSelect,titleLabel,writingLink,impBtn,fileIn,SUBJ==='语文'?null:open,mainMaterialBtn,cwBtn,go,why),el('details',{},el('summary',{text:'更多操作：AI 辅助与课堂维护'}),el('div',{class:'row'},draftBtn,SUBJ==='语文'?null:qCount,SUBJ==='语文'?null:qBtn,SUBJ==='语文'?open:null,extraMaterialBtn,pairedImportBtn,cancelDebugBtn,deleteBtn)),importFeedback,deleteFeedback,detail));
       if(planQuery.get('lesson')===String(r.lessonId)&&r.lessonId){
-        if(planQuery.get('view')==='courseware'&&cwBtn)cwBtn.click();
+        if(['courseware','preview'].indexOf(planQuery.get('view'))>=0&&cwBtn)cwBtn.click();
         list.lastElementChild.scrollIntoView({block:'start'});
         planQuery.delete('lesson');
       }
