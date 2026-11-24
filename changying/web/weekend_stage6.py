@@ -121,10 +121,13 @@ def stage6_unresolved_items(implementation: Any, db: Any, row: Any) -> list[dict
             "stem": str(it.get("bindingStem") or it.get("question") or "").strip(),
             "wrongStudentIds": wrong_sids,
             "wrongStudents": [names[s] for s in wrong_sids],
+            "wrongCount": len(wrong_sids),
+            "isCommonError": len(wrong_sids) >= 2,
             "teacherStatus": teacher_map.get(qkey, "pending"),
             "studentFeedback": feedback_list,
             "_rawItem": it,
         })
+    out.sort(key=lambda item: (-int(item["wrongCount"]), int(item["no"])))
     return out
 
 

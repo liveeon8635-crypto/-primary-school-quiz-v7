@@ -11,9 +11,9 @@ MATH_STAGES: list[dict[str, Any]] = [
     {"no": 2, "key": "intro", "name": "知识点介绍", "minutes": 20, "goal": "讲清本节知识点"},
     {"no": 3, "key": "examples", "name": "例题讲解", "minutes": 25, "goal": "跟着例题学方法"},
     {"no": 4, "key": "practice", "name": "随堂练习", "minutes": 25, "goal": "独立完成，卡住时用提示"},
-    {"no": 5, "key": "review", "name": "练习复盘", "minutes": 15, "goal": "讲错题，会的帮不会的"},
-    {"no": 6, "key": "interact", "name": "课堂互动", "minutes": 15, "goal": "全班一起完成目标"},
-    {"no": 7, "key": "homework", "name": "布置课后", "minutes": 10, "goal": "明确课后练习"},
+    {"no": 5, "key": "review", "name": "练习复盘", "minutes": 15, "goal": "代表性学生讲题，当堂订正"},
+    {"no": 6, "key": "interact", "name": "课堂互动", "minutes": 15, "goal": "集中讨论共性错题，继续订正达标"},
+    {"no": 7, "key": "homework", "name": "布置课后", "minutes": 10, "goal": "简短总结，按未订正错题下发个性化练习"},
 ]
 READING_STAGES: list[dict[str, Any]] = [
     {"no": 1, "key": "recall", "name": "点名与回顾", "minutes": 10, "goal": "点名并回顾上次阅读方法"},
@@ -117,11 +117,11 @@ def stage_content(stage_no: int, lesson: dict[str, Any], course_type: str | None
     if stage_no == 4:
         return ["随堂练习：在自己的设备上独立完成", "卡住时可以按“提示”，不要直接问答案"]
     if stage_no == 5:
-        return ["练习复盘：先自己订正，再互相讲错题"]
+        return ["练习复盘（10–15分钟）：请有代表性的同学讲解思路，其余同学边听边订正"]
     if stage_no == 6:
-        return ["课堂互动：全班一起完成今天的目标"]
+        return ["课堂互动（10–15分钟）：集中讨论第 5 环节未解决的共性错题，本环节内仍可继续订正"]
     if stage_no == 7:
-        return [x for x in _lines(lesson.get("closure_training")) or [str(lesson.get("closure_training") or "").strip()] if x] or ["课后练习：见老师布置"]
+        return [x for x in _lines(lesson.get("closure_training")) or [str(lesson.get("closure_training") or "").strip()] if x] or ["布置课后 · 本课简短总结：课堂订正已截止，未能订正的错题将生成个性化巩固练习下发到“作业”。"]
     return []
 
 

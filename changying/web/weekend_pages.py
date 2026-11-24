@@ -187,12 +187,13 @@ function control(){
       if(d.coursewareNotice)content.appendChild(el('div',{class:'notice warn',text:d.coursewareNotice}));
       if(d.courseware){var cwBox=el('div');content.appendChild(cwBox);activeCwBox=cwBox;cwControl(cwBox,d.courseware,SID,{canNextStage:canNextStage,onNextStage:function(){post('next')}})}
       else if(d.practiceFigure){var pfBox=el('div',{style:'margin:8px 0'});content.appendChild(pfBox);renderQuestionFigure(pfBox,d.practiceFigure,false)}
+      if(running&&d.currentStage===5&&peerDetails)peerDetails.open=true;
       if(running&&d.currentStage===6){
         var s6Wrap=el('div',{style:'margin-top:10px'}),s6Filter='pending',s6Data=null;content.appendChild(s6Wrap);
         function renderStage6(s6){
           s6Data=s6;s6Wrap.textContent='';
-          s6Wrap.appendChild(el('h3',{text:'第 6 环节 · 逐题讨论达标确认'}));
-          s6Wrap.appendChild(el('div',{class:'notice',text:'共 '+s6.total+' 道待巩固题 · 已达标 '+s6.mastered+' · 留入课后 '+s6.homework+' · 待讨论 '+s6.pending+(s6.doubtCount?' · 学生提问 '+s6.doubtCount+' 人次':'')}));
+          s6Wrap.appendChild(el('h3',{text:'第 6 环节 · 集中讨论共性错题（10–15分钟，本环节仍可订正）'}));
+          s6Wrap.appendChild(el('div',{class:'notice',text:'共 '+s6.total+' 道未订正题（按未订正人数从多到少排列）· 已达标 '+s6.mastered+' · 留入课后 '+s6.homework+' · 待讨论 '+s6.pending+(s6.doubtCount?' · 学生提问 '+s6.doubtCount+' 人次':'')}));
           if(s6.pendingReview>0)s6Wrap.appendChild(el('div',{class:'notice warn',text:'提醒：当前还有 '+s6.pendingReview+' 道文字／照片作答尚未批改（待批改不计为错题，在下方“学生作答与批改”标为“需订正／部分正确”后才会进入本清单与课后练习）。'}));
           if(!s6.items.length){
             if(s6.pendingReview>0){s6Wrap.appendChild(el('button',{text:'刷新学生提问与达标进度',onclick:loadStage6}));return}
@@ -206,14 +207,18 @@ function control(){
           s6Wrap.appendChild(tabs);
           var list=s6.items.filter(function(it){
             if(s6Filter==='all')return true;
-            if(s6Filter==='pending')return !it.teacherStatus;
+            if(s6Filter==='pending')return it.teacherStatus!=='mastered'&&it.teacherStatus!=='homework';
             return it.teacherStatus===s6Filter;
           });
           if(!list.length)s6Wrap.appendChild(el('div',{class:'muted',text:'当前筛选下没有题目，可切换上方标签查看。'}));
           list.forEach(function(it){
             var card=el('div',{class:'card'});
+            var headRow=el('div',{class:'row',style:'align-items:center;gap:6px;margin-bottom:4px'});
+            if(it.wrongCount>=2)headRow.appendChild(el('span',{class:'tag warn',text:'共性错题 · '+it.wrongCount+' 人未订正'}));
+            else if(it.wrongCount===1)headRow.appendChild(el('span',{class:'tag',text:'个别未订正 · 1 人'}));
+            if(headRow.childNodes.length)card.appendChild(headRow);
             card.appendChild(el('b',{style:'display:block;overflow-wrap:anywhere',text:'第 '+it.no+' 题：'+it.stem}));
-            if(it.wrongStudents&&it.wrongStudents.length)card.appendChild(el('div',{class:'muted',text:'待巩固同学：'+it.wrongStudents.join('、')}));
+            if(it.wrongStudents&&it.wrongStudents.length)card.appendChild(el('div',{class:'muted',text:'未订正同学：'+it.wrongStudents.join('、')}));
             (it.studentFeedback||[]).forEach(function(fb){
               card.appendChild(el('div',{class:fb.status==='doubt'?'notice warn':'notice ok',style:'margin:4px 0',text:fb.name+'：'+(fb.status==='doubt'?'还是不懂（留课后/提问）':'已听懂 ✓')+(fb.note?' — '+fb.note:'')}));
             });
@@ -230,11 +235,12 @@ function control(){
         loadStage6();
       }
       if(running&&d.currentStage>=7){
-        var s7Summary=el('div',{class:'muted',style:'margin-top:6px',text:'正在汇总第 6 环节遗留错题…'});
+        var s7Summary=el('div',{class:'muted',style:'margin-top:6px',text:'正在汇总未能订正的遗留错题…'});
         content.appendChild(el('div',{class:'notice ok',style:'margin-top:10px'},
-          el('div',{text:'个性化课后练习已自动排除第 5 环节订正正确与第 6 环节已确认达标的题目，仅针对五六环节仍未解决的个人遗留错题生成带图衍生练习：'}),
+          el('b',{style:'display:block;margin-bottom:4px',text:'第 7 环节 · 老师简短总结与个性化练习下发（课堂订正已截止）'}),
+          el('div',{text:'系统已自动排除第 5、6 环节订正正确与讨论后已达标的题目，仅针对仍未能订正的个人遗留错题个性化生成带图针对性练习并下发：'}),
           s7Summary,
-          el('div',{class:'row',style:'margin-top:8px'},el('a',{class:'btn primary',href:'/v1/weekend-report?s='+SID,text:'按遗留错题生成并布置个性化课后练习'}))));
+          el('div',{class:'row',style:'margin-top:8px'},el('a',{class:'btn primary',href:'/v1/weekend-report?s='+SID,text:'按未订正错题生成并下发个性化练习'}))));
         api('/teacher/weekend/sessions/'+SID+'/stage6-checks').then(function(s6){
           s7Summary.textContent='第 6 环节汇总：共 '+s6.total+' 道待巩固题 · 已确认达标 '+s6.mastered+' 题 · 留入课后 '+s6.homework+' 题 · 待讨论 '+s6.pending+' 题'+(s6.doubtCount?' · 学生提问 '+s6.doubtCount+' 人次':'')+(s6.pendingReview?' · 另有 '+s6.pendingReview+' 道作答尚未批改（请先批改再生成课后练习）':'');
         }).catch(function(){s7Summary.textContent=''});
