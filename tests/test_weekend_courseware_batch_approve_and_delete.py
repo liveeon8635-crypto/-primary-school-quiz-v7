@@ -24,16 +24,16 @@ FRAME = {
 
 
 def make_bundle(lesson_no, stems):
-    def page(stage, index, text, answer, expected_text=None):
+    def page(stage, index, text, answer, problem=None):
         return {
             "stageNo": stage,
             "page": index,
-            "expectedPageText": expected_text or text,
+            "expectedPageText": text,
             "kind": "steps",
             "writtenTask": False,
             "params": {
                 "title": "分步讲解",
-                "problem": text,
+                "problem": problem or text,
                 "steps": ["第一步观察条件", "第二步代入计算"],
                 "answer": answer,
                 "stepFigures": [FRAME, FRAME, FRAME],
@@ -64,7 +64,7 @@ def make_bundle(lesson_no, stems):
             "replaceExisting": True,
             "pages": [
                 page(2, 0, "知识点1：测试内容。", "结论"),
-                page(3, 0, "例1 测试例题。", "10", "例1 测试例题。\n【答案】10。"),
+                page(3, 0, "例1 测试例题。\n【答案】10。", "10", problem="例1 测试例题。"),
                 *[page(4, idx, s, "答案") for idx, s in enumerate(stems)],
             ],
         },
