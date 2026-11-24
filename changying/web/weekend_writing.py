@@ -382,5 +382,15 @@ def install_weekend_writing(implementation):
     @router.get('/v1/weekend-writing',response_class=HTMLResponse)
     def page(): return writing_page()
 
+    @implementation.app.middleware("http")
+    async def writing_embed_headers(request, call_next):
+        response = await call_next(request)
+        if request.url.path == "/v1/weekend-writing" and request.query_params.get("embed") == "1":
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            csp = response.headers.get("Content-Security-Policy", "")
+            if "frame-ancestors 'none'" in csp:
+                response.headers["Content-Security-Policy"] = csp.replace("frame-ancestors 'none'", "frame-ancestors 'self'")
+        return response
+
     implementation.app.include_router(router)
     return router
