@@ -216,7 +216,7 @@ with TestClient(app) as client:
 
 
 def test_report_practice_ux_and_stage67_declutter():
-    from changying.web.weekend_pages import CONTROL_JS
+    from changying.web.weekend_pages import BOARD_JS, CONTROL_JS, PRACTICE_JS
     from changying.web.weekend_report_pages import REPORT_JS
 
     assert "if(unmarked)qd.open=true" not in REPORT_JS
@@ -224,5 +224,58 @@ def test_report_practice_ux_and_stage67_declutter():
     assert "setGenBusy" in REPORT_JS
     assert "AbortController" in REPORT_JS
     assert "resolvedStage6Count" in REPORT_JS
+    assert "batchSize=3" in REPORT_JS
     assert "s6Filter" in CONTROL_JS
     assert "s7Summary" in CONTROL_JS
+    assert "pollBusy" in CONTROL_JS
+    assert "boardBusy" in BOARD_JS
+    assert "visibilitychange" in PRACTICE_JS
+
+
+def test_courseware_lru_cache_hits_and_invalidates(tmp_path):
+    from sqlalchemy import create_engine, insert, update
+    from sqlalchemy.orm import sessionmaker
+    from datetime import datetime, timedelta
+    import json
+    from changying.web.weekend_courseware import (
+        _CW_ITEMS_CACHE,
+        cached_courseware_items,
+        register_courseware_table,
+    )
+    from sqlalchemy.orm import declarative_base
+
+    Base = declarative_base()
+
+    class _Impl:
+        pass
+
+    _Impl.Base = Base
+    cw_t = register_courseware_table(_Impl)
+    eng = create_engine(f"sqlite:///{tmp_path / 'cw_cache.sqlite3'}")
+    Base.metadata.create_all(eng)
+    Session = sessionmaker(bind=eng)
+    t0 = datetime(2026, 11, 24, 1, 0, 0)
+    with Session() as db:
+        db.execute(insert(cw_t).values(
+            school_id=1, lesson_id=10, teacher_id=2, kind="slide", stage_no=4, status="approved",
+            params_json=json.dumps({"version": 2, "items": [{"stage": 4, "page": 0, "kind": "slide", "approved": {"title": "v1"}}]}),
+            approved_json="{}", approved_stage=4, live_json="{}", updated_at=t0,
+        ))
+        db.commit()
+
+        meta1, items1 = cached_courseware_items(db, cw_t, 1, 10, approved_only=True)
+        meta2, items2 = cached_courseware_items(db, cw_t, 1, 10, approved_only=True)
+        assert meta1 is not None and meta2 is not None
+        assert items1 is items2  # second call hits in-process LRU cache without re-parsing JSON
+        assert items1[0]["approved"]["title"] == "v1"
+
+        # Updating updated_at invalidates cache automatically
+        db.execute(update(cw_t).where(cw_t.c.lesson_id == 10).values(
+            params_json=json.dumps({"version": 2, "items": [{"stage": 4, "page": 0, "kind": "slide", "approved": {"title": "v2"}}]}),
+            updated_at=t0 + timedelta(seconds=1),
+        ))
+        db.commit()
+        _, items3 = cached_courseware_items(db, cw_t, 1, 10, approved_only=True)
+        assert items3 is not items1
+        assert items3[0]["approved"]["title"] == "v2"
+        assert len(_CW_ITEMS_CACHE) <= 6

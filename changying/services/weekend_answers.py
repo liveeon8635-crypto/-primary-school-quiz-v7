@@ -329,20 +329,16 @@ def practice_question_figures(implementation, db, session, items):
     if not missing:
         return out
 
-    # Fallback: load approved stage-4 courseware ONCE and match remaining items in memory.
+    # Fallback: load approved stage-4 courseware ONCE (via bounded LRU cache) and match in memory.
     from changying.services.weekend_course_types import frozen_session, practice_stage
-    from changying.web.weekend_courseware import items_of, register_courseware_table, _repair_courseware_visual, _courseware_visual_text
+    from changying.web.weekend_courseware import cached_courseware_items, register_courseware_table, _repair_courseware_visual, _courseware_visual_text
     frozen = frozen_session(db, implementation, int(session.id), metadata=getattr(implementation, "Base", None) and implementation.Base.metadata)
     practice_no = practice_stage((frozen or {}).get("courseType"))
     cw_t = register_courseware_table(implementation)
-    cw_row = db.execute(select(cw_t).where(
-        cw_t.c.school_id == session.school_id,
-        cw_t.c.lesson_id == session.lesson_id,
-        cw_t.c.approved_json.isnot(None),
-    )).first()
-    if cw_row is None:
+    cw_meta, cw_items = cached_courseware_items(db, cw_t, session.school_id, session.lesson_id, approved_only=True)
+    if cw_meta is None:
         return out
-    approved = [i for i in items_of(cw_row) if i.get("approved") is not None and int(i.get("stage") or 0) == practice_no and i.get("page") is not None]
+    approved = [i for i in cw_items if i.get("approved") is not None and int(i.get("stage") or 0) == practice_no and i.get("page") is not None]
     if not approved:
         return out
 

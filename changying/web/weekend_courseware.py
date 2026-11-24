@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 import hashlib
 import re
+import threading
+from collections import OrderedDict
 from datetime import datetime
 from typing import Any
 
@@ -651,6 +653,69 @@ def _slim_response_item(item: dict[str, Any]) -> dict[str, Any]:
 def _short(text: str, limit: int = 40) -> str:
     line = " ".join(str(text or "").split())
     return line if len(line) <= limit else line[:limit] + "…"
+
+
+_CW_CACHE_LOCK = threading.Lock()
+_CW_ITEMS_CACHE: OrderedDict[tuple[int, int, str, int, int], list[dict[str, Any]]] = OrderedDict()
+_CW_CACHE_MAX = 6
+
+
+def cached_courseware_items(
+    db: Any,
+    cw_table: Any,
+    school_id: int,
+    lesson_id: int,
+    *,
+    approved_only: bool = False,
+) -> tuple[Any, list[dict[str, Any]]]:
+    """Load parsed courseware items using a tiny bounded LRU cache keyed by row version.
+
+    Avoids transferring and JSON-parsing multi-MB base64 media payloads on every 4-15s
+    classroom poll while strictly capping in-process RAM on 512MB instances.
+    """
+    from sqlalchemy import func
+
+    conds = [cw_table.c.school_id == school_id, cw_table.c.lesson_id == lesson_id]
+    if approved_only:
+        conds.append(cw_table.c.approved_json.isnot(None))
+    meta = db.execute(
+        select(
+            cw_table.c.id,
+            cw_table.c.school_id,
+            cw_table.c.lesson_id,
+            cw_table.c.stage_no,
+            cw_table.c.kind,
+            cw_table.c.status,
+            cw_table.c.template_id,
+            cw_table.c.approved_stage,
+            cw_table.c.live_json,
+            cw_table.c.updated_at,
+            func.length(cw_table.c.params_json).label("params_len"),
+            func.length(cw_table.c.approved_json).label("approved_len"),
+        ).where(*conds)
+    ).first()
+    if meta is None:
+        return None, []
+    key = (
+        id(db.get_bind()),
+        int(meta.id),
+        str(meta.updated_at or ""),
+        int(meta.params_len or 0),
+        int(meta.approved_len or 0),
+    )
+    with _CW_CACHE_LOCK:
+        hit = _CW_ITEMS_CACHE.get(key)
+        if hit is not None:
+            _CW_ITEMS_CACHE.move_to_end(key)
+            return meta, hit
+    full_row = db.execute(select(cw_table).where(cw_table.c.id == meta.id)).first()
+    items = items_of(full_row) if full_row is not None else []
+    with _CW_CACHE_LOCK:
+        _CW_ITEMS_CACHE[key] = items
+        _CW_ITEMS_CACHE.move_to_end(key)
+        while len(_CW_ITEMS_CACHE) > _CW_CACHE_MAX:
+            _CW_ITEMS_CACHE.popitem(last=False)
+    return meta, items
 
 
 def items_of(row: Any, *, hydrate: bool = True) -> list[dict[str, Any]]:
@@ -1396,8 +1461,7 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
 def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: int | None) -> tuple[dict[str, Any] | None, str]:
     """The approved courseware of the page on screen, without answers; else a note for the teacher."""
     t = register_courseware_table(implementation)
-    c = db.execute(select(t).where(t.c.school_id == row.school_id, t.c.lesson_id == row.lesson_id,
-                                   t.c.approved_json.isnot(None))).first()
+    c, all_items = cached_courseware_items(db, t, row.school_id, row.lesson_id, approved_only=True)
     stage = int(row.current_stage or 0)
     from changying.services.weekend_course_types import frozen_session
     frozen = frozen_session(db, implementation, int(row.id), metadata=getattr(implementation, "Base", None) and implementation.Base.metadata)
@@ -1408,7 +1472,7 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
     lesson = db.get(implementation.TeachingLesson, row.lesson_id)
     if course_type in ("math", "legacy") and stage == 3 and source_page_mismatch(lesson)[1]:
         return None, "原文题号与例题页数不符，互动课件已暂停显示，请返回备课页检查。"
-    approved = [i for i in items_of(c) if i.get("approved") is not None and int(i["stage"]) == stage]
+    approved = [i for i in all_items if i.get("approved") is not None and int(i["stage"]) == stage]
     if not approved:
         return None, ""
     is_chinese_stage_slide = course_type in ("reading", "writing") and all(

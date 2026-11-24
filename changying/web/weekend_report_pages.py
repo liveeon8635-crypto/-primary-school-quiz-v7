@@ -349,21 +349,38 @@ function reportPage(){
       if(dirty&&!confirm('练习有未保存的修改，重新生成会替换所选薄弱点的题目。确定吗？'))return;
       if(ed.dirty){setAllStatus('warn','报告草稿有未保存的修改，请先点击下方“保存草稿”，再生成练习。',cardKey);return}
       var c={};Object.keys(counts).forEach(function(k){c[k]=+counts[k].value||2});
+      var allKeys=(keys&&keys.length)?keys.slice():r.practiceGroups.map(function(g){return g.key});
+      if(!allKeys.length){setAllStatus('warn','当前没有待生成的薄弱点。',cardKey);return}
+      var batches=[],batchSize=3;
+      for(var i=0;i<allKeys.length;i+=batchSize){batches.push(allKeys.slice(i,i+batchSize))}
       setGenBusy(true,activeBtn);
-      setAllStatus('',keys&&keys.length?'正在为本薄弱点生成衍生新题（约 15-45 秒），请稍候…':'正在批量生成针对性练习（约半分钟），请稍候…',cardKey);
-      var ctrl=typeof AbortController==='function'?new AbortController():null;
-      var timer=ctrl?setTimeout(function(){ctrl.abort()},95000):null;
-      api('/teacher/weekend/reports/'+r.id+'/practice/generate',{json:{revision:r.draft.revision,groupKeys:keys||[],counts:c},signal:ctrl?ctrl.signal:undefined}).then(function(d){
-        if(timer)clearTimeout(timer);
-        setGenBusy(false,null);
-        refresh(d.report);
-        if(d.problems&&d.problems.length)alert('部分题目没有生成：\n'+d.problems.join('\n'));
-      }).catch(function(e){
-        if(timer)clearTimeout(timer);
-        setGenBusy(false,null);
-        var errText=(e&&e.name==='AbortError')?'生成超时（超过 95 秒），请稍后重试或减少单次生成的薄弱点数量。':((e&&e.message)||'生成失败，请稍后重试');
-        setAllStatus('error',errText,cardKey);
-      });
+      var curReport=r,allProblems=[];
+      function runBatch(idx){
+        if(idx>=batches.length){
+          setGenBusy(false,null);
+          refresh(curReport);
+          if(allProblems.length)alert('部分题目没有生成：\n'+allProblems.join('\n'));
+          return;
+        }
+        var chunk=batches[idx];
+        var label=batches.length>1?('正在分批生成第 '+(idx+1)+'/'+batches.length+' 批（共 '+allKeys.length+' 个薄弱点，每批完成会自动保存），请稍候…'):(keys&&keys.length?'正在为本薄弱点生成衍生新题（约 15-45 秒），请稍候…':'正在批量生成针对性练习（约半分钟），请稍候…');
+        setAllStatus('',label,cardKey);
+        var ctrl=typeof AbortController==='function'?new AbortController():null;
+        var timer=ctrl?setTimeout(function(){ctrl.abort()},95000):null;
+        api('/teacher/weekend/reports/'+curReport.id+'/practice/generate',{json:{revision:curReport.draft.revision,groupKeys:chunk,counts:c},signal:ctrl?ctrl.signal:undefined}).then(function(d){
+          if(timer)clearTimeout(timer);
+          curReport=d.report;
+          if(d.problems&&d.problems.length)allProblems=allProblems.concat(d.problems);
+          runBatch(idx+1);
+        }).catch(function(e){
+          if(timer)clearTimeout(timer);
+          setGenBusy(false,null);
+          if(curReport!==r)refresh(curReport);
+          var errText=(e&&e.name==='AbortError')?'生成超时（超过 95 秒），前面已完成的批次已自动保存，请点击剩余薄弱点继续生成。':((e&&e.message)||'生成失败，请稍后重试');
+          setAllStatus('error',errText,cardKey);
+        });
+      }
+      runBatch(0);
     }
     var topActions=el('div',{class:'row',style:'margin:8px 0'});
     if(!locked){

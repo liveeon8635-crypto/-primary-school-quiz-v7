@@ -314,7 +314,7 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
 
     def course_figures_for(db: Any, u: Any, parts: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         """Collect normalized figures from TeachingQuestion.figure_json and Stage-4 courseware stepFigures[0]."""
-        from changying.web.weekend_courseware import items_of, register_courseware_table
+        from changying.web.weekend_courseware import cached_courseware_items, register_courseware_table
         by_stem: dict[str, dict[str, Any]] = {}
         TQ = implementation.TeachingQuestion
         cw_table = register_courseware_table(implementation)
@@ -327,9 +327,9 @@ def install_weekend_reports(implementation: Any) -> APIRouter:
                     fig = {}
                 if fig:
                     by_stem[wr._norm(tq.stem)] = fig
-            cw_row = db.execute(select(cw_table).where(cw_table.c.lesson_id == s.lesson_id, cw_table.c.school_id == u.school_id)).first()
-            if cw_row is not None:
-                for it in items_of(cw_row):
+            cw_meta, cw_items = cached_courseware_items(db, cw_table, u.school_id, s.lesson_id)
+            if cw_meta is not None:
+                for it in cw_items:
                     if int(it.get("stage") or 0) != 4:
                         continue
                     prm = it.get("approved") or it.get("params") or {}

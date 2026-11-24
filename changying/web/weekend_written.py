@@ -158,9 +158,26 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         return db.execute(select(questions).where(questions.c.school_id == row.school_id,
             questions.c.session_id == row.id, questions.c.teacher_id == row.teacher_id).order_by(questions.c.id)).all()
 
+    sub_meta_cols = (
+        submissions.c.id,
+        submissions.c.school_id,
+        submissions.c.session_id,
+        submissions.c.question_id,
+        submissions.c.student_id,
+        submissions.c.answer_text,
+        submissions.c.photo_type,
+        submissions.c.revision,
+        submissions.c.result,
+        submissions.c.comment,
+        submissions.c.submitted_at,
+        submissions.c.reviewed_at,
+        submissions.c.photo.isnot(None).label("has_photo"),
+    )
+
     def submission_dict(a: Any) -> dict[str, Any]:
+        has_photo = bool(a.has_photo) if hasattr(a, "has_photo") else (a.photo is not None)
         return {"id": a.id, "studentId": a.student_id, "questionId": a.question_id, "text": a.answer_text,
-                "hasPhoto": a.photo is not None, "revision": a.revision, "result": a.result, "comment": a.comment}
+                "hasPhoto": has_photo, "revision": a.revision, "result": a.result, "comment": a.comment}
 
     @router.post("/teacher/weekend/sessions/{sid}/written/questions")
     def add_question(sid: int, b: WrittenQuestionBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -182,8 +199,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         lesson = db.get(implementation.TeachingLesson, row.lesson_id)
         source = lesson.reading_plan if lesson is not None else ""
         qs = question_rows(db, row)
-        ans = db.execute(select(submissions).where(submissions.c.session_id == sid, submissions.c.school_id == u.school_id)).all()
-        names = dict(db.execute(select(User.id, User.name).where(User.school_id == u.school_id)).all())
+        ans = db.execute(select(*sub_meta_cols).where(submissions.c.session_id == sid, submissions.c.school_id == u.school_id)).all()
         from changying.services.weekend_roster import session_roster
         members = session_roster(implementation, db, row)
         roster = set(members)
@@ -204,7 +220,7 @@ def install_weekend_written(implementation: Any) -> APIRouter:
         row = student_session(db, u, sid)
         if row.status == "planned":
             return {"questions": [], "canSubmit": False, "status": row.status, "stage": row.current_stage}
-        ans = {a.question_id: a for a in db.execute(select(submissions).where(submissions.c.session_id == sid,
+        ans = {a.question_id: a for a in db.execute(select(*sub_meta_cols).where(submissions.c.session_id == sid,
             submissions.c.student_id == u.id, submissions.c.school_id == u.school_id)).all()}
         lesson = db.get(implementation.TeachingLesson, row.lesson_id)
         source = lesson.reading_plan if lesson is not None else ""
