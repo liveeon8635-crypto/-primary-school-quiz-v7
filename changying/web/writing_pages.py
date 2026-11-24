@@ -419,6 +419,17 @@ function paintEditor() {
   var pendingUnassigned = data.package.nodes.filter(function(n) { return !roleStage[n.role] && n.status === 'pending'; }).length;
 
   var actions = el('div', {class: 'wr-review-actions'});
+  var missingStages = ((data.readiness && data.readiness.stageReadiness) || []).filter(function(s) {
+    return s.missing && s.missing.length;
+  });
+  actions.appendChild(button('一键全部通过审核', function() {
+    if (missingStages.length) {
+      throw Error('以下环节仍缺少素材，请先补充：' + missingStages.map(function(s) { return s.name + '（缺' + s.missing.join('、') + '）'; }).join('；'));
+    }
+    var msg = '确认将本课已分类素材（' + assigned + '项）全部设为确认、待分类素材（' + pendingUnassigned + '项）标为忽略，并直接完成整课审核吗？';
+    if ((assigned > 0 || pendingUnassigned > 0) && !confirm(msg)) return;
+    return saveAllAndApprove();
+  }, 'primary'));
   actions.appendChild(button('确认已分类（' + assigned + '项）', function() {
     if (!assigned) throw Error('没有待确认的已分类素材');
     if (!confirm('确认你已检查并同意这 ' + assigned + ' 项素材的归属及内容吗？审核通过仍需另行操作。')) return;
@@ -430,7 +441,7 @@ function paintEditor() {
       paintEditor();
       notifyParent();
       message('已确认 ' + d.updated + ' 项；课程仍未审核通过');
-    });
+    }).catch(handleConflict);
   }));
   actions.appendChild(button('忽略待分类（' + pendingUnassigned + '项）', function() {
     if (!pendingUnassigned) throw Error('没有待处理的未分类素材');
@@ -443,10 +454,10 @@ function paintEditor() {
       paintEditor();
       notifyParent();
       message('已将 ' + d.updated + ' 项标为忽略；可以在素材列表中恢复审核');
-    });
+    }).catch(handleConflict);
   }));
   actions.appendChild(button('保存草稿', function() { return save(false); }));
-  actions.appendChild(button('审核通过', function() { return save(true); }, 'primary'));
+  actions.appendChild(button('审核通过', function() { return save(true); }));
   actions.appendChild(noteBox);
   root.appendChild(actions);
 
@@ -683,6 +694,53 @@ function paintEditor() {
   if (prevY > 0) window.scrollTo(0, prevY);
 }
 
+function handleConflict(e) {
+  var text = (e && e.message) ? e.message : String(e || '');
+  if ((e && e.status === 409) || text.indexOf('已更新') >= 0 || text.indexOf('并发') >= 0) {
+    return api('/teacher/weekend/lessons/' + lid + '/writing').then(function(fresh) {
+      data = fresh;
+      paintEditor();
+      message('检测到课程已更新，已自动同步到最新版本（修订 ' + fresh.revision + '），请直接重新点击刚才的按钮。');
+    });
+  }
+  throw e;
+}
+
+function saveAllAndApprove() {
+  if (saving) return;
+  var nodes = data.package.nodes.map(function(n) {
+    var st = n.status;
+    if (st === 'pending') {
+      st = (n.role && n.role !== 'pending') ? 'confirmed' : 'ignored';
+    }
+    return {
+      id: n.id,
+      derivedFrom: n.derivedFrom,
+      text: n.text,
+      role: n.role,
+      status: st,
+      targets: n.targets || []
+    };
+  });
+  saving = true;
+  message('正在一键确认并审核整课…');
+  return api('/teacher/weekend/lessons/' + lid + '/writing', {
+    method: 'PUT',
+    json: {expectedRevision: data.revision, nodes: nodes, title: data.package.title || '', approve: true}
+  }).then(function(d) {
+    data = d;
+    paintEditor();
+    notifyParent();
+    message('整课审核已全部通过！现在可以直接点击“开课”或“课堂投屏预览”。');
+  }).catch(function(e) {
+    var text = (e && e.message) ? e.message : String(e || '');
+    if (text.indexOf('已更新') >= 0 || text.indexOf('并发') >= 0) return handleConflict(e);
+    throw Error('一键审核未通过：' + text);
+  }).finally(function() {
+    saving = false;
+  });
+}
+
 function save(approve, confirmIds) {
   if (saving) return;
   var nodes = data.package.nodes.map(function(n) {
@@ -697,7 +755,7 @@ function save(approve, confirmIds) {
   });
   var pending = nodes.filter(function(n) { return n.status === 'pending'; });
   if (approve && pending.length) {
-    message('整课尚未通过：还有 ' + pending.length + ' 项待处理。请先点“确认已分类”和“忽略待分类”，再点“审核通过”。');
+    message('整课尚未通过：还有 ' + pending.length + ' 项待处理。请直接点“一键全部通过审核”，或分别确认各环节。');
     return;
   }
   saving = true;
@@ -716,7 +774,9 @@ function save(approve, confirmIds) {
         ? ('本环节已确认 ' + confirmIds.length + ' 项，全课剩余 ' + left + ' 项待处理。')
         : ('草稿已保存，仍有 ' + left + ' 项素材待确认。'));
   }).catch(function(e) {
-    throw Error((approve ? '整课未通过：' : '保存失败：') + e.message);
+    var text = (e && e.message) ? e.message : String(e || '');
+    if (text.indexOf('已更新') >= 0 || text.indexOf('并发') >= 0) return handleConflict(e);
+    throw Error((approve ? '整课未通过：' : '保存失败：') + text);
   }).finally(function() {
     saving = false;
   });
@@ -1145,8 +1205,8 @@ obtainToken().then(function(t) {
 });
 ''', True, ('/v1/weekend-plan', '返回备课'))
     css = """<style id="writing-review-workbench">
-body.wr-embedded .bar{display:none}
-#app.writing-review.wr-embed-view{max-width:none;padding:8px 4px 20px}
+body.wr-embedded header,body.wr-embedded .bar{display:none !important}
+#app.writing-review.wr-embed-view{max-width:none;padding:8px 12px 24px}
 #app.writing-review{max-width:1180px;margin:0 auto;padding:20px 18px 48px;color:#172b4d}
 #app.writing-review h1{font-size:26px;margin:4px 0 14px}
 #app.writing-review .wr-top-links{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:8px 0 12px}
