@@ -303,7 +303,12 @@ function reportPage(){
     return function(){return rows.map(function(x){return {key:x.key,knowledge:x.k.value,cause:x.c.value,confirmed:x.ok.checked}})};
   }
   var QT={single_choice:'单选',true_false:'判断',fill_blank:'填空',calculation:'计算',short_answer:'简答'};
-  function escSvg(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+  function svgEl(tag,attrs,text){
+    var n=document.createElementNS('http://www.w3.org/2000/svg',tag);
+    Object.keys(attrs||{}).forEach(function(k){if(attrs[k]!=null)n.setAttribute(k,String(attrs[k]))});
+    if(text!=null)n.textContent=String(text);
+    return n;
+  }
   function practiceFigurePreview(fig){
     if(!fig||!fig.type)return null;
     var type=String(fig.type||'').toLowerCase(),wrap=el('div',{style:'margin:6px 0;padding:8px;border:1px solid #e5e8f0;border-radius:8px;background:#fafbfd;max-width:360px'});
@@ -311,31 +316,35 @@ function reportPage(){
       wrap.appendChild(el('img',{src:fig.data_url,alt:fig.alt||'题目插图',style:'display:block;max-width:100%;max-height:220px;object-fit:contain'}));
       return wrap;
     }
-    var w=320,h=210,m=28,body='',num=function(v,d){var n=+v;return isFinite(n)?n:d};
+    var w=320,h=210,m=28,num=function(v,d){var n=+v;return isFinite(n)?n:d};
+    var svg=svgEl('svg',{viewBox:'0 0 '+w+' '+h,style:'width:100%;height:auto;display:block',role:'img','aria-label':'题目图示预览'});
+    var drawn=false;
     if(type==='geometry'){
       var shape=String(fig.shape||'rectangle').toLowerCase(),labels=fig.labels||{};
-      var txt=function(key,x,y,anchor){if(labels[key])body+='<text x="'+x+'" y="'+y+'" text-anchor="'+(anchor||'middle')+'" font-size="12" font-weight="600">'+escSvg(labels[key])+'</text>'};
-      if(shape==='triangle'){body='<polygon points="65,170 255,170 160,45" fill="none" stroke="#374151" stroke-width="3"/>';txt('底',160,190);if(labels['高']){body+='<line x1="160" y1="45" x2="160" y2="170" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 4"/>';txt('高',170,112,'start')}}
-      else if(shape==='trapezoid'){body='<polygon points="85,55 225,55 270,170 45,170" fill="none" stroke="#374151" stroke-width="3"/>';txt('上底',155,45);txt('下底',155,190);if(labels['高']){body+='<line x1="155" y1="55" x2="155" y2="170" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 4"/>';txt('高',165,116,'start')}}
-      else if(shape==='parallelogram'){body='<polygon points="90,55 260,55 225,170 55,170" fill="none" stroke="#374151" stroke-width="3"/>';txt('底',140,190);if(labels['高']){body+='<line x1="90" y1="55" x2="90" y2="170" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 4"/>';txt('高',100,116,'start')}}
-      else if(shape==='nested_rect'||shape==='rectangle_with_inner_rectangle'){body='<rect x="55" y="45" width="210" height="125" fill="none" stroke="#374151" stroke-width="3"/><rect x="115" y="82" width="90" height="50" fill="none" stroke="#64748b" stroke-width="2" stroke-dasharray="5 4"/>';if(labels['外长'])body+='<text x="160" y="34" text-anchor="middle" font-size="11">外长 '+escSvg(labels['外长'])+'</text>';if(labels['外宽'])body+='<text x="272" y="111" font-size="11">外宽 '+escSvg(labels['外宽'])+'</text>';if(labels['内长'])body+='<text x="160" y="76" text-anchor="middle" font-size="11">内长 '+escSvg(labels['内长'])+'</text>';if(labels['内宽'])body+='<text x="210" y="109" font-size="11">内宽 '+escSvg(labels['内宽'])+'</text>'}
-      else if(shape==='composite_rect'){body='<path d="M55 45 H265 V170 H145 V110 H55 Z" fill="none" stroke="#374151" stroke-width="3"/>';var cy=198;Object.keys(labels).slice(0,4).forEach(function(k){body+='<text x="'+m+'" y="'+cy+'" font-size="11">'+escSvg(k)+'：'+escSvg(labels[k])+'</text>';cy-=15})}
-      else{body='<rect x="55" y="50" width="210" height="120" fill="none" stroke="#374151" stroke-width="3"/>';txt('长',160,42);txt('宽',276,114,'start')}
+      var txt=function(key,x,y,anchor){if(labels[key])svg.appendChild(svgEl('text',{x:x,y:y,'text-anchor':anchor||'middle','font-size':12,'font-weight':600},labels[key]))};
+      drawn=true;
+      if(shape==='triangle'){svg.appendChild(svgEl('polygon',{points:'65,170 255,170 160,45',fill:'none',stroke:'#374151','stroke-width':3}));txt('底',160,190);if(labels['高']){svg.appendChild(svgEl('line',{x1:160,y1:45,x2:160,y2:170,stroke:'#64748b','stroke-width':1.5,'stroke-dasharray':'5 4'}));txt('高',170,112,'start')}}
+      else if(shape==='trapezoid'){svg.appendChild(svgEl('polygon',{points:'85,55 225,55 270,170 45,170',fill:'none',stroke:'#374151','stroke-width':3}));txt('上底',155,45);txt('下底',155,190);if(labels['高']){svg.appendChild(svgEl('line',{x1:155,y1:55,x2:155,y2:170,stroke:'#64748b','stroke-width':1.5,'stroke-dasharray':'5 4'}));txt('高',165,116,'start')}}
+      else if(shape==='parallelogram'){svg.appendChild(svgEl('polygon',{points:'90,55 260,55 225,170 55,170',fill:'none',stroke:'#374151','stroke-width':3}));txt('底',140,190);if(labels['高']){svg.appendChild(svgEl('line',{x1:90,y1:55,x2:90,y2:170,stroke:'#64748b','stroke-width':1.5,'stroke-dasharray':'5 4'}));txt('高',100,116,'start')}}
+      else if(shape==='nested_rect'||shape==='rectangle_with_inner_rectangle'){svg.appendChild(svgEl('rect',{x:55,y:45,width:210,height:125,fill:'none',stroke:'#374151','stroke-width':3}));svg.appendChild(svgEl('rect',{x:115,y:82,width:90,height:50,fill:'none',stroke:'#64748b','stroke-width':2,'stroke-dasharray':'5 4'}));if(labels['外长'])svg.appendChild(svgEl('text',{x:160,y:34,'text-anchor':'middle','font-size':11},'外长 '+labels['外长']));if(labels['外宽'])svg.appendChild(svgEl('text',{x:272,y:111,'font-size':11},'外宽 '+labels['外宽']));if(labels['内长'])svg.appendChild(svgEl('text',{x:160,y:76,'text-anchor':'middle','font-size':11},'内长 '+labels['内长']));if(labels['内宽'])svg.appendChild(svgEl('text',{x:210,y:109,'font-size':11},'内宽 '+labels['内宽']))}
+      else if(shape==='composite_rect'){svg.appendChild(svgEl('path',{d:'M55 45 H265 V170 H145 V110 H55 Z',fill:'none',stroke:'#374151','stroke-width':3}));var cy=198;Object.keys(labels).slice(0,4).forEach(function(k){svg.appendChild(svgEl('text',{x:m,y:cy,'font-size':11},k+'：'+labels[k]));cy-=15})}
+      else{svg.appendChild(svgEl('rect',{x:55,y:50,width:210,height:120,fill:'none',stroke:'#374151','stroke-width':3}));txt('长',160,42);txt('宽',276,114,'start')}
     }else if(type==='coordinate_grid'){
+      drawn=true;
       var xm=Math.max(1,Math.min(12,num(fig.xMax,8))),ym=Math.max(1,Math.min(12,num(fig.yMax,8))),sx=(w-2*m)/xm,sy=(h-2*m)/ym,gx,gy;
-      for(gx=0;gx<=xm;gx++){var px=m+gx*sx;body+='<line x1="'+px+'" y1="'+m+'" x2="'+px+'" y2="'+(h-m)+'" stroke="#d8dee9" stroke-width="1"/><text x="'+px+'" y="'+(h-m+17)+'" text-anchor="middle" font-size="10">'+gx+'</text>'}
-      for(gy=0;gy<=ym;gy++){var py=h-m-gy*sy;body+='<line x1="'+m+'" y1="'+py+'" x2="'+(w-m)+'" y2="'+py+'" stroke="#d8dee9" stroke-width="1"/><text x="'+(m-9)+'" y="'+(py+3)+'" text-anchor="middle" font-size="10">'+gy+'</text>'}
-      (fig.points||[]).forEach(function(pt){var ptx=m+num(pt.x,0)*sx,pty=h-m-num(pt.y,0)*sy;body+='<circle cx="'+ptx+'" cy="'+pty+'" r="4" fill="#111827"/><text x="'+(ptx+7)+'" y="'+(pty-7)+'" font-size="12">'+escSvg(pt.label||pt.name||'')+'</text>'});
+      for(gx=0;gx<=xm;gx++){var px=m+gx*sx;svg.appendChild(svgEl('line',{x1:px,y1:m,x2:px,y2:h-m,stroke:'#d8dee9','stroke-width':1}));svg.appendChild(svgEl('text',{x:px,y:h-m+17,'text-anchor':'middle','font-size':10},gx))}
+      for(gy=0;gy<=ym;gy++){var py=h-m-gy*sy;svg.appendChild(svgEl('line',{x1:m,y1:py,x2:w-m,y2:py,stroke:'#d8dee9','stroke-width':1}));svg.appendChild(svgEl('text',{x:m-9,y:py+3,'text-anchor':'middle','font-size':10},gy))}
+      (fig.points||[]).forEach(function(pt){var ptx=m+num(pt.x,0)*sx,pty=h-m-num(pt.y,0)*sy;svg.appendChild(svgEl('circle',{cx:ptx,cy:pty,r:4,fill:'#111827'}));svg.appendChild(svgEl('text',{x:ptx+7,y:pty-7,'font-size':12},pt.label||pt.name||''))});
     }else if(type==='line_segment'){
+      drawn=true;
       var segs=(fig.segments||[]).length?fig.segments:[{label:'线段',ratio:1}],tot=0,lx=m;
       segs.forEach(function(sg){tot+=Math.max(0.1,num(sg.ratio,1))});
-      segs.forEach(function(sg,idx){var ww=(w-2*m)*Math.max(0.1,num(sg.ratio,1))/tot;body+='<line x1="'+lx+'" y1="105" x2="'+(lx+ww)+'" y2="105" stroke="#374151" stroke-width="4"/><line x1="'+lx+'" y1="96" x2="'+lx+'" y2="114" stroke="#374151" stroke-width="2"/><text x="'+(lx+ww/2)+'" y="88" text-anchor="middle" font-size="12">'+escSvg(sg.label||('第'+(idx+1)+'段'))+'</text>';lx+=ww});
-      body+='<line x1="'+lx+'" y1="96" x2="'+lx+'" y2="114" stroke="#374151" stroke-width="2"/>';
+      segs.forEach(function(sg,idx){var ww=(w-2*m)*Math.max(0.1,num(sg.ratio,1))/tot;svg.appendChild(svgEl('line',{x1:lx,y1:105,x2:lx+ww,y2:105,stroke:'#374151','stroke-width':4}));svg.appendChild(svgEl('line',{x1:lx,y1:96,x2:lx,y2:114,stroke:'#374151','stroke-width':2}));svg.appendChild(svgEl('text',{x:lx+ww/2,y:88,'text-anchor':'middle','font-size':12},sg.label||('第'+(idx+1)+'段')));lx+=ww});
+      svg.appendChild(svgEl('line',{x1:lx,y1:96,x2:lx,y2:114,stroke:'#374151','stroke-width':2}));
     }
-    if(body){
+    if(drawn){
       if(fig.title)wrap.appendChild(el('div',{class:'muted',style:'text-align:center;font-size:12px;margin-bottom:4px',text:fig.title}));
-      var holder=el('div');holder.innerHTML='<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block" role="img" aria-label="题目图示预览">'+body+'</svg>';
-      wrap.appendChild(holder);
+      wrap.appendChild(svg);
       return wrap;
     }
     wrap.appendChild(el('div',{class:'muted',text:'含图示（'+fig.type+'），布置后学生页面显示。'}));
