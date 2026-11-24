@@ -596,10 +596,10 @@ function cwObtuseTriangleHeight(box,f,view,big,teacher,stepCount){
 function cwFigure(wrap,f,big,view,teacher,stepCount){
   view=view||{};
   if(!f||!f.type)return;
-  var box=el('div',{style:big?(f.type==='uploaded_image'?'margin:0;width:100%;flex:0 0 auto;display:flex;align-items:center;justify-content:center':'margin:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center'):'margin:8px 0'});wrap.appendChild(box);
+  var box=el('div',{style:big?'margin:0;width:100%;height:100%;flex:1;min-height:0;display:flex;align-items:center;justify-content:center':'margin:8px 0'});wrap.appendChild(box);
   if(!cwFigureOk(f)){box.appendChild(el('div',{class:'notice warn',text:'图示还没填完整'}));return}
   if(f.type==='uploaded_image'){
-    box.appendChild(el('img',{src:f.data_url,alt:f.alt||'原卷插图',style:'display:block;width:auto;height:auto;max-width:100%;max-height:'+(big?'75vh':'300px')+';object-fit:contain;margin:0 auto;border:1px solid #e5e8f0;border-radius:10px;background:#fff'}));
+    box.appendChild(el('img',{src:f.data_url,alt:f.alt||'原卷插图',style:big?'display:block;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;margin:0 auto;border-radius:10px;background:#fff':'display:block;width:auto;height:auto;max-width:100%;max-height:300px;object-fit:contain;margin:0 auto;border:1px solid #e5e8f0;border-radius:10px;background:#fff'}));
     return;
   }
   if(f.type==='equal_base_height'){cwEqualBaseHeight(box,f,view,big,teacher,stepCount);return}
@@ -785,7 +785,7 @@ function cwSteps(box,p,view,big,teacher){
     if(tableHeader>0)sourceProblem=sourceProblem.slice(0,tableHeader).trim();
   }
   if(sourceProblem)card.appendChild(el('p',{style:'white-space:pre-wrap;margin:0;flex:none',text:sourceProblem}));
-  var wrap=big?el('div',{class:'cw-big-stage',style:'flex:1;min-height:0;width:100%;overflow:auto;display:flex;flex-direction:column;justify-content:flex-start;align-items:center;gap:1vh;padding:0.5vh 0'}):card;
+  var wrap=big?el('div',{class:'cw-big-stage',style:'flex:1;min-height:0;width:100%;overflow:auto;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:0.8vh;padding:0'}):card;
   if(big)card.appendChild(wrap);
   if(p.figure&&p.figure.type==='calendar_compare')view._calendarCourseware={kind:'steps',params:p};
   if(p.figureUnverified){
