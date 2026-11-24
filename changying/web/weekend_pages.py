@@ -681,7 +681,7 @@ function board(){
   var last=null,requestNo=0,boardBusy=false;
   function load(){if(boardBusy)return;boardBusy=true;var request=++requestNo;api('/teacher/weekend/sessions/'+SID+'/board').then(function(d){boardBusy=false;if(request!==requestNo)return;last=d;remain=d.remainingSeconds;paint(d,false)}).catch(function(e){boardBusy=false;if(request===requestNo&&!last)msg(e.message)})}
   window.addEventListener('resize',function(){if(last&&!(last.courseware&&last.courseware.kind==='slide'))paint(last,true)});
-  load();setInterval(function(){if(!document.hidden){load()}},4000);
+  load();setInterval(function(){if(!document.hidden){load()}},3000);
   if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('visibilitychange',function(){if(!document.hidden){load()}});
   setInterval(function(){if(remain!=null){remain-=1;updateClock()}},1000);
 }
