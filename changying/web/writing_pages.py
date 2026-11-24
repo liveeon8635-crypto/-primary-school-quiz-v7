@@ -78,12 +78,25 @@ function paintEditor(){
  var materialList=section;
  if(activeStage!=='pending'&&stageNodes.length){
    var article=el('div',{class:'wr-reading'});
+   if(Number(activeStage)===4){
+     var examples=data.package.nodes.filter(function(n){return n.role==='model'&&n.status!=='ignored'&&n.text});
+     var pictures=data.package.nodes.filter(function(n){return n.role==='picture'&&n.status!=='ignored'&&n.dataUrl});
+     var bridge=el('section',{class:'wr-bridge'});
+     bridge.appendChild(el('h3',{text:'从范文到自己的描写'}));
+     bridge.appendChild(el('p',{text:'先读范文里的具体句子，找作者怎样安排观察顺序、抓住细节；再看图说两句，最后把同一种写法用到自己选的季节。'}));
+     if(examples.length){var sample=examples[0];bridge.appendChild(el('h4',{text:'回到范文'}));bridge.appendChild(el('p',{text:sample.text,style:'white-space:pre-wrap;line-height:1.8'}))}
+     if(pictures.length){bridge.appendChild(el('h4',{text:'回到看图写话'}));bridge.appendChild(el('img',{src:pictures[0].dataUrl,alt:'看图写话配图',style:'max-width:100%;max-height:260px;object-fit:contain'}));bridge.appendChild(el('p',{text:'先说从哪里看到哪里，再补一个最能说明季节特点的细节。把刚才说的两句写下来。'}))}
+     bridge.appendChild(el('h4',{text:'技法提示'}));
+     data.package.nodes.filter(function(n){return n.role==='method'&&n.status!=='ignored'&&n.text}).forEach(function(n){bridge.appendChild(el('p',{text:n.text,style:'line-height:1.7;margin:8px 0'}))});
+     bridge.appendChild(el('h4',{text:'迁移到自己的作文'}));bridge.appendChild(el('p',{text:'选自己熟悉的景物，写两句有顺序、有细节的描写。对照范文，指出自己借用了哪一种写法，再改好其中一句。'}));
+     section.appendChild(bridge);
+   }
    stageNodes.forEach(function(entry){
      var n=entry.node;if(n.status==='ignored')return;
      if(n.dataUrl){article.appendChild(el('img',{src:n.dataUrl,alt:roles[n.role]||'配图',style:'max-width:100%;max-height:240px'}));return}
      if(n.text)article.appendChild(el('span',{text:n.text,style:n.role==='model'?'white-space:pre-wrap':'display:block;white-space:pre-wrap;margin-bottom:8px'}));
    });
-   section.appendChild(article);
+   if(Number(activeStage)!==4)section.appendChild(article);
    if(pendingHere.length)section.appendChild(button('确认本环节素材（'+pendingHere.length+'项）',function(){return save(false,pendingHere.map(function(entry){return entry.node.id}))}));
    materialList=el('details',{});materialList.appendChild(el('summary',{text:'逐项修改文字、用途或配图绑定'}));section.appendChild(materialList);
  }
