@@ -1353,8 +1353,15 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
             if (isinstance(bundle_payload, dict) and len(bundle_payload.get('items',[])) == 1
                     and bundle_payload['items'][0].get('writingPackage') is not None):
                 item = bundle_payload['items'][0]
-                if subject != '语文' or bundle_payload.get('subject') != subject or item.get('lessonNo') != lessonNo:
-                    raise HTTPException(422, '作文整包的学科与课次必须和当前工作栏一致')
+                if subject != '语文':
+                    raise HTTPException(422, f'作文整包只能导入语文课程；当前工作栏为“{subject}”第 {lessonNo} 次')
+                bundle_subject = str(bundle_payload.get('subject') or '未填写')
+                if bundle_subject != subject:
+                    raise HTTPException(422, f'文件标记学科为“{bundle_subject}”，当前工作栏为“{subject}”第 {lessonNo} 次；请在语文课次导入')
+                bundle_lesson_no = item.get('lessonNo')
+                if bundle_lesson_no != lessonNo:
+                    label = bundle_lesson_no if bundle_lesson_no is not None else '未填写'
+                    raise HTTPException(422, f'文件标记第 {label} 次课，当前工作栏是第 {lessonNo} 次课；请回到匹配的课次行导入')
                 from changying.services.writing_lesson import writing_inventory
                 try:
                     package = writing_inventory(raw, 'writing.json')
