@@ -191,7 +191,7 @@ def test_writing_workbar_renders_in_browser(tmp_path):
                 uploads.append(route.request.method)
                 route.fulfill(json={'lessonId':13})
             page.route('**/teacher/weekend/lessons/import',uploaded)
-            page.route('**/v1/weekend-writing?lesson=13&imported=1',
+            page.route('**/v1/weekend-writing?lesson=13&embed=1&imported=1',
                        lambda route:route.fulfill(content_type='text/html',body='<main></main>'))
             file_input=page.locator('input[type=file][accept^=".docx"]:not([multiple])').last
             file_input.set_input_files({'name':'季节.json','mimeType':'application/json',
@@ -202,7 +202,7 @@ def test_writing_workbar_renders_in_browser(tmp_path):
             assert not uploads
             page.once('dialog',lambda dialog:dialog.accept())
             preview.click()
-            page.wait_for_url('**/v1/weekend-writing?lesson=13&imported=1')
+            page.locator('iframe[src*="/v1/weekend-writing?lesson=13&embed=1&imported=1"]').wait_for()
             assert uploads==['POST']
 
         finally:
