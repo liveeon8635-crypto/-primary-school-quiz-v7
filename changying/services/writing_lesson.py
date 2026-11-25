@@ -293,24 +293,86 @@ def writing_stage_slides(package, stage_no):
                         'figure': {'type': 'uploaded_image', 'data_url': img['dataUrl'], 'alt': '范文配图'},
                     })
     elif stage == 3:
-        for idx, pic in enumerate(pics[:12]):
+        act_guides = [
+            ('初遇入画', '先交代时间、地点与第一眼看到的画面变化，引出开头'),
+            ('移步特写', '镜头拉近！抓住色彩、形态与风吹花落等动静细节'),
+            ('感官互动', '把自己放进画面：听到了什么声音？闻到或摸到了什么？'),
+            ('全景抒情', '拉远视角看整片生机，用一句真情实感收束全文'),
+        ]
+        for idx, pic in enumerate(pics[:10]):
             caption = str(pic.get('text') or '').strip()
+            act_title, act_desc = act_guides[min(idx, len(act_guides) - 1)]
             slides.append({
-                'heading': f'看图写话（图 {idx + 1}/{len(pics)}）',
+                'heading': f'看图写话 · 第 {idx + 1} 幕：{act_title}（{idx + 1}/{len(pics)}）',
                 'layout': 'scene',
-                'body': [caption[:500]] if caption else ['仔细观察画面：按一定顺序说说你看到了什么，加上感官与联想。'],
-                'figure': {'type': 'uploaded_image', 'data_url': pic['dataUrl'], 'alt': f'看图写话配图 {idx + 1}'},
+                'body': [caption[:500]] if caption else [act_desc],
+                'figure': {'type': 'uploaded_image', 'data_url': pic['dataUrl'], 'alt': f'看图写话第 {idx + 1} 幕'},
                 'steps': [
-                    {'label': '定顺序', 'desc': '由近及远 / 从上到下，先说清观察路线'},
-                    {'label': '调感官', 'desc': '颜色、声音、气味、触感至少挑两种'},
-                    {'label': '说两句', 'desc': '把最打动你的画面用完整句子说出来'},
+                    {'label': '看变化', 'desc': act_desc},
+                    {'label': '加感官', 'desc': '补上视觉、听觉、嗅觉或触觉中最打动你的细节'},
+                    {'label': '连成句', 'desc': '试着用 2–3 句连贯的话描绘这一幕，并承接上一幕'},
                 ],
-                'highlight': '先口头练说两句有顺序、有细节的描写，再尝试把句子写得更生动。',
+                'highlight': f'第 {idx + 1} 幕口头表达：把画面变化说活，为完整作文搭好第 {idx + 1} 段！',
+            })
+        if len(pics) >= 2 and len(slides) < 12:
+            slides.append({
+                'heading': f'看图写话 · 连图成篇（共 {len(pics)} 幕串联）',
+                'layout': 'reading',
+                'body': [
+                    '把刚才几幕有变化的画面按顺序连起来，就是一篇结构完整的主体作文：',
+                    '1. 开头入画：交代走进场景的第一印象；',
+                    '2. 中间展开：随脚步与视角变化，分 2–3 段写清特写与感官互动；',
+                    '3. 结尾抒情：回望全景，写出内心的喜爱与感受。',
+                ],
+                'gallery': [
+                    {'data_url': p['dataUrl'], 'caption': f'第 {i + 1} 幕', 'alt': f'看图写话第 {i + 1} 幕'}
+                    for i, p in enumerate(pics[:3])
+                ],
+                'highlight': '请 1–2 位同学对照这组变化画面，完整口述一段或一篇小作文！',
             })
     elif stage == 4:
+        model_excerpt = ''
+        for m in models:
+            mt = str(m.get('text') or '').strip()
+            if len(mt) >= 20:
+                model_excerpt = mt[:70] + ('…' if len(mt) > 70 else '')
+                break
+        compare_gallery = []
+        if model_imgs:
+            compare_gallery.append({'data_url': model_imgs[0]['dataUrl'], 'caption': '环节2 范文场景', 'alt': '范文场景对照'})
+        if pics:
+            compare_gallery.append({'data_url': pics[0]['dataUrl'], 'caption': '环节3 看图写话', 'alt': '看图写话对照'})
+        if len(pics) >= 2:
+            compare_gallery.append({'data_url': pics[1]['dataUrl'], 'caption': '环节3 画面变化', 'alt': '看图变化对照'})
+        bridge_slide = {
+            'heading': '技法梳理 · 范文与看图双素材对照',
+            'layout': 'cards',
+            'cards': [
+                {
+                    'tag': '对照 1 · 顺序',
+                    'title': '移步换景 / 由远及近',
+                    'text': f'范文例段：{model_excerpt or "按空间顺序逐处描写"}；看图写话同样随画面变化由远及近推进段落。',
+                },
+                {
+                    'tag': '对照 2 · 细节',
+                    'title': '多感官 + 动静结合',
+                    'text': '把看到的色彩形态、听到的风声水声、闻到的花果香和静态/动态画面结合起来写具体。',
+                },
+                {
+                    'tag': '对照 3 · 表达',
+                    'title': '写出“我”的互动与情感',
+                    'text': '不要只当旁观者：把自己走、看、闻、摸的动作和真实的喜爱写进句子里。',
+                },
+            ],
+            'highlight': f'以第 2 环节范文与第 3 环节看图变化为参照，提炼出能直接用在《{topic}》里的写作招式！',
+        }
+        if compare_gallery:
+            bridge_slide['gallery'] = compare_gallery[:3]
+        slides.append(bridge_slide)
+
         chunk = 4
         total_pages = max(1, (len(methods) + chunk - 1) // chunk) if methods else 0
-        for p_idx in range(min(total_pages, 12)):
+        for p_idx in range(min(total_pages, 11)):
             part = methods[p_idx * chunk:(p_idx + 1) * chunk]
             cards = []
             for m_idx, text in enumerate(part):
@@ -322,23 +384,23 @@ def writing_stage_slides(package, stage_no):
                     c_title, c_text = f'写作要点 {p_idx * chunk + m_idx + 1}', clean_t
                 cards.append({'tag': f'技法 {p_idx * chunk + m_idx + 1}', 'title': c_title[:60], 'text': c_text[:320]})
             slides.append({
-                'heading': '技法梳理' if total_pages == 1 else f'技法梳理（{p_idx + 1}/{total_pages}）',
+                'heading': f'技法清单（{p_idx + 1}/{total_pages}）',
                 'layout': 'cards',
                 'cards': cards,
-                'highlight': f'写作迁移：在《{topic}》中至少选用 2 种技法，把景物写具体、写出真情实感。',
+                'highlight': f'写作迁移：对照上面技法，想想自己在《{topic}》里打算先写哪一处、用哪两种方法。',
             })
     elif stage == 5:
         if tasks:
             slides.append({
-                'heading': f'随堂练习 · 《{tasks[0]}》',
-                'layout': 'steps',
-                'body': [f'本次写作主题：《{tasks[0]}》'],
-                'steps': [
-                    {'label': '1. 审题定材', 'desc': '确定要写的对象与 2–3 处最鲜明的场景'},
-                    {'label': '2. 运用技法', 'desc': '按一定顺序描写，加入感官细节、修辞或动静结合'},
-                    {'label': '3. 拍照提交', 'desc': '写完后在学生端拍照上传（支持多页与重拍，翻页不丢稿）'},
+                'heading': f'随堂练习 · 命题 / 半命题当堂写作',
+                'layout': 'cards',
+                'body': [f'请从下面命题或半命题中任选其一，当堂完成完整习作：'],
+                'cards': [
+                    {'tag': '命题写作', 'title': f'《{tasks[0]}》', 'text': '紧扣本课主题，写出自己最喜欢的季节与 2–3 处鲜明场景。'},
+                    {'tag': '半命题参考', 'title': '《醉美____》 / 《我爱____的____》', 'text': '可补全具体季节或景物（如《醉美初夏》《我爱校园的银杏》），写出真实画面。'},
+                    {'tag': '写作与提交', 'title': '用技法写完拍照上传', 'text': '按顺序分段，至少用上 2 种感官或修辞；完成后在学生端拍照提交（支持多图与重拍）。'},
                 ],
-                'highlight': '自主完成习作初稿，写完直接拍照提交，老师会逐份批注反馈。',
+                'highlight': '提示：拍照上传过程不受课堂翻页影响，写完一页拍一页，老师将逐份圈画批注。',
             })
     elif stage == 6:
         fbs = [str(n.get('text') or '').strip() for n in confirmed if n.get('role') == 'feedback' and str(n.get('text') or '').strip()]
