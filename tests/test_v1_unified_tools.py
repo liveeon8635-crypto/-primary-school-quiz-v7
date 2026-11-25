@@ -66,6 +66,22 @@ def test_runtime_installs_same_tab_unified_tool_route_and_final_patch():
     )
 
 
+def test_live_role_entries_explain_progress_and_keep_mobile_actions_tappable():
+    from fastapi.testclient import TestClient
+    from app import app
+
+    with TestClient(app) as client:
+        shell = client.get('/v1/workspace')
+        hub = client.get('/v1/tool')
+        classic = client.get('/classic?legacy=1&unified=1&from=v1&page=classes')
+    assert shell.status_code == hub.status_code == classic.status_code == 200
+    assert '.top-actions .btn{padding:8px 9px;min-height:44px' in shell.text
+    assert '办理进度请看功能页中的待审核、已发布等提示' in hub.text
+    assert '暂时无法打开功能，请重试；如果仍无法打开，请返回首页重新登录。' in hub.text
+    assert '选择功能后，请到功能页面查看待审核、已发布等实际进度' in classic.text
+    assert '#cy-v1-tool-hub-head button,#cy-v1-tool-switch-account{min-height:44px}' in classic.text
+
+
 def test_workspace_no_longer_duplicates_all_functions_center():
     from fastapi.testclient import TestClient
     from app import app

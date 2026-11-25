@@ -78,7 +78,7 @@ _HUB_TEMPLATE = r'''<!doctype html>
 @media(max-width:720px){.top{height:78px}.brand{font-size:36px}}
 main{max-width:1080px;margin:0 auto;padding:125px clamp(16px,4vw,40px) 60px}h1{margin:0 0 6px;font-size:22px}.lead{margin:0 0 18px;color:var(--muted);font-size:13px;line-height:1.6}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
-.tool small{display:block;margin-top:4px;color:var(--muted);font-weight:500;font-size:12px;line-height:1.4}.tool{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:16px;background:#fff;padding:16px 14px;font:inherit;font-weight:800;color:var(--ink);cursor:pointer;box-shadow:0 8px 30px rgba(23,60,120,.04)}.tool:active{background:#eaf1ff}
+.tool small{display:block;margin-top:4px;color:var(--muted);font-weight:500;font-size:12px;line-height:1.4}.tool{display:block;width:100%;min-height:48px;text-align:left;border:1px solid var(--line);border-radius:16px;background:#fff;padding:16px 14px;font:inherit;font-weight:800;color:var(--ink);cursor:pointer;box-shadow:0 8px 30px rgba(23,60,120,.04)}.tool:active{background:#eaf1ff}
 .notice{display:none;margin:0 0 14px;padding:10px 12px;border-radius:12px;background:#fff8e8;border:1px solid #f5d79a;color:#7a4a00;font-size:13px}.notice.show{display:block}
 </style>
 </head>
@@ -86,7 +86,7 @@ main{max-width:1080px;margin:0 auto;padding:125px clamp(16px,4vw,40px) 60px}h1{m
 <header class="top">__RIBBON__<a class="brand" href="/v1/workspace">长缨辅学</a><span class="chip" id="identity">正在识别身份</span></header>
 <main>
 <h1>全部功能</h1>
-<p class="lead">按当前身份列出可用功能。点击后进入对应功能页。</p>
+<p class="lead">按当前身份选择功能；办理进度请看功能页中的待审核、已发布等提示。</p>
 <div class="notice" id="notice" role="status"></div>
 <div class="grid" id="grid"></div>
 </main>
@@ -99,7 +99,7 @@ main{max-width:1080px;margin:0 auto;padding:125px clamp(16px,4vw,40px) 60px}h1{m
   const say=t=>{notice.textContent=t;notice.classList.add('show')};
   async function openTool(page){
     const t=token();
-    if(t&&t!=='demo'){try{const r=await fetch('/v1/auth-handoff',{method:'POST',headers:{Authorization:'Bearer '+t},cache:'no-store',credentials:'same-origin'});if(!r.ok){say('登录状态同步失败，请重试');return}}catch{say('登录状态同步失败，请重试');return}}
+    if(t&&t!=='demo'){try{const r=await fetch('/v1/auth-handoff',{method:'POST',headers:{Authorization:'Bearer '+t},cache:'no-store',credentials:'same-origin'});if(!r.ok){say('暂时无法打开功能，请重试；如果仍无法打开，请返回首页重新登录。');return}}catch{say('暂时无法打开功能，请重试；如果仍无法打开，请返回首页重新登录。');return}}
     location.href='/v1/tool?page='+encodeURIComponent(page);
   }
   async function start(){
