@@ -375,7 +375,7 @@
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b"
     ],
     "/v1/training": [
-      "935f37e57ce6607171faaed12ae1ff6b04a6592d961bd9ea2ced9301f088cef0"
+      "02a1690e6ae523ca6df10313e9652b3cebcd96b22127d1f7c3d16462ba54c3f6"
     ],
     "/v1/transition": [
       "f8f56c33f77910ed27ccfcd07ceabe918d7a478077bf789b962e71dc84f0b6cd",
@@ -467,7 +467,7 @@
       "16614f1cc00a198051b5c0128c444b63af951fcf453c550b44bd0f38309a4200"
     ],
     "/v1/homework": [
-      "d5a7940629a93c4a76527b73576ce4521366ca79093e795cf0fb7239352502cd"
+      "5cee4f85105d11f1e89c9973174c2af263a4f0ad9ba329691ee764adb507e0d7"
     ]
   },
   "scripts": {
@@ -475,6 +475,11 @@
       "unchanged": false,
       "sourceBytes": 12256,
       "compiledBytes": 12019
+    },
+    "02a1690e6ae523ca6df10313e9652b3cebcd96b22127d1f7c3d16462ba54c3f6": {
+      "unchanged": false,
+      "sourceBytes": 67340,
+      "compiledBytes": 71035
     },
     "0b1f5299b0c8d30232444ac57af55c8fad716fdd7b86c5ed86798b755fffc70f": {
       "unchanged": true,
@@ -581,6 +586,11 @@
       "sourceBytes": 89188,
       "compiledBytes": 89188
     },
+    "5cee4f85105d11f1e89c9973174c2af263a4f0ad9ba329691ee764adb507e0d7": {
+      "unchanged": true,
+      "sourceBytes": 71433,
+      "compiledBytes": 71433
+    },
     "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf": {
       "unchanged": false,
       "sourceBytes": 8661,
@@ -661,11 +671,6 @@
       "sourceBytes": 51254,
       "compiledBytes": 48750
     },
-    "935f37e57ce6607171faaed12ae1ff6b04a6592d961bd9ea2ced9301f088cef0": {
-      "unchanged": false,
-      "sourceBytes": 67214,
-      "compiledBytes": 70909
-    },
     "a0af0ac52e5e33aa382ebee2b8f01e5bc2464cd7834bcfa8778be3d1a5039019": {
       "unchanged": true,
       "sourceBytes": 8887,
@@ -720,11 +725,6 @@
       "unchanged": false,
       "sourceBytes": 1952,
       "compiledBytes": 2166
-    },
-    "d5a7940629a93c4a76527b73576ce4521366ca79093e795cf0fb7239352502cd": {
-      "unchanged": true,
-      "sourceBytes": 71037,
-      "compiledBytes": 71037
     },
     "d7a601da3a488bd2ffddfaf1bf108e34b78afac5def1224cee48757f68afdad3": {
       "unchanged": false,

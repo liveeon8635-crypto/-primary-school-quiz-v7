@@ -11,6 +11,7 @@ Behind the HOMEWORK_ASSISTANT flag like the rest of the assistant.
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -153,9 +154,18 @@ def install_homework_practice_views(implementation: Any) -> APIRouter:
         """After review: one homework per subject, only to this pupil, through the existing targeted practice."""
         stu = my_student(db, u, sid)
         action = f"{ASSIGN_ACTION}.request.{b.requestId}"
+        receipt_action = f"{ASSIGN_ACTION}.item.{sha256(b.requestId.encode()).hexdigest()}"
+        fingerprint = sha256(json.dumps({"studentId": sid, "body": b.model_dump()}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        # A retry must use exactly the teacher-reviewed questions, student and due date.
         db.execute(select(User.id).where(User.id == stu.id).with_for_update()).first()
-        if db.scalar(select(AuditLog.id).where(AuditLog.school_id == u.school_id, AuditLog.action == action).limit(1)):
-            raise HTTPException(409, "这组练习已经布置过了，没有重复布置")
+        prior = db.scalar(select(AuditLog.detail).where(AuditLog.school_id == u.school_id, AuditLog.action == action).limit(1))
+        if prior:
+            try:
+                saved = json.loads(prior)
+            except (ValueError, TypeError):
+                saved = {}
+            if saved.get("studentId") != sid or saved.get("fingerprint") != fingerprint:
+                raise HTTPException(409, "这次布置的内容已变化或属于旧记录，请核对已发作业后重新生成")
         help_ids = sorted({int(h) for g in b.groups for h in (g.get("helpIds") or [])})
         rows = rows_for(db, u, sid, help_ids)
         groups = {g["key"]: g for g in hp.build_groups(rows, None, {str(g.get("key")): str(g.get("subject") or "") for g in b.groups})}
@@ -172,30 +182,56 @@ def install_homework_practice_views(implementation: Any) -> APIRouter:
                     raise HTTPException(400, f"{g['topic']} 第{i}题：{err}")
         if not by_subject:
             raise HTTPException(400, "请至少保留一道题")
-        implementation.audit(db, u, action, json.dumps({"studentId": sid}))
-        db.commit()
+        if not prior:
+            implementation.audit(db, u, action, json.dumps({"studentId": sid, "fingerprint": fingerprint}))
+            db.commit()
+        else:
+            db.rollback()  # release the student lock before taking it for each subject
         grade = int(stu.grade or next((r["grade"] for r in rows if r["grade"]), 0) or 5)
         textbook = {"数学": "人教版", "语文": "统编版（人民教育出版社）", "英语": "人教版（PEP·当前最新版）"}
-        assigned, error = [], ""
+        assigned, error, created = [], "", False
         for subject, questions in by_subject.items():
+            # Re-check under the student lock; a second worker may have completed this subject.
+            db.execute(select(User.id).where(User.id == stu.id).with_for_update()).first()
+            receipt = None
+            for detail in db.scalars(select(AuditLog.detail).where(AuditLog.school_id == u.school_id, AuditLog.action == receipt_action)):
+                try:
+                    candidate = json.loads(detail)
+                except (ValueError, TypeError):
+                    continue
+                if candidate.get("studentId") == sid and candidate.get("subject") == subject:
+                    receipt = candidate
+                    break
+            if receipt:
+                if db.get(implementation.Assignment, receipt.get("assignmentId")) is None:
+                    raise HTTPException(409, "已布置的作业记录无法核对，请到作业列表确认后处理")
+                assigned.append(receipt["assignment"])
+                db.rollback()
+                continue
             title = f"{stu.name} · 晚托提问巩固练习（{subject}）"
             body = implementation.AIReinforcementAssignBody(
                 questions=[{"grade": grade, "subject": subject, "textbook": textbook.get(subject, ""), "semester": "上册", "unit": "",
                             **{k: q[k] for k in ("knowledge", "text", "options", "correct_index", "explanation", "question_type",
                                                  "answer", "accepted_answers", "figure")}} for q in questions],
                 title=title, due_date=b.dueDate.strip(), wrong_ids=[], instructions="根据你在晚托时问过的题出的巩固练习，请独立完成后提交。")
+
+            def record_assignment(a: Any) -> None:
+                item = {"subject": subject, "assignmentId": int(a.id), "title": title, "questionCount": len(questions)}
+                implementation.audit(db, u, receipt_action, json.dumps({"studentId": sid, "subject": subject, "assignmentId": int(a.id), "assignment": item}, ensure_ascii=False))
+                implementation.audit(db, u, ASSIGN_ACTION, json.dumps({"studentId": sid, "helpIds": help_ids, "assignments": [item]}, ensure_ascii=False))
+
             try:
-                res = implementation.teacher_reinforcement_assign(sid, body, u, db)
+                res = implementation._teacher_reinforcement_assign(sid, body, u, db, before_commit=record_assignment)
             except Exception as e:  # noqa: BLE001 - keep what was assigned; report the rest
                 db.rollback()
                 error = f"{subject}：{getattr(e, 'detail', '') or '布置失败'}"
                 break
+            created = True
             assigned.append({"subject": subject, "assignmentId": int(res["assignment"]["id"]), "title": title, "questionCount": len(questions)})
-        if assigned:
-            implementation.audit(db, u, ASSIGN_ACTION, json.dumps({"studentId": sid, "helpIds": help_ids, "assignments": assigned}, ensure_ascii=False))
-            db.commit()
         if error:
-            raise HTTPException(409, f"布置未全部完成（{error}）" + ("；已布置：" + "、".join(a["subject"] for a in assigned) if assigned else ""))
+            raise HTTPException(409, f"布置未全部完成（{error}）" + ("；已布置：" + "、".join(a["subject"] for a in assigned) if assigned else "") + "；请重试未布置科目")
+        if not created:
+            raise HTTPException(409, "这组练习已经布置过了，没有重复布置")
         return {"assigned": assigned}
 
     app.include_router(router)

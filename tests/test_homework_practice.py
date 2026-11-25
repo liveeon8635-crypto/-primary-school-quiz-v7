@@ -116,3 +116,92 @@ with TestClient(app) as client:
     assert "生成巩固练习" in page and "/practice/generate" in page and "/practice/assign" in page and "审核确认并布置" in page
     print("OK")
 ''')
+
+
+def test_failed_assignments_resume_without_reissuing_successful_subjects(tmp_path):
+    helpers.run_isolated(tmp_path, helpers.COMMON + r'''
+from sqlalchemy import func
+with TestClient(app) as client:
+    th, sh, sid, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        teacher = db.scalar(select(legacy.User).where(legacy.User.username == "teacher1"))
+        link = db.scalar(select(legacy.ClassStudent).where(legacy.ClassStudent.student_id == sid))
+        if link is None:
+            cls = legacy.SchoolClass(school_id=school_id, name="晚托班", grade=3, teacher_id=teacher.id)
+            db.add(cls); db.flush()
+            db.add(legacy.ClassStudent(class_id=cls.id, student_id=sid))
+        else:
+            db.get(legacy.SchoolClass, link.class_id).teacher_id = teacher.id
+        db.commit()
+    h1 = make_help(client, sh, text="小明有十二个苹果，吃掉五个，还剩几个？")
+    replies.append(sol(kp="加减法"))
+    assert client.post(f"/student/homework/help/{h1}/solve", headers=sh).status_code == 200
+    h2 = make_help(client, sh, text="请写出 cat 这个单词的中文意思。")
+    replies.append(sol(kp="英语单词"))
+    assert client.post(f"/student/homework/help/{h2}/solve", headers=sh).status_code == 200
+    sources = client.get(f"/teacher/homework/students/{sid}/practice-sources", headers=th).json()["items"]
+    keys = {i["helpId"]: i["groupKey"] for i in sources}
+    def payload(request_id):
+        return {"requestId": request_id, "groups": [
+            {"key": keys[h1], "subject": "数学", "helpIds": [h1], "questions": [
+                {"question_type": "fill_blank", "level": 1, "text": "小红在操场捡到四片树叶，又捡到三片，共有几片？", "answer": "7"}]},
+            {"key": keys[h2], "subject": "英语", "helpIds": [h2], "questions": [
+                {"question_type": "fill_blank", "level": 1, "text": "请写出 dog 这个单词的中文意思。", "answer": "狗"}]},
+        ]}
+    def count():
+        with legacy.SessionLocal() as db:
+            return db.scalar(select(func.count()).select_from(legacy.Assignment))
+    url = f"/teacher/homework/students/{sid}/practice/assign"
+    original = legacy._teacher_reinforcement_assign
+    fail = {"subject": "数学", "after": False}
+    calls = []
+    def flaky(student_id, body, teacher, db, *, before_commit=None):
+        subject = body.questions[0].subject
+        calls.append(subject)
+        if fail["subject"] == subject and not fail["after"]:
+            fail["subject"] = ""
+            raise HTTPException(503, "临时故障")
+        result = original(student_id, body, teacher, db, before_commit=before_commit)
+        if fail["subject"] == subject and fail["after"]:
+            fail["subject"] = ""
+            raise RuntimeError("提交后连接断开")
+        return result
+    legacy._teacher_reinforcement_assign = flaky
+    start = count()
+    first = payload("retry-first-0001")
+    r = client.post(url, headers=th, json=first)
+    assert r.status_code == 409 and "重试未布置科目" in r.json()["detail"], r.text
+    assert count() == start
+    r = client.post(url, headers=th, json=first)
+    assert r.status_code == 200 and len(r.json()["assigned"]) == 2, r.text
+    assert count() == start + 2 and calls == ["数学", "数学", "英语"]
+    assert client.post(url, headers=th, json=first).status_code == 409
+    assert count() == start + 2
+
+    # A second subject fails after the first has been committed; the retry skips the first.
+    fail.update(subject="英语", after=False)
+    second = payload("retry-second-002")
+    r = client.post(url, headers=th, json=second)
+    assert r.status_code == 409 and "已布置：数学" in r.json()["detail"], r.text
+    assert count() == start + 3
+    altered = {**second, "dueDate": "2026-12-01"}
+    assert client.post(url, headers=th, json=altered).status_code == 409
+    before_retry = calls.count("数学")
+    r = client.post(url, headers=th, json=second)
+    assert r.status_code == 200 and len(r.json()["assigned"]) == 2, r.text
+    assert calls.count("数学") == before_retry and count() == start + 4
+    assert client.post(url, headers=th, json=second).status_code == 409
+
+    # Even if the response is lost after commit, the assignment and receipt stay together.
+    fail.update(subject="数学", after=True)
+    third = payload("retry-after-0003")
+    r = client.post(url, headers=th, json=third)
+    assert r.status_code == 409 and count() == start + 5, r.text
+    before_retry = calls.count("数学")
+    r = client.post(url, headers=th, json=third)
+    assert r.status_code == 200 and len(r.json()["assigned"]) == 2, r.text
+    assert calls.count("数学") == before_retry and count() == start + 6
+    page = client.get("/v1/homework").text
+    assert "重试未布置的科目" in page and "按首次审核的题目补布置" in page
+    print("OK")
+''')
