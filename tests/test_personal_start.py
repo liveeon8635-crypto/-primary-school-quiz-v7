@@ -309,3 +309,9 @@ def test_start_page_utility_links_and_valid_inline_scripts(client):
         assert scripts, f"{path} must include an inline script"
         for src in scripts:
             script_check.assert_parses(src)
+
+    personal_js = client.get("/v1/personal-home.js")
+    assert personal_js.status_code == 200
+    script_check.assert_parses(personal_js.text)
+    for marker in ("schoolIndividual", "change-password", "pushState", "个人工作室 · 全部功能", "cy-back-studio"):
+        assert marker in personal_js.text

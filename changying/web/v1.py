@@ -16,12 +16,90 @@ from changying.web.v1_ribbon_banner import RIBBON_SVG as _RIBBON_SVG
 
 V1_UI_MARKER = "changying_v1_20260915"
 PERSONAL_HOME_COOKIE = "cy_personal_home"
-PERSONAL_HOME_JS = """(function(){
+PERSONAL_HOME_JS = r"""(function(){
   try{
-    if(!/(?:^|; )cy_personal_home=1(?:;|$)/.test(document.cookie||""))return;
-    var p=location.pathname,q=location.search||"";
-    var home=p==="/"||p==="/v1"||p==="/v1/"||p==="/classic"||p==="/classic/"||(p==="/v1/workspace"&&q.indexOf("view=all")<0);
-    if(home&&window.location.pathname!=="/start")window.location.replace("/start");
+    function isPersonalCookie(){
+      return /(?:^|; )cy_personal_home=1(?:;|$)/.test(document.cookie||"");
+    }
+    function isHomePath(p,q){
+      return p==="/"||p==="/v1"||p==="/v1/"||p==="/classic"||p==="/classic/"||(p==="/v1/workspace"&&q.indexOf("view=all")<0);
+    }
+    function redirectIfHome(p,q){
+      if(!isPersonalCookie())return false;
+      if(isHomePath(p,q)&&window.location.pathname!=="/start"){
+        window.location.replace("/start");
+        return true;
+      }
+      return false;
+    }
+    if(redirectIfHome(location.pathname,location.search||""))return;
+    function applyPersonalAllView(){
+      if(!isPersonalCookie())return;
+      if(location.pathname!=="/v1/workspace"||(location.search||"").indexOf("view=all")<0)return;
+      var h1=document.querySelector(".page-head h1");
+      if(h1&&h1.textContent.indexOf("培训机构")>=0){
+        h1.textContent="个人工作室 · 全部功能";
+      }
+      var seg=document.querySelector('#cy-seg a[data-seg="workspace"]');
+      if(seg&&seg.getAttribute("href")!=="/start"){
+        seg.setAttribute("href","/start");
+        seg.removeAttribute("data-nav");
+        seg.textContent="我的工作室";
+      }
+      var head=document.querySelector(".page-head");
+      if(head&&!document.getElementById("cy-back-studio")){
+        var a=document.createElement("a");
+        a.id="cy-back-studio";
+        a.className="btn";
+        a.href="/start";
+        a.textContent="← 返回我的工作室";
+        head.appendChild(a);
+      }
+    }
+    if(typeof window.MutationObserver==="function"&&document.body){
+      var obs=new MutationObserver(function(){applyPersonalAllView()});
+      obs.observe(document.body,{childList:true,subtree:true});
+    }
+    applyPersonalAllView();
+    if(window.history&&typeof window.history.pushState==="function"){
+      var origPush=window.history.pushState;
+      window.history.pushState=function(state,title,url){
+        var ret=origPush.apply(this,arguments);
+        try{
+          if(typeof url==="string"&&url){
+            var u=new URL(url,window.location.origin);
+            redirectIfHome(u.pathname,u.search||"");
+          }
+          setTimeout(applyPersonalAllView,30);
+        }catch(e){}
+        return ret;
+      };
+    }
+    if(typeof window.fetch==="function"){
+      var origFetch=window.fetch;
+      window.fetch=function(input,init){
+        var url=typeof input==="string"?input:(input&&input.url?input.url:"");
+        var method=(init&&init.method)?String(init.method).toUpperCase():"GET";
+        var p=origFetch.apply(this,arguments);
+        if(method==="POST"&&(/(?:^|\/)login(?:$|\?)/.test(url)||/(?:^|\/)change-password(?:$|\?)/.test(url))){
+          p.then(function(res){
+            if(!res||!res.ok||typeof res.clone!=="function")return;
+            if(/(?:^|\/)change-password(?:$|\?)/.test(url)){
+              if(isPersonalCookie()){
+                setTimeout(function(){window.location.replace("/start")},120);
+              }
+              return;
+            }
+            res.clone().json().then(function(d){
+              if(d&&d.schoolIndividual&&(d.role==="teacher"||d.role==="admin")&&!d.mustChangePassword){
+                setTimeout(function(){window.location.replace("/start")},60);
+              }
+            }).catch(function(){});
+          }).catch(function(){});
+        }
+        return p;
+      };
+    }
   }catch(e){}
 })();"""
 
