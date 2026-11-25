@@ -916,7 +916,7 @@ textarea.s{min-height:64px}
 [data-lesson-navigation] .lesson-capsules{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));grid-gap:14px;padding:4px 4px 8px}
 [data-lesson-navigation] button.lesson-capsule{display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;min-width:0;min-height:100px;margin:0;padding:9px 10px;border:1px solid #cbd5e1;border-bottom:4px solid #94a3b8;border-radius:12px;background:linear-gradient(#fff,#f1f5f9);color:#334155;box-shadow:0 3px 5px rgba(15,23,42,.12),inset 0 1px 0 #fff;text-align:left;line-height:1.4;transition:transform .12s,box-shadow .12s}
 [data-lesson-navigation] button.lesson-capsule.has-courseware{border-color:#73b5a6;border-bottom-color:#0f766e;background:linear-gradient(#f3fcf8,#e6f5f1);color:#115e59}
-[data-lesson-navigation] button.lesson-capsule[aria-current="true"]{outline:3px solid #1d4ed8;outline-offset:2px;box-shadow:0 4px 7px rgba(29,78,216,.18)}
+[data-lesson-navigation] button.lesson-capsule[aria-current="true"]{box-shadow:0 4px 7px rgba(15,23,42,.16)}
 [data-lesson-navigation] .lesson-top{display:flex;align-items:center;justify-content:space-between}
 [data-lesson-navigation] .lesson-number{font-size:21px;font-weight:800;line-height:1.2}
 [data-lesson-navigation] .lesson-current{font-size:12px;font-weight:700;color:#1d4ed8}
@@ -926,8 +926,7 @@ textarea.s{min-height:64px}
 [data-lesson-navigation] .lesson-nav-legend>span{margin:4px 8px}
 [data-lesson-navigation] .lesson-nav-key{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;border-radius:3px;border:1px solid #94a3b8;background:#f1f5f9}
 [data-lesson-navigation] .lesson-nav-key.courseware{background:#e6f5f1;border-color:#0f766e}
-[data-lesson-navigation] .lesson-nav-key.current{background:#fff;border:2px solid #1d4ed8}
-[data-lesson-navigation] button:focus{outline:3px solid #1d4ed8;outline-offset:3px}
+[data-lesson-navigation] button:focus{outline:2px dashed #64748b;outline-offset:3px}
 [data-lesson-navigation] button.lesson-capsule:active,[data-lesson-navigation] button.lesson-nav-control:not(:disabled):active{transform:translateY(2px);box-shadow:none}
 @media(hover:hover){[data-lesson-navigation] button.lesson-capsule:hover{transform:translateY(-2px);box-shadow:0 5px 8px rgba(15,23,42,.16)}}
 @media(max-width:900px){[data-lesson-navigation] .lesson-capsules{grid-template-columns:repeat(6,minmax(0,1fr))}}
@@ -1097,7 +1096,7 @@ function plan(){
   var prevLessonBtn=el('button',{class:'lesson-nav-control',text:'‹ 上一课'}),nextLessonBtn=el('button',{class:'lesson-nav-control',text:'下一课 ›'}),allLessonsBtn=el('button',{class:'lesson-nav-control',text:'展开全部 18 次课'}),allLessons=false;
   lessonControls.appendChild(el('span',{},el('i',{class:'lesson-nav-key','aria-hidden':'true'}),'暂无课件'));
   lessonControls.appendChild(el('span',{},el('i',{class:'lesson-nav-key courseware','aria-hidden':'true'}),'有课件（审核状态见按钮）'));
-  lessonControls.appendChild(el('span',{},el('i',{class:'lesson-nav-key current','aria-hidden':'true'}),'当前选中'));
+  lessonControls.appendChild(el('span',{text:'当前选中：看按钮上的“当前”'}));
   lessonNav.appendChild(el('div',{class:'lesson-nav-toolbar'},prevLessonBtn,el('b',{text:'18 次课导航'}),nextLessonBtn,allLessonsBtn));lessonNav.appendChild(lessonCapsules);lessonNav.appendChild(lessonControls);
   function focusLesson(no){if(!state.length)return;selectedLessonNo=Math.max(1,Math.min(state.length,+no||1));PLAN_LESSON_SELECTION[SUBJ]=selectedLessonNo;userSelectedLesson=true;allLessons=false;updateLessonNavigation();var current=lessonCards.filter(function(x){return x.lessonNo===selectedLessonNo})[0];if(current&&current.card.scrollIntoView)current.card.scrollIntoView({block:'nearest'})}
   function updateLessonNavigation(){

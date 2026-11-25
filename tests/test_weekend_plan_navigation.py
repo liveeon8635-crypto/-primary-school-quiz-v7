@@ -88,6 +88,9 @@ with TestClient(app) as client:
     assert response.status_code == 200, response.text
     assert '.lesson-capsules{display:grid' in response.text
     assert 'lesson-capsule.has-courseware' in response.text
+    assert 'button.lesson-capsule[aria-current="true"]{box-shadow:' in response.text
+    assert 'button.lesson-capsule[aria-current="true"]{outline:' not in response.text
+    assert '当前选中：看按钮上的“当前”' in response.text
     assert 'data-lesson-navigation' in response.text
     print('OK')
 ''')
