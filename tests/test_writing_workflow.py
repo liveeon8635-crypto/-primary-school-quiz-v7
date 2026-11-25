@@ -628,3 +628,21 @@ def test_writing_stage_slides_builds_all_six_big_screen_stages():
     assert stage2[0]['layout'] == 'reading' and stage2[0]['figure']['data_url'] == img
     stage3 = writing_stage_slides(pkg, 3)
     assert stage3[0]['layout'] == 'scene' and stage3[0]['figure']['data_url'] == img
+
+
+def test_writing_stage_slides_strips_margin_notes_and_empty_method_stubs():
+    from changying.services.writing_lesson import writing_stage_slides
+    pkg = {
+        'title': '我最喜欢的季节',
+        'nodes': [
+            {'id': 'm1', 'kind': 'text', 'role': 'model', 'status': 'confirmed', 'text': '可我独爱秋。（开头 对比引出最喜爱的季节）'},
+            {'id': 'me0', 'kind': 'text', 'role': 'method', 'status': 'confirmed', 'text': '写作顺序：、'},
+            {'id': 'me1', 'kind': 'text', 'role': 'method', 'status': 'confirmed', 'text': '按空间顺序描写：从远到近展开。'},
+        ],
+    }
+    s2 = writing_stage_slides(pkg, 2)
+    assert '（开头' not in s2[0]['body'][0]
+    assert '旁注点拨' in s2[0]['highlight'] and '对比引出最喜爱的季节' in s2[0]['highlight']
+    s4 = writing_stage_slides(pkg, 4)
+    assert len(s4) == 2 and len(s4[1]['cards']) == 1
+    assert s4[1]['cards'][0]['title'] == '按空间顺序描写'

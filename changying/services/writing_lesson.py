@@ -223,6 +223,18 @@ def writing_stage_slides(package, stage_no):
     tasks = [str(n.get('text') or '').strip() for n in confirmed if n.get('role') == 'task' and str(n.get('text') or '').strip()]
     topic = tasks[0] if tasks else title
 
+    def strip_margin_notes(text):
+        notes = []
+        def _collect(m):
+            inner = m.group(1).strip()
+            if re.search(r'开头|结尾|自然段|移步换景|总起|总结|过渡|点题|抒情|照应|写法|旁注', inner):
+                notes.append(inner)
+                return ''
+            return m.group(0)
+        cleaned = re.sub(r'[（(]([^（）()]{3,60})[）)]', _collect, str(text or '')).strip()
+        cleaned = re.sub(r'[。．]\s*$', '。', cleaned)
+        return cleaned, notes
+
     if stage == 1:
         items = [str(n.get('text') or '').strip() for n in confirmed if n.get('role') == 'review' and str(n.get('text') or '').strip()]
         if items:
@@ -250,11 +262,19 @@ def writing_stage_slides(package, stage_no):
                 essay_title = first_txt
                 body_models = body_models[1:] or body_models
         if body_models:
+            clean_paras = []
+            all_notes = []
+            for p in body_models[:12]:
+                cp, pnotes = strip_margin_notes(p.get('text') or '')
+                if cp:
+                    clean_paras.append(cp[:500])
+                all_notes.extend(pnotes)
+            overview_hl = ('旁注点拨：' + ' ｜ '.join(all_notes)) if all_notes else '先通读全文，理清文章的开头、中间景物顺序与结尾抒情，再逐段图文精讲。'
             overview = {
                 'heading': f'范文全景 · 《{essay_title}》',
                 'layout': 'reading',
-                'body': [str(p.get('text') or '').strip()[:500] for p in body_models[:12]],
-                'highlight': '先通读全文，理清文章的开头、中间景物顺序与结尾抒情，再逐段图文精讲。',
+                'body': clean_paras,
+                'highlight': overview_hl[:300],
             }
             if len(model_imgs) >= 2:
                 overview['gallery'] = [
@@ -274,15 +294,14 @@ def writing_stage_slides(package, stage_no):
                         used_ids.add(img.get('id'))
                     paired_paras.append((p, bound[0]))
             for idx, (p, img) in enumerate(paired_paras[:10]):
-                txt = str(p.get('text') or '').strip()
-                note_match = re.search(r'[（(]([^（）()]{4,40})[）)]', txt)
-                hl = note_match.group(1) if note_match else f'边看图边朗读第 {idx + 1} 处场景，圈出写色彩、声音或气味的关键词。'
+                clean_txt, pnotes = strip_margin_notes(p.get('text') or '')
+                hl = ('旁注：' + '；'.join(pnotes)) if pnotes else f'边看图边朗读第 {idx + 1} 处场景，圈出写色彩、声音或气味的关键词。'
                 slides.append({
                     'heading': f'图文精讲 · 《{essay_title}》（场景 {idx + 1}/{len(paired_paras)}）',
                     'layout': 'reading',
-                    'body': [txt[:500]],
+                    'body': [clean_txt[:500]],
                     'figure': {'type': 'uploaded_image', 'data_url': img['dataUrl'], 'alt': f'{essay_title}场景 {idx + 1}'},
-                    'highlight': hl,
+                    'highlight': hl[:260],
                 })
             for img in model_imgs:
                 if img.get('id') not in used_ids and len(slides) < 12:
@@ -370,10 +389,19 @@ def writing_stage_slides(package, stage_no):
             bridge_slide['gallery'] = compare_gallery[:3]
         slides.append(bridge_slide)
 
+        usable_methods = []
+        for text in methods:
+            clean_t = re.sub(r'[（(]\s+[）)]', '', text).strip()
+            parts = re.split(r'[：:]', clean_t, maxsplit=1)
+            body_part = parts[1].strip() if len(parts) == 2 else clean_t
+            if len(re.sub(r'[\s、，。；：:·\-\d\(\)（）]+', '', body_part)) < 4:
+                continue
+            usable_methods.append(clean_t)
+
         chunk = 4
-        total_pages = max(1, (len(methods) + chunk - 1) // chunk) if methods else 0
+        total_pages = max(1, (len(usable_methods) + chunk - 1) // chunk) if usable_methods else 0
         for p_idx in range(min(total_pages, 11)):
-            part = methods[p_idx * chunk:(p_idx + 1) * chunk]
+            part = usable_methods[p_idx * chunk:(p_idx + 1) * chunk]
             cards = []
             for m_idx, text in enumerate(part):
                 clean_t = text.strip()
