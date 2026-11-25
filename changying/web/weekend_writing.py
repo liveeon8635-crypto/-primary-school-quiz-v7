@@ -254,7 +254,7 @@ def install_weekend_writing(implementation):
             history_entry['previousStatuses']={p['id']:p.get('status') for p,n in zip(old['nodes'],nodes)
                                                if p.get('status')!=n.get('status')}
         else:
-            history_entry['nodes']=old['nodes']
+            history_entry['nodes']=[{k:v for k,v in n.items() if k not in ('dataUrl','originalBase64')} for n in old['nodes']]
         package['history']=old.get('history',[])+[history_entry]
         encoded=json.dumps(package,ensure_ascii=False)
         if len(encoded)>60*1024*1024: raise HTTPException(413,'课程历史超过60MB，请另建课次保留历史')
