@@ -1462,25 +1462,58 @@ def _repair_courseware_visual(params: dict[str, Any], visual_text: str) -> dict[
     return _apply_figure_notice(result, result.get("figure"), visual_text)
 
 
+_WRITING_SLIDES_CACHE: "OrderedDict[tuple[int, int], tuple[str, list[dict[str, Any]]]]" = OrderedDict()
+_WRITING_SLIDE_VIEWS: "OrderedDict[tuple[int, int], dict[str, Any]]" = OrderedDict()
+_WRITING_SLIDES_CACHE_MAX = 32
+
+
+def _cached_writing_slides(session_id: int, stage: int, frozen_loader: Any) -> tuple[bool, str, list[dict[str, Any]], dict[str, Any] | None]:
+    """Serve immutable frozen writing slides from RAM to avoid 3MB DB reads on every 3s poll."""
+    key = (int(session_id), int(stage))
+    cached = _WRITING_SLIDES_CACHE.get(key)
+    if cached is not None:
+        _WRITING_SLIDES_CACHE.move_to_end(key)
+        title, slides = cached
+        return True, title, slides, _WRITING_SLIDE_VIEWS.get(key)
+    frozen = frozen_loader()
+    if not (frozen and frozen["lesson"].get("writingPackage")):
+        return False, "", [], None
+    from changying.services.writing_lesson import writing_stage_slides
+    wp = frozen["lesson"]["writingPackage"]
+    title = str(wp.get("title") or "作文课")
+    slides = writing_stage_slides(wp, stage)
+    _WRITING_SLIDES_CACHE[key] = (title, slides)
+    if len(_WRITING_SLIDES_CACHE) > _WRITING_SLIDES_CACHE_MAX:
+        _WRITING_SLIDES_CACHE.popitem(last=False)
+    persisted = (frozen["lesson"].get("writingSlideViews") or {}).get(str(stage))
+    if key not in _WRITING_SLIDE_VIEWS and isinstance(persisted, dict):
+        _WRITING_SLIDE_VIEWS[key] = persisted
+        if len(_WRITING_SLIDE_VIEWS) > 64:
+            _WRITING_SLIDE_VIEWS.popitem(last=False)
+    return True, title, slides, _WRITING_SLIDE_VIEWS.get(key)
+
+
 def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: int | None) -> tuple[dict[str, Any] | None, str]:
     """The approved courseware of the page on screen, without answers; else a note for the teacher."""
-    t = register_courseware_table(implementation)
-    c, all_items = cached_courseware_items(db, t, row.school_id, row.lesson_id, approved_only=True)
     stage = int(row.current_stage or 0)
     from changying.services.weekend_course_types import frozen_session
-    frozen = frozen_session(db, implementation, int(row.id), metadata=getattr(implementation, "Base", None) and implementation.Base.metadata)
-    course_type = frozen["courseType"] if frozen else "legacy"
-    if frozen and frozen["lesson"].get("writingPackage"):
-        from changying.services.writing_lesson import writing_stage_slides
-        wp = frozen["lesson"]["writingPackage"]
-        slides = writing_stage_slides(wp, stage)
-        if not slides:
+    frozen_holder: list[Any] = []
+    def _load_frozen():
+        if not frozen_holder:
+            frozen_holder.append(frozen_session(db, implementation, int(row.id), metadata=getattr(implementation, "Base", None) and implementation.Base.metadata))
+        return frozen_holder[0]
+    is_writing, w_title, w_slides, w_raw_view = _cached_writing_slides(int(row.id), stage, _load_frozen)
+    if is_writing:
+        if not w_slides:
             return None, "本环节暂无已确认的作文展示内容。"
-        params = {"title": str(wp.get("title") or "作文课"), "slides": slides}
-        raw_view = (frozen["lesson"].get("writingSlideViews") or {}).get(str(stage))
-        view = cw.clean_view("slide", params, raw_view)
+        params = {"title": w_title, "slides": w_slides}
+        view = cw.clean_view("slide", params, w_raw_view)
         return {"id": 0, "kind": "slide", "kindLabel": cw.KIND_LABEL["slide"], "stageNo": stage,
                 "page": None, "params": cw.public_params("slide", params), "view": view}, ""
+    t = register_courseware_table(implementation)
+    c, all_items = cached_courseware_items(db, t, row.school_id, row.lesson_id, approved_only=True)
+    frozen = _load_frozen()
+    course_type = frozen["courseType"] if frozen else "legacy"
     practice_no = practice_stage(course_type)
     lesson = db.get(implementation.TeachingLesson, row.lesson_id)
     if course_type in ("math", "legacy") and stage == 3 and source_page_mismatch(lesson)[1]:
@@ -2289,15 +2322,11 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         # Older approved slides may have fewer steps than the repaired visual.
         view = cw.clean_view(shown["kind"], shown["params"], b.view)
         if shown.get("id") == 0:
-            from changying.services.weekend_course_types import register_weekend_course_type_tables
-            frozen_tbl = register_weekend_course_type_tables(implementation)["frozen"]
-            snap = db.execute(select(frozen_tbl).where(frozen_tbl.c.session_id == row.id)).first()
-            if snap is not None:
-                snap_data = json.loads(snap.lesson_json or "{}")
-                snap_data.setdefault("writingSlideViews", {})[str(int(row.current_stage))] = view
-                db.execute(update(frozen_tbl).where(frozen_tbl.c.session_id == row.id).values(
-                    lesson_json=json.dumps(snap_data, ensure_ascii=False)))
-                db.commit()
+            vkey = (int(row.id), int(row.current_stage))
+            _WRITING_SLIDE_VIEWS[vkey] = view
+            _WRITING_SLIDE_VIEWS.move_to_end(vkey)
+            if len(_WRITING_SLIDE_VIEWS) > 64:
+                _WRITING_SLIDE_VIEWS.popitem(last=False)
             return {"view": view}
         if c is None:
             raise HTTPException(409, note or "当前页没有互动课件")
