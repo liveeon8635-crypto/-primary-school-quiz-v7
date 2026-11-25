@@ -56,7 +56,7 @@ ROLE_FLOW: dict[str, list[dict[str, str]]] = {
         {"id": "transition", "page": "/v1/transition", "title": "升年级与衔接"},
         {"id": "teacher_homework", "page": "/v1/homework", "title": "晚托作业助手：通知、求助与巩固练习"},
         {"id": "teacher_follow_ups", "page": "/v1/homework", "title": "晚托作业助手：待跟进（试点）"},
-        {"id": "teacher_weekend_plan", "page": "/v1/weekend-plan", "title": "周末课备课：导入与恢复教案、审核习题和课件"},
+        {"id": "teacher_weekend_plan", "page": "/v1/weekend-plan", "title": "周末课备课：课次导航、导入教案与审核课件"},
         {"id": "teacher_weekend_writing_review", "page": "/v1/weekend-writing", "title": "作文课：六环节素材审核与开课检查"},
         {"id": "teacher_weekend_class", "page": "/v1/weekend", "title": "周末课上课：控制页、大屏、作答与预批进度"},
         {"id": "teacher_weekend_report", "page": "/v1/weekend", "title": "周末课课后：学情反馈与纸质备用"},
@@ -174,6 +174,7 @@ STEP_RELATIONSHIPS: dict[str, dict[str, str]] = {
     "account": {"who": "当前用户", "creates": "账号偏好/安全操作", "visible_to": "账号本人", "other_role_sees": "其他角色不应直接看到账号安全信息", "communication_tip": "身份切换和账号退出要区分", "next": "返回角色主线"},
 }
 
+STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 课次导航中青绿色表示有课件，文字另分待审／已审；蓝框与当前标识只表示选中，浅灰表示暂无课件。各学科共用标识，有课件不等于可以开课。"
 STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 已有教案可在互动课件中预检导入预制课件包；默认不覆盖，勾选替换可保留上一版并生成待审核草稿，不改教案和习题。"
 STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 语文课在六环节课件与审核中逐项核对；缺少素材会明确显示。补充课件草稿不会自动审核或覆盖已有课件，整体预览默认收起。"
 STEP_RELATIONSHIPS["teacher_weekend_plan"]["communication_tip"] += " 如果只需要上传一个文件，可在课次行点“导入教案/整包”上传 JSON，一次带入教案、随堂题和互动课件草稿；按整包内容识别，扩展名丢失也可导入；普通 Word/PDF 本地提取，约定格式可本地拆题；其他内容只有功能门禁允许时才调用 AI，门禁拒绝时保存原文草稿，不自动拆题或匹配图片；题目与课件仍要分别审核。"
