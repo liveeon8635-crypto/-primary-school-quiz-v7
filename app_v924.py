@@ -4854,10 +4854,15 @@ PERSONAL_START_SCRIPT = """<script>
   function token(){try{return localStorage.getItem('v717Token')||sessionStorage.getItem('v717Token')||''}catch(e){return ''}}
   var t=token();if(!t)return;
   function setText(id,v){var e=el(id);if(e&&typeof v==='string')e.textContent=v}
-  function setDot(id,ok){var e=el(id);if(e)e.className='dot'+(ok?' ok':'')}
+  function setDot(id,ok){var e=el(id);if(e){e.className='dot'+(ok?' ok':'');if(ok)e.textContent='✓'}}
   function setLink(id,href,label,plain){var a=el(id);if(!a)return;if(typeof href==='string'&&href)a.setAttribute('href',href);if(typeof label==='string')a.textContent=label;a.className='go'+(plain?' plain':'')}
   function apply(d){
     setText('cy-title',d.title);setText('cy-subtitle',d.subtitle);
+    setText('cy-kpi-students',String(d.students||0));
+    setText('cy-kpi-lessons',String(d.lessons||0));
+    setText('cy-kpi-ai',d.ai_ready?'已启用':'待配置');
+    var done=(d.s1cls==='ok'?1:0)+(d.s2cls==='ok'?1:0)+(d.s3cls==='ok'?1:0);
+    setText('cy-progress','已完成 '+done+'/3');
     setDot('cy-s1dot',d.s1cls==='ok');setText('cy-s1text',d.s1text);setLink('cy-s1link',d.s1url,d.s1label,d.s1a==='plain');
     setDot('cy-s2dot',d.s2cls==='ok');setText('cy-s2text',d.s2text);setLink('cy-s2link',d.s2url,d.s2label,d.s2a==='plain');
     setDot('cy-s3dot',d.s3cls==='ok');setText('cy-s3text',d.s3text);setLink('cy-s3link',d.s3url,d.s3label,d.s3a==='plain');
@@ -4933,49 +4938,123 @@ PERSONAL_START_HTML = """<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>我的工作室 · 长缨辅学</title>
 <style>
-:root{--ink:#1f2738;--muted:#778095;--line:#e5e8f0;--brand:#a8101c;--ok:#0b8f5a;--warn:#b45309}
-*{box-sizing:border-box}body{margin:0;background:#f4f6fb;color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
-main{max-width:720px;margin:0 auto;padding:24px 16px 60px}
-h1{font-size:22px;margin:0 0 4px}p.sub{color:var(--muted);margin:0 0 18px;font-size:14px}
-.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
-.step{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px dashed var(--line)}
-.step:last-child{border-bottom:0}
-.dot{flex:0 0 26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:800;background:#f1ebff;color:#6d3ad6}
-.dot.ok{background:#e9f9f1;color:var(--ok)}
-.t{font-weight:700}.d{color:var(--muted);font-size:13.5px}
-a.go{margin-left:auto;white-space:nowrap;text-decoration:none;background:var(--brand);color:#fff;border-radius:10px;padding:8px 14px;font-weight:700;font-size:14px}
-a.go.plain{background:#eef2fa;color:var(--brand)}
+:root{--ink:#242026;--muted:#65595a;--line:#e6d8ce;--bg:#faf6f1;--card:#ffffff;--brand:#a8101c;--brand-dark:#7d0c15;--brand-soft:#fdf1f0;--ok:#0b8f5a;--ok-soft:#e8f8f0;--shadow:0 10px 28px rgba(56,28,24,.06)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+.topbar{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.topbar-in{max-width:1120px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.brand-box{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink)}
+.brand-mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--brand),#cc2b37);color:#fff;display:grid;place-items:center;font-weight:900;font-size:17px;box-shadow:0 4px 12px rgba(168,16,28,.25)}
+.brand-name{font-weight:800;font-size:16px;letter-spacing:.3px}
+.brand-badge{font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;background:var(--brand-soft);color:var(--brand);border:1px solid #f4cfd2}
+.top-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.top-nav a,.top-nav button{text-decoration:none;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 14px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;transition:all .15s ease}
+.top-nav a:hover,.top-nav button:hover{color:var(--brand);border-color:#e2b8bc;background:var(--brand-soft)}
+main{max-width:1120px;margin:0 auto;padding:24px 24px 64px}
+.hero{background:linear-gradient(135deg,#99111d 0%,#b81d2a 55%,#7c1420 100%);color:#fff;border-radius:22px;padding:28px 30px;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;box-shadow:0 16px 36px rgba(132,16,28,.18);margin-bottom:24px}
+.hero-left{min-width:240px;flex:1 1 340px}
+.hero-tag{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.4px;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.16);margin-bottom:10px}
+.hero h1{font-size:28px;line-height:1.25;margin:0 0 6px;font-weight:800}
+.hero p.sub{color:rgba(255,255,255,.86);margin:0 0 18px;font-size:14.5px}
+.hero-cta{display:flex;gap:10px;flex-wrap:wrap}
+.hero-cta a{text-decoration:none;border-radius:12px;padding:10px 18px;font-weight:700;font-size:14.5px;transition:transform .15s ease,opacity .15s ease}
+.hero-cta a:hover{transform:translateY(-1px)}
+.hero-cta a.primary{background:#fff;color:var(--brand)}
+.hero-cta a.ghost{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.32)}
+.kpi-row{display:grid;grid-template-columns:repeat(3,minmax(108px,1fr));gap:12px;flex:0 1 400px}
+.kpi{background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.22);border-radius:16px;padding:14px 16px;text-align:left}
+.kpi small{display:block;font-size:12.5px;color:rgba(255,255,255,.82);margin-bottom:4px}
+.kpi strong{display:block;font-size:24px;line-height:1.2;font-weight:800}
+.studio-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:22px;align-items:start}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 12px}
+.sec-head h2{font-size:17px;font-weight:800;margin:0}
+.sec-head span{font-size:13px;color:var(--muted)}
+.teach-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:24px}
+a.tile{display:flex;align-items:flex-start;gap:14px;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+a.tile:hover{transform:translateY(-2px);border-color:#d89ea3;box-shadow:0 14px 32px rgba(168,16,28,.10)}
+.ico{flex:0 0 44px;height:44px;border-radius:13px;display:grid;place-items:center;font-size:20px;font-weight:800}
+.ico.red{background:#fdecec;color:#a8101c}
+.ico.amber{background:#fef3e2;color:#b45309}
+.ico.blue{background:#eaf2ff;color:#1d4ed8}
+.ico.green{background:#e8f8f0;color:#0b8f5a}
+.ico.purple{background:#f3ecff;color:#6d28d9}
+.ico.slate{background:#eef1f6;color:#334155}
+.tile-body{min-width:0;flex:1}
+.tile-body b{display:block;font-size:16px;font-weight:800;margin-bottom:3px}
+.tile-body span{display:block;color:var(--muted);font-size:13.5px;line-height:1.45}
+.tile-arrow{color:#c0b2aa;font-size:18px;font-weight:700;align-self:center}
+a.tile:hover .tile-arrow{color:var(--brand)}
+.manage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.manage-grid a.tile{flex-direction:column;gap:10px;padding:16px}
+.manage-grid .tile-arrow{display:none}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:var(--shadow)}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.card-head h2{font-size:16px;font-weight:800;margin:0}
+.pill{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--brand-soft);color:var(--brand)}
+.step{display:flex;gap:12px;align-items:flex-start;padding:13px 0;border-bottom:1px dashed var(--line)}
+.step:last-child{border-bottom:0;padding-bottom:2px}
+.dot{flex:0 0 26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12.5px;font-weight:800;background:#fdecec;color:var(--brand);margin-top:2px}
+.dot.ok{background:var(--ok-soft);color:var(--ok)}
+.step-main{min-width:0;flex:1}
+.t{font-weight:700;font-size:14.5px}.d{color:var(--muted);font-size:13px;margin-top:2px}
+a.go{margin-left:auto;white-space:nowrap;text-decoration:none;background:var(--brand);color:#fff;border-radius:10px;padding:6px 12px;font-weight:700;font-size:13px;align-self:flex-start}
+a.go.plain{background:#f5efe9;color:var(--ink)}
+a.go.plain:hover{background:var(--brand-soft);color:var(--brand)}
 form.build{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
-form.build button{border:0;border-radius:10px;padding:9px 14px;font:inherit;font-weight:700;background:var(--brand);color:#fff;cursor:pointer}
-form.build button.alt{background:#eef2fa;color:var(--brand)}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-@media(max-width:560px){.grid{grid-template-columns:1fr}}
-a.tile{display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
-a.tile b{display:block;font-size:16px}a.tile span{color:var(--muted);font-size:13px}
-.foot-links{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:16px;padding-top:12px;border-top:1px solid var(--line);font-size:13.5px}
-.foot-links a,.foot-links button{color:var(--muted);text-decoration:none;background:none;border:0;padding:4px 0;font:inherit;cursor:pointer}
-.foot-links a:hover,.foot-links button:hover{color:var(--brand)}
-</style></head><body><main>
+form.build button{border:0;border-radius:10px;padding:8px 12px;font:inherit;font-size:13px;font-weight:700;background:var(--brand);color:#fff;cursor:pointer}
+form.build button.alt{background:#f5efe9;color:var(--brand)}
+@media(max-width:960px){.studio-grid{grid-template-columns:1fr}.manage-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.topbar-in{padding:10px 14px}main{padding:16px 14px 48px}.hero{padding:20px 18px}.hero h1{font-size:23px}.kpi-row{grid-template-columns:repeat(3,minmax(0,1fr));width:100%}.teach-grid,.manage-grid{grid-template-columns:1fr}}
+</style></head><body>
+<header class="topbar"><div class="topbar-in">
+<a class="brand-box" href="/start"><span class="brand-mark">长</span><span class="brand-name">长缨辅学</span><span class="brand-badge">个人免费版</span></a>
+<nav class="top-nav">
+<a href="/v1/workspace?view=all">全部功能</a>
+<a href="/v1/training">实操沙盒</a>
+<a href="/v1/tool?page=account">修改密码</a>
+<button type="button" id="cy-logout">退出登录</button>
+</nav>
+</div></header>
+<main>
+<section class="hero">
+<div class="hero-left">
+<span class="hero-tag">个人工作室 · 独立教师专属</span>
 <h1 id="cy-title">$title</h1>
 <p class="sub" id="cy-subtitle">$subtitle</p>
-<div class="card">
-<div class="step"><div class="dot $s1cls" id="cy-s1dot">1</div><div><div class="t">添加我的学生</div><div class="d" id="cy-s1text">$s1text</div></div><a class="go $s1a" id="cy-s1link" href="$s1url">$s1label</a></div>
-<div class="step"><div class="dot $s2cls" id="cy-s2dot">2</div><div><div class="t">填写自己的 AI Key</div><div class="d" id="cy-s2text">$s2text</div></div><a class="go $s2a" id="cy-s2link" href="$s2url">$s2label</a></div>
-<div class="step"><div class="dot $s3cls" id="cy-s3dot">3</div><div><div class="t">准备并上第一节课</div><div class="d" id="cy-s3text">$s3text</div>$s3action<div class="d" id="cy-build-msg" hidden style="margin-top:8px;color:#b91c1c"></div></div><a class="go $s3a" id="cy-s3link" href="$s3url">$s3label</a></div>
+<div class="hero-cta">
+<a class="primary" href="/v1/weekend-plan">进入周末课备课 →</a>
+<a class="ghost" href="/v1/weekend">开始上课</a>
+</div>
+</div>
+<div class="kpi-row">
+<div class="kpi"><small>我的学生</small><strong id="cy-kpi-students">$students</strong></div>
+<div class="kpi"><small>课程方案</small><strong id="cy-kpi-lessons">$lessons</strong></div>
+<div class="kpi"><small>AI 助手</small><strong id="cy-kpi-ai">$ai_label</strong></div>
+</div>
+</section>
+<div class="studio-grid">
+<div>
+<div class="sec-head"><h2>日常教学</h2><span>点击直接进入真实教学流程</span></div>
+<div class="teach-grid">
+<a class="tile" href="/v1/weekend-plan"><span class="ico red">备</span><div class="tile-body"><b>周末课备课</b><span>导入教案、审核习题、配互动课件</span></div><span class="tile-arrow">›</span></a>
+<a class="tile" href="/v1/weekend"><span class="ico amber">课</span><div class="tile-body"><b>上课</b><span>课堂控制、大屏讲解、随堂练习</span></div><span class="tile-arrow">›</span></a>
+<a class="tile" href="/v1/homework"><span class="ico blue">托</span><div class="tile-body"><b>晚托作业</b><span>发作业清单、拍题引导、生成巩固</span></div><span class="tile-arrow">›</span></a>
+<a class="tile" href="/v1/knowledge-map"><span class="ico green">图</span><div class="tile-body"><b>知识地图</b><span>全班薄弱点一览、一键布置巩固</span></div><span class="tile-arrow">›</span></a>
+</div>
+<div class="sec-head"><h2>工作室管理</h2><span>学生名单、家长联系与自有 AI 配置</span></div>
+<div class="manage-grid">
+<a class="tile" href="/v1/tool?page=classes"><span class="ico slate">生</span><div class="tile-body"><b>我的学生名单</b><span>直接添加学生，不用先建班</span></div></a>
+<a class="tile" href="/parent-accounts"><span class="ico purple">家</span><div class="tile-body"><b>家长账号与 AI 授权</b><span>建家长号、绑孩子、发 AI 授权链接</span></div></a>
+<a class="tile" href="/teacher/ai-settings"><span class="ico red">AI</span><div class="tile-body"><b>我的 AI 设置</b><span>选协议、填 Key、测试或暂停 AI</span></div></a>
+</div>
+</div>
+<aside class="card">
+<div class="card-head"><h2>开课准备</h2><span class="pill" id="cy-progress">$progress</span></div>
+<div class="step"><div class="dot $s1cls" id="cy-s1dot">1</div><div class="step-main"><div class="t">添加我的学生</div><div class="d" id="cy-s1text">$s1text</div></div><a class="go $s1a" id="cy-s1link" href="$s1url">$s1label</a></div>
+<div class="step"><div class="dot $s2cls" id="cy-s2dot">2</div><div class="step-main"><div class="t">填写自己的 AI Key</div><div class="d" id="cy-s2text">$s2text</div></div><a class="go $s2a" id="cy-s2link" href="$s2url">$s2label</a></div>
+<div class="step"><div class="dot $s3cls" id="cy-s3dot">3</div><div class="step-main"><div class="t">准备并上第一节课</div><div class="d" id="cy-s3text">$s3text</div>$s3action<div class="d" id="cy-build-msg" hidden style="margin-top:8px;color:#b91c1c"></div></div><a class="go $s3a" id="cy-s3link" href="$s3url">$s3label</a></div>
 <div class="d" id="cy-link-msg" hidden style="margin-top:10px;color:#b91c1c"></div>
-</div>
-<div class="grid">
-<a class="tile" href="/v1/weekend-plan"><b>周末课备课</b><span>导入教案、审习题、配课件</span></a>
-<a class="tile" href="/v1/weekend"><b>上课</b><span>开课、大屏、随堂练习</span></a>
-<a class="tile" href="/v1/homework"><b>晚托作业</b><span>学生拍题求助、生成巩固</span></a>
-<a class="tile" href="/v1/knowledge-map"><b>知识地图</b><span>哪里薄弱、一键布置</span></a>
-<a class="tile" href="/parent-accounts"><b>家长账号与 AI 授权</b><span>建家长号、绑孩子、发 AI 授权链接</span></a>
-</div>
-<div class="foot-links">
-<a href="/v1/workspace?view=all">全部功能</a>
-<a href="/v1/tool?page=account">修改密码</a>
-<a href="/v1/training">实操沙盒</a>
-<button type="button" id="cy-logout">退出登录</button>
+</aside>
 </div>
 </main></body></html>"""
 
@@ -5004,6 +5083,7 @@ def personal_start(request:Request,authorization:Optional[str]=Header(default=No
 
 PERSONAL_START_BLANK=dict(
     title="我的工作室",subtitle="个人免费版 · 一个账号就是一间工作室",
+    students="0",lessons="0",ai_label="待配置",progress="已完成 0/3",
     s1cls="",s1text="先把要带的学生加进来，1-2 个也行",s1url="/v1/tool?page=classes",s1label="去添加",s1a="",
     s2cls="",s2text="填模型地址、模型名和 Key；不填也能手工写教案",s2url="/teacher/ai-settings",s2label="去填写",s2a="",
     s3cls="",s3text="先建课程方案，再导入教案、审习题、上课",s3url="/v1/tool?page=teaching",s3label="去准备",s3a="",
@@ -5024,10 +5104,13 @@ def personal_start_state(db,u):
     lessons=db.scalar(select(func.count()).select_from(TeachingLesson).where(TeachingLesson.school_id==u.school_id)) if program else 0
     existing_subjects=set(db.scalars(select(TeachingLesson.subject).where(TeachingLesson.school_id==u.school_id).distinct()).all()) if program else set()
     missing_subjects=[s for s in DEFAULT_COURSE_SUBJECTS if s not in existing_subjects]
+    done_count=int(bool(students))+int(ai_ready)+int(bool(program and lessons))
     return {
         "title":(school.name if school else "我的工作室"),
         "subtitle":f"{u.name} · 个人免费版 · 一个账号就是一间工作室",
         "students":int(students),"ai_ready":ai_ready,
+        "ai_label":("已启用" if ai_ready else "待配置"),
+        "progress":f"已完成 {done_count}/3",
         "has_program":bool(program),"lessons":int(lessons or 0),
         "missingSubjects":missing_subjects,
         "s1cls":("ok" if students else ""),"s1text":(f"已经有 {students} 名学生" if students else "还没有学生，先加 1-2 个试试"),
