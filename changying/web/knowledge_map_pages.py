@@ -439,7 +439,7 @@ function kmClassLoad(cid,out){
   out.textContent='';out.appendChild(el('p',{class:'muted',text:'正在计算…'}));
   api('/teacher/knowledge-maps/'+KM.id+'/classes/'+cid).then(function(d){
     out.textContent='';var L=d.masteryLabels;
-    out.appendChild(el('p',{class:'muted',text:'按已发布的知识地图计算：只看每道已分档题目的第一次作答，基础 1、中等 1.5、提高 2 加权；不足 3 题为证据不足，3—4 题为初步，5 题及以上可信。单元一栏把该单元所有题目合并计算。'}));
+    out.appendChild(el('p',{class:'muted',text:'左侧掌握度按已发布地图中已分档题目的第一次作答计算：基础 1、中等 1.5、提高 2 加权；不足 3 题为证据不足，3—4 题为初步，5 题及以上可信。单元一栏合并该单元地图题。右侧跨场景记录只供回看，不直接改变掌握度。'}));
     if(!d.students.length){out.appendChild(el('p',{text:'这个班还没有学生。'}));return}
     var head=el('tr',{},el('th',{text:'学生'}),el('th',{text:'入门诊断'}));
     d.units.forEach(function(u){head.appendChild(el('th',{text:u.name}))});
