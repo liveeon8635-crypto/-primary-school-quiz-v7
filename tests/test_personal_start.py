@@ -210,3 +210,85 @@ def test_start_stages_the_classic_handoff_before_leaving(client):
     r = client.post("/v1/auth-handoff", headers=headers)
     assert r.status_code == 200
     assert "cy_v1_auth_handoff" in ";".join(r.headers.get_list("set-cookie"))
+
+
+def _login_user(client, username, password=PASSWORD):
+    r = client.post("/login", json={"username": username, "password": password})
+    assert r.status_code == 200, r.text[:300]
+    data = r.json()
+    headers = {"Authorization": "Bearer " + data["token"]}
+    if data.get("mustChangePassword"):
+        assert client.post(
+            "/change-password",
+            json={"current_password": password, "new_password": CHANGED},
+            headers=headers,
+        ).status_code == 200
+        r = client.post("/login", json={"username": username, "password": CHANGED})
+        assert r.status_code == 200, r.text[:300]
+        data = r.json()
+        headers = {"Authorization": "Bearer " + data["token"]}
+    return r, headers, data
+
+
+def test_personal_student_and_parent_cannot_escalate_or_get_personal_home_cookie(client):
+    """Students and parents inside a personal workspace must keep their own role
+    and home page, never act as teacher/admin or receive cy_personal_home=1."""
+    teacher_headers = _personal_workspace(client)
+    tag = uuid.uuid4().hex[:8]
+    stu_username = f"pstu-{tag}"
+    par_username = f"ppar-{tag}"
+
+    stu_res = client.post(
+        "/teacher/students",
+        headers=teacher_headers,
+        json={"name": "测试学生", "username": stu_username, "password": PASSWORD, "grade": 5},
+    )
+    assert stu_res.status_code == 200, stu_res.text[:300]
+
+    par_res = client.post(
+        "/admin/users",
+        headers=teacher_headers,
+        json={"name": "测试家长", "username": par_username, "password": PASSWORD, "role": "parent"},
+    )
+    assert par_res.status_code == 200, par_res.text[:300]
+
+    # Personal teacher DOES get cy_personal_home=1 and it is readable by personal-home.js (not HttpOnly).
+    teacher_sess = client.get("/session", headers=teacher_headers)
+    assert teacher_sess.status_code == 200
+    teacher_cookies = ";".join(teacher_sess.headers.get_list("set-cookie"))
+    assert "cy_personal_home=1" in teacher_cookies
+    assert "httponly" not in teacher_cookies.lower()
+
+    for username, expected_role in ((stu_username, "student"), (par_username, "parent")):
+        login_res, headers, payload = _login_user(client, username)
+        assert payload["role"] == expected_role
+        login_cookies = ";".join(login_res.headers.get_list("set-cookie"))
+        assert "cy_personal_home=1" not in login_cookies
+        assert "cy_personal_home=" in login_cookies  # explicitly cleared
+
+        sess_res = client.get("/session", headers=headers)
+        assert sess_res.status_code == 200
+        assert sess_res.json()["role"] == expected_role
+        sess_cookies = ";".join(sess_res.headers.get_list("set-cookie"))
+        assert "cy_personal_home=1" not in sess_cookies
+
+        # /start must not expose teacher studio student counts to student/parent
+        start_page = client.get("/start", headers=headers).text
+        assert "已经有 1 名学生" not in start_page
+
+        # All teacher/admin/personal endpoints must reject student/parent with 403
+        assert client.get("/start/summary", headers=headers).status_code == 403
+        assert client.post("/start/program", headers=headers, data={"subject": "数学"}, follow_redirects=False).status_code == 403
+        assert client.get("/teacher/ai-config", headers=headers).status_code == 403
+        assert client.put(
+            "/teacher/ai-config",
+            headers=headers,
+            json={"provider": "openai_responses", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini", "api_key": "sk-bad", "enabled": True},
+        ).status_code == 403
+        assert client.get("/teacher/classes", headers=headers).status_code == 403
+        assert client.get("/teacher/parents", headers=headers).status_code == 403
+        assert client.post(
+            "/admin/users",
+            headers=headers,
+            json={"name": "越权用户", "username": f"esc-{uuid.uuid4().hex[:8]}", "password": PASSWORD, "role": "parent"},
+        ).status_code == 403
