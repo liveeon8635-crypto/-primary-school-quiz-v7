@@ -1028,8 +1028,8 @@ def need(u,*roles):
     if acting_role(u,*roles) not in roles: raise HTTPException(403,"无权限")
 
 def is_personal_workspace_user(u):
-    """True for the single account of a personal workspace (its admin also teaches)."""
-    return bool(getattr(u,"school_individual",False))
+    """True for the single owner account of a personal workspace (teacher/admin), never students or parents."""
+    return bool(getattr(u,"school_individual",False)) and getattr(u,"role",None) in ("teacher","admin")
 
 # ---------------- Schemas ----------------
 class SubscriptionUpdateBody(BaseModel):
@@ -5557,8 +5557,8 @@ def login(b:LoginBody,request:Request,response:Response,db:Session=Depends(get_d
     sec.failed_login_count=0
     sec.locked_until=None
     db.commit()
-    if is_individual_school(db,u.school_id):
-        response.set_cookie(PERSONAL_HOME_COOKIE,"1",max_age=60*60*24*30,httponly=True,samesite="lax",secure=True,path="/")
+    if is_individual_school(db,u.school_id) and u.role in ("teacher","admin"):
+        response.set_cookie(PERSONAL_HOME_COOKIE,"1",max_age=60*60*24*30,httponly=False,samesite="lax",secure=True,path="/")
     else:
         response.delete_cookie(PERSONAL_HOME_COOKIE,path="/")
     return {
@@ -5571,8 +5571,8 @@ def login(b:LoginBody,request:Request,response:Response,db:Session=Depends(get_d
 @app.get("/session")
 def session_status(response:Response,u:User=Depends(authenticated_user),db:Session=Depends(get_db)):
     sec=security_for(db,u)
-    if is_individual_school(db,u.school_id):
-        response.set_cookie(PERSONAL_HOME_COOKIE,"1",max_age=60*60*24*30,httponly=True,samesite="lax",secure=True,path="/")
+    if is_individual_school(db,u.school_id) and u.role in ("teacher","admin"):
+        response.set_cookie(PERSONAL_HOME_COOKIE,"1",max_age=60*60*24*30,httponly=False,samesite="lax",secure=True,path="/")
     else:
         response.delete_cookie(PERSONAL_HOME_COOKIE,path="/")
     return {
