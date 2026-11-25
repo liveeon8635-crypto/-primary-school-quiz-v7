@@ -452,6 +452,14 @@ def test_training_tours_cover_weekend_knowledge_map_and_exam_prep_for_every_role
     assert s.progress["teacher_weekend_plan"] == "done"
 
 
+def test_evidence_tour_distinguishes_sandbox_results_from_map_mastery():
+    teacher_flow = {step['id']: step for step in ROLE_FLOW['teacher']}
+    assert teacher_flow['evidence']['title'] == '普通作业结果与学习证据回流'
+    assert '不模拟周末课或地图掌握度' in STEP_RELATIONSHIPS['evidence']['communication_tip']
+    assert '不直接改变地图掌握度' in STEP_RELATIONSHIPS['teacher_knowledge_class']['communication_tip']
+    assert '不会直接改变地图颜色' in STEP_RELATIONSHIPS['student_knowledge_map']['communication_tip']
+
+
 TOUR_ROUTES = r'''
 with TestClient(app) as client:
     from changying.web.v1_training_sandbox import ROLE_FLOW

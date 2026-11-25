@@ -16,8 +16,9 @@ def test_patch_is_optional_and_fact_only():
     assert "if(!e)return '';" in html
     assert "标准化学习证据" in html
     assert "只展示已记录事实" in html
-    assert "masteryInferred 固定为 false" in html
-    assert "教师端保留来源标识以便追溯" in html
+    assert "不会直接改变知识地图掌握度" in html
+    assert "地图掌握度按地图题的首次作答计算" in html
+    assert "masteryInferred 固定为 false" not in html
     assert "可追溯" in html
     assert "sourceId" in html
     assert "slice(0,12)" in html
@@ -59,6 +60,22 @@ def test_production_v1_html_contains_valid_optional_evidence_view():
         timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_real_role_pages_keep_evidence_and_mastery_distinct(monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import app
+
+    monkeypatch.setenv('KNOWLEDGE_MAP', '1')
+    with TestClient(app) as client:
+        profile = client.get('/v1/student')
+        map_page = client.get('/v1/knowledge-map')
+        training = client.get('/v1/training')
+    assert profile.status_code == map_page.status_code == training.status_code == 200
+    assert '这些记录仅供参考，不会直接改变知识地图掌握度' in profile.text
+    assert '右侧跨场景记录只供回看，不直接改变掌握度' in map_page.text
+    assert '这份作业结果只在沙盒里，不会进入正式档案或地图掌握度' in training.text
+    assert '沙盒不模拟这个模块' in training.text
 
 
 def test_patch_is_idempotent():
