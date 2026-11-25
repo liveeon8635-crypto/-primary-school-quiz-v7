@@ -125,3 +125,32 @@ def test_personal_workspace_cannot_create_a_second_teacher(client):
         json={"name": "另一位老师", "username": f"t-{uuid.uuid4().hex[:8]}", "password": PASSWORD, "role": "teacher"},
     )
     assert r.status_code == 400
+
+
+def test_parent_accounts_page_supports_all_classes_and_guardian_ai_consent_flow(client):
+    page = client.get("/parent-accounts").text
+    assert "state.classes" in page
+    assert "cls[0].id" not in page
+    for marker in ("/ai-consent", "/ai-consent/token", "/ai-consent/revoke", "/parent/ai-consent-confirm"):
+        assert marker in page
+
+    headers = _workspace(client)
+    stu = client.post(
+        "/teacher/students",
+        headers=headers,
+        json={"name": "小红", "username": f"stu-{uuid.uuid4().hex[:8]}", "password": PASSWORD, "grade": 6},
+    )
+    assert stu.status_code == 200
+    sid = stu.json()["id"]
+
+    tok_res = client.post(
+        f"/teacher/students/{sid}/ai-consent/token",
+        headers=headers,
+        json={"scope": "student_ai_all"},
+    )
+    assert tok_res.status_code == 200, tok_res.text[:300]
+    assert tok_res.json().get("token")
+
+    status_res = client.get(f"/teacher/students/{sid}/ai-consent", headers=headers)
+    assert status_res.status_code == 200
+    assert isinstance(status_res.json().get("consents"), list)

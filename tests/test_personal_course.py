@@ -74,7 +74,8 @@ def test_start_offers_course_buttons_then_builds_one(client):
 
     page = client.get("/start", headers=headers).text
     assert "已有课程方案（18 节课）" in page
-    assert 'action="/start/program"' not in page
+    assert 'value="数学"' not in page
+    assert 'value="语文"' in page
 
     # 备课页 now has a program to work with.
     assert client.get("/v1/weekend-plan", headers=headers).status_code == 200
@@ -83,6 +84,13 @@ def test_start_offers_course_buttons_then_builds_one(client):
     r = client.post("/start/program", headers=headers, data={"subject": "数学"}, follow_redirects=False)
     assert r.status_code == 303
     assert "已有课程方案（18 节课）" in client.get("/start", headers=headers).text
+
+    # Building the remaining subject removes the one-click course form completely.
+    r = client.post("/start/program", headers=headers, data={"subject": "语文"}, follow_redirects=False)
+    assert r.status_code == 303
+    page = client.get("/start", headers=headers).text
+    assert "已有课程方案（36 节课）" in page
+    assert 'action="/start/program"' not in page
 
 
 def test_one_click_course_is_not_reported_as_already_prepared(client):

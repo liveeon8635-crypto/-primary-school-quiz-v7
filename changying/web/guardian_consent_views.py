@@ -100,6 +100,8 @@ a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:no
 <div class="actions">
 <button class="primary" id="cy-save">保存</button>
 <button class="plain" id="cy-test">测试连接</button>
+<button class="plain" id="cy-disable" hidden>暂停 AI</button>
+<button class="plain" id="cy-clear-key" hidden>清除已保存 Key</button>
 </div>
 <div id="cy-msg" class="status"></div>
 </div>
@@ -132,32 +134,50 @@ a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:no
     el('cy-model').value=d.configuredModel||d.model||'';
     if(el('cy-allow-student'))el('cy-allow-student').checked=!!d.allowStudentData;
     hasKey=!!d.hasKey;
+    if(el('cy-disable'))el('cy-disable').hidden=!d.enabled;
+    if(el('cy-clear-key'))el('cy-clear-key').hidden=!hasKey;
     if(d.configured&&d.enabled){
       el('cy-key').placeholder='已保存，留空表示不修改';
       setStatus('已配置并启用（协议：'+currentProvider+'，Key 末四位 '+(d.keyLast4||'****')+'），可点「测试连接」。','ok');
     }else if(hasKey){
       el('cy-key').placeholder='已保存，留空表示不修改';
-      setStatus('已保存 Key（末四位 '+(d.keyLast4||'****')+'），但尚未启用或缺少模型名。','');
+      setStatus('已保存 Key（末四位 '+(d.keyLast4||'****')+'），当前已暂停或缺少模型名。','');
     }else{
+      el('cy-key').placeholder='粘贴你的 Key';
       setStatus('未配置：请填写模型地址、模型名和 API Key。','');
     }
   }
   send('GET','/teacher/ai-config',null,function(s,d){
     if(s===200)apply(d);else setStatus((d&&d.detail)||'读取失败，请刷新重试','err');
   });
-  el('cy-save').onclick=function(){
+  function saveConfig(enabled,clearKey,okText){
     var prov=(el('cy-provider')?el('cy-provider').value:currentProvider)||currentProvider||'openai_responses';
     var allowStudent=!!(el('cy-allow-student')&&el('cy-allow-student').checked);
-    var body={provider:prov,base_url:el('cy-base').value.trim(),model:el('cy-model').value.trim(),api_key:el('cy-key').value.trim(),enabled:true,allow_student_data:allowStudent,clear_api_key:false};
-    if(!body.model){msg('请先填写模型名','err');return}
-    if(!body.api_key&&!hasKey){msg('请填写 API Key','err');return}
-    el('cy-save').disabled=true;msg('正在保存…','');
+    var body={provider:prov,base_url:el('cy-base').value.trim(),model:el('cy-model').value.trim(),api_key:(clearKey?'':el('cy-key').value.trim()),enabled:enabled,allow_student_data:allowStudent,clear_api_key:clearKey};
+    if(enabled&&!body.model){msg('请先填写模型名','err');return}
+    if(enabled&&!body.api_key&&!hasKey){msg('请填写 API Key','err');return}
+    el('cy-save').disabled=true;
+    if(el('cy-disable'))el('cy-disable').disabled=true;
+    if(el('cy-clear-key'))el('cy-clear-key').disabled=true;
+    msg('正在保存…','');
     send('PUT','/teacher/ai-config',body,function(s,d){
       el('cy-save').disabled=false;
-      if(s===200){el('cy-key').value='';msg('已保存，可以点「测试连接」确认能不能用。','ok');if(d&&d.config)apply(d.config)}
+      if(el('cy-disable'))el('cy-disable').disabled=false;
+      if(el('cy-clear-key'))el('cy-clear-key').disabled=false;
+      if(s===200){el('cy-key').value='';msg(okText,'ok');if(d&&d.config)apply(d.config)}
       else{msg((d&&d.detail)||'保存失败，请重试','err')}
     });
-  };
+  }
+  el('cy-save').onclick=function(){saveConfig(true,false,'已保存，可以点「测试连接」确认能不能用。')};
+  if(el('cy-disable')){
+    el('cy-disable').onclick=function(){saveConfig(false,false,'已暂停 AI（已保存的 Key 保留，需要时点「保存」重新启用）。')};
+  }
+  if(el('cy-clear-key')){
+    el('cy-clear-key').onclick=function(){
+      if(!window.confirm('确定清除已保存的 API Key 并停用 AI 吗？'))return;
+      saveConfig(false,true,'已清除 API Key 并停用 AI。');
+    };
+  }
   el('cy-test').onclick=function(){
     el('cy-test').disabled=true;msg('正在连接…','');
     send('POST','/teacher/ai-test',{},function(s,d){

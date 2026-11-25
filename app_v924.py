@@ -4822,23 +4822,37 @@ code{background:#f4f6fb;border-radius:6px;padding:2px 6px;font-size:17px;font-we
 })();
 </script></body></html>"""
 
-DEFAULT_COURSE_FORM=(
-    '<form class="build" id="cy-build" method="post" action="/start/program">'
-    '<button type="submit" name="subject" value="数学">建数学课（18 节）</button>'
-    '<button type="submit" name="subject" value="语文" class="alt">建语文课（18 节）</button>'
-    '</form>'
-)
 DEFAULT_COURSE_LESSONS=18
 DEFAULT_COURSE_SUBJECTS=("数学","语文")
+
+def _default_course_form(missing_subjects=None):
+    subs=DEFAULT_COURSE_SUBJECTS if missing_subjects is None else [s for s in DEFAULT_COURSE_SUBJECTS if s in missing_subjects]
+    if not subs:return ""
+    btns=[]
+    for idx,s in enumerate(subs):
+        cls=' class="alt"' if idx>0 else ''
+        btns.append(f'<button type="submit" name="subject" value="{s}"{cls}>建{s}课（{DEFAULT_COURSE_LESSONS} 节）</button>')
+    return '<form class="build" id="cy-build" method="post" action="/start/program">'+"".join(btns)+'</form>'
+
+DEFAULT_COURSE_FORM=_default_course_form()
 
 # Browsers open /start without an Authorization header, so the page refreshes its
 # own state and posts the course form with the stored token. Kept as a plain ES5
 # script (no arrow functions, no template strings) for the iOS 12 iPad.
 PERSONAL_START_SCRIPT = """<script>
 (function(){
+  function el(id){return document.getElementById(id)}
+  var logoutBtn=el('cy-logout');
+  if(logoutBtn){
+    logoutBtn.addEventListener('click',function(){
+      try{localStorage.removeItem('v717Token');localStorage.removeItem('v717User')}catch(e){}
+      try{sessionStorage.removeItem('v717Token');sessionStorage.removeItem('v717User')}catch(e){}
+      document.cookie='cy_personal_home=; Max-Age=0; path=/; SameSite=Lax';
+      window.location.href='/v1';
+    });
+  }
   function token(){try{return localStorage.getItem('v717Token')||sessionStorage.getItem('v717Token')||''}catch(e){return ''}}
   var t=token();if(!t)return;
-  function el(id){return document.getElementById(id)}
   function setText(id,v){var e=el(id);if(e&&typeof v==='string')e.textContent=v}
   function setDot(id,ok){var e=el(id);if(e)e.className='dot'+(ok?' ok':'')}
   function setLink(id,href,label,plain){var a=el(id);if(!a)return;if(typeof href==='string'&&href)a.setAttribute('href',href);if(typeof label==='string')a.textContent=label;a.className='go'+(plain?' plain':'')}
@@ -4848,7 +4862,15 @@ PERSONAL_START_SCRIPT = """<script>
     setDot('cy-s2dot',d.s2cls==='ok');setText('cy-s2text',d.s2text);setLink('cy-s2link',d.s2url,d.s2label,d.s2a==='plain');
     setDot('cy-s3dot',d.s3cls==='ok');setText('cy-s3text',d.s3text);setLink('cy-s3link',d.s3url,d.s3label,d.s3a==='plain');
     var f=el('cy-build');
-    if(f&&d.s3cls==='ok'&&f.parentNode)f.parentNode.removeChild(f);
+    if(f&&d.missingSubjects&&d.missingSubjects.length===0&&f.parentNode){f.parentNode.removeChild(f);}
+    else if(f&&d.missingSubjects){
+      var bs=f.querySelectorAll('button[name=subject]');
+      for(var i=0;i<bs.length;i++){
+        var keep=false;
+        for(var j=0;j<d.missingSubjects.length;j++){if(d.missingSubjects[j]===bs[i].value){keep=true;break}}
+        if(!keep&&bs[i].parentNode)bs[i].parentNode.removeChild(bs[i]);
+      }
+    }
   }
   var x=new XMLHttpRequest();
   x.open('GET','/start/summary',true);
@@ -4930,6 +4952,9 @@ form.build button.alt{background:#eef2fa;color:var(--brand)}
 @media(max-width:560px){.grid{grid-template-columns:1fr}}
 a.tile{display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
 a.tile b{display:block;font-size:16px}a.tile span{color:var(--muted);font-size:13px}
+.foot-links{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:16px;padding-top:12px;border-top:1px solid var(--line);font-size:13.5px}
+.foot-links a,.foot-links button{color:var(--muted);text-decoration:none;background:none;border:0;padding:4px 0;font:inherit;cursor:pointer}
+.foot-links a:hover,.foot-links button:hover{color:var(--brand)}
 </style></head><body><main>
 <h1 id="cy-title">$title</h1>
 <p class="sub" id="cy-subtitle">$subtitle</p>
@@ -4944,7 +4969,13 @@ a.tile b{display:block;font-size:16px}a.tile span{color:var(--muted);font-size:1
 <a class="tile" href="/v1/weekend"><b>上课</b><span>开课、大屏、随堂练习</span></a>
 <a class="tile" href="/v1/homework"><b>晚托作业</b><span>学生拍题求助、生成巩固</span></a>
 <a class="tile" href="/v1/knowledge-map"><b>知识地图</b><span>哪里薄弱、一键布置</span></a>
-<a class="tile" href="/parent-accounts"><b>家长账号</b><span>给家长建登录账号，绑定到孩子</span></a>
+<a class="tile" href="/parent-accounts"><b>家长账号与 AI 授权</b><span>建家长号、绑孩子、发 AI 授权链接</span></a>
+</div>
+<div class="foot-links">
+<a href="/v1/workspace?view=all">全部功能</a>
+<a href="/v1/tool?page=account">修改密码</a>
+<a href="/v1/training">实操沙盒</a>
+<button type="button" id="cy-logout">退出登录</button>
 </div>
 </main></body></html>"""
 
@@ -4965,7 +4996,7 @@ def personal_start(request:Request,authorization:Optional[str]=Header(default=No
             if is_personal_workspace_user(u):
                 state=personal_start_state(db,u)
                 values.update(state)
-                values["s3action"]=("" if state["s3cls"]=="ok" else DEFAULT_COURSE_FORM)
+                values["s3action"]=_default_course_form(state.get("missingSubjects"))
         except HTTPException:
             pass
     html=Template(PERSONAL_START_HTML).substitute(**values).replace("</body>",PERSONAL_START_SCRIPT+"</body>")
@@ -4991,11 +5022,14 @@ def personal_start_state(db,u):
     ai_ready=bool(cfg and cfg.enabled and cfg.model)
     program=db.scalar(select(TeachingProgram).where(TeachingProgram.school_id==u.school_id).order_by(TeachingProgram.active.desc(),TeachingProgram.id.desc()).limit(1))
     lessons=db.scalar(select(func.count()).select_from(TeachingLesson).where(TeachingLesson.school_id==u.school_id)) if program else 0
+    existing_subjects=set(db.scalars(select(TeachingLesson.subject).where(TeachingLesson.school_id==u.school_id).distinct()).all()) if program else set()
+    missing_subjects=[s for s in DEFAULT_COURSE_SUBJECTS if s not in existing_subjects]
     return {
         "title":(school.name if school else "我的工作室"),
         "subtitle":f"{u.name} · 个人免费版 · 一个账号就是一间工作室",
         "students":int(students),"ai_ready":ai_ready,
         "has_program":bool(program),"lessons":int(lessons or 0),
+        "missingSubjects":missing_subjects,
         "s1cls":("ok" if students else ""),"s1text":(f"已经有 {students} 名学生" if students else "还没有学生，先加 1-2 个试试"),
         "s1url":"/v1/tool?page=classes","s1label":("查看" if students else "去添加"),"s1a":("plain" if students else ""),
         "s2cls":("ok" if ai_ready else ""),"s2text":("AI 已配置，可以生成教案和习题" if ai_ready else "填模型地址、模型名和 Key；不填也能手工写教案"),
@@ -5064,13 +5098,16 @@ button.small{padding:6px 10px;font-size:13px;border-radius:8px}
 button:disabled{opacity:.6;cursor:wait}
 .status{margin-top:14px;font-size:13.5px;line-height:1.6;color:var(--muted)}
 .status.ok{color:var(--ok)}.status.err{color:#b91c1c}
-.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line)}
+.row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px dashed var(--line);flex-wrap:wrap}
 .row:last-child{border-bottom:0}
 .row b{font-size:14.5px}.row small{display:block;color:var(--muted);font-size:12.5px}
+.row-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.consent-box{width:100%;margin-top:8px;padding:10px;border-radius:10px;background:#f8fafc;border:1px solid var(--line);font-size:12.5px;word-break:break-all}
+.consent-box code{display:block;margin:6px 0;padding:6px 8px;background:#fff;border:1px solid #dfe5ef;border-radius:8px;font-size:12px}
 a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:none;font-weight:700}
 </style></head><body><main>
-<h1>家长账号</h1>
-<p class="sub">给家长建一个登录账号，绑定到孩子。家长登录后只看得到自己孩子已发布的反馈。</p>
+<h1>家长账号与 AI 授权</h1>
+<p class="sub">给家长建登录账号、绑定孩子，并可为需要学生数据外发外部 AI 的孩子生成家长确认链接。家长登录后只看得到自己孩子已发布的反馈。</p>
 <div class="card">
 <div id="cy-status" class="status">正在读取…</div>
 <label for="cy-student">选择学生</label>
@@ -5115,13 +5152,14 @@ a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:no
     x.onerror=function(){cb(0,null)};
     x.send(body?JSON.stringify(body):null);
   }
-  var state={cid:null,students:[],parents:[]};
+  var state={classes:[],students:[],parents:[],consents:{},links:{}};
   function fillStudents(){
     var sel=el('cy-student');if(!sel)return;
     sel.innerHTML='';
     for(var i=0;i<state.students.length;i++){
       var o=document.createElement('option');o.value=String(state.students[i].id);
-      o.textContent=state.students[i].name+(state.students[i].parentName?('（家长：'+state.students[i].parentName+'）'):'（未绑定家长）');
+      var gradeTag=state.students[i].grade?(state.students[i].grade+'年级 · '):'';
+      o.textContent=gradeTag+state.students[i].name+(state.students[i].parentName?('（家长：'+state.students[i].parentName+'）'):'（未绑定家长）');
       sel.appendChild(o);
     }
   }
@@ -5135,6 +5173,46 @@ a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:no
     }
     if(!state.parents.length){var o2=document.createElement('option');o2.value='';o2.textContent='还没有家长账号，先在上面创建一个';sel.appendChild(o2)}
   }
+  function consentLabel(info){
+    if(!info)return 'AI 授权：读取中…';
+    var list=info.consents||[];
+    for(var i=0;i<list.length;i++){
+      if(list[i].status==='active')return 'AI 授权：已授权（有效至 '+(list[i].validUntil||'长期')+'）';
+    }
+    for(var j=0;j<list.length;j++){
+      if(list[j].status==='pending')return 'AI 授权：待家长确认';
+    }
+    if(list.length&&list[0].status==='revoked')return 'AI 授权：已撤回';
+    return 'AI 授权：未授权';
+  }
+  function hasActiveConsent(info){
+    if(!info||!info.consents)return false;
+    for(var i=0;i<info.consents.length;i++){if(info.consents[i].status==='active')return true}
+    return false;
+  }
+  function loadConsent(sid){
+    send('GET','/teacher/students/'+sid+'/ai-consent',null,function(s,d){
+      if(s===200&&d){state.consents[sid]=d;renderStudents()}
+    });
+  }
+  function createConsentLink(sid){
+    msg('正在生成监护人 AI 授权链接…','');
+    send('POST','/teacher/students/'+sid+'/ai-consent/token',{scope:'student_ai_all'},function(s,d){
+      if(s!==200||!d){msg((d&&d.detail)||'生成授权链接失败','err');return}
+      var tok=d.token||'';
+      var url=(window.location.origin||'')+'/parent/ai-consent-confirm?token='+encodeURIComponent(tok)+'&studentId='+encodeURIComponent(String(sid));
+      state.links[sid]={url:url,token:tok,expiresAt:d.expiresAt||''};
+      msg('已生成授权链接，请发给已绑定该孩子的家长确认。','ok');
+      loadConsent(sid);renderStudents();
+    });
+  }
+  function revokeConsent(sid){
+    if(!window.confirm('确定撤回该学生的监护人 AI 授权吗？撤回后将立即停止向外部 AI 发送该生数据。'))return;
+    send('POST','/teacher/students/'+sid+'/ai-consent/revoke',{reason:'teacher_ui_revoke'},function(s,d){
+      if(s===200){delete state.links[sid];msg('已撤回 AI 授权','ok');loadConsent(sid)}
+      else{msg((d&&d.detail)||'撤回失败，请重试','err')}
+    });
+  }
   function renderStudents(){
     var box=el('cy-students');if(!box)return;
     box.innerHTML='';
@@ -5142,13 +5220,37 @@ a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:no
     for(var i=0;i<state.students.length;i++){(function(s){
       var row=document.createElement('div');row.className='row';
       var left=document.createElement('div');
-      var b=document.createElement('b');b.textContent=s.name;
+      var b=document.createElement('b');b.textContent=s.name+(s.grade?('（'+s.grade+'年级）'):'');
       var sm=document.createElement('small');sm.textContent=s.parentName?('家长：'+s.parentName+(s.parentUsername?('（'+s.parentUsername+'）'):'')):'未绑定家长';
-      left.appendChild(b);left.appendChild(sm);row.appendChild(left);
+      var csm=document.createElement('small');csm.textContent=consentLabel(state.consents[s.id]);
+      left.appendChild(b);left.appendChild(sm);left.appendChild(csm);row.appendChild(left);
+      var acts=document.createElement('div');acts.className='row-actions';
+      var gen=document.createElement('button');gen.className='plain small';gen.textContent='生成 AI 授权链接';
+      gen.onclick=function(){createConsentLink(s.id)};
+      acts.appendChild(gen);
+      if(hasActiveConsent(state.consents[s.id])){
+        var rev=document.createElement('button');rev.className='plain small';rev.textContent='撤回 AI 授权';
+        rev.onclick=function(){revokeConsent(s.id)};
+        acts.appendChild(rev);
+      }
       if(s.parentID){
         var un=document.createElement('button');un.className='plain small';un.textContent='解绑';
         un.onclick=function(){bind(s.id,null)};
-        row.appendChild(un);
+        acts.appendChild(un);
+      }
+      row.appendChild(acts);
+      if(state.links[s.id]){
+        var lk=state.links[s.id];
+        var cbox=document.createElement('div');cbox.className='consent-box';
+        var tip=document.createElement('div');tip.textContent='请发给家长（须先用家长账号登录再打开确认）：';
+        var code=document.createElement('code');code.textContent=lk.url;
+        var cp=document.createElement('button');cp.className='plain small';cp.textContent='复制链接';
+        cp.onclick=function(){
+          if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(lk.url).then(function(){msg('授权链接已复制','ok')},function(){msg('请手动复制上方链接','err')})}
+          else{msg('请长按或手动复制上方链接','')}
+        };
+        cbox.appendChild(tip);cbox.appendChild(code);cbox.appendChild(cp);
+        row.appendChild(cbox);
       }
       box.appendChild(row);
     })(state.students[i])}
@@ -5180,18 +5282,35 @@ a.back{display:inline-block;margin-top:6px;color:var(--brand);text-decoration:no
     });
   }
   function loadStudents(){
-    if(!state.cid){setStatus('还没有学生名单。','err');return}
-    send('GET','/teacher/classes/'+state.cid+'/students',null,function(s,list){
-      state.students=(s===200&&list)?list:[];
-      fillStudents();renderStudents();
-      setStatus('共 '+state.students.length+' 名学生，'+state.parents.length+' 个家长账号。','');
-    });
+    if(!state.classes.length){setStatus('还没有学生名单。','err');return}
+    var pending=state.classes.length,byId={},merged=[];
+    for(var i=0;i<state.classes.length;i++){(function(clsItem){
+      send('GET','/teacher/classes/'+clsItem.id+'/students',null,function(s,list){
+        if(s===200&&list){
+          for(var j=0;j<list.length;j++){
+            var item=list[j];
+            if(!byId[item.id]){
+              byId[item.id]=true;
+              if(!item.grade&&clsItem.grade)item.grade=clsItem.grade;
+              merged.push(item);
+            }
+          }
+        }
+        pending-=1;
+        if(pending===0){
+          state.students=merged;
+          fillStudents();renderStudents();
+          setStatus('共 '+state.students.length+' 名学生（'+state.classes.length+' 份名单），'+state.parents.length+' 个家长账号。','');
+          for(var k=0;k<state.students.length;k++){loadConsent(state.students[k].id)}
+        }
+      });
+    })(state.classes[i])}
   }
   function load(){
     send('GET','/teacher/classes',null,function(s,cls){
       if(s!==200){setStatus((cls&&cls.detail)||'读取班级失败','err');return}
       if(!cls||!cls.length){setStatus('还没有学生名单，先在「班级学生」里加学生。','err');el('cy-create').disabled=true;el('cy-bind').disabled=true;return}
-      state.cid=cls[0].id;
+      state.classes=cls;
       loadParents();loadStudents();
     });
   }

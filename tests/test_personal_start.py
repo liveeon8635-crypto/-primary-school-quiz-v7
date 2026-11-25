@@ -292,3 +292,20 @@ def test_personal_student_and_parent_cannot_escalate_or_get_personal_home_cookie
             headers=headers,
             json={"name": "越权用户", "username": f"esc-{uuid.uuid4().hex[:8]}", "password": PASSWORD, "role": "parent"},
         ).status_code == 403
+
+
+def test_start_page_utility_links_and_valid_inline_scripts(client):
+    """Personal studio pages expose full-workspace/password/logout exits and ship valid ES5 JS."""
+    import re
+    import script_check
+
+    start_html = client.get("/start").text
+    for marker in ('href="/v1/workspace?view=all"', 'href="/v1/tool?page=account"', 'href="/v1/training"', 'id="cy-logout"'):
+        assert marker in start_html
+
+    for path in ("/start", "/parent-accounts", "/teacher/ai-settings"):
+        html = client.get(path).text
+        scripts = re.findall(r"<script>([\s\S]*?)</script>", html)
+        assert scripts, f"{path} must include an inline script"
+        for src in scripts:
+            script_check.assert_parses(src)
