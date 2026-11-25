@@ -115,7 +115,7 @@ def test_start_page_guides_three_steps(client):
     assert "AI 已配置" not in page
 
     # Doors to the real pages, not copies of them.
-    for href in ("/v1/weekend-plan", "/v1/weekend", "/v1/homework", "/v1/knowledge-map"):
+    for href in ("/v1/weekend-plan", "/v1/weekend", "/v1/homework", "/v1/knowledge-map", "/v1/exam-prep"):
         assert f'href="{href}"' in page
 
 

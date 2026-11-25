@@ -5022,8 +5022,8 @@ form.build button.alt{background:#f5efe9;color:var(--brand)}
 <h1 id="cy-title">$title</h1>
 <p class="sub" id="cy-subtitle">$subtitle</p>
 <div class="hero-cta">
-<a class="primary" href="/v1/weekend-plan">进入周末课备课 →</a>
-<a class="ghost" href="/v1/weekend">开始上课</a>
+<a class="primary" href="/v1/weekend-plan">进入周末课 →</a>
+<a class="ghost" href="/v1/weekend">直接进课堂</a>
 </div>
 </div>
 <div class="kpi-row">
@@ -5036,10 +5036,10 @@ form.build button.alt{background:#f5efe9;color:var(--brand)}
 <div>
 <div class="sec-head"><h2>日常教学</h2><span>点击直接进入真实教学流程</span></div>
 <div class="teach-grid">
-<a class="tile" href="/v1/weekend-plan"><span class="ico red">备</span><div class="tile-body"><b>周末课备课</b><span>导入教案、审核习题、配互动课件</span></div><span class="tile-arrow">›</span></a>
-<a class="tile" href="/v1/weekend"><span class="ico amber">课</span><div class="tile-body"><b>上课</b><span>课堂控制、大屏讲解、随堂练习</span></div><span class="tile-arrow">›</span></a>
+<a class="tile" href="/v1/weekend-plan"><span class="ico red">周</span><div class="tile-body"><b>周末课</b><span>备课、审习题、配课件与开课上课</span></div><span class="tile-arrow">›</span></a>
 <a class="tile" href="/v1/homework"><span class="ico blue">托</span><div class="tile-body"><b>晚托作业</b><span>发作业清单、拍题引导、生成巩固</span></div><span class="tile-arrow">›</span></a>
 <a class="tile" href="/v1/knowledge-map"><span class="ico green">图</span><div class="tile-body"><b>知识地图</b><span>全班薄弱点一览、一键布置巩固</span></div><span class="tile-arrow">›</span></a>
+<a class="tile" href="/v1/exam-prep"><span class="ico amber">考</span><div class="tile-body"><b>应试专项</b><span>考前摸底、失分点专项与再测提分</span></div><span class="tile-arrow">›</span></a>
 </div>
 <div class="sec-head"><h2>工作室管理</h2><span>学生名单、家长联系与自有 AI 配置</span></div>
 <div class="manage-grid">
