@@ -205,3 +205,84 @@ def writing_task_open(implementation, db, session):
     frozen=frozen_session(db,implementation,session.id)
     return bool(frozen and frozen['lesson'].get('writingPackage') and
                 frozen['lesson'].get('writingState',{}).get('taskOpened'))
+
+
+def writing_stage_slides(package, stage_no):
+    """Build native big-screen slide cards for a writing stage from the frozen package."""
+    if not isinstance(package, dict):
+        return []
+    title = str(package.get('title') or '作文课').strip()[:60]
+    confirmed = [n for n in package.get('nodes', []) if n.get('status') == 'confirmed']
+    stage = int(stage_no or 0)
+    slides = []
+
+    if stage == 1:
+        items = [str(n.get('text') or '').strip() for n in confirmed if n.get('role') == 'review' and str(n.get('text') or '').strip()]
+        if items:
+            slides.append({'heading': f'{title} · 点名与回顾', 'layout': 'standard', 'body': items[:12]})
+    elif stage == 2:
+        models = [n for n in confirmed if n.get('role') == 'model' and str(n.get('text') or '').strip()]
+        images = [n for n in confirmed if n.get('role') == 'model_image' and n.get('dataUrl')]
+        essay_title = title
+        body_models = list(models)
+        if body_models:
+            first_txt = str(body_models[0].get('text') or '').strip()
+            if len(first_txt) <= 18 and not re.search(r'[。！？，]', first_txt):
+                essay_title = first_txt
+                body_models = body_models[1:] or body_models
+        used_ids = set()
+        for idx, p in enumerate(body_models[:12]):
+            bound = [img for img in images if p.get('id') in (img.get('targets') or [])]
+            for img in bound:
+                used_ids.add(img.get('id'))
+            slide = {
+                'heading': f'范文导览 · {essay_title}' if len(body_models) == 1 else f'范文导览 · {essay_title}（{idx + 1}/{len(body_models)}）',
+                'layout': 'reading' if bound else 'standard',
+                'body': [str(p.get('text') or '').strip()[:500]],
+            }
+            if bound:
+                slide['figure'] = {'type': 'uploaded_image', 'data_url': bound[0]['dataUrl'], 'alt': f'{essay_title}配图'}
+            slides.append(slide)
+        for img in images:
+            if img.get('id') not in used_ids and len(slides) < 12:
+                slides.append({
+                    'heading': f'范文配图 · {essay_title}',
+                    'layout': 'scene',
+                    'body': [],
+                    'figure': {'type': 'uploaded_image', 'data_url': img['dataUrl'], 'alt': '范文配图'},
+                })
+    elif stage == 3:
+        pics = [n for n in confirmed if n.get('role') == 'picture' and n.get('dataUrl')]
+        for idx, pic in enumerate(pics[:12]):
+            caption = str(pic.get('text') or '').strip()
+            slides.append({
+                'heading': f'看图写话（图 {idx + 1}/{len(pics)}）',
+                'layout': 'scene',
+                'body': [caption[:500]] if caption else ['仔细观察画面：按一定顺序说说你看到了什么，加上感官与联想。'],
+                'figure': {'type': 'uploaded_image', 'data_url': pic['dataUrl'], 'alt': f'看图写话配图 {idx + 1}'},
+            })
+    elif stage == 4:
+        methods = [str(n.get('text') or '').strip() for n in confirmed if n.get('role') == 'method' and str(n.get('text') or '').strip()]
+        chunk = 4
+        total_pages = max(1, (len(methods) + chunk - 1) // chunk) if methods else 0
+        for p_idx in range(min(total_pages, 12)):
+            part = methods[p_idx * chunk:(p_idx + 1) * chunk]
+            slides.append({
+                'heading': '技法梳理' if total_pages == 1 else f'技法梳理（{p_idx + 1}/{total_pages}）',
+                'layout': 'standard',
+                'body': [t[:500] for t in part],
+            })
+    elif stage == 5:
+        tasks = [str(n.get('text') or '').strip() for n in confirmed if n.get('role') == 'task' and str(n.get('text') or '').strip()]
+        if tasks:
+            slides.append({
+                'heading': '随堂练习 · 写作主题',
+                'layout': 'standard',
+                'body': [f'《{tasks[0]}》', '请围绕本次写作主题构思提纲并完成习作，完成后可拍照上传提交。'],
+            })
+    elif stage == 6:
+        fbs = [str(n.get('text') or '').strip() for n in confirmed if n.get('role') == 'feedback' and str(n.get('text') or '').strip()]
+        if fbs:
+            slides.append({'heading': '课后反馈与修改重点', 'layout': 'standard', 'body': [t[:500] for t in fbs[:12]]})
+
+    return slides[:12]

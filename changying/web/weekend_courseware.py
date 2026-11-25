@@ -1471,7 +1471,16 @@ def courseware_for_session(implementation: Any, db: Any, row: Any, page_index: i
     frozen = frozen_session(db, implementation, int(row.id), metadata=getattr(implementation, "Base", None) and implementation.Base.metadata)
     course_type = frozen["courseType"] if frozen else "legacy"
     if frozen and frozen["lesson"].get("writingPackage"):
-        return None, "请在作文课堂中按冻结版本展示与开放图文。"
+        from changying.services.writing_lesson import writing_stage_slides
+        wp = frozen["lesson"]["writingPackage"]
+        slides = writing_stage_slides(wp, stage)
+        if not slides:
+            return None, "本环节暂无已确认的作文展示内容。"
+        params = {"title": str(wp.get("title") or "作文课"), "slides": slides}
+        raw_view = (frozen["lesson"].get("writingSlideViews") or {}).get(str(stage))
+        view = cw.clean_view("slide", params, raw_view)
+        return {"id": 0, "kind": "slide", "kindLabel": cw.KIND_LABEL["slide"], "stageNo": stage,
+                "page": None, "params": cw.public_params("slide", params), "view": view}, ""
     practice_no = practice_stage(course_type)
     lesson = db.get(implementation.TeachingLesson, row.lesson_id)
     if course_type in ("math", "legacy") and stage == 3 and source_page_mismatch(lesson)[1]:
@@ -2272,13 +2281,26 @@ def install_weekend_courseware(implementation: Any) -> APIRouter:
         pages = stage_pages(db.get(Lesson, row.lesson_id), int(row.current_stage))
         index = max(0, min(index, len(pages) - 1)) if pages else index      # same clamp as the screen state
         shown, note = courseware_for_session(implementation, db, row, index)
-        if shown is None or c is None:
+        if shown is None:
             raise HTTPException(409, note or "当前页没有互动课件")
         if b.stageNo is not None and (b.stageNo != int(row.current_stage) or b.page != shown["page"]):
             raise HTTPException(409, "课堂页面已切换，请在当前页重新操作")
         # Clamp against the exact repaired parameters shown on the current page.
         # Older approved slides may have fewer steps than the repaired visual.
         view = cw.clean_view(shown["kind"], shown["params"], b.view)
+        if shown.get("id") == 0:
+            from changying.services.weekend_course_types import register_weekend_course_type_tables
+            frozen_tbl = register_weekend_course_type_tables(implementation)["frozen"]
+            snap = db.execute(select(frozen_tbl).where(frozen_tbl.c.session_id == row.id)).first()
+            if snap is not None:
+                snap_data = json.loads(snap.lesson_json or "{}")
+                snap_data.setdefault("writingSlideViews", {})[str(int(row.current_stage))] = view
+                db.execute(update(frozen_tbl).where(frozen_tbl.c.session_id == row.id).values(
+                    lesson_json=json.dumps(snap_data, ensure_ascii=False)))
+                db.commit()
+            return {"view": view}
+        if c is None:
+            raise HTTPException(409, note or "当前页没有互动课件")
         live = json.loads(c.live_json or "{}")
         live[f"{sid}:{int(row.current_stage)}:{shown['page']}"] = view
         db.execute(update(t).where(t.c.id == c.id).values(live_json=json.dumps(live, ensure_ascii=False)))
