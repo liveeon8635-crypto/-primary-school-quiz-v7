@@ -906,7 +906,34 @@ PAGE_HTML = """<!doctype html>
 """
 
 
-EXTRA_CSS = "textarea.s{min-height:64px}\n.tag.ok{background:#ecfdf3;color:#067647}.tag.warn{background:#fff4e5;color:#b54708}"
+EXTRA_CSS = r"""
+textarea.s{min-height:64px}
+.tag.ok{background:#ecfdf3;color:#067647}.tag.warn{background:#fff4e5;color:#b54708}
+[data-lesson-navigation] .lesson-nav-toolbar{display:flex;flex-wrap:wrap;align-items:center;margin:-5px -5px 14px}
+[data-lesson-navigation] .lesson-nav-toolbar>*{margin:5px}
+[data-lesson-navigation] button.lesson-nav-control{min-height:44px;border:1px solid #cbd5e1;border-bottom:3px solid #94a3b8;border-radius:10px;background:#fff;color:#334155;box-shadow:0 2px 3px rgba(15,23,42,.08);font-weight:600}
+[data-lesson-navigation] button.lesson-nav-control:disabled{opacity:.45;box-shadow:none;cursor:default}
+[data-lesson-navigation] .lesson-capsules{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));grid-gap:14px;padding:4px 4px 8px}
+[data-lesson-navigation] button.lesson-capsule{display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;min-width:0;min-height:100px;margin:0;padding:9px 10px;border:1px solid #cbd5e1;border-bottom:4px solid #94a3b8;border-radius:12px;background:linear-gradient(#fff,#f1f5f9);color:#334155;box-shadow:0 3px 5px rgba(15,23,42,.12),inset 0 1px 0 #fff;text-align:left;line-height:1.4;transition:transform .12s,box-shadow .12s}
+[data-lesson-navigation] button.lesson-capsule.has-courseware{border-color:#73b5a6;border-bottom-color:#0f766e;background:linear-gradient(#f3fcf8,#e6f5f1);color:#115e59}
+[data-lesson-navigation] button.lesson-capsule[aria-current="true"]{outline:3px solid #1d4ed8;outline-offset:2px;box-shadow:0 4px 7px rgba(29,78,216,.18)}
+[data-lesson-navigation] .lesson-top{display:flex;align-items:center;justify-content:space-between}
+[data-lesson-navigation] .lesson-number{font-size:21px;font-weight:800;line-height:1.2}
+[data-lesson-navigation] .lesson-current{font-size:12px;font-weight:700;color:#1d4ed8}
+[data-lesson-navigation] .lesson-state{font-size:12px;margin-top:5px}
+[data-lesson-navigation] .lesson-courseware{font-size:12px;font-weight:700;margin-top:5px}
+[data-lesson-navigation] .lesson-nav-legend{display:flex;flex-wrap:wrap;margin:10px -8px 0;font-size:12px;color:#475569}
+[data-lesson-navigation] .lesson-nav-legend>span{margin:4px 8px}
+[data-lesson-navigation] .lesson-nav-key{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;border-radius:3px;border:1px solid #94a3b8;background:#f1f5f9}
+[data-lesson-navigation] .lesson-nav-key.courseware{background:#e6f5f1;border-color:#0f766e}
+[data-lesson-navigation] .lesson-nav-key.current{background:#fff;border:2px solid #1d4ed8}
+[data-lesson-navigation] button:focus{outline:3px solid #1d4ed8;outline-offset:3px}
+[data-lesson-navigation] button.lesson-capsule:active,[data-lesson-navigation] button.lesson-nav-control:not(:disabled):active{transform:translateY(2px);box-shadow:none}
+@media(hover:hover){[data-lesson-navigation] button.lesson-capsule:hover{transform:translateY(-2px);box-shadow:0 5px 8px rgba(15,23,42,.16)}}
+@media(max-width:900px){[data-lesson-navigation] .lesson-capsules{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media(max-width:480px){[data-lesson-navigation] .lesson-capsules{grid-template-columns:repeat(3,minmax(0,1fr));grid-gap:12px}}
+@media(prefers-reduced-motion:reduce){[data-lesson-navigation] button.lesson-capsule{transition:none}}
+"""
 
 
 def _page(title: str, js: str, with_header: bool, back: tuple[str, str] = ("/v1", "返回首页")) -> str:
@@ -1066,14 +1093,28 @@ function plan(){
   });
 
   var state=[];
-  var lessonCapsules=el('div',{class:'row','aria-label':'18 次课'}),lessonControls=el('div',{class:'row'}),lessonCards=[];
-  var prevLessonBtn=el('button',{text:'‹ 上一课'}),nextLessonBtn=el('button',{text:'下一课 ›'}),allLessonsBtn=el('button',{text:'展开全部 18 次课'}),allLessons=false;
-  lessonNav.appendChild(el('div',{class:'row'},prevLessonBtn,el('b',{text:'18 次课导航'}),nextLessonBtn,allLessonsBtn));lessonNav.appendChild(lessonCapsules);lessonNav.appendChild(lessonControls);
+  var lessonCapsules=el('div',{class:'lesson-capsules','aria-label':'18 次课'}),lessonControls=el('div',{class:'lesson-nav-legend'}),lessonCards=[];
+  var prevLessonBtn=el('button',{class:'lesson-nav-control',text:'‹ 上一课'}),nextLessonBtn=el('button',{class:'lesson-nav-control',text:'下一课 ›'}),allLessonsBtn=el('button',{class:'lesson-nav-control',text:'展开全部 18 次课'}),allLessons=false;
+  lessonControls.appendChild(el('span',{},el('i',{class:'lesson-nav-key','aria-hidden':'true'}),'暂无课件'));
+  lessonControls.appendChild(el('span',{},el('i',{class:'lesson-nav-key courseware','aria-hidden':'true'}),'有课件（审核状态见按钮）'));
+  lessonControls.appendChild(el('span',{},el('i',{class:'lesson-nav-key current','aria-hidden':'true'}),'当前选中'));
+  lessonNav.appendChild(el('div',{class:'lesson-nav-toolbar'},prevLessonBtn,el('b',{text:'18 次课导航'}),nextLessonBtn,allLessonsBtn));lessonNav.appendChild(lessonCapsules);lessonNav.appendChild(lessonControls);
   function focusLesson(no){if(!state.length)return;selectedLessonNo=Math.max(1,Math.min(state.length,+no||1));PLAN_LESSON_SELECTION[SUBJ]=selectedLessonNo;userSelectedLesson=true;allLessons=false;updateLessonNavigation();var current=lessonCards.filter(function(x){return x.lessonNo===selectedLessonNo})[0];if(current&&current.card.scrollIntoView)current.card.scrollIntoView({block:'nearest'})}
   function updateLessonNavigation(){
     lessonCards.forEach(function(item){item.card.hidden=!allLessons&&item.lessonNo!==selectedLessonNo});
     lessonCapsules.textContent='';
-    lessonCards.forEach(function(item){var r=item.row,pending=(r.draftQuestions||0)+(r.examplePending||0)+(r.pendingMaterials||0)+(r.coursewareStatus&&!r.coursewareApproved?1:0),ready=r.hasPlan&&!pending&&(SUBJ==='语文'?!!(r.courseType&&r.coursewareApproved):((r.practiceReady!=null?r.practiceReady:r.approvedQuestions)>0)),cls=r.taught?'ok':(pending?'warn':(ready?'ready':'muted')),pillStyle=ready?'background:#eff8ff;color:#175cd3;border:1px solid #b2ddff':'',label=el('button',{class:'tag '+cls,style:pillStyle,'data-lesson-no':String(r.lessonNo),text:String(r.lessonNo),title:r.taught?'已上':(pending?'有教案待审核':(ready?'已备课，可开课':(r.hasPlan?'教案已备，仍有开课条件待完成':'未备课'))),'aria-current':r.lessonNo===selectedLessonNo?'true':'false',onclick:function(){focusLesson(r.lessonNo)}});lessonCapsules.appendChild(label)});
+    lessonCards.forEach(function(item){
+      var r=item.row,hasCourseware=!!(r.coursewareGenerated||r.coursewareStatus||r.coursewareApproved),selected=r.lessonNo===selectedLessonNo;
+      var pending=(r.draftQuestions||0)+(r.examplePending||0)+(r.pendingMaterials||0)+(r.coursewareStatus&&!r.coursewareApproved?1:0);
+      var ready=r.hasPlan&&!pending&&(SUBJ==='语文'?!!(r.courseType&&r.coursewareApproved):((r.practiceReady!=null?r.practiceReady:r.approvedQuestions)>0));
+      var stateText=r.taught?'已上课':(pending?'待审核':(ready?'可开课':(r.hasPlan?'继续备课':'待备课')));
+      var coursewareText=hasCourseware?(r.coursewareApproved?'课件已审':'课件待审'):'暂无课件';
+      var description=SUBJ+' · 第 '+r.lessonNo+' 次课：'+stateText+'；'+coursewareText+(selected?'；当前选中':'');
+      var label=el('button',{class:'lesson-capsule'+(hasCourseware?' has-courseware':''),'data-lesson-no':String(r.lessonNo),title:description,'aria-label':description,'aria-current':selected?'true':'false',onclick:function(){focusLesson(r.lessonNo)}});
+      label.appendChild(el('span',{class:'lesson-top'},el('span',{class:'lesson-number',text:String(r.lessonNo)}),el('span',{class:'lesson-current',text:selected?'当前':''})));
+      label.appendChild(el('span',{class:'lesson-state',text:stateText}));label.appendChild(el('span',{class:'lesson-courseware',text:coursewareText}));
+      lessonCapsules.appendChild(label);
+    });
     prevLessonBtn.disabled=selectedLessonNo<=1;nextLessonBtn.disabled=selectedLessonNo>=state.length;allLessonsBtn.textContent=allLessons?'只看当前课':'展开全部 18 次课';
   }
   prevLessonBtn.onclick=function(){focusLesson(selectedLessonNo-1)};nextLessonBtn.onclick=function(){focusLesson(selectedLessonNo+1)};

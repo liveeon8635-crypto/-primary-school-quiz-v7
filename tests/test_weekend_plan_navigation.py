@@ -22,6 +22,8 @@ var root=new Element('div'),location={search:'',href:''},document={getElementByI
 var el=function(tag,attrs){const n=document.createElement(tag);Object.keys(attrs||{}).forEach(k=>{if(k==='class')n.className=attrs[k];else if(k==='text')n.textContent=attrs[k];else if(k.slice(0,2)==='on')n.addEventListener(k.slice(2),attrs[k]);else if(attrs[k]===true)n.setAttribute(k,'');else if(attrs[k]!==false&&attrs[k]!=null)n.setAttribute(k,attrs[k])});for(let i=2;i<arguments.length;i++){const c=arguments[i];if(c!=null)n.appendChild(typeof c==='string'?document.createTextNode(c):c)}return n};
 function requestAnimationFrame(fn){fn()} function growTextarea(){} function boot(){} function confirm(){return true}
 const rows=Array.from({length:18},(_,i)=>({lessonId:100+i,lessonNo:i+1,subject:'数学',hasPlan:true,taught:false,title:'课次'+(i+1),approvedQuestions:1,practiceReady:1,draftQuestions:i===3?2:0,schoolWeek:null,schoolUnit:'',plannedDate:''}));
+rows[0].coursewareStatus='draft';rows[1].coursewareApproved=true;
+rows[3].coursewareGenerated=true;rows[4].taught=true;rows[4].coursewareStatus='approved';rows[4].coursewareApproved=true;
 let savedRows=null,deleted=false;
 function api(path,opts){
  if(path==='/teacher/weekend/next')return Promise.resolve({items:[{subject:'数学',lessonNo:7,done:false,schoolUnit:'当前进度',plannedDate:'',weakKnowledge:[],tips:['备课提示']}]});
@@ -46,6 +48,13 @@ async function settle(){for(let i=0;i<40;i++)await Promise.resolve()}
  assert.equal(cards[7].hidden,false,'next lesson focuses lesson 8');
  navButtons=all(nav,'button');navButtons.find(b=>b.textContent==='‹ 上一课').onclick();assert.equal(cards[6].hidden,false);
  let capsules=all(nav,'button').filter(b=>b.attrs['data-lesson-no']);assert.equal(capsules.length,18);
+ assert(capsules[0].className.includes('has-courseware'));assert(capsules[0].textContent.includes('课件待审'));
+ assert(capsules[1].className.includes('has-courseware'));assert(capsules[1].textContent.includes('课件已审'));
+ assert(!capsules[2].className.includes('has-courseware'),'having a lesson plan is not having courseware');
+ assert(capsules[3].className.includes('has-courseware'),'generated courseware can exist without legacy coursewareStatus');
+ assert(capsules[4].textContent.includes('已上课'));assert(capsules[4].className.includes('has-courseware'));
+ assert.equal(capsules[6].attrs['aria-current'],'true');assert(capsules[6].textContent.includes('当前'));
+ assert(capsules[0].attrs['aria-label'].includes('数学 · 第 1 次课'));
  capsules[3].attrs.onclick();assert.equal(cards[3].hidden,false,'lesson capsule jumps to lesson 4');
  navButtons=all(nav,'button');navButtons.find(b=>b.textContent==='展开全部 18 次课').onclick();assert(cards.every(c=>!c.hidden));
  navButtons=all(nav,'button');navButtons.find(b=>b.textContent==='只看当前课').onclick();assert.equal(cards[3].hidden,false);assert.equal(cards.filter(c=>!c.hidden).length,1);
@@ -54,8 +63,31 @@ async function settle(){for(let i=0;i<40;i++)await Promise.resolve()}
  all(root,'button').find(b=>b.textContent==='保存进度表').attrs.onclick();await settle();
  assert.equal(savedRows.length,18,'save still submits every lesson when only one card is visible');
  assert.deepEqual(savedRows.map(r=>r.lessonNo),Array.from({length:18},(_,i)=>i+1));
+ for(const subject of ['语文','科学']){
+  SUBJ=subject;plan();await settle();
+  const subjectNav=all(root,'div').find(n=>n.attrs['data-lesson-navigation']==='true');
+  const buttons=all(subjectNav,'button').filter(b=>b.attrs['data-lesson-no']);
+  assert.equal(buttons.length,18);
+  assert(buttons[3].className.includes('has-courseware'));assert(buttons[3].textContent.includes('课件待审'));
+  assert(!buttons[2].className.includes('has-courseware'));
+  assert(buttons[0].attrs['aria-label'].includes(subject));
+ }
  console.log('OK');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
     result = run_node(script, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_weekend_plan_route_includes_navigation_styles(tmp_path):
+    from test_homework_solve import COMMON, run_isolated
+
+    run_isolated(tmp_path, COMMON + r'''
+with TestClient(app) as client:
+    response = client.get('/v1/weekend-plan', headers={'User-Agent': 'modern-test'})
+    assert response.status_code == 200, response.text
+    assert '.lesson-capsules{display:grid' in response.text
+    assert 'lesson-capsule.has-courseware' in response.text
+    assert 'data-lesson-navigation' in response.text
+    print('OK')
+''')
