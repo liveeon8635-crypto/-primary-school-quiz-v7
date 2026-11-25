@@ -172,3 +172,60 @@ def test_openai_compatible_protocol_saved_and_tested_without_key_leak(client, mo
     err_res = client.post("/teacher/ai-test", headers=headers)
     assert err_res.status_code == 502
     assert "sk-deepseek-secret-99887766" not in err_res.text
+
+
+def test_page_exposes_pause_and_clear_key_controls(client):
+    page = client.get("/teacher/ai-settings").text
+    assert 'id="cy-disable"' in page
+    assert 'id="cy-clear-key"' in page
+
+    headers = _workspace(client)
+    r = client.put(
+        "/teacher/ai-config",
+        headers=headers,
+        json={
+            "provider": "openai_compatible",
+            "base_url": "https://api.deepseek.com/v1",
+            "model": "deepseek-chat",
+            "api_key": "sk-pause-clear-test-1234",
+            "enabled": True,
+            "allow_student_data": False,
+            "clear_api_key": False,
+        },
+    )
+    assert r.status_code == 200
+    # Pause AI without clearing key
+    r = client.put(
+        "/teacher/ai-config",
+        headers=headers,
+        json={
+            "provider": "openai_compatible",
+            "base_url": "https://api.deepseek.com/v1",
+            "model": "deepseek-chat",
+            "api_key": "",
+            "enabled": False,
+            "allow_student_data": False,
+            "clear_api_key": False,
+        },
+    )
+    assert r.status_code == 200
+    cfg = client.get("/teacher/ai-config", headers=headers).json()
+    assert cfg["enabled"] is False and cfg["hasKey"] is True
+
+    # Clear key and disable
+    r = client.put(
+        "/teacher/ai-config",
+        headers=headers,
+        json={
+            "provider": "openai_compatible",
+            "base_url": "https://api.deepseek.com/v1",
+            "model": "deepseek-chat",
+            "api_key": "",
+            "enabled": False,
+            "allow_student_data": False,
+            "clear_api_key": True,
+        },
+    )
+    assert r.status_code == 200
+    cfg = client.get("/teacher/ai-config", headers=headers).json()
+    assert cfg["enabled"] is False and cfg["hasKey"] is False
