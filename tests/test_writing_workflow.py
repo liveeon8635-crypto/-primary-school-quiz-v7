@@ -600,3 +600,31 @@ def test_writing_readiness_distinguishes_pending_from_truly_missing():
     assert by_no[3]['status'] == '缺少素材' and '看图写话图片组' in by_no[3]['missing']
     assert by_no[5]['status'] == '待确认' and by_no[5]['missing'] == []
     assert not rd['canStart']
+
+
+def test_writing_stage_slides_builds_all_six_big_screen_stages():
+    from changying.services.writing_lesson import writing_stage_slides
+    from changying.services.weekend_courseware import clean_slide
+    img = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+    pkg = {
+        'title': '我最喜欢的季节',
+        'nodes': [
+            {'id': 'r1', 'kind': 'text', 'role': 'review', 'status': 'confirmed', 'text': '回顾四季观察'},
+            {'id': 'm0', 'kind': 'text', 'role': 'model', 'status': 'confirmed', 'text': '醉美秋天'},
+            {'id': 'm1', 'kind': 'text', 'role': 'model', 'status': 'confirmed', 'text': '走进果园，红彤彤的苹果挂满枝头。'},
+            {'id': 'mi1', 'kind': 'image', 'role': 'model_image', 'status': 'confirmed', 'dataUrl': img, 'targets': ['m1']},
+            {'id': 'p1', 'kind': 'image', 'role': 'picture', 'status': 'confirmed', 'text': '按由近及远观察春景', 'dataUrl': img, 'targets': []},
+            {'id': 'me1', 'kind': 'text', 'role': 'method', 'status': 'confirmed', 'text': '按空间顺序描写'},
+            {'id': 't1', 'kind': 'text', 'role': 'task', 'status': 'confirmed', 'text': '我最喜欢的季节'},
+            {'id': 'f1', 'kind': 'text', 'role': 'feedback', 'status': 'confirmed', 'text': '检查观察顺序与感官描写'},
+        ],
+    }
+    for stage in range(1, 7):
+        slides = writing_stage_slides(pkg, stage)
+        assert slides, f'stage {stage} should produce slides'
+        cleaned = clean_slide({'slides': slides})
+        assert len(cleaned['slides']) == len(slides)
+    stage2 = writing_stage_slides(pkg, 2)
+    assert stage2[0]['layout'] == 'reading' and stage2[0]['figure']['data_url'] == img
+    stage3 = writing_stage_slides(pkg, 3)
+    assert stage3[0]['layout'] == 'scene' and stage3[0]['figure']['data_url'] == img
