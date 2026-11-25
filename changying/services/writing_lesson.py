@@ -208,7 +208,7 @@ def writing_task_open(implementation, db, session):
 
 
 def writing_stage_slides(package, stage_no):
-    """Build native big-screen slide cards for a writing stage from the frozen package."""
+    """Build rich native big-screen slide cards for all 6 writing stages from the frozen package."""
     if not isinstance(package, dict):
         return []
     title = str(package.get('title') or '作文课').strip()[:60]
@@ -216,13 +216,32 @@ def writing_stage_slides(package, stage_no):
     stage = int(stage_no or 0)
     slides = []
 
+    models = [n for n in confirmed if n.get('role') == 'model' and str(n.get('text') or '').strip()]
+    model_imgs = [n for n in confirmed if n.get('role') == 'model_image' and n.get('dataUrl')]
+    pics = [n for n in confirmed if n.get('role') == 'picture' and n.get('dataUrl')]
+    methods = [str(n.get('text') or '').strip() for n in confirmed if n.get('role') == 'method' and str(n.get('text') or '').strip()]
+    tasks = [str(n.get('text') or '').strip() for n in confirmed if n.get('role') == 'task' and str(n.get('text') or '').strip()]
+    topic = tasks[0] if tasks else title
+
     if stage == 1:
         items = [str(n.get('text') or '').strip() for n in confirmed if n.get('role') == 'review' and str(n.get('text') or '').strip()]
         if items:
-            slides.append({'heading': f'{title} · 点名与回顾', 'layout': 'standard', 'body': items[:12]})
+            slide = {
+                'heading': f'《{title}》· 点名与课前回顾',
+                'layout': 'steps',
+                'body': items[:4],
+                'steps': [
+                    {'label': '点名到课', 'desc': '确认本班到课情况，准备作文本与笔'},
+                    {'label': '回顾观察', 'desc': items[0][:120]},
+                    {'label': '进入新课', 'desc': f'今日作文主题：《{topic}》'},
+                ],
+                'highlight': f'本节流程：范文导览 → 看图写话 → 技法梳理 → 随堂写作《{topic}》→ 批注反馈',
+            }
+            hero = pics[0] if pics else (model_imgs[0] if model_imgs else None)
+            if hero:
+                slide['figure'] = {'type': 'uploaded_image', 'data_url': hero['dataUrl'], 'alt': f'{title}主图'}
+            slides.append(slide)
     elif stage == 2:
-        models = [n for n in confirmed if n.get('role') == 'model' and str(n.get('text') or '').strip()]
-        images = [n for n in confirmed if n.get('role') == 'model_image' and n.get('dataUrl')]
         essay_title = title
         body_models = list(models)
         if body_models:
@@ -230,29 +249,50 @@ def writing_stage_slides(package, stage_no):
             if len(first_txt) <= 18 and not re.search(r'[。！？，]', first_txt):
                 essay_title = first_txt
                 body_models = body_models[1:] or body_models
-        used_ids = set()
-        for idx, p in enumerate(body_models[:12]):
-            bound = [img for img in images if p.get('id') in (img.get('targets') or [])]
-            for img in bound:
-                used_ids.add(img.get('id'))
-            slide = {
-                'heading': f'范文导览 · {essay_title}' if len(body_models) == 1 else f'范文导览 · {essay_title}（{idx + 1}/{len(body_models)}）',
-                'layout': 'reading' if bound else 'standard',
-                'body': [str(p.get('text') or '').strip()[:500]],
+        if body_models:
+            overview = {
+                'heading': f'范文全景 · 《{essay_title}》',
+                'layout': 'reading',
+                'body': [str(p.get('text') or '').strip()[:500] for p in body_models[:12]],
+                'highlight': '先通读全文，理清文章的开头、中间景物顺序与结尾抒情，再逐段图文精讲。',
             }
-            if bound:
-                slide['figure'] = {'type': 'uploaded_image', 'data_url': bound[0]['dataUrl'], 'alt': f'{essay_title}配图'}
-            slides.append(slide)
-        for img in images:
-            if img.get('id') not in used_ids and len(slides) < 12:
+            if len(model_imgs) >= 2:
+                overview['gallery'] = [
+                    {'data_url': img['dataUrl'], 'caption': f'场景图 {i + 1}', 'alt': f'{essay_title}场景图 {i + 1}'}
+                    for i, img in enumerate(model_imgs[:3])
+                ]
+            elif model_imgs:
+                overview['figure'] = {'type': 'uploaded_image', 'data_url': model_imgs[0]['dataUrl'], 'alt': f'{essay_title}配图'}
+            slides.append(overview)
+
+            used_ids = set()
+            paired_paras = []
+            for p in body_models:
+                bound = [img for img in model_imgs if p.get('id') in (img.get('targets') or [])]
+                if bound:
+                    for img in bound:
+                        used_ids.add(img.get('id'))
+                    paired_paras.append((p, bound[0]))
+            for idx, (p, img) in enumerate(paired_paras[:10]):
+                txt = str(p.get('text') or '').strip()
+                note_match = re.search(r'[（(]([^（）()]{4,40})[）)]', txt)
+                hl = note_match.group(1) if note_match else f'边看图边朗读第 {idx + 1} 处场景，圈出写色彩、声音或气味的关键词。'
                 slides.append({
-                    'heading': f'范文配图 · {essay_title}',
-                    'layout': 'scene',
-                    'body': [],
-                    'figure': {'type': 'uploaded_image', 'data_url': img['dataUrl'], 'alt': '范文配图'},
+                    'heading': f'图文精讲 · 《{essay_title}》（场景 {idx + 1}/{len(paired_paras)}）',
+                    'layout': 'reading',
+                    'body': [txt[:500]],
+                    'figure': {'type': 'uploaded_image', 'data_url': img['dataUrl'], 'alt': f'{essay_title}场景 {idx + 1}'},
+                    'highlight': hl,
                 })
+            for img in model_imgs:
+                if img.get('id') not in used_ids and len(slides) < 12:
+                    slides.append({
+                        'heading': f'范文配图 · 《{essay_title}》',
+                        'layout': 'scene',
+                        'body': ['结合范文内容，观察画面中的景物层次与细节。'],
+                        'figure': {'type': 'uploaded_image', 'data_url': img['dataUrl'], 'alt': '范文配图'},
+                    })
     elif stage == 3:
-        pics = [n for n in confirmed if n.get('role') == 'picture' and n.get('dataUrl')]
         for idx, pic in enumerate(pics[:12]):
             caption = str(pic.get('text') or '').strip()
             slides.append({
@@ -260,29 +300,59 @@ def writing_stage_slides(package, stage_no):
                 'layout': 'scene',
                 'body': [caption[:500]] if caption else ['仔细观察画面：按一定顺序说说你看到了什么，加上感官与联想。'],
                 'figure': {'type': 'uploaded_image', 'data_url': pic['dataUrl'], 'alt': f'看图写话配图 {idx + 1}'},
+                'steps': [
+                    {'label': '定顺序', 'desc': '由近及远 / 从上到下，先说清观察路线'},
+                    {'label': '调感官', 'desc': '颜色、声音、气味、触感至少挑两种'},
+                    {'label': '说两句', 'desc': '把最打动你的画面用完整句子说出来'},
+                ],
+                'highlight': '先口头练说两句有顺序、有细节的描写，再尝试把句子写得更生动。',
             })
     elif stage == 4:
-        methods = [str(n.get('text') or '').strip() for n in confirmed if n.get('role') == 'method' and str(n.get('text') or '').strip()]
         chunk = 4
         total_pages = max(1, (len(methods) + chunk - 1) // chunk) if methods else 0
         for p_idx in range(min(total_pages, 12)):
             part = methods[p_idx * chunk:(p_idx + 1) * chunk]
+            cards = []
+            for m_idx, text in enumerate(part):
+                clean_t = text.strip()
+                parts = re.split(r'[：:]', clean_t, maxsplit=1)
+                if len(parts) == 2 and len(parts[0]) <= 20:
+                    c_title, c_text = parts[0].strip(), parts[1].strip()
+                else:
+                    c_title, c_text = f'写作要点 {p_idx * chunk + m_idx + 1}', clean_t
+                cards.append({'tag': f'技法 {p_idx * chunk + m_idx + 1}', 'title': c_title[:60], 'text': c_text[:320]})
             slides.append({
                 'heading': '技法梳理' if total_pages == 1 else f'技法梳理（{p_idx + 1}/{total_pages}）',
-                'layout': 'standard',
-                'body': [t[:500] for t in part],
+                'layout': 'cards',
+                'cards': cards,
+                'highlight': f'写作迁移：在《{topic}》中至少选用 2 种技法，把景物写具体、写出真情实感。',
             })
     elif stage == 5:
-        tasks = [str(n.get('text') or '').strip() for n in confirmed if n.get('role') == 'task' and str(n.get('text') or '').strip()]
         if tasks:
             slides.append({
-                'heading': '随堂练习 · 写作主题',
-                'layout': 'standard',
-                'body': [f'《{tasks[0]}》', '请围绕本次写作主题构思提纲并完成习作，完成后可拍照上传提交。'],
+                'heading': f'随堂练习 · 《{tasks[0]}》',
+                'layout': 'steps',
+                'body': [f'本次写作主题：《{tasks[0]}》'],
+                'steps': [
+                    {'label': '1. 审题定材', 'desc': '确定要写的对象与 2–3 处最鲜明的场景'},
+                    {'label': '2. 运用技法', 'desc': '按一定顺序描写，加入感官细节、修辞或动静结合'},
+                    {'label': '3. 拍照提交', 'desc': '写完后在学生端拍照上传（支持多页与重拍，翻页不丢稿）'},
+                ],
+                'highlight': '自主完成习作初稿，写完直接拍照提交，老师会逐份批注反馈。',
             })
     elif stage == 6:
         fbs = [str(n.get('text') or '').strip() for n in confirmed if n.get('role') == 'feedback' and str(n.get('text') or '').strip()]
         if fbs:
-            slides.append({'heading': '课后反馈与修改重点', 'layout': 'standard', 'body': [t[:500] for t in fbs[:12]]})
+            slides.append({
+                'heading': '课后反馈与修改重点',
+                'layout': 'cards',
+                'body': fbs[:3],
+                'cards': [
+                    {'tag': '维度 1', 'title': '描写顺序清晰', 'text': '是否按空间、时间或移步换景顺序展开，段落过渡自然'},
+                    {'tag': '维度 2', 'title': '细节与感官丰富', 'text': '是否调动视觉、听觉、嗅觉或触觉，并用上恰当修辞'},
+                    {'tag': '维度 3', 'title': '真实情感表达', 'text': '开头是否点题，结尾是否自然抒发自己的喜爱或感受'},
+                ],
+                'highlight': '教师结合学生提交照片完成圈画批注与评语修改，确认后统一发布给学生与家长。',
+            })
 
     return slides[:12]
