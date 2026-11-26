@@ -58,6 +58,12 @@ WEEKEND_PLAN_CUSTOM_JS = r"""(function(){
   try{
     function token(){try{return localStorage.getItem('v717Token')||sessionStorage.getItem('v717Token')||''}catch(e){return ''}}
     var t=token();if(!t)return;
+    var params=new URLSearchParams(location.search||'');
+    var initSubj=(params.get('subject')||'').replace(/^\s+|\s+$/g,'');
+    var activeCustom=(initSubj&&initSubj!=='数学'&&initSubj!=='语文')?initSubj:'';
+    var subjects=['数学','语文'];
+    if(activeCustom&&subjects.indexOf(activeCustom)<0)subjects.push(activeCustom);
+
     function req(method,url,body,cb){
       var x=new XMLHttpRequest();x.open(method,url,true);
       x.setRequestHeader('Authorization','Bearer '+t);
@@ -66,76 +72,204 @@ WEEKEND_PLAN_CUSTOM_JS = r"""(function(){
       x.onerror=function(){cb(0,null)};
       x.send(body?JSON.stringify(body):null);
     }
-    var params=new URLSearchParams(location.search||'');
-    var reqSubj=(params.get('subject')||'').replace(/^\s+|\s+$/g,'');
-    function curSubj(){return (typeof window.SUBJ==='string'&&window.SUBJ)?window.SUBJ:(reqSubj||'数学')}
-    function switchSubject(s){
-      window.SUBJ=s;
+
+    if(typeof window.fetch==='function'){
+      var origFetch=window.fetch;
+      window.fetch=function(input,init){
+        try{
+          if(activeCustom){
+            var url=typeof input==='string'?input:(input&&input.url?input.url:'');
+            if(url.indexOf('/teacher/weekend/')>=0){
+              if(/[?&]subject=/.test(url)){
+                url=url.replace(/([?&]subject=)[^&]*/,'$1'+encodeURIComponent(activeCustom));
+                input=url;
+              }
+              if(init&&typeof init.body==='string'&&init.body.charAt(0)==='{'){
+                try{
+                  var obj=JSON.parse(init.body);
+                  if(obj&&typeof obj.subject==='string'){
+                    obj.subject=activeCustom;
+                    init=Object.assign({},init,{body:JSON.stringify(obj)});
+                  }
+                }catch(e){}
+              }
+            }
+          }
+        }catch(e){}
+        return origFetch.apply(this,[input,init]);
+      };
+    }
+
+    function currentSubject(){
+      if(activeCustom)return activeCustom;
+      var on=document.querySelector('.tabs button.on');
+      return (on&&on.textContent)?on.textContent.replace(/^\s+|\s+$/g,''):'数学';
+    }
+
+    function triggerRefresh(){
+      var tabs=document.querySelector('.tabs');
+      if(!tabs){location.reload();return}
+      var btns=tabs.querySelectorAll('button');
+      if(activeCustom){
+        if(btns.length){btns[0].click();return}
+      }else{
+        var on=tabs.querySelector('button.on');
+        if(on){on.click();return}
+      }
+      location.reload();
+    }
+
+    function selectSubject(s){
+      activeCustom=(s==='数学'||s==='语文')?'':s;
       try{
         var u=new URL(location.href);
         u.searchParams.set('subject',s);
         history.replaceState({},'',u.pathname+u.search);
       }catch(e){}
-      if(typeof window.plan==='function'){window.plan();}else{location.href='/v1/weekend-plan?subject='+encodeURIComponent(s);}
-    }
-    function renderBar(subjects){
-      var root=document.getElementById('app')||document.querySelector('main');
-      if(!root)return;
-      var bar=document.getElementById('cy-custom-subj-bar');
-      if(!bar){
-        bar=document.createElement('div');
-        bar.id='cy-custom-subj-bar';
-        bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px;padding:10px 12px;background:#fff;border:1px solid #e6d8ce;border-radius:12px;font-size:13.5px';
-        root.insertBefore(bar,root.firstChild);
+      var tabs=document.querySelector('.tabs');
+      if(!tabs){location.assign('/v1/weekend-plan?subject='+encodeURIComponent(s));return}
+      var btns=tabs.querySelectorAll('button');
+      if(!activeCustom){
+        for(var i=0;i<btns.length;i++){
+          if(btns[i].textContent===s){btns[i].click();return}
+        }
       }
-      bar.innerHTML='';
-      var lbl=document.createElement('span');lbl.textContent='全部学科：';lbl.style.color='#65595a';lbl.style.fontWeight='700';
-      bar.appendChild(lbl);
-      var active=curSubj();
-      for(var i=0;i<subjects.length;i++){(function(s){
-        var b=document.createElement('button');b.type='button';b.textContent=s;
-        b.style.cssText='border:1px solid '+(s===active?'#a8101c':'#d8cbc2')+';background:'+(s===active?'#fdf1f0':'#fff')+';color:'+(s===active?'#a8101c':'#242026')+';border-radius:999px;padding:4px 12px;font:inherit;font-weight:700;cursor:pointer';
-        b.onclick=function(){switchSubject(s);renderBar(subjects)};
-        bar.appendChild(b);
-      })(subjects[i])}
-      var addSubj=document.createElement('button');addSubj.type='button';addSubj.textContent='+ 新增学科';
-      addSubj.style.cssText='border:1px dashed #a8101c;background:#fff;color:#a8101c;border-radius:999px;padding:4px 12px;font:inherit;font-weight:700;cursor:pointer';
-      addSubj.onclick=function(){
-        var name=window.prompt('请输入新学科名称（如：英语、科学）：','英语');
-        if(!name)return;
-        name=name.replace(/^\s+|\s+$/g,'');
-        if(!name)return;
-        var cntRaw=window.prompt('「'+name+'」先建几节课？（1～36，默认 18，后续可随时追加）','18');
-        if(cntRaw===null)return;
-        var cnt=parseInt(cntRaw,10);
-        if(!(cnt>=1&&cnt<=36)){window.alert('课次数需在 1～36 之间');return}
-        req('POST','/teacher/weekend/lessons/add',{subject:name,count:cnt},function(st,d){
-          if(st===200){location.href='/v1/weekend-plan?subject='+encodeURIComponent(name)}
-          else{window.alert((d&&d.detail)||'新增学科失败')}
-        });
-      };
-      bar.appendChild(addSubj);
-      var addOne=document.createElement('button');addOne.type='button';addOne.textContent='+ 给当前学科追加一课';
-      addOne.style.cssText='margin-left:auto;border:1px solid #d8cbc2;background:#faf6f1;color:#242026;border-radius:999px;padding:4px 12px;font:inherit;font-weight:700;cursor:pointer';
-      addOne.onclick=function(){
-        var s=curSubj();
-        addOne.disabled=true;
-        req('POST','/teacher/weekend/lessons/add',{subject:s,count:1},function(st,d){
-          addOne.disabled=false;
-          if(st===200){switchSubject(s)}
-          else{window.alert((d&&d.detail)||'追加课次失败')}
-        });
-      };
-      bar.appendChild(addOne);
+      if(btns.length){btns[0].click();}else{location.assign('/v1/weekend-plan?subject='+encodeURIComponent(s));}
     }
+
+    function enhance(){
+      var tabs=document.querySelector('.tabs');
+      if(tabs&&!tabs.getAttribute('data-cy-subj-ready')){
+        tabs.setAttribute('data-cy-subj-ready','1');
+        var oldInj=tabs.querySelectorAll('[data-cy-injected="1"]');
+        for(var r=0;r<oldInj.length;r++){if(oldInj[r].parentNode)oldInj[r].parentNode.removeChild(oldInj[r])}
+        var nativeBtns=tabs.querySelectorAll('button');
+        for(var k=0;k<nativeBtns.length;k++){
+          (function(nb){
+            if(!nb.getAttribute('data-cy-bound')){
+              nb.setAttribute('data-cy-bound','1');
+              nb.addEventListener('click',function(){
+                if(nb.getAttribute('data-cy-trigger')==='1'){nb.removeAttribute('data-cy-trigger');return}
+                activeCustom='';
+              },true);
+            }
+          })(nativeBtns[k]);
+        }
+        if(activeCustom){
+          for(var m=0;m<nativeBtns.length;m++){nativeBtns[m].className=nativeBtns[m].className.replace(/\bon\b/g,'').replace(/^\s+|\s+$/g,'')}
+        }
+        for(var i=0;i<subjects.length;i++){
+          var s=subjects[i];
+          if(s==='数学'||s==='语文')continue;
+          (function(subj){
+            var b=document.createElement('button');
+            b.type='button';
+            b.setAttribute('data-cy-injected','1');
+            b.textContent=subj;
+            b.className=(activeCustom===subj)?'on':'';
+            b.onclick=function(){
+              activeCustom=subj;
+              try{var u=new URL(location.href);u.searchParams.set('subject',subj);history.replaceState({},'',u.pathname+u.search)}catch(e){}
+              var first=tabs.querySelector('button');
+              if(first){first.setAttribute('data-cy-trigger','1');first.click();}
+            };
+            tabs.appendChild(b);
+          })(s);
+        }
+        var addSubj=document.createElement('button');
+        addSubj.type='button';
+        addSubj.id='cy-add-subject-btn';
+        addSubj.setAttribute('data-cy-injected','1');
+        addSubj.textContent='+ 新增学科';
+        addSubj.style.cssText='border:1px dashed #a8101c;color:#a8101c;background:#fff';
+        addSubj.onclick=function(){
+          var name=window.prompt('请输入新学科名称（如：英语、科学）：','英语');
+          if(!name)return;
+          name=name.replace(/^\s+|\s+$/g,'');
+          if(!name)return;
+          var cntRaw=window.prompt('「'+name+'」先建几节课？（1～36，默认 18，后续可随时追加）','18');
+          if(cntRaw===null)return;
+          var cnt=parseInt(cntRaw,10);
+          if(!(cnt>=1&&cnt<=36)){window.alert('课次数需在 1～36 之间');return}
+          addSubj.disabled=true;
+          req('POST','/teacher/weekend/lessons/add',{subject:name,count:cnt},function(st,d){
+            addSubj.disabled=false;
+            if(st===200){
+              if(subjects.indexOf(name)<0)subjects.push(name);
+              selectSubject(name);
+            }else{
+              window.alert((d&&d.detail)||'新增学科失败');
+            }
+          });
+        };
+        tabs.appendChild(addSubj);
+      }
+
+      var nav=document.querySelector('[data-lesson-navigation="true"]');
+      if(nav){
+        var toolbar=nav.querySelector('.lesson-nav-toolbar');
+        var caps=nav.querySelectorAll('.lesson-capsule');
+        if(toolbar&&caps.length){
+          var titleEl=toolbar.querySelector('b');
+          if(titleEl)titleEl.textContent=caps.length+' 次课导航';
+          var allBtns=toolbar.querySelectorAll('button.lesson-nav-control');
+          for(var j=0;j<allBtns.length;j++){
+            if(allBtns[j].textContent.indexOf('展开全部')===0){
+              allBtns[j].textContent='展开全部 '+caps.length+' 次课';
+            }
+          }
+        }
+        if(toolbar&&!toolbar.querySelector('#cy-add-lesson-btn')){
+          var addLesson=document.createElement('button');
+          addLesson.type='button';
+          addLesson.id='cy-add-lesson-btn';
+          addLesson.className='lesson-nav-control';
+          addLesson.textContent='+ 追加一课';
+          addLesson.style.cssText='border-color:#a8101c;color:#a8101c;background:#fdf1f0';
+          addLesson.onclick=function(){
+            var s=currentSubject();
+            addLesson.disabled=true;
+            addLesson.textContent='正在追加…';
+            req('POST','/teacher/weekend/lessons/add',{subject:s,count:1},function(st,d){
+              addLesson.disabled=false;
+              addLesson.textContent='+ 追加一课';
+              if(st===200){
+                var tabsNow=document.querySelector('.tabs');
+                if(activeCustom&&tabsNow){
+                  var firstBtn=tabsNow.querySelector('button');
+                  if(firstBtn){firstBtn.setAttribute('data-cy-trigger','1');firstBtn.click();return}
+                }
+                triggerRefresh();
+              }else{
+                window.alert((d&&d.detail)||'追加课次失败');
+              }
+            });
+          };
+          toolbar.appendChild(addLesson);
+        }
+      }
+    }
+
+    var obs=null;
+    if(typeof window.MutationObserver==='function'&&document.body){
+      obs=new MutationObserver(function(){enhance()});
+      obs.observe(document.body,{childList:true,subtree:true});
+    }
+
     req('GET','/teacher/weekend/subjects',null,function(st,d){
-      var list=(st===200&&d&&d.subjects&&d.subjects.length)?d.subjects:['数学','语文'];
-      if(reqSubj&&reqSubj!=='数学'&&reqSubj!=='语文'){
-        window.SUBJ=reqSubj;
-        setTimeout(function(){if(typeof window.plan==='function')window.plan()},80);
+      if(st===200&&d&&d.subjects&&d.subjects.length){
+        subjects=d.subjects.slice();
+        if(activeCustom&&subjects.indexOf(activeCustom)<0)subjects.push(activeCustom);
       }
-      setTimeout(function(){renderBar(list)},120);
+      var tabs=document.querySelector('.tabs');
+      if(tabs)tabs.removeAttribute('data-cy-subj-ready');
+      enhance();
+      if(activeCustom){
+        var first=document.querySelector('.tabs button');
+        if(first){first.setAttribute('data-cy-trigger','1');first.click();}
+      }
     });
+    setTimeout(enhance,100);
   }catch(e){}
 })();"""
 MAX_BATCH_FILES = 18
