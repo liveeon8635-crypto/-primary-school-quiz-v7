@@ -65,6 +65,7 @@ from changying.web.product_shell import (
 )
 from changying.web.operator_usage_metering import install_operator_usage_metering_routes
 from changying.web.operator_console_legacy import OPERATOR_HTML
+from changying.web.personal_migration import install_personal_migration_routes
 from changying.web.pwa import (
     ICON_180_PNG,
     ICON_192_PNG,
@@ -581,6 +582,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_v1_classroom_handout_release_routes(implementation)
     install_v1_guardian_visibility_patch()
     install_guardian_consent_views(implementation)
+    install_personal_migration_routes(implementation)
     install_v1_membership_reliability_patch()
     install_v1_final_closure_patch()
     install_v1_fast_path_patch()
