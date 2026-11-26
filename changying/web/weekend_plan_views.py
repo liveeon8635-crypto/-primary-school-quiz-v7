@@ -922,8 +922,9 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                        workflow_tables["materials"].c.status == "pending")
                 .group_by(workflow_tables["materials"].c.lesson_id)
             ).all()}
+        is_personal = bool(getattr(implementation, "is_individual_school", lambda *_: False)(db, int(u.school_id)))
         max_no = max(max(lessons.keys(), default=0), max(rows.keys(), default=0))
-        total_lessons = max_no if max_no > 0 else LESSONS
+        total_lessons = max_no if (is_personal and max_no > 0) else max(LESSONS, max_no)
         out = []
         for n in range(1, total_lessons + 1):
             r, l = rows.get(n), lessons.get(n)
