@@ -106,6 +106,7 @@ with TestClient(app) as client:
     ph = {"Authorization": "Bearer " + login_and_change(client, "parent1", "123456", "Parent1234")}
     with legacy.SessionLocal() as db:
         db.get(legacy.User, sid).grade = 5
+        db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id)).grade = 5
         db.commit()
     for path in ("/v1/exam-prep", "/v1/exam-paper", "/v1/exam-report"):
         assert client.get(path).status_code == 200, path
@@ -124,7 +125,9 @@ with TestClient(app) as client:
             for qid, q in zip(r["saved"], got["items"]):
                 items[qid] = (key, q)
     lst = client.get("/teacher/exam-goals", headers=th).json()
-    assert lst["items"] == [] and lst["maps"] == []                      # nothing until the map is published
+    assert lst["items"] == []
+    assert len(lst["maps"]) == 1 and lst["maps"][0]["id"] == mid and not lst["maps"][0]["published"]
+    assert any(u["key"] == "U6" for u in lst["maps"][0]["units"])  # teachers can plan before student publication
     client.post(f"/teacher/knowledge-maps/{mid}/publish", headers=th, json={"revision": rev})
     # A sample paper (for example an imported past paper): half fill-in, half choice.
     fills = [q for q, (_, it) in items.items() if it["question_type"] == "fill_blank"][:2]
