@@ -21,6 +21,7 @@ with TestClient(app) as client:
     with legacy.SessionLocal() as db:
         legacy_u = db.get(legacy.User, student_id)
         legacy_u.grade = 5
+        db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id)).grade = 5
         db.commit()
 
     d = client.post("/teacher/knowledge-maps", headers=th, json={"template": "rj2026-g5-math-up"}).json()
