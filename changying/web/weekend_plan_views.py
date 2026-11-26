@@ -50,8 +50,94 @@ AI_FEATURE = "weekend_lesson_draft"
 # A paper question starts with "3.【复述】", "C1.【对比】" or "1、概括…"; headings never do.
 _PAPER_QUESTION = re.compile(r"^\s*([A-Za-z]?\d+|[（(]\s*\d+\s*[)）])\s*[.．、:：)）]?\s*【?")
 _PAPER_ANSWER = "教师评分秘密："
-SUBJECTS = ("语文", "数学")
+SUBJECTS = ("语文", "数学", "英语")
 LESSONS = 18
+MAX_LESSONS = 60
+
+WEEKEND_PLAN_CUSTOM_JS = r"""(function(){
+  try{
+    function token(){try{return localStorage.getItem('v717Token')||sessionStorage.getItem('v717Token')||''}catch(e){return ''}}
+    var t=token();if(!t)return;
+    function req(method,url,body,cb){
+      var x=new XMLHttpRequest();x.open(method,url,true);
+      x.setRequestHeader('Authorization','Bearer '+t);
+      if(body)x.setRequestHeader('Content-Type','application/json');
+      x.onload=function(){var d=null;try{d=JSON.parse(x.responseText)}catch(e){}cb(x.status,d)};
+      x.onerror=function(){cb(0,null)};
+      x.send(body?JSON.stringify(body):null);
+    }
+    var params=new URLSearchParams(location.search||'');
+    var reqSubj=(params.get('subject')||'').replace(/^\s+|\s+$/g,'');
+    function curSubj(){return (typeof window.SUBJ==='string'&&window.SUBJ)?window.SUBJ:(reqSubj||'数学')}
+    function switchSubject(s){
+      window.SUBJ=s;
+      try{
+        var u=new URL(location.href);
+        u.searchParams.set('subject',s);
+        history.replaceState({},'',u.pathname+u.search);
+      }catch(e){}
+      if(typeof window.plan==='function'){window.plan();}else{location.href='/v1/weekend-plan?subject='+encodeURIComponent(s);}
+    }
+    function renderBar(subjects){
+      var root=document.getElementById('app')||document.querySelector('main');
+      if(!root)return;
+      var bar=document.getElementById('cy-custom-subj-bar');
+      if(!bar){
+        bar=document.createElement('div');
+        bar.id='cy-custom-subj-bar';
+        bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px;padding:10px 12px;background:#fff;border:1px solid #e6d8ce;border-radius:12px;font-size:13.5px';
+        root.insertBefore(bar,root.firstChild);
+      }
+      bar.innerHTML='';
+      var lbl=document.createElement('span');lbl.textContent='全部学科：';lbl.style.color='#65595a';lbl.style.fontWeight='700';
+      bar.appendChild(lbl);
+      var active=curSubj();
+      for(var i=0;i<subjects.length;i++){(function(s){
+        var b=document.createElement('button');b.type='button';b.textContent=s;
+        b.style.cssText='border:1px solid '+(s===active?'#a8101c':'#d8cbc2')+';background:'+(s===active?'#fdf1f0':'#fff')+';color:'+(s===active?'#a8101c':'#242026')+';border-radius:999px;padding:4px 12px;font:inherit;font-weight:700;cursor:pointer';
+        b.onclick=function(){switchSubject(s);renderBar(subjects)};
+        bar.appendChild(b);
+      })(subjects[i])}
+      var addSubj=document.createElement('button');addSubj.type='button';addSubj.textContent='+ 新增学科';
+      addSubj.style.cssText='border:1px dashed #a8101c;background:#fff;color:#a8101c;border-radius:999px;padding:4px 12px;font:inherit;font-weight:700;cursor:pointer';
+      addSubj.onclick=function(){
+        var name=window.prompt('请输入新学科名称（如：英语、科学）：','英语');
+        if(!name)return;
+        name=name.replace(/^\s+|\s+$/g,'');
+        if(!name)return;
+        var cntRaw=window.prompt('「'+name+'」先建几节课？（1～36，默认 18，后续可随时追加）','18');
+        if(cntRaw===null)return;
+        var cnt=parseInt(cntRaw,10);
+        if(!(cnt>=1&&cnt<=36)){window.alert('课次数需在 1～36 之间');return}
+        req('POST','/teacher/weekend/lessons/add',{subject:name,count:cnt},function(st,d){
+          if(st===200){location.href='/v1/weekend-plan?subject='+encodeURIComponent(name)}
+          else{window.alert((d&&d.detail)||'新增学科失败')}
+        });
+      };
+      bar.appendChild(addSubj);
+      var addOne=document.createElement('button');addOne.type='button';addOne.textContent='+ 给当前学科追加一课';
+      addOne.style.cssText='margin-left:auto;border:1px solid #d8cbc2;background:#faf6f1;color:#242026;border-radius:999px;padding:4px 12px;font:inherit;font-weight:700;cursor:pointer';
+      addOne.onclick=function(){
+        var s=curSubj();
+        addOne.disabled=true;
+        req('POST','/teacher/weekend/lessons/add',{subject:s,count:1},function(st,d){
+          addOne.disabled=false;
+          if(st===200){switchSubject(s)}
+          else{window.alert((d&&d.detail)||'追加课次失败')}
+        });
+      };
+      bar.appendChild(addOne);
+    }
+    req('GET','/teacher/weekend/subjects',null,function(st,d){
+      var list=(st===200&&d&&d.subjects&&d.subjects.length)?d.subjects:['数学','语文'];
+      if(reqSubj&&reqSubj!=='数学'&&reqSubj!=='语文'){
+        window.SUBJ=reqSubj;
+        setTimeout(function(){if(typeof window.plan==='function')window.plan()},80);
+      }
+      setTimeout(function(){renderBar(list)},120);
+    });
+  }catch(e){}
+})();"""
 MAX_BATCH_FILES = 18
 REMOVED_STAGE = "weekend_removed"
 LEVELS = ("C", "C", "B", "B", "A", "A")
@@ -72,6 +158,11 @@ WRITTEN_TYPE_ALIASES = {
     "final_answer": "final_answer", "最终答案": "final_answer", "填空": "final_answer", "填空题": "final_answer",
     "composition": "composition", "作文": "composition", "写作": "composition", "习作": "composition",
 }
+
+
+class AddLessonsBody(BaseModel):
+    subject: str
+    count: int = Field(default=1, ge=1, le=36)
 
 
 class RowBody(BaseModel):
@@ -629,9 +720,11 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
     current_user, get_db, need = implementation.current_user, implementation.get_db, implementation.need
     router = APIRouter()
 
-    def check_subject(subject: str) -> None:
-        if subject not in SUBJECTS:
-            raise HTTPException(400, "学科需要是：语文 或 数学")
+    def check_subject(subject: str) -> str:
+        s = (subject or "").strip()
+        if not s or len(s) > 16:
+            raise HTTPException(400, "学科名称需要为 1～16 字")
+        return s
 
     def program(db: Any, school_id: int) -> Any:
         p = db.scalar(select(Program).where(Program.school_id == school_id).order_by(Program.active.desc(), Program.id.desc()).limit(1))
@@ -655,7 +748,7 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
 
     def my_lesson(db: Any, u: Any, lid: int) -> Any:
         row = db.get(Lesson, lid)
-        if row is None or int(row.school_id) != int(u.school_id) or row.subject not in SUBJECTS:
+        if row is None or int(row.school_id) != int(u.school_id) or not (row.subject or "").strip():
             raise HTTPException(404, "没有找到这节课")
         return row
 
@@ -728,14 +821,92 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 "coursewareStatus": cw_status, "coursewareApproved": cw_status == "approved", **readiness}
 
 
+    @router.get("/v1/weekend-plan-custom.js", include_in_schema=False)
+    def weekend_plan_custom_js():
+        from fastapi.responses import Response
+        return Response(
+            WEEKEND_PLAN_CUSTOM_JS,
+            media_type="application/javascript; charset=utf-8",
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+        )
+
     @router.get("/v1/weekend-plan", include_in_schema=False)
     def page():
-        return HTMLResponse(plan_page_html(), headers={"Cache-Control": "no-store"})
+        html = plan_page_html().replace("</body>", '<script src="/v1/weekend-plan-custom.js"></script></body>')
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+    @router.get("/teacher/weekend/subjects")
+    def get_subjects(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        p = db.scalar(select(Program).where(Program.school_id == int(u.school_id)).order_by(Program.active.desc(), Program.id.desc()).limit(1))
+        found = (
+            list(
+                db.scalars(
+                    select(Lesson.subject)
+                    .where(Lesson.school_id == int(u.school_id), Lesson.program_id == p.id)
+                    .distinct()
+                    .order_by(Lesson.subject)
+                ).all()
+            )
+            if p is not None
+            else []
+        )
+        ordered: list[str] = []
+        for preset in ("数学", "语文"):
+            if preset in found or not found:
+                if preset not in ordered:
+                    ordered.append(preset)
+        for s in found:
+            s_clean = (s or "").strip()
+            if s_clean and s_clean not in ordered:
+                ordered.append(s_clean)
+        return {"subjects": ordered}
+
+    @router.post("/teacher/weekend/lessons/add")
+    def add_lessons(b: AddLessonsBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher")
+        subj = check_subject(b.subject)
+        p = program(db, int(u.school_id))
+        cur_max = (
+            db.scalar(
+                select(func.max(Lesson.lesson_no)).where(
+                    Lesson.school_id == int(u.school_id),
+                    Lesson.program_id == p.id,
+                    Lesson.subject == subj,
+                )
+            )
+            or 0
+        )
+        if int(cur_max) + int(b.count) > MAX_LESSONS:
+            raise HTTPException(400, f"同一学科最多支持 {MAX_LESSONS} 节课")
+        for no in range(int(cur_max) + 1, int(cur_max) + int(b.count) + 1):
+            db.add(
+                Lesson(
+                    school_id=int(u.school_id),
+                    program_id=p.id,
+                    subject=subj,
+                    lesson_no=no,
+                    unit="待配置单元",
+                    title=f"{subj}第 {no} 课",
+                    core_target="在上课时填写本节课要教会的内容。",
+                    duration_min=120,
+                    teacher_plan="",
+                    reading_plan="",
+                    writing_plan="",
+                    examples_json="[]",
+                    ppt_json=json.dumps(["本课目标", "核心知识点", "例题精讲", "分层练习", "总结复盘"], ensure_ascii=False),
+                    closure_training="",
+                    essay_review="",
+                    published=False,
+                )
+            )
+        db.commit()
+        return {"ok": True, "subject": subj, "added": int(b.count), "totalLessons": int(cur_max) + int(b.count)}
 
     @router.get("/teacher/weekend/schedule")
     def get_schedule(subject: str = "数学", u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "teacher")
-        check_subject(subject)
+        subject = check_subject(subject)
         p = program(db, int(u.school_id))
         rows = {int(r.lesson_no): r for r in db.execute(select(sched).where(sched.c.teacher_id == u.id, sched.c.subject == subject)).all()}
         lessons = {int(l.lesson_no): l for l in db.scalars(select(Lesson).where(Lesson.school_id == u.school_id, Lesson.program_id == p.id, Lesson.subject == subject)).all()}
@@ -751,8 +922,10 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                        workflow_tables["materials"].c.status == "pending")
                 .group_by(workflow_tables["materials"].c.lesson_id)
             ).all()}
+        max_no = max(max(lessons.keys(), default=0), max(rows.keys(), default=0))
+        total_lessons = max_no if max_no > 0 else LESSONS
         out = []
-        for n in range(1, LESSONS + 1):
+        for n in range(1, total_lessons + 1):
             r, l = rows.get(n), lessons.get(n)
             item = {"lessonNo": n, "schoolWeek": r.school_week if r else None, "schoolUnit": r.school_unit if r else "", "plannedDate": r.planned_date if r else "", "note": r.note if r else ""}
             item.update(lesson_status(db, u, l) if l else {
@@ -760,9 +933,10 @@ def install_weekend_plan(implementation: Any) -> APIRouter:
                 "taught": False, "practiceReady": 0, "coursewareStatus": "", "coursewareApproved": False,
             })
             wf = configured.get(n)
-            item["courseType"] = "math" if subject == "数学" else (str(wf.course_type) if wf else None)
+            item["courseType"] = "math" if subject != "语文" else (str(wf.course_type) if wf else None)
             item["workflowRevision"] = int(wf.revision) if wf else 0
-            item["workflowLabel"] = {"math": "数学七环节", "reading": "阅读课", "writing": "作文课"}.get(item["courseType"], "待选择课型")
+            default_label = "数学七环节" if subject == "数学" else "通用七环节"
+            item["workflowLabel"] = {"math": default_label, "reading": "阅读课", "writing": "作文课"}.get(item["courseType"], "待选择课型")
             item["pendingMaterials"] = pending_materials.get(int(l.id), 0) if l else 0
             out.append(item)
         return {"subject": subject, "items": out}

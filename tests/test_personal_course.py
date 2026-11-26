@@ -74,8 +74,9 @@ def test_start_offers_course_buttons_then_builds_one(client):
 
     page = client.get("/start", headers=headers).text
     assert "已有课程方案（18 节课）" in page
-    assert 'value="数学"' not in page
+    assert "数学（已建）" in page
     assert 'value="语文"' in page
+    assert 'value="英语"' in page
 
     # 备课页 now has a program to work with.
     assert client.get("/v1/weekend-plan", headers=headers).status_code == 200
@@ -85,12 +86,32 @@ def test_start_offers_course_buttons_then_builds_one(client):
     assert r.status_code == 303
     assert "已有课程方案（18 节课）" in client.get("/start", headers=headers).text
 
-    # Building the remaining subject removes the one-click course form completely.
-    r = client.post("/start/program", headers=headers, data={"subject": "语文"}, follow_redirects=False)
+    # Custom subject and custom lesson count (e.g. 英语 12 节, 科学 6 节)
+    r = client.post("/start/program", headers=headers, data={"subject": "英语", "lessons": "12"}, follow_redirects=False)
     assert r.status_code == 303
     page = client.get("/start", headers=headers).text
-    assert "已有课程方案（36 节课）" in page
-    assert 'action="/start/program"' not in page
+    assert "已有课程方案（30 节课）" in page
+
+    eng_rows = client.get("/teacher/weekend/schedule?subject=英语", headers=headers).json()["items"]
+    assert len(eng_rows) == 12
+
+    subjects = client.get("/teacher/weekend/subjects", headers=headers).json()["subjects"]
+    assert "数学" in subjects and "英语" in subjects
+
+    # Appending lessons dynamically via weekend plan API
+    added = client.post("/teacher/weekend/lessons/add", headers=headers, json={"subject": "英语", "count": 2})
+    assert added.status_code == 200, added.text[:300]
+    assert added.json()["totalLessons"] == 14
+    assert len(client.get("/teacher/weekend/schedule?subject=英语", headers=headers).json()["items"]) == 14
+
+    # Custom subject via weekend plan API + custom script parse check
+    sci = client.post("/teacher/weekend/lessons/add", headers=headers, json={"subject": "科学", "count": 5})
+    assert sci.status_code == 200
+    assert len(client.get("/teacher/weekend/schedule?subject=科学", headers=headers).json()["items"]) == 5
+    import script_check
+    custom_js = client.get("/v1/weekend-plan-custom.js")
+    assert custom_js.status_code == 200
+    script_check.assert_parses(custom_js.text)
 
 
 def test_one_click_course_is_not_reported_as_already_prepared(client):
@@ -126,7 +147,8 @@ def test_school_teacher_cannot_build_a_personal_course(client):
     r = client.post("/start/program", headers=headers, data={"subject": "数学"}, follow_redirects=False)
     assert r.status_code == 403
 
-    # Unknown subjects are rejected before anything is written.
+    # Invalid subjects or out-of-range lesson counts are rejected before anything is written.
     personal = _workspace(client)
-    r = client.post("/start/program", headers=personal, data={"subject": "英语"}, follow_redirects=False)
-    assert r.status_code == 400
+    assert client.post("/start/program", headers=personal, data={"subject": "   "}, follow_redirects=False).status_code == 400
+    assert client.post("/start/program", headers=personal, data={"subject": "数学", "lessons": "0"}, follow_redirects=False).status_code == 400
+    assert client.post("/start/program", headers=personal, data={"subject": "数学", "lessons": "99"}, follow_redirects=False).status_code == 400
