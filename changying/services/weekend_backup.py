@@ -81,7 +81,13 @@ def backup_material(impl, db, session, *, include_files=False):
         if figure:
             item['figure'] = figure
         questions.append(item)
-    if not questions:
+    from changying.services.weekend_course_types import frozen_session
+    frozen = frozen_session(db, impl, int(session.id), metadata=getattr(impl, 'Base', None) and impl.Base.metadata)
+    writing_pkg = (frozen['lesson'].get('writingPackage') if frozen else None)
+    if not writing_pkg and lesson.subject == '语文':
+        from changying.services.writing_lesson import writing_package as _load_wp
+        _, writing_pkg = _load_wp(impl, db, lesson.id)
+    if not questions and not writing_pkg:
         raise HTTPException(409, '请先审核或添加本节课题目')
     roster = [dict(id=i, name=n) for i, (n, _) in sorted(session_roster(impl, db, session).items())]
     if not roster:
@@ -112,6 +118,15 @@ def backup_material(impl, db, session, *, include_files=False):
         lesson={key: getattr(lesson, key) for key in ('core_target', 'duration_min', 'teacher_plan', 'reading_plan',
             'writing_plan', 'examples_json', 'ppt_json', 'closure_training', 'essay_review')},
         resources=[{k: f[k] for k in ('id', 'name', 'sha256')} for f in files])
+    if writing_pkg:
+        material['writingPackage'] = {
+            'title': str(writing_pkg.get('title') or session.title or ''),
+            'nodes': [
+                {k: n.get(k) for k in ('id', 'kind', 'role', 'text', 'dataUrl', 'targets', 'status')}
+                for n in writing_pkg.get('nodes', [])
+                if n.get('status') == 'confirmed'
+            ],
+        }
     digest = hashlib.sha256(json.dumps(material, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     material.update(packageHash=digest, version=digest[:16])
     return material, files

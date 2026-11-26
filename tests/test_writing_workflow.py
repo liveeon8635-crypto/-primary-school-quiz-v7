@@ -646,3 +646,43 @@ def test_writing_stage_slides_strips_margin_notes_and_empty_method_stubs():
     s4 = writing_stage_slides(pkg, 4)
     assert len(s4) == 2 and len(s4[1]['cards']) == 1
     assert s4[1]['cards'][0]['title'] == '按空间顺序描写'
+
+
+def test_writing_backup_handouts_render_full_teacher_and_student_docx():
+    import io, zipfile
+    from changying.services.weekend_handouts import question_document
+    img = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+    material = {
+        'sessionId': 13,
+        'lessonId': 13,
+        'title': '语文 第 13 课 我最喜欢的季节',
+        'className': '语文阅读理解和写作',
+        'version': 'abc12345',
+        'questions': [],
+        'lesson': {},
+        'writingPackage': {
+            'title': '我最喜欢的季节',
+            'nodes': [
+                {'id': 'r1', 'kind': 'text', 'role': 'review', 'status': 'confirmed', 'text': '回顾四季景物观察'},
+                {'id': 'm0', 'kind': 'text', 'role': 'model', 'status': 'confirmed', 'text': '醉美秋天'},
+                {'id': 'm1', 'kind': 'text', 'role': 'model', 'status': 'confirmed', 'text': '走进果园，苹果挂满枝头。（开头 对比引出最喜爱的季节）'},
+                {'id': 'mi1', 'kind': 'image', 'role': 'model_image', 'status': 'confirmed', 'dataUrl': img, 'targets': ['m1']},
+                {'id': 'p1', 'kind': 'image', 'role': 'picture', 'status': 'confirmed', 'text': '第1幕：青石台阶与迎春花', 'dataUrl': img, 'targets': []},
+                {'id': 'me1', 'kind': 'text', 'role': 'method', 'status': 'confirmed', 'text': '按空间顺序描写：从远到近展开。'},
+                {'id': 't1', 'kind': 'text', 'role': 'task', 'status': 'confirmed', 'text': '我最喜欢的季节'},
+                {'id': 'f1', 'kind': 'text', 'role': 'feedback', 'status': 'confirmed', 'text': '检查观察顺序与多感官描写'},
+            ],
+        },
+    }
+    teacher_docx = question_document(material, 'teacher')
+    student_docx = question_document(material, 'student')
+    with zipfile.ZipFile(io.BytesIO(teacher_docx)) as zt:
+        t_xml = zt.read('word/document.xml').decode('utf-8')
+        assert '二、范文导览' in t_xml and '三、看图写话' in t_xml and '四、写作技法梳理' in t_xml and '五、随堂写作任务' in t_xml
+        assert '【教师旁注】' in t_xml and '六、教师批改与课后反馈重点' in t_xml
+        assert any(n.startswith('word/media/') for n in zt.namelist())
+    with zipfile.ZipFile(io.BytesIO(student_docx)) as zs:
+        s_xml = zs.read('word/document.xml').decode('utf-8')
+        assert '二、范文导览' in s_xml and '三、看图写话' in s_xml and '五、随堂写作任务' in s_xml
+        assert '【教师旁注】' not in s_xml and '姓名：' in s_xml
+        assert any(n.startswith('word/media/') for n in zs.namelist())

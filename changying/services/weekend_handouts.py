@@ -88,7 +88,7 @@ def _figure_image(figure):
     if not isinstance(figure, dict) or figure.get('type') != 'uploaded_image':
         return None
     data_url = str(figure.get('data_url') or '')
-    if len(data_url) > 700000:
+    if len(data_url) > 1400000:
         return None
     match = re.fullmatch(r'data:image/(jpeg|png);base64,([A-Za-z0-9+/]+={0,2})', data_url)
     if not match:
@@ -248,11 +248,146 @@ def _package(document, footer=None, images=None):
     return out.getvalue()
 
 
+def _strip_writing_margin_notes(text):
+    notes = []
+    def _collect(m):
+        inner = m.group(1).strip()
+        if re.search(r'开头|结尾|自然段|移步换景|总起|总结|过渡|点题|抒情|照应|写法|旁注', inner):
+            notes.append(inner)
+            return ''
+        return m.group(0)
+    cleaned = re.sub(r'[（(]([^（）()]{3,60})[）)]', _collect, str(text or '')).strip()
+    cleaned = re.sub(r'[。．]\s*$', '。', cleaned)
+    return cleaned, notes
+
+
+def _writing_handout_document(material, teacher):
+    """Build a complete printable A4 Word handout (teacher or student) for a composition lesson."""
+    paragraph = _paragraph
+    document = ET.Element('{' + NS + '}document')
+    body = _node(document, 'body')
+    wp = material['writingPackage']
+    nodes = [n for n in wp.get('nodes', []) if n.get('status', 'confirmed') == 'confirmed']
+    role_label = '教师版' if teacher else '学生版'
+    title = str(material.get('title') or wp.get('title') or '作文课').strip()
+    paragraph(body, f'{title}（作文课 {role_label}）', 'Title', keep=True, after=140)
+    if teacher:
+        paragraph(body, f"班级：{material.get('className') or ''}　六环节课堂离线备用讲义（含范文、看图写话、技法梳理与随堂写作）", 'TeacherNote', after=160)
+    else:
+        paragraph(body, '姓名：____________　日期：____________', after=180)
+
+    images = []
+    image_by_hash = {}
+    drawing_count = 0
+
+    def add_img(data_url, alt='教学配图'):
+        nonlocal drawing_count
+        if not data_url:
+            return
+        image = _figure_image({'type': 'uploaded_image', 'data_url': data_url, 'alt': alt})
+        if image is None:
+            return
+        digest = hashlib.sha256(image['data']).hexdigest()
+        if digest not in image_by_hash:
+            index = len(images) + 1
+            image['rid'] = 'rIdImage' + str(index)
+            image['filename'] = 'image' + str(index) + '.' + image.get('ext', 'jpg')
+            images.append(image)
+            image_by_hash[digest] = image
+        drawing_count += 1
+        _image_paragraph(body, image_by_hash[digest], drawing_count)
+
+    reviews = [str(n.get('text') or '').strip() for n in nodes if n.get('role') == 'review' and str(n.get('text') or '').strip()]
+    models = [n for n in nodes if n.get('role') == 'model' and str(n.get('text') or '').strip()]
+    model_imgs = [n for n in nodes if n.get('role') == 'model_image' and n.get('dataUrl')]
+    pics = [n for n in nodes if n.get('role') == 'picture' and n.get('dataUrl')]
+    methods = [str(n.get('text') or '').strip() for n in nodes if n.get('role') == 'method' and str(n.get('text') or '').strip()]
+    tasks = [str(n.get('text') or '').strip() for n in nodes if n.get('role') == 'task' and str(n.get('text') or '').strip()]
+    feedbacks = [str(n.get('text') or '').strip() for n in nodes if n.get('role') == 'feedback' and str(n.get('text') or '').strip()]
+
+    # 一、课前观察与回顾
+    if reviews:
+        paragraph(body, '一、课前观察与回顾', 'Heading1', keep=True, before=160)
+        for rtxt in reviews:
+            paragraph(body, rtxt)
+
+    # 二、范文导览
+    if models:
+        paragraph(body, '二、范文导览', 'Heading1', keep=True, before=180)
+        used_imgs = set()
+        for idx, p in enumerate(models):
+            raw_txt = str(p.get('text') or '').strip()
+            clean_txt, notes = _strip_writing_margin_notes(raw_txt)
+            is_title = idx == 0 and len(clean_txt) <= 18 and not re.search(r'[。！？，]', clean_txt)
+            if is_title:
+                paragraph(body, f'《{clean_txt}》', 'Heading1', keep=True, before=80)
+            elif clean_txt:
+                paragraph(body, '　　' + clean_txt)
+            if teacher and notes:
+                paragraph(body, '【教师旁注】' + '；'.join(notes), 'TeacherNote', after=80)
+            for img in model_imgs:
+                if p.get('id') in (img.get('targets') or []) and img.get('id') not in used_imgs:
+                    used_imgs.add(img.get('id'))
+                    add_img(img.get('dataUrl'), '范文配图')
+        for img in model_imgs:
+            if img.get('id') not in used_imgs:
+                add_img(img.get('dataUrl'), '范文配图')
+
+    # 三、看图写话（连续变化图组）
+    if pics:
+        paragraph(body, f'三、看图写话（共 {len(pics)} 幕连续变化图组）', 'Heading1', keep=True, before=180)
+        for idx, pic in enumerate(pics, 1):
+            caption = str(pic.get('text') or '').strip()
+            paragraph(body, f'【第 {idx} 幕】' + (caption or '观察画面变化，用 2–3 句连贯的话描绘这一幕。'), keep=True, before=100)
+            add_img(pic.get('dataUrl'), f'看图写话第{idx}幕')
+            if not teacher:
+                paragraph(body, '我的描写：________________________________________________\n________________________________________________________', after=100)
+
+    # 四、写作技法梳理
+    usable_methods = []
+    for mt in methods:
+        clean_m = re.sub(r'[（(]\s+[）)]', '', mt).strip()
+        parts = re.split(r'[：:]', clean_m, maxsplit=1)
+        body_part = parts[1].strip() if len(parts) == 2 else clean_m
+        if len(re.sub(r'[\s、，。；：:·\-\d\(\)（）]+', '', body_part)) >= 4:
+            usable_methods.append(clean_m)
+    if usable_methods:
+        paragraph(body, '四、写作技法梳理', 'Heading1', keep=True, before=180)
+        for idx, mt in enumerate(usable_methods, 1):
+            paragraph(body, f'{idx}. {mt}', after=80)
+
+    # 五、随堂写作任务
+    topic = tasks[0] if tasks else (wp.get('title') or title)
+    paragraph(body, '五、随堂写作任务', 'Heading1', keep=True, before=180)
+    paragraph(body, f'命题写作：《{topic}》', keep=True)
+    paragraph(body, '半命题参考：《醉美________》 或 《我爱________的________》（任选其一补全题目）')
+    paragraph(body, '写作要求：按一定顺序（空间/时间/移步换景）写出 2–3 处鲜明场景，至少运用 2 种感官或修辞手法，写出真实感受。')
+    if teacher:
+        if feedbacks:
+            paragraph(body, '六、教师批改与课后反馈重点', 'Heading1', keep=True, before=180)
+            for fb in feedbacks:
+                paragraph(body, fb, 'TeacherNote')
+        paragraph(body, '批改检查维度：1. 描写顺序是否清晰；2. 是否调动多感官与修辞/动静结合；3. 开头是否点题、结尾是否抒发真情。', 'TeacherNote', before=60)
+    else:
+        paragraph(body, '题目：____________________________', before=120, after=100)
+        for _ in range(10):
+            paragraph(body, '____________________________________________________________________', after=120)
+
+    _a4(body, footer=teacher)
+    footer = None
+    if teacher:
+        footer = ET.Element('{' + NS + '}ftr')
+        paragraph(footer, '原课堂 ' + str(material['sessionId']) + '　版本 ' + material['version'], 'TeacherNote', after=0)
+    return _package(document, footer, images)
+
+
 def question_document(material, audience):
     """Editable OOXML with no source files, teacher plan, scripts or external links."""
     if audience not in ('teacher', 'student'):
         raise ValueError('unknown handout audience')
     teacher = audience == 'teacher'
+    if material.get('writingPackage'):
+        return _writing_handout_document(material, teacher)
     paragraph = _paragraph
     document = ET.Element('{'+NS+'}document');body = _node(document,'body')
     role = '教师版' if teacher else '学生版'
