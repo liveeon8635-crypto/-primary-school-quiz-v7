@@ -346,6 +346,17 @@ function kmAddForm(u,nodes,box){
     el('div',{class:'row'},el('button',{class:'btn primary',text:'添加',onclick:go}),el('button',{class:'btn',text:'取消',onclick:function(){box.textContent=''}}))));
   name.focus();
 }
+function kmBaselinePreview(box){
+  var preview=el('div',{class:'card'},el('h3',{text:'五上数学基础目录'}),el('p',{class:'muted',text:'正在读取网站基础目录…'}));box.appendChild(preview);
+  api('/teacher/knowledge-maps/baseline').then(function(base){
+    preview.textContent='';preview.appendChild(el('h3',{text:base.title}));
+    preview.appendChild(el('p',{class:'muted',text:base.notice+' 当前没有预审通过的配套题包；应试组卷前须检查题目是否足够。'}));
+    base.map.units.forEach(function(unit){
+      var names=base.map.nodes.filter(function(n){return n.unit===unit.key}).map(function(n){return n.name});
+      preview.appendChild(el('p',{text:unit.name+'：'+names.join('、')}));
+    });
+  }).catch(function(e){preview.appendChild(el('p',{class:'warn',text:e.message}))});
+}
 function kmRender(){
   var s=KM.summary,p=KM.published;KMBOX.textContent='';
   if(KMLIST&&KMLIST.items&&KMLIST.items.length){
@@ -361,9 +372,10 @@ function kmRender(){
       (KMLIST.templates&&KMLIST.templates.length)?el('button',{class:'btn',text:'新建地图',onclick:function(){
         var box=el('div',{class:'card'},el('h3',{text:'用教材模板新建地图'}));
         KMLIST.templates.forEach(function(tp){
+          if(tp.key==='rj2026-g5-math-up')kmBaselinePreview(box);
           box.appendChild(el('button',{class:'btn',text:'用「'+tp.label+'」创建',onclick:function(){
             kmSay('正在创建…');
-            api('/teacher/knowledge-maps',{json:{template:tp.key}})
+            api('/teacher/knowledge-maps',{json:{template:tp.key,baseline:tp.key==='rj2026-g5-math-up'}})
               .then(function(r){KM=r;kmSay('已创建：'+r.title);api('/teacher/knowledge-maps').then(function(d){KMLIST=d;kmRender()})})
               .catch(function(e){kmSay(e.message,true)});
           }}));
@@ -539,9 +551,12 @@ function kmStart(){
   api('/teacher/knowledge-maps').then(function(d){
     KMLIST=d;
     if(d.items.length){kmOpen(d.items[0].id);return}
-    KMBOX.appendChild(el('div',{class:'card'},el('h2',{text:'还没有知识地图'}),el('p',{text:'选择教材模板创建，创建后可以逐项修改、标记已学单元，再给每个知识点的题目分档。'})));
-    d.templates.forEach(function(tp){KMBOX.appendChild(el('button',{class:'btn primary',text:'用“'+tp.label+'”创建',onclick:function(){
-      kmSay('正在创建…');api('/teacher/knowledge-maps',{json:{template:tp.key}}).then(function(r){KM=r;kmSay('已创建');kmRender()}).catch(function(e){kmSay(e.message,true)})}}))});
+    KMBOX.appendChild(el('div',{class:'card'},el('h2',{text:'网站基础知识地图'}),el('p',{text:'网站已备好教材的单元与知识点目录。先核对教材版本；启用后由老师确认已学范围、审核配题，再决定是否发布给学生。'})));
+    d.templates.forEach(function(tp){
+      if(tp.key==='rj2026-g5-math-up')kmBaselinePreview(KMBOX);
+      KMBOX.appendChild(el('button',{class:'btn primary',text:'启用“'+tp.label+'”的基础目录',onclick:function(){
+        kmSay('正在建立本校地图…');api('/teacher/knowledge-maps',{json:{template:tp.key,baseline:tp.key==='rj2026-g5-math-up'}}).then(function(r){KM=r;kmSay('已建立本校地图；请先确认已学范围和题目，学生尚不可见');kmRender()}).catch(function(e){kmSay(e.message,true)})}}));
+    });
   }).catch(function(e){kmSay(e.message,true)});
 }
 boot(kmStart);

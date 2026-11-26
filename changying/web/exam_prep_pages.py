@@ -25,18 +25,24 @@ function epSay(text,bad){EPMSG.textContent=text||'';EPMSG.className=bad?'card wa
 function epDays(n){return n>0?'距考试 '+n+' 天':(n===0?'今天考试':'已考完 '+(-n)+' 天')}
 function epNewForm(box){
   box.textContent='';
-  if(!EPDATA.maps.length){box.appendChild(el('div',{class:'card'},el('p',{text:'还没有已发布的知识地图。应试专项按知识地图的单元和知识点出题，请先在“知识地图”里创建并发布。'}),el('a',{class:'btn',href:'/v1/knowledge-map',text:'去知识地图'})));return}
+  if(!EPDATA.maps.length){
+    var base=EPDATA.baseline;
+    box.appendChild(el('div',{class:'card'},el('h3',{text:base?'网站自带五上数学知识地图':'还没有可用知识地图'}),
+      el('p',{text:base?'基础目录已备好：'+base.units.map(function(u){return u.name}).join('、')+'。先启用本校目录，即可按单元建立考试目标；发卷仍需要本校已审核的足量题目，学生地图不会自动发布。':'应试专项按知识地图的单元和知识点出题，请先在“知识地图”里创建并发布。'}),
+      el('a',{class:'btn',href:'/v1/knowledge-map',text:base?'查看并启用基础目录':'去知识地图'})));return}
   if(!EPDATA.classes.length){box.appendChild(el('div',{class:'card'},el('p',{text:'还没有班级，请先在“我的班级”创建班级并添加学生。'})));return}
   var title=el('input',{value:'期末',maxlength:'60','aria-label':'考试名称'}),date=el('input',{type:'date','aria-label':'考试日期'}),
       cls=el('select',{'aria-label':'班级'}),map=el('select',{'aria-label':'知识地图'}),units=el('div',{class:'row'});
   EPDATA.classes.forEach(function(c){cls.appendChild(el('option',{value:c.id,text:c.name}))});
   EPDATA.maps.forEach(function(m){map.appendChild(el('option',{value:m.id,text:m.title}))});
+  var scopeNote=el('p',{class:'muted'});
   function paintUnits(){units.textContent='';var m=EPDATA.maps.filter(function(x){return String(x.id)===map.value})[0];
-    m.units.forEach(function(u){units.appendChild(el('label',{},el('input',{type:'checkbox',value:u.key,checked:true}),' '+u.name))})}
+    scopeNote.textContent=m.published?'使用已发布的学校地图。':'使用网站五上基础目录建立目标；尚未发布给学生，发卷前须核对本校题库是否有足量的审核题。';
+    m.units.forEach(function(u){units.appendChild(el('label',{},el('input',{type:'checkbox',value:u.key,checked:!!m.published}),' '+u.name))})}
   map.addEventListener('change',paintUnits);paintUnits();
   box.appendChild(el('div',{class:'card'},el('h2',{text:'新建考试目标'}),
     el('div',{class:'row'},el('label',{},'考试名称 ',title)),el('div',{class:'row'},el('label',{},'考试日期 ',date)),
-    el('div',{class:'row'},el('label',{},'班级 ',cls)),el('div',{class:'row'},el('label',{},'知识地图 ',map)),
+    el('div',{class:'row'},el('label',{},'班级 ',cls)),el('div',{class:'row'},el('label',{},'知识地图 ',map)),scopeNote,
     el('p',{class:'muted',text:'考试范围（勾选要考的单元）：'}),units,
     el('div',{class:'row'},el('button',{class:'btn primary',text:'创建',onclick:function(){
       var keys=Array.prototype.filter.call(units.querySelectorAll('input'),function(i){return i.checked}).map(function(i){return i.value});

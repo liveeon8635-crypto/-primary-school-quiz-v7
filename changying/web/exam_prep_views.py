@@ -165,6 +165,10 @@ def install_exam_prep_views(implementation: Any) -> APIRouter:
         if row is None:
             raise HTTPException(404, "没有找到这份知识地图")
         if row.published_json is None:
+            if row.template_key == "rj2026-g5-math-up":
+                # Teachers may plan an exam from the platform's Grade 5 base;
+                # this does not publish a pupil's knowledge map.
+                return row, json.loads(row.map_json)
             raise HTTPException(409, "知识地图还没有发布，发布后才能做应试专项")
         return row, json.loads(row.published_json)
 
@@ -261,7 +265,11 @@ def install_exam_prep_views(implementation: Any) -> APIRouter:
         for n in nodes:
             got = [(int(q), lv, I.question_type_of(usable[int(q)])) for q, lv in n["levels"].items() if int(q) in usable]
             have = {q for q, _, _ in got}
-            got += [(q.id, "medium", I.question_type_of(q)) for q in usable.values() if q.knowledge in n["bankKeys"] and q.id not in have]
+            # The G5 pilot has no reviewed question pack, even after publication:
+            # only questions explicitly assigned a level by the teacher may be sent.
+            if row.template_key != "rj2026-g5-math-up":
+                got += [(q.id, "medium", I.question_type_of(q)) for q in usable.values()
+                        if q.knowledge in n["bankKeys"] and q.id not in have]
             out[n["key"]] = got
         return out
 
@@ -392,22 +400,31 @@ def install_exam_prep_views(implementation: Any) -> APIRouter:
                           .order_by(desc(goals.c.id))).all()
         classes = db.scalars(select(I.SchoolClass).where(I.SchoolClass.school_id == u.school_id, I.SchoolClass.teacher_id == u.id)
                              .order_by(I.SchoolClass.id)).all()
-        found = db.execute(select(maps.c.id, maps.c.title, maps.c.published_json).where(maps.c.school_id == u.school_id)
+        found = db.execute(select(maps.c.id, maps.c.title, maps.c.grade, maps.c.template_key,
+                                  maps.c.published_json, maps.c.map_json).where(maps.c.school_id == u.school_id)
                            .order_by(maps.c.id)).all()
         samples = db.scalars(select(I.Paper).where(I.Paper.school_id == u.school_id, I.Paper.teacher_id == u.id,
                                                    I.Paper.unit != "应试专项").order_by(desc(I.Paper.id)).limit(30)).all()
         return {"items": [goal_json(db, u, g) for g in rows],
                 "classes": [{"id": c.id, "name": c.name, "grade": c.grade} for c in classes],
-                "maps": [{"id": r.id, "title": r.title, "units": [{"key": x["key"], "name": x["name"]} for x in json.loads(r.published_json)["units"]]}
-                         for r in found if r.published_json],
+                "maps": [{"id": r.id, "title": r.title, "grade": r.grade, "published": bool(r.published_json),
+                          "units": [{"key": x["key"], "name": x["name"]}
+                                    for x in json.loads(r.published_json or r.map_json)["units"]]}
+                         for r in found if r.published_json or r.template_key == "rj2026-g5-math-up"],
+                "baseline": None if any(r.grade == 5 for r in found) else {
+                    "title": km.TEMPLATES["rj2026-g5-math-up"]["label"],
+                    "units": [{"key": x["key"], "name": x["name"]}
+                              for x in km.template("rj2026-g5-math-up")["units"]]},
                 "samplePapers": [{"id": p.id, "title": p.title, "questionCount": len(json.loads(p.question_ids_json or "[]"))}
                                  for p in samples if json.loads(p.question_ids_json or "[]")]}
 
     @router.post("/teacher/exam-goals")
     def create_goal(b: GoalBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         teacher(u)
-        own_class(db, u, b.classId)
-        _, m = published(db, u, b.mapId)
+        cls = own_class(db, u, b.classId)
+        row, m = published(db, u, b.mapId)
+        if row.grade != cls.grade:
+            raise HTTPException(400, "班级年级与知识地图不一致")
         if not DATE.match(b.examDate):
             raise HTTPException(400, "考试日期格式应为 2026-01-15")
         try:

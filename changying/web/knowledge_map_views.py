@@ -54,6 +54,7 @@ def knowledge_map_enabled() -> bool:
 
 class CreateBody(BaseModel):
     template: str = Field(max_length=40)
+    baseline: bool = False
 
 
 class SaveBody(BaseModel):
@@ -253,6 +254,17 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
                 "templates": [{"key": k, "label": v["label"]} for k, v in km.TEMPLATES.items()
                               if (v["grade"], v["subject"], v["term"]) not in used]}
 
+    @router.get("/teacher/knowledge-maps/baseline")
+    def baseline(u: Any = Depends(current_user)):
+        teacher(u)
+        key = "rj2026-g5-math-up"
+        m = km.template(key)
+        # The template's learned flags described one pilot class, not every school.
+        for unit in m["units"]:
+            unit["learned"] = False
+        return {"key": key, "title": km.TEMPLATES[key]["label"], "map": m,
+                "notice": "网站提供教材知识目录；已学范围由老师确认，题目审核并发布后学生才能诊断。"}
+
     @router.post("/teacher/knowledge-maps")
     def create(b: CreateBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         teacher(u)
@@ -262,7 +274,12 @@ def install_knowledge_map_views(implementation: Any) -> APIRouter:
         if db.execute(select(t.c.id).where(t.c.school_id == u.school_id, t.c.grade == meta["grade"], t.c.subject == meta["subject"],
                                            t.c.term == meta["term"])).first():
             raise HTTPException(409, "本校这个年级学期已经有知识地图了")
-        m = km.clean_map(km.template(b.template))
+        draft = km.template(b.template)
+        if b.template == "rj2026-g5-math-up" and b.baseline:
+            # A shared curriculum cannot assume what this school's pupils have learned.
+            for unit in draft["units"]:
+                unit["learned"] = False
+        m = km.clean_map(draft)
         db.execute(insert(t).values(school_id=u.school_id, grade=meta["grade"], subject=meta["subject"], term=meta["term"],
                                     textbook=meta["textbook"], title=meta["label"], template_key=b.template,
                                     map_json=json.dumps(m, ensure_ascii=False), revision=0, updated_by=u.id, updated_at=datetime.utcnow()))
