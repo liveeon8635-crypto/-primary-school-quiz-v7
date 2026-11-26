@@ -33,22 +33,30 @@ function epNewForm(box){
   if(!EPDATA.classes.length){box.appendChild(el('div',{class:'card'},el('p',{text:'还没有班级，请先在“我的班级”创建班级并添加学生。'})));return}
   var title=el('input',{value:'期末',maxlength:'60','aria-label':'考试名称'}),date=el('input',{type:'date','aria-label':'考试日期'}),
       cls=el('select',{'aria-label':'班级'}),map=el('select',{'aria-label':'知识地图'}),units=el('div',{class:'row'});
-  EPDATA.classes.forEach(function(c){cls.appendChild(el('option',{value:c.id,text:c.name}))});
   EPDATA.maps.forEach(function(m){map.appendChild(el('option',{value:m.id,text:m.title}))});
-  var scopeNote=el('p',{class:'muted'});
+  var scopeNote=el('p',{class:'muted'}),classNote=el('p',{class:'muted',role:'status'}),createButton;
   function paintUnits(){units.textContent='';var m=EPDATA.maps.filter(function(x){return String(x.id)===map.value})[0];
     scopeNote.textContent=m.published?'使用已发布的学校地图。':'使用网站五上基础目录建立目标；尚未发布给学生，发卷前须核对本校题库是否有足量的审核题。';
+    var previous=cls.value,matching=EPDATA.classes.filter(function(c){return String(c.grade)===String(m.grade)});
+    cls.textContent='';matching.forEach(function(c){cls.appendChild(el('option',{value:c.id,text:c.name}))});
+    if(matching.length){cls.value=matching.some(function(c){return String(c.id)===previous})?previous:String(matching[0].id);
+      classNote.textContent='只显示与知识地图相同年级的班级（'+m.grade+'年级）。';classNote.className='muted'}
+    else{classNote.textContent='这份知识地图是'+m.grade+'年级，目前没有同年级班级。请先到“我的班级”建立'+m.grade+'年级班级，再创建考试目标。';classNote.className='card warn'}
+    cls.disabled=!matching.length;if(createButton)createButton.disabled=!matching.length;
     m.units.forEach(function(u){units.appendChild(el('label',{},el('input',{type:'checkbox',value:u.key,checked:!!m.published}),' '+u.name))})}
-  map.addEventListener('change',paintUnits);paintUnits();
-  box.appendChild(el('div',{class:'card'},el('h2',{text:'新建考试目标'}),
-    el('div',{class:'row'},el('label',{},'考试名称 ',title)),el('div',{class:'row'},el('label',{},'考试日期 ',date)),
-    el('div',{class:'row'},el('label',{},'班级 ',cls)),el('div',{class:'row'},el('label',{},'知识地图 ',map)),scopeNote,
-    el('p',{class:'muted',text:'考试范围（勾选要考的单元）：'}),units,
-    el('div',{class:'row'},el('button',{class:'btn primary',text:'创建',onclick:function(){
+  map.addEventListener('change',paintUnits);
+  createButton=el('button',{class:'btn primary',text:'创建',onclick:function(){
       var keys=Array.prototype.filter.call(units.querySelectorAll('input'),function(i){return i.checked}).map(function(i){return i.value});
+      if(!cls.value){epSay('请先到“我的班级”建立与知识地图同年级的班级',true);return}
       if(!date.value){epSay('请选择考试日期',true);return}if(!keys.length){epSay('请至少勾选一个单元',true);return}
       epSay('正在创建…');api('/teacher/exam-goals',{json:{title:title.value,examDate:date.value,classId:+cls.value,mapId:+map.value,unitKeys:keys}})
-        .then(function(g){epSay('已创建');epGoal(g.id)}).catch(function(e){epSay(e.message,true)})}}),
+        .then(function(g){epSay('已创建');epGoal(g.id)}).catch(function(e){epSay(e.message,true)})}});
+  paintUnits();
+  box.appendChild(el('div',{class:'card'},el('h2',{text:'新建考试目标'}),
+    el('div',{class:'row'},el('label',{},'考试名称 ',title)),el('div',{class:'row'},el('label',{},'考试日期 ',date)),
+    el('div',{class:'row'},el('label',{},'班级 ',cls)),classNote,el('div',{class:'row'},el('label',{},'知识地图 ',map)),scopeNote,
+    el('p',{class:'muted',text:'考试范围（勾选要考的单元）：'}),units,
+    el('div',{class:'row'},createButton,
       el('button',{class:'btn',text:'取消',onclick:function(){box.textContent=''}}))));
 }
 function epFocus(x){return x.focus.length?x.focus.map(function(f){return f.name+'（失 '+f.lostMarks+'/'+f.marks+' 分）'}).join('；'):'全对，保持'}

@@ -99,6 +99,75 @@ def test_page_scripts_parse():
         subprocess.run(["node", "-e", "new Function(require('fs').readFileSync(0,'utf8'))"], input=js, check=True, capture_output=True, text=True)
 
 
+GRADE_FORM_JS = r'''
+const assert=require('assert'),vm=require('vm'),payload=JSON.parse(require('fs').readFileSync(0,'utf8'));
+function el(tag,attrs,...children){
+  const e={tag,attrs:attrs||{},children:[],listeners:{},disabled:false,_value:undefined,_text:'',
+    appendChild(child){this.children.push(child);return child},
+    addEventListener(name,fn){this.listeners[name]=fn},
+    querySelectorAll(name){return this.children.reduce((out,c)=>out.concat(c&&c.tag===name?[c]:[],c&&c.querySelectorAll?c.querySelectorAll(name):[]),[])}};
+  Object.defineProperty(e,'textContent',{get(){return this._text},set(v){this._text=v;this.children=[];if(this.tag==='select')this._value=undefined}});
+  Object.defineProperty(e,'value',{get(){return this._value===undefined?(this.tag==='select'&&this.children.length?String(this.children[0].value):''):this._value},set(v){this._value=String(v)}});
+  if(attrs)for(const k of Object.keys(attrs)){if(k==='text')e.textContent=attrs[k];else e[k]=attrs[k]}
+  for(const child of children)if(child!=null)e.appendChild(child);
+  return e;
+}
+const calls=[],ctx={el,api:(url,opts)=>{calls.push({url,opts});return Promise.resolve({id:1})},console};
+vm.createContext(ctx);vm.runInContext(payload.script.replace(/epBoot\('teacher',epStart\);\s*$/,''),ctx);
+ctx.EPDATA=payload.data;ctx.EPMSG=el('div');ctx.epGoal=function(){};
+const box=el('div');ctx.epNewForm(box);
+const select=(label)=>box.querySelectorAll('select').filter(x=>x.attrs['aria-label']===label)[0];
+const cls=select('班级'),map=select('知识地图'),create=box.querySelectorAll('button').filter(x=>x.textContent==='创建')[0];
+const note=box.children[0].children.filter(x=>x.attrs.role==='status')[0];
+const five=payload.data.classes.filter(x=>x.grade===5);
+assert.equal(cls.value,String(five[0].id));assert.deepEqual(cls.children.map(x=>x.value),five.map(x=>String(x.id)));
+assert.equal(create.disabled,false);
+map.value=String(payload.third.id);map.listeners.change();
+assert.equal(cls.value,String(payload.thirdClass.id));assert.deepEqual(cls.children.map(x=>x.value),[String(payload.thirdClass.id)]);
+map.value=String(payload.fifth.id);map.listeners.change();
+assert.equal(cls.value,String(five[0].id));
+map.value=String(payload.unmatched.id);map.listeners.change();
+assert.equal(cls.disabled,true);assert.equal(create.disabled,true);
+assert.match(note.textContent,/没有同年级班级/);assert.equal(cls.value,'');
+create.onclick();assert.equal(calls.length,0);assert.match(ctx.EPMSG.textContent,/同年级/);
+console.log('OK');
+'''
+
+
+GRADE_FORM_FLOW = r'''
+import subprocess
+with TestClient(app) as client:
+    teacher, _, _, school_id = setup(client)
+    with legacy.SessionLocal() as db:
+        owner = db.scalar(select(legacy.User).where(legacy.User.username == 'teacher1'))
+        first = db.scalar(select(legacy.SchoolClass).where(legacy.SchoolClass.school_id == school_id))
+        first.grade = 1
+        third = legacy.SchoolClass(school_id=school_id, teacher_id=owner.id, name='三年级班', grade=3)
+        fifth = legacy.SchoolClass(school_id=school_id, teacher_id=owner.id, name='五年级班', grade=5)
+        db.add_all([third, fifth]);db.commit();third_id=third.id
+    fifth_map = client.post('/teacher/knowledge-maps', headers=teacher, json={'template':'rj2026-g5-math-up'}).json()
+    response = client.get('/v1/exam-prep')
+    assert response.status_code == 200 and 'function epNewForm(box)' in response.text
+    page_script = 'function epTable(' + response.text.split('function epTable(', 1)[1].split("epBoot('teacher',epStart);", 1)[0] + "epBoot('teacher',epStart);"
+    data = client.get('/teacher/exam-goals', headers=teacher).json()
+    assert [c['grade'] for c in data['classes']] == [1, 3, 5]
+    assert data['maps'][0]['id'] == fifth_map['id'] and not data['maps'][0]['published']
+    third_map = {'id': -3, 'title': '三年级地图', 'grade': 3, 'published': True, 'units': [{'key':'U1', 'name':'一单元'}]}
+    unmatched = {'id': -6, 'title': '六年级地图', 'grade': 6, 'published': True, 'units': [{'key':'U1', 'name':'一单元'}]}
+    data['maps'].extend([third_map, unmatched])
+    result = subprocess.run(['node', '-e', %r], input=json.dumps({'script': page_script, 'data': data, 'fifth': data['maps'][0],
+        'third': third_map, 'thirdClass': next(c for c in data['classes'] if c['id'] == third_id), 'unmatched': unmatched}),
+        text=True, capture_output=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'OK' in result.stdout
+print('OK')
+'''
+
+
+def test_exam_goal_form_selects_matching_class_and_explains_missing_grade(tmp_path):
+    helpers.run_isolated(tmp_path, helpers.COMMON + GRADE_FORM_FLOW.replace('%r', repr(GRADE_FORM_JS)), {'KNOWLEDGE_MAP': '1'})
+
+
 FLOW = r'''
 from datetime import datetime, timedelta
 with TestClient(app) as client:
