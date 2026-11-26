@@ -515,7 +515,7 @@ with TestClient(app) as client:
     th, sh, sid, school_id = setup(client)
     assert client.get("/v1/weekend-plan").status_code == 200
     assert client.get("/teacher/weekend/schedule", headers=sh).status_code == 403
-    assert client.get("/teacher/weekend/schedule?subject=英语", headers=th).status_code == 400
+    assert client.get("/teacher/weekend/schedule?subject=%20", headers=th).status_code == 400
 
     s = client.get("/teacher/weekend/schedule?subject=数学", headers=th).json()
     assert len(s["items"]) == 18

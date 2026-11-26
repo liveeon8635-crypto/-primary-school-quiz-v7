@@ -4823,23 +4823,36 @@ code{background:#f4f6fb;border-radius:6px;padding:2px 6px;font-size:17px;font-we
 </script></body></html>"""
 
 DEFAULT_COURSE_LESSONS=18
-DEFAULT_COURSE_SUBJECTS=("数学","语文")
+MAX_COURSE_LESSONS=36
+DEFAULT_COURSE_SUBJECTS=("数学","语文","英语")
 
 def _default_course_form(missing_subjects=None):
-    subs=DEFAULT_COURSE_SUBJECTS if missing_subjects is None else [s for s in DEFAULT_COURSE_SUBJECTS if s in missing_subjects]
-    if not subs:return ""
-    btns=[]
-    for idx,s in enumerate(subs):
-        cls=' class="alt"' if idx>0 else ''
-        btns.append(f'<button type="submit" name="subject" value="{s}"{cls}>建{s}课（{DEFAULT_COURSE_LESSONS} 节）</button>')
-    return '<form class="build" id="cy-build" method="post" action="/start/program">'+"".join(btns)+'</form>'
+    missing=set(DEFAULT_COURSE_SUBJECTS if missing_subjects is None else missing_subjects)
+    opts=[]
+    selected_done=False
+    for s in DEFAULT_COURSE_SUBJECTS:
+        sel=""
+        if not selected_done and s in missing:
+            sel=" selected";selected_done=True
+        label=s if s in missing else f"{s}（已建）"
+        opts.append(f'<option value="{s}"{sel}>{label}</option>')
+    opts.append('<option value="__custom__">其他学科…</option>')
+    return (
+        '<form class="build" id="cy-build" method="post" action="/start/program">'
+        '<select id="cy-build-subject" name="subject" aria-label="选择学科">'+"".join(opts)+'</select>'
+        '<input id="cy-build-custom" type="text" maxlength="16" placeholder="输入学科名，如 科学" hidden style="width:128px">'
+        '<input id="cy-build-lessons" name="lessons" type="number" min="1" max="36" value="18" aria-label="课次数" style="width:74px">'
+        '<span class="unit">节</span>'
+        '<button type="submit" id="cy-build-btn">建立课程</button>'
+        '</form>'
+    )
 
 DEFAULT_COURSE_FORM=_default_course_form()
 
 # Browsers open /start without an Authorization header, so the page refreshes its
 # own state and posts the course form with the stored token. Kept as a plain ES5
 # script (no arrow functions, no template strings) for the iOS 12 iPad.
-PERSONAL_START_SCRIPT = """<script>
+PERSONAL_START_SCRIPT = r"""<script>
 (function(){
   function el(id){return document.getElementById(id)}
   var logoutBtn=el('cy-logout');
@@ -4866,14 +4879,16 @@ PERSONAL_START_SCRIPT = """<script>
     setDot('cy-s1dot',d.s1cls==='ok');setText('cy-s1text',d.s1text);setLink('cy-s1link',d.s1url,d.s1label,d.s1a==='plain');
     setDot('cy-s2dot',d.s2cls==='ok');setText('cy-s2text',d.s2text);setLink('cy-s2link',d.s2url,d.s2label,d.s2a==='plain');
     setDot('cy-s3dot',d.s3cls==='ok');setText('cy-s3text',d.s3text);setLink('cy-s3link',d.s3url,d.s3label,d.s3a==='plain');
-    var f=el('cy-build');
-    if(f&&d.missingSubjects&&d.missingSubjects.length===0&&f.parentNode){f.parentNode.removeChild(f);}
-    else if(f&&d.missingSubjects){
-      var bs=f.querySelectorAll('button[name=subject]');
-      for(var i=0;i<bs.length;i++){
-        var keep=false;
-        for(var j=0;j<d.missingSubjects.length;j++){if(d.missingSubjects[j]===bs[i].value){keep=true;break}}
-        if(!keep&&bs[i].parentNode)bs[i].parentNode.removeChild(bs[i]);
+    var sel=el('cy-build-subject');
+    if(sel&&d.existingSubjects){
+      var picked=false;
+      for(var i=0;i<sel.options.length;i++){
+        var ov=sel.options[i].value;
+        if(ov==='__custom__')continue;
+        var has=false;
+        for(var j=0;j<d.existingSubjects.length;j++){if(d.existingSubjects[j]===ov){has=true;break}}
+        sel.options[i].textContent=has?(ov+'（已建）'):ov;
+        if(!has&&!picked){sel.value=ov;picked=true}
       }
     }
   }
@@ -4905,14 +4920,26 @@ PERSONAL_START_SCRIPT = """<script>
   });
   var form=el('cy-build');
   if(!form)return;
-  var subject='数学';
-  var buttons=form.querySelectorAll('button[name=subject]');
-  for(var i=0;i<buttons.length;i++){(function(b){b.addEventListener('click',function(){subject=b.value||'数学'})})(buttons[i])}
+  var subjSel=el('cy-build-subject');
+  var customIn=el('cy-build-custom');
+  var lessonsIn=el('cy-build-lessons');
+  var submitBtn=el('cy-build-btn');
+  if(subjSel&&customIn){
+    subjSel.addEventListener('change',function(){
+      customIn.hidden=(subjSel.value!=='__custom__');
+      if(!customIn.hidden)customIn.focus();
+    });
+  }
   form.addEventListener('submit',function(ev){
     ev.preventDefault();
     var msg=el('cy-build-msg');
     if(msg){msg.hidden=true;msg.textContent=''}
-    for(var j=0;j<buttons.length;j++)buttons[j].disabled=true;
+    var chosen=subjSel?subjSel.value:'数学';
+    if(chosen==='__custom__'){chosen=(customIn&&customIn.value?customIn.value:'').replace(/^\s+|\s+$/g,'')}
+    if(!chosen){if(msg){msg.textContent='请输入学科名称';msg.hidden=false}return}
+    var cnt=parseInt(lessonsIn?lessonsIn.value:'18',10);
+    if(!(cnt>=1&&cnt<=36)){if(msg){msg.textContent='课次数需在 1～36 节之间';msg.hidden=false}return}
+    if(submitBtn)submitBtn.disabled=true;
     var r=new XMLHttpRequest();
     r.open('POST','/start/program',true);
     r.setRequestHeader('Authorization','Bearer '+t);
@@ -4922,13 +4949,13 @@ PERSONAL_START_SCRIPT = """<script>
       var d=null;try{d=JSON.parse(r.responseText)}catch(e){}
       var text=(d&&typeof d.detail==='string')?d.detail:'建课失败，请刷新后重试';
       if(msg){msg.textContent=text;msg.hidden=false}
-      for(var k=0;k<buttons.length;k++)buttons[k].disabled=false;
+      if(submitBtn)submitBtn.disabled=false;
     };
     r.onerror=function(){
       if(msg){msg.textContent='网络异常，请重试';msg.hidden=false}
-      for(var k=0;k<buttons.length;k++)buttons[k].disabled=false;
+      if(submitBtn)submitBtn.disabled=false;
     };
-    r.send('subject='+encodeURIComponent(subject));
+    r.send('subject='+encodeURIComponent(chosen)+'&lessons='+encodeURIComponent(String(cnt)));
   });
 })();
 </script>"""
@@ -5000,8 +5027,10 @@ a.tile:hover .tile-arrow{color:var(--brand)}
 a.go{margin-left:auto;white-space:nowrap;text-decoration:none;background:var(--brand);color:#fff;border-radius:10px;padding:7px 14px;font-weight:700;font-size:13.5px;align-self:flex-start}
 a.go.plain{background:#f5efe9;color:var(--ink)}
 a.go.plain:hover{background:var(--brand-soft);color:var(--brand)}
-form.build{margin-top:12px;display:flex;gap:10px;flex-wrap:wrap}
-form.build button{border:0;border-radius:10px;padding:9px 14px;font:inherit;font-size:13.5px;font-weight:700;background:var(--brand);color:#fff;cursor:pointer}
+form.build{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+form.build select,form.build input{border:1px solid var(--line);border-radius:10px;padding:7px 10px;font:inherit;font-size:13.5px;background:#fff;color:var(--ink)}
+form.build .unit{font-size:13px;color:var(--muted)}
+form.build button{border:0;border-radius:10px;padding:8px 14px;font:inherit;font-size:13.5px;font-weight:700;background:var(--brand);color:#fff;cursor:pointer}
 form.build button.alt{background:#f5efe9;color:var(--brand)}
 @media(max-width:1040px){.studio-grid{grid-template-columns:1fr}.manage-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.topbar-in{padding:10px 14px}main{padding:16px 14px 48px}.hero{padding:22px 18px}.hero h1{font-size:24px}.kpi-row{grid-template-columns:repeat(3,minmax(0,1fr));width:100%;gap:10px}.kpi{padding:12px}.kpi strong{font-size:22px}.teach-grid,.manage-grid{grid-template-columns:1fr}.manage-grid a.tile{min-height:0}}
@@ -5112,6 +5141,7 @@ def personal_start_state(db,u):
         "ai_label":("已启用" if ai_ready else "待配置"),
         "progress":f"已完成 {done_count}/3",
         "has_program":bool(program),"lessons":int(lessons or 0),
+        "existingSubjects":sorted(existing_subjects),
         "missingSubjects":missing_subjects,
         "s1cls":("ok" if students else ""),"s1text":(f"已经有 {students} 名学生" if students else "还没有学生，先加 1-2 个试试"),
         "s1url":"/v1/tool?page=classes","s1label":("查看" if students else "去添加"),"s1a":("plain" if students else ""),
@@ -5135,8 +5165,9 @@ def personal_start_summary(authorization:Optional[str]=Header(default=None),db:S
     state["ok"]=True
     return state
 
-def ensure_default_course(db,school_id,subject,grade):
-    """Give a personal workspace its first course so备课 has somewhere to start."""
+def ensure_default_course(db,school_id,subject,grade,lesson_count=DEFAULT_COURSE_LESSONS):
+    """Give a personal workspace its first course (customizable subject and lesson count)."""
+    count=max(1,min(int(lesson_count or DEFAULT_COURSE_LESSONS),MAX_COURSE_LESSONS))
     program=db.scalar(select(TeachingProgram).where(TeachingProgram.school_id==school_id).order_by(TeachingProgram.id).limit(1))
     if program is None:
         program=TeachingProgram(school_id=school_id,title=f"{grade}年级{subject}课",academic_year=2026,term="秋季",grade=grade,semester="上册",chinese_textbook="人教版",math_textbook="人教版",pass_threshold=60,active=True)
@@ -5144,18 +5175,20 @@ def ensure_default_course(db,school_id,subject,grade):
     existing=db.scalar(select(func.count()).select_from(TeachingLesson).where(TeachingLesson.program_id==program.id,TeachingLesson.subject==subject)) or 0
     if existing:
         return program,0
-    for no in range(1,DEFAULT_COURSE_LESSONS+1):
+    for no in range(1,count+1):
         db.add(TeachingLesson(school_id=school_id,program_id=program.id,subject=subject,lesson_no=no,unit="待配置单元",title=f"{subject}第 {no} 课",core_target="在上课时填写本节课要教会的内容。",duration_min=120,teacher_plan="",reading_plan="",writing_plan="",examples_json="[]",ppt_json=json.dumps(["本课目标","核心知识点","例题精讲","分层练习","总结复盘"],ensure_ascii=False),closure_training="",essay_review="",published=False))
-    return program,DEFAULT_COURSE_LESSONS
+    return program,count
 
 @app.post("/start/program",include_in_schema=False)
-def personal_start_program(request:Request,subject:str=Form("数学"),u:User=Depends(current_user),db:Session=Depends(get_db)):
+def personal_start_program(request:Request,subject:str=Form("数学"),lessons:int=Form(DEFAULT_COURSE_LESSONS),u:User=Depends(current_user),db:Session=Depends(get_db)):
     need(u,"teacher","admin")
     if not is_personal_workspace_user(u):raise HTTPException(403,"只有个人工作台可以一键建课")
-    if subject not in DEFAULT_COURSE_SUBJECTS:raise HTTPException(400,"暂只支持数学和语文两科")
+    subj=(subject or "").strip()
+    if not subj or len(subj)>16:raise HTTPException(400,"请填写 1～16 字的学科名称")
+    if not (1<=int(lessons)<=MAX_COURSE_LESSONS):raise HTTPException(400,f"课次数需在 1～{MAX_COURSE_LESSONS} 节之间")
     grade=personal_student_list_grade(db,u.school_id)
-    program,created=ensure_default_course(db,u.school_id,subject,grade)
-    audit(db,u,"course.create",f"program={program.id}:subject={subject}:lessons={created}")
+    program,created=ensure_default_course(db,u.school_id,subj,grade,int(lessons))
+    audit(db,u,"course.create",f"program={program.id}:subject={subj}:lessons={created}")
     db.commit()
     return RedirectResponse("/start",status_code=303)
 
