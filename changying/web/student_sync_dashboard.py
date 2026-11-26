@@ -49,9 +49,54 @@ async function syncLearning(){
 '''
 
 
+STUDENT_PRACTICE_TAB_JS = r'''
+async function practice(){
+ if(state.offline){
+  const qs=offlineBank||[];
+  $("#page").innerHTML=head("离线练习","当前处于离线状态")+
+   '<div class="card"><p class="muted">离线题库共 '+qs.length+' 题。</p><button class="btn primary full" id="startOfflineP">开始离线练习</button></div>';
+  $("#startOfflineP").onclick=()=>startQuiz(qs.slice(0,10),"离线练习",null);
+  return;
+ }
+ $("#page").innerHTML=head("自主练习","知识地图点亮与应试专项分级")+
+  '<div class="card" id="practice-hub-loading"><p class="muted">正在加载数学练习进度…</p></div>';
+ const [sm,sp]=await Promise.all([
+  api("/student/math-star-map").catch(()=>null),
+  api("/student/math-sprints").catch(()=>null)
+ ]);
+ const s=(sm&&sm.summary)||{totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0};
+ const pts=(sm&&sm.points)||(sp&&sp.points)||{balance:0,todayEarned:0,dailyCap:30};
+ const spItems=(sp&&sp.items)||[];
+ const best=spItems.reduce((acc,x)=>(x.bestTier&&(!acc||x.bestTier.rank>acc.rank)?x.bestTier:acc),null);
+ const pct=s.totalNodes?Math.round(s.litNodes/s.totalNodes*100):0;
+ $("#page").innerHTML=head("自主练习","不限教材版本 · 积分同步计入全站账本")+
+  '<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px">'+
+   '<div><b>数学练习概览</b><div class="muted" style="margin-top:4px">已点亮 '+Number(s.litNodes)+'/'+Number(s.totalNodes)+'（'+pct+'%）'+(s.repairNodes?' · 待修补 '+Number(s.repairNodes)+' 个':'')+'</div></div>'+
+   '<span class="badge" style="background:#fdf1f0;color:#a8101c;border:1px solid #f2c6c2;font-weight:700">全站积分 '+Number(pts.balance||0)+'（今日 +'+Number(pts.todayEarned||0)+'/'+Number(pts.dailyCap||30)+'）</span>'+
+  '</div>'+
+  '<div class="grid2" style="margin-top:12px">'+
+   '<div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px">'+
+    '<div><h2 style="margin:0 0 6px">知识地图</h2><p class="muted" style="margin:0;line-height:1.6">覆盖小学数学四大知识域，每个节点自带 5 题微测，答对 80% 即点亮。'+(s.repairNodes?'当前有 '+Number(s.repairNodes)+' 个专项失分点待修补。':'')+'</p></div>'+
+    '<a class="btn primary full" href="/v1/math-star-map" style="text-align:center;text-decoration:none">进入知识地图</a>'+
+   '</div>'+
+   '<div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px">'+
+    '<div><h2 style="margin:0 0 6px">应试专项</h2><p class="muted" style="margin:0;line-height:1.6">5 个多题型限时专项（含看图几何题），倒计时自动交卷，按 L1～L4 分级达标。'+(best?'当前最高：'+esc(best.code+' '+best.name)+'。':'可直接开考，无需前置。')+'</p></div>'+
+    '<a class="btn secondary full" href="/v1/math-sprints" style="text-align:center;text-decoration:none">进入应试专项</a>'+
+   '</div>'+
+  '</div>';
+}
+'''
+
+
 def patch_student_sync_dashboard(html: str) -> str:
     start=html.find('async function syncLearning(){')
-    if start<0:return html
-    end=html.find('\n}\n',start)
-    if end<0:raise ValueError('Student classroom function boundary missing')
-    return html[:start]+STUDENT_SYNC_JS.strip()+html[end+2:]
+    if start>=0:
+        end=html.find('\n}\n',start)
+        if end<0:raise ValueError('Student classroom function boundary missing')
+        html=html[:start]+STUDENT_SYNC_JS.strip()+html[end+2:]
+    p_start=html.find('async function practice(){')
+    if p_start>=0:
+        p_end=html.find('\n}\n',p_start)
+        if p_end>=0:
+            html=html[:p_start]+STUDENT_PRACTICE_TAB_JS.strip()+html[p_end+2:]
+    return html

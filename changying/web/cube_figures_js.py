@@ -78,7 +78,8 @@ function cyGridShapes(fig){
       for(i=0;i<=W;i++)out.push({t:'line',a:{x1:X(i),y1:Y(0),x2:X(i),y2:Y(H),stroke:'#e2e8f0','stroke-width':1}});
       for(i=0;i<=H;i++)out.push({t:'line',a:{x1:X(0),y1:Y(i),x2:X(W),y2:Y(i),stroke:'#e2e8f0','stroke-width':1}});
     }
-    (f.shapes||[]).forEach(function(s){var t=TONE[s.tone]||TONE.a,a={points:s.points.map(function(p){return X(p[0])+','+Y(p[1])}).join(' '),fill:t.fill,stroke:t.stroke,'stroke-width':c>14?2:1.5};
+    var shapeLabels=[];
+    (f.shapes||[]).forEach(function(s){var t=TONE[s.tone]||TONE.a,a={points:s.points.map(function(p){return X(p[0])+','+Y(p[1])}).join(' '),fill:t.fill,'fill-opacity':0.82,stroke:t.stroke,'stroke-width':c>14?2:1.5};
       if(t.dash)a['stroke-dasharray']=t.dash;
       if(s.smooth){
         // Irregular shape: a closed curve through the points (Catmull-Rom as cubic Béziers, as the server counts it).
@@ -91,7 +92,8 @@ function cyGridShapes(fig){
         var lx=X(sx/s.points.length),ly=Y(sy/s.points.length)+5;
         if(f.center){var ox2=X(f.center[0]),oy2=Y(f.center[1]);          // keep the shape's letter clear of the point O
           if(Math.abs(lx-ox2)<c&&Math.abs(ly-oy2)<c){lx+=lx>=ox2?c:-c;ly+=ly>=oy2?c*0.6:-c*0.6}}
-        out.push({t:'text',a:{x:lx,y:ly,'text-anchor':'middle','font-size':Math.max(11,c*0.6),'font-weight':700,fill:t.stroke},s:s.label})}});
+        shapeLabels.push({t:'text',a:{x:lx,y:ly,'text-anchor':'middle','font-size':Math.max(12,c*0.62),'font-weight':800,fill:t.stroke,stroke:'#ffffff','stroke-width':3,'paint-order':'stroke'},s:s.label})}});
+    shapeLabels.forEach(function(lb){out.push(lb)});
     if(f.axis){out.push({t:'line',a:{x1:X(f.axis[0][0]),y1:Y(f.axis[0][1]),x2:X(f.axis[1][0]),y2:Y(f.axis[1][1]),stroke:'#dc2626','stroke-width':2,'stroke-dasharray':'6 4'}});
       out.push({t:'text',a:{x:X(f.axis[1][0])+4,y:Y(f.axis[1][1])+12,'font-size':Math.max(11,c*0.6),fill:'#dc2626','font-style':'italic'},s:'l'})}
     // Measurements: 底/边 as a dimension line set off from the shape, 高 as a dashed line with a right angle at its foot.

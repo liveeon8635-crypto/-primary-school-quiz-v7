@@ -88,6 +88,9 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
         const ex=document.createElement('a');ex.className='cy-ws-row';ex.href='/v1/exam-prep';ex.hidden=true;ex.setAttribute('data-exam-prep-entry','1');
         ex.innerHTML='<b>应试专项</b><i>›</i><small>为期中、期末建考试目标：发模拟卷摸底，找出每个学生失分最多的知识点</small>';
         km.after(ex);
+        const ma=document.createElement('a');ma.className='cy-ws-row';ma.href='/v1/math-star-map';ma.setAttribute('data-math-arena-entry','1');
+        ma.innerHTML='<b>数学知识地图与应试专项</b><i>›</i><small>查看全班 24 考点点亮进度、限时专项分级段位与全站学习积分</small>';
+        ex.after(ma);
         fetch('/knowledge-map/config',{cache:'no-store'}).then(r=>{if(r.ok){km.hidden=false;ex.hidden=false}}).catch(()=>{});
       }
       main.insertBefore(all,main.firstChild);
