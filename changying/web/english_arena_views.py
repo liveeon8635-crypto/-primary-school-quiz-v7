@@ -1,0 +1,753 @@
+"""英语通用知识地图（按知识点域自带题点亮）与强应试专项（按听/说/读/写四大能力混合计时分级）路由.
+
+独立双入口、底层双向联动：
+- 知识地图（按知识点域）：
+  GET  /v1/english-star-map
+  GET  /student/english-star-map
+  POST /student/english-star-map/nodes/{key}/quiz
+  POST /student/english-star-map/nodes/{key}/quiz/submit
+- 强应试专项（按听/说/读/写）：
+  GET  /v1/english-sprints
+  GET  /student/english-sprints
+  POST /student/english-sprints/{slug}/start
+  POST /student/english-sprints/attempts/{attempt_id}/submit
+- 静态音频：
+  GET  /assets/english-audio/{audio_id}.mp3
+- 教师 / 家长学情同步：
+  GET  /teacher/english-arena/overview
+  GET  /parent/english-arena/children
+"""
+from __future__ import annotations
+
+from datetime import datetime
+import json
+from pathlib import Path
+import re
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse, HTMLResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, desc, insert, select, update
+
+from changying.services import english_arena_points as eapts
+from changying.services import english_builtin_map as ebm
+from changying.services import english_exam_sprints as ees
+from changying.web.knowledge_map_views import NO_CACHE
+
+AUDIO_DIR = Path(__file__).resolve().parent / "english_audio"
+AUDIO_ID_RE = re.compile(r"^[a-z0-9_-]{3,40}$")
+
+
+class EnglishAnswerItem(BaseModel):
+    question_id: str = Field(min_length=1, max_length=120)
+    selected_index: int | None = None
+    text_answer: str = Field(default="", max_length=500)
+
+
+class EnglishNodeQuizSubmitBody(BaseModel):
+    quiz_id: int
+    answers: list[EnglishAnswerItem]
+
+
+class EnglishSprintSubmitBody(BaseModel):
+    answers: list[EnglishAnswerItem] = Field(default_factory=list)
+    auto_submitted: bool = False
+
+
+def register_english_arena_tables(implementation: Any) -> dict[str, Table]:
+    md = implementation.Base.metadata
+    if "english_node_mastery" not in md.tables:
+        Table(
+            "english_node_mastery",
+            md,
+            Column("id", Integer, primary_key=True),
+            Column("school_id", Integer, nullable=False, index=True),
+            Column("student_id", Integer, nullable=False, index=True),
+            Column("node_key", String(24), nullable=False),
+            Column("attempts", Integer, nullable=False, default=0),
+            Column("correct", Integer, nullable=False, default=0),
+            Column("hard_correct", Integer, nullable=False, default=0),
+            Column("best_quiz_rate_pct", Integer, nullable=False, default=0),
+            Column("sprint_boost_stars", Integer, nullable=False, default=0),
+            Column("needs_repair", Integer, nullable=False, default=0),
+            Column("updated_at", DateTime, nullable=False),
+            UniqueConstraint("school_id", "student_id", "node_key", name="uq_english_node_mastery_student"),
+        )
+    if "english_node_quizzes" not in md.tables:
+        Table(
+            "english_node_quizzes",
+            md,
+            Column("id", Integer, primary_key=True),
+            Column("school_id", Integer, nullable=False, index=True),
+            Column("student_id", Integer, nullable=False, index=True),
+            Column("node_key", String(24), nullable=False),
+            Column("items_json", Text, nullable=False),
+            Column("status", String(16), nullable=False),  # open | submitted
+            Column("correct", Integer, nullable=True),
+            Column("total", Integer, nullable=True),
+            Column("created_at", DateTime, nullable=False),
+            Column("submitted_at", DateTime, nullable=True),
+        )
+    if "english_sprint_attempts" not in md.tables:
+        Table(
+            "english_sprint_attempts",
+            md,
+            Column("id", Integer, primary_key=True),
+            Column("school_id", Integer, nullable=False, index=True),
+            Column("student_id", Integer, nullable=False, index=True),
+            Column("slug", String(48), nullable=False, index=True),
+            Column("timing_mode", String(24), nullable=False, default="overall"),
+            Column("items_json", Text, nullable=False),
+            Column("time_limit_sec", Integer, nullable=False),
+            Column("status", String(16), nullable=False),  # open | submitted
+            Column("started_at", DateTime, nullable=False),
+            Column("submitted_at", DateTime, nullable=True),
+            Column("elapsed_sec", Integer, nullable=True),
+            Column("earned_marks", Integer, nullable=True),
+            Column("total_marks", Integer, nullable=True),
+            Column("score_rate", Integer, nullable=True),
+            Column("tier_code", String(8), nullable=True),
+            Column("result_json", Text, nullable=True),
+        )
+    return {
+        "mastery": md.tables["english_node_mastery"],
+        "quizzes": md.tables["english_node_quizzes"],
+        "sprints": md.tables["english_sprint_attempts"],
+    }
+
+
+def install_english_arena_views(implementation: Any) -> APIRouter:
+    app = implementation.app
+    if getattr(app.state, "english_arena_installed", False):
+        return app.state.english_arena_router
+    tables = register_english_arena_tables(implementation)
+    t_mastery, t_quizzes, t_sprints = tables["mastery"], tables["quizzes"], tables["sprints"]
+    current_user, get_db, need = implementation.current_user, implementation.get_db, implementation.need
+    router = APIRouter()
+
+    def ensure_tables(db: Any) -> None:
+        bind = db.get_bind()
+        for tbl in (t_mastery, t_quizzes, t_sprints):
+            tbl.create(bind=bind, checkfirst=True)
+
+    def _state_from_row(row: Any | None) -> dict[str, Any]:
+        if row is None:
+            return ebm.compute_light_state(
+                attempts=0,
+                correct=0,
+                hard_correct=0,
+                best_quiz_rate_pct=0,
+                sprint_boost_stars=0,
+                needs_repair=False,
+            )
+        return ebm.compute_light_state(
+            attempts=int(row.attempts),
+            correct=int(row.correct),
+            hard_correct=int(row.hard_correct),
+            best_quiz_rate_pct=int(row.best_quiz_rate_pct),
+            sprint_boost_stars=int(row.sprint_boost_stars),
+            needs_repair=bool(row.needs_repair),
+        )
+
+    def _upsert_mastery(
+        db: Any,
+        *,
+        school_id: int,
+        student_id: int,
+        node_key: str,
+        add_attempts: int,
+        add_correct: int,
+        add_hard_correct: int,
+        quiz_rate_pct: int | None = None,
+        boost_stars: int | None = None,
+        needs_repair: bool | None = None,
+    ) -> dict[str, Any]:
+        now = datetime.utcnow()
+        row = db.execute(
+            select(t_mastery).where(
+                t_mastery.c.school_id == school_id,
+                t_mastery.c.student_id == student_id,
+                t_mastery.c.node_key == node_key,
+            )
+        ).first()
+        prev_st = _state_from_row(row)
+        prev_repair = bool(row.needs_repair) if row is not None else False
+
+        if row is None:
+            attempts = add_attempts
+            correct = add_correct
+            hard_correct = add_hard_correct
+            best_rate = int(quiz_rate_pct or 0)
+            sprint_boost = int(boost_stars or 0)
+            repair_flag = 1 if needs_repair else 0
+            db.execute(
+                insert(t_mastery).values(
+                    school_id=school_id,
+                    student_id=student_id,
+                    node_key=node_key,
+                    attempts=attempts,
+                    correct=correct,
+                    hard_correct=hard_correct,
+                    best_quiz_rate_pct=best_rate,
+                    sprint_boost_stars=sprint_boost,
+                    needs_repair=repair_flag,
+                    updated_at=now,
+                )
+            )
+        else:
+            attempts = int(row.attempts) + add_attempts
+            correct = int(row.correct) + add_correct
+            hard_correct = int(row.hard_correct) + add_hard_correct
+            best_rate = max(int(row.best_quiz_rate_pct), int(quiz_rate_pct or 0))
+            sprint_boost = max(int(row.sprint_boost_stars), int(boost_stars or 0))
+            if needs_repair is None:
+                repair_flag = int(row.needs_repair)
+            else:
+                repair_flag = 1 if needs_repair else 0
+            db.execute(
+                update(t_mastery)
+                .where(t_mastery.c.id == row.id)
+                .values(
+                    attempts=attempts,
+                    correct=correct,
+                    hard_correct=hard_correct,
+                    best_quiz_rate_pct=best_rate,
+                    sprint_boost_stars=sprint_boost,
+                    needs_repair=repair_flag,
+                    updated_at=now,
+                )
+            )
+
+        next_st = ebm.compute_light_state(
+            attempts=attempts,
+            correct=correct,
+            hard_correct=hard_correct,
+            best_quiz_rate_pct=best_rate,
+            sprint_boost_stars=sprint_boost,
+            needs_repair=bool(repair_flag),
+        )
+        return {
+            "prev": prev_st,
+            "next": next_st,
+            "repaired": bool(prev_repair and not bool(repair_flag)),
+            "attempts": attempts,
+            "correct": correct,
+            "bestQuizRate": best_rate,
+        }
+
+    # ---------------- 静态音频与页面路由 ----------------
+    @router.get("/assets/english-audio/{audio_id}.mp3", include_in_schema=False)
+    def english_audio_file(audio_id: str):
+        if not AUDIO_ID_RE.match(audio_id):
+            raise HTTPException(404, "音频不存在")
+        target = AUDIO_DIR / f"{audio_id}.mp3"
+        if not target.is_file():
+            raise HTTPException(404, "音频文件未生成")
+        return FileResponse(
+            path=str(target),
+            media_type="audio/mpeg",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    @router.get("/v1/english-star-map", include_in_schema=False)
+    def english_star_map_page():
+        from changying.web.english_arena_pages import english_star_map_page_html
+        return HTMLResponse(english_star_map_page_html(), headers=NO_CACHE)
+
+    @router.get("/v1/english-sprints", include_in_schema=False)
+    def english_sprints_page():
+        from changying.web.english_arena_pages import english_sprints_page_html
+        return HTMLResponse(english_sprints_page_html(), headers=NO_CACHE)
+
+    # ---------------- 学生端：英语知识地图（按知识点域） ----------------
+    @router.get("/student/english-star-map")
+    def get_english_star_map(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "student")
+        ensure_tables(db)
+        bp = ebm.get_map_blueprint()
+        rows = db.execute(
+            select(t_mastery).where(
+                t_mastery.c.school_id == u.school_id,
+                t_mastery.c.student_id == u.id,
+            )
+        ).all()
+        by_key = {r.node_key: r for r in rows}
+
+        nodes_out: list[dict[str, Any]] = []
+        lit_nodes = 0
+        mastered_nodes = 0
+        repair_nodes = 0
+        total_stars = 0
+        for n in bp["nodes"]:
+            r = by_key.get(n["key"])
+            st = _state_from_row(r)
+            if st["state"] in ("lit", "mastered"):
+                lit_nodes += 1
+            if st["state"] == "mastered":
+                mastered_nodes += 1
+            if st["needsRepair"]:
+                repair_nodes += 1
+            total_stars += int(st["stars"])
+            nodes_out.append({
+                **n,
+                **st,
+                "attempts": int(r.attempts) if r is not None else 0,
+                "correct": int(r.correct) if r is not None else 0,
+                "bestQuizRate": int(r.best_quiz_rate_pct) if r is not None else 0,
+            })
+
+        return {
+            "subject": bp["subject"],
+            "grade": bp["grade"],
+            "domains": bp["domains"],
+            "nodes": nodes_out,
+            "summary": {
+                "totalNodes": len(nodes_out),
+                "litNodes": lit_nodes,
+                "masteredNodes": mastered_nodes,
+                "repairNodes": repair_nodes,
+                "totalStars": total_stars,
+                "maxStars": len(nodes_out) * 3,
+            },
+            "points": eapts.student_arena_points_summary(implementation, db, u),
+        }
+
+    @router.post("/student/english-star-map/nodes/{node_key}/quiz")
+    def start_english_node_quiz(node_key: str, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "student")
+        ensure_tables(db)
+        node = ebm.NODE_BY_KEY.get(node_key)
+        if not node:
+            raise HTTPException(404, "未找到该英语知识节点")
+        prev_cnt = db.execute(
+            select(t_quizzes.c.id).where(
+                t_quizzes.c.school_id == u.school_id,
+                t_quizzes.c.student_id == u.id,
+                t_quizzes.c.node_key == node_key,
+            )
+        ).all()
+        seed = int(u.id) * 13 + len(prev_cnt) * 5 + 3
+        questions = ebm.generate_node_questions(node_key, count=5, seed=seed, map_friendly=True)
+        now = datetime.utcnow()
+        res = db.execute(
+            insert(t_quizzes).values(
+                school_id=u.school_id,
+                student_id=u.id,
+                node_key=node_key,
+                items_json=json.dumps(questions, ensure_ascii=False),
+                status="open",
+                created_at=now,
+            )
+        )
+        quiz_id = int(res.inserted_primary_key[0])
+        db.commit()
+        return {
+            "quizId": quiz_id,
+            "node": node,
+            "questions": [ebm.public_question(q) for q in questions],
+        }
+
+    @router.post("/student/english-star-map/nodes/{node_key}/quiz/submit")
+    def submit_english_node_quiz(
+        node_key: str,
+        body: EnglishNodeQuizSubmitBody,
+        u: Any = Depends(current_user),
+        db: Any = Depends(get_db),
+    ):
+        need(u, "student")
+        ensure_tables(db)
+        node = ebm.NODE_BY_KEY.get(node_key)
+        if not node:
+            raise HTTPException(404, "未找到该英语知识节点")
+        row = db.execute(
+            select(t_quizzes).where(
+                t_quizzes.c.id == body.quiz_id,
+                t_quizzes.c.school_id == u.school_id,
+                t_quizzes.c.student_id == u.id,
+                t_quizzes.c.node_key == node_key,
+            )
+        ).first()
+        if row is None:
+            raise HTTPException(404, "未找到本次英语节点微测记录")
+        if row.status == "submitted":
+            raise HTTPException(409, "本次微测已经提交过")
+
+        questions = json.loads(row.items_json)
+        ans_map = {a.question_id: a for a in body.answers}
+        correct_cnt = 0
+        hard_correct = 0
+        details: list[dict[str, Any]] = []
+        for q in questions:
+            a = ans_map.get(q["id"])
+            sel = a.selected_index if a else None
+            txt = a.text_answer if a else ""
+            ok = ebm.grade_answer(q, selected_index=sel, text_answer=txt)
+            if ok:
+                correct_cnt += 1
+                if q.get("level") == "hard":
+                    hard_correct += 1
+            details.append({
+                "id": q["id"],
+                "questionType": q["questionType"],
+                "typeLabel": q.get("typeLabel", q["questionType"]),
+                "text": q["text"],
+                "correct": ok,
+                "answer": q["answer"],
+                "explanation": q.get("explanation", ""),
+            })
+
+        total = len(questions)
+        rate_pct = round(correct_cnt * 100 / total) if total else 0
+        passed = rate_pct >= 80
+        up = _upsert_mastery(
+            db,
+            school_id=int(u.school_id),
+            student_id=int(u.id),
+            node_key=node_key,
+            add_attempts=total,
+            add_correct=correct_cnt,
+            add_hard_correct=hard_correct,
+            quiz_rate_pct=rate_pct,
+            needs_repair=False if passed else None,
+        )
+        points_awarded = eapts.settle_map_node_milestones(
+            implementation,
+            db,
+            u,
+            node_key=node_key,
+            node_name=node["name"],
+            prev_state=up["prev"]["state"],
+            next_state=up["next"]["state"],
+            repaired=up["repaired"],
+            related_id=int(row.id),
+        )
+        now = datetime.utcnow()
+        db.execute(
+            update(t_quizzes)
+            .where(t_quizzes.c.id == row.id)
+            .values(status="submitted", correct=correct_cnt, total=total, submitted_at=now)
+        )
+        db.commit()
+        return {
+            "quizId": int(row.id),
+            "nodeKey": node_key,
+            "nodeName": node["name"],
+            "correct": correct_cnt,
+            "total": total,
+            "ratePct": rate_pct,
+            "passed": passed,
+            "nodeState": up["next"],
+            "repaired": up["repaired"],
+            "pointsAwarded": points_awarded,
+            "points": eapts.student_arena_points_summary(implementation, db, u),
+            "details": details,
+        }
+
+    # ---------------- 学生端：英语应试专项（按听/说/读/写 + 混合计时） ----------------
+    @router.get("/student/english-sprints")
+    def get_english_sprints(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "student")
+        ensure_tables(db)
+        rows = db.execute(
+            select(t_sprints)
+            .where(
+                t_sprints.c.school_id == u.school_id,
+                t_sprints.c.student_id == u.id,
+                t_sprints.c.status == "submitted",
+            )
+            .order_by(desc(t_sprints.c.id))
+        ).all()
+
+        by_slug: dict[str, list[Any]] = {}
+        for r in rows:
+            by_slug.setdefault(r.slug, []).append(r)
+
+        sprints_out: list[dict[str, Any]] = []
+        for s in ees.list_sprints("英语"):
+            hist = by_slug.get(s["slug"], [])
+            best_tier = None
+            best_rate = 0
+            for h in hist:
+                t = ees.TIER_BY_CODE.get(h.tier_code or "L0", ees.TIER_BY_CODE["L0"])
+                if best_tier is None or t["rank"] > best_tier["rank"]:
+                    best_tier = t
+                if (h.score_rate or 0) > best_rate:
+                    best_rate = int(h.score_rate or 0)
+            sprints_out.append({
+                **s,
+                "attempts": len(hist),
+                "bestScoreRate": best_rate,
+                "bestTier": best_tier,
+                "lastScoreRate": int(hist[0].score_rate or 0) if hist else None,
+            })
+
+        return {
+            "subject": "英语",
+            "grade": 5,
+            "tiers": ees.TIERS,
+            "sprints": sprints_out,
+            "points": eapts.student_arena_points_summary(implementation, db, u),
+        }
+
+    @router.post("/student/english-sprints/{slug}/start")
+    def start_english_sprint(slug: str, u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "student")
+        ensure_tables(db)
+        sprint = ees.get_sprint(slug)
+        if not sprint:
+            raise HTTPException(404, "未找到该英语应试专项")
+        prev_cnt = db.execute(
+            select(t_sprints.c.id).where(
+                t_sprints.c.school_id == u.school_id,
+                t_sprints.c.student_id == u.id,
+                t_sprints.c.slug == slug,
+            )
+        ).all()
+        seed = int(u.id) * 19 + len(prev_cnt) * 7 + 5
+        questions = ees.compose_sprint_questions(slug, seed=seed)
+        now = datetime.utcnow()
+        res = db.execute(
+            insert(t_sprints).values(
+                school_id=u.school_id,
+                student_id=u.id,
+                slug=slug,
+                timing_mode=sprint["timingMode"],
+                items_json=json.dumps(questions, ensure_ascii=False),
+                time_limit_sec=int(sprint["timeLimitSec"]),
+                status="open",
+                started_at=now,
+            )
+        )
+        attempt_id = int(res.inserted_primary_key[0])
+        db.commit()
+        return {
+            "attemptId": attempt_id,
+            "sprint": sprint,
+            "timingMode": sprint["timingMode"],
+            "perQuestionSec": int(sprint.get("perQuestionSec", 0)),
+            "maxPlays": int(sprint.get("maxPlays", 0)),
+            "timeLimitSec": int(sprint["timeLimitSec"]),
+            "startedAt": now.isoformat() + "Z",
+            "questions": [ebm.public_question(q) for q in questions],
+        }
+
+    @router.post("/student/english-sprints/attempts/{attempt_id}/submit")
+    def submit_english_sprint(
+        attempt_id: int,
+        body: EnglishSprintSubmitBody,
+        u: Any = Depends(current_user),
+        db: Any = Depends(get_db),
+    ):
+        need(u, "student")
+        ensure_tables(db)
+        row = db.execute(
+            select(t_sprints).where(
+                t_sprints.c.id == attempt_id,
+                t_sprints.c.school_id == u.school_id,
+                t_sprints.c.student_id == u.id,
+            )
+        ).first()
+        if row is None:
+            raise HTTPException(404, "未找到本次英语专项作答记录")
+        if row.status == "submitted":
+            raise HTTPException(409, "本次英语专项已经提交过")
+
+        sprint = ees.get_sprint(row.slug) or {"slug": row.slug, "title": row.slug}
+        questions = json.loads(row.items_json)
+        now = datetime.utcnow()
+        elapsed_sec = max(1, int((now - row.started_at).total_seconds()))
+        answers_by_id = {
+            a.question_id: {"selected_index": a.selected_index, "text_answer": a.text_answer}
+            for a in body.answers
+        }
+        result = ees.evaluate_sprint_attempt(
+            questions=questions,
+            answers_by_id=answers_by_id,
+            elapsed_sec=elapsed_sec,
+            time_limit_sec=int(row.time_limit_sec),
+            auto_submitted=body.auto_submitted,
+        )
+
+        # 双向联动地图 & 结算积分里程碑
+        node_names = {n["key"]: n["name"] for n in ebm.ENGLISH_G5_NODES}
+        map_changes: dict[str, list[dict[str, Any]]] = {"lit": [], "repaired": [], "flagged": []}
+        all_entries: list[dict[str, Any]] = []
+        capped = False
+
+        sprint_pts = eapts.settle_sprint_tier_milestones(
+            implementation,
+            db,
+            u,
+            slug=row.slug,
+            title=sprint["title"],
+            tier_code=result["tier"]["code"],
+            attempt_id=int(row.id),
+            now_utc=now,
+        )
+        all_entries.extend(sprint_pts["entries"])
+        capped = capped or bool(sprint_pts["capped"])
+
+        for mu in result["mapUpdates"]:
+            nk = mu["nodeKey"]
+            up = _upsert_mastery(
+                db,
+                school_id=int(u.school_id),
+                student_id=int(u.id),
+                node_key=nk,
+                add_attempts=int(mu["attempts"]),
+                add_correct=int(mu["correct"]),
+                add_hard_correct=int(mu["hardCorrect"]),
+                boost_stars=int(mu["boostStars"]) or None,
+                needs_repair=True if mu["needsRepair"] else (False if mu["boostStars"] > 0 else None),
+            )
+            if mu["needsRepair"]:
+                map_changes["flagged"].append({"key": nk, "name": node_names.get(nk, nk)})
+            elif up["next"]["state"] in ("lit", "mastered") and up["prev"]["state"] not in ("lit", "mastered"):
+                map_changes["lit"].append({"key": nk, "name": node_names.get(nk, nk)})
+            if up["repaired"]:
+                map_changes["repaired"].append({"key": nk, "name": node_names.get(nk, nk)})
+
+            n_pts = eapts.settle_map_node_milestones(
+                implementation,
+                db,
+                u,
+                node_key=nk,
+                node_name=node_names.get(nk, nk),
+                prev_state=up["prev"]["state"],
+                next_state=up["next"]["state"],
+                repaired=up["repaired"],
+                related_id=int(row.id),
+                now_utc=now,
+            )
+            all_entries.extend(n_pts["entries"])
+            capped = capped or bool(n_pts["capped"])
+
+        points_awarded = {
+            "total": sum(int(e["awarded"]) for e in all_entries),
+            "capped": capped,
+            "entries": all_entries,
+        }
+
+        db.execute(
+            update(t_sprints)
+            .where(t_sprints.c.id == row.id)
+            .values(
+                status="submitted",
+                submitted_at=now,
+                elapsed_sec=result["elapsedSec"],
+                earned_marks=result["earnedMarks"],
+                total_marks=result["totalMarks"],
+                score_rate=result["scoreRate"],
+                tier_code=result["tier"]["code"],
+                result_json=json.dumps(result, ensure_ascii=False),
+            )
+        )
+        db.commit()
+        return {
+            "attemptId": int(row.id),
+            "slug": row.slug,
+            "timingMode": row.timing_mode,
+            "pointsAwarded": points_awarded,
+            "points": eapts.student_arena_points_summary(implementation, db, u),
+            "mapChanges": map_changes,
+            **result,
+        }
+
+    # ---------------- 教师 / 家长学情同步概览 ----------------
+    def _summarize_student_arena(db: Any, stu: Any) -> dict[str, Any]:
+        node_names = {n["key"]: n["name"] for n in ebm.ENGLISH_G5_NODES}
+        m_rows = db.execute(
+            select(t_mastery).where(t_mastery.c.school_id == stu.school_id, t_mastery.c.student_id == stu.id)
+        ).all()
+        lit_count = 0
+        mastered_count = 0
+        repair_names: list[str] = []
+        for r in m_rows:
+            st = _state_from_row(r)
+            if st["state"] in ("lit", "mastered"):
+                lit_count += 1
+            if st["state"] == "mastered":
+                mastered_count += 1
+            if st["needsRepair"]:
+                repair_names.append(f"{r.node_key} {node_names.get(r.node_key, r.node_key)}")
+
+        s_rows = db.execute(
+            select(t_sprints).where(
+                t_sprints.c.school_id == stu.school_id,
+                t_sprints.c.student_id == stu.id,
+                t_sprints.c.status == "submitted",
+            )
+        ).all()
+        best_tier = None
+        for sr in s_rows:
+            t = ees.TIER_BY_CODE.get(sr.tier_code or "L0", ees.TIER_BY_CODE["L0"])
+            if best_tier is None or t["rank"] > best_tier["rank"]:
+                best_tier = t
+        pts = eapts.student_arena_points_summary(implementation, db, stu)
+        return {
+            "studentId": int(stu.id),
+            "name": stu.name or stu.username,
+            "grade": getattr(stu, "grade", None),
+            "litNodes": lit_count,
+            "masteredNodes": mastered_count,
+            "totalNodes": len(ebm.ENGLISH_G5_NODES),
+            "repairCount": len(repair_names),
+            "repairNames": repair_names[:4],
+            "sprintAttempts": len(s_rows),
+            "bestTier": best_tier,
+            "pointsBalance": pts["balance"],
+            "todayPoints": pts["todayEarned"],
+        }
+
+    @router.get("/teacher/english-arena/overview")
+    def teacher_english_overview(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "teacher", "admin")
+        ensure_tables(db)
+        User = implementation.User
+        students = db.scalars(
+            select(User).where(User.school_id == u.school_id, User.role == "student").order_by(User.id)
+        ).all()
+        items = [_summarize_student_arena(db, stu) for stu in students[:100]]
+        return {
+            "role": u.role,
+            "subject": "英语",
+            "totalNodes": len(ebm.ENGLISH_G5_NODES),
+            "totalSprints": len(ees.ENGLISH_G5_SPRINTS),
+            "items": items,
+        }
+
+    @router.get("/parent/english-arena/children")
+    def parent_english_children(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+        need(u, "parent")
+        ensure_tables(db)
+        User = implementation.User
+        ParentStudent = getattr(implementation, "ParentStudent", None)
+        children: list[Any] = []
+        if ParentStudent is not None:
+            sids = list(
+                db.scalars(
+                    select(ParentStudent.student_id).where(
+                        ParentStudent.school_id == u.school_id,
+                        ParentStudent.parent_id == u.id,
+                    )
+                ).all()
+            )
+            if sids:
+                children = db.scalars(select(User).where(User.school_id == u.school_id, User.id.in_(sids))).all()
+        items = [_summarize_student_arena(db, c) for c in children]
+        return {
+            "role": "parent",
+            "subject": "英语",
+            "totalNodes": len(ebm.ENGLISH_G5_NODES),
+            "totalSprints": len(ees.ENGLISH_G5_SPRINTS),
+            "items": items,
+        }
+
+    app.include_router(router)
+    app.state.english_arena_installed = True
+    app.state.english_arena_router = router
+    return router
+
+
+__all__ = ["AUDIO_DIR", "install_english_arena_views", "register_english_arena_tables"]

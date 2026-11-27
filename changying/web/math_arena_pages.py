@@ -19,6 +19,9 @@ main,#app{max-width:940px!important;margin:0 auto!important;padding:14px 14px 44
 .ma-seg{display:inline-flex;background:#f4ece4;border-radius:11px;padding:3px;gap:3px;box-shadow:inset 0 1px 2px rgba(56,28,24,.08)}
 .ma-seg a{padding:6px 15px;border-radius:9px;text-decoration:none;font-size:14px;font-weight:700;color:var(--ma-muted);transition:all .15s ease}
 .ma-seg a.on{background:var(--ma-brand);color:#fff;box-shadow:0 2px 0 var(--ma-brand-dark)}
+.ea-subj{display:inline-flex;background:#efe6dc;border-radius:10px;padding:3px;gap:3px;box-shadow:inset 0 1px 2px rgba(56,28,24,.08)}
+.ea-subj a{padding:5px 12px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:800;color:var(--ma-muted);transition:all .15s ease}
+.ea-subj a.on{background:#fff;color:var(--ma-brand);box-shadow:0 1px 3px rgba(56,28,24,.12)}
 .ma-link-btn{display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:10px;border:1px solid var(--ma-line);background:#fff;color:var(--ma-ink);font-size:13px;font-weight:700;text-decoration:none;cursor:pointer;font-family:inherit;box-shadow:0 2px 0 #eadfd5}
 .ma-link-btn:hover{background:#fcf8f3}
 .ma-link-btn:active{transform:translateY(1px);box-shadow:0 1px 0 #eadfd5}
@@ -91,8 +94,10 @@ main,#app{max-width:940px!important;margin:0 auto!important;padding:14px 14px 44
 .ma-tag.mastered{background:var(--ma-gold-soft);color:var(--ma-gold)}
 .ma-tag.repair{background:#fee2e2;color:var(--ma-brand)}
 
-/* 选中节点操作条 */
-.ma-detail{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;animation:maFade .18s ease}
+/* 选中节点底部吸底操作条 */
+.ma-detail-dock{position:sticky;bottom:12px;z-index:25}
+.ma-detail-dock:empty{display:none}
+.ma-detail{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;animation:maFade .18s ease;border-color:#e2c6be;box-shadow:0 6px 24px rgba(56,28,24,.14),0 2px 0 #e2c6be}
 .ma-detail-info{flex:1;min-width:220px}
 
 /* 应试专项卡片 */
@@ -152,7 +157,11 @@ function maRenderRoleOverview(role){
   var backHref=isTeacher?'/v1':'/classic?legacy=1&unified=1&page=parent';
   var backText=isTeacher?'‹ 返回工作台':'‹ 返回家长端';
   var bar=el('div',{class:'ma-topbar'},
-    el('div',{class:'ma-topbar-left'},el('a',{class:'ma-link-btn',href:backHref,text:backText})),
+    el('div',{class:'ma-topbar-left'},
+      el('a',{class:'ma-link-btn',href:backHref,text:backText}),
+      el('div',{class:'ea-subj'},
+        el('a',{href:'/v1/math-star-map',class:'on',text:'数学'}),
+        el('a',{href:'/v1/english-star-map',text:'英语'}))),
     el('div',{class:'ma-topbar-right'},el('span',{class:'ma-pts',text:isTeacher?'教师学情总览':'家长学情视图'})));
   var box=el('div',{class:'ma-wrap'},bar);
   root.appendChild(box);
@@ -202,7 +211,10 @@ function maClockText(sec){var s=Math.max(0,Math.floor(sec)),m=Math.floor(s/60),r
 function maTopbar(active,pts){
   var bar=el('div',{class:'ma-topbar'});
   var left=el('div',{class:'ma-topbar-left'},
-    el('a',{class:'ma-link-btn',href:'/classic?legacy=1&unified=1&page=practice',text:'‹ 返回练习'}));
+    el('a',{class:'ma-link-btn',href:'/classic?legacy=1&unified=1&page=practice',text:'‹ 返回练习'}),
+    el('div',{class:'ea-subj'},
+      el('a',{href:active==='sprints'?'/v1/math-sprints':'/v1/math-star-map',class:'on',text:'数学'}),
+      el('a',{href:active==='sprints'?'/v1/english-sprints':'/v1/english-star-map',text:'英语'})));
   var seg=el('div',{class:'ma-seg'},
     el('a',{href:'/v1/math-star-map',class:active==='map'?'on':'',text:'知识地图'}),
     el('a',{href:'/v1/math-sprints',class:active==='sprints'?'on':'',text:'应试专项'}));
@@ -419,8 +431,8 @@ function mStartQuiz(n){
 function mLoad(){
   root.textContent='';
   MTOP=el('div');MSUM=el('div');MMSG=el('div',{class:'ma-notice',role:'status'});
-  MQUIZ=el('div',{style:'display:none'});MDETAIL=el('div');MGRID=el('div',{class:'ma-domains'});
-  root.appendChild(el('div',{class:'ma-wrap'},MTOP,MSUM,MMSG,MQUIZ,MDETAIL,MGRID));
+  MQUIZ=el('div',{style:'display:none'});MDETAIL=el('div',{class:'ma-detail-dock'});MGRID=el('div',{class:'ma-domains'});
+  root.appendChild(el('div',{class:'ma-wrap'},MTOP,MSUM,MMSG,MQUIZ,MGRID,MDETAIL));
   api('/student/math-star-map').then(function(d){
     MSM=d;mRenderHeader();mRenderGrid();
     var want=/[#&]node=([^&]+)/.exec(location.hash);
