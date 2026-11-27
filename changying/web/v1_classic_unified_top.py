@@ -83,6 +83,9 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
  function currentRole(){try{return String(state.user&&state.user.role||'teacher')}catch(_e){return 'teacher'}}
  function currentName(){try{return String(state.user&&state.user.name||'当前账号')}catch(_e){return '当前账号'}}
  function currentPage(){try{return String(state.page||params.get('page')||'')}catch(_e){return String(params.get('page')||'')}}
+ var pageHooks=[];
+ function onPageTick(fn){pageHooks.push(fn)}
+ function runPageHooks(){if(document.hidden)return;for(var i=0;i<pageHooks.length;i++){try{pageHooks[i]()}catch(_e){}}}
  function v1Token(){try{var remember=localStorage.getItem('v717Remember')==='1';return (remember?localStorage.getItem('v717Token'):sessionStorage.getItem('v717Token'))||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||''}catch(_e){return ''}}
  async function consumeV1Handoff(){var early=window.__cyV1HandoffPromise;if(early){window.__cyV1HandoffPromise=null;return await early}try{var r=await fetch('/v1/auth-handoff/consume',{method:'POST',cache:'no-store',credentials:'same-origin'});if(!r.ok)return null;return await r.json()}catch(_e){return null}}
  function switchAccount(){try{if(typeof clearAuth==='function')clearAuth()}catch(_e){}try{localStorage.removeItem('cyV1Identity')}catch(_e){}location.replace('/v1')}
@@ -90,7 +93,7 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
  function openToolPage(page){if(!page)return;try{if(typeof roleAllowsPage==='function'&&!roleAllowsPage(page))return}catch(_e){}hideToolHub();try{if(typeof go==='function'){go(page);var u=new URL(location.href);u.searchParams.delete('from');u.searchParams.set('legacy','1');u.searchParams.set('unified','1');u.searchParams.set('page',page);history.replaceState(null,'',u.pathname+u.search);sync();return}}catch(_e){}location.href='/classic?legacy=1&unified=1&page='+encodeURIComponent(page)}
  function showToolHub(){var hub=document.getElementById('cy-v1-tool-hub');if(!hub){hub=document.createElement('div');hub.id='cy-v1-tool-hub';hub.hidden=true;hub.innerHTML='<section id="cy-v1-tool-hub-card" role="dialog" aria-modal="true" aria-labelledby="cy-v1-tool-hub-title"><div id="cy-v1-tool-hub-head"><h2 id="cy-v1-tool-hub-title">全部功能</h2><button type="button" id="cy-v1-tool-hub-close">关闭</button></div><p id="cy-v1-tool-hub-help">选择功能后，请到功能页面查看待审核、已发布等实际进度；进入功能不代表已完成办理。</p><div id="cy-v1-tool-grid"></div><div id="cy-v1-tool-account"><small>需要更换教师、学生或家长账号时，请使用“切换账号”。</small><button type="button" id="cy-v1-tool-switch-account">切换账号</button></div></section>';document.body.appendChild(hub);hub.onclick=function(e){if(e.target===hub)hideToolHub()};document.getElementById('cy-v1-tool-hub-close').onclick=hideToolHub;document.getElementById('cy-v1-tool-switch-account').onclick=switchAccount}var role=currentRole(),items=menus[role]||menus.teacher,grid=document.getElementById('cy-v1-tool-grid');grid.innerHTML=items.map(function(x){return '<button type="button" data-tool-page="'+x[0]+'"><strong>'+x[1]+'</strong></button>'}).join('');grid.querySelectorAll('[data-tool-page]').forEach(function(b){b.onclick=function(){openToolPage(b.getAttribute('data-tool-page'))}});hub.hidden=false}
  function mount(){if(document.getElementById('cy-v1-unified-top'))return;var top=document.createElement('header');top.id='cy-v1-unified-top';top.innerHTML=__RIBBON_JSON__+'<a class="cy-v1-brand" href="/v1/workspace"><span class="cy-v1-brand-text">长缨辅学</span></a><span class="cy-v1-spacer"></span><span id="cy-v1-unified-identity">正在识别身份</span><select id="cy-v1-unified-picker" aria-label="切换功能"></select><button type="button" id="cy-v1-switch-account">切换账号</button>';document.body.insertBefore(top,document.body.firstChild);var bottom=document.createElement('nav');bottom.id='cy-v1-unified-bottom';document.body.appendChild(bottom);document.getElementById('cy-v1-switch-account').onclick=switchAccount;var picker=document.getElementById('cy-v1-unified-picker');picker.addEventListener('change',function(){openToolPage(picker.value)})}
- function sync(){mount();var role=currentRole(),items=menus[role]||menus.teacher,picker=document.getElementById('cy-v1-unified-picker'),identity=document.getElementById('cy-v1-unified-identity'),bottom=document.getElementById('cy-v1-unified-bottom');if(!picker||!identity||!bottom)return;var brand=document.querySelector('#cy-v1-unified-top .cy-v1-brand');if(brand){brand.setAttribute('href',role==='student'?'/classic?legacy=1&unified=1&page=practice':(role==='parent'?'/classic?legacy=1&unified=1&page=childProgress':'/v1/workspace'))}var hubHelp=document.getElementById('cy-v1-tool-hub-help');if(hubHelp&&role==='student'){hubHelp.textContent='选择下方功能即可快速跳转学习、错题复习与查看积分记录。'}var old=picker.value,html=items.map(function(x){return '<option value="'+x[0]+'">'+x[1]+'</option>'}).join('');if(picker.innerHTML!==html)picker.innerHTML=html;var page=currentPage();picker.value=items.some(function(x){return x[0]===page})?page:(old||items[0][0]);identity.textContent=currentName()+' · '+({teacher:'教师',student:'学生',parent:'家长',admin:'管理员'}[role]||role);var quick=quickMenus[role]||quickMenus.teacher;bottom.innerHTML=quick.map(function(x){var hub=x[0]==='tools'&&x[3]==='#',internal=!hub&&x[3].charAt(0)!=='/',href=hub?'#':(internal?'/classic?legacy=1&unified=1&page='+encodeURIComponent(x[3]):x[3]),active=(x[3]===page)||(hub&&params.get('page')==='__hub__')||(role==='teacher'&&x[0]==='tools'&&!!page&&page!=='__hub__');return '<a '+(active?'class="active" ':'')+(hub?'data-tool-hub="1" ':(internal?'data-classic-page="'+x[3]+'" ':''))+'href="'+href+'"><span>'+x[1]+'</span>'+x[2]+'</a>'}).join('');bottom.querySelectorAll('a[data-tool-hub]').forEach(function(a){a.onclick=function(e){e.preventDefault();showToolHub()}});bottom.querySelectorAll('a[data-classic-page]').forEach(function(a){a.onclick=function(e){e.preventDefault();openToolPage(a.getAttribute('data-classic-page'))}})}
+ function sync(){mount();var role=currentRole(),items=menus[role]||menus.teacher,picker=document.getElementById('cy-v1-unified-picker'),identity=document.getElementById('cy-v1-unified-identity'),bottom=document.getElementById('cy-v1-unified-bottom');if(!picker||!identity||!bottom)return;var brand=document.querySelector('#cy-v1-unified-top .cy-v1-brand');if(brand){brand.setAttribute('href',role==='student'?'/classic?legacy=1&unified=1&page=practice':(role==='parent'?'/classic?legacy=1&unified=1&page=childProgress':'/v1/workspace'))}var hubHelp=document.getElementById('cy-v1-tool-hub-help');if(hubHelp&&role==='student'){hubHelp.textContent='选择下方功能即可快速跳转学习、错题复习与查看积分记录。'}var old=picker.value,html=items.map(function(x){return '<option value="'+x[0]+'">'+x[1]+'</option>'}).join('');if(picker.innerHTML!==html)picker.innerHTML=html;var page=currentPage();picker.value=items.some(function(x){return x[0]===page})?page:(old||items[0][0]);identity.textContent=currentName()+' · '+({teacher:'教师',student:'学生',parent:'家长',admin:'管理员'}[role]||role);var quick=quickMenus[role]||quickMenus.teacher;bottom.innerHTML=quick.map(function(x){var hub=x[0]==='tools'&&x[3]==='#',internal=!hub&&x[3].charAt(0)!=='/',href=hub?'#':(internal?'/classic?legacy=1&unified=1&page='+encodeURIComponent(x[3]):x[3]),active=(x[3]===page)||(hub&&params.get('page')==='__hub__')||(role==='teacher'&&x[0]==='tools'&&!!page&&page!=='__hub__');return '<a '+(active?'class="active" ':'')+(hub?'data-tool-hub="1" ':(internal?'data-classic-page="'+x[3]+'" ':''))+'href="'+href+'"><span>'+x[1]+'</span>'+x[2]+'</a>'}).join('');bottom.querySelectorAll('a[data-tool-hub]').forEach(function(a){a.onclick=function(e){e.preventDefault();showToolHub()}});bottom.querySelectorAll('a[data-classic-page]').forEach(function(a){a.onclick=function(e){e.preventDefault();openToolPage(a.getAttribute('data-classic-page'))}});runPageHooks()}
  function clearV1FromMarker(){try{var u=new URL(location.href);if(u.searchParams.get('from')==='v1'){u.searchParams.delete('from');history.replaceState(null,'',u.pathname+u.search)}}catch(_e){}}
  async function hydrateFromV1(){
   var fromV1=params.get('from')==='v1',bridge=null,t='',s=null;
@@ -143,7 +146,7 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
     if(head&&head.parentNode===pg)pg.insertBefore(band,head.nextSibling);else pg.insertBefore(band,pg.firstChild);
    }).catch(function(){}).then(function(){busy=false});
   }
-  setInterval(ensure,1200);
+  onPageTick(ensure);
  })();
  // 晚托作业助手的 AI 辅助记录：学生“我的学情”、家长“孩子学情”顶部显示被 AI 辅助过的知识点（只读，没打开功能时不显示）。
  (function(){
@@ -183,7 +186,7 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
     lastKey=path;
    }).catch(function(){}).then(function(){busy=false});
   }
-  setInterval(ensure,1300);
+  onPageTick(ensure);
  })();
  // 周末课：家长“孩子课程”页顶部放简报入口（只是链接，不发起请求）。
  (function(){
@@ -201,7 +204,7 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
    var head=pg.querySelector('.page-head');
    if(head&&head.parentNode===pg)pg.insertBefore(band,head.nextSibling);else pg.insertBefore(band,pg.firstChild);
   }
-  setInterval(ensure,1300);
+  onPageTick(ensure);
  })();
  // 周末课：家长“孩子学情”页顶部放学情反馈入口（链接到同一份已发布数据，不发起请求）。
  (function(){
@@ -219,7 +222,7 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
    var head=pg.querySelector('.page-head');
    if(head&&head.parentNode===pg)pg.insertBefore(band,head.nextSibling);else pg.insertBefore(band,pg.firstChild);
   }
-  setInterval(ensure,1300);
+  onPageTick(ensure);
  })();
  // 应试专项：家长“孩子学情”页顶部放提分报告入口（功能开启时才显示；只是链接）。
  (function(){
@@ -238,7 +241,7 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
    var head=pg.querySelector('.page-head');
    if(head&&head.parentNode===pg)pg.insertBefore(band,head.nextSibling);else pg.insertBefore(band,pg.firstChild);
   }
-  setInterval(ensure,1300);
+  onPageTick(ensure);
  })();
  // 数学知识地图与应试专项：家长“孩子学情”页顶部放学情同步入口（只是链接）。
  (function(){
@@ -272,7 +275,7 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
     eband.parentNode.insertBefore(cband,eband.nextSibling);
    }
   }
-  setInterval(ensure,1300);
+  onPageTick(ensure);
  })();
  // 知识点讲解：学生“我的错题”页顶部放一个入口（只是链接，不发起任何请求）；搜索和讲解都在 /v1/knowledge。
  (function(){
@@ -290,7 +293,7 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
    var head=pg.querySelector('.page-head');
    if(head&&head.parentNode===pg)pg.insertBefore(band,head.nextSibling);else pg.insertBefore(band,pg.firstChild);
   }
-  setInterval(ensure,1300);
+  onPageTick(ensure);
  })();
  // 语数英自主练习错题本闭环 + 积分/学情页直达自主练习入口（纯 ES5，无 innerHTML）
  (function(){
@@ -364,8 +367,9 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
     }
    }else if(oldPr){oldPr.remove()}
   }
-  setInterval(ensureClosedLoop,1300);
+  onPageTick(ensureClosedLoop);
  })();
+ setInterval(runPageHooks,1500);
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
 </script>
