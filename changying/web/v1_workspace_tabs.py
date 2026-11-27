@@ -98,18 +98,6 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
           ?'<b>语文知识地图与四大板块专项</b><i>›</i><small>点亮 16 个语文核心考点，练习听写、古诗默写、现代文阅读与微写作</small>'
           :'<b>语文知识地图与四大板块专项</b><i>›</i><small>查看全班 16 语文考点点亮进度、基础/古诗文/阅读/微写作分级段位与积分</small>';
         ea.after(ca);
-        if(curRole!=='student'){
-          const legacyBox=document.createElement('details');legacyBox.className='cy-ws-legacy';legacyBox.hidden=true;
-          legacyBox.style.cssText='margin-top:8px;padding:10px 12px;border:1px dashed #d8d0c8;border-radius:12px;background:#faf7f4';
-          legacyBox.innerHTML='<summary style="cursor:pointer;font-size:13px;font-weight:700;color:#65595a">校本旧版工具（按教材手动维护目录与模拟卷）</summary>';
-          const km=document.createElement('a');km.className='cy-ws-row';km.href='/v1/knowledge-map';km.setAttribute('data-knowledge-map-entry','1');km.style.marginTop='8px';
-          km.innerHTML='<b>校本教材目录（旧）</b><i>›</i><small>按教材单元手动维护知识点、前置关系与题目分档</small>';
-          const ex=document.createElement('a');ex.className='cy-ws-row';ex.href='/v1/exam-prep';ex.setAttribute('data-exam-prep-entry','1');ex.style.marginTop='8px';
-          ex.innerHTML='<b>校本模拟卷（旧）</b><i>›</i><small>按校本目录建期中/期末考试目标与人工发卷分析</small>';
-          legacyBox.appendChild(km);legacyBox.appendChild(ex);
-          ca.after(legacyBox);
-          fetch('/knowledge-map/config',{cache:'no-store'}).then(r=>{if(r.ok){legacyBox.hidden=false}}).catch(()=>{});
-        }
       }
       main.insertBefore(all,main.firstChild);
     }

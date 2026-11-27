@@ -15,7 +15,20 @@ function epTable(head,rows){
 }
 function epBoot(role,run){
   obtainToken().then(function(t){TOKEN=t;if(!TOKEN){msg('请先登录后再打开');return}
-    return api('/session').then(function(s){if(s.role!==role){msg(role==='student'?'这个页面给学生使用':(role==='parent'?'这个页面给家长使用':'只有老师可以使用'));return}run()})}).catch(function(e){msg(e.message||'打不开')});
+    return api('/session').then(function(s){
+      if(s.role!==role){
+        if(role==='teacher'&&location.pathname==='/v1/exam-prep'){location.replace('/v1/math-sprints');return}
+        root.textContent='';
+        root.appendChild(el('div',{class:'card'},
+          el('h2',{text:role==='student'?'这个页面给学生使用':(role==='parent'?'这个页面给家长使用':'该旧版工具仅对教师账号开放')}),
+          el('p',{class:'muted',text:'你可以直接前往新版知识地图与应试专项，支持教师、管理员、学生与家长视角。'}),
+          el('div',{class:'row'},
+            el('a',{class:'btn primary',href:'/v1/math-sprints',text:'前往新版应试专项'}),
+            el('a',{class:'btn',href:'/',text:'返回首页'}))));
+        return;
+      }
+      run();
+    })}).catch(function(e){msg(e.message||'打不开')});
 }
 """
 
