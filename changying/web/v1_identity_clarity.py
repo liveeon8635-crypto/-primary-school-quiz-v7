@@ -21,8 +21,10 @@ def patch_v1_identity_clarity(html: str) -> str:
     choose_marker = "function chooseIdentity(){const choices=identitiesFor(session);identity=null;"
     choose_replacement = (
         "function chooseIdentity(){const choices=identitiesFor(session);"
+        "const sl=document.getElementById('signupLink');if(sl)sl.hidden=true;"
         "if(choices.length===1){identity=choices[0];localStorage.setItem(IDENTITY_KEY,identity.key);"
         "chip.textContent=identity.label+' · '+(session.name||'');identityButton.hidden=false;identityButton.textContent='切换账号';"
+        "if(identity.mode==='student'&&!pendingIdentityReturnPath){const bl=document.getElementById('brandLink');if(bl)bl.setAttribute('href','/classic?legacy=1&unified=1&page=practice');openClassic('/v1/tool?page=practice');return}"
         "const fallback=identity.mode==='family'||identity.mode==='student'?'/v1/student':'/v1/workspace?mode='+identity.mode;"
         "const target=pendingIdentityReturnPath||fallback;pendingIdentityReturnPath='';navigate(target);return}"
         "identity=null;"

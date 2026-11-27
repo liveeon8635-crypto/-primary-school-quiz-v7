@@ -78,7 +78,7 @@ function eaTopbar(active,pts){
     el('a',{href:'/v1/english-star-map',class:active==='map'?'on':'',text:'知识地图'}),
     el('a',{href:'/v1/english-sprints',class:active==='sprints'?'on':'',text:'应试专项'}));
   var right=el('div',{class:'ma-topbar-right'});
-  if(pts)right.appendChild(el('span',{class:'ma-pts',title:'英语今日学习积分 '+pts.todayEarned+'/'+pts.dailyCap,text:'积分 '+pts.balance}));
+  if(pts)right.appendChild(el('a',{class:'ma-pts',href:'/classic?legacy=1&unified=1&page=rewards',style:'text-decoration:none',title:'查看全站积分奖励 · 英语今日学习积分 '+pts.todayEarned+'/'+pts.dailyCap,text:'积分 '+pts.balance+' ›'}));
   bar.appendChild(left);bar.appendChild(seg);bar.appendChild(right);
   return bar;
 }

@@ -26,6 +26,7 @@ from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueCon
 from changying.services import exam_sprints as es
 from changying.services import math_arena_points as mapts
 from changying.services import math_builtin_map as mbm
+from changying.web.arena_wrongbook import record_arena_outcomes
 from changying.web.knowledge_map_views import NO_CACHE
 
 
@@ -400,6 +401,11 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
             .where(t_quizzes.c.id == qrow.id)
             .values(status="submitted", correct=correct, total=total, submitted_at=datetime.utcnow())
         )
+        record_arena_outcomes(
+            implementation, db, school_id=int(u.school_id), student_id=int(u.id),
+            subject="数学", source_kind="map", details=details,
+            default_node_key=key, default_node_name=node_name,
+        )
         db.commit()
         map_payload = build_map_payload(db, u)
         return {
@@ -624,6 +630,10 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
                 tier_code=result["tier"]["code"],
                 result_json=json.dumps(result, ensure_ascii=False),
             )
+        )
+        record_arena_outcomes(
+            implementation, db, school_id=int(u.school_id), student_id=int(u.id),
+            subject="数学", source_kind="sprint", details=result["details"],
         )
         db.commit()
         return {

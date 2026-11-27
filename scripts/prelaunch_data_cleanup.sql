@@ -93,6 +93,7 @@ WITH d AS (DELETE FROM english_node_mastery RETURNING 1) INSERT INTO _deleted SE
 WITH d AS (DELETE FROM chinese_sprint_attempts RETURNING 1) INSERT INTO _deleted SELECT 'chinese_sprint_attempts', COUNT(*) FROM d;
 WITH d AS (DELETE FROM chinese_node_quizzes RETURNING 1) INSERT INTO _deleted SELECT 'chinese_node_quizzes', COUNT(*) FROM d;
 WITH d AS (DELETE FROM chinese_node_mastery RETURNING 1) INSERT INTO _deleted SELECT 'chinese_node_mastery', COUNT(*) FROM d;
+WITH d AS (DELETE FROM arena_wrong_items RETURNING 1) INSERT INTO _deleted SELECT 'arena_wrong_items', COUNT(*) FROM d;
 WITH d AS (DELETE FROM knowledge_map_runs RETURNING 1) INSERT INTO _deleted SELECT 'knowledge_map_runs', COUNT(*) FROM d;
 WITH d AS (DELETE FROM knowledge_map_ratings RETURNING 1) INSERT INTO _deleted SELECT 'knowledge_map_ratings', COUNT(*) FROM d;
 WITH d AS (DELETE FROM exam_reports RETURNING 1) INSERT INTO _deleted SELECT 'exam_reports', COUNT(*) FROM d;

@@ -23,6 +23,8 @@ _OPERATIONAL_SNIPPET = r'''
 (()=>{
   if(window.__cyV1OperationalV2Installed)return;window.__cyV1OperationalV2Installed=true;
   const token=()=>{const remember=localStorage.getItem('v717Remember')==='1';return (remember?localStorage.getItem('v717Token'):sessionStorage.getItem('v717Token'))||sessionStorage.getItem('v717Token')||localStorage.getItem('v717Token')||sessionStorage.getItem('v6Token')||localStorage.getItem('v6Token')||''};
+  const currentRole=()=>{try{const raw=sessionStorage.getItem('v717User')||localStorage.getItem('v717User')||sessionStorage.getItem('v6User')||localStorage.getItem('v6User');if(!raw)return '';return String((JSON.parse(raw)||{}).role||'')}catch{return ''}};
+  const isStaff=()=>{const r=currentRole();return r==='teacher'||r==='admin'};
   const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const cache=new Map();
   async function readJson(url,ttl=30000){
@@ -77,9 +79,9 @@ _OPERATIONAL_SNIPPET = r'''
   function transitionName(grade){grade=Number(grade||0);if(grade<=0)return'待教师确认';if(grade<=2)return'低段到中段';if(grade<=4)return'中段到高段';if(grade===5)return'五升六';return'小升初'}
   async function enhanceTransition(){if(location.pathname!='/v1/transition'||document.getElementById('cy-op-transition'))return;const id=Number(new URLSearchParams(location.search).get('id')||0);if(!id)return;try{const p=await readJson('/teacher/students/'+id+'/growth-profile'),s=p.student||{},a=p.academic||{},weak=a.weakKnowledge||[],history=p.classHistory||[],suggestions=p.suggestions||[],name=transitionName(s.grade);insertAfterNotice(`<section class="card cy-op-card" id="cy-op-transition"><div class="section-head"><div><h2>当前档案事实</h2><p>衔接判断只使用现有学生事实，不自动修改年级或班级。</p></div><span class="tag">建议衔接：${esc(name)}</span></div><div class="cy-op-fact"><div><b>学生</b><span>${esc(s.name||'学生')} · 档案 #${esc(s.id||id)}</span></div><div><b>当前年级</b><span>${s.grade?esc(s.grade)+'年级':'待完善'}</span></div><div><b>班级历史</b><span>${history.length} 条</span></div><div><b>阶段成绩</b><span>${a.avgScore??'暂无记录'}</span></div><div><b>前置知识关注</b><span>${weak.length?weak.slice(0,3).map(x=>esc(x.knowledge||'知识点')).join(' / '):'暂无明确薄弱项'}</span></div><div><b>下一步教学</b><span>${suggestions.length?esc(suggestions[0]):'继续积累课堂与作业事实'}</span></div></div><p class="cy-op-muted" style="margin-top:12px">V1 当前提供“读取事实 → 教师判断 → 衔接准备”的可用只读流程；真正改变年级、学校或教学归属仍通过受权限保护的维护流程完成。</p></section>`,'cy-op-transition')}catch{}
   }
-  let timer=null;async function enhance(){clearTimeout(timer);timer=setTimeout(async()=>{await enhanceWorkspace();await enhanceStudent();await enhanceHistory();await enhanceTransition()},40)}
+  let timer=null;async function enhance(){if(!isStaff())return;clearTimeout(timer);timer=setTimeout(async()=>{if(!isStaff())return;await enhanceWorkspace();await enhanceStudent();await enhanceHistory();await enhanceTransition()},40)}
   new MutationObserver(enhance).observe(document.getElementById('screen')||document.body,{childList:true,subtree:true});window.addEventListener('popstate',enhance);enhance();
-  const warm=()=>{readJson('/teacher/workbench-summary').catch(()=>{});readJson('/teacher/classes').catch(()=>{})};if('requestIdleCallback'in window)requestIdleCallback(warm,{timeout:1600});else setTimeout(warm,900);
+  const warm=()=>{if(!isStaff())return;readJson('/teacher/workbench-summary').catch(()=>{});readJson('/teacher/classes').catch(()=>{})};if('requestIdleCallback'in window)requestIdleCallback(warm,{timeout:1600});else setTimeout(warm,900);
 })();
 </script>
 '''

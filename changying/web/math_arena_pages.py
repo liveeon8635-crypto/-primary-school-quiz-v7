@@ -10,7 +10,7 @@ ARENA_CSS = """<style>
 @keyframes maFade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
 html,body{background:linear-gradient(180deg,#fcf9f5 0%,#f5eee6 100%)!important;color:var(--ma-ink)!important;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif!important}
-main,#app{max-width:940px!important;margin:0 auto!important;padding:14px 14px 44px!important;background:transparent!important;box-shadow:none!important;border:0!important}
+main,#app{max-width:940px!important;margin:0 auto!important;padding:14px 14px 104px!important;background:transparent!important;box-shadow:none!important;border:0!important}
 .ma-wrap{display:flex;flex-direction:column;gap:14px}
 
 /* 顶栏：与主界面一致的克制微立体白卡 */
@@ -221,7 +221,7 @@ function maTopbar(active,pts){
     el('a',{href:'/v1/math-star-map',class:active==='map'?'on':'',text:'知识地图'}),
     el('a',{href:'/v1/math-sprints',class:active==='sprints'?'on':'',text:'应试专项'}));
   var right=el('div',{class:'ma-topbar-right'});
-  if(pts)right.appendChild(el('span',{class:'ma-pts',title:'今日学习积分 '+pts.todayEarned+'/'+pts.dailyCap,text:'积分 '+pts.balance}));
+  if(pts)right.appendChild(el('a',{class:'ma-pts',href:'/classic?legacy=1&unified=1&page=rewards',style:'text-decoration:none',title:'查看全站积分奖励 · 今日学习积分 '+pts.todayEarned+'/'+pts.dailyCap,text:'积分 '+pts.balance+' ›'}));
   bar.appendChild(left);bar.appendChild(seg);bar.appendChild(right);
   return bar;
 }
@@ -275,10 +275,12 @@ function mRenderHeader(){
       el('div',{class:'ma-eyebrow',text:'小学数学 · 通用基础模块'}),
       el('h2',{class:'ma-h1',text:'知识地图'}),
       el('p',{class:'ma-sub',text:'不限教材版本，覆盖 24 个核心考点；点任意节点做 5 题微测，答对 80% 即点亮并加积分。'})),
-    s.repairNodes?el('button',{type:'button',class:'ma-btn ma-btn-primary ma-btn-sm',text:'去修补（'+s.repairNodes+'）',onclick:function(){
-      var rep=MSM.nodes.filter(function(x){return x.light.needsRepair})[0];
-      if(rep){MSEL=rep.key;mRenderGrid();mRenderDetail(rep);if(MDETAIL.scrollIntoView)MDETAIL.scrollIntoView({behavior:'smooth',block:'center'})}
-    }}):null);
+    el('div',{class:'ma-row'},
+      s.repairNodes?el('button',{type:'button',class:'ma-btn ma-btn-primary ma-btn-sm',text:'去修补（'+s.repairNodes+'）',onclick:function(){
+        var rep=MSM.nodes.filter(function(x){return x.light.needsRepair})[0];
+        if(rep){MSEL=rep.key;mRenderGrid();mRenderDetail(rep);if(MDETAIL.scrollIntoView)MDETAIL.scrollIntoView({behavior:'smooth',block:'center'})}
+      }}):null,
+      el('a',{class:'ma-btn ma-btn-ghost ma-btn-sm',href:'/v1/math-sprints',text:'去应试专项 ›'})));
   var meta=el('div',{class:'ma-sum-meta'},
     el('span',{},'已点亮 ',el('b',{text:s.litNodes+'/'+s.totalNodes+'（'+pct+'%）'})),
     el('span',{},'精通 ',el('b',{text:String(s.masteredNodes)})),

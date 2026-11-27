@@ -90,7 +90,7 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
  function openToolPage(page){if(!page)return;try{if(typeof roleAllowsPage==='function'&&!roleAllowsPage(page))return}catch(_e){}hideToolHub();try{if(typeof go==='function'){go(page);var u=new URL(location.href);u.searchParams.delete('from');u.searchParams.set('legacy','1');u.searchParams.set('unified','1');u.searchParams.set('page',page);history.replaceState(null,'',u.pathname+u.search);sync();return}}catch(_e){}location.href='/classic?legacy=1&unified=1&page='+encodeURIComponent(page)}
  function showToolHub(){var hub=document.getElementById('cy-v1-tool-hub');if(!hub){hub=document.createElement('div');hub.id='cy-v1-tool-hub';hub.hidden=true;hub.innerHTML='<section id="cy-v1-tool-hub-card" role="dialog" aria-modal="true" aria-labelledby="cy-v1-tool-hub-title"><div id="cy-v1-tool-hub-head"><h2 id="cy-v1-tool-hub-title">全部功能</h2><button type="button" id="cy-v1-tool-hub-close">关闭</button></div><p id="cy-v1-tool-hub-help">选择功能后，请到功能页面查看待审核、已发布等实际进度；进入功能不代表已完成办理。</p><div id="cy-v1-tool-grid"></div><div id="cy-v1-tool-account"><small>需要更换教师、学生或家长账号时，请使用“切换账号”。</small><button type="button" id="cy-v1-tool-switch-account">切换账号</button></div></section>';document.body.appendChild(hub);hub.onclick=function(e){if(e.target===hub)hideToolHub()};document.getElementById('cy-v1-tool-hub-close').onclick=hideToolHub;document.getElementById('cy-v1-tool-switch-account').onclick=switchAccount}var role=currentRole(),items=menus[role]||menus.teacher,grid=document.getElementById('cy-v1-tool-grid');grid.innerHTML=items.map(function(x){return '<button type="button" data-tool-page="'+x[0]+'"><strong>'+x[1]+'</strong></button>'}).join('');grid.querySelectorAll('[data-tool-page]').forEach(function(b){b.onclick=function(){openToolPage(b.getAttribute('data-tool-page'))}});hub.hidden=false}
  function mount(){if(document.getElementById('cy-v1-unified-top'))return;var top=document.createElement('header');top.id='cy-v1-unified-top';top.innerHTML=__RIBBON_JSON__+'<a class="cy-v1-brand" href="/v1/workspace"><span class="cy-v1-brand-text">长缨辅学</span></a><span class="cy-v1-spacer"></span><span id="cy-v1-unified-identity">正在识别身份</span><select id="cy-v1-unified-picker" aria-label="切换功能"></select><button type="button" id="cy-v1-switch-account">切换账号</button>';document.body.insertBefore(top,document.body.firstChild);var bottom=document.createElement('nav');bottom.id='cy-v1-unified-bottom';document.body.appendChild(bottom);document.getElementById('cy-v1-switch-account').onclick=switchAccount;var picker=document.getElementById('cy-v1-unified-picker');picker.addEventListener('change',function(){openToolPage(picker.value)})}
- function sync(){mount();var role=currentRole(),items=menus[role]||menus.teacher,picker=document.getElementById('cy-v1-unified-picker'),identity=document.getElementById('cy-v1-unified-identity'),bottom=document.getElementById('cy-v1-unified-bottom');if(!picker||!identity||!bottom)return;var old=picker.value,html=items.map(function(x){return '<option value="'+x[0]+'">'+x[1]+'</option>'}).join('');if(picker.innerHTML!==html)picker.innerHTML=html;var page=currentPage();picker.value=items.some(function(x){return x[0]===page})?page:(old||items[0][0]);identity.textContent=currentName()+' · '+({teacher:'教师',student:'学生',parent:'家长',admin:'管理员'}[role]||role);var quick=quickMenus[role]||quickMenus.teacher;bottom.innerHTML=quick.map(function(x){var hub=x[0]==='tools'&&x[3]==='#',internal=!hub&&x[3].charAt(0)!=='/',href=hub?'#':(internal?'/classic?legacy=1&unified=1&page='+encodeURIComponent(x[3]):x[3]),active=(x[3]===page)||(hub&&params.get('page')==='__hub__')||(role==='teacher'&&x[0]==='tools'&&!!page&&page!=='__hub__');return '<a '+(active?'class="active" ':'')+(hub?'data-tool-hub="1" ':(internal?'data-classic-page="'+x[3]+'" ':''))+'href="'+href+'"><span>'+x[1]+'</span>'+x[2]+'</a>'}).join('');bottom.querySelectorAll('a[data-tool-hub]').forEach(function(a){a.onclick=function(e){e.preventDefault();showToolHub()}});bottom.querySelectorAll('a[data-classic-page]').forEach(function(a){a.onclick=function(e){e.preventDefault();openToolPage(a.getAttribute('data-classic-page'))}})}
+ function sync(){mount();var role=currentRole(),items=menus[role]||menus.teacher,picker=document.getElementById('cy-v1-unified-picker'),identity=document.getElementById('cy-v1-unified-identity'),bottom=document.getElementById('cy-v1-unified-bottom');if(!picker||!identity||!bottom)return;var brand=document.querySelector('#cy-v1-unified-top .cy-v1-brand');if(brand){brand.setAttribute('href',role==='student'?'/classic?legacy=1&unified=1&page=practice':(role==='parent'?'/classic?legacy=1&unified=1&page=childProgress':'/v1/workspace'))}var hubHelp=document.getElementById('cy-v1-tool-hub-help');if(hubHelp&&role==='student'){hubHelp.textContent='选择下方功能即可快速跳转学习、错题复习与查看积分记录。'}var old=picker.value,html=items.map(function(x){return '<option value="'+x[0]+'">'+x[1]+'</option>'}).join('');if(picker.innerHTML!==html)picker.innerHTML=html;var page=currentPage();picker.value=items.some(function(x){return x[0]===page})?page:(old||items[0][0]);identity.textContent=currentName()+' · '+({teacher:'教师',student:'学生',parent:'家长',admin:'管理员'}[role]||role);var quick=quickMenus[role]||quickMenus.teacher;bottom.innerHTML=quick.map(function(x){var hub=x[0]==='tools'&&x[3]==='#',internal=!hub&&x[3].charAt(0)!=='/',href=hub?'#':(internal?'/classic?legacy=1&unified=1&page='+encodeURIComponent(x[3]):x[3]),active=(x[3]===page)||(hub&&params.get('page')==='__hub__')||(role==='teacher'&&x[0]==='tools'&&!!page&&page!=='__hub__');return '<a '+(active?'class="active" ':'')+(hub?'data-tool-hub="1" ':(internal?'data-classic-page="'+x[3]+'" ':''))+'href="'+href+'"><span>'+x[1]+'</span>'+x[2]+'</a>'}).join('');bottom.querySelectorAll('a[data-tool-hub]').forEach(function(a){a.onclick=function(e){e.preventDefault();showToolHub()}});bottom.querySelectorAll('a[data-classic-page]').forEach(function(a){a.onclick=function(e){e.preventDefault();openToolPage(a.getAttribute('data-classic-page'))}})}
  function clearV1FromMarker(){try{var u=new URL(location.href);if(u.searchParams.get('from')==='v1'){u.searchParams.delete('from');history.replaceState(null,'',u.pathname+u.search)}}catch(_e){}}
  async function hydrateFromV1(){
   var fromV1=params.get('from')==='v1',bridge=null,t='',s=null;
@@ -291,6 +291,80 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
    if(head&&head.parentNode===pg)pg.insertBefore(band,head.nextSibling);else pg.insertBefore(band,pg.firstChild);
   }
   setInterval(ensure,1300);
+ })();
+ // 语数英自主练习错题本闭环 + 积分/学情页直达自主练习入口（纯 ES5，无 innerHTML）
+ (function(){
+  var WB_ID='cy-arena-wb-card',PR_ID='cy-arena-practice-band',wbBusy=false,wbSubj='';
+  function mk(tag,css,txt){var n=document.createElement(tag);if(css)n.style.cssText=css;if(txt!=null)n.textContent=txt;return n}
+  function loadArenaWrong(box){
+   if(wbBusy)return;wbBusy=true;
+   var url='/student/arena-wrongbook?status=active'+(wbSubj?('&subject='+encodeURIComponent(wbSubj)):'');
+   fetch(url,{headers:{Authorization:'Bearer '+state.token},cache:'no-store'}).then(function(r){
+    if(!r.ok)throw new Error(String(r.status));return r.json();
+   }).then(function(d){
+    wbBusy=false;box.textContent='';
+    var head=mk('div','display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px');
+    head.appendChild(mk('b','font-size:16px;color:#242026','自主练习错题本（共 '+d.total+' 题待攻克）'));
+    var tabs=mk('div','display:inline-flex;gap:6px;flex-wrap:wrap');
+    [['','全部 '+d.total],['数学','数学 '+(d.counts['数学']||0)],['英语','英语 '+(d.counts['英语']||0)],['语文','语文 '+(d.counts['语文']||0)]].forEach(function(t){
+     var active=(wbSubj===t[0]);
+     var b=mk('button','padding:4px 10px;border-radius:999px;border:1px solid '+(active?'#a8101c':'#e2d5cb')+';background:'+(active?'#a8101c':'#fff')+';color:'+(active?'#fff':'#65595a')+';font-size:12px;font-weight:700;cursor:pointer',t[1]);
+     b.type='button';b.onclick=function(){wbSubj=t[0];loadArenaWrong(box)};
+     tabs.appendChild(b);
+    });
+    head.appendChild(tabs);box.appendChild(head);
+    if(!d.items||!d.items.length){
+     box.appendChild(mk('div','font-size:13px;color:#65595a;line-height:1.6','当前筛选下暂无待攻克的自主练习错题，做错的知识地图或应试专项题会自动收录到这里，重做答对即自动消错！'));
+     return;
+    }
+    d.items.slice(0,20).forEach(function(it){
+     var row=mk('div','padding:10px 12px;border:1px solid #efe4dc;border-radius:12px;background:#fcfaf7;margin-top:8px');
+     var top=mk('div','display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px');
+     top.appendChild(mk('span','font-size:12px;font-weight:700;color:#a8101c',it.subject+' · '+it.nodeKey+' '+it.nodeName+' · '+it.typeLabel+'（错 '+it.wrongCount+' 次）'));
+     var ops=mk('div','display:inline-flex;gap:6px;align-items:center');
+     var rep=mk('a','padding:4px 10px;border-radius:8px;background:#fdf1f0;border:1px solid #f2c6c2;color:#a8101c;font-size:12px;font-weight:700;text-decoration:none','去地图修补 ›');
+     rep.href=it.repairUrl;
+     var okBtn=mk('button','padding:4px 10px;border-radius:8px;background:#e8f8f0;border:1px solid #b7e4cf;color:#0b8f5a;font-size:12px;font-weight:700;cursor:pointer','已掌握');
+     okBtn.type='button';
+     okBtn.onclick=function(){
+      okBtn.disabled=true;
+      fetch('/student/arena-wrongbook/'+it.id+'/master',{method:'POST',headers:{Authorization:'Bearer '+state.token}}).then(function(){loadArenaWrong(box)}).catch(function(){okBtn.disabled=false});
+     };
+     ops.appendChild(rep);ops.appendChild(okBtn);top.appendChild(ops);row.appendChild(top);
+     row.appendChild(mk('div','font-size:14px;font-weight:700;color:#242026;line-height:1.55',it.text));
+     row.appendChild(mk('div','font-size:12.5px;color:#0b8f5a;margin-top:5px;font-weight:600','参考答案：'+it.answer));
+     if(it.explanation)row.appendChild(mk('div','font-size:12.5px;color:#65595a;margin-top:3px;line-height:1.5',it.explanation));
+     box.appendChild(row);
+    });
+   }).catch(function(){wbBusy=false});
+  }
+  function ensureClosedLoop(){
+   var role='',page='';
+   try{if(stateReady()){role=currentRole();page=currentPage()}}catch(_e){}
+   var pg=document.getElementById('page');
+   var oldWb=document.getElementById(WB_ID);
+   if(role==='student'&&page==='wrongbook'&&pg){
+    if(!oldWb){
+     var card=mk('section','margin:0 0 14px;padding:14px 16px;border:1px solid #eadfd8;border-radius:16px;background:#fff;box-shadow:0 6px 20px rgba(56,28,24,.05)');
+     card.id=WB_ID;
+     card.appendChild(mk('div','font-size:13px;color:#65595a','正在加载数学/英语/语文自主练习错题…'));
+     var h=pg.querySelector('.page-head');
+     if(h&&h.parentNode===pg)pg.insertBefore(card,h.nextSibling);else pg.insertBefore(card,pg.firstChild);
+     loadArenaWrong(card);
+    }
+   }else if(oldWb){oldWb.remove()}
+   var oldPr=document.getElementById(PR_ID);
+   if(role==='student'&&(page==='rewards'||page==='progress')&&pg){
+    if(!oldPr){
+     var band=mk('a','display:block;margin:0 0 14px;padding:12px 14px;border:1px solid #f2c6c2;border-radius:16px;background:#fdf7f5;color:#a8101c;font-weight:700;font-size:14px;text-decoration:none',
+      page==='rewards'?'去自主练习赢全站学习积分：数学 / 英语 / 语文知识地图与应试专项 ›':'去自主练习点亮考点：数学 / 英语 / 语文知识地图与应试专项 ›');
+     band.id=PR_ID;band.href='/classic?legacy=1&unified=1&page=practice';
+     var h2=pg.querySelector('.page-head');
+     if(h2&&h2.parentNode===pg)pg.insertBefore(band,h2.nextSibling);else pg.insertBefore(band,pg.firstChild);
+    }
+   }else if(oldPr){oldPr.remove()}
+  }
+  setInterval(ensureClosedLoop,1300);
  })();
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();

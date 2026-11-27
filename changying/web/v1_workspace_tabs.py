@@ -82,22 +82,34 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
         const wk=document.createElement('a');wk.className='cy-ws-row';wk.href='/v1/weekend';
         wk.innerHTML='<b>周末课</b><i>›</i><small>备课、上课、下课结算都从这里开始：按步骤告诉你下一次课准备到哪一步</small>';
         paperRow.after(wk);
-        const km=document.createElement('a');km.className='cy-ws-row';km.href='/v1/knowledge-map';km.hidden=true;km.setAttribute('data-knowledge-map-entry','1');
-        km.innerHTML='<b>知识地图</b><i>›</i><small>按教材单元维护知识点和前置关系，标记已学单元，给每个知识点的题目分难度档</small>';
-        wk.after(km);
-        const ex=document.createElement('a');ex.className='cy-ws-row';ex.href='/v1/exam-prep';ex.hidden=true;ex.setAttribute('data-exam-prep-entry','1');
-        ex.innerHTML='<b>应试专项</b><i>›</i><small>为期中、期末建考试目标：发模拟卷摸底，找出每个学生失分最多的知识点</small>';
-        km.after(ex);
+        const curRole=(()=>{try{const raw=sessionStorage.getItem('v717User')||localStorage.getItem('v717User')||sessionStorage.getItem('v6User')||localStorage.getItem('v6User');return raw?String((JSON.parse(raw)||{}).role||''):''}catch{return ''}})();
         const ma=document.createElement('a');ma.className='cy-ws-row';ma.href='/v1/math-star-map';ma.setAttribute('data-math-arena-entry','1');
-        ma.innerHTML='<b>数学知识地图与应试专项</b><i>›</i><small>查看全班 24 考点点亮进度、限时专项分级段位与全站学习积分</small>';
-        ex.after(ma);
+        ma.innerHTML=curRole==='student'
+          ?'<b>数学知识地图与应试专项</b><i>›</i><small>点亮 24 个数学核心考点，挑战多题型限时专项赢全站积分</small>'
+          :'<b>数学知识地图与应试专项</b><i>›</i><small>查看全班 24 考点点亮进度、限时专项分级段位与全站学习积分</small>';
+        wk.after(ma);
         const ea=document.createElement('a');ea.className='cy-ws-row';ea.href='/v1/english-star-map';ea.setAttribute('data-english-arena-entry','1');
-        ea.innerHTML='<b>英语知识地图与听说读写专项</b><i>›</i><small>查看全班 16 英语考点点亮进度、听说读写专项分级段位与学习积分</small>';
+        ea.innerHTML=curRole==='student'
+          ?'<b>英语知识地图与听说读写专项</b><i>›</i><small>点亮 16 个英语核心考点，练习听力、发音、单词与句子填空</small>'
+          :'<b>英语知识地图与听说读写专项</b><i>›</i><small>查看全班 16 英语考点点亮进度、听说读写专项分级段位与学习积分</small>';
         ma.after(ea);
         const ca=document.createElement('a');ca.className='cy-ws-row';ca.href='/v1/chinese-star-map';ca.setAttribute('data-chinese-arena-entry','1');
-        ca.innerHTML='<b>语文知识地图与四大板块专项</b><i>›</i><small>查看全班 16 语文考点点亮进度、基础/古诗文/阅读/微写作分级段位与积分</small>';
+        ca.innerHTML=curRole==='student'
+          ?'<b>语文知识地图与四大板块专项</b><i>›</i><small>点亮 16 个语文核心考点，练习听写、古诗默写、现代文阅读与微写作</small>'
+          :'<b>语文知识地图与四大板块专项</b><i>›</i><small>查看全班 16 语文考点点亮进度、基础/古诗文/阅读/微写作分级段位与积分</small>';
         ea.after(ca);
-        fetch('/knowledge-map/config',{cache:'no-store'}).then(r=>{if(r.ok){km.hidden=false;ex.hidden=false}}).catch(()=>{});
+        if(curRole!=='student'){
+          const legacyBox=document.createElement('details');legacyBox.className='cy-ws-legacy';legacyBox.hidden=true;
+          legacyBox.style.cssText='margin-top:8px;padding:10px 12px;border:1px dashed #d8d0c8;border-radius:12px;background:#faf7f4';
+          legacyBox.innerHTML='<summary style="cursor:pointer;font-size:13px;font-weight:700;color:#65595a">校本旧版工具（按教材手动维护目录与模拟卷）</summary>';
+          const km=document.createElement('a');km.className='cy-ws-row';km.href='/v1/knowledge-map';km.setAttribute('data-knowledge-map-entry','1');km.style.marginTop='8px';
+          km.innerHTML='<b>校本教材目录（旧）</b><i>›</i><small>按教材单元手动维护知识点、前置关系与题目分档</small>';
+          const ex=document.createElement('a');ex.className='cy-ws-row';ex.href='/v1/exam-prep';ex.setAttribute('data-exam-prep-entry','1');ex.style.marginTop='8px';
+          ex.innerHTML='<b>校本模拟卷（旧）</b><i>›</i><small>按校本目录建期中/期末考试目标与人工发卷分析</small>';
+          legacyBox.appendChild(km);legacyBox.appendChild(ex);
+          ca.after(legacyBox);
+          fetch('/knowledge-map/config',{cache:'no-store'}).then(r=>{if(r.ok){legacyBox.hidden=false}}).catch(()=>{});
+        }
       }
       main.insertBefore(all,main.firstChild);
     }

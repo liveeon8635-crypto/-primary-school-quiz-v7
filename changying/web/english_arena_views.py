@@ -33,6 +33,7 @@ from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueCon
 from changying.services import english_arena_points as eapts
 from changying.services import english_builtin_map as ebm
 from changying.services import english_exam_sprints as ees
+from changying.web.arena_wrongbook import record_arena_outcomes
 from changying.web.knowledge_map_views import NO_CACHE
 
 AUDIO_DIR = Path(__file__).resolve().parent / "english_audio"
@@ -428,6 +429,11 @@ def install_english_arena_views(implementation: Any) -> APIRouter:
             .where(t_quizzes.c.id == row.id)
             .values(status="submitted", correct=correct_cnt, total=total, submitted_at=now)
         )
+        record_arena_outcomes(
+            implementation, db, school_id=int(u.school_id), student_id=int(u.id),
+            subject="英语", source_kind="map", details=details,
+            default_node_key=node_key, default_node_name=node["name"],
+        )
         db.commit()
         return {
             "quizId": int(row.id),
@@ -642,6 +648,10 @@ def install_english_arena_views(implementation: Any) -> APIRouter:
                 tier_code=result["tier"]["code"],
                 result_json=json.dumps(result, ensure_ascii=False),
             )
+        )
+        record_arena_outcomes(
+            implementation, db, school_id=int(u.school_id), student_id=int(u.id),
+            subject="英语", source_kind="sprint", details=result["details"],
         )
         db.commit()
         return {

@@ -173,6 +173,7 @@ from changying.web.exam_prep_views import install_exam_prep_views
 from changying.web.math_arena_views import install_math_arena_views
 from changying.web.english_arena_views import install_english_arena_views
 from changying.web.chinese_arena_views import install_chinese_arena_views
+from changying.web.arena_wrongbook import install_arena_wrongbook_views
 from changying.web.weekend_plan_views import install_weekend_plan
 from changying.web.weekend_practice import install_weekend_practice
 from changying.web.weekend_scoring_views import install_weekend_scoring
@@ -580,6 +581,7 @@ def apply_legacy_compatibility(implementation: ModuleType, *, asset_version: str
     install_math_arena_views(implementation)
     install_english_arena_views(implementation)
     install_chinese_arena_views(implementation)
+    install_arena_wrongbook_views(implementation)
     install_paper_composition_routes(implementation)
     install_paper_import_routes(implementation)
     install_v1_classroom_presentation_review_patch()
