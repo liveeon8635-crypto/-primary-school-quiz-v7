@@ -1,6 +1,7 @@
 """数学知识地图与应试专项学生端页面（与主界面宣纸暖白 + 长缨绛红风格完全一致，纯 ES5，无 innerHTML）."""
 from __future__ import annotations
 
+from changying.web.arena_role_hub import ARENA_ROLE_HUB_JS
 from changying.web.cube_figures_js import CUBES_JS
 from changying.web.v1_nezha_icons import AVATAR_PNG_B64
 from changying.web.weekend_pages import _page
@@ -202,7 +203,7 @@ function maBoot(run){
     if(!TOKEN){msg('请先登录后再打开');return}
     return api('/session').then(function(s){
       if(s.role==='student'){run();return}
-      if(s.role==='teacher'||s.role==='admin'||s.role==='parent'){maRenderRoleOverview(s.role);return}
+      if(s.role==='teacher'||s.role==='admin'||s.role==='parent'){arenaRoleHub(s.role,'数学');return}
       msg('当前身份无法访问此页面');
     });
   }).catch(function(e){msg(e.message||'打不开')});
@@ -676,11 +677,11 @@ HELPER_AVATAR_JS = 'window.__CY_HELPER_AVATAR__="data:image/png;base64,' + AVATA
 
 
 def math_star_map_page_html() -> str:
-    return _page("数学知识地图", HELPER_AVATAR_JS + CUBES_JS + STAR_MAP_JS, True).replace("</head>", ARENA_CSS + "</head>", 1)
+    return _page("数学知识地图", HELPER_AVATAR_JS + ARENA_ROLE_HUB_JS + CUBES_JS + STAR_MAP_JS, True).replace("</head>", ARENA_CSS + "</head>", 1)
 
 
 def math_sprints_page_html() -> str:
-    return _page("数学应试专项", HELPER_AVATAR_JS + CUBES_JS + SPRINTS_JS, True).replace("</head>", ARENA_CSS + "</head>", 1)
+    return _page("数学应试专项", HELPER_AVATAR_JS + ARENA_ROLE_HUB_JS + CUBES_JS + SPRINTS_JS, True).replace("</head>", ARENA_CSS + "</head>", 1)
 
 
 __all__ = ["STAR_MAP_JS", "SPRINTS_JS", "math_star_map_page_html", "math_sprints_page_html"]

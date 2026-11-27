@@ -1,6 +1,7 @@
 """英语知识地图（按知识点域）与强应试专项（按听/说/读/写）前端页面（宣纸暖白 + 长缨绛红，纯 ES5，无 innerHTML）."""
 from __future__ import annotations
 
+from changying.web.arena_role_hub import ARENA_ROLE_HUB_JS
 from changying.web.math_arena_pages import ARENA_CSS
 from changying.web.v1_nezha_icons import AVATAR_PNG_B64
 from changying.web.weekend_pages import _page
@@ -166,7 +167,7 @@ function eaBoot(run){
     if(!TOKEN){msg('请先登录后再打开');return}
     return api('/session').then(function(s){
       if(s.role==='student'){run();return}
-      if(s.role==='teacher'||s.role==='admin'||s.role==='parent'){eaRenderRoleOverview(s.role);return}
+      if(s.role==='teacher'||s.role==='admin'||s.role==='parent'){arenaRoleHub(s.role,'英语');return}
       msg('当前身份无法访问此页面');
     });
   }).catch(function(e){msg(e.message||'打不开')});
@@ -871,13 +872,13 @@ HELPER_AVATAR_JS = 'window.__CY_HELPER_AVATAR__="data:image/png;base64,' + AVATA
 
 
 def english_star_map_page_html() -> str:
-    return _page("英语知识地图", HELPER_AVATAR_JS + ENGLISH_MAP_JS, True).replace(
+    return _page("英语知识地图", HELPER_AVATAR_JS + ARENA_ROLE_HUB_JS + ENGLISH_MAP_JS, True).replace(
         "</head>", ARENA_CSS + ENGLISH_EXTRA_CSS + "</head>", 1
     )
 
 
 def english_sprints_page_html() -> str:
-    return _page("英语应试专项", HELPER_AVATAR_JS + ENGLISH_SPRINTS_JS, True).replace(
+    return _page("英语应试专项", HELPER_AVATAR_JS + ARENA_ROLE_HUB_JS + ENGLISH_SPRINTS_JS, True).replace(
         "</head>", ARENA_CSS + ENGLISH_EXTRA_CSS + "</head>", 1
     )
 

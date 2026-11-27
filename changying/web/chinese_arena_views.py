@@ -749,7 +749,6 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
             sids = list(
                 db.scalars(
                     select(ParentStudent.student_id).where(
-                        ParentStudent.school_id == u.school_id,
                         ParentStudent.parent_id == u.id,
                     )
                 ).all()

@@ -62,6 +62,8 @@ DELETE_TABLES = (
     "chinese_node_mastery", "chinese_node_quizzes", "chinese_sprint_attempts",
     # 语数英自主练习统一错题本
     "arena_wrong_items",
+    # 语数英三端任务派发与家长鼓励
+    "arena_tasks", "arena_task_targets", "arena_parent_cheers",
     # usage and housekeeping logs
     "ai_usage_logs", "account_deletion_requests",
 )
