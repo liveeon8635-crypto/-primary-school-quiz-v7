@@ -94,6 +94,9 @@ main:not(.cy-ws-view-all)>#cy-ws-all{display:none}
         const ea=document.createElement('a');ea.className='cy-ws-row';ea.href='/v1/english-star-map';ea.setAttribute('data-english-arena-entry','1');
         ea.innerHTML='<b>英语知识地图与听说读写专项</b><i>›</i><small>查看全班 16 英语考点点亮进度、听说读写专项分级段位与学习积分</small>';
         ma.after(ea);
+        const ca=document.createElement('a');ca.className='cy-ws-row';ca.href='/v1/chinese-star-map';ca.setAttribute('data-chinese-arena-entry','1');
+        ca.innerHTML='<b>语文知识地图与四大板块专项</b><i>›</i><small>查看全班 16 语文考点点亮进度、基础/古诗文/阅读/微写作分级段位与积分</small>';
+        ea.after(ca);
         fetch('/knowledge-map/config',{cache:'no-store'}).then(r=>{if(r.ok){km.hidden=false;ex.hidden=false}}).catch(()=>{});
       }
       main.insertBefore(all,main.firstChild);

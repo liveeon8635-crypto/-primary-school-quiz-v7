@@ -58,6 +58,8 @@ DELETE_TABLES = (
     "math_node_mastery", "math_node_quizzes", "math_sprint_attempts",
     # 英语通用知识地图与听说读写专项（学生作答与点亮记录）
     "english_node_mastery", "english_node_quizzes", "english_sprint_attempts",
+    # 语文通用知识地图与四大板块应试专项（学生作答与点亮记录）
+    "chinese_node_mastery", "chinese_node_quizzes", "chinese_sprint_attempts",
     # usage and housekeeping logs
     "ai_usage_logs", "account_deletion_requests",
 )
