@@ -60,14 +60,17 @@ async function practice(){
  }
  $("#page").innerHTML=head("自主练习","知识地图点亮与应试专项分级")+
   '<div class="card" id="practice-hub-loading"><p class="muted">正在加载数学、英语与语文练习进度…</p></div>';
- const [sm,sp,em,ep,cm,cp]=await Promise.all([
+ const [sm,sp,em,ep,cm,cp,tk]=await Promise.all([
   api("/student/math-star-map").catch(()=>null),
   api("/student/math-sprints").catch(()=>null),
   api("/student/english-star-map").catch(()=>null),
   api("/student/english-sprints").catch(()=>null),
   api("/student/chinese-star-map").catch(()=>null),
-  api("/student/chinese-sprints").catch(()=>null)
+  api("/student/chinese-sprints").catch(()=>null),
+  api("/student/arena-tasks").catch(()=>null)
  ]);
+ const assignedTasks=(tk&&tk.items)||[];
+ let parentCheers=(tk&&tk.cheers)||[];
  const ms=(sm&&sm.summary)||{totalNodes:24,litNodes:0,masteredNodes:0,repairNodes:0};
  const es=(em&&em.summary)||{totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0};
  const cs=(cm&&cm.summary)||{totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0};
@@ -95,7 +98,26 @@ async function practice(){
     spDesc:'覆盖基础字词句（单题限时）、古诗文默写、现代文阅读与微写作（AI 实时点评），按 L1～L4 分级达标。'}
   }[curSubj];
   const s=conf.s,pts=conf.pts,best=conf.best,pct=pctOf(s);
+  const cheerHtml=parentCheers.length
+   ?'<div class="card" id="phCheerCard" style="margin-bottom:12px;background:#fffaf3;border:1px solid #f0d7b5;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px">'+
+     '<div><b style="color:#a8101c">👍 长缨助手转达 · '+esc(parentCheers[0].parentName||'家长')+'为你点赞鼓励</b><div class="muted" style="margin-top:4px;color:#242026">'+esc(parentCheers[0].message)+'</div></div>'+
+     '<button type="button" id="phCheerAck" class="btn ghost" style="padding:6px 12px;min-height:auto;font-size:13px">收到谢谢</button>'+
+    '</div>'
+   :'';
+  const taskHtml=assignedTasks.length
+   ?'<div class="card" style="margin-bottom:12px;padding:14px 16px">'+
+     '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><b>老师布置的闯关与专项任务</b><span class="badge" style="background:#fdf1f0;color:#a8101c;border:1px solid #f2c6c2">待完成 '+assignedTasks.filter(x=>x.status!=='done').length+' 项</span></div>'+
+     assignedTasks.slice(0,5).map(t=>{
+      const done=(t.status==='done');
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid #f1e8df">'+
+       '<div><b style="font-size:14px">'+esc(t.subject)+' · '+esc(t.targetTitle)+'</b><div class="muted" style="font-size:12.5px;margin-top:2px">目标：'+esc(t.goalLabel)+' · 截止 '+esc(t.dueDate)+'</div></div>'+
+       (done?'<span class="badge" style="background:#e8f8f0;color:#0b8f5a;font-weight:700">✓ 已自动达标</span>':'<a class="btn primary" href="'+esc(t.actionUrl)+'" style="padding:6px 12px;min-height:auto;font-size:13px;text-decoration:none">立即去完成 ›</a>')+
+      '</div>';
+     }).join('')+
+    '</div>'
+   :'';
   $("#page").innerHTML=head("自主练习","不限教材版本 · 语数英各科独立每日 30 分上限 · 积分同步计入全站账本")+
+   cheerHtml+taskHtml+
    '<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px">'+
     '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
      '<div style="display:inline-flex;background:#efe6dc;border-radius:10px;padding:3px;gap:4px">'+
@@ -117,10 +139,11 @@ async function practice(){
      '<a class="btn secondary full" href="'+conf.spHref+'" style="text-align:center;text-decoration:none">进入'+conf.spTitle+'</a>'+
     '</div>'+
    '</div>';
-  const bm=$("#phSubjMath"),be=$("#phSubjEng"),bc=$("#phSubjChi");
+  const bm=$("#phSubjMath"),be=$("#phSubjEng"),bc=$("#phSubjChi"),ba=$("#phCheerAck");
   if(bm)bm.onclick=()=>{curSubj='math';renderPracticeHub()};
   if(be)be.onclick=()=>{curSubj='english';renderPracticeHub()};
   if(bc)bc.onclick=()=>{curSubj='chinese';renderPracticeHub()};
+  if(ba)ba.onclick=()=>{parentCheers=[];api("/student/arena-cheers/seen",{method:"POST"}).catch(()=>{});renderPracticeHub()};
  }
  renderPracticeHub();
 }
