@@ -59,31 +59,65 @@ async function practice(){
   return;
  }
  $("#page").innerHTML=head("自主练习","知识地图点亮与应试专项分级")+
-  '<div class="card" id="practice-hub-loading"><p class="muted">正在加载数学练习进度…</p></div>';
- const [sm,sp]=await Promise.all([
+  '<div class="card" id="practice-hub-loading"><p class="muted">正在加载数学与英语练习进度…</p></div>';
+ const [sm,sp,em,ep]=await Promise.all([
   api("/student/math-star-map").catch(()=>null),
-  api("/student/math-sprints").catch(()=>null)
+  api("/student/math-sprints").catch(()=>null),
+  api("/student/english-star-map").catch(()=>null),
+  api("/student/english-sprints").catch(()=>null)
  ]);
- const s=(sm&&sm.summary)||{totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0};
- const pts=(sm&&sm.points)||(sp&&sp.points)||{balance:0,todayEarned:0,dailyCap:30};
- const spItems=(sp&&sp.items)||[];
- const best=spItems.reduce((acc,x)=>(x.bestTier&&(!acc||x.bestTier.rank>acc.rank)?x.bestTier:acc),null);
- const pct=s.totalNodes?Math.round(s.litNodes/s.totalNodes*100):0;
- $("#page").innerHTML=head("自主练习","不限教材版本 · 积分同步计入全站账本")+
-  '<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px">'+
-   '<div><b>数学练习概览</b><div class="muted" style="margin-top:4px">已点亮 '+Number(s.litNodes)+'/'+Number(s.totalNodes)+'（'+pct+'%）'+(s.repairNodes?' · 待修补 '+Number(s.repairNodes)+' 个':'')+'</div></div>'+
-   '<span class="badge" style="background:#fdf1f0;color:#a8101c;border:1px solid #f2c6c2;font-weight:700">全站积分 '+Number(pts.balance||0)+'（今日 +'+Number(pts.todayEarned||0)+'/'+Number(pts.dailyCap||30)+'）</span>'+
-  '</div>'+
-  '<div class="grid2" style="margin-top:12px">'+
-   '<div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px">'+
-    '<div><h2 style="margin:0 0 6px">知识地图</h2><p class="muted" style="margin:0;line-height:1.6">覆盖小学数学四大知识域，每个节点自带 5 题微测，答对 80% 即点亮。'+(s.repairNodes?'当前有 '+Number(s.repairNodes)+' 个专项失分点待修补。':'')+'</p></div>'+
-    '<a class="btn primary full" href="/v1/math-star-map" style="text-align:center;text-decoration:none">进入知识地图</a>'+
+ const ms=(sm&&sm.summary)||{totalNodes:24,litNodes:0,masteredNodes:0,repairNodes:0};
+ const es=(em&&em.summary)||{totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0};
+ const mpts=(sm&&sm.points)||(sp&&sp.points)||{balance:0,todayEarned:0,dailyCap:30};
+ const epts=(em&&em.points)||(ep&&ep.points)||{balance:mpts.balance||0,todayEarned:0,dailyCap:30};
+ const mSpItems=(sp&&sp.items)||[];
+ const eSpItems=(ep&&ep.sprints)||[];
+ const mBest=mSpItems.reduce((acc,x)=>(x.bestTier&&(!acc||x.bestTier.rank>acc.rank)?x.bestTier:acc),null);
+ const eBest=eSpItems.reduce((acc,x)=>(x.bestTier&&(!acc||x.bestTier.rank>acc.rank)?x.bestTier:acc),null);
+ const mPct=ms.totalNodes?Math.round(ms.litNodes/ms.totalNodes*100):0;
+ const ePct=es.totalNodes?Math.round(es.litNodes/es.totalNodes*100):0;
+ let curSubj=(window.__CY_PRACTICE_SUBJ__==='english')?'english':'math';
+ function renderPracticeHub(){
+  window.__CY_PRACTICE_SUBJ__=curSubj;
+  const isEn=(curSubj==='english');
+  const s=isEn?es:ms;
+  const pts=isEn?epts:mpts;
+  const best=isEn?eBest:mBest;
+  const pct=isEn?ePct:mPct;
+  const mapHref=isEn?'/v1/english-star-map':'/v1/math-star-map';
+  const spHref=isEn?'/v1/english-sprints':'/v1/math-sprints';
+  const mapDesc=isEn
+   ?'按语音自然拼读、核心词汇、语法句型、语篇交际四大知识点域闯关，不限时轻微测，答对 80% 即点亮。'
+   :'覆盖小学数学四大知识域，每个节点自带 5 题微测，答对 80% 即点亮。';
+  const spDesc=isEn
+   ?'按听 / 说 / 读 / 写四大能力独立开考（听/说单题限时，读/写整体倒计时），按 L1～L4 分级达标。'
+   :'多题型限时专项（含看图几何题），倒计时自动交卷，按 L1～L4 分级达标。';
+  $("#page").innerHTML=head("自主练习","不限教材版本 · 各科独立每日 30 分上限 · 积分同步计入全站账本")+
+   '<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px">'+
+    '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
+     '<div style="display:inline-flex;background:#efe6dc;border-radius:10px;padding:3px;gap:4px">'+
+      '<button type="button" id="phSubjMath" class="btn '+(isEn?'ghost':'primary')+'" style="padding:6px 14px;min-height:auto;font-size:13.5px">数学</button>'+
+      '<button type="button" id="phSubjEng" class="btn '+(isEn?'primary':'ghost')+'" style="padding:6px 14px;min-height:auto;font-size:13.5px">英语</button>'+
+     '</div>'+
+     '<div><b>'+(isEn?'英语':'数学')+'练习概览</b><div class="muted" style="margin-top:4px">已点亮 '+Number(s.litNodes)+'/'+Number(s.totalNodes)+'（'+pct+'%）'+(s.repairNodes?' · 待修补 '+Number(s.repairNodes)+' 个':'')+'</div></div>'+
+    '</div>'+
+    '<span class="badge" style="background:#fdf1f0;color:#a8101c;border:1px solid #f2c6c2;font-weight:700">全站积分 '+Number(pts.balance||0)+'（本科今日 +'+Number(pts.todayEarned||0)+'/'+Number(pts.dailyCap||30)+'）</span>'+
    '</div>'+
-   '<div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px">'+
-    '<div><h2 style="margin:0 0 6px">应试专项</h2><p class="muted" style="margin:0;line-height:1.6">5 个多题型限时专项（含看图几何题），倒计时自动交卷，按 L1～L4 分级达标。'+(best?'当前最高：'+esc(best.code+' '+best.name)+'。':'可直接开考，无需前置。')+'</p></div>'+
-    '<a class="btn secondary full" href="/v1/math-sprints" style="text-align:center;text-decoration:none">进入应试专项</a>'+
-   '</div>'+
-  '</div>';
+   '<div class="grid2" style="margin-top:12px">'+
+    '<div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px">'+
+     '<div><h2 style="margin:0 0 6px">'+(isEn?'英语知识地图':'数学知识地图')+'</h2><p class="muted" style="margin:0;line-height:1.6">'+mapDesc+(s.repairNodes?' 当前有 '+Number(s.repairNodes)+' 个专项失分点待修补。':'')+'</p></div>'+
+     '<a class="btn primary full" href="'+mapHref+'" style="text-align:center;text-decoration:none">进入'+(isEn?'英语':'数学')+'知识地图</a>'+
+    '</div>'+
+    '<div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px">'+
+     '<div><h2 style="margin:0 0 6px">'+(isEn?'英语听说读写专项':'数学应试专项')+'</h2><p class="muted" style="margin:0;line-height:1.6">'+spDesc+(best?' 当前最高：'+esc(best.code+' '+best.name)+'。':' 可直接开考，无需前置。')+'</p></div>'+
+     '<a class="btn secondary full" href="'+spHref+'" style="text-align:center;text-decoration:none">进入'+(isEn?'英语':'数学')+'应试专项</a>'+
+    '</div>'+
+   '</div>';
+  const bm=$("#phSubjMath"),be=$("#phSubjEng");
+  if(bm)bm.onclick=()=>{curSubj='math';renderPracticeHub()};
+  if(be)be.onclick=()=>{curSubj='english';renderPracticeHub()};
+ }
+ renderPracticeHub();
 }
 '''
 
