@@ -243,37 +243,139 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
   }
   onPageTick(ensure);
  })();
- // 数学知识地图与应试专项：家长“孩子学情”页顶部放学情同步入口（只是链接）。
+ // 数学知识地图与应试专项：家长“孩子学情/首页”顶部放学情同步入口与老师地图/专项待办提示（纯 ES5）。
  (function(){
-  var ID='cy-math-arena-band';
+  var ID='cy-math-arena-band',TASK_ID='cy-parent-arena-tasks-band';
+  var SUBJ_URL={'数学':'/v1/math-star-map','英语':'/v1/english-star-map','语文':'/v1/chinese-star-map'};
+  var SUBJ_COLOR={'数学':'#a8101c','英语':'#1e4e79','语文':'#0b8f5a'};
+  var SUBJ_ORDER=['数学','英语','语文'];
+  var cacheToken='',cacheData=null,cacheAt=0,fetching=false,lastRenderKey='';
+  function mkEl(tag,css,txt){var n=document.createElement(tag);if(css)n.style.cssText=css;if(txt!=null)n.textContent=txt;return n}
+  function collectPending(data,page,childId){
+   var kids=(data&&(data.children||data.items))||[];
+   if(!kids.length)return {count:0,bySubj:{},samples:[]};
+   var scoped=kids;
+   if(page==='childProgress'&&childId){
+    var matched=[];
+    for(var i=0;i<kids.length;i++){if(String(kids[i].studentId)===String(childId))matched.push(kids[i])}
+    if(matched.length)scoped=matched;
+   }
+   var multiKids=scoped.length>1,bySubj={},samples=[],total=0;
+   for(var k=0;k<scoped.length;k++){
+    var c=scoped[k],tasks=(c&&c.tasks)||[];
+    for(var j=0;j<tasks.length;j++){
+     var t=tasks[j];
+     if(!t||t.status==='done')continue;
+     total++;
+     var subj=t.subject||'数学';
+     bySubj[subj]=(bySubj[subj]||0)+1;
+     if(samples.length<3){
+      var label=(multiKids&&c.name?(c.name+' · '):'')+subj+' · '+(t.targetTitle||'')+(t.goalLabel?('（'+t.goalLabel+'）'):'');
+      samples.push(label);
+     }
+    }
+   }
+   return {count:total,bySubj:bySubj,samples:samples};
+  }
+  function renderTaskBanner(pg,anchor,data,page,childId){
+   var info=collectPending(data,page,childId);
+   var oldT=document.getElementById(TASK_ID);
+   if(!info.count){if(oldT)oldT.remove();lastRenderKey='';return}
+   var activeSubjs=[];
+   for(var i=0;i<SUBJ_ORDER.length;i++){if(info.bySubj[SUBJ_ORDER[i]])activeSubjs.push(SUBJ_ORDER[i])}
+   if(!activeSubjs.length)activeSubjs.push('数学');
+   var key=String(page)+'|'+String(childId||'')+'|'+info.count+'|'+activeSubjs.map(function(s){return s+':'+info.bySubj[s]}).join(',')+'|'+info.samples.join(';');
+   if(oldT&&lastRenderKey===key)return;
+   if(oldT)oldT.remove();
+   var firstUrl=SUBJ_URL[activeSubjs[0]]||'/v1/math-star-map';
+   var wrapTag=activeSubjs.length===1?'a':'section';
+   var box=mkEl(wrapTag,'display:block;margin:0 0 12px;padding:13px 15px;border:1px solid #f0b9b4;border-left:4px solid #a8101c;border-radius:16px;background:linear-gradient(135deg,#fff6f5,#fffaf3);color:#242026;text-decoration:none;box-shadow:0 6px 20px rgba(168,16,28,.08)');
+   box.id=TASK_ID;
+   if(wrapTag==='a')box.href=firstUrl;
+   var topRow=mkEl('div','display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap');
+   var title=mkEl('b','font-size:15px;color:#a8101c','老师布置的地图与专项待办（'+info.count+' 项未完成）');
+   topRow.appendChild(title);
+   if(wrapTag==='a'){
+    topRow.appendChild(mkEl('span','padding:4px 10px;border-radius:999px;background:#a8101c;color:#fff;font-size:12px;font-weight:700;white-space:nowrap','去'+activeSubjs[0]+'星图查看并打气 ›'));
+   }
+   box.appendChild(topRow);
+   if(info.samples.length){
+    var preview=info.samples.join('；')+(info.count>info.samples.length?(' 等 '+info.count+' 项'):'');
+    box.appendChild(mkEl('div','margin-top:6px;font-size:13px;color:#5c4743;line-height:1.55',preview));
+   }
+   if(wrapTag!=='a'){
+    var links=mkEl('div','display:flex;gap:8px;flex-wrap:wrap;margin-top:9px');
+    for(var sIdx=0;sIdx<activeSubjs.length;sIdx++){
+     var sName=activeSubjs[sIdx];
+     var a=mkEl('a','display:inline-flex;align-items:center;padding:5px 11px;border-radius:999px;background:#fff;border:1px solid #eadfd8;color:'+(SUBJ_COLOR[sName]||'#a8101c')+';font-size:12px;font-weight:700;text-decoration:none',sName+' '+info.bySubj[sName]+' 项未完成 · 去星图查看并打气 ›');
+     a.href=SUBJ_URL[sName]||'/v1/math-star-map';
+     links.appendChild(a);
+    }
+    box.appendChild(links);
+   }
+   if(anchor&&anchor.parentNode===pg)pg.insertBefore(box,anchor);
+   else pg.insertBefore(box,pg.firstChild);
+   lastRenderKey=key;
+  }
+  function fetchSummaryIfNeeded(pg,anchor,page,childId){
+   var tok='';try{tok=String(state.token||'')}catch(_e){}
+   if(!tok)return;
+   var now=Date.now();
+   if(cacheToken===tok&&cacheData&&(now-cacheAt)<60000){
+    renderTaskBanner(pg,anchor,cacheData,page,childId);
+    return;
+   }
+   if(fetching||(cacheToken===tok&&!cacheData&&(now-cacheAt)<30000))return;
+   fetching=true;
+   fetch('/parent/arena/summary',{headers:{Authorization:'Bearer '+tok},cache:'no-store'}).then(function(r){
+    if(!r.ok)throw new Error(String(r.status));
+    return r.json();
+   }).then(function(d){
+    cacheToken=tok;cacheData=d;cacheAt=Date.now();fetching=false;
+    var curPg=document.getElementById('page'),curAnchor=document.getElementById(ID);
+    var curRole='',curPage='',curChild=null;
+    try{if(stateReady()){curRole=currentRole();curPage=currentPage();curChild=state.childID}}catch(_e){}
+    if(curPg&&curRole==='parent'&&(curPage==='childProgress'||curPage==='parent')){
+     renderTaskBanner(curPg,curAnchor,d,curPage,curChild);
+    }
+   }).catch(function(){
+    cacheToken=tok;cacheData=null;cacheAt=Date.now();fetching=false;
+   });
+  }
   function ensure(){
-   var page='',role='';
-   try{if(stateReady()){role=currentRole();page=currentPage()}}catch(_e){}
+   var page='',role='',childId=null;
+   try{if(stateReady()){role=currentRole();page=currentPage();childId=state.childID}}catch(_e){}
    var old=document.getElementById(ID);
    var oldE=document.getElementById('cy-english-arena-band');
    var oldC=document.getElementById('cy-chinese-arena-band');
-   if(role!=='parent'||(page!=='childProgress'&&page!=='parent')){if(old)old.remove();if(oldE)oldE.remove();if(oldC)oldC.remove();return}
-   if(old)return;
+   var oldT=document.getElementById(TASK_ID);
+   if(role!=='parent'||(page!=='childProgress'&&page!=='parent')){
+    if(old)old.remove();if(oldE)oldE.remove();if(oldC)oldC.remove();if(oldT)oldT.remove();lastRenderKey='';return;
+   }
    var pg=document.getElementById('page');if(!pg)return;
-   var band=document.createElement('a');band.id=ID;band.href='/v1/math-star-map';
-   band.style.cssText='display:block;margin:0 0 10px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#a8101c;font-weight:700;font-size:14px;text-decoration:none';
-   band.textContent='数学知识地图与应试专项：查看孩子考点点亮进度、待修补薄弱点与学习积分 ›';
-   var head=pg.querySelector('.page-head');
-   if(head&&head.parentNode===pg)pg.insertBefore(band,head.nextSibling);else pg.insertBefore(band,pg.firstChild);
-   var eband=document.getElementById('cy-english-arena-band');
-   if(!eband){
-    eband=document.createElement('a');eband.id='cy-english-arena-band';eband.href='/v1/english-star-map';
-    eband.style.cssText='display:block;margin:0 0 10px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#1e4e79;font-weight:700;font-size:14px;text-decoration:none';
-    eband.textContent='英语知识地图与听说读写专项：查看孩子英语考点点亮与听说读写分级 ›';
-    band.parentNode.insertBefore(eband,band.nextSibling);
+   var band=old;
+   if(!band){
+    band=document.createElement('a');band.id=ID;band.href='/v1/math-star-map';
+    band.style.cssText='display:block;margin:0 0 10px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#a8101c;font-weight:700;font-size:14px;text-decoration:none';
+    band.textContent='数学知识地图与应试专项：查看孩子考点点亮进度、待修补薄弱点与学习积分 ›';
+    var head=pg.querySelector('.page-head');
+    if(head&&head.parentNode===pg)pg.insertBefore(band,head.nextSibling);else pg.insertBefore(band,pg.firstChild);
+    var eband=document.getElementById('cy-english-arena-band');
+    if(!eband){
+     eband=document.createElement('a');eband.id='cy-english-arena-band';eband.href='/v1/english-star-map';
+     eband.style.cssText='display:block;margin:0 0 10px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#1e4e79;font-weight:700;font-size:14px;text-decoration:none';
+     eband.textContent='英语知识地图与听说读写专项：查看孩子英语考点点亮与听说读写分级 ›';
+     band.parentNode.insertBefore(eband,band.nextSibling);
+    }
+    var cband=document.getElementById('cy-chinese-arena-band');
+    if(!cband){
+     cband=document.createElement('a');cband.id='cy-chinese-arena-band';cband.href='/v1/chinese-star-map';
+     cband.style.cssText='display:block;margin:0 0 14px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#0b8f5a;font-weight:700;font-size:14px;text-decoration:none';
+     cband.textContent='语文知识地图与四大板块专项：查看孩子语文考点点亮与基础/古诗/阅读/写作分级 ›';
+     eband.parentNode.insertBefore(cband,eband.nextSibling);
+    }
    }
-   var cband=document.getElementById('cy-chinese-arena-band');
-   if(!cband){
-    cband=document.createElement('a');cband.id='cy-chinese-arena-band';cband.href='/v1/chinese-star-map';
-    cband.style.cssText='display:block;margin:0 0 14px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#0b8f5a;font-weight:700;font-size:14px;text-decoration:none';
-    cband.textContent='语文知识地图与四大板块专项：查看孩子语文考点点亮与基础/古诗/阅读/写作分级 ›';
-    eband.parentNode.insertBefore(cband,eband.nextSibling);
-   }
+   fetchSummaryIfNeeded(pg,band,page,childId);
   }
   onPageTick(ensure);
  })();

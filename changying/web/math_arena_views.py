@@ -23,6 +23,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, desc, insert, select, update
 
+from changying.services import arena_review_and_custom as arc
 from changying.services import exam_sprints as es
 from changying.services import math_arena_points as mapts
 from changying.services import math_builtin_map as mbm
@@ -211,10 +212,12 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
             select(t_mastery).where(t_mastery.c.school_id == u.school_id, t_mastery.c.student_id == u.id)
         ).all()
         by_key = {r.node_key: r for r in rows}
+        now = datetime.utcnow()
         nodes_out: list[dict[str, Any]] = []
         lit_count = 0
         mastered_count = 0
         repair_count = 0
+        review_due_count = 0
         total_stars = 0
 
         for n in m["nodes"]:
@@ -230,12 +233,21 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
                     sprint_boost_stars=int(r.sprint_boost_stars),
                     needs_repair=bool(r.needs_repair),
                 )
+            rev = arc.compute_review_meta(
+                r,
+                now=now,
+                stars=int(st["stars"]),
+                needs_repair=bool(st["needsRepair"]),
+            )
+            st = {**st, **rev}
             if st["state"] in ("lit", "mastered"):
                 lit_count += 1
             if st["state"] == "mastered":
                 mastered_count += 1
             if st["needsRepair"]:
                 repair_count += 1
+            if rev["reviewDue"]:
+                review_due_count += 1
             total_stars += int(st["stars"])
             nodes_out.append({
                 "key": n["key"],
@@ -244,6 +256,9 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
                 "detail": n["detail"],
                 "prereqs": n["prereqs"],
                 "light": st,
+                "reviewDue": rev["reviewDue"],
+                "daysSincePractice": rev["daysSincePractice"],
+                "reviewCycleDays": rev["reviewCycleDays"],
             })
 
         unit_summary: list[dict[str, Any]] = []
@@ -266,6 +281,7 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
                 "litNodes": lit_count,
                 "masteredNodes": mastered_count,
                 "repairNodes": repair_count,
+                "reviewDueCount": review_due_count,
                 "totalStars": total_stars,
                 "maxStars": len(nodes_out) * 3,
             },
@@ -308,7 +324,11 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
             ).all()
         )
         seed = (int(u.id) * 17 + past_count * 7 + len(key)) % 97
-        qs = mbm.generate_node_questions(key, count=5, seed=seed)
+        custom_qs = arc.fetch_custom_quiz_questions(
+            implementation, db, school_id=int(u.school_id), subject="数学", node_key=key, limit=3, seed=seed
+        )
+        builtin_qs = mbm.generate_node_questions(key, count=max(0, 5 - len(custom_qs)), seed=seed)
+        qs = custom_qs + builtin_qs
         res = db.execute(
             insert(t_quizzes).values(
                 school_id=u.school_id,
@@ -321,13 +341,20 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
         )
         quiz_id = int(res.inserted_primary_key[0])
         db.commit()
+        public_qs = []
+        for q in qs:
+            pq = mbm.public_question(q)
+            if q.get("isCustom"):
+                pq["isCustom"] = True
+                pq["typeLabel"] = q.get("typeLabel", pq.get("typeLabel", "老师加题"))
+            public_qs.append(pq)
         return {
             "quizId": quiz_id,
             "nodeKey": key,
             "nodeName": node["name"],
             "detail": node["detail"],
             "count": len(qs),
-            "questions": [mbm.public_question(q) for q in qs],
+            "questions": public_qs,
         }
 
     @router.post("/student/math-star-map/nodes/{key}/quiz/submit")
@@ -353,21 +380,29 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
         details: list[dict[str, Any]] = []
         for q in qs:
             a = ans_map.get(q["id"])
-            ok = mbm.grade_builtin_question(
-                q,
-                selected_index=a.selected_index if a else None,
-                text_answer=a.text_answer if a else "",
-            )
+            sel = a.selected_index if a else None
+            txt = a.text_answer if a else ""
+            if arc.is_custom_question_id(q.get("id")):
+                ok, std_ans, std_exp = arc.grade_custom_question(
+                    implementation, db, q, selected_index=sel, text_answer=txt
+                )
+            else:
+                ok = mbm.grade_builtin_question(q, selected_index=sel, text_answer=txt)
+                std_ans = q["answer"]
+                std_exp = q.get("explanation", "")
             if ok:
                 correct += 1
                 if q.get("level") == "hard":
                     hard_correct += 1
             details.append({
                 "id": q["id"],
+                "questionType": q.get("questionType", ""),
+                "typeLabel": q.get("typeLabel", mbm.TYPE_LABELS.get(q.get("questionType", ""), "")),
                 "text": q["text"],
                 "correct": ok,
-                "answer": q["answer"],
-                "explanation": q.get("explanation", ""),
+                "answer": std_ans,
+                "explanation": std_exp,
+                "isCustom": bool(q.get("isCustom")),
             })
         total = len(qs)
         rate_pct = round((correct / total) * 100) if total else 0

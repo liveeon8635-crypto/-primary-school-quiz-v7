@@ -97,6 +97,7 @@ WITH d AS (DELETE FROM arena_wrong_items RETURNING 1) INSERT INTO _deleted SELEC
 WITH d AS (DELETE FROM arena_task_targets RETURNING 1) INSERT INTO _deleted SELECT 'arena_task_targets', COUNT(*) FROM d;
 WITH d AS (DELETE FROM arena_tasks RETURNING 1) INSERT INTO _deleted SELECT 'arena_tasks', COUNT(*) FROM d;
 WITH d AS (DELETE FROM arena_parent_cheers RETURNING 1) INSERT INTO _deleted SELECT 'arena_parent_cheers', COUNT(*) FROM d;
+WITH d AS (DELETE FROM arena_custom_questions RETURNING 1) INSERT INTO _deleted SELECT 'arena_custom_questions', COUNT(*) FROM d;
 WITH d AS (DELETE FROM knowledge_map_runs RETURNING 1) INSERT INTO _deleted SELECT 'knowledge_map_runs', COUNT(*) FROM d;
 WITH d AS (DELETE FROM knowledge_map_ratings RETURNING 1) INSERT INTO _deleted SELECT 'knowledge_map_ratings', COUNT(*) FROM d;
 WITH d AS (DELETE FROM exam_reports RETURNING 1) INSERT INTO _deleted SELECT 'exam_reports', COUNT(*) FROM d;
