@@ -247,14 +247,22 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
    var page='',role='';
    try{if(stateReady()){role=currentRole();page=currentPage()}}catch(_e){}
    var old=document.getElementById(ID);
-   if(role!=='parent'||(page!=='childProgress'&&page!=='parent')){if(old)old.remove();return}
+   var oldE=document.getElementById('cy-english-arena-band');
+   if(role!=='parent'||(page!=='childProgress'&&page!=='parent')){if(old)old.remove();if(oldE)oldE.remove();return}
    if(old)return;
    var pg=document.getElementById('page');if(!pg)return;
    var band=document.createElement('a');band.id=ID;band.href='/v1/math-star-map';
-   band.style.cssText='display:block;margin:0 0 14px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#a8101c;font-weight:700;font-size:14px;text-decoration:none';
+   band.style.cssText='display:block;margin:0 0 10px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#a8101c;font-weight:700;font-size:14px;text-decoration:none';
    band.textContent='数学知识地图与应试专项：查看孩子考点点亮进度、待修补薄弱点与学习积分 ›';
    var head=pg.querySelector('.page-head');
    if(head&&head.parentNode===pg)pg.insertBefore(band,head.nextSibling);else pg.insertBefore(band,pg.firstChild);
+   var eband=document.getElementById('cy-english-arena-band');
+   if(!eband){
+    eband=document.createElement('a');eband.id='cy-english-arena-band';eband.href='/v1/english-star-map';
+    eband.style.cssText='display:block;margin:0 0 14px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#1e4e79;font-weight:700;font-size:14px;text-decoration:none';
+    eband.textContent='英语知识地图与听说读写专项：查看孩子英语考点点亮与听说读写分级 ›';
+    band.parentNode.insertBefore(eband,band.nextSibling);
+   }
   }
   setInterval(ensure,1300);
  })();

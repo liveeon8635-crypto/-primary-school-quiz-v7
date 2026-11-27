@@ -56,6 +56,8 @@ DELETE_TABLES = (
     "exam_goals", "exam_goal_papers", "exam_goal_drills", "exam_attempts", "exam_reports",
     # 数学通用知识地图与强应试专项（学生作答与点亮记录）
     "math_node_mastery", "math_node_quizzes", "math_sprint_attempts",
+    # 英语通用知识地图与听说读写专项（学生作答与点亮记录）
+    "english_node_mastery", "english_node_quizzes", "english_sprint_attempts",
     # usage and housekeeping logs
     "ai_usage_logs", "account_deletion_requests",
 )
