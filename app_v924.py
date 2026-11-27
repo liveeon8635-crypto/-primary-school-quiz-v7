@@ -2614,7 +2614,7 @@ def student_growth_badges(db,student_id:int,school_id:int):
 def student_growth_advice(db,student_id:int,school_id:int):
     cur_start,cur_end,_,_=calendar_week_window_utc(0);prev_start,prev_end,_,_=calendar_week_window_utc(-1)
     cur=point_window_summary(db,student_id,school_id,cur_start,cur_end);prev=point_window_summary(db,student_id,school_id,prev_start,prev_end)
-    if cur["records"]==0:return ["本周暂未产生课堂积分记录，可关注孩子课堂参与和守纪情况。"]
+    if cur["records"]==0:return ["本周暂未产生课堂积分记录，坚持参与课堂互动、自主练习与守纪即可赢取积分。"]
     advice=[]
     if cur["net"]>prev["net"]:advice.append(f"本周净表现较上周提升 {cur['net']-prev['net']} 分，建议及时肯定这份进步。")
     elif cur["net"]<prev["net"]:advice.append(f"本周净表现较上周减少 {prev['net']-cur['net']} 分，可和孩子一起回顾课堂状态。")

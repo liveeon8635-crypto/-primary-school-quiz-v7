@@ -107,7 +107,7 @@ async function practice(){
     '</div>'+
     '<span class="badge" style="background:#fdf1f0;color:#a8101c;border:1px solid #f2c6c2;font-weight:700">全站积分 '+Number(pts.balance||0)+'（本科今日 +'+Number(pts.todayEarned||0)+'/'+Number(pts.dailyCap||30)+'）</span>'+
    '</div>'+
-   '<div class="grid2" style="margin-top:12px">'+
+   '<div class="grid2" style="margin-top:12px;padding-bottom:84px">'+
     '<div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px">'+
      '<div><h2 style="margin:0 0 6px">'+conf.mapTitle+'</h2><p class="muted" style="margin:0;line-height:1.6">'+conf.mapDesc+(s.repairNodes?' 当前有 '+Number(s.repairNodes)+' 个专项失分点待修补。':'')+'</p></div>'+
      '<a class="btn primary full" href="'+conf.mapHref+'" style="text-align:center;text-decoration:none">进入'+conf.mapTitle+'</a>'+
