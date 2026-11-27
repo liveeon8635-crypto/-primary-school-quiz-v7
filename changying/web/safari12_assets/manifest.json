@@ -20,7 +20,7 @@
       "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b",
-      "2a626a589b2b8d1e7422befac50176a701c932499b39bb57f7f9c7e334fdf3fe",
+      "c1c16d4c54eb55f6d308b85e2fcbd0a995d0c4ca3f852410574a7593f2871103",
       "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d",
       "a2cd533bae1673ae27ae94dfd738341e3addebfbf08a15c3f93fdb0f0d56b0a4",
       "827dcf013dc47810bcc6afb411c2f734aadae88fb9eecda6d276b2973e306cf8",
@@ -50,7 +50,7 @@
     ],
     "/classic?legacy=1&unified=1&page=syncLearning": [
       "d881ec81d8ea5b4f7b44bcfb173f8e1fe09c7416cf30a4490737b0809b3e3fb5",
-      "6badbd533a4e7c077981062b73a76edf7771f73c9c59536655482fa4ba12e43d",
+      "51c461443bd18d04e76173967ab8c73f5abfea58d67dd8b889fc9c34d09b59c2",
       "d1e5d7dcfd33869626fae0a94202f55c4a421a5ebe18189c4918a396533254a0",
       "705628d302fc824a37cce5ace348a816cea8d7377d8379957c387475739b2498",
       "d92b1a3fbbb3d332834fe92d2b2566ec1505c5ee3a05790a8b7d101344549769",
@@ -58,7 +58,7 @@
       "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d",
       "534754661c1163fef4d8c7cc7ecb9b74a14c66b17b764dc71b050cd44c3df111",
       "248d6c2291be02a088324ae890398e9e78b52691eb5b7a7a8c0762323a27015e",
-      "d10eba7365acef229c0f1481d36d3850548142a5b6a6c40dc906a59ac0d641a2",
+      "dd4468e0898a127132d829c633deea3c07c436216c2027831dcac82a3e338b91",
       "a164acbca2d82eec432853cba2676546d75c7fc51866a2c531dfb6c77e5bde20",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b"
@@ -84,7 +84,7 @@
       "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b",
-      "2a626a589b2b8d1e7422befac50176a701c932499b39bb57f7f9c7e334fdf3fe",
+      "c1c16d4c54eb55f6d308b85e2fcbd0a995d0c4ca3f852410574a7593f2871103",
       "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d",
       "a2cd533bae1673ae27ae94dfd738341e3addebfbf08a15c3f93fdb0f0d56b0a4",
       "827dcf013dc47810bcc6afb411c2f734aadae88fb9eecda6d276b2973e306cf8",
@@ -95,6 +95,12 @@
       "d7a601da3a488bd2ffddfaf1bf108e34b78afac5def1224cee48757f68afdad3",
       "545af75f454ccfd970595dfd27c4a71ea6cc4840a56a4282886b710ad98dac59",
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
+    ],
+    "/v1/chinese-sprints": [
+      "8cfa0755c57f7576da326c3e54a089e84188a900b7d1a77f152ea17797ce3885"
+    ],
+    "/v1/chinese-star-map": [
+      "7347dd232ac642fd248d5e2e3da50b73f2bb6a3e450fb75ac2d958e0941bcd79"
     ],
     "/v1/classroom-board/1": [
       "0b1f5299b0c8d30232444ac57af55c8fad716fdd7b86c5ed86798b755fffc70f"
@@ -118,7 +124,7 @@
       "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b",
-      "2a626a589b2b8d1e7422befac50176a701c932499b39bb57f7f9c7e334fdf3fe",
+      "c1c16d4c54eb55f6d308b85e2fcbd0a995d0c4ca3f852410574a7593f2871103",
       "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d",
       "a2cd533bae1673ae27ae94dfd738341e3addebfbf08a15c3f93fdb0f0d56b0a4",
       "827dcf013dc47810bcc6afb411c2f734aadae88fb9eecda6d276b2973e306cf8",
@@ -149,7 +155,7 @@
       "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b",
-      "2a626a589b2b8d1e7422befac50176a701c932499b39bb57f7f9c7e334fdf3fe",
+      "c1c16d4c54eb55f6d308b85e2fcbd0a995d0c4ca3f852410574a7593f2871103",
       "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d",
       "a2cd533bae1673ae27ae94dfd738341e3addebfbf08a15c3f93fdb0f0d56b0a4",
       "827dcf013dc47810bcc6afb411c2f734aadae88fb9eecda6d276b2973e306cf8",
@@ -180,7 +186,7 @@
       "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b",
-      "2a626a589b2b8d1e7422befac50176a701c932499b39bb57f7f9c7e334fdf3fe",
+      "c1c16d4c54eb55f6d308b85e2fcbd0a995d0c4ca3f852410574a7593f2871103",
       "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d",
       "a2cd533bae1673ae27ae94dfd738341e3addebfbf08a15c3f93fdb0f0d56b0a4",
       "827dcf013dc47810bcc6afb411c2f734aadae88fb9eecda6d276b2973e306cf8",
@@ -211,7 +217,7 @@
       "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b",
-      "2a626a589b2b8d1e7422befac50176a701c932499b39bb57f7f9c7e334fdf3fe",
+      "c1c16d4c54eb55f6d308b85e2fcbd0a995d0c4ca3f852410574a7593f2871103",
       "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d",
       "a2cd533bae1673ae27ae94dfd738341e3addebfbf08a15c3f93fdb0f0d56b0a4",
       "827dcf013dc47810bcc6afb411c2f734aadae88fb9eecda6d276b2973e306cf8",
@@ -242,7 +248,7 @@
       "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b",
-      "2a626a589b2b8d1e7422befac50176a701c932499b39bb57f7f9c7e334fdf3fe",
+      "c1c16d4c54eb55f6d308b85e2fcbd0a995d0c4ca3f852410574a7593f2871103",
       "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d",
       "a2cd533bae1673ae27ae94dfd738341e3addebfbf08a15c3f93fdb0f0d56b0a4",
       "827dcf013dc47810bcc6afb411c2f734aadae88fb9eecda6d276b2973e306cf8",
@@ -255,10 +261,10 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/english-sprints": [
-      "e41c90d1fd5534dfa99fb346691d5f1facbcb0dd86a1a1e35d2dba262f2589ed"
+      "ae628011e0ee73da333fdffbe156324d1cc3f3b7aae01e98758965227b255c30"
     ],
     "/v1/english-star-map": [
-      "199ded685fbc7c542cfa10268818684d0fb0df15e90457ce0c45b96d0a2856bf"
+      "bfe32357a302d29c5a3e1fa9a1202a183270ba80898ab2dbb0bc279573f23535"
     ],
     "/v1/exam-paper": [
       "c699743817b2a78c05dc7b7dc6b0630c18dc7918e9663fb5273ec75b625a3ecb"
@@ -292,7 +298,7 @@
       "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b",
-      "2a626a589b2b8d1e7422befac50176a701c932499b39bb57f7f9c7e334fdf3fe",
+      "c1c16d4c54eb55f6d308b85e2fcbd0a995d0c4ca3f852410574a7593f2871103",
       "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d",
       "a2cd533bae1673ae27ae94dfd738341e3addebfbf08a15c3f93fdb0f0d56b0a4",
       "827dcf013dc47810bcc6afb411c2f734aadae88fb9eecda6d276b2973e306cf8",
@@ -323,7 +329,7 @@
       "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b",
-      "2a626a589b2b8d1e7422befac50176a701c932499b39bb57f7f9c7e334fdf3fe",
+      "c1c16d4c54eb55f6d308b85e2fcbd0a995d0c4ca3f852410574a7593f2871103",
       "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d",
       "a2cd533bae1673ae27ae94dfd738341e3addebfbf08a15c3f93fdb0f0d56b0a4",
       "827dcf013dc47810bcc6afb411c2f734aadae88fb9eecda6d276b2973e306cf8",
@@ -342,10 +348,10 @@
       "33309b5b59b3ce20486c65fda384211d02e52ee652fd2bf17c8f54da68919c5d"
     ],
     "/v1/math-sprints": [
-      "febf65a6725903ae9b764493224a88b98567faa7154076f0be1358522e110478"
+      "da9b55a7847c6b06797bb73b972eb08016c33049572907c716928732d4ff6a71"
     ],
     "/v1/math-star-map": [
-      "9b13c452186a62131444948250bcc3fed3bcd31f65c24e031880e3077c72acc6"
+      "751fb7954022ece29813e1b4ecaba62ac70ce9082aea76b2205ed51aec531cbf"
     ],
     "/v1/my-knowledge-map": [
       "7118c5927657af9358d62afb620e22aaff4d43e1fe8d5ba597f1404df3aec289"
@@ -369,7 +375,7 @@
       "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b",
-      "2a626a589b2b8d1e7422befac50176a701c932499b39bb57f7f9c7e334fdf3fe",
+      "c1c16d4c54eb55f6d308b85e2fcbd0a995d0c4ca3f852410574a7593f2871103",
       "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d",
       "a2cd533bae1673ae27ae94dfd738341e3addebfbf08a15c3f93fdb0f0d56b0a4",
       "827dcf013dc47810bcc6afb411c2f734aadae88fb9eecda6d276b2973e306cf8",
@@ -408,7 +414,7 @@
       "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b",
-      "2a626a589b2b8d1e7422befac50176a701c932499b39bb57f7f9c7e334fdf3fe",
+      "c1c16d4c54eb55f6d308b85e2fcbd0a995d0c4ca3f852410574a7593f2871103",
       "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d",
       "a2cd533bae1673ae27ae94dfd738341e3addebfbf08a15c3f93fdb0f0d56b0a4",
       "827dcf013dc47810bcc6afb411c2f734aadae88fb9eecda6d276b2973e306cf8",
@@ -460,7 +466,7 @@
       "61be34f93eccf8c3177229651f727a768e91ef3830dc8d089a7a59574b511ecf",
       "8edde46b29c1d4e41725985a9fc9a3df3feeb6cbe4de7fe09e6399aee84c5b7a",
       "35c70968a4ef937eabddbcf6f39cbdc3aadb11bf8ee2f55a402feae0c3b3274b",
-      "2a626a589b2b8d1e7422befac50176a701c932499b39bb57f7f9c7e334fdf3fe",
+      "c1c16d4c54eb55f6d308b85e2fcbd0a995d0c4ca3f852410574a7593f2871103",
       "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d",
       "a2cd533bae1673ae27ae94dfd738341e3addebfbf08a15c3f93fdb0f0d56b0a4",
       "827dcf013dc47810bcc6afb411c2f734aadae88fb9eecda6d276b2973e306cf8",
@@ -508,11 +514,6 @@
       "sourceBytes": 4863,
       "compiledBytes": 4863
     },
-    "199ded685fbc7c542cfa10268818684d0fb0df15e90457ce0c45b96d0a2856bf": {
-      "unchanged": true,
-      "sourceBytes": 49362,
-      "compiledBytes": 49362
-    },
     "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d": {
       "unchanged": true,
       "sourceBytes": 16000,
@@ -532,11 +533,6 @@
       "unchanged": false,
       "sourceBytes": 3749,
       "compiledBytes": 4287
-    },
-    "2a626a589b2b8d1e7422befac50176a701c932499b39bb57f7f9c7e334fdf3fe": {
-      "unchanged": false,
-      "sourceBytes": 6300,
-      "compiledBytes": 5801
     },
     "33309b5b59b3ce20486c65fda384211d02e52ee652fd2bf17c8f54da68919c5d": {
       "unchanged": true,
@@ -577,6 +573,11 @@
       "unchanged": false,
       "sourceBytes": 9071,
       "compiledBytes": 8417
+    },
+    "51c461443bd18d04e76173967ab8c73f5abfea58d67dd8b889fc9c34d09b59c2": {
+      "unchanged": false,
+      "sourceBytes": 287015,
+      "compiledBytes": 295423
     },
     "534754661c1163fef4d8c7cc7ecb9b74a14c66b17b764dc71b050cd44c3df111": {
       "unchanged": true,
@@ -623,11 +624,6 @@
       "sourceBytes": 57805,
       "compiledBytes": 57805
     },
-    "6badbd533a4e7c077981062b73a76edf7771f73c9c59536655482fa4ba12e43d": {
-      "unchanged": false,
-      "sourceBytes": 285883,
-      "compiledBytes": 294326
-    },
     "6e1b57fcca2831a4193bd3f98d92ee82525179d20ac1a47f446c7c8653115ca6": {
       "unchanged": false,
       "sourceBytes": 14968,
@@ -642,6 +638,16 @@
       "unchanged": true,
       "sourceBytes": 33520,
       "compiledBytes": 33520
+    },
+    "7347dd232ac642fd248d5e2e3da50b73f2bb6a3e450fb75ac2d958e0941bcd79": {
+      "unchanged": true,
+      "sourceBytes": 43894,
+      "compiledBytes": 43894
+    },
+    "751fb7954022ece29813e1b4ecaba62ac70ce9082aea76b2205ed51aec531cbf": {
+      "unchanged": true,
+      "sourceBytes": 54469,
+      "compiledBytes": 54469
     },
     "799f0d46bbc308a1950bb49a0ed2c405b941643c725d75138d2e70158a6b23d7": {
       "unchanged": true,
@@ -673,6 +679,11 @@
       "sourceBytes": 5883,
       "compiledBytes": 6041
     },
+    "8cfa0755c57f7576da326c3e54a089e84188a900b7d1a77f152ea17797ce3885": {
+      "unchanged": true,
+      "sourceBytes": 44676,
+      "compiledBytes": 44676
+    },
     "8d6b55ce94cf476a4c567fae64a66f3dc914c91ee7c4c60760a581adf24880b8": {
       "unchanged": true,
       "sourceBytes": 4936,
@@ -682,11 +693,6 @@
       "unchanged": false,
       "sourceBytes": 51254,
       "compiledBytes": 48750
-    },
-    "9b13c452186a62131444948250bcc3fed3bcd31f65c24e031880e3077c72acc6": {
-      "unchanged": true,
-      "sourceBytes": 54308,
-      "compiledBytes": 54308
     },
     "a0af0ac52e5e33aa382ebee2b8f01e5bc2464cd7834bcfa8778be3d1a5039019": {
       "unchanged": true,
@@ -708,10 +714,25 @@
       "sourceBytes": 5875,
       "compiledBytes": 6410
     },
+    "ae628011e0ee73da333fdffbe156324d1cc3f3b7aae01e98758965227b255c30": {
+      "unchanged": true,
+      "sourceBytes": 49945,
+      "compiledBytes": 49945
+    },
     "bf9f6c51513a67c63cc4aad011ccb3d256db4ed9023ba4513a21e2565c3a1eff": {
       "unchanged": false,
       "sourceBytes": 1670,
       "compiledBytes": 1691
+    },
+    "bfe32357a302d29c5a3e1fa9a1202a183270ba80898ab2dbb0bc279573f23535": {
+      "unchanged": true,
+      "sourceBytes": 49523,
+      "compiledBytes": 49523
+    },
+    "c1c16d4c54eb55f6d308b85e2fcbd0a995d0c4ca3f852410574a7593f2871103": {
+      "unchanged": false,
+      "sourceBytes": 6665,
+      "compiledBytes": 6139
     },
     "c59fad0aed8a5cff2fbec1e4ae2d076486803d81673f127a52e60bc7db10e7cc": {
       "unchanged": true,
@@ -743,11 +764,6 @@
       "sourceBytes": 2688,
       "compiledBytes": 2688
     },
-    "d10eba7365acef229c0f1481d36d3850548142a5b6a6c40dc906a59ac0d641a2": {
-      "unchanged": false,
-      "sourceBytes": 40834,
-      "compiledBytes": 39274
-    },
     "d1e5d7dcfd33869626fae0a94202f55c4a421a5ebe18189c4918a396533254a0": {
       "unchanged": false,
       "sourceBytes": 1952,
@@ -768,15 +784,20 @@
       "sourceBytes": 2792,
       "compiledBytes": 2792
     },
+    "da9b55a7847c6b06797bb73b972eb08016c33049572907c716928732d4ff6a71": {
+      "unchanged": true,
+      "sourceBytes": 55072,
+      "compiledBytes": 55072
+    },
+    "dd4468e0898a127132d829c633deea3c07c436216c2027831dcac82a3e338b91": {
+      "unchanged": false,
+      "sourceBytes": 41506,
+      "compiledBytes": 39910
+    },
     "e29b0faa2d3696f4ccb3891be283e55f770bcffd8992996cf0b3519c89b01943": {
       "unchanged": true,
       "sourceBytes": 1255,
       "compiledBytes": 1255
-    },
-    "e41c90d1fd5534dfa99fb346691d5f1facbcb0dd86a1a1e35d2dba262f2589ed": {
-      "unchanged": true,
-      "sourceBytes": 49784,
-      "compiledBytes": 49784
     },
     "e83f885864cee35a32068f9aa04b54235bf84c5d8ef2d03ef6cc36d6555b6d8e": {
       "unchanged": false,
@@ -807,11 +828,6 @@
       "unchanged": false,
       "sourceBytes": 1367,
       "compiledBytes": 1366
-    },
-    "febf65a6725903ae9b764493224a88b98567faa7154076f0be1358522e110478": {
-      "unchanged": true,
-      "sourceBytes": 54911,
-      "compiledBytes": 54911
     }
   }
 }

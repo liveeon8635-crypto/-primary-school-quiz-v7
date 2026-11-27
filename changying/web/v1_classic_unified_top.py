@@ -248,7 +248,8 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
    try{if(stateReady()){role=currentRole();page=currentPage()}}catch(_e){}
    var old=document.getElementById(ID);
    var oldE=document.getElementById('cy-english-arena-band');
-   if(role!=='parent'||(page!=='childProgress'&&page!=='parent')){if(old)old.remove();if(oldE)oldE.remove();return}
+   var oldC=document.getElementById('cy-chinese-arena-band');
+   if(role!=='parent'||(page!=='childProgress'&&page!=='parent')){if(old)old.remove();if(oldE)oldE.remove();if(oldC)oldC.remove();return}
    if(old)return;
    var pg=document.getElementById('page');if(!pg)return;
    var band=document.createElement('a');band.id=ID;band.href='/v1/math-star-map';
@@ -259,9 +260,16 @@ html.cy-v1-login-pending #cy-v1-unified-bottom{visibility:hidden}
    var eband=document.getElementById('cy-english-arena-band');
    if(!eband){
     eband=document.createElement('a');eband.id='cy-english-arena-band';eband.href='/v1/english-star-map';
-    eband.style.cssText='display:block;margin:0 0 14px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#1e4e79;font-weight:700;font-size:14px;text-decoration:none';
+    eband.style.cssText='display:block;margin:0 0 10px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#1e4e79;font-weight:700;font-size:14px;text-decoration:none';
     eband.textContent='英语知识地图与听说读写专项：查看孩子英语考点点亮与听说读写分级 ›';
     band.parentNode.insertBefore(eband,band.nextSibling);
+   }
+   var cband=document.getElementById('cy-chinese-arena-band');
+   if(!cband){
+    cband=document.createElement('a');cband.id='cy-chinese-arena-band';cband.href='/v1/chinese-star-map';
+    cband.style.cssText='display:block;margin:0 0 14px;padding:12px 14px;border:1px solid #eadfd8;border-radius:16px;background:#fff;color:#0b8f5a;font-weight:700;font-size:14px;text-decoration:none';
+    cband.textContent='语文知识地图与四大板块专项：查看孩子语文考点点亮与基础/古诗/阅读/写作分级 ›';
+    eband.parentNode.insertBefore(cband,eband.nextSibling);
    }
   }
   setInterval(ensure,1300);

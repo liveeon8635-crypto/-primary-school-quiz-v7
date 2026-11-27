@@ -72,7 +72,8 @@ function eaTopbar(active,pts){
     el('a',{class:'ma-link-btn',href:'/classic?legacy=1&unified=1&page=practice',text:'‹ 返回练习'}),
     el('div',{class:'ea-subj'},
       el('a',{href:active==='sprints'?'/v1/math-sprints':'/v1/math-star-map',text:'数学'}),
-      el('a',{href:active==='sprints'?'/v1/english-sprints':'/v1/english-star-map',class:'on',text:'英语'})));
+      el('a',{href:active==='sprints'?'/v1/english-sprints':'/v1/english-star-map',class:'on',text:'英语'}),
+      el('a',{href:active==='sprints'?'/v1/chinese-sprints':'/v1/chinese-star-map',text:'语文'})));
   var seg=el('div',{class:'ma-seg'},
     el('a',{href:'/v1/english-star-map',class:active==='map'?'on':'',text:'知识地图'}),
     el('a',{href:'/v1/english-sprints',class:active==='sprints'?'on':'',text:'应试专项'}));
@@ -124,7 +125,8 @@ function eaRenderRoleOverview(role){
       el('a',{class:'ma-link-btn',href:backHref,text:backText}),
       el('div',{class:'ea-subj'},
         el('a',{href:'/v1/math-star-map',text:'数学'}),
-        el('a',{href:'/v1/english-star-map',class:'on',text:'英语'}))),
+        el('a',{href:'/v1/english-star-map',class:'on',text:'英语'}),
+        el('a',{href:'/v1/chinese-star-map',text:'语文'}))),
     el('div',{class:'ma-topbar-right'},el('span',{class:'ma-pts',text:isTeacher?'教师英语学情':'家长英语学情'})));
   var box=el('div',{class:'ma-wrap'},bar);
   root.appendChild(box);

@@ -17,6 +17,8 @@ POINT_EARNING_SOURCES = (
     "math_exam_sprint",
     "english_star_map",
     "english_exam_sprint",
+    "chinese_star_map",
+    "chinese_exam_sprint",
 )
 POINT_NET_SOURCES = POINT_EARNING_SOURCES + ("reversal",)
 LEARNING_POINT_SOURCES = (
@@ -27,6 +29,8 @@ LEARNING_POINT_SOURCES = (
     "math_exam_sprint",
     "english_star_map",
     "english_exam_sprint",
+    "chinese_star_map",
+    "chinese_exam_sprint",
 )
 
 
