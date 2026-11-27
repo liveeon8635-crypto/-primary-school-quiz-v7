@@ -131,8 +131,8 @@ function caBoot(run){
     TOKEN=t;
     if(!TOKEN){msg('请先登录后再打开');return}
     return api('/session').then(function(s){
-      if(s.role==='student'){run();return}
-      if(s.role==='teacher'||s.role==='admin'||s.role==='parent'){arenaRoleHub(s.role,'语文');return}
+      if(s.role==='student'){window.__CY_ARENA_USER__=s;run();return}
+      if(s.role==='teacher'||s.role==='admin'||s.role==='parent'){arenaRoleHub(s.role,'语文',s);return}
       msg('当前身份无法访问此页面');
     });
   }).catch(function(e){msg(e.message||'打不开')});
