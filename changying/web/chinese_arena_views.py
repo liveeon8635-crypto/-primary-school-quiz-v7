@@ -30,6 +30,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, desc, insert, select, update
 
+from changying.services import arena_review_and_custom as arc
 from changying.services import chinese_ai_grader as caig
 from changying.services import chinese_arena_points as capts
 from changying.services import chinese_builtin_map as cbm
@@ -268,22 +269,32 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
             )
         ).all()
         by_key = {r.node_key: r for r in rows}
+        now = datetime.utcnow()
 
         nodes_out: list[dict[str, Any]] = []
-        lit_nodes = mastered_nodes = repair_nodes = total_stars = 0
+        lit_nodes = mastered_nodes = repair_nodes = review_due_count = total_stars = 0
         for n in bp["nodes"]:
             r = by_key.get(n["key"])
             st = _state_from_row(r)
+            rev = arc.compute_review_meta(
+                r,
+                now=now,
+                stars=int(st["stars"]),
+                needs_repair=bool(st["needsRepair"]),
+            )
             if st["state"] in ("lit", "mastered"):
                 lit_nodes += 1
             if st["state"] == "mastered":
                 mastered_nodes += 1
             if st["needsRepair"]:
                 repair_nodes += 1
+            if rev["reviewDue"]:
+                review_due_count += 1
             total_stars += int(st["stars"])
             nodes_out.append({
                 **n,
                 **st,
+                **rev,
                 "attempts": int(r.attempts) if r is not None else 0,
                 "correct": int(r.correct) if r is not None else 0,
                 "bestQuizRate": int(r.best_quiz_rate_pct) if r is not None else 0,
@@ -299,6 +310,7 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
                 "litNodes": lit_nodes,
                 "masteredNodes": mastered_nodes,
                 "repairNodes": repair_nodes,
+                "reviewDueCount": review_due_count,
                 "totalStars": total_stars,
                 "maxStars": len(nodes_out) * 3,
             },
@@ -320,7 +332,11 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
             )
         ).all()
         seed = int(u.id) * 11 + len(prev_cnt) * 5 + 3
-        questions = cbm.generate_node_questions(node_key, count=5, seed=seed, map_friendly=True)
+        custom_qs = arc.fetch_custom_quiz_questions(
+            implementation, db, school_id=int(u.school_id), subject="语文", node_key=node_key, limit=3, seed=seed
+        )
+        builtin_qs = cbm.generate_node_questions(node_key, count=max(0, 5 - len(custom_qs)), seed=seed, map_friendly=True)
+        questions = custom_qs + builtin_qs
         now = datetime.utcnow()
         res = db.execute(
             insert(t_quizzes).values(
@@ -334,10 +350,16 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
         )
         quiz_id = int(res.inserted_primary_key[0])
         db.commit()
+        public_qs = []
+        for q in questions:
+            pq = cbm.public_question(q)
+            if q.get("isCustom"):
+                pq["isCustom"] = True
+            public_qs.append(pq)
         return {
             "quizId": quiz_id,
             "node": node,
-            "questions": [cbm.public_question(q) for q in questions],
+            "questions": public_qs,
         }
 
     @router.post("/student/chinese-star-map/nodes/{node_key}/quiz/submit")
@@ -370,7 +392,7 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
         subj_pairs = [
             (q, ans_map[q["id"]].text_answer if q["id"] in ans_map else "")
             for q in questions
-            if q.get("questionType") in cbm.SUBJECTIVE_TYPES
+            if (not arc.is_custom_question_id(q.get("id"))) and q.get("questionType") in cbm.SUBJECTIVE_TYPES
         ]
         subj_grades = caig.grade_subjective_items(
             subj_pairs, implementation=implementation, db=db, school_id=int(u.school_id)
@@ -385,13 +407,21 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
             txt = a.text_answer if a else ""
             ai_comment = ""
             grading_mode = "objective"
-            if q.get("questionType") in cbm.SUBJECTIVE_TYPES:
+            if arc.is_custom_question_id(q.get("id")):
+                ok, std_ans, std_exp = arc.grade_custom_question(
+                    implementation, db, q, selected_index=sel, text_answer=txt
+                )
+            elif q.get("questionType") in cbm.SUBJECTIVE_TYPES:
                 sg = subj_grades.get(q["id"]) or cbm.grade_subjective_rule_fallback(q, txt)
                 ok = bool(sg["passed"])
                 ai_comment = str(sg.get("comment") or "")
                 grading_mode = str(sg.get("gradingMode") or "rule_fallback")
+                std_ans = q.get("sampleAnswer") or q["answer"]
+                std_exp = q.get("explanation", "")
             else:
                 ok = cbm.grade_objective_answer(q, selected_index=sel, text_answer=txt)
+                std_ans = q.get("sampleAnswer") or q["answer"]
+                std_exp = q.get("explanation", "")
             if ok:
                 correct_cnt += 1
                 if q.get("level") == "hard":
@@ -402,10 +432,11 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
                 "typeLabel": q.get("typeLabel", q["questionType"]),
                 "text": q["text"],
                 "correct": ok,
-                "answer": q.get("sampleAnswer") or q["answer"],
-                "explanation": q.get("explanation", ""),
+                "answer": std_ans,
+                "explanation": std_exp,
                 "aiComment": ai_comment,
                 "gradingMode": grading_mode,
+                "isCustom": bool(q.get("isCustom")),
             })
 
         total = len(questions)

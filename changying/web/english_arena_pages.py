@@ -79,9 +79,40 @@ function eaTopbar(active,pts){
     el('a',{href:'/v1/english-star-map',class:active==='map'?'on':'',text:'知识地图'}),
     el('a',{href:'/v1/english-sprints',class:active==='sprints'?'on':'',text:'应试专项'}));
   var right=el('div',{class:'ma-topbar-right'});
+  var u=window.__CY_ARENA_USER__;
+  if(u&&u.name)right.appendChild(el('span',{class:'ma-user-pill',text:u.name+' · 学生'}));
   if(pts)right.appendChild(el('a',{class:'ma-pts',href:'/classic?legacy=1&unified=1&page=rewards',style:'text-decoration:none',title:'查看全站积分奖励 · 英语今日学习积分 '+pts.todayEarned+'/'+pts.dailyCap,text:'积分 '+pts.balance+' ›'}));
   bar.appendChild(left);bar.appendChild(seg);bar.appendChild(right);
   return bar;
+}
+function eaFetchTasks(subject){
+  return api('/student/arena-tasks').catch(function(){
+    return api('/student/arena/tasks?subject='+encodeURIComponent(subject));
+  }).then(function(r){
+    var arr=(r&&r.items)?r.items:[];
+    return arr.filter(function(it){
+      return (!it.subject||it.subject===subject)&&it.status!=='done';
+    });
+  }).catch(function(){return []});
+}
+function eaRenderTaskBanner(tasks,onGo){
+  if(!tasks||!tasks.length)return null;
+  var list=el('div',{class:'ma-task-list'});
+  tasks.forEach(function(t){
+    var goalTxt=(t.goalLabel||t.goalCode||'完成练习')+(t.isFresh?'（需重新完成）':'');
+    var metaTxt='目标：'+goalTxt+(t.dueDate?(' · 截止 '+t.dueDate):'');
+    var btn=el('button',{type:'button',class:'ma-btn ma-btn-primary ma-btn-sm',text:'立即前往'});
+    btn.onclick=function(){onGo(t)};
+    list.appendChild(el('div',{class:'ma-task-item'},
+      el('div',{class:'ma-task-info'},
+        el('div',{class:'ma-task-name',text:(t.taskKind==='sprint'?'[专项] ':'[考点] ')+(t.targetTitle||t.targetKey)}),
+        el('div',{class:'ma-task-meta',text:metaTxt})),
+      btn));
+  });
+  return el('div',{class:'ma-task-banner'},
+    el('div',{class:'ma-task-banner-h'},
+      el('div',{class:'ma-task-banner-title',text:'📌 老师布置的今日任务（'+tasks.length+' 项待完成）'})),
+    list);
 }
 function eaHelperTip(text,tag){
   var src=window.__CY_HELPER_AVATAR__||'';
@@ -245,17 +276,21 @@ function eaRenderQuestionBody(q,ansObj,onChange,audioOpts){
   if(q.audioUrl){
     wrap.appendChild(eaAudioBox(q,audioOpts));
   }
+  if(q.isCustom){
+    wrap.appendChild(el('div',{class:'ma-custom-badge',text:'★ 老师精选'}));
+  }
   wrap.appendChild(el('p',{class:'ma-q-text',text:q.text}));
   if(q.hint){
     wrap.appendChild(el('p',{class:'ea-hint',text:'提示：'+q.hint}));
   }
   var qt=q.questionType;
 
-  // 1. 客观单选类
-  if(qt==='listen_choice'||qt==='listen_tf'||qt==='phonics_choice'||qt==='reading_choice'){
+  // 1. 客观单选类（兼容老师私房单选/判断题）
+  if(qt==='listen_choice'||qt==='listen_tf'||qt==='phonics_choice'||qt==='reading_choice'||qt==='single_choice'||qt==='true_false'){
     var optsBox=el('div',{class:'ma-opts'});
     var keys=['A','B','C','D'];
-    (q.options||[]).forEach(function(opt,idx){
+    var qOpts=(q.options&&q.options.length)?q.options:(qt==='true_false'?['正确','错误']:[]);
+    qOpts.forEach(function(opt,idx){
       var b=el('button',{type:'button',class:'ma-opt'+(ansObj.selected_index===idx?' picked':'')},
         el('span',{class:'ma-opt-k',text:keys[idx]||String(idx+1)}),
         el('span',{text:opt}));
@@ -437,7 +472,7 @@ function eaRenderQuestionBody(q,ansObj,onChange,audioOpts){
   var inp=el('input',{
     class:'ma-input',
     type:'text',
-    placeholder:qt==='word_spell'?'请输入英文单词…':'请输入正确的词形或单词…',
+    placeholder:qt==='word_spell'?'请输入英文单词…':(qt==='fill_blank'?'请输入答案…':'请输入正确的词形或单词…'),
     value:ansObj.text_answer||''
   });
   inp.setAttribute('autocomplete','off');
@@ -451,12 +486,32 @@ function eaRenderQuestionBody(q,ansObj,onChange,audioOpts){
 """
 
 ENGLISH_MAP_JS = COMMON_ENGLISH_JS + r"""
-var EM_DATA=null,EM_SEL=null,EM_QUIZ=null,EM_ANS={},EM_IDX=0,EM_PLAY={};
+var EM_DATA=null,EM_SEL=null,EM_TASKS=[],EM_QUIZ=null,EM_ANS={},EM_IDX=0,EM_PLAY={};
 var EM_BOX=el('div',{class:'ma-wrap'}),EM_TOP=el('div'),EM_SUM=el('div'),EM_DET=el('div',{class:'ma-detail-dock'}),EM_DOMS=el('div'),EM_QBOX=el('div'),EM_NOTE=el('div',{class:'ma-notice'});
 root.textContent='';
 root.appendChild(EM_BOX);
 EM_BOX.appendChild(EM_TOP);EM_BOX.appendChild(EM_NOTE);EM_BOX.appendChild(EM_SUM);EM_BOX.appendChild(EM_DOMS);EM_BOX.appendChild(EM_DET);EM_BOX.appendChild(EM_QBOX);
 
+function emHasTask(nodeKey){
+  var i;
+  for(i=0;i<EM_TASKS.length;i++){
+    if(EM_TASKS[i].taskKind==='map_node'&&EM_TASKS[i].targetKey===nodeKey)return true;
+  }
+  return false;
+}
+function emScrollToNode(key){
+  var elBtn=EM_DOMS&&EM_DOMS.querySelector('[data-node="'+key+'"]');
+  if(elBtn&&elBtn.scrollIntoView)elBtn.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function emFocusNode(key){
+  if(!EM_DATA||!EM_DATA.nodes)return;
+  var hit=EM_DATA.nodes.filter(function(x){return x.key===key})[0];
+  if(!hit)return;
+  EM_SEL=hit;
+  emRenderDetail();
+  emRenderMapNodesSel();
+  emScrollToNode(hit.key);
+}
 function emNotice(t,warn){
   EM_NOTE.className='ma-notice'+(t?(' show '+(warn?'warn':'info')):'');
   EM_NOTE.textContent=t||'';
@@ -465,6 +520,7 @@ function emRenderMap(){
   eaStopAudio();
   EM_QBOX.textContent='';
   var d=EM_DATA,s=d.summary;
+  var revCnt=s.reviewDueCount||0;
   EM_TOP.textContent='';EM_TOP.appendChild(eaTopbar('map',d.points));
   var pct=s.totalNodes?Math.round(s.litNodes/s.totalNodes*100):0;
   EM_SUM.textContent='';
@@ -479,12 +535,20 @@ function emRenderMap(){
       el('span',{},'已点亮 ',el('b',{text:s.litNodes+'/'+s.totalNodes}),'（'+pct+'%）'),
       el('span',{},'精通 ',el('b',{text:String(s.masteredNodes)})),
       el('span',{},'总星数 ',el('b',{text:s.totalStars+'/'+s.maxStars})),
+      revCnt>0?el('span',{style:'color:#b45309;font-weight:700'},'待温习 ',el('b',{style:'color:#b45309',text:String(revCnt)}),' 个'):null,
       s.repairNodes?el('span',{style:'color:var(--ma-brand);font-weight:700'},'待修补 ',el('b',{text:String(s.repairNodes)})):null),
     el('div',{class:'ma-prog-track'},el('div',{class:'ma-prog-fill',style:'width:'+pct+'%'}))));
-  var tipText=s.repairNodes
-    ?('你有 '+s.repairNodes+' 个标红的英语薄弱点，建议先回地图做一次 5 题轻微测把它修补掉，立刻得 +2 积分！')
-    :(s.litNodes===0?'欢迎来到英语知识地图！这里不限教材版本、不设压迫倒计时，选一个你喜欢的知识点点亮第一颗星吧！'
-      :'已经点亮 '+s.litNodes+' 个英语节点啦！把每个节点冲到三星精通，再结合听说读写专项效果更棒！');
+  var banner=eaRenderTaskBanner(EM_TASKS,function(t){
+    if(t.taskKind==='map_node'){emFocusNode(t.targetKey)}
+    else{location.href='/v1/english-sprints#sprint='+encodeURIComponent(t.targetKey)}
+  });
+  if(banner)EM_SUM.appendChild(banner);
+  var tipText=revCnt>0
+    ?('你有 '+revCnt+' 个已点亮的英语考点快遗忘了，先点琥珀色「需温习」节点做 5 题保鲜吧！'+(s.repairNodes?' 另外还有 '+s.repairNodes+' 个标红待修补考点也别忘了哦！':''))
+    :(s.repairNodes
+      ?('你有 '+s.repairNodes+' 个标红的英语薄弱点，建议先回地图做一次 5 题轻微测把它修补掉，立刻得 +2 积分！')
+      :(s.litNodes===0?'欢迎来到英语知识地图！这里不限教材版本、不设压迫倒计时，选一个你喜欢的知识点点亮第一颗星吧！'
+        :'已经点亮 '+s.litNodes+' 个英语节点啦！把每个节点冲到三星精通，再结合听说读写专项效果更棒！'));
   EM_SUM.appendChild(eaHelperTip(tipText,'长缨助手 · 英语闯关建议'));
 
   EM_DOMS.textContent='';
@@ -506,14 +570,20 @@ function emRenderMap(){
         el('span',{class:'ma-domain-cnt',text:litInDom+'/'+nodes.length+' 已亮'})));
     var list=el('div',{class:'ma-nodes'});
     nodes.forEach(function(n){
-      var cls='ma-node st-'+n.state+(n.needsRepair?' repair':'')+(EM_SEL&&EM_SEL.key===n.key?' sel':'');
+      var isRev=!!n.reviewDue;
+      var hasT=emHasTask(n.key);
+      var cls='ma-node st-'+n.state+(n.needsRepair?' repair':'')+(isRev?' review-due':'')+(EM_SEL&&EM_SEL.key===n.key?' sel':'');
       var tagCls=n.needsRepair?'repair':n.state;
       var tagTxt=n.needsRepair?'待修补':(n.stars?eaStars(n.stars)+' '+n.stateLabel:n.stateLabel);
-      var btn=el('button',{type:'button',class:cls},
+      var rightTags=el('span',{class:'ma-node-right'},
+        hasT?el('span',{class:'ma-task-badge',text:'老师任务'}):null,
+        isRev?el('span',{class:'ma-tag review-due',text:'需温习'}):null,
+        el('span',{class:'ma-tag '+tagCls,text:tagTxt}));
+      var btn=el('button',{type:'button',class:cls,'data-node':n.key},
         el('span',{class:'ma-node-left'},
           el('span',{class:'ma-node-key',text:n.key}),
           el('span',{class:'ma-node-name',text:n.name})),
-        el('span',{class:'ma-tag '+tagCls,text:tagTxt}));
+        rightTags);
       btn.onclick=function(){EM_SEL=n;emRenderDetail();emRenderMapNodesSel()};
       list.appendChild(btn);
     });
@@ -535,13 +605,21 @@ function emRenderDetail(){
   EM_DET.textContent='';
   if(!EM_SEL)return;
   var n=EM_SEL;
-  var go=el('button',{type:'button',class:'ma-btn ma-btn-primary',text:n.needsRepair?'开始修补微测（5 题）':(n.state==='unexplored'?'开始点亮微测（5 题）':'再练一次冲三星')});
+  var isRev=!!n.reviewDue;
+  var closeBtn=el('button',{type:'button',class:'ma-detail-close','aria-label':'收起详情',text:'× 收起',onclick:function(){
+    EM_SEL=null;EM_DET.textContent='';emRenderMapNodesSel();
+  }});
+  var go=el('button',{type:'button',class:'ma-btn ma-btn-primary',text:n.needsRepair?'开始修补微测（5 题）':(isRev?'温习 5 题保鲜':(n.state==='unexplored'?'开始点亮微测（5 题）':'再练一次冲三星'))});
   go.onclick=function(){emStartQuiz(n)};
   EM_DET.appendChild(el('div',{class:'ma-card ma-detail'},
+    closeBtn,
     el('div',{class:'ma-detail-info'},
-      el('div',{class:'ma-eyebrow',text:'当前选中 · '+n.key}),
+      el('div',{class:'ma-row',style:'margin-bottom:4px'},
+        el('div',{class:'ma-eyebrow',style:'margin:0',text:'当前选中 · '+n.key}),
+        emHasTask(n.key)?el('span',{class:'ma-task-badge',text:'老师任务'}):null,
+        isRev?el('span',{class:'ma-tag review-due',text:'需温习'}):null),
       el('h3',{text:n.icon+' '+n.name}),
-      el('p',{class:'ma-muted',text:'状态：'+n.stateLabel+(n.stars?'（'+eaStars(n.stars)+'）':'')+' · 最高正确率 '+n.bestQuizRate+'% · 含听音/拼块/选词轻辅助交互'})),
+      el('p',{class:'ma-muted',text:'状态：'+n.stateLabel+(n.stars?'（'+eaStars(n.stars)+'）':'')+' · 最高正确率 '+n.bestQuizRate+'%'+(isRev?(' · 已 '+(n.daysSincePractice||0)+' 天未练习，建议温习保鲜'):' · 含听音/拼块/选词轻辅助交互')})),
     go));
 }
 function emStartQuiz(n){
@@ -628,22 +706,25 @@ function emSubmitQuiz(){
   }).catch(function(e){emNotice(e.message,true)});
 }
 function emLoad(){
-  api('/student/english-star-map').then(function(d){
-    EM_DATA=d;
-    var hash=location.hash||'';
-    if(hash.indexOf('#node=')===0){
-      var want=decodeURIComponent(hash.slice(6));
-      d.nodes.forEach(function(n){if(n.key===want)EM_SEL=n});
+  Promise.all([api('/student/english-star-map'),eaFetchTasks('英语')]).then(function(res){
+    var d=res[0];
+    EM_DATA=d;EM_TASKS=res[1]||[];
+    var hit=null;
+    var want=/[#&]node=([^&]+)/.exec(location.hash||'');
+    if(want){
+      var key=decodeURIComponent(want[1]);
+      d.nodes.forEach(function(n){if(n.key===key){EM_SEL=n;hit=n}});
     }
     if(!EM_SEL&&d.nodes.length)EM_SEL=d.nodes[0];
     emRenderMap();
+    if(hit)emScrollToNode(hit.key);
   }).catch(function(e){emNotice(e.message,true)});
 }
 eaBoot(emLoad);
 """
 
 ENGLISH_SPRINTS_JS = COMMON_ENGLISH_JS + r"""
-var ES_DATA=null,ES_ATT=null,ES_ANS={},ES_IDX=0,ES_PLAY={},ES_TIMER=null,ES_LEFT=0,ES_QLEFT=0,ES_SUBMITTING=false;
+var ES_DATA=null,ES_TASKS=[],ES_ATT=null,ES_ANS={},ES_IDX=0,ES_PLAY={},ES_TIMER=null,ES_LEFT=0,ES_QLEFT=0,ES_SUBMITTING=false;
 var ES_BOX=el('div',{class:'ma-wrap'}),ES_TOP=el('div'),ES_NOTE=el('div',{class:'ma-notice'}),ES_BODY=el('div');
 root.textContent='';
 root.appendChild(ES_BOX);
@@ -665,10 +746,16 @@ function esRenderLobby(){
     el('div',{class:'ma-eyebrow',text:'小学五年级 · 听说读写四大能力应试专项'}),
     el('h2',{class:'ma-h1',text:'英语应试专项'}),
     el('p',{class:'ma-sub',text:'听 / 说专项采用「单题限时」还原考场节奏；读 / 写专项采用「整体倒计时」支持回看检查。达标（L2+）自动反哺点亮知识地图！'})));
+  var banner=eaRenderTaskBanner(ES_TASKS,function(t){
+    if(t.taskKind==='sprint'){esStart(t.targetKey)}
+    else{location.href='/v1/english-star-map#node='+encodeURIComponent(t.targetKey)}
+  });
+  if(banner)ES_BODY.appendChild(banner);
   ES_BODY.appendChild(eaHelperTip('四个专项按「听、说、读、写」独立开考，无需先刷完地图！考完会自动把薄弱考点标红到地图，方便精准修补。','长缨助手 · 备考提示'));
 
   var grid=el('div',{class:'ma-sprints'});
   d.sprints.forEach(function(sp){
+    var hasSpTask=ES_TASKS.some(function(t){return t.taskKind==='sprint'&&t.targetKey===sp.slug});
     var tierTxt=sp.bestTier?(sp.bestTier.badge+' '+sp.bestTier.code+' '+sp.bestTier.name):'尚未挑战';
     var timeTag=sp.timingMode==='per_question'
       ?('单题限时 '+sp.perQuestionSec+' 秒/题')
@@ -682,6 +769,7 @@ function esRenderLobby(){
           el('h3',{style:'margin:0',text:sp.title})),
         el('p',{class:'ma-sub',text:sp.subtitle}),
         el('div',{class:'ma-sprint-tags'},
+          hasSpTask?el('span',{class:'ma-task-badge',text:'老师任务'}):null,
           el('span',{class:'ma-pill',text:timeTag}),
           el('span',{class:'ma-pill',text:sp.questionCount+' 题多题型'}),
           sp.maxPlays?el('span',{class:'ma-pill',text:'每题限播 '+sp.maxPlays+' 遍'}):null,
@@ -860,8 +948,8 @@ function esSubmit(autoSub){
 }
 
 function esLoad(){
-  api('/student/english-sprints').then(function(d){
-    ES_DATA=d;
+  Promise.all([api('/student/english-sprints'),eaFetchTasks('英语')]).then(function(res){
+    ES_DATA=res[0];ES_TASKS=res[1]||[];
     esRenderLobby();
   }).catch(function(e){esNotice(e.message,true)});
 }
