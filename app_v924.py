@@ -5067,8 +5067,8 @@ form.build button.alt{background:#f5efe9;color:var(--brand)}
 <div class="teach-grid">
 <a class="tile" href="/v1/weekend-plan"><span class="ico red">周</span><div class="tile-body"><b>周末课</b><span>备课、审习题、配课件与开课上课</span></div><span class="tile-arrow">›</span></a>
 <a class="tile" href="/v1/homework"><span class="ico blue">托</span><div class="tile-body"><b>晚托作业</b><span>发作业清单、拍题引导、生成巩固</span></div><span class="tile-arrow">›</span></a>
-<a class="tile" href="/v1/knowledge-map"><span class="ico green">图</span><div class="tile-body"><b>知识地图</b><span>全班薄弱点一览、一键布置巩固</span></div><span class="tile-arrow">›</span></a>
-<a class="tile" href="/v1/exam-prep"><span class="ico amber">考</span><div class="tile-body"><b>应试专项</b><span>考前摸底、失分点专项与再测提分</span></div><span class="tile-arrow">›</span></a>
+<a class="tile" href="/v1/math-star-map"><span class="ico green">图</span><div class="tile-body"><b>知识地图</b><span>数英语文全班薄弱热力与分层派发</span></div><span class="tile-arrow">›</span></a>
+<a class="tile" href="/v1/math-sprints"><span class="ico amber">考</span><div class="tile-body"><b>应试专项</b><span>三科限时专项诊断与自动验收追踪</span></div><span class="tile-arrow">›</span></a>
 </div>
 <div class="sec-head"><h2>工作室管理</h2><span>学生名单、家长联系与自有 AI 配置</span></div>
 <div class="manage-grid">

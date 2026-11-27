@@ -2,18 +2,20 @@
 from __future__ import annotations
 
 ARENA_ROLE_HUB_JS = r"""
-function arenaRoleHub(role,subject){
+function arenaRoleHub(role,subject,sess){
   root.textContent='';
   var isTeacher=(role==='teacher'||role==='admin');
-  var backHref=isTeacher?'/v1':'/classic?legacy=1&unified=1&page=parent';
-  var backText=isTeacher?'‹ 返回工作台':'‹ 返回家长端';
+  var isInd=!!(sess&&sess.schoolIndividual);
+  var backHref=isTeacher?(isInd?'/start':'/v1'):'/classic?legacy=1&unified=1&page=parent';
+  var backText=isTeacher?(isInd?'‹ 返回工作室':'‹ 返回工作台'):'‹ 返回家长端';
+  var uname=(sess&&sess.name)?String(sess.name):'';
   var subjLinks=el('div',{class:'ea-subj'},
     el('a',{href:'/v1/math-star-map',class:subject==='数学'?'on':'',text:'数学'}),
     el('a',{href:'/v1/english-star-map',class:subject==='英语'?'on':'',text:'英语'}),
     el('a',{href:'/v1/chinese-star-map',class:subject==='语文'?'on':'',text:'语文'}));
   var bar=el('div',{class:'ma-topbar'},
     el('div',{class:'ma-topbar-left'},el('a',{class:'ma-link-btn',href:backHref,text:backText}),subjLinks),
-    el('div',{class:'ma-topbar-right'},el('span',{class:'ma-pts',text:isTeacher?('教师 · '+subject+'控制台'):('家长 · '+subject+'学情')})));
+    el('div',{class:'ma-topbar-right'},el('span',{class:'ma-pts',text:isTeacher?((uname?uname+' · ':'')+'教师控制台'):((uname?uname+' · ':'')+'家长学情')})));
   var notice=el('div',{class:'ma-notice'});
   var body=el('div',{class:'ma-wrap'});
   var wrap=el('div',{class:'ma-wrap'},bar,notice,body);

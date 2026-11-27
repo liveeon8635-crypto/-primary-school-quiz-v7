@@ -97,10 +97,10 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/chinese-sprints": [
-      "2ce8185fe96a0b59c274a9f6aba699e01aca7abfdde4a9cc0c19a25779c83909"
+      "6ae9096eaeef8a4c9713b493ec5db04cd3ad15e787caae9de6e5da38474d9b9a"
     ],
     "/v1/chinese-star-map": [
-      "8f1c51ea96e4f195cff660189ba8b0569865d6751258b5ee215d24c5ca06a615"
+      "7344e0f6578a26cafb52d3855ada5c0a2fc6c246cf61fb25d100e79b00a6fa2d"
     ],
     "/v1/classroom-board/1": [
       "0b1f5299b0c8d30232444ac57af55c8fad716fdd7b86c5ed86798b755fffc70f"
@@ -261,10 +261,10 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/english-sprints": [
-      "afaff0aadf87af5266a9324b171bbefba47511ebe3b76d587e94f6692509fe53"
+      "650cbbe01edd62db9e0c7c48f9e1b7f4123d560de4e80650d296ce4c946d1d94"
     ],
     "/v1/english-star-map": [
-      "9a92f3addca6e1fe67ac216d9af545577f3689e74f206b60b01c5f8337d48647"
+      "81142da509d86e7e9955e43544cbe885f9eec83cedbb6e2647e4c266e9b4bfdc"
     ],
     "/v1/exam-paper": [
       "90ef60e40e33d227bc3d64d96844eea0394ece2d254f4345512a00e8ba6f74cb"
@@ -348,10 +348,10 @@
       "b60fd344293fadbc972439ea25d382141c0cda780fae72a6f98084c860e937d9"
     ],
     "/v1/math-sprints": [
-      "5e12ccad07fefcc1c148a313768ffb7937b2458af6682865b6fde8d0626362dd"
+      "c286c230a9be6148a0c7bdc472c1b526251bff8f09fab175360df5fc082748f3"
     ],
     "/v1/math-star-map": [
-      "04dc97e5da11076af2d583d08131d2c968f3d817b348293f111ba0d45bf800a7"
+      "597b929080708755ed526fa960e93bad30823e665a10b03891581c40eb050f2e"
     ],
     "/v1/my-knowledge-map": [
       "5e85b6175ae9808d72b7aab06f489ea8998fb179b12d54b1805010c58c1dc981"
@@ -494,11 +494,6 @@
       "sourceBytes": 12256,
       "compiledBytes": 12019
     },
-    "04dc97e5da11076af2d583d08131d2c968f3d817b348293f111ba0d45bf800a7": {
-      "unchanged": true,
-      "sourceBytes": 69776,
-      "compiledBytes": 69776
-    },
     "0b1f5299b0c8d30232444ac57af55c8fad716fdd7b86c5ed86798b755fffc70f": {
       "unchanged": true,
       "sourceBytes": 6728,
@@ -553,11 +548,6 @@
       "unchanged": false,
       "sourceBytes": 289214,
       "compiledBytes": 297503
-    },
-    "2ce8185fe96a0b59c274a9f6aba699e01aca7abfdde4a9cc0c19a25779c83909": {
-      "unchanged": true,
-      "sourceBytes": 59837,
-      "compiledBytes": 59837
     },
     "3256181a06a80a84ba8ef26ee20cfd789489e6175412b03757c79c4310d4cc7f": {
       "unchanged": true,
@@ -614,6 +604,11 @@
       "sourceBytes": 166262,
       "compiledBytes": 166262
     },
+    "597b929080708755ed526fa960e93bad30823e665a10b03891581c40eb050f2e": {
+      "unchanged": true,
+      "sourceBytes": 69972,
+      "compiledBytes": 69972
+    },
     "5cee4f85105d11f1e89c9973174c2af263a4f0ad9ba329691ee764adb507e0d7": {
       "unchanged": true,
       "sourceBytes": 71433,
@@ -623,11 +618,6 @@
       "unchanged": false,
       "sourceBytes": 4055,
       "compiledBytes": 4592
-    },
-    "5e12ccad07fefcc1c148a313768ffb7937b2458af6682865b6fde8d0626362dd": {
-      "unchanged": true,
-      "sourceBytes": 70233,
-      "compiledBytes": 70233
     },
     "5e85b6175ae9808d72b7aab06f489ea8998fb179b12d54b1805010c58c1dc981": {
       "unchanged": true,
@@ -644,6 +634,16 @@
       "sourceBytes": 6511,
       "compiledBytes": 6556
     },
+    "650cbbe01edd62db9e0c7c48f9e1b7f4123d560de4e80650d296ce4c946d1d94": {
+      "unchanged": true,
+      "sourceBytes": 65302,
+      "compiledBytes": 65302
+    },
+    "6ae9096eaeef8a4c9713b493ec5db04cd3ad15e787caae9de6e5da38474d9b9a": {
+      "unchanged": true,
+      "sourceBytes": 60033,
+      "compiledBytes": 60033
+    },
     "6cf4833fd2945954c962a7bdc25937cdb807b2245c89ae524b0a5234a321f74d": {
       "unchanged": true,
       "sourceBytes": 10090,
@@ -654,6 +654,11 @@
       "sourceBytes": 12343,
       "compiledBytes": 12107
     },
+    "7344e0f6578a26cafb52d3855ada5c0a2fc6c246cf61fb25d100e79b00a6fa2d": {
+      "unchanged": true,
+      "sourceBytes": 59251,
+      "compiledBytes": 59251
+    },
     "799f0d46bbc308a1950bb49a0ed2c405b941643c725d75138d2e70158a6b23d7": {
       "unchanged": true,
       "sourceBytes": 3686,
@@ -663,6 +668,11 @@
       "unchanged": true,
       "sourceBytes": 219,
       "compiledBytes": 219
+    },
+    "81142da509d86e7e9955e43544cbe885f9eec83cedbb6e2647e4c266e9b4bfdc": {
+      "unchanged": true,
+      "sourceBytes": 64880,
+      "compiledBytes": 64880
     },
     "8277e80c730842972c45f2a753872a83894a763c93526ef91314f9677d0357af": {
       "unchanged": true,
@@ -689,11 +699,6 @@
       "sourceBytes": 51254,
       "compiledBytes": 48750
     },
-    "8f1c51ea96e4f195cff660189ba8b0569865d6751258b5ee215d24c5ca06a615": {
-      "unchanged": true,
-      "sourceBytes": 59055,
-      "compiledBytes": 59055
-    },
     "90ef60e40e33d227bc3d64d96844eea0394ece2d254f4345512a00e8ba6f74cb": {
       "unchanged": true,
       "sourceBytes": 29062,
@@ -708,11 +713,6 @@
       "unchanged": true,
       "sourceBytes": 58393,
       "compiledBytes": 58393
-    },
-    "9a92f3addca6e1fe67ac216d9af545577f3689e74f206b60b01c5f8337d48647": {
-      "unchanged": true,
-      "sourceBytes": 64684,
-      "compiledBytes": 64684
     },
     "9ffe0d1918ed0f1740f21cead9fba5136c23cb9a0275f48004e536ef2f20bdc7": {
       "unchanged": true,
@@ -739,11 +739,6 @@
       "sourceBytes": 5875,
       "compiledBytes": 6410
     },
-    "afaff0aadf87af5266a9324b171bbefba47511ebe3b76d587e94f6692509fe53": {
-      "unchanged": true,
-      "sourceBytes": 65106,
-      "compiledBytes": 65106
-    },
     "b60fd344293fadbc972439ea25d382141c0cda780fae72a6f98084c860e937d9": {
       "unchanged": true,
       "sourceBytes": 65573,
@@ -758,6 +753,11 @@
       "unchanged": false,
       "sourceBytes": 1670,
       "compiledBytes": 1691
+    },
+    "c286c230a9be6148a0c7bdc472c1b526251bff8f09fab175360df5fc082748f3": {
+      "unchanged": true,
+      "sourceBytes": 70429,
+      "compiledBytes": 70429
     },
     "cb67d59edd0159b5f5e0f55adfd6619322cf1026a00a1f95342be1404205d01f": {
       "unchanged": false,
