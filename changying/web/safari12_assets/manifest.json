@@ -50,7 +50,7 @@
     ],
     "/classic?legacy=1&unified=1&page=syncLearning": [
       "d881ec81d8ea5b4f7b44bcfb173f8e1fe09c7416cf30a4490737b0809b3e3fb5",
-      "8c6e796d08fe596af7cfed247abdf09bc9f5495d7970a1d6143b047226828b8a",
+      "59d9afc9c654eebcae78edb44f77e972dc5e8eae0df8379eea11973d9b7553f4",
       "d1e5d7dcfd33869626fae0a94202f55c4a421a5ebe18189c4918a396533254a0",
       "705628d302fc824a37cce5ace348a816cea8d7377d8379957c387475739b2498",
       "d92b1a3fbbb3d332834fe92d2b2566ec1505c5ee3a05790a8b7d101344549769",
@@ -97,10 +97,10 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/chinese-sprints": [
-      "30568fb268076ed5424c0c4460b8de223e29a40591b67f7c7f993d0a1bdeac13"
+      "0a2dff592f055468008894a9750f223ed5a4a20c9030b0ce5aa41e2b5536d7b8"
     ],
     "/v1/chinese-star-map": [
-      "f73c2ddff378029a23d5c1527c5be82b78257f5f91152e4369b34f04063499cb"
+      "60827ffab83c45388920b0882e84b337b8be741a325542af9f047e7c99e7cd27"
     ],
     "/v1/classroom-board/1": [
       "0b1f5299b0c8d30232444ac57af55c8fad716fdd7b86c5ed86798b755fffc70f"
@@ -261,10 +261,10 @@
       "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901"
     ],
     "/v1/english-sprints": [
-      "8b144c94734c274bc861700a52a89330278ed8317ff72adc20fb3cd9cecd7f11"
+      "05708862a1e5548b69e6436600b4b0e0c7d630d310c34980f413dfd0b31f6c25"
     ],
     "/v1/english-star-map": [
-      "1f316edd673b7053a0bf1cc54048999fc13d22106a0efb0406ef55b85d327cae"
+      "c5cc7cc098ffb2e087134b2ea2ad739a68d109d0ac4a91628658d7f00d88a08c"
     ],
     "/v1/exam-paper": [
       "90ef60e40e33d227bc3d64d96844eea0394ece2d254f4345512a00e8ba6f74cb"
@@ -348,10 +348,10 @@
       "b60fd344293fadbc972439ea25d382141c0cda780fae72a6f98084c860e937d9"
     ],
     "/v1/math-sprints": [
-      "d27c35c507da2aa6de67dafa4f67fd5eefa1b00eaa8b02dff3b5fc7b22475cfa"
+      "9cbbc5f3a56e784f7b23852903fd16755419f94c5e9250c5afddac8685611665"
     ],
     "/v1/math-star-map": [
-      "1d0c114715f444b96d95517ce05ef941fe45a09b054b520a6db9115f61e86d01"
+      "4c73983a4e65adc14d3da8e13124b1736ffe32159769ed6903c325b606ba769f"
     ],
     "/v1/my-knowledge-map": [
       "5e85b6175ae9808d72b7aab06f489ea8998fb179b12d54b1805010c58c1dc981"
@@ -494,6 +494,16 @@
       "sourceBytes": 12256,
       "compiledBytes": 12019
     },
+    "05708862a1e5548b69e6436600b4b0e0c7d630d310c34980f413dfd0b31f6c25": {
+      "unchanged": true,
+      "sourceBytes": 100356,
+      "compiledBytes": 100356
+    },
+    "0a2dff592f055468008894a9750f223ed5a4a20c9030b0ce5aa41e2b5536d7b8": {
+      "unchanged": true,
+      "sourceBytes": 99160,
+      "compiledBytes": 99160
+    },
     "0b1f5299b0c8d30232444ac57af55c8fad716fdd7b86c5ed86798b755fffc70f": {
       "unchanged": true,
       "sourceBytes": 6728,
@@ -524,20 +534,10 @@
       "sourceBytes": 120394,
       "compiledBytes": 122105
     },
-    "1d0c114715f444b96d95517ce05ef941fe45a09b054b520a6db9115f61e86d01": {
-      "unchanged": true,
-      "sourceBytes": 107387,
-      "compiledBytes": 107387
-    },
     "1e0d422fe9216b59dda5ca8d9ed4ec0d4333de9a6acb22eaa31b68e6f664972d": {
       "unchanged": true,
       "sourceBytes": 16000,
       "compiledBytes": 16000
-    },
-    "1f316edd673b7053a0bf1cc54048999fc13d22106a0efb0406ef55b85d327cae": {
-      "unchanged": true,
-      "sourceBytes": 100455,
-      "compiledBytes": 100455
     },
     "210b6611062aa0eb5bd868648d7f94b4a69f39e199933ca4ada93bbc197ac901": {
       "unchanged": true,
@@ -548,11 +548,6 @@
       "unchanged": true,
       "sourceBytes": 2212,
       "compiledBytes": 2212
-    },
-    "30568fb268076ed5424c0c4460b8de223e29a40591b67f7c7f993d0a1bdeac13": {
-      "unchanged": true,
-      "sourceBytes": 95324,
-      "compiledBytes": 95324
     },
     "3256181a06a80a84ba8ef26ee20cfd789489e6175412b03757c79c4310d4cc7f": {
       "unchanged": true,
@@ -589,6 +584,11 @@
       "sourceBytes": 9071,
       "compiledBytes": 8417
     },
+    "4c73983a4e65adc14d3da8e13124b1736ffe32159769ed6903c325b606ba769f": {
+      "unchanged": true,
+      "sourceBytes": 110016,
+      "compiledBytes": 110016
+    },
     "4ce147110ed70079ef8b354c0b2a88c37b147fdabfbc809ac7598704bf911410": {
       "unchanged": true,
       "sourceBytes": 23784,
@@ -614,6 +614,11 @@
       "sourceBytes": 166262,
       "compiledBytes": 166262
     },
+    "59d9afc9c654eebcae78edb44f77e972dc5e8eae0df8379eea11973d9b7553f4": {
+      "unchanged": false,
+      "sourceBytes": 292804,
+      "compiledBytes": 300847
+    },
     "5cee4f85105d11f1e89c9973174c2af263a4f0ad9ba329691ee764adb507e0d7": {
       "unchanged": true,
       "sourceBytes": 71433,
@@ -628,6 +633,11 @@
       "unchanged": true,
       "sourceBytes": 34108,
       "compiledBytes": 34108
+    },
+    "60827ffab83c45388920b0882e84b337b8be741a325542af9f047e7c99e7cd27": {
+      "unchanged": true,
+      "sourceBytes": 100022,
+      "compiledBytes": 100022
     },
     "62cf3fcd9595f06010a397daf3729ecab3c69beab9d737c58ec63f3ff305686a": {
       "unchanged": false,
@@ -679,16 +689,6 @@
       "sourceBytes": 5883,
       "compiledBytes": 6041
     },
-    "8b144c94734c274bc861700a52a89330278ed8317ff72adc20fb3cd9cecd7f11": {
-      "unchanged": true,
-      "sourceBytes": 99173,
-      "compiledBytes": 99173
-    },
-    "8c6e796d08fe596af7cfed247abdf09bc9f5495d7970a1d6143b047226828b8a": {
-      "unchanged": false,
-      "sourceBytes": 292202,
-      "compiledBytes": 300270
-    },
     "8d6b55ce94cf476a4c567fae64a66f3dc914c91ee7c4c60760a581adf24880b8": {
       "unchanged": true,
       "sourceBytes": 4936,
@@ -713,6 +713,11 @@
       "unchanged": true,
       "sourceBytes": 58393,
       "compiledBytes": 58393
+    },
+    "9cbbc5f3a56e784f7b23852903fd16755419f94c5e9250c5afddac8685611665": {
+      "unchanged": true,
+      "sourceBytes": 106620,
+      "compiledBytes": 106620
     },
     "9ffe0d1918ed0f1740f21cead9fba5136c23cb9a0275f48004e536ef2f20bdc7": {
       "unchanged": true,
@@ -754,6 +759,11 @@
       "sourceBytes": 1670,
       "compiledBytes": 1691
     },
+    "c5cc7cc098ffb2e087134b2ea2ad739a68d109d0ac4a91628658d7f00d88a08c": {
+      "unchanged": true,
+      "sourceBytes": 101638,
+      "compiledBytes": 101638
+    },
     "cb67d59edd0159b5f5e0f55adfd6619322cf1026a00a1f95342be1404205d01f": {
       "unchanged": false,
       "sourceBytes": 1108,
@@ -768,11 +778,6 @@
       "unchanged": false,
       "sourceBytes": 1952,
       "compiledBytes": 2166
-    },
-    "d27c35c507da2aa6de67dafa4f67fd5eefa1b00eaa8b02dff3b5fc7b22475cfa": {
-      "unchanged": true,
-      "sourceBytes": 104713,
-      "compiledBytes": 104713
     },
     "d7a601da3a488bd2ffddfaf1bf108e34b78afac5def1224cee48757f68afdad3": {
       "unchanged": false,
@@ -818,11 +823,6 @@
       "unchanged": true,
       "sourceBytes": 265001,
       "compiledBytes": 265001
-    },
-    "f73c2ddff378029a23d5c1527c5be82b78257f5f91152e4369b34f04063499cb": {
-      "unchanged": true,
-      "sourceBytes": 96237,
-      "compiledBytes": 96237
     },
     "f8f56c33f77910ed27ccfcd07ceabe918d7a478077bf789b962e71dc84f0b6cd": {
       "unchanged": false,

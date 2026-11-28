@@ -7,6 +7,7 @@ from changying.services import arena_grade_profiles as agp
 from changying.services import chinese_ai_grader as caig
 from changying.services import chinese_builtin_map as cbm
 from changying.services import chinese_grade_curricula as cgc
+from changying.services import chinese_low_grade_curricula as clgc
 from changying.services import exam_sprints as math_sprints
 
 GRACE_SECONDS = math_sprints.GRACE_SECONDS
@@ -86,6 +87,8 @@ CHINESE_G5_SPRINTS: list[dict[str, Any]] = [
 ]
 
 SPRINTS_BY_GRADE: dict[int, list[dict[str, Any]]] = {
+    1: clgc.CHINESE_G1_SPRINTS,
+    2: clgc.CHINESE_G2_SPRINTS,
     3: cgc.CHINESE_G3_SPRINTS,
     4: cgc.CHINESE_G4_SPRINTS,
     5: CHINESE_G5_SPRINTS,
@@ -93,7 +96,9 @@ SPRINTS_BY_GRADE: dict[int, list[dict[str, Any]]] = {
 }
 
 ALL_CHINESE_SPRINTS: list[dict[str, Any]] = (
-    list(cgc.CHINESE_G3_SPRINTS)
+    list(clgc.CHINESE_G1_SPRINTS)
+    + list(clgc.CHINESE_G2_SPRINTS)
+    + list(cgc.CHINESE_G3_SPRINTS)
     + list(cgc.CHINESE_G4_SPRINTS)
     + list(CHINESE_G5_SPRINTS)
     + list(cgc.CHINESE_G6_SPRINTS)

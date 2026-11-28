@@ -16,6 +16,8 @@ from changying.services import chinese_builtin_map as cbm
 
 
 GRADE_RUBRIC_GUIDANCE: dict[int, str] = {
+    1: "一年级（童趣启蒙一句话写话段）：采用亲切温暖的童趣鼓励式点评，重在能看懂图意或情境、把“谁在哪里做什么/什么怎么样”一句话说完整（或用句式积木拼出通顺句子），只要意思贴切即给予满星表扬。",
+    2: "二年级（童趣乐考四要素写话段）：采用亲切活泼的童趣鼓励式点评，重在写清“时间、地点、谁、干什么”四要素，语句通顺、标点基本正确，能用上好词或简单的比喻句即给予积极肯定。",
     3: "三年级（启蒙写话段）：重在语句通顺、标点基本正确、留心观察与大胆想象，能用上简单的比喻或拟人句即可给予积极鼓励。",
     4: "四年级（进阶片段段）：重在连续动作与神态心理细节刻画、段意条理清楚（起因经过结果或总分结构）及批注感悟准确。",
     5: "五年级（高阶运用段）：重在审题立意准确、说明方法或人物细节描写具体传神、修辞表现力与情感真挚。",
@@ -24,13 +26,18 @@ GRADE_RUBRIC_GUIDANCE: dict[int, str] = {
 
 
 def build_grade_system_prompt(grades: set[int] | None = None) -> str:
-    """根据题目所属年级（3～6 年级）动态构建分学段评价标准系统提示词."""
-    active_grades = sorted(g for g in (grades or {5}) if g in (3, 4, 5, 6)) or [5]
+    """根据题目所属年级（1～6 年级）动态构建分学段评价标准系统提示词."""
+    active_grades = sorted(g for g in (grades or {5}) if g in (1, 2, 3, 4, 5, 6)) or [5]
     rubric_lines = "；".join(GRADE_RUBRIC_GUIDANCE[g] for g in active_grades)
     grade_desc = "、".join(f"{g}年级" for g in active_grades)
+    tone_hint = (
+        "对于1、2年级低段小朋友，请使用充满童趣、温柔亲切的鼓励式口吻（如“太棒啦”“小作家”）；"
+        if any(g in (1, 2) for g in active_grades)
+        else ""
+    )
     return (
         f"你是小学语文特级教师（当前批改学段：{grade_desc}），正在实时批改学生的阅读简答题与微片段写作。"
-        f"请结合每道题所属年级(grade)动态调整评价标准：{rubric_lines}。"
+        f"请结合每道题所属年级(grade)动态调整评价标准：{rubric_lines}。{tone_hint}"
         "请严格按每题的满分(maxMarks)、参考要点(reference)和学生作答(studentAnswer)给出客观公平的分数与简明鼓励式点评（每题点评 25~60 字，包含1个亮点和1条具体改进建议）。"
         "仅输出合法 JSON，格式为："
         '{"results":[{"id":"题号","earnedMarks":整数,"comment":"简明点评"}]}'
@@ -149,12 +156,18 @@ def grade_subjective_items(
         raw = str(ans or "").strip()
         if not raw:
             max_m = int(q.get("marks", cbm.TYPE_POINTS.get(q.get("questionType", ""), 4)))
+            q_grade = int(q.get("grade") or agp.infer_grade_from_node_key(str(q.get("nodeKey") or ""), 5))
+            empty_comment = (
+                "这道题还没有作答哟，快点一点下方的「句式积木」把完整句子拼出来吧！"
+                if q_grade in (1, 2)
+                else "本题未作答，建议结合题干与参考范文补写练习。"
+            )
             results[q["id"]] = {
                 "earnedMarks": 0,
                 "maxMarks": max_m,
                 "passed": False,
                 "gradingMode": "rule_fallback",
-                "comment": "本题未作答，建议结合题干与参考范文补写练习。",
+                "comment": empty_comment,
             }
         else:
             non_empty.append((q, raw))

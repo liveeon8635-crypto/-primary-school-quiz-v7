@@ -24,10 +24,17 @@ spec.loader.exec_module(helpers)
 
 
 def test_age_interaction_profiles_and_grade_relations():
+    p1 = agp.get_age_interaction_profile(1)
+    p2 = agp.get_age_interaction_profile(2)
     p3 = agp.get_age_interaction_profile(3)
     p4 = agp.get_age_interaction_profile(4)
     p5 = agp.get_age_interaction_profile(5)
     p6 = agp.get_age_interaction_profile(6)
+
+    assert p1["tier"] == "g12_playful" and p1["stemReadAloud"] is True and p1["optionReadAloud"] is True
+    assert p1["mathKeypad"] == "full" and p1["writingBlockBuilder"] is True
+    assert p1["perQuestionSec"] == 30 and p1["maxPlays"] == 3 and p1["writingMinChars"] == 12
+    assert p2["tier"] == "g12_playful" and p2["writingBlockBuilder"] is True and p2["writingMinChars"] == 20
 
     assert p3["tier"] == "g3_guided" and p3["stemReadAloud"] is True and p3["mathKeypad"] == "full"
     assert p3["spellAssist"] == "tile_or_first_letter" and p3["chineseAssistTiles"] is True
@@ -39,16 +46,22 @@ def test_age_interaction_profiles_and_grade_relations():
     assert p5["tier"] == "g56_mastery" and p5["mathKeypad"] == "none" and p5["spellAssist"] == "strict_keyboard"
     assert p6["tier"] == "g56_mastery" and p6["writingMinChars"] == 85
 
-    avail = agp.build_available_grades(active_grade=3, student_grade=5)
+    avail = agp.build_available_grades(active_grade=3, student_grade=5, subject="数学")
+    assert [x["grade"] for x in avail] == [1, 2, 3, 4, 5, 6]
     by_g = {x["grade"]: x for x in avail}
+    assert by_g[1]["relation"] == "review" and by_g[2]["relation"] == "review"
     assert by_g[3]["relation"] == "review" and by_g[3]["relationLabel"] == "查漏补缺" and by_g[3]["active"] is True
     assert by_g[4]["relation"] == "review"
     assert by_g[5]["relation"] == "current" and by_g[5]["relationLabel"] == "本年级" and by_g[5]["isCurrentGrade"] is True
     assert by_g[6]["relation"] == "advance" and by_g[6]["relationLabel"] == "超前探索"
 
+    eng_avail = agp.build_available_grades(active_grade=3, student_grade=1, subject="英语")
+    assert [x["grade"] for x in eng_avail] == [3, 4, 5, 6]
+    assert eng_avail[0]["relationLabel"] == "超前启蒙" and eng_avail[0]["active"] is True
+
 
 def test_all_math_grades_3_4_5_6_maps_and_sprints():
-    expected_counts = {3: 16, 4: 16, 5: 24, 6: 16}
+    expected_counts = {1: 16, 2: 16, 3: 16, 4: 16, 5: 24, 6: 16}
     for g, node_cnt in expected_counts.items():
         m = mbm.get_builtin_math_map(g)
         assert m["grade"] == g and len(m["units"]) == 4 and len(m["nodes"]) == node_cnt
@@ -67,6 +80,8 @@ def test_all_math_grades_3_4_5_6_maps_and_sprints():
         assert len(sprints) >= 4, f"Math G{g} should have >= 4 sprints"
         for sp in sprints:
             assert sp["grade"] == g
+            if g in (1, 2):
+                assert sp["questionCount"] == 8
             sqs = mes.compose_sprint_questions(sp["slug"], seed=1)
             assert len(sqs) == sp["questionCount"]
 
@@ -106,7 +121,7 @@ def test_all_english_grades_3_4_5_6_maps_and_sprints_with_age_assists():
 
 
 def test_all_chinese_grades_3_4_5_6_maps_and_sprints_with_age_assists():
-    for g in (3, 4, 5, 6):
+    for g in (1, 2, 3, 4, 5, 6):
         bp = cbm.get_map_blueprint(g)
         assert bp["grade"] == g and len(bp["domains"]) == 4 and len(bp["nodes"]) == 16
         seen_types: set[str] = set()
@@ -118,10 +133,13 @@ def test_all_chinese_grades_3_4_5_6_maps_and_sprints_with_age_assists():
                 seen_types.add(qt)
                 pub = cbm.public_question(q)
                 assert pub["grade"] == g and "answer" not in pub
-                if qt in ("dictation_spell", "poem_fill") and g in (3, 4):
+                if qt in ("dictation_spell", "poem_fill") and g in (1, 2, 3, 4):
                     assert pub.get("assistTiles"), f"Chinese G{g} {q['id']} missing assistTiles"
-                if qt in cbm.SUBJECTIVE_TYPES and g in (3, 4):
+                if qt in cbm.SUBJECTIVE_TYPES and g in (1, 2, 3, 4):
                     assert pub.get("scaffolds"), f"Chinese G{g} {q['id']} missing scaffolds"
+                    if g in (1, 2):
+                        assembled = "".join(pub["scaffolds"])
+                        assert cbm.grade_subjective_rule_fallback(q, assembled)["passed"] is True
                 if qt in ("basic_choice", "error_spot", "sentence_choice", "reading_choice"):
                     assert cbm.grade_objective_answer(q, selected_index=q["correctIndex"]) is True
                 elif qt in cbm.SUBJECTIVE_TYPES:
@@ -134,9 +152,11 @@ def test_all_chinese_grades_3_4_5_6_maps_and_sprints_with_age_assists():
         sprints = ces.list_sprints("语文", grade=g)
         assert len(sprints) == 4
         by_sec = {s["section"]: s for s in sprints}
-        expected_sec = {3: 25, 4: 22, 5: 20, 6: 20}[g]
+        expected_sec = {1: 30, 2: 30, 3: 25, 4: 22, 5: 20, 6: 20}[g]
         assert by_sec["foundation"]["perQuestionSec"] == expected_sec
         for sp in sprints:
+            if g in (1, 2):
+                assert sp["questionCount"] == 8
             sqs = ces.compose_sprint_questions(sp["slug"], seed=2)
             assert len(sqs) == sp["questionCount"]
 
@@ -188,6 +208,18 @@ with TestClient(app) as client:
     c6_map = client.get("/student/chinese-star-map?grade=6", headers=sh).json()
     assert c6_map["grade"] == 6 and len(c6_map["nodes"]) == 16
     assert c6_map["nodes"][0]["key"].startswith("G6-C")
+
+    # 3b. Grade 1 & Grade 2 Math/Chinese maps & sprints + English G1->G3 advance bridge
+    m1_map = client.get("/student/math-star-map?grade=1", headers=sh).json()
+    assert m1_map["grade"] == 1 and len(m1_map["nodes"]) == 16 and len(m1_map["availableGrades"]) == 6
+    assert m1_map["ageProfile"]["tier"] == "g12_playful" and m1_map["ageProfile"]["perQuestionSec"] == 30
+
+    c2_sp = client.get("/student/chinese-sprints?grade=2", headers=sh).json()
+    assert c2_sp["grade"] == 2 and len(c2_sp["sprints"]) == 4 and c2_sp["sprints"][0]["questionCount"] == 8
+
+    e_from_g1 = client.get("/student/english-star-map?grade=1", headers=sh).json()
+    assert e_from_g1["grade"] == 3 and len(e_from_g1["availableGrades"]) == 4
+    assert "三年级" in e_from_g1.get("englishAdvanceNotice", "")
 
     # 4. Teacher diagnostics & task dispatch across grades (e.g. G3 review task)
     td3 = client.get("/teacher/arena/diagnostics?subject=英语&grade=3", headers=th).json()

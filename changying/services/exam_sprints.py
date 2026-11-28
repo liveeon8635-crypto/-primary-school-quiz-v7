@@ -106,6 +106,8 @@ MATH_G5_SPRINTS: list[dict[str, Any]] = [
     },
 ]
 ALL_MATH_SPRINTS: list[dict[str, Any]] = [
+    *mgc.MATH_G1_SPRINTS,
+    *mgc.MATH_G2_SPRINTS,
     *mgc.MATH_G3_SPRINTS,
     *mgc.MATH_G4_SPRINTS,
     *MATH_G5_SPRINTS,

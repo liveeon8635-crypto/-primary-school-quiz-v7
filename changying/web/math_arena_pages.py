@@ -204,6 +204,14 @@ main,#app{max-width:940px!important;margin:0 auto!important;padding:14px 14px 10
 .ma-age-g3 .ma-q-text{font-size:17.5px;line-height:1.72}
 .ma-age-g3 .ma-opt{padding:14px 16px;font-size:15.5px}
 .ma-age-g3 .ma-read-btn{padding:8px 15px;font-size:14.5px}
+
+/* G1/G2 低段零打字启蒙与积木工作台样式 */
+.ma-age-g12 .ma-q-text{font-size:18.5px;line-height:1.75}
+.ma-age-g12 .ma-opt{padding:15px 16px;font-size:16px;border-radius:14px}
+.ca-block-workbench{padding:12px 14px;border-radius:13px;background:#fffaf2;border:1.5px solid #f2d2a9;margin-bottom:10px}
+.ca-block-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.ca-block-chip{padding:8px 13px;border-radius:11px;border:1.5px solid #e6c594;background:#fff;color:var(--ma-ink);font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 2px 0 #ead8cb}
+.ca-block-chip:hover{border-color:var(--ma-brand);background:var(--ma-brand-soft);color:var(--ma-brand-dark)}
 </style>"""
 
 COMMON_ARENA_JS = r"""
@@ -265,10 +273,28 @@ function maBoot(run){
 }
 function maStars(n){var s='',i;for(i=0;i<n;i++)s+='★';return s}
 function maClockText(sec){var s=Math.max(0,Math.floor(sec)),m=Math.floor(s/60),r=s%60;return (m<10?'0':'')+m+':'+(r<10?'0':'')+r}
-function maInitGrade(){
-  var m=/[?&]grade=([3456])/.exec(location.search||'');
+function maGetActiveGrade(){
+  var m=/[?&]grade=([123456])/.exec(location.search||'');
   if(m){window.__CY_ARENA_GRADE__=Number(m[1]);return Number(m[1])}
-  if(window.__CY_ARENA_GRADE__)return Number(window.__CY_ARENA_GRADE__);
+  if(window.__CY_ARENA_GRADE__&&[1,2,3,4,5,6].indexOf(Number(window.__CY_ARENA_GRADE__))>=0){
+    return Number(window.__CY_ARENA_GRADE__);
+  }
+  var u=window.__CY_ARENA_USER__;
+  if(u&&u.grade&&[1,2,3,4,5,6].indexOf(Number(u.grade))>=0)return Number(u.grade);
+  return 0;
+}
+function maSetActiveGrade(g){
+  var n=Number(g);
+  if([1,2,3,4,5,6].indexOf(n)<0)return;
+  window.__CY_ARENA_GRADE__=n;
+  if(window.history&&window.history.replaceState){
+    try{window.history.replaceState(null,'',location.pathname+'?grade='+encodeURIComponent(n)+(location.hash||''))}catch(_e){}
+  }
+}
+function maInitGrade(){
+  var m=/[?&]grade=([123456])/.exec(location.search||'');
+  if(m){window.__CY_ARENA_GRADE__=Number(m[1]);return Number(m[1])}
+  if(window.__CY_ARENA_GRADE__&&[1,2,3,4,5,6].indexOf(Number(window.__CY_ARENA_GRADE__))>=0)return Number(window.__CY_ARENA_GRADE__);
   return 0;
 }
 function maGradeQuery(g){
@@ -277,6 +303,8 @@ function maGradeQuery(g){
 }
 function maInferGrade(key,fallback){
   var s=String(key||'').toUpperCase();
+  if(s.indexOf('G1-')===0)return 1;
+  if(s.indexOf('G2-')===0)return 2;
   if(s.indexOf('G3-')===0)return 3;
   if(s.indexOf('G4-')===0)return 4;
   if(s.indexOf('G5-')===0)return 5;
@@ -305,12 +333,14 @@ function maTopbar(active,pts,grade){
 }
 function maRenderGradeBar(data,onSwitch){
   var grades=(data&&data.availableGrades)||[
+    {grade:1,label:'一年级',relation:'review',relationLabel:'查漏补缺'},
+    {grade:2,label:'二年级',relation:'review',relationLabel:'查漏补缺'},
     {grade:3,label:'三年级',relation:'review',relationLabel:'查漏补缺'},
     {grade:4,label:'四年级',relation:'review',relationLabel:'查漏补缺'},
     {grade:5,label:'五年级',relation:'current',relationLabel:'本年级'},
     {grade:6,label:'六年级',relation:'advance',relationLabel:'超前探索'}
   ];
-  var curG=(data&&data.grade)||window.__CY_ARENA_GRADE__||5;
+  var curG=(data&&data.grade)||maGetActiveGrade()||5;
   var prof=(data&&data.ageProfile)||{};
   var pills=el('div',{class:'ma-grade-pills'});
   grades.forEach(function(item){
@@ -318,10 +348,7 @@ function maRenderGradeBar(data,onSwitch){
     var relCls='ma-grade-rel '+(item.relation||'');
     var btn=el('button',{type:'button',class:'ma-grade-pill'+(isOn?' on':''),'data-grade':String(item.grade),onclick:function(){
       if(Number(item.grade)===Number(curG))return;
-      window.__CY_ARENA_GRADE__=Number(item.grade);
-      if(window.history&&window.history.replaceState){
-        try{window.history.replaceState(null,'',location.pathname+'?grade='+item.grade+(location.hash||''))}catch(_e){}
-      }
+      maSetActiveGrade(item.grade);
       if(typeof onSwitch==='function')onSwitch(Number(item.grade));
     }},
       el('span',{text:item.label||(item.grade+'年级')}),
@@ -333,7 +360,7 @@ function maRenderGradeBar(data,onSwitch){
     pills,
     el('span',{class:'ma-age-badge',text:'🎯 '+badgeTxt}));
 }
-function maSpeakStem(text,ageProfile){
+function maSpeakStem(text,ageProf){
   if(!window.speechSynthesis||!window.SpeechSynthesisUtterance)return;
   try{window.speechSynthesis.cancel()}catch(_e){}
   var clean=String(text||'')
@@ -344,19 +371,29 @@ function maSpeakStem(text,ageProfile){
     .replace(/\s+/g,' ');
   var u=new window.SpeechSynthesisUtterance(clean);
   u.lang='zh-CN';
-  u.rate=(ageProfile&&ageProfile.speechRate)?Number(ageProfile.speechRate):0.9;
+  var fallbackRate=(ageProf&&ageProf.tier==='g12_playful')?0.85:0.9;
+  u.rate=(ageProf&&ageProf.speechRate)?Number(ageProf.speechRate):fallbackRate;
   try{window.speechSynthesis.speak(u)}catch(_e2){}
 }
-function maBuildStemRow(q,ageProfile){
+function maBuildStemRow(q,ageProf){
   var p=el('p',{class:'ma-q-text',text:q.text});
-  if(!ageProfile||!ageProfile.stemReadAloud)return p;
+  var canRead=!!(ageProf&&(ageProf.stemReadAloud||ageProf.tier==='g12_playful'||ageProf.tier==='g3_guided'));
+  if(!canRead)return p;
   var btn=el('button',{type:'button',class:'ma-read-btn','aria-label':'朗读题干',text:'🔊 读题',onclick:function(){
-    maSpeakStem(q.text,ageProfile);
+    var readText=String(q.text||'');
+    if(ageProf&&ageProf.optionReadAloud&&q.options&&q.options.length){
+      var optParts=[];
+      q.options.forEach(function(opt,idx){
+        optParts.push(String.fromCharCode(65+idx)+'，'+String(opt));
+      });
+      readText=readText+' 选项： '+optParts.join('； ');
+    }
+    maSpeakStem(readText,ageProf);
   }});
   return el('div',{class:'ma-q-head'},p,btn);
 }
-function maBuildMathKeypad(inp,ageProfile,onSync){
-  var mode=(ageProfile&&ageProfile.mathKeypad)||'none';
+function maBuildMathKeypad(inp,ageProf,onSync){
+  var mode=(ageProf&&ageProf.mathKeypad)||(ageProf&&ageProf.tier==='g12_playful'?'full':'none');
   if(mode!=='full'&&mode!=='compact')return null;
   var keys=mode==='full'
     ?['1','2','3','4','5','6','7','8','9','0','.','/','⌫','清空']
@@ -524,6 +561,8 @@ function mRenderHeader(){
   MSUM.appendChild(maHelperTip(tipText,'长缨助手 · 学习建议'));
 }
 var DOM_SUBS_BY_GRADE={
+  1:{D1:'10以内分合、11～20十位个位、100以内数序与整十数加一位数',D2:'10以内口算、20以内凑十法进位加、破十法退位减与两位数口算',D3:'上下前后左右位置、立体图形积木、平面图形拼组与整时人民币',D4:'一图四式求和求部分、比多少应用、找规律填数与排队问题'},
+  2:{D1:'100以内进位加退位减、连加连减混合与2～9表内乘法口诀',D2:'平均分与除法初步、用乘法口诀求商、有余数除法与万以内数',D3:'厘米和米测量、直角锐角钝角、观察物体对称平移旋转与时分克千克',D4:'乘加乘减两级混合运算、有余数租船周期、排列搭配与方格逻辑推理'},
   3:{D1:'万以内加减法验算、多位数乘一位数、一位数除法与两位数乘两位数',D2:'毫米分米千米、吨与千克换算、长方形与正方形周长面积',D3:'四则混合运算、两步应用题、分数与一位小数初步认识',D4:'时分秒与经过时间、年月日与24时计时法、复式统计表与集合重叠'},
   4:{D1:'大数的认识与近似数、三位数乘两位数、除数是两位数除法与运算律',D2:'公顷与平方千米、角的度量、平行四边形梯形与三角形内角和',D3:'小数的意义性质、小数加减法、单价速度模型与烙饼沏茶统筹',D4:'条形统计图、平均数与复式条形图、鸡兔同笼与和差倍问题'},
   5:{D1:'小数乘除、简便运算、因数倍数与分数加减',D2:'图形运动、多边形面积、数对位置与长方体体积',D3:'字母与方程、分段计费、进一去尾、植树与找次品',D4:'确定与随机事件、可能性公平性与折线统计图'},
@@ -582,9 +621,12 @@ function mStartQuiz(n){
     MSUM.style.display='none';MDETAIL.style.display='none';MGRID.style.display='none';
     MQUIZ.style.display='';MQUIZ.textContent='';
     var ageProf=d.ageProfile||(MSM&&MSM.ageProfile)||{};
-    var isG3=Number(d.grade||(MSM&&MSM.grade)||MGRADE)===3||ageProf.tier==='g3_guided';
+    var qGrade=Number(d.grade||(MSM&&MSM.grade)||MGRADE||5);
+    var isG12=(ageProf.tier==='g12_playful'||qGrade===1||qGrade===2);
+    var isG3=(ageProf.tier==='g3_guided'||qGrade===3);
+    var ageCls=isG12?'ma-age-g12 ma-age-g3':(isG3?'ma-age-g3':'');
     var answers={},cur=0,seq=0;
-    var hud=el('div',{class:'ma-hud'}),sheet=el('div',{class:'ma-sheet'}),qWrap=el('div',{class:isG3?'ma-age-g3':''});
+    var hud=el('div',{class:'ma-hud'}),sheet=el('div',{class:'ma-sheet'}),qWrap=el('div',{class:ageCls});
     MQUIZ.appendChild(el('div',{class:'ma-wrap'},hud,sheet,qWrap));
 
     function exitQuiz(){
@@ -812,7 +854,10 @@ function spRunPaper(d){
   spClearTimer();
   SPBOX.textContent='';
   var ageProf=d.ageProfile||(SPDATA&&SPDATA.ageProfile)||{};
-  var isG3=Number(d.grade||SPGRADE)===3||ageProf.tier==='g3_guided';
+  var spGrade=Number(d.grade||SPGRADE||5);
+  var isG12=(ageProf.tier==='g12_playful'||spGrade===1||spGrade===2);
+  var isG3=(ageProf.tier==='g3_guided'||spGrade===3);
+  var ageCls=isG12?' ma-age-g12 ma-age-g3':(isG3?' ma-age-g3':'');
   var answers={},submitted=false,cur=0,allMode=false;
   var limitSec=d.timeLimitSec,endAt=Date.now()+limitSec*1000;
   var clockEl=el('span',{class:'ma-clock',text:'剩余 '+maClockText(limitSec)});
@@ -837,7 +882,7 @@ function spRunPaper(d){
       el('div',{class:'ma-row'},clockEl,modeBtn,exitBtn,submitBtn)),
     el('div',{class:'ma-prog-track'},barFill));
   var sheet=el('div',{class:'ma-sheet'});
-  var body=el('div',{class:'ma-wrap'+(isG3?' ma-age-g3':'')});
+  var body=el('div',{class:'ma-wrap'+ageCls});
   SPBOX.appendChild(hud);SPBOX.appendChild(confirmHolder);SPBOX.appendChild(sheet);SPBOX.appendChild(body);
 
   function showConfirm(text,okLabel,onOk){

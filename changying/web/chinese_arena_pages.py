@@ -32,20 +32,42 @@ CHINESE_EXTRA_CSS = """<style>
 .ca-scaffold-list{display:flex;gap:7px;flex-wrap:wrap}
 .ca-scaffold-chip{padding:5px 11px;border-radius:999px;border:1px solid #e6c699;background:#fff;color:#6c4212;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .12s ease}
 .ca-scaffold-chip:hover{border-color:var(--ma-brand);background:var(--ma-brand-soft);color:var(--ma-brand)}
+
+/* G1/G2 低段零打字点选与积木拼句写话工作台 */
+.ma-age-g12 .ma-q-text{font-size:18.5px;line-height:1.78}
+.ma-age-g12 .ma-opt{padding:15px 18px;font-size:16.5px;border-radius:14px}
+.ma-age-g12 .ma-tts-btn{padding:8px 15px;font-size:14px}
+.ma-age-g12 .ea-tile,.ea-tile-g12{min-width:48px;min-height:46px;padding:10px 16px;font-size:18px;border-radius:12px}
+.ca-block-workbench{margin-bottom:12px;padding:12px 14px;border-radius:14px;background:linear-gradient(180deg,#fffaf2 0%,#fff3e0 100%);border:2px solid #f0c38e;box-shadow:0 3px 0 #ebd0ad}
+.ca-block-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.ca-block-title{font-size:13.5px;font-weight:900;color:#92400e;line-height:1.45}
+.ca-block-tools{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ca-block-list{display:flex;gap:8px;flex-wrap:wrap}
+.ca-block-chip{padding:9px 15px;border-radius:12px;border:1.5px solid #e2b578;background:#fff;color:#5c3409;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 2px 0 #e6c699;transition:all .12s ease}
+.ca-block-chip:hover{border-color:var(--ma-brand);background:var(--ma-brand-soft);color:var(--ma-brand);transform:translateY(-1px)}
+.ca-block-chip:active{transform:translateY(1px);box-shadow:0 1px 0 #e6c699}
 </style>"""
 
 COMMON_CHINESE_JS = r"""
 var CA_AUDIO_OBJ=null;
 function caGetActiveGrade(){
-  var m=/[?&]grade=([3456])/.exec(location.search||'');
+  var m=/[?&]grade=([123456])/.exec(location.search||'')||/[?&]grade=([1-6])/.exec(location.search||'');
   if(m)return Number(m[1]);
-  if(window.__CY_ARENA_GRADE__)return Number(window.__CY_ARENA_GRADE__);
+  if(window.__CY_ARENA_GRADE__){
+    var wg=Number(window.__CY_ARENA_GRADE__);
+    if(wg>=1&&wg<=6)return wg;
+  }
   var u=window.__CY_ARENA_USER__;
-  if(u&&u.grade&&u.grade>=3&&u.grade<=6)return Number(u.grade);
+  if(u&&u.grade&&u.grade>=1&&u.grade<=6)return Number(u.grade);
   return 0;
 }
 function caSetActiveGrade(g){
-  window.__CY_ARENA_GRADE__=Number(g);
+  var n=Number(g);
+  if([1,2,3,4,5,6].indexOf(n)>=0){
+    window.__CY_ARENA_GRADE__=n;
+  }else{
+    window.__CY_ARENA_GRADE__=n;
+  }
   if(window.history&&window.history.replaceState){
     var url=location.pathname+'?grade='+encodeURIComponent(g)+(location.hash||'');
     try{window.history.replaceState(null,'',url)}catch(_e){}
@@ -63,6 +85,8 @@ function caRenderGradeBar(data,onSwitch){
   if(!data)return null;
   if(data.grade)window.__CY_ARENA_GRADE__=Number(data.grade);
   var grades=(data.availableGrades&&data.availableGrades.length)?data.availableGrades:[
+    {grade:1,label:'一年级',relation:'review',relationLabel:'查漏补缺'},
+    {grade:2,label:'二年级',relation:'review',relationLabel:'查漏补缺'},
     {grade:3,label:'三年级',relation:'review',relationLabel:'查漏补缺'},
     {grade:4,label:'四年级',relation:'review',relationLabel:'查漏补缺'},
     {grade:5,label:'五年级',relation:'current',relationLabel:'本年级'},
@@ -301,10 +325,23 @@ function caAudioBox(q,opts){
 }
 
 /* 语文 10 类题型渲染器（含年龄段差异化交互适配） */
+function caCleanBlockText(raw){
+  var s=String(raw||'');
+  var idx=s.indexOf('：');
+  if(idx<0)idx=s.indexOf(':');
+  if(idx>0&&idx<=8){
+    var after=s.slice(idx+1).replace(/^\s+/,'');
+    if(after&&after.charAt(0)!=='“'&&after.charAt(0)!=='"'){
+      return after;
+    }
+  }
+  return s;
+}
 function caRenderQuestionBody(q,ansObj,onChange,audioOpts){
   audioOpts=audioOpts||{};
   var ageProf=audioOpts.ageProfile||{};
-  var wrap=el('div',{});
+  var isG12=!!(ageProf&&ageProf.tier==='g12_playful');
+  var wrap=el('div',isG12?{class:'ma-age-g12'}:{});
   if(q.passage){
     wrap.appendChild(el('div',{class:'ea-passage',text:q.passage}));
   }
@@ -314,10 +351,23 @@ function caRenderQuestionBody(q,ansObj,onChange,audioOpts){
   if(q.isCustom){
     wrap.appendChild(el('div',{class:'ma-custom-badge',text:'★ 老师精选'}));
   }
-  if(ageProf.stemReadAloud){
+  if(ageProf.stemReadAloud||ageProf.optionReadAloud||isG12){
     wrap.appendChild(el('div',{class:'ma-q-stem-row'},
       el('p',{class:'ma-q-text',text:q.text}),
-      el('button',{type:'button',class:'ma-tts-btn',text:'🔊 读题',onclick:function(){caPlayAudio(null,q.text,ageProf.speechRate||0.9)}})));
+      el('button',{type:'button',class:'ma-tts-btn',text:'🔊 读题',onclick:function(){
+        var readTxt=String(q.text||'');
+        var readRate=ageProf.speechRate||(isG12?0.85:0.9);
+        if(ageProf.optionReadAloud&&q.options&&q.options.length){
+          var optKeys=['A','B','C','D','E','F'];
+          var optParts=[];
+          q.options.forEach(function(opt,idx){
+            optParts.push((optKeys[idx]||String(idx+1))+'：'+String(opt));
+          });
+          readTxt=readTxt+'。'+optParts.join('；');
+          readRate=0.85;
+        }
+        caPlayAudio(null,readTxt,readRate);
+      }})));
   }else{
     wrap.appendChild(el('p',{class:'ma-q-text',text:q.text}));
   }
@@ -361,7 +411,7 @@ function caRenderQuestionBody(q,ansObj,onChange,audioOpts){
     }
     var tileRow=el('div',{class:'ea-tiles'});
     tiles.forEach(function(ch,ti){
-      var tb=el('button',{type:'button',class:'ea-tile',text:ch});
+      var tb=el('button',{type:'button',class:'ea-tile'+(isG12?' ea-tile-g12':''),text:ch});
       if(usedIdx.indexOf(ti)>=0)tb.disabled=true;
       tb.onclick=function(){
         usedIdx.push(ti);
@@ -401,7 +451,50 @@ function caRenderQuestionBody(q,ansObj,onChange,audioOpts){
     ta.oninput=function(){ansObj.text_answer=ta.value;updWc();onChange(true)};
     updWc();
 
-    if(ageProf.writingScaffold&&q.scaffolds&&q.scaffolds.length){
+    if(ageProf&&(ageProf.writingBlockBuilder||ageProf.tier==='g12_playful')&&q.scaffolds&&q.scaffolds.length){
+      var hist=ansObj._blockHistory||(ansObj._blockHistory=[]);
+      var undoBtn=el('button',{type:'button',class:'ma-btn ma-btn-ghost ma-btn-sm',text:'⌫ 退一块'});
+      undoBtn.onclick=function(){
+        var cur=String(ta.value||'');
+        if(!cur)return;
+        if(hist.length>0){
+          ta.value=hist.pop();
+        }else{
+          var m=/^(.*[，。！？；、,.!?;])[^，。！？；、,.!?;]+[，。！？；、,.!?;]?$/.exec(cur);
+          ta.value=m?m[1]:'';
+        }
+        ansObj.text_answer=ta.value;
+        updWc();
+        onChange(true);
+      };
+      var clrBtn=el('button',{type:'button',class:'ma-btn ma-btn-ghost ma-btn-sm',text:'清空重拼'});
+      clrBtn.onclick=function(){
+        hist.length=0;
+        ta.value='';
+        ansObj.text_answer='';
+        updWc();
+        onChange(true);
+      };
+      var wbHead=el('div',{class:'ca-block-head'},
+        el('div',{class:'ca-block-title',text:'🧩 一/二年级积木拼句写话台（依次点击下方词句积木，就能拼出完整通顺的句子，不用打字！）'}),
+        el('div',{class:'ca-block-tools'},undoBtn,clrBtn));
+      var wbList=el('div',{class:'ca-block-list'});
+      q.scaffolds.forEach(function(sc){
+        var bChip=el('button',{type:'button',class:'ca-block-chip',text:String(sc)});
+        bChip.onclick=function(){
+          var piece=caCleanBlockText(sc);
+          var curVal=String(ta.value||'');
+          hist.push(curVal);
+          ta.value=curVal+piece;
+          ansObj.text_answer=ta.value;
+          updWc();
+          onChange(true);
+        };
+        wbList.appendChild(bChip);
+      });
+      var wbBox=el('div',{class:'ca-block-workbench'},wbHead,wbList);
+      wrap.appendChild(wbBox);
+    }else if(ageProf.writingScaffold&&q.scaffolds&&q.scaffolds.length){
       var scBox=el('div',{class:'ca-scaffolds'},
         el('div',{class:'ca-scaffolds-title',text:'✨ 写作支架与好词锦囊（点击可插入）'}));
       var scList=el('div',{class:'ca-scaffold-list'});
@@ -435,12 +528,15 @@ function caRenderQuestionBody(q,ansObj,onChange,audioOpts){
   wrap.appendChild(inp);
 
   var hanziPool=(q.assistTiles&&q.assistTiles.length)?q.assistTiles:((q.tiles&&q.tiles.length)?q.tiles:null);
-  if(ageProf.chineseAssistTiles&&(qt==='dictation_spell'||qt==='poem_fill')&&hanziPool&&hanziPool.length){
+  if((ageProf.chineseAssistTiles||isG12)&&(qt==='dictation_spell'||qt==='poem_fill')&&hanziPool&&hanziPool.length){
+    var trayTitle=isG12
+      ?'🎯 一/二年级零打字点选托盘（直接点下面的字块就能填好答案，不用打字！）'
+      :'🎯 三年级候选字托盘（点击汉字即可填入，也可直接打字）';
     var hTray=el('div',{class:'ea-assist-tray'},
-      el('div',{class:'ea-assist-title',text:'🎯 三年级候选字托盘（点击汉字即可填入，也可直接打字）'}));
+      el('div',{class:'ea-assist-title',text:trayTitle}));
     var hRow=el('div',{class:'ea-tiles'});
     hanziPool.forEach(function(hz){
-      var hb=el('button',{type:'button',class:'ea-tile',text:hz});
+      var hb=el('button',{type:'button',class:'ea-tile'+(isG12?' ea-tile-g12':''),text:hz});
       hb.onclick=function(){
         inp.value=String(inp.value||'')+String(hz);
         ansObj.text_answer=inp.value;
@@ -641,7 +737,7 @@ function cmRenderQuiz(){
     sheet.appendChild(b);
   });
 
-  var qCard=el('div',{class:'ma-q-card'},
+  var qCard=el('div',{class:'ma-q-card'+((ageProf&&ageProf.tier==='g12_playful')?' ma-age-g12':'')},
     el('div',{class:'ma-q-meta'},
       el('span',{text:'第 '+(CM_IDX+1)+' / '+qs.length+' 题 · '+q.typeLabel+'（'+q.levelLabel+'）'}),
       el('span',{text:'已完成 '+doneCnt+'/'+qs.length})));
@@ -870,13 +966,13 @@ function csRenderExam(){
     CS_BODY.appendChild(sheet);
   }
 
-  var qCard=el('div',{class:'ma-q-card'},
+  var qCard=el('div',{class:'ma-q-card'+((ageProf&&ageProf.tier==='g12_playful')?' ma-age-g12':'')},
     el('div',{class:'ma-q-meta'},
       el('span',{text:'第 '+(CS_IDX+1)+' 题 · '+q.typeLabel+'（'+q.marks+' 分）'}),
       el('span',{text:isPerQ?'单题限时模式（超时自动切题）':'整体限时模式（可自由回看）'})));
   qCard.appendChild(caRenderQuestionBody(q,ansObj,function(silent){if(!silent)csRenderExam()},{
     maxPlays:maxPlaysVal,
-    allowSlow:!isPerQ||ageProf.grade===3,
+    allowSlow:!isPerQ||(ageProf&&ageProf.grade<=3)||(ageProf&&ageProf.tier==='g12_playful'),
     playState:CS_PLAY,
     ageProfile:ageProf
   }));

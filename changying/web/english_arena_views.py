@@ -267,7 +267,7 @@ def install_english_arena_views(implementation: Any) -> APIRouter:
         need(u, "student")
         ensure_tables(db)
         student_grade = agp.detect_user_grade(implementation, db, u)
-        active_grade = agp.resolve_arena_grade(grade, student_grade)
+        active_grade = agp.resolve_arena_grade(grade, student_grade, subject="英语")
         bp = ebm.get_map_blueprint(active_grade)
         rows = db.execute(
             select(t_mastery).where(
@@ -311,12 +311,12 @@ def install_english_arena_views(implementation: Any) -> APIRouter:
                 "bestQuizRate": int(r.best_quiz_rate_pct) if r is not None else 0,
             })
 
-        return {
+        payload: dict[str, Any] = {
             "title": bp.get("title", ""),
             "subject": bp["subject"],
             "grade": active_grade,
             "studentGrade": student_grade,
-            "availableGrades": agp.build_available_grades(active_grade, student_grade),
+            "availableGrades": agp.build_available_grades(active_grade, student_grade, subject="英语"),
             "ageProfile": agp.get_age_interaction_profile(active_grade),
             "domains": bp["domains"],
             "nodes": nodes_out,
@@ -331,6 +331,11 @@ def install_english_arena_views(implementation: Any) -> APIRouter:
             },
             "points": eapts.student_arena_points_summary(implementation, db, u),
         }
+        if student_grade in (1, 2) or grade in (1, 2):
+            payload["englishAdvanceNotice"] = (
+                "英语从三年级起正式开课，已为你自动定位到三年级（超前启蒙），可以从 26 个字母和自然拼读开始探索哦！"
+            )
+        return payload
 
     @router.post("/student/english-star-map/nodes/{node_key}/quiz")
     def start_english_node_quiz(node_key: str, u: Any = Depends(current_user), db: Any = Depends(get_db)):
@@ -501,7 +506,7 @@ def install_english_arena_views(implementation: Any) -> APIRouter:
         need(u, "student")
         ensure_tables(db)
         student_grade = agp.detect_user_grade(implementation, db, u)
-        active_grade = agp.resolve_arena_grade(grade, student_grade)
+        active_grade = agp.resolve_arena_grade(grade, student_grade, subject="英语")
         rows = db.execute(
             select(t_sprints)
             .where(
@@ -535,16 +540,21 @@ def install_english_arena_views(implementation: Any) -> APIRouter:
                 "lastScoreRate": int(hist[0].score_rate or 0) if hist else None,
             })
 
-        return {
+        payload: dict[str, Any] = {
             "subject": "英语",
             "grade": active_grade,
             "studentGrade": student_grade,
-            "availableGrades": agp.build_available_grades(active_grade, student_grade),
+            "availableGrades": agp.build_available_grades(active_grade, student_grade, subject="英语"),
             "ageProfile": agp.get_age_interaction_profile(active_grade),
             "tiers": ees.TIERS,
             "sprints": sprints_out,
             "points": eapts.student_arena_points_summary(implementation, db, u),
         }
+        if student_grade in (1, 2) or grade in (1, 2):
+            payload["englishAdvanceNotice"] = (
+                "英语从三年级起正式开课，已为你自动定位到三年级（超前启蒙），可以从 26 个字母和自然拼读开始探索哦！"
+            )
+        return payload
 
     @router.post("/student/english-sprints/{slug}/start")
     def start_english_sprint(slug: str, u: Any = Depends(current_user), db: Any = Depends(get_db)):

@@ -61,7 +61,7 @@ async function practice(){
  $("#page").innerHTML=head("自主练习","知识地图点亮与应试专项分级")+
   '<div class="card" id="practice-hub-loading"><p class="muted">正在加载数学、英语与语文练习进度…</p></div>';
  let curSubj=(window.__CY_PRACTICE_SUBJ__==='english'||window.__CY_PRACTICE_SUBJ__==='chinese')?window.__CY_PRACTICE_SUBJ__:'math';
- let curGrade=[3,4,5,6].includes(Number(window.__CY_ARENA_GRADE__))?Number(window.__CY_ARENA_GRADE__):0;
+ let curGrade=[1,2,3,4,5,6].includes(Number(window.__CY_ARENA_GRADE__))?Number(window.__CY_ARENA_GRADE__):0;
  let stuGrade=0,ageProfile=null;
  let assignedTasks=[],parentCheers=[];
  let ms={totalNodes:24,litNodes:0,masteredNodes:0,repairNodes:0},es={totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0},cs={totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0};
@@ -71,12 +71,14 @@ async function practice(){
  const pctOf=(s)=>s.totalNodes?Math.round(s.litNodes/s.totalNodes*100):0;
 
  async function loadGradeData(targetGrade){
-  const gq=[3,4,5,6].includes(Number(targetGrade))?('?grade='+Number(targetGrade)):'';
+  const hasG=[1,2,3,4,5,6].includes(Number(targetGrade));
+  const gq=hasG?('?grade='+Number(targetGrade)):'';
+  const egq=hasG?('?grade='+(targetGrade&&targetGrade<3?3:Number(targetGrade))):'';
   const [sm,sp,em,ep,cm,cp,tk]=await Promise.all([
    api("/student/math-star-map"+gq).catch(()=>null),
    api("/student/math-sprints"+gq).catch(()=>null),
-   api("/student/english-star-map"+gq).catch(()=>null),
-   api("/student/english-sprints"+gq).catch(()=>null),
+   api("/student/english-star-map"+egq).catch(()=>null),
+   api("/student/english-sprints"+egq).catch(()=>null),
    api("/student/chinese-star-map"+gq).catch(()=>null),
    api("/student/chinese-sprints"+gq).catch(()=>null),
    api("/student/arena-tasks").catch(()=>null)
@@ -85,12 +87,12 @@ async function practice(){
    assignedTasks=tk.items||[];
    parentCheers=tk.cheers||[];
   }
-  const respG=(sm&&sm.grade)||(em&&em.grade)||(cm&&cm.grade)||targetGrade||5;
-  const respStuG=(sm&&sm.studentGrade)||(em&&em.studentGrade)||(cm&&cm.studentGrade)||respG||5;
-  stuGrade=[3,4,5,6].includes(Number(respStuG))?Number(respStuG):5;
-  curGrade=[3,4,5,6].includes(Number(targetGrade))?Number(targetGrade):([3,4,5,6].includes(Number(respG))?Number(respG):stuGrade);
+  const respG=(sm&&sm.grade)||(cm&&cm.grade)||(em&&em.grade)||targetGrade||5;
+  const respStuG=(sm&&sm.studentGrade)||(cm&&cm.studentGrade)||(em&&em.studentGrade)||respG||5;
+  stuGrade=[1,2,3,4,5,6].includes(Number(respStuG))?Number(respStuG):5;
+  curGrade=[1,2,3,4,5,6].includes(Number(targetGrade))?Number(targetGrade):([1,2,3,4,5,6].includes(Number(respG))?Number(respG):stuGrade);
   window.__CY_ARENA_GRADE__=curGrade;
-  ageProfile=(sm&&sm.ageProfile)||(em&&em.ageProfile)||(cm&&cm.ageProfile)||null;
+  ageProfile=(sm&&sm.ageProfile)||(cm&&cm.ageProfile)||(em&&em.ageProfile)||null;
   ms=(sm&&sm.summary)||{totalNodes:24,litNodes:0,masteredNodes:0,repairNodes:0};
   es=(em&&em.summary)||{totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0};
   cs=(cm&&cm.summary)||{totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0};
@@ -105,16 +107,19 @@ async function practice(){
  function renderPracticeHub(){
   window.__CY_PRACTICE_SUBJ__=curSubj;
   const gParam='?grade='+(curGrade||5);
-  const gradeLabel={3:'三年级',4:'四年级',5:'五年级',6:'六年级'}[curGrade]||'五年级';
+  const engParam='?grade='+((curGrade&&curGrade<3)?3:(curGrade||5));
+  const baseGradeLabel={1:'一年级',2:'二年级',3:'三年级',4:'四年级',5:'五年级',6:'六年级'}[curGrade]||'五年级';
+  const isEngEarly=(curSubj==='english'&&curGrade<3);
+  const gradeLabel=isEngEarly?'三年级（超前启蒙）':baseGradeLabel;
   const tierShort=(ageProfile&&ageProfile.tierShortLabel)?String(ageProfile.tierShortLabel):'';
-  const relText=stuGrade?(curGrade===stuGrade?'本年级':(curGrade<stuGrade?'查漏补缺':'超前探索')):'';
+  const relText=isEngEarly?'三年级（超前启蒙）':(stuGrade?(curGrade===stuGrade?'本年级':(curGrade<stuGrade?'查漏补缺':'超前探索')):'');
   const conf={
    math:{name:'数学',s:ms,pts:mpts,best:mBest,mapHref:'/v1/math-star-map'+gParam,spHref:'/v1/math-sprints'+gParam,mapTitle:'数学知识地图',spTitle:'数学应试专项',
     mapDesc:'覆盖小学数学四大知识域，每个节点自带 5 题微测，答对 80% 即点亮。',
     spDesc:'多题型限时专项（含看图几何题），倒计时自动交卷，按 L1～L4 分级达标。'},
-   english:{name:'英语',s:es,pts:epts,best:eBest,mapHref:'/v1/english-star-map'+gParam,spHref:'/v1/english-sprints'+gParam,mapTitle:'英语知识地图',spTitle:'英语听说读写专项',
-    mapDesc:'按语音自然拼读、核心词汇、语法句型、语篇交际四大知识点域闯关，不限时轻微测，答对 80% 即点亮。',
-    spDesc:'按听 / 说 / 读 / 写四大能力独立开考（听/说单题限时，读/写整体倒计时），按 L1～L4 分级达标。'},
+   english:{name:'英语',s:es,pts:epts,best:eBest,mapHref:'/v1/english-star-map'+engParam,spHref:'/v1/english-sprints'+engParam,mapTitle:'英语知识地图',spTitle:'英语听说读写专项',
+    mapDesc:(isEngEarly?'一、二年级自动衔接三年级（超前启蒙）课程：':'')+'按语音自然拼读、核心词汇、语法句型、语篇交际四大知识点域闯关，不限时轻微测，答对 80% 即点亮。',
+    spDesc:(isEngEarly?'一、二年级可体验三年级（超前启蒙）听说闯关：':'')+'按听 / 说 / 读 / 写四大能力独立开考（听/说单题限时，读/写整体倒计时），按 L1～L4 分级达标。'},
    chinese:{name:'语文',s:cs,pts:cpts,best:cBest,mapHref:'/v1/chinese-star-map'+gParam,spHref:'/v1/chinese-sprints'+gParam,mapTitle:'语文知识地图',spTitle:'语文四大板块专项',
     mapDesc:'按字词语音、句子修辞、古诗文积累、阅读方法四大知识点域闯关，含普通话朗诵与字块默写，答对 80% 即点亮。',
     spDesc:'覆盖基础字词句（单题限时）、古诗文默写、现代文阅读与微写作（AI 实时点评），按 L1～L4 分级达标。'}
@@ -138,7 +143,7 @@ async function practice(){
      }).join('')+
     '</div>'
    :'';
-  const gradeBtns=[[3,'三年级'],[4,'四年级'],[5,'五年级'],[6,'六年级']].map(g=>
+  const gradeBtns=[[1,'一年级'],[2,'二年级'],[3,'三年级'],[4,'四年级'],[5,'五年级'],[6,'六年级']].map(g=>
    '<button type="button" class="btn '+(curGrade===g[0]?'primary':'ghost')+' phGradeBtn" data-grade="'+g[0]+'" style="padding:5px 12px;min-height:auto;font-size:13px">'+g[1]+(stuGrade===g[0]?'·本年':'')+'</button>'
   ).join('');
   $("#page").innerHTML=head("自主练习","不限教材版本 · 语数英各科独立每日 30 分上限 · 积分同步计入全站账本")+

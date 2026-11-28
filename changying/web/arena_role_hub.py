@@ -188,9 +188,14 @@ function arenaRoleHub(role,subject,sess){
       }
       sel.onchange=function(){curClassId=Number(sel.value||0);curGrade=0;loadAll()};
 
-      var activeGrade=(diagData&&diagData.grade)?Number(diagData.grade):(curGrade||5);
+      if(subject==='英语'&&(curGrade===1||curGrade===2))curGrade=3;
+      var rawGrade=(diagData&&diagData.grade)?Number(diagData.grade):(curGrade||5);
+      var activeGrade=(subject==='英语'&&rawGrade<3)?3:rawGrade;
+      var gradeOpts=subject==='英语'
+        ?[[3,'三年级'],[4,'四年级'],[5,'五年级'],[6,'六年级']]
+        :[[1,'一年级'],[2,'二年级'],[3,'三年级'],[4,'四年级'],[5,'五年级'],[6,'六年级']];
       var gradeSeg=el('div',{class:'ea-subj',style:'white-space:nowrap'});
-      [[3,'三年级'],[4,'四年级'],[5,'五年级'],[6,'六年级']].forEach(function(g){
+      gradeOpts.forEach(function(g){
         var ga=el('a',{href:'#',class:Number(activeGrade)===g[0]?'on':'',style:'white-space:nowrap',text:g[1]});
         ga.onclick=function(e){
           e.preventDefault();
@@ -313,7 +318,8 @@ function arenaRoleHub(role,subject,sess){
       var nodeNameMap={};
       allNodes.forEach(function(n){nodeNameMap[n.key]=n.name});
       if(customFilterNode!=='all'&&!nodeNameMap[customFilterNode])customFilterNode='all';
-      var activeGrade=(diagData&&diagData.grade)?Number(diagData.grade):(curGrade||5);
+      var rawGrade=(diagData&&diagData.grade)?Number(diagData.grade):(curGrade||5);
+      var activeGrade=(subject==='英语'&&rawGrade<3)?3:rawGrade;
 
       panel.appendChild(helperBar('添加本校专属考点私房题后，学生在对应考点微测时会自动优先抽到老师加的题目（单次最多混入 3 题）！','长缨助手 · 考点私房题'));
 
@@ -664,6 +670,7 @@ function arenaRoleHub(role,subject,sess){
       }).catch(function(e){say(e.message||'加载私房题失败',true)});
     }
     function loadDiag(quiet){
+      if(subject==='英语'&&(curGrade===1||curGrade===2))curGrade=3;
       var url='/teacher/arena/diagnostics?subject='+encodeURIComponent(subject)+'&class_id='+curClassId+(curGrade>0?'&grade='+curGrade:'');
       return api(url).then(function(d){
         diagData=d;

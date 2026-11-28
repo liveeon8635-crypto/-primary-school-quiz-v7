@@ -261,7 +261,7 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
         need(u, "student")
         ensure_tables(db)
         student_grade = agp.detect_user_grade(implementation, db, u)
-        active_grade = agp.resolve_arena_grade(grade, student_grade)
+        active_grade = agp.resolve_arena_grade(grade, student_grade, subject="语文")
         bp = cbm.get_map_blueprint(active_grade)
         rows = db.execute(
             select(t_mastery).where(
@@ -306,7 +306,7 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
             "subject": bp["subject"],
             "grade": active_grade,
             "studentGrade": student_grade,
-            "availableGrades": agp.build_available_grades(active_grade, student_grade),
+            "availableGrades": agp.build_available_grades(active_grade, student_grade, subject="语文"),
             "ageProfile": agp.get_age_interaction_profile(active_grade),
             "domains": bp["domains"],
             "nodes": nodes_out,
@@ -511,7 +511,7 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
         need(u, "student")
         ensure_tables(db)
         student_grade = agp.detect_user_grade(implementation, db, u)
-        active_grade = agp.resolve_arena_grade(grade, student_grade)
+        active_grade = agp.resolve_arena_grade(grade, student_grade, subject="语文")
         rows = db.execute(
             select(t_sprints)
             .where(
@@ -549,7 +549,7 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
             "subject": "语文",
             "grade": active_grade,
             "studentGrade": student_grade,
-            "availableGrades": agp.build_available_grades(active_grade, student_grade),
+            "availableGrades": agp.build_available_grades(active_grade, student_grade, subject="语文"),
             "ageProfile": agp.get_age_interaction_profile(active_grade),
             "tiers": ces.TIERS,
             "sprints": sprints_out,

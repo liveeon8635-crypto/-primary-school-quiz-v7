@@ -71,18 +71,33 @@ ENGLISH_EXTRA_CSS = """<style>
 
 COMMON_ENGLISH_JS = r"""
 var EA_AUDIO_OBJ=null;
+var EA_LOW_GRADE_BRIDGED=false;
 function eaGetActiveGrade(){
-  var m=/[?&]grade=([3456])/.exec(location.search||'');
-  if(m)return Number(m[1]);
-  if(window.__CY_ARENA_GRADE__)return Number(window.__CY_ARENA_GRADE__);
+  var m=/[?&]grade=([123456])/.exec(location.search||'');
+  if(m){
+    var g=Number(m[1]);
+    if(g===1||g===2){EA_LOW_GRADE_BRIDGED=true;return 3}
+    return g;
+  }
+  if(window.__CY_ARENA_GRADE__){
+    var wg=Number(window.__CY_ARENA_GRADE__);
+    if(wg===1||wg===2){EA_LOW_GRADE_BRIDGED=true;return 3}
+    if(wg>=3&&wg<=6)return wg;
+  }
   var u=window.__CY_ARENA_USER__;
-  if(u&&u.grade&&u.grade>=3&&u.grade<=6)return Number(u.grade);
+  if(u&&u.grade){
+    var ug=Number(u.grade);
+    if(ug===1||ug===2){EA_LOW_GRADE_BRIDGED=true;return 3}
+    if(ug>=3&&ug<=6)return ug;
+  }
   return 0;
 }
 function eaSetActiveGrade(g){
-  window.__CY_ARENA_GRADE__=Number(g);
+  var n=Number(g);
+  if(n===1||n===2){EA_LOW_GRADE_BRIDGED=true;n=3}else{EA_LOW_GRADE_BRIDGED=false}
+  window.__CY_ARENA_GRADE__=n;
   if(window.history&&window.history.replaceState){
-    var url=location.pathname+'?grade='+encodeURIComponent(g)+(location.hash||'');
+    var url=location.pathname+'?grade='+encodeURIComponent(n)+(location.hash||'');
     try{window.history.replaceState(null,'',url)}catch(_e){}
   }
 }
@@ -120,9 +135,16 @@ function eaRenderGradeBar(data,onSwitch){
   });
   var prof=data.ageProfile||{};
   var badgeTxt=prof.tierLabel||prof.tierShortLabel||(curG+'年级适配模式');
-  return el('div',{class:'ma-grade-bar'},
+  var bar=el('div',{class:'ma-grade-bar'},
     pills,
     el('span',{class:'ma-age-badge',text:'🎯 '+badgeTxt}));
+  var advTxt=data.englishAdvanceNotice||(EA_LOW_GRADE_BRIDGED?'英语从三年级起正式开课，已为你自动定位到三年级（超前启蒙），可以从 26 个字母和自然拼读开始探索哦！':'');
+  if(advTxt){
+    return el('div',{class:'ma-wrap'},
+      bar,
+      el('div',{class:'ma-notice show info',text:'💡 '+advTxt}));
+  }
+  return bar;
 }
 function eaSpeakStem(text,rate){
   if(!window.speechSynthesis||!text)return;
