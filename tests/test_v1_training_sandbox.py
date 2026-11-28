@@ -464,7 +464,7 @@ TOUR_ROUTES = r'''
 with TestClient(app) as client:
     from changying.web.v1_training_sandbox import ROLE_FLOW
     pages = {s["page"] for role in ROLE_FLOW for s in ROLE_FLOW[role] if s["id"] in TOURS}
-    assert len(pages) == 10
+    assert len(pages) == 7 and "/v1/math-star-map" in pages and "/v1/math-sprints" in pages
     bad = {p: client.get(p).status_code for p in sorted(pages)}
     assert all(code == 200 for code in bad.values()), bad
     html = client.get("/v1/training").text
