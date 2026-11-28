@@ -119,9 +119,7 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
     router = APIRouter()
 
     def ensure_tables(db: Any) -> None:
-        bind = db.get_bind()
-        for tbl in (t_mastery, t_quizzes, t_sprints):
-            tbl.create(bind=bind, checkfirst=True)
+        arc.ensure_tables_on_session(db, t_mastery, t_quizzes, t_sprints)
 
     def upsert_node_mastery(
         db: Any,
