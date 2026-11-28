@@ -147,13 +147,13 @@ MATH_G5_CORE_MAP: dict[str, Any] = {
 
 
 def get_builtin_math_map(grade: int | None = None) -> dict[str, Any]:
-    """返回去教材版本的通用数学知识地图副本（支持 3、4、5、6 年级）."""
+    """返回去教材版本的通用数学知识地图副本（支持 1、2、3、4、5、6 年级）."""
     if grade is not None:
         try:
             g = int(grade)
         except (TypeError, ValueError):
             g = DEFAULT_GRADE
-        if g in (3, 4, 6):
+        if g in (1, 2, 3, 4, 6):
             grade_map = mgc.get_grade_math_map(g)
             if grade_map is not None:
                 return grade_map
@@ -165,9 +165,16 @@ def get_builtin_math_map(grade: int | None = None) -> dict[str, Any]:
 
 
 def get_all_math_nodes() -> dict[str, dict[str, Any]]:
-    """返回 G3/G4/G5/G6 所有数学节点的字典映射 (key -> node dict)."""
+    """返回 G1/G2/G3/G4/G5/G6 所有数学节点的字典映射 (key -> node dict)."""
     out: dict[str, dict[str, Any]] = {}
-    for m in (mgc.MATH_G3_CORE_MAP, mgc.MATH_G4_CORE_MAP, MATH_G5_CORE_MAP, mgc.MATH_G6_CORE_MAP):
+    for m in (
+        mgc.MATH_G1_CORE_MAP,
+        mgc.MATH_G2_CORE_MAP,
+        mgc.MATH_G3_CORE_MAP,
+        mgc.MATH_G4_CORE_MAP,
+        MATH_G5_CORE_MAP,
+        mgc.MATH_G6_CORE_MAP,
+    ):
         for n in m["nodes"]:
             out[n["key"]] = copy.deepcopy(n)
     return out
@@ -270,7 +277,7 @@ def _text_q(
 def _build_node_pool(node_key: str, seed: int) -> list[dict[str, Any]]:
     """为单个知识节点确定性生成覆盖 5 题型、3 难度档的 6 道自带题."""
     k = str(node_key or "").strip().upper()
-    if k.startswith(("G3-", "G4-", "G6-")):
+    if k.startswith(("G1-", "G2-", "G3-", "G4-", "G6-")):
         return mgc.build_grade_node_pool(k, seed)
     if k.startswith("G5-"):
         node_key = k[3:]
@@ -884,6 +891,8 @@ def _visual_questions_for_node(node_key: str, seed: int) -> list[dict[str, Any]]
                 ans = str(opts[int(cidx)])
             else:
                 ans = str(raw.get("answer") or "")
+            if str(node_key).upper().startswith(("G1-", "G2-")) and qtype not in ("single_choice", "true_false") and not ans.isdigit():
+                continue
             out.append({
                 "id": f"bi:{node_key}:vis:{src_key}:{lv}:{abs(int(seed))}:{k}",
                 "nodeKey": node_key,

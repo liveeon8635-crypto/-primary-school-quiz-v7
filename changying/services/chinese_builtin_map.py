@@ -16,10 +16,11 @@ from typing import Any, Iterable
 
 from changying.services import arena_grade_profiles as agp
 from changying.services import chinese_grade_curricula as cgc
+from changying.services import chinese_low_grade_curricula as clgc
 
 SUBJECT_CHINESE = "语文"
 DEFAULT_GRADE = 5
-SUPPORTED_GRADES = (3, 4, 5, 6)
+SUPPORTED_GRADES = (1, 2, 3, 4, 5, 6)
 
 LIGHT_STATES = {
     "unexplored": "未探索",
@@ -101,6 +102,8 @@ for _n in CHINESE_G5_NODES:
     _n.setdefault("grade", 5)
 
 NODES_BY_GRADE: dict[int, list[dict[str, Any]]] = {
+    1: clgc.CHINESE_G1_NODES,
+    2: clgc.CHINESE_G2_NODES,
     3: cgc.CHINESE_G3_NODES,
     4: cgc.CHINESE_G4_NODES,
     5: CHINESE_G5_NODES,
@@ -108,7 +111,9 @@ NODES_BY_GRADE: dict[int, list[dict[str, Any]]] = {
 }
 
 ALL_CHINESE_NODES: list[dict[str, Any]] = (
-    list(cgc.CHINESE_G3_NODES)
+    list(clgc.CHINESE_G1_NODES)
+    + list(clgc.CHINESE_G2_NODES)
+    + list(cgc.CHINESE_G3_NODES)
     + list(cgc.CHINESE_G4_NODES)
     + list(CHINESE_G5_NODES)
     + list(cgc.CHINESE_G6_NODES)
@@ -776,6 +781,8 @@ def _build_question_bank() -> dict[str, list[dict[str, Any]]]:
 
 def _build_all_question_bank() -> dict[str, list[dict[str, Any]]]:
     merged: dict[str, list[dict[str, Any]]] = {}
+    merged.update(clgc.CHINESE_G1_QUESTIONS)
+    merged.update(clgc.CHINESE_G2_QUESTIONS)
     merged.update(cgc.CHINESE_G3_QUESTIONS)
     merged.update(cgc.CHINESE_G4_QUESTIONS)
     merged.update(_build_question_bank())
@@ -891,13 +898,19 @@ def grade_subjective_rule_fallback(question: dict[str, Any], text_answer: str) -
     min_chars = int(question.get("minChars", 12))
     groups: list[list[str]] = question.get("rubricKeywords") or []
 
+    q_grade = int(question.get("grade") or agp.infer_grade_from_node_key(str(question.get("nodeKey") or ""), DEFAULT_GRADE))
     if clean_len < max(6, min_chars // 3):
+        short_comment = (
+            f"写的字数还不够哟（当前 {clean_len} 字），快点一点下方的「句式积木」把完整句子拼出来吧！"
+            if q_grade in (1, 2)
+            else f"作答内容过短（当前 {clean_len} 字），请结合题干要求补充完整内容后再提交。"
+        )
         return {
             "earnedMarks": 0,
             "maxMarks": max_marks,
             "passed": False,
             "gradingMode": "rule_fallback",
-            "comment": f"作答内容过短（当前 {clean_len} 字），请结合题干要求补充完整内容后再提交。",
+            "comment": short_comment,
         }
 
     hit_groups = 0
@@ -913,7 +926,13 @@ def grade_subjective_rule_fallback(question: dict[str, Any], text_answer: str) -
         earned = max(earned, max(1, max_marks // 2))
     passed = earned >= max(1, int(round(max_marks * 0.6)))
 
-    if passed:
+    if q_grade in (1, 2):
+        mode_tag = "一句话写话" if q_grade == 1 else "四要素写话"
+        if passed:
+            comment = f"太棒啦！你的{mode_tag}既通顺又生动（{clean_len} 字），点亮了 {hit_groups}/{len(groups)} 颗小星星，继续加油哟！"
+        else:
+            comment = f"已经写了 {clean_len} 字啦，还差一点点关键要素（点亮 {hit_groups}/{len(groups)} 颗星），快用下方的句式积木把{mode_tag}拼完整吧！"
+    elif passed:
         comment = f"表达较完整（{clean_len} 字），命中了 {hit_groups}/{len(groups)} 项核心要点；可对照范文进一步打磨细节用词。"
     else:
         comment = f"已作答 {clean_len} 字，但关键得分要素覆盖不足（命中 {hit_groups}/{len(groups)} 项），建议参考下方答题思路与范文补充关键细节。"

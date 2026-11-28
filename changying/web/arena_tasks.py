@@ -159,7 +159,7 @@ def _subject_meta(implementation: Any, subject: str, grade: int | None = None) -
     if subject == "数学":
         tbls = register_math_arena_tables(implementation)
         if grade is not None:
-            g = agp.clamp_arena_grade(grade, agp.DEFAULT_ARENA_GRADE)
+            g = agp.clamp_arena_grade(grade, agp.DEFAULT_ARENA_GRADE, subject=subject)
             m = mbm.get_builtin_math_map(g)
             unit_map = {u["key"]: u["name"] for u in m["units"]}
             nodes = list(m["nodes"])
@@ -167,7 +167,7 @@ def _subject_meta(implementation: Any, subject: str, grade: int | None = None) -
         else:
             unit_map = {}
             nodes = []
-            for g in agp.SUPPORTED_GRADES:
+            for g in agp.supported_grades_for_subject("数学"):
                 gm = mbm.get_builtin_math_map(g)
                 for u in gm["units"]:
                     unit_map[u["key"]] = u["name"]
@@ -193,7 +193,7 @@ def _subject_meta(implementation: Any, subject: str, grade: int | None = None) -
     if subject == "英语":
         tbls = register_english_arena_tables(implementation)
         if grade is not None:
-            g = agp.clamp_arena_grade(grade, agp.DEFAULT_ARENA_GRADE)
+            g = agp.clamp_arena_grade(grade, agp.DEFAULT_ARENA_GRADE, subject=subject)
             bp = ebm.get_map_blueprint(g)
             nodes = list(bp["nodes"])
             sprints = list(ees.list_sprints("英语", grade=g))
@@ -218,7 +218,7 @@ def _subject_meta(implementation: Any, subject: str, grade: int | None = None) -
         }
     tbls = register_chinese_arena_tables(implementation)
     if grade is not None:
-        g = agp.clamp_arena_grade(grade, agp.DEFAULT_ARENA_GRADE)
+        g = agp.clamp_arena_grade(grade, agp.DEFAULT_ARENA_GRADE, subject=subject)
         bp = cbm.get_map_blueprint(g)
         nodes = list(bp["nodes"])
         sprints = list(ces.list_sprints("语文", grade=g))
@@ -527,7 +527,7 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
         if use_class_id and not any(c["id"] == use_class_id for c in class_list) and u.role == "teacher":
             raise HTTPException(403, "无权查看该班级")
         if grade is not None:
-            active_grade = agp.clamp_arena_grade(grade, agp.DEFAULT_ARENA_GRADE)
+            active_grade = agp.clamp_arena_grade(grade, agp.DEFAULT_ARENA_GRADE, subject=subject)
         elif use_class_id:
             sel_cls = next((c for c in classes if int(c.id) == use_class_id), None)
             if sel_cls is None:
@@ -535,7 +535,11 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
                 if SchoolClass is not None:
                     sel_cls = db.scalar(select(SchoolClass).where(SchoolClass.id == use_class_id))
             cls_grade = getattr(sel_cls, "grade", None) if sel_cls is not None else None
-            active_grade = agp.clamp_arena_grade(cls_grade, agp.DEFAULT_ARENA_GRADE) if cls_grade else agp.DEFAULT_ARENA_GRADE
+            active_grade = (
+                agp.clamp_arena_grade(cls_grade, agp.DEFAULT_ARENA_GRADE, subject=subject)
+                if cls_grade
+                else agp.DEFAULT_ARENA_GRADE
+            )
         else:
             active_grade = agp.DEFAULT_ARENA_GRADE
 
@@ -674,7 +678,7 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
         return {
             "subject": subject,
             "grade": active_grade,
-            "availableGrades": agp.build_available_grades(active_grade, active_grade),
+            "availableGrades": agp.build_available_grades(active_grade, active_grade, subject=subject),
             "ageProfile": agp.get_age_interaction_profile(active_grade),
             "classId": use_class_id,
             "classes": class_list,
@@ -1153,6 +1157,7 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
 
     @router.get("/parent/arena-summary")
     @router.get("/parent/arena/summary")
+    @router.get("/parent/arena-overview")
     def parent_arena_summary(
         subject: str = "",
         grade: int | None = None,
@@ -1169,7 +1174,7 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
         for c in children:
             sid = int(c.id)
             child_grade = agp.detect_user_grade(implementation, db, c)
-            active_grade = agp.resolve_arena_grade(grade, child_grade)
+            active_grade = agp.resolve_arena_grade(grade, child_grade, subject=subject or None)
             tr_rows = db.execute(select(t_targets).where(t_targets.c.student_id == sid)).all()
             tids = [int(r.task_id) for r in tr_rows]
             child_tasks: list[dict[str, Any]] = []
@@ -1209,7 +1214,8 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
             total_review_due = 0
             all_node_details: list[dict[str, Any]] = []
             for sname in subjs:
-                grade_meta = _subject_meta(implementation, sname, grade=active_grade)
+                subj_grade = agp.resolve_arena_grade(grade, child_grade, subject=sname)
+                grade_meta = _subject_meta(implementation, sname, grade=subj_grade)
                 all_meta = _subject_meta(implementation, sname)
                 m_map, s_rank = _load_subject_maps(db, int(u.school_id), sname, [sid])
                 lit_n = mastered_n = review_due_n = 0
@@ -1236,7 +1242,7 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
                         review_due_n += 1
                     node_details.append({
                         "subject": sname,
-                        "grade": active_grade,
+                        "grade": subj_grade,
                         "key": nk,
                         "name": n["name"],
                         "domain": grade_meta["domain_name_fn"](n),
@@ -1287,7 +1293,7 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
                 points_balance = pts["balance"]
                 subj_stats.append({
                     "subject": sname,
-                    "grade": active_grade,
+                    "grade": subj_grade,
                     "litNodes": lit_n,
                     "masteredNodes": mastered_n,
                     "totalNodes": len(grade_meta["nodes"]),
@@ -1310,7 +1316,7 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
                 "name": c.name or c.username,
                 "grade": active_grade,
                 "studentGrade": child_grade,
-                "availableGrades": agp.build_available_grades(active_grade, child_grade),
+                "availableGrades": agp.build_available_grades(active_grade, child_grade, subject=subject or None),
                 "pointsBalance": points_balance,
                 "cheeredToday": cheered_today,
                 "reviewDueCount": total_review_due,

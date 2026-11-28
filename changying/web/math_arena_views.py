@@ -207,7 +207,7 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
     def build_map_payload(db: Any, u: Any, grade: int | None = None) -> dict[str, Any]:
         ensure_tables(db)
         student_grade = agp.detect_user_grade(implementation, db, u)
-        active_grade = agp.resolve_arena_grade(grade, student_grade)
+        active_grade = agp.resolve_arena_grade(grade, student_grade, subject="数学")
         m = mbm.get_builtin_math_map(active_grade)
         rows = db.execute(
             select(t_mastery).where(t_mastery.c.school_id == u.school_id, t_mastery.c.student_id == u.id)
@@ -277,7 +277,7 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
             "subject": m["subject"],
             "grade": active_grade,
             "studentGrade": student_grade,
-            "availableGrades": agp.build_available_grades(active_grade, student_grade),
+            "availableGrades": agp.build_available_grades(active_grade, student_grade, subject="数学"),
             "ageProfile": agp.get_age_interaction_profile(active_grade),
             "textbookAgnostic": True,
             "summary": {
@@ -475,7 +475,7 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
         need(u, "student")
         ensure_tables(db)
         student_grade = agp.detect_user_grade(implementation, db, u)
-        active_grade = agp.resolve_arena_grade(grade, student_grade)
+        active_grade = agp.resolve_arena_grade(grade, student_grade, subject="数学")
         rows = db.execute(
             select(t_sprints)
             .where(
@@ -534,7 +534,7 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
             "subject": "数学",
             "grade": active_grade,
             "studentGrade": student_grade,
-            "availableGrades": agp.build_available_grades(active_grade, student_grade),
+            "availableGrades": agp.build_available_grades(active_grade, student_grade, subject="数学"),
             "ageProfile": agp.get_age_interaction_profile(active_grade),
             "tiers": es.TIERS,
             "items": items,

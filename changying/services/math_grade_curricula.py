@@ -1,8 +1,9 @@
-"""数学 3、4、6 年级通用知识地图、确定性参数化题库与强应试专项定义.
+"""数学 1、2、3、4、6 年级通用知识地图、确定性参数化题库与强应试/乐考专项定义.
 
 核心约定：
-- 每个年级 4 个知识域单元（D1 数与运算、D2 图形与几何、D3 数量关系与代数/分数、D4 统计与数学广角），每个域 4 个核心节点，共 16 个节点；
+- 每个年级 4 个知识域单元，每个域 4 个核心节点，共 16 个节点；
 - 所有节点题目随 seed 确定性生成不同数值，覆盖 single_choice / true_false / fill_blank / calculation / short_answer 5 种题型与 basic / medium / hard 3 档难度；
+- 1、2 年级所有非选择题（fill_blank / calculation / short_answer）标准答案均为纯数字，学生只用内嵌大号数字盘（0-9）即可 100% 独立作答；
 - 所有数值由 Python 精确计算得出，零幻觉；
 - 几何/图形节点支持系统画图题（VISUAL_NODE_MAP + 标准 gridshape 图形生成）。
 """
@@ -27,8 +28,12 @@ TYPE_POINTS: dict[str, int] = {
     "multi_step": 5,
 }
 
-# G3 / G4 / G6 几何节点到 visual_questions 画图族的映射
+# G1 / G2 / G3 / G4 / G6 几何节点到 visual_questions 画图族的映射
 GRADE_VISUAL_NODE_MAP: dict[str, tuple[str, ...]] = {
+    "G1-M3-2": ("1-1",),
+    "G1-M3-3": ("6-4", "4-2"),
+    "G2-M3-2": ("4-1",),
+    "G2-M3-3": ("1-1", "4-1", "4-2"),
     "G3-M2-3": ("6-4", "4-2"),
     "G3-M2-4": ("6-4", "6-6"),
     "G4-M2-3": ("6-1", "6-3"),
@@ -201,8 +206,80 @@ def _bearing_grid_figure(dx: int, dy: int) -> dict[str, Any]:
 
 
 # ==============================================================================
-# 1. 三年级 / 四年级 / 六年级 数学通用知识地图定义（各 16 节点）
+# 1. 一年级 / 二年级 / 三年级 / 四年级 / 六年级 数学通用知识地图定义（各 16 节点）
 # ==============================================================================
+
+MATH_G1_CORE_MAP: dict[str, Any] = {
+    "version": 2,
+    "subject": SUBJECT_MATH,
+    "grade": 1,
+    "textbookAgnostic": True,
+    "title": GRADE_THEMES[1]["mathTitle"],
+    "units": [
+        _u("D1", "数与认数", "number_ops", "🔢"),
+        _u("D2", "加减口算", "number_ops", "⚡"),
+        _u("D3", "图形位置与钟表人民币", "geometry", "📐"),
+        _u("D4", "看图列式与思维启蒙", "algebra_word", "🧩"),
+    ],
+    "nodes": [
+        # D1 数与认数
+        _n("G1-M1-1", "D1", "10以内数的认识与分合", "认识 0～10 各数的含义、顺序、大小比较及 2～10 各数的分与合"),
+        _n("G1-M1-2", "D1", "11～20各数的组成（十位与个位）", "认识计数单位“一”和“十”，掌握 11～20 各数由 1 个十和几个一组成", ["G1-M1-1"]),
+        _n("G1-M1-3", "D1", "100以内数的顺序与比大小", "掌握 100 以内数的读写、百数表顺序、几十几的组成及两位数大小比较", ["G1-M1-2"]),
+        _n("G1-M1-4", "D1", "整十数加一位数及相应减法", "结合数的组成熟练计算整十数加一位数及相应的减法（如 30+5=35、35-5=30）", ["G1-M1-3"]),
+        # D2 加减口算
+        _n("G1-M2-1", "D2", "10以内加减法口算", "熟练口算 10 以内加法、减法、连加、连减及加减混合运算", ["G1-M1-1"]),
+        _n("G1-M2-2", "D2", "20以内凑十法进位加法", "掌握“看大数，拆小数，凑成十，加剩数”的 9/8/7/6 加几进位加法", ["G1-M1-2", "G1-M2-1"]),
+        _n("G1-M2-3", "D2", "20以内破十法退位减法", "掌握“破十法”与“想加算减法”口算十几减 9、8、7、6 等退位减法", ["G1-M2-2"]),
+        _n("G1-M2-4", "D2", "100以内整十数与两位数加减一位数", "掌握整十数加减整十数、两位数加减一位数和整十数口算", ["G1-M1-4", "G1-M2-3"]),
+        # D3 图形位置与钟表人民币
+        _n("G1-M3-1", "D3", "上下前后左右位置辨析", "理解上下、前后、左右的相对位置关系，按顺序和方位确定物体位置"),
+        _n("G1-M3-2", "D3", "认识立体图形（长方体/正方体/圆柱/球）", "直观辨认长方体、正方体、圆柱和球的特征，数出立体组合中积木的个数"),
+        _n("G1-M3-3", "D3", "认识平面图形与拼组", "认识长方形、正方形、平行四边形、三角形和圆，掌握七巧板与简单图形拼组", ["G1-M3-2"]),
+        _n("G1-M3-4", "D3", "认识整时与人民币元角分换算", "看钟面认读整时，掌握 1 元=10 角、1 角=10 分换算与简单购物计算", ["G1-M1-3"]),
+        # D4 看图列式与思维启蒙
+        _n("G1-M4-1", "D4", "一图四式与求和求部分应用", "看懂大括号与问号图意，用加法求总数、用减法求部分数", ["G1-M2-2", "G1-M2-3"]),
+        _n("G1-M4-2", "D4", "比多少与相差几实际问题", "运用一一对应和减法解决“一个数比另一个数多几（少几）”的实际问题", ["G1-M4-1"]),
+        _n("G1-M4-3", "D4", "找规律填数与图形规律", "发现图形或数字重复排列、依次递增或递减的规律并填出空缺项", ["G1-M1-3"]),
+        _n("G1-M4-4", "D4", "排队问题（第几与有几人）", "区分“几个”和“第几”，解决排队求总人数及两人之间有几人问题", ["G1-M2-1"]),
+    ],
+}
+
+MATH_G2_CORE_MAP: dict[str, Any] = {
+    "version": 2,
+    "subject": SUBJECT_MATH,
+    "grade": 2,
+    "textbookAgnostic": True,
+    "title": GRADE_THEMES[2]["mathTitle"],
+    "units": [
+        _u("D1", "加减与乘法口诀", "number_ops", "⚡"),
+        _u("D2", "表内除法与万以内数", "number_ops", "🔢"),
+        _u("D3", "测量图形与时间质量", "geometry", "📐"),
+        _u("D4", "混合运算与推理广角", "algebra_word", "🧩"),
+    ],
+    "nodes": [
+        # D1 加减与乘法口诀
+        _n("G2-M1-1", "D1", "100以内两位数进位加与退位减", "掌握两位数加两位数进位笔算、两位数减两位数退位笔算及求比一个数多（少）几"),
+        _n("G2-M1-2", "D1", "连加连减与加减混合", "掌握 100 以内连加、连减、加减混合及带小括号的两步加减运算", ["G2-M1-1"]),
+        _n("G2-M1-3", "D1", "乘法的初步认识与2～6乘法口诀", "理解乘法是求几个相同加数和的简便运算，熟记并运用 2～6 的乘法口诀"),
+        _n("G2-M1-4", "D1", "7～9乘法口诀与表内乘法综合", "熟记 7、8、9 的乘法口诀，理解“倍”的含义并解决表内乘法应用题", ["G2-M1-3"]),
+        # D2 表内除法与万以内数
+        _n("G2-M2-1", "D2", "平均分与除法的初步认识", "理解“每份分得同样多叫平均分”，认识除法算式中的被除数、除数和商", ["G2-M1-3"]),
+        _n("G2-M2-2", "D2", "用2～9乘法口诀求商", "熟练运用“想乘法口诀求商”计算表内除法，解决平均分与包含除问题", ["G2-M1-4", "G2-M2-1"]),
+        _n("G2-M2-3", "D2", "有余数的除法（余数比除数小）", "掌握有余数除法的含义与试商，牢记“余数一定比除数小”及被除数=商×除数+余数", ["G2-M2-2"]),
+        _n("G2-M2-4", "D2", "万以内数的读写组成与近似数", "认识千位和万位，掌握 10000 以内数的组成、读写、大小比较、近似数与整百整千加减"),
+        # D3 测量图形与时间质量
+        _n("G2-M3-1", "D3", "厘米和米的认识与换算", "建立 1 厘米和 1 米的长度观念，掌握 1 米=100 厘米及用尺子测量物体长度"),
+        _n("G2-M3-2", "D3", "角的初步认识（直角/锐角/钝角）", "认识角的顶点和边，借助三角尺辨认直角、锐角和钝角，掌握角的大小与边长无关", ["G2-M3-1"]),
+        _n("G2-M3-3", "D3", "观察物体与轴对称平移旋转", "从不同方向观察简单立体图形，辨认轴对称图形、平移现象与旋转现象", ["G2-M3-2"]),
+        _n("G2-M3-4", "D3", "认识几时几分与克和千克", "掌握 1 时=60 分、钟面几时几分认读，以及 1 千克=1000 克的质量换算与比较"),
+        # D4 混合运算与推理广角
+        _n("G2-M4-1", "D4", "乘加乘减与两级混合运算", "掌握先算乘除后算加减、有小括号先算小括号里面的两步混合运算", ["G2-M1-4", "G2-M2-2"]),
+        _n("G2-M4-2", "D4", "有余数除法周期与租船进一问题", "运用有余数除法解决租船“进一法”、购物“去尾法”及周期循环排列问题", ["G2-M2-3"]),
+        _n("G2-M4-3", "D4", "简单的排列组合（搭配问题）", "运用固定十位法或连线法解决数字组数、衣服搭配与握手场次问题", ["G2-M1-3"]),
+        _n("G2-M4-4", "D4", "简单逻辑推理（排除法与方格填数）", "运用排除法进行简单条件推理，掌握每行每列 1～4 不重复的四宫格填数"),
+    ],
+}
 
 MATH_G3_CORE_MAP: dict[str, Any] = {
     "version": 2,
@@ -313,6 +390,8 @@ MATH_G6_CORE_MAP: dict[str, Any] = {
 }
 
 GRADE_MATH_MAPS: dict[int, dict[str, Any]] = {
+    1: MATH_G1_CORE_MAP,
+    2: MATH_G2_CORE_MAP,
     3: MATH_G3_CORE_MAP,
     4: MATH_G4_CORE_MAP,
     6: MATH_G6_CORE_MAP,
@@ -320,14 +399,118 @@ GRADE_MATH_MAPS: dict[int, dict[str, Any]] = {
 
 
 def get_grade_math_map(grade: int) -> dict[str, Any] | None:
-    """获取 G3/G4/G6 通用数学知识地图深拷贝."""
+    """获取 G1/G2/G3/G4/G6 通用数学知识地图深拷贝."""
     m = GRADE_MATH_MAPS.get(int(grade))
     return copy.deepcopy(m) if m is not None else None
 
 
 # ==============================================================================
-# 2. G3 / G4 / G6 各 4 个强应试专项（共 12 个新增专项）
+# 2. G1 / G2 / G3 / G4 / G6 各 4 个应试/乐考专项（共 20 个分年级专项）
 # ==============================================================================
+
+MATH_G1_SPRINTS: list[dict[str, Any]] = [
+    {
+        "slug": "g1-math-add-sub-sprint",
+        "subject": "数学",
+        "grade": 1,
+        "title": "20以内凑十破十速算乐考",
+        "subtitle": "围绕 10 以内分合加减、20 以内凑十法进位加与破十法退位减的零打字速算乐考",
+        "icon": "⚡",
+        "timeLimitSec": 480,
+        "questionCount": 8,
+        "nodeKeys": ["G1-M1-1", "G1-M2-1", "G1-M2-2", "G1-M2-3"],
+        "typeMix": {"calculation": 3, "single_choice": 2, "true_false": 1, "fill_blank": 2},
+    },
+    {
+        "slug": "g1-math-hundred-num-sprint",
+        "subject": "数学",
+        "grade": 1,
+        "title": "100以内认数与加减闯关",
+        "subtitle": "11～20 数的组成、100 以内百数表顺序比大小、整十数与两位数加减一位数闯关",
+        "icon": "🔢",
+        "timeLimitSec": 480,
+        "questionCount": 8,
+        "nodeKeys": ["G1-M1-2", "G1-M1-3", "G1-M1-4", "G1-M2-4"],
+        "typeMix": {"calculation": 2, "single_choice": 2, "true_false": 1, "fill_blank": 2, "short_answer": 1},
+    },
+    {
+        "slug": "g1-math-shape-clock-sprint",
+        "subject": "数学",
+        "grade": 1,
+        "title": "图形位置、钟表与人民币看图乐考",
+        "subtitle": "上下前后左右位置、立体积木与七巧板平面拼组、整时钟面与元角分换算看图闯关",
+        "icon": "📐",
+        "timeLimitSec": 480,
+        "questionCount": 8,
+        "preferVisual": True,
+        "nodeKeys": ["G1-M3-1", "G1-M3-2", "G1-M3-3", "G1-M3-4"],
+        "typeMix": {"single_choice": 3, "true_false": 1, "fill_blank": 2, "calculation": 1, "short_answer": 1},
+    },
+    {
+        "slug": "g1-math-word-logic-sprint",
+        "subject": "数学",
+        "grade": 1,
+        "title": "看图列式、找规律与排队思维专项",
+        "subtitle": "一图四式求和求部分、比多少相差几、数字图形找规律与排队第几思维乐考",
+        "icon": "🏆",
+        "timeLimitSec": 480,
+        "questionCount": 8,
+        "nodeKeys": ["G1-M4-1", "G1-M4-2", "G1-M4-3", "G1-M4-4"],
+        "typeMix": {"single_choice": 2, "true_false": 1, "fill_blank": 2, "calculation": 1, "short_answer": 2},
+    },
+]
+
+MATH_G2_SPRINTS: list[dict[str, Any]] = [
+    {
+        "slug": "g2-math-mul-calc-sprint",
+        "subject": "数学",
+        "grade": 2,
+        "title": "100以内笔算与表内乘除速算乐考",
+        "subtitle": "两位数进退位加减、连加连减混合、2～9 乘法口诀与用乘法口诀求商速算",
+        "icon": "⚡",
+        "timeLimitSec": 480,
+        "questionCount": 8,
+        "nodeKeys": ["G2-M1-1", "G2-M1-2", "G2-M1-3", "G2-M1-4", "G2-M2-2"],
+        "typeMix": {"calculation": 3, "single_choice": 2, "true_false": 1, "fill_blank": 2},
+    },
+    {
+        "slug": "g2-math-div-rem-sprint",
+        "subject": "数学",
+        "grade": 2,
+        "title": "有余数除法与万以内数闯关",
+        "subtitle": "平均分与除法算式、表内求商、有余数除法（余数比除数小）与万以内数读写组成",
+        "icon": "🔢",
+        "timeLimitSec": 480,
+        "questionCount": 8,
+        "nodeKeys": ["G2-M2-1", "G2-M2-2", "G2-M2-3", "G2-M2-4"],
+        "typeMix": {"calculation": 2, "single_choice": 2, "true_false": 1, "fill_blank": 2, "short_answer": 1},
+    },
+    {
+        "slug": "g2-math-measure-angle-sprint",
+        "subject": "数学",
+        "grade": 2,
+        "title": "厘米和米、角与图形运动看图乐考",
+        "subtitle": "厘米和米测量换算、直角锐角钝角辨析、观察物体与对称平移旋转、时分与克和千克",
+        "icon": "📐",
+        "timeLimitSec": 480,
+        "questionCount": 8,
+        "preferVisual": True,
+        "nodeKeys": ["G2-M3-1", "G2-M3-2", "G2-M3-3", "G2-M3-4"],
+        "typeMix": {"single_choice": 3, "true_false": 1, "fill_blank": 2, "calculation": 1, "short_answer": 1},
+    },
+    {
+        "slug": "g2-math-cycle-logic-sprint",
+        "subject": "数学",
+        "grade": 2,
+        "title": "周期租船、搭配与逻辑推理压轴专项",
+        "subtitle": "两级混合运算、有余数除法周期与租船进一、排列组合搭配及四宫格填数逻辑推理",
+        "icon": "🏆",
+        "timeLimitSec": 480,
+        "questionCount": 8,
+        "nodeKeys": ["G2-M4-1", "G2-M4-2", "G2-M4-3", "G2-M4-4"],
+        "typeMix": {"single_choice": 2, "true_false": 1, "fill_blank": 2, "calculation": 1, "short_answer": 2},
+    },
+]
 
 MATH_G3_SPRINTS: list[dict[str, Any]] = [
     {
@@ -1757,10 +1940,897 @@ def _build_g6_node_pool(node_key: str, s: int) -> list[dict[str, Any]]:
     ]
 
 
+def _build_g1_node_pool(node_key: str, s: int) -> list[dict[str, Any]]:
+    """一年级 16 个节点确定性参数化题目生成器（非选择题标准答案 100% 为纯数字）."""
+    a = 2 + (s % 6)          # 2..7
+    b = 2 + ((s * 3) % 5)    # 2..6
+    c = 3 + ((s * 5) % 5)    # 3..7
+
+    if node_key == "G1-M1-1":
+        tot = min(10, a + b)
+        left = a - 1
+        right = tot - left
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"数的分合口算：{tot} 可以分成 {left} 和几？（只填数字）",
+                    str(right), f"因为 {left} + {right} = {tot}，所以 {tot} 可以分成 {left} 和 {right}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"在 0～10 的数字顺序中，排在 {a} 和 {a + 2} 中间的数是（ ）。",
+                      str(a + 1), [str(a - 1), str(a + 3), "10"],
+                      f"按从小到大顺序数：{a}、{a + 1}、{a + 2}，中间是 {a + 1}。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：盘子里一个桃子也没有，可以用数字“0”来表示。", True, "0 表示一个物体也没有，也可以表示起点。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：把 {a} 和 {10 - a} 合起来是（ ）。",
+                    "10", f"{a} 和 {10 - a} 凑成 10。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      f"下面各数中，比 {a} 大且比 {a + 2} 小的数是（ ）。",
+                      str(a + 1), [str(a), str(a + 2), "0"],
+                      f"{a} < {a + 1} < {a + 2}。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：妈妈把 {tot} 颗草莓分给姐弟俩，姐姐分到 {left} 颗，弟弟分到几颗？（只填数字）",
+                    str(right), f"{tot} 分成 {left} 和 {right}，弟弟分到 {right} 颗。", [f"{right}颗"]),
+        ]
+
+    if node_key == "G1-M1-2":
+        ones = a
+        num = 10 + ones
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"根据数的组成直接写得数：10 + {ones} =",
+                    str(num), f"1 个十和 {ones} 个一合起来是 {num}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "计数器上从右边起，第一位是个位，第二位是（ ）位。",
+                      "十", ["百", "个", "一"],
+                      "从右边起第一位是个位，第二位是十位。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：20 里面有 2 个十。", True, "2 个十合起来是 20。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：1 个十和 {ones} 个一合起来是（ ）。",
+                    str(num), f"十位是 1，个位是 {ones}，这个数是 {num}。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      f"在两位数 {num} 中，十位上的“1”表示（ ）。",
+                      "1个十", ["1个一", f"{ones}个一", "10个十"],
+                      "十位上的 1 表示 1 个十（即 10）。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：一个两位数，十位上是 1，个位上的数比十位上的数大 {ones}，这个两位数是多少？（只填数字）",
+                    str(10 + 1 + ones), f"个位是 1 + {ones} = {1 + ones}，这个两位数是 {11 + ones}。"),
+        ]
+
+    if node_key == "G1-M1-3":
+        tens = a + 1
+        ones = b
+        num = tens * 10 + ones
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"按顺序填数计算：比 {num} 大 1 的数是多少？（只填数字）",
+                    str(num + 1), f"{num} 后面的一个数是 {num + 1}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"比较两位数大小：{tens * 10 + 8} ○ {tens * 10 + 2}，○ 里应填（ ）。",
+                      ">", ["<", "=", "无法比较"],
+                      "十位相同看个位，8 > 2，所以填“>”。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：100 里面有 10 个十，100 是最小的三位数。", True, "10 个十是一百（100），它是最小的三位数。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：{tens} 个十和 {ones} 个一组成的两位数是（ ）。",
+                    str(num), f"{tens} 个十是 {tens * 10}，加上 {ones} 个一是 {num}。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      f"与 {tens * 10} 相邻的两个数是（ ）。",
+                      f"{tens * 10 - 1} 和 {tens * 10 + 1}",
+                      [f"{tens * 10 - 10} 和 {tens * 10 + 10}", f"{tens * 10 + 1} 和 {tens * 10 + 2}", f"{tens * 10 - 2} 和 {tens * 10 - 1}"],
+                      f"与一个数相邻的数是比它小 1 和大 1 的数，即 {tens * 10 - 1} 和 {tens * 10 + 1}。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：在百数表中，上下相邻两个数相差 10。数字 {num} 正下方那一格的数比它大 10，正下方那个数是多少？（只填数字）",
+                    str(num + 10), f"{num} + 10 = {num + 10}。"),
+        ]
+
+    if node_key == "G1-M1-4":
+        tens = (a + 1) * 10
+        ones = b
+        tot = tens + ones
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"直接写出得数：{tens} + {ones} =",
+                    str(tot), f"{a + 1} 个十加 {ones} 个一等于 {tot}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"计算 {tot} - {ones} 的结果是（ ）。",
+                      str(tens), [str(ones), str(tot + ones), str(tens - 10)],
+                      f"从 {a + 1} 个十和 {ones} 个一里去掉 {ones} 个一，还剩 {tens}。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  f"判断：因为 {tens} + {ones} = {tot}，所以 {tot} - {tens} = {ones}。",
+                  True, "根据加减法互逆和数的组成，去掉整十部分就剩个位部分。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：{tot} - {tens} =（ ）。",
+                    str(ones), f"{tot} 减去 {tens} 等于 {ones}。"),
+            _text_q(f"bi:{node_key}:calc2:{s}", node_key, "medium", "calculation",
+                    f"计算：{tot} - {ones} =",
+                    str(tens), f"{tot} - {ones} = {tens}。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：班级图书角原来有 {tens} 本绘本，老师又拿来 {ones} 本，现在一共有多少本绘本？（只填数字）",
+                    str(tot), f"{tens} + {ones} = {tot}（本）。", [f"{tot}本"]),
+        ]
+
+    if node_key == "G1-M2-1":
+        x = a
+        y = 10 - a
+        z = 2
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"直接写出得数：{x} + {y} =",
+                    "10", f"{x} + {y} = 10。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"算式 10 - {x} 的得数是（ ）。",
+                      str(y), [str(y - 1), str(y + 1), str(x)],
+                      f"因为 {x} + {y} = 10，所以 10 - {x} = {y}。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：任何一个数加上 0 或者减去 0，结果都还是原来的数。",
+                  True, "0 表示没有增减，任何数加 0 或减 0 都得原数。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：{x} +（ ）= 9。",
+                    str(9 - x), f"9 - {x} = {9 - x}。"),
+            _text_q(f"bi:{node_key}:calc2:{s}", node_key, "medium", "calculation",
+                    f"连加口算：{x} + {z} + 1 =",
+                    str(x + z + 1), f"从左往右算：{x} + {z} = {x + z}，再加 1 得 {x + z + 1}。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：树上原来有 9 只小鸟，先飞走了 {a - 1} 只，又飞走了 2 只，树上还剩几只小鸟？（只填数字）",
+                    str(9 - (a - 1) - 2), f"9 - {a - 1} - 2 = {9 - (a - 1) - 2}（只）。", [f"{9 - (a - 1) - 2}只"]),
+        ]
+
+    if node_key == "G1-M2-2":
+        n1 = 8 if s % 2 == 0 else 9
+        need = 10 - n1
+        n2 = 3 + (s % 6)
+        rem = n2 - need
+        ans = n1 + n2
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"直接写出得数：{n1} + {n2} =",
+                    str(ans), f"用凑十法：{n1} + {need} = 10，10 + {rem} = {ans}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"用“凑十法”计算 {n1} + {n2} 时，先把 {n2} 分成 {need} 和 {rem}，第一步先算（ ）。",
+                      f"{n1} + {need} = 10", [f"10 - {n1} = {need}", f"{n1} + 10 = {n1 + 10}", f"{n2} - {need} = {rem}"],
+                      f"看大数 {n1}，拆小数 {n2} 为 {need} 和 {rem}，先凑成 10：{n1} + {need} = 10。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：交换两个加数的位置，7 + 5 和 5 + 7 的得数相同，都等于 12。",
+                  True, "交换加数位置，和不变，7 + 5 = 5 + 7 = 12。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：用凑十法算 {n1} + {n2} = {ans} 时，把 {n2} 分成 {need} 和（ ）。",
+                    str(rem), f"{n2} 可以分成 {need} 和 {rem}。"),
+            _text_q(f"bi:{node_key}:calc2:{s}", node_key, "medium", "calculation",
+                    f"口算：7 + {b + 3} =",
+                    str(7 + b + 3), f"7 凑 3 得 10，7 + {b + 3} = {7 + b + 3}。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：小红折了 {n1} 只千纸鹤，小明折了 {n2} 只千纸鹤，他们一共折了多少只？（只填数字）",
+                    str(ans), f"{n1} + {n2} = {ans}（只）。", [f"{ans}只"]),
+        ]
+
+    if node_key == "G1-M2-3":
+        ones = 2 + (s % 5)
+        dvd = 10 + ones
+        sub = 8 if s % 2 == 0 else 9
+        ans = dvd - sub
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"直接写出得数：{dvd} - {sub} =",
+                    str(ans), f"用破十法：10 - {sub} = {10 - sub}，{10 - sub} + {ones} = {ans}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"用“破十法”计算 {dvd} - {sub} 时，把 {dvd} 分成 10 和 {ones}，先算 10 - {sub} = {10 - sub}，再算（ ）。",
+                      f"{10 - sub} + {ones} = {ans}", [f"10 - {ones} = {10 - ones}", f"{sub} - {ones} = {sub - ones}", f"{ones} - {10 - sub}"],
+                      f"破十后剩下的 {10 - sub} 再加上个位上的 {ones}，得 {ans}。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：计算 15 - 8 时，可以用“想加算减法”，想 8 + 7 = 15，所以 15 - 8 = 7。",
+                  True, "想加算减法是计算 20 以内退位减法的常用方法。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：因为 {sub} +（ ）= {dvd}，所以 {dvd} - {sub} = {ans}。",
+                    str(ans), f"{sub} + {ans} = {dvd}。"),
+            _text_q(f"bi:{node_key}:calc2:{s}", node_key, "medium", "calculation",
+                    f"口算：{11 + (s % 4)} - 7 =",
+                    str(11 + (s % 4) - 7), f"10 - 7 = 3，3 + {1 + (s % 4)} = {11 + (s % 4) - 7}。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：草地上原来有 {dvd} 只小兔，跑回窝里 {sub} 只，草地上还剩几只小兔？（只填数字）",
+                    str(ans), f"{dvd} - {sub} = {ans}（只）。", [f"{ans}只"]),
+        ]
+
+    if node_key == "G1-M2-4":
+        t1 = (a + 1) * 10
+        n_base = t1 + 3
+        add_one = b
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"整十数口算：{t1} + 20 =",
+                    str(t1 + 20), f"{a + 1} 个十加 2 个十是 {t1 + 20}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"计算两位数加一位数 {t1 + 2} + 5 时，应该先把个位上的（ ）相加。",
+                      "2 和 5", [f"{a + 1} 和 5", "2 和 50", f"{t1} 和 5"],
+                      "相同数位相加，先把个位上的 2 和 5 相加得 7。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：口算 35 + 8 时，个位 5 + 8 = 13 满十，向十位进 1，得数是 43。",
+                  True, "35 + 8 = 30 + (5 + 8) = 30 + 13 = 43。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：{n_base} + {add_one} =（ ）。",
+                    str(n_base + add_one), f"个位 3 + {add_one} = {3 + add_one}，加上 {t1} 得 {n_base + add_one}。"),
+            _text_q(f"bi:{node_key}:calc2:{s}", node_key, "medium", "calculation",
+                    f"退位口算：{t1 + 2} - 5 =",
+                    str(t1 + 2 - 5), f"从十位借 1 当十，12 - 5 = 7，加上 {t1 - 10} 得 {t1 + 2 - 5}。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：果篮里有 {n_base} 个橘子，吃掉了 {add_one} 个，还剩多少个橘子？（只填数字）",
+                    str(n_base - add_one), f"{n_base} - {add_one} = {n_base - add_one}（个）。", [f"{n_base - add_one}个"]),
+        ]
+
+    if node_key == "G1-M3-1":
+        return [
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "升国旗行少先队队礼时，我们应该举起（ ）手。",
+                      "右", ["左", "两只", "任意一只"],
+                      "行少先队队礼要右手五指并拢高举过头顶。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：小芳站在小明的后面，那么小明就站在小芳的前面。",
+                  True, "前后是相对的位置关系。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "在学校走廊和上下楼梯时，我们要靠（ ）边走最安全。",
+                      "右", ["左", "中间", "随便哪边"],
+                      "上下楼梯和走路靠右行是交通与校园安全常识。", s + 1),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：书架从下往上数共有 {a + 2} 层，最上面一层是第（ ）层。（只填数字）",
+                    str(a + 2), f"从下往上数共 {a + 2} 层，最上面就是第 {a + 2} 层。"),
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"位置计数：一排有 {a + 3} 把椅子，小亮坐在最左边第 1 把椅子上，他的右边还有几把椅子？（只填数字）",
+                    str(a + 2), f"{a + 3} - 1 = {a + 2}（把）。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：这一列同学从前往后数，欢欢排第 {a} 个，她后面还有 {b} 个同学，这一列一共有多少个同学？（只填数字）",
+                    str(a + b), f"{a} + {b} = {a + b}（个）。", [f"{a + b}个"]),
+        ]
+
+    if node_key == "G1-M3-2":
+        c1 = a
+        c2 = b
+        tot_blocks = c1 + c2
+        return [
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "魔方有 6 个平平的面，而且每个面都是大小一样的正方形，它的形状是（ ）。",
+                      "正方体", ["长方体", "圆柱", "球"],
+                      "6 个面都是完全相同的正方形的立体图形是正方体。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：篮球、乒乓球这类“球”没有平平的面，可以向任意方向滚动。",
+                  True, "球表面是曲面，能向四面八方滚动。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "上下一样粗，两头是圆圆的、平平的面，放倒能滚动、立着放很稳的立体图形是（ ）。",
+                      "圆柱", ["球", "正方体", "长方体"],
+                      "圆柱上下两个底面是大小相等的圆，侧面是曲面。", s + 1),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    "填空：用完全相同的小正方体拼成一个更大的正方体，至少需要（ ）个小正方体。（只填数字）",
+                    "8", "上下两层各 4 个（2×2×2），至少需要 8 个小正方体。"),
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"数积木计算：搭积木时底层用了 {c1} 个正方体，上层用了 {c2} 个正方体，一共用了几个正方体？（只填数字）",
+                    str(tot_blocks), f"{c1} + {c2} = {tot_blocks}（个）。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：积木盒里有 {c1} 个长方体、{c2} 个正方体和 2 个球，长方体和正方体一共有多少个？（只填数字）",
+                    str(tot_blocks), f"{c1} + {c2} = {tot_blocks}（个）。", [f"{tot_blocks}个"]),
+        ]
+
+    if node_key == "G1-M3-3":
+        w_len = a + 1
+        h_len = b
+        fig = _rect_grid_figure(w_len, h_len, "方格纸上的平面图形")
+        return [
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "用正方体积木的一个面在纸上印一印，描出来的平面图形是（ ）。",
+                      "正方形", ["长方形", "圆", "三角形"],
+                      "正方体的每个面都是正方形。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：一套标准的七巧板共有 7 块板，由 5 个三角形、1 个正方形和 1 个平行四边形组成。",
+                  True, "七巧板包含 5 块三角形、1 块正方形和 1 块平行四边形。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    "看图填空：图中方格纸上的长方形一共有（ ）条边。（只填数字）",
+                    "4", "长方形和正方形都有 4 条直直的边。", figure=fig),
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"图形分割计算：1 张正方形纸沿着对角线对折剪开能剪成 2 个三角形，{a} 张这样的正方形纸能剪成几个三角形？（只填数字）",
+                    str(a * 2), f"{a} + {a} = {a * 2}（个）。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "用圆柱的底面在印泥上印一下，印出的平面图形是（ ）。",
+                      "圆", ["正方形", "三角形", "平行四边形"],
+                      "圆柱上下两个平平的底面都是圆。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    "解决问题：一副七巧板共有 7 块板，拿走其中的 5 块三角形板后，还剩下几块板？（只填数字）",
+                    "2", "7 - 5 = 2（块），剩下 1 块正方形和 1 块平行四边形。"),
+        ]
+
+    if node_key == "G1-M3-4":
+        hr = 2 + (s % 9)
+        yuan = a
+        jiao = yuan * 10
+        return [
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "basic", "fill_blank",
+                    f"填空：钟面上分针长长指着 12，时针短短指着 {hr}，这时是（ ）时。（只填数字）",
+                    str(hr), f"分针指 12，时针指 {hr}，就是 {hr} 时整。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "人民币单位换算中，1 元等于（ ）角。",
+                      "10", ["1", "5", "100"],
+                      "1 元 = 10 角，1 角 = 10 分。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：1 张 10 元的人民币可以换 2 张 5 元的人民币。",
+                  True, "5 元 + 5 元 = 10 元。"),
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "medium", "calculation",
+                    f"元角换算计算：{yuan} 元 =（ ）角。（只填数字）",
+                    str(jiao), f"1 元 = 10 角，{yuan} 元 = {jiao} 角。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      f"买一块 {b} 角的橡皮，付了 1 元钱（10 角），应该找回（ ）角。",
+                      str(10 - b), [str(b), str(10 + b), "1"],
+                      f"1 元 = 10 角，10 - {b} = {10 - b}（角）。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：一支铅笔 {b} 角，一块尺子 {c} 角，买这两样文具一共要付多少角？（只填数字）",
+                    str(b + c), f"{b} + {c} = {b + c}（角）。", [f"{b + c}角"]),
+        ]
+
+    if node_key == "G1-M4-1":
+        left = a + 3
+        right = b + 2
+        tot = left + right
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"看图列式计算：左边有 {left} 个苹果，右边有 {right} 个苹果，一共有多少个苹果？{left} + {right} =",
+                    str(tot), f"求总数用加法：{left} + {right} = {tot}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"图上大括号下面写着“{tot} 只”，左边有 {left} 只，右边标着“？只”，求右边有几只，列式正确的是（ ）。",
+                      f"{tot} - {left}", [f"{tot} + {left}", f"{left} - {right}", f"{tot} + {right}"],
+                      f"已知总数 {tot} 和左边部分 {left}，求右边部分用减法：{tot} - {left}。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：根据一幅左右两部分的图（左 6 右 8），可以写出 6+8=14、8+6=14、14-6=8、14-8=6 四道算式。",
+                  True, "这就是“一图四式”：两道加法算式和两道减法算式。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：笔袋里和笔袋外一共有 {tot} 支铅笔，笔袋外有 {right} 支，笔袋里有（ ）支。",
+                    str(left), f"{tot} - {right} = {left}（支）。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "看图列式时，问号“？”在大括号的尖尖下面，表示求的是（ ）。",
+                      "两部分合起来的总数", ["左边的一部分", "右边的一部分", "两部分相差多少"],
+                      "问号在大括号下方中间表示求合起来一共是多少，用加法。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：荷叶上原来有 {left} 只青蛙，又跳上来 {right} 只，现在荷叶上一共有几只青蛙？（只填数字）",
+                    str(tot), f"{left} + {right} = {tot}（只）。", [f"{tot}只"]),
+        ]
+
+    if node_key == "G1-M4-2":
+        big = 11 + a
+        small = 5 + (s % 4)
+        diff = big - small
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"求相差多少计算：{big} 比 {small} 多几？{big} - {small} =",
+                    str(diff), f"{big} - {small} = {diff}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"红气球有 {big} 个，黄气球有 {small} 个，求“黄气球比红气球少几个”与求“（ ）”是同一个算式。",
+                      "红气球比黄气球多几个", ["红气球和黄气球一共几个", "黄气球有几个", "红气球有几个"],
+                      "“甲比乙少几”和“乙比甲多几”都表示两数的相差量，用大数减小数。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：求一个数比另一个数多几（或少几），要用减法计算。",
+                  True, "比多少求相差数，用大数减去小数。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：{small} 比 {big} 少（ ）。",
+                    str(diff), f"{big} - {small} = {diff}。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      f"小猴摘了 {big} 个桃，小猪摘了 {small} 个桃，桃子相差（ ）个。",
+                      str(diff), [str(big + small), str(small), str(diff + 2)],
+                      f"{big} - {small} = {diff}（个）。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：跳绳乐考中，小亮跳了 {big} 下，小芳跳了 {small} 下，小芳再跳几下就和小亮同样多？（只填数字）",
+                    str(diff), f"相差 {big} - {small} = {diff}（下），再跳 {diff} 下就同样多。", [f"{diff}下"]),
+        ]
+
+    if node_key == "G1-M4-3":
+        step = 2 if s % 2 == 0 else 3
+        start = a
+        n4 = start + 3 * step
+        return [
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "basic", "fill_blank",
+                    f"找规律填数：{start}，{start + step}，{start + 2 * step}，（ ），{start + 4 * step}。",
+                    str(n4), f"每次依次加 {step}，{start + 2 * step} + {step} = {n4}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "按图形规律排列：○ △ ○ △ ○ △ ○（ ），括号里应该填（ ）。",
+                      "△", ["○", "□", "☆"],
+                      "图形按“○ △”两个一组重复排列，○ 后面是 △。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：数列 2，4，6，8，10 的排列规律是后一个数总比前一个数多 2。",
+                  True, "这是依次加 2 的双数递增数列。"),
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "medium", "calculation",
+                    "倒着数找规律：20，18，16，14，（ ）。括号里应填几？（只填数字）",
+                    "12", "每次减 2，14 - 2 = 12。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "小彩旗按“红、黄、蓝、红、黄、蓝……”每 3 面一组重复排列，第 4 面是红色，第 5 面是（ ）色。",
+                      "黄", ["红", "蓝", "绿"],
+                      "第 4 面是第 2 组第 1 面（红），第 5 面是第 2 组第 2 面（黄）。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：小袋鼠跳格子，第 1 次跳到 5，第 2 次跳到 10，第 3 次跳到 15……照这样每次加 5，第 {a} 次跳到数字几？（只填数字）",
+                    str(a * 5), f"每次跳 5 格，第 {a} 次跳到 {a * 5}。"),
+        ]
+
+    # G1-M4-4 排队问题（第几与有几人）
+    front = a
+    back = b
+    tot_q = front + back + 1
+    p1 = 3
+    p2 = 9 + (s % 5)
+    between = p2 - p1 - 1
+    return [
+        _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                f"排队计算：小华前面有 {front} 人，后面有 {back} 人，加上小华自己，这一队一共有多少人？（只填数字）",
+                str(tot_q), f"前面 {front} 人 + 后面 {back} 人 + 自己 1 人 = {tot_q}（人）。"),
+        _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                  f"从前往后数，小明排第 {front + 1}，说明他前面有（ ）人。",
+                  str(front), [str(front + 1), str(front + 2), "1"],
+                  f"排第 {front + 1}，除去自己，前面有 {front + 1} - 1 = {front}（人）。", s),
+        _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+              "判断：求“排第 3 和排第 8 的两人之间有几人”，算式是 8 - 3 - 1 = 4（人）。",
+              True, "求两人之间的人数不包含两头的人，所以要再减 1。"),
+        _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                f"填空：小朋友排队做操，小丽排第 {p1}，小刚排第 {p2}，他们两人之间有（ ）人。",
+                str(between), f"{p2} - {p1} - 1 = {between}（人）。"),
+        _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                  "一队小朋友共 10 人，从左往右数小强排第 4，“10 人”和“第 4”分别表示（ ）。",
+                  "总数量（几个）和排列位置（第几）",
+                  ["都表示总数量", "都表示位置顺序", "小强前面有 10 人"],
+                  "“几个”表示物体的多少（基数），“第几”表示其中一个所在的顺序位置（序数）。", s + 1),
+        _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                f"解决问题：合唱队站成一排，从左数乐乐排第 {front}，从右数乐乐排第 {back}，这一排一共有多少人？（只填数字）",
+                str(front + back - 1), f"乐乐被数了 2 次，总人数 = {front} + {back} - 1 = {front + back - 1}（人）。", [f"{front + back - 1}人"]),
+    ]
+
+
+def _build_g2_node_pool(node_key: str, s: int) -> list[dict[str, Any]]:
+    """二年级 16 个节点确定性参数化题目生成器（非选择题标准答案 100% 为纯数字）."""
+    a = 2 + (s % 7)          # 2..8
+    b = 3 + ((s * 3) % 6)    # 3..8
+    c = 4 + ((s * 5) % 5)    # 4..8
+
+    if node_key == "G2-M1-1":
+        n1 = 26 + a * 3
+        n2 = 17 + b * 2
+        sum_v = n1 + n2
+        m1 = 72 + a
+        m2 = 28 + b
+        diff_v = m1 - m2
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"列竖式计算：{n1} + {n2} =",
+                    str(sum_v), f"个位满十向十位进 1，{n1} + {n2} = {sum_v}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "笔算两位数加减两位数时，相同数位要对齐，从（ ）位算起。",
+                      "个", ["十", "百", "高"],
+                      "笔算加减法都要相同数位对齐，从个位算起。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：笔算两位数减法时，如果个位不够减，要从十位退 1 当 10 再减。",
+                  True, "退位减法法则：个位不够减，从十位退 1 作 10。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：比 {n1} 多 {n2} 的数是（ ）。",
+                    str(sum_v), f"{n1} + {n2} = {sum_v}。"),
+            _text_q(f"bi:{node_key}:calc2:{s}", node_key, "medium", "calculation",
+                    f"退位减法计算：{m1} - {m2} =",
+                    str(diff_v), f"{m1} - {m2} = {diff_v}。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：手工课上小红折了 {m1} 颗幸运星，小刚比小红少折 {m2} 颗，小刚折了多少颗幸运星？（只填数字）",
+                    str(diff_v), f"{m1} - {m2} = {diff_v}（颗）。", [f"{diff_v}颗"]),
+        ]
+
+    if node_key == "G2-M1-2":
+        x = 20 + a
+        y = 15 + b
+        z = 10 + c
+        res_add = x + y + z
+        res_paren = 80 - (y + z)
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"连加计算：{x} + {y} + {z} =",
+                    str(res_add), f"{x} + {y} + {z} = {res_add}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"计算带有小括号的算式 80 - ({y} + {z}) 时，应该先算（ ）。",
+                      f"{y} + {z}", [f"80 - {y}", f"80 - {z}", "从左往右算"],
+                      "算式里有小括号的，要先算小括号里面的。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：计算 72 - 18 - 22 时，可以先算 18 + 22 = 40，再算 72 - 40 = 32。",
+                  True, "连续减去两个数，等于减去这两个数的和。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：80 - ({y} + {z}) =（ ）。",
+                    str(res_paren), f"先算括号内 {y + z}，再算 80 - {y + z} = {res_paren}。"),
+            _text_q(f"bi:{node_key}:calc2:{s}", node_key, "medium", "calculation",
+                    f"加减混合计算：60 - {x} + {z} =",
+                    str(60 - x + z), f"60 - {x} = {60 - x}，再加 {z} 得 {60 - x + z}。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：公交车上原来有 50 人，到站后下车 {x} 人，又上车 {y} 人，现在车上有多少人？（只填数字）",
+                    str(50 - x + y), f"50 - {x} + {y} = {50 - x + y}（人）。", [f"{50 - x + y}人"]),
+        ]
+
+    if node_key == "G2-M1-3":
+        m = 3 + (s % 4)
+        n = 4 + ((s * 2) % 3)
+        prod = m * n
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"用乘法口诀直接写出得数：{m} × {n} =",
+                    str(prod), f"{m} × {n} = {prod}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"把相同加数连加算式 {m} + {m} + {m} + {m} 改写成乘法算式是（ ）。",
+                      f"{m} × 4", [f"{m} + 4", f"{m} × 3", "4 + 4"],
+                      f"4 个 {m} 相加可以写成 {m} × 4 或 4 × {m}。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：求几个相同加数的和，用乘法计算比较简便。",
+                  True, "乘法是求几个相同加数和的简便运算。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    "填空：根据乘法口诀“四六二十四”，4 × 6 =（ ）。",
+                    "24", "四六二十四，4 × 6 = 24。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "乘法口诀“五五二十五”可以写出（ ）道乘法算式。",
+                      "1", ["2", "3", "4"],
+                      "两个乘数相同（都是 5），只能写出 5 × 5 = 25 这 1 道乘法算式。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：游乐园每艘小船坐 {m} 人，{n} 艘这样的小船一共可以坐多少人？（只填数字）",
+                    str(prod), f"{m} × {n} = {prod}（人）。", [f"{prod}人"]),
+        ]
+
+    if node_key == "G2-M1-4":
+        m = 7 + (s % 3)
+        n = 3 + (s % 6)
+        prod = m * n
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"直接写出得数：{m} × {n} =",
+                    str(prod), f"根据乘法口诀，{m} × {n} = {prod}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "计算 8 × 9 和 9 × 8 时，用到的乘法口诀是（ ）。",
+                      "八九七十二", ["七九六十三", "八八六十四", "九九八十一"],
+                      "8 × 9 = 72 和 9 × 8 = 72 都用“八九七十二”。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  f"判断：求 {n} 的 {m} 倍是多少，就是求 {m} 个 {n} 是多少，列式为 {n} × {m} = {prod}。",
+                  True, "求一个数的几倍是多少用乘法。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：{n} 的 {m} 倍是（ ）。",
+                    str(prod), f"{n} × {m} = {prod}。"),
+            _text_q(f"bi:{node_key}:calc2:{s}", node_key, "medium", "calculation",
+                    f"口算：9 × {a} =",
+                    str(9 * a), f"9 × {a} = {9 * a}。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：一盒彩笔有 {m} 支，买 {n} 盒这样的彩笔一共有多少支？（只填数字）",
+                    str(prod), f"{m} × {n} = {prod}（支）。", [f"{prod}支"]),
+        ]
+
+    if node_key == "G2-M2-1":
+        parts = 3 + (s % 4)
+        each = 2 + (s % 5)
+        tot = parts * each
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"平均分计算：{tot} ÷ {parts} =",
+                    str(each), f"把 {tot} 平均分成 {parts} 份，每份是 {each}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"在除法算式 {tot} ÷ {parts} = {each} 中，被除数是（ ）。",
+                      str(tot), [str(parts), str(each), "÷"],
+                      f"除号前面的数叫被除数（{tot}），除号后面的数叫除数（{parts}），得数叫商（{each}）。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：把 12 颗糖分给 3 个小朋友，每人一定分到 4 颗。",
+                  False, "题目没有说“平均分”，只有平均分时每人才一定分得 4 颗。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：把 {tot} 个苹果平均放在 {parts} 个盘子里，每个盘子放（ ）个。",
+                    str(each), f"{tot} ÷ {parts} = {each}（个）。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "在数学上，每份分得（ ），叫做平均分。",
+                      "同样多", ["不一样多", "越多越好", "至少1个"],
+                      "每份分得同样多叫平均分。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：有 {tot} 根竹笋，每只大熊猫分 {each} 根，正好可以分给几只大熊猫？（只填数字）",
+                    str(parts), f"{tot} ÷ {each} = {parts}（只）。", [f"{parts}只"]),
+        ]
+
+    if node_key == "G2-M2-2":
+        div = 4 + (s % 6)
+        quot = 3 + ((s * 3) % 6)
+        dvd = div * quot
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"用乘法口诀求商：{dvd} ÷ {div} =",
+                    str(quot), f"想：{div} 乘几等于 {dvd}，因为 {div} × {quot} = {dvd}，所以商是 {quot}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "计算 56 ÷ 7 = 8 时，运用的乘法口诀是（ ）。",
+                      "七八五十六", ["六八四十八", "七七四十九", "八八六十四"],
+                      "七八五十六对应 56 ÷ 7 = 8 和 56 ÷ 8 = 7。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：根据乘法口诀“六八四十八”，可以写出 48 ÷ 6 = 8 和 48 ÷ 8 = 6 两道除法算式。",
+                  True, "两个乘数不同的乘法口诀可以写出两道乘法算式和两道除法算式。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：{dvd} 里面有（ ）个 {div}。",
+                    str(quot), f"求 {dvd} 里面有几个 {div}，用除法 {dvd} ÷ {div} = {quot}。"),
+            _text_q(f"bi:{node_key}:calc2:{s}", node_key, "medium", "calculation",
+                    f"直接写出得数：{dvd} ÷ {quot} =",
+                    str(div), f"{dvd} ÷ {quot} = {div}。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：王老师用 {dvd} 元买同一种钢笔作奖品，每支钢笔 {div} 元，一共可以买多少支？（只填数字）",
+                    str(quot), f"{dvd} ÷ {div} = {quot}（支）。", [f"{quot}支"]),
+        ]
+
+    if node_key == "G2-M2-3":
+        div = 4 + (s % 5)
+        quot = 3 + (s % 5)
+        rem = 1 + (s % (div - 1))
+        dvd = div * quot + rem
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"有余数除法计算：{dvd} ÷ {div} = {quot} ……（ ）。括号里的余数是几？（只填数字）",
+                    str(rem), f"{div} × {quot} = {div * quot}，{dvd} - {div * quot} = {rem}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"在有余数的除法算式 □ ÷ {div} = {quot} …… △ 中，余数 △ 最大是（ ）。",
+                      str(div - 1), [str(div), str(div + 1), "1"],
+                      f"余数必须比除数小，除数是 {div}，余数最大是 {div - 1}。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：在有余数的除法里，余数一定要比除数小。",
+                  True, "如果余数大于或等于除数，说明还可以继续分，商小了。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：一个数除以 {div}，商是 {quot}，余数是 {rem}，这个被除数是（ ）。",
+                    str(dvd), f"被除数 = 商 × 除数 + 余数 = {quot} × {div} + {rem} = {dvd}。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      f"在算式 ○ ÷ △ = 6 …… {div - 1} 中，除数 △ 最小是（ ）。",
+                      str(div), [str(div - 1), str(div - 2), str(div + 1)],
+                      f"除数要比余数 {div - 1} 大，所以除数最小是 {div}。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：有 {dvd} 颗山楂，每 {div} 颗穿成一串糖葫芦，穿成 {quot} 串后还剩几颗山楂？（只填数字）",
+                    str(rem), f"{dvd} ÷ {div} = {quot}（串）…… {rem}（颗），还剩 {rem} 颗。", [f"{rem}颗"]),
+        ]
+
+    if node_key == "G2-M2-4":
+        th = 2 + (s % 7)
+        hu = 3 + ((s * 3) % 6)
+        ones = 4 + (s % 5)
+        num_zero = th * 1000 + ones
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"整千数口算：{th * 1000} + 1000 =",
+                    str((th + 1) * 1000), f"{th} 个千加 1 个千是 {th + 1} 个千，即 {(th + 1) * 1000}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "10 个一百是（ ），10 个一千是一万。",
+                      "1000", ["100", "10000", "10"],
+                      "相邻计数单位进率是十，10 个一百是一千（1000）。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：读万以内的数时，中间有一个 0 或连续两个 0，都只读一个“零”；末尾不管有几个 0，都不读。",
+                  True, "这是万以内数的读数法则。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：由 {th} 个千和 {ones} 个一组成的四位数写作（ ）。",
+                    str(num_zero), f"千位写 {th}，百位和十位用 0 占位，个位写 {ones}，即 {num_zero}。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "一台洗衣机售价 2998 元，它的价格最接近的整千近似数是（ ）元。",
+                      "3000", ["2000", "2900", "4000"],
+                      "2998 离 3000 只差 2，近似数是 3000。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：学校图书馆有科技书 {th * 100} 本，故事书 {hu * 100} 本，这两种书一共有多少本？（只填数字）",
+                    str((th + hu) * 100), f"{th * 100} + {hu * 100} = {(th + hu) * 100}（本）。", [f"{(th + hu) * 100}本"]),
+        ]
+
+    if node_key == "G2-M3-1":
+        m_val = 2 + (s % 6)
+        cm_val = m_val * 100
+        start_k = 2 + (s % 3)
+        end_k = start_k + a + 3
+        return [
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "basic", "fill_blank",
+                    f"填空：{m_val} 米 =（ ）厘米。",
+                    str(cm_val), f"1 米 = 100 厘米，{m_val} 米 = {cm_val} 厘米。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "测量教室黑板的长度或操场跑道的长度，通常用（ ）作单位。",
+                      "米", ["厘米", "克", "千克"],
+                      "测量较长的物体或距离通常用“米”作单位。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：1 米长的木棍和 100 厘米长的铁丝一样长。",
+                  True, "1 米 = 100 厘米，长度完全相等。"),
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "medium", "calculation",
+                    f"尺子测量计算：一支铅笔左端对齐尺子的刻度 {start_k} 厘米，右端对齐刻度 {end_k} 厘米，这支铅笔长多少厘米？（只填数字）",
+                    str(end_k - start_k), f"物体长度 = 终点刻度 - 起点刻度 = {end_k} - {start_k} = {end_k - start_k}（厘米）。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "小学生食指的宽度大约是 1（ ）。",
+                      "厘米", ["米", "千克", "千米"],
+                      "食指宽、图钉长都大约是 1 厘米。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：一根彩带长 1 米，捆扎礼盒用去了 {a * 10} 厘米，还剩多少厘米？（只填数字）",
+                    str(100 - a * 10), f"1 米 = 100 厘米，100 - {a * 10} = {100 - a * 10}（厘米）。", [f"{100 - a * 10}厘米"]),
+        ]
+
+    if node_key == "G2-M3-2":
+        n_sq = b
+        fig = _rect_grid_figure(4, 3, "方格纸上的长方形（4个角都是直角）")
+        return [
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "basic", "fill_blank",
+                    "看图填空：一个角有 1 个顶点和（ ）条直直的边，图中长方形有 4 个直角。（只填数字）",
+                    "2", "每个角都由 1 个顶点和 2 条直直的边组成。", figure=fig),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "用三角尺上的直角比一比，比直角小的角是（ ）。",
+                      "锐角", ["钝角", "直角", "平角"],
+                      "比直角小的角叫锐角，比直角大的角（平角内）叫钝角。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：角的两条边画得越长，这个角就越大。",
+                  False, "角的大小只与两条边张开的大小有关，与边的长短无关。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "红领巾上有 3 个角，其中最大的一个角是（ ）。",
+                      "钝角", ["直角", "锐角", "不能确定"],
+                      "红领巾有 1 个钝角和 2 个锐角。", s + 1),
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "medium", "calculation",
+                    f"数直角计算：1 个正方形有 4 个直角，{n_sq} 个独立的正方形一共有多少个直角？（只填数字）",
+                    str(n_sq * 4), f"4 × {n_sq} = {n_sq * 4}（个）。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    "解决问题：一副三角尺共有 2 块，每块三角尺上有 1 个直角和 2 个锐角，这副三角尺上一共有多少个锐角？（只填数字）",
+                    "4", "2 + 2 = 4（个）。"),
+        ]
+
+    if node_key == "G2-M3-3":
+        w_len = a + 1
+        h_len = b
+        fig = _rect_grid_figure(w_len, h_len, "方格纸上的轴对称长方形")
+        return [
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "推拉抽屉、观光电梯上下直行、升国旗，这些运动都属于（ ）现象。",
+                      "平移", ["旋转", "对折", "放大"],
+                      "沿直线运动且方向、形状、大小不变的现象是平移。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：大风车转动、直升机螺旋桨转动、钟表指针走动都属于旋转现象。",
+                  True, "绕着一个中心点或轴转动的现象叫旋转。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "对折后两边能够完全重合的图形叫做（ ），折痕所在的直线叫对称轴。",
+                      "轴对称图形", ["平移图形", "旋转图形", "立体图形"],
+                      "沿一条直线对折后两侧完全重合的图形是轴对称图形。", s + 1),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    "看图填空：一般长方形（长和宽不相等）是轴对称图形，它有（ ）条对称轴。（只填数字）",
+                    "2", "长方形有横、竖 2 条对称轴。", figure=fig),
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"观察物体计算：1 个正方体有 6 个面，{a} 个独立的正方体一共有多少个面？（只填数字）",
+                    str(a * 6), f"6 × {a} = {a * 6}（个）。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：方格纸上的一枚棋子先向右平移 {a} 格，再继续向右平移 {b} 格，它一共向右平移了多少格？（只填数字）",
+                    str(a + b), f"{a} + {b} = {a + b}（格）。", [f"{a + b}格"]),
+        ]
+
+    if node_key == "G2-M3-4":
+        kg_val = 2 + (s % 6)
+        g_val = kg_val * 1000
+        big_grids = 3 + (s % 8)
+        mins = big_grids * 5
+        return [
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "basic", "fill_blank",
+                    f"填空：{kg_val} 千克 =（ ）克。",
+                    str(g_val), f"1 千克 = 1000 克，{kg_val} 千克 = {g_val} 克。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "钟面上有 12 个大格、60 个小格，分针走 1 个大格是（ ）分钟。",
+                      "5", ["1", "10", "60"],
+                      "分针走 1 小格是 1 分，走 1 大格（5小格）是 5 分。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：1 千克铁和 1000 克棉花一样重。",
+                  True, "1 千克 = 1000 克，质量完全相同。"),
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "medium", "calculation",
+                    f"钟面时间计算：分针从 12 走到 {big_grids}，走了 {big_grids} 个大格，一共是多少分钟？（只填数字）",
+                    str(mins), f"5 × {big_grids} = {mins}（分钟）。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "计量一枚 2 分硬币或一粒花生米的质量，通常用（ ）作单位。",
+                      "克", ["千克", "米", "厘米"],
+                      "计量比较轻的物品，常用“克”（g）作单位。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：妈妈买了 {a * 100} 克蓝莓和 {b * 100} 克草莓，这两样水果一共重多少克？（只填数字）",
+                    str((a + b) * 100), f"{a * 100} + {b * 100} = {(a + b) * 100}（克）。", [f"{(a + b) * 100}克"]),
+        ]
+
+    if node_key == "G2-M4-1":
+        m = 3 + (s % 5)
+        n = 4 + (s % 4)
+        k = 5 + (s % 6)
+        res1 = k + m * n
+        res2 = (m + 2) * n
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"混合运算：{k} + {m} × {n} =",
+                    str(res1), f"先算乘法 {m} × {n} = {m * n}，再加 {k} 得 {res1}。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "在没有括号的算式里，如果有乘、除法，又有加、减法，要先算（ ）。",
+                      "乘、除法", ["加、减法", "从左往右按顺序", "随便哪一步"],
+                      "两级混合运算顺序：先乘除，后加减。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  f"判断：算式 ({m} + 2) × {n} 和 {m} + 2 × {n} 的计算结果相同。",
+                  False, "带小括号的先算加法，不带括号的先算乘法，结果不同。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：({m} + 2) × {n} =（ ）。",
+                    str(res2), f"先算括号内 {m} + 2 = {m + 2}，再乘 {n} 得 {res2}。"),
+            _text_q(f"bi:{node_key}:calc2:{s}", node_key, "medium", "calculation",
+                    f"计算：{m * n} ÷ {m} + {k} =",
+                    str(n + k), f"先算除法 {m * n} ÷ {m} = {n}，再加 {k} 得 {n + k}。"),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：烘焙社烤了 50 块饼干，分给 {m} 个小队，每小队分 {n} 块，还剩多少块饼干？（只填数字）",
+                    str(50 - m * n), f"50 - {m} × {n} = {50 - m * n}（块）。", [f"{50 - m * n}块"]),
+        ]
+
+    if node_key == "G2-M4-2":
+        cap = 4 + (s % 3)
+        full_boats = 4 + (s % 4)
+        rem = 1 + (s % (cap - 1))
+        stu = cap * full_boats + rem
+        need_boats = full_boats + 1
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"租船问题计算：{stu} 名同学去划船，每条船最多坐 {cap} 人，至少要租几条船？（只填数字）",
+                    str(need_boats), f"{stu} ÷ {cap} = {full_boats}（条）…… {rem}（人），余下的 {rem} 人也要租 1 条船，共 {need_boats} 条。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      "解决租船、租车、装油桶这类“至少需要几个”的问题时，余下的人或物不够装满 1 份也要再加 1，这种方法叫（ ）。",
+                      "进一法", ["去尾法", "四舍五入", "退位法"],
+                      "余数无论多小都要多加 1 个单位，叫进一法。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：小亮有 22 元钱，每本笔记本 5 元，因为 22 ÷ 5 = 4（本）…… 2（元），剩下的 2 元不够买 1 本，所以最多能买 4 本。",
+                  True, "买东西钱不够买最后 1 件时要舍去余数（去尾法）。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：有 {stu} 朵玫瑰花，每 {cap} 朵扎成一束，最多可以扎成（ ）束。",
+                    str(full_boats), f"{stu} ÷ {cap} = {full_boats}（束）…… {rem}（朵），余下的不够扎 1 束，最多扎 {full_boats} 束。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "彩灯按“红、黄、蓝”每 3 盏一组循环排列，第 14 盏彩灯是（ ）色。",
+                      "黄", ["红", "蓝", "紫"],
+                      "14 ÷ 3 = 4（组）…… 2（盏），余数是 2，对应每组的第 2 盏黄色。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：珠子按“1颗黑、2颗白”每 3 颗一组重复穿成手链，穿了完整的 {full_boats} 组，一共有多少颗白珠子？（只填数字）",
+                    str(full_boats * 2), f"每组有 2 颗白珠子，{full_boats} × 2 = {full_boats * 2}（颗）。", [f"{full_boats * 2}颗"]),
+        ]
+
+    if node_key == "G2-M4-3":
+        d1 = 1 + (s % 3)
+        d2 = 4 + (s % 3)
+        d3 = 7 + (s % 3)
+        tops = 2 + (s % 3)
+        pants = 3 + (s % 3)
+        ways = tops * pants
+        return [
+            _text_q(f"bi:{node_key}:calc:{s}", node_key, "basic", "calculation",
+                    f"搭配计算：衣柜里有 {tops} 件不同的上衣和 {pants} 条不同的裤子，1 件上衣配 1 条裤子，一共有多少种不同的穿法？（只填数字）",
+                    str(ways), f"{tops} × {pants} = {ways}（种）。"),
+            _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                      f"用数字卡片 {d1} 和 {d2} 摆出十位和个位不相同的两位数，一共能摆出（ ）个。",
+                      "2", ["1", "3", "4"],
+                      f"可以摆出 {d1}{d2} 和 {d2}{d1}，共 2 个。", s),
+            _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+                  "判断：用 0、3、6 三张卡片组成没有重复数字的两位数，因为 0 不能放在十位，所以只能组成 4 个两位数。",
+                  True, "十位只能放 3 或 6（2种），每种对应个位 2 种，共 2 × 2 = 4 个（30、36、60、63）。"),
+            _text_q(f"bi:{node_key}:fb:{s}", node_key, "medium", "fill_blank",
+                    f"填空：用 {d1}、{d2}、{d3} 这三张非零数字卡片组成十位和个位不同的两位数，一共能组成（ ）个。",
+                    "6", "固定十位有 3 种选法，个位有 2 种选法，3 × 2 = 6（个）。"),
+            _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                      "3 个好朋友见面，每两个人握一次手，一共要握（ ）次手。",
+                      "3", ["2", "6", "4"],
+                      "握手的顺序无关，甲-乙、甲-丙、乙-丙共 3 次。", s + 1),
+            _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                    f"解决问题：用 {d1}、{d2}、{d3} 三张卡片组成没有重复数字的两位数，其中最大的两位数是多少？（只填数字）",
+                    str(d3 * 10 + d2), f"十位选最大的 {d3}，个位选次大的 {d2}，最大两位数是 {d3 * 10 + d2}。"),
+        ]
+
+    # G2-M4-4 简单逻辑推理（排除法与方格填数）
+    missing = 1 + (s % 4)
+    present = [x for x in (1, 2, 3, 4) if x != missing]
+    return [
+        _text_q(f"bi:{node_key}:fb:{s}", node_key, "basic", "fill_blank",
+                f"方格填数：在 4×4 的四宫格中，每行、每列都有 1～4 这四个数且不重复。某一行已经出现了 {present[0]}、{present[1]}、{present[2]}，这一行剩下的空格应填（ ）。",
+                str(missing), f"1、2、3、4 中只缺 {missing}，所以填 {missing}。"),
+        _choice_q(f"bi:{node_key}:sc:{s}", node_key, "basic",
+                  "小狗、小猫、小兔比赛拍球，分别拍了 30 下、25 下、20 下。小狗说：“我拍得最多。”小猫说：“我拍的不是最少的。”那么小兔拍了（ ）下。",
+                  "20", ["25", "30", "35"],
+                  "小狗最多是 30 下，小猫不是最少则是 25 下，剩下的小兔拍了 20 下。", s),
+        _tf_q(f"bi:{node_key}:tf:{s}", node_key, "basic",
+              "判断：在解决四宫格填数问题时，应该先看哪一个空格所在的行和列已经出现了 3 个不同的数，就能直接确定这个空格填几。",
+              True, "所在行列已有 3 个不同数字时，排除这 3 个数即可唯一确定第 4 个数。"),
+        _text_q(f"bi:{node_key}:calc:{s}", node_key, "medium", "calculation",
+                f"推理计算：1 + 2 + 3 + 4 = 10。如果四宫格某一列前三个数分别是 {present[0]}、{present[1]}、{present[2]}，用 10 减去前三个数的和，第四个数是几？（只填数字）",
+                str(missing), f"10 - ({present[0]} + {present[1]} + {present[2]}) = {missing}。"),
+        _choice_q(f"bi:{node_key}:sc2:{s}", node_key, "medium",
+                  "欢欢、乐乐和奇奇三人分别拿着语文、数学、音乐三本书。欢欢拿的不是语文书，乐乐拿的是数学书，那么欢欢拿的是（ ）书。",
+                  "音乐", ["语文", "数学", "美术"],
+                  "乐乐拿数学书，欢欢拿的不是语文也不是数学，所以欢欢拿的是音乐书。", s + 1),
+        _text_q(f"bi:{node_key}:sa:{s}", node_key, "hard", "short_answer",
+                f"解决问题：红、黄、蓝三个盒子里分别放着 {a} 个、{a + 2} 个、{a + 5} 个玻璃球。已知红盒比蓝盒多，黄盒里的玻璃球既不是最多的也不是最少的，请问黄盒里放了几个玻璃球？（只填数字）",
+                str(a + 2), f"黄盒不是最多也不是最少，所以是中间数 {a + 2} 个。"),
+    ]
+
+
 def build_grade_node_pool(node_key: str, seed: int) -> list[dict[str, Any]]:
-    """根据 G3 / G4 / G6 节点编码分发生成 6 道确定性参数化题目."""
+    """根据 G1 / G2 / G3 / G4 / G6 节点编码分发生成 6 道确定性参数化题目."""
     s = abs(int(seed))
     k = str(node_key or "").strip().upper()
+    if k.startswith("G1-"):
+        return _build_g1_node_pool(k, s)
+    if k.startswith("G2-"):
+        return _build_g2_node_pool(k, s)
     if k.startswith("G3-"):
         return _build_g3_node_pool(k, s)
     if k.startswith("G4-"):
@@ -1773,6 +2843,10 @@ def build_grade_node_pool(node_key: str, seed: int) -> list[dict[str, Any]]:
 __all__ = [
     "GRADE_MATH_MAPS",
     "GRADE_VISUAL_NODE_MAP",
+    "MATH_G1_CORE_MAP",
+    "MATH_G1_SPRINTS",
+    "MATH_G2_CORE_MAP",
+    "MATH_G2_SPRINTS",
     "MATH_G3_CORE_MAP",
     "MATH_G3_SPRINTS",
     "MATH_G4_CORE_MAP",
