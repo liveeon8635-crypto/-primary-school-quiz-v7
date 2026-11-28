@@ -170,6 +170,40 @@ main,#app{max-width:940px!important;margin:0 auto!important;padding:14px 14px 10
 .ma-helper-body{flex:1;min-width:0}
 .ma-helper-name{font-size:12px;font-weight:800;color:var(--ma-brand);margin-bottom:2px}
 .ma-helper-text{font-size:13.5px;color:var(--ma-ink);line-height:1.5;margin:0}
+
+/* 3～6年级切换横条与分学段交互样式（语数英三科通用） */
+.ma-grade-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--ma-card);border:1px solid var(--ma-line);border-radius:14px;padding:9px 14px;box-shadow:var(--ma-shadow)}
+.ma-grade-pills{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ma-grade-pill{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:10px;border:1px solid #eadfd5;background:#fcfaf7;color:var(--ma-ink);font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 2px 0 #eadfd5;transition:all .14s ease}
+.ma-grade-pill:hover{border-color:var(--ma-brand);background:#fff}
+.ma-grade-pill.on,.ma-grade-pill.on:hover{background:var(--ma-brand)!important;border-color:var(--ma-brand)!important;color:#fff!important;box-shadow:0 2px 0 var(--ma-brand-dark)!important}
+.ma-grade-rel{display:inline-block;padding:1px 6px;border-radius:999px;font-size:10.5px;font-weight:800;background:#efe8e0;color:var(--ma-muted)}
+.ma-grade-pill.on .ma-grade-rel{background:rgba(255,255,255,.24)!important;color:#fff!important}
+.ma-grade-rel.current{background:var(--ma-ok-soft);color:var(--ma-ok)}
+.ma-grade-rel.review{background:var(--ma-gold-soft);color:var(--ma-gold)}
+.ma-grade-rel.advance{background:var(--ma-blue-soft);color:var(--ma-blue)}
+.ma-age-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;background:#fcf6ef;border:1px solid #ead8cb;color:var(--ma-muted);font-size:12px;font-weight:700}
+
+/* 题干旁语音伴读按钮（G3/G4 友好） */
+.ma-q-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px}
+.ma-q-head .ma-q-text{margin:0;flex:1}
+.ma-read-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border-radius:11px;border:1.5px solid #efc0bc;background:var(--ma-brand-soft);color:var(--ma-brand);font-size:13.5px;font-weight:800;cursor:pointer;font-family:inherit;flex-shrink:0;box-shadow:0 2px 0 #efc0bc;transition:all .12s ease}
+.ma-read-btn:hover{background:#fbe4e2;transform:translateY(-1px)}
+.ma-read-btn:active{transform:translateY(1px);box-shadow:0 1px 0 #efc0bc}
+
+/* G3/G4 数学内嵌大号数字与分数软键盘 */
+.ma-keypad{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;max-width:340px;margin-top:10px;padding:10px;border-radius:13px;background:#fcf8f3;border:1px solid #ead8cb}
+.ma-keypad.compact{display:flex;flex-wrap:wrap;gap:6px;max-width:360px;padding:7px 9px}
+.ma-key{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:6px 12px;border-radius:10px;border:1.5px solid var(--ma-line);background:#fff;color:var(--ma-ink);font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;box-shadow:0 2px 0 #e6d8ce;user-select:none;transition:all .1s ease}
+.ma-keypad.compact .ma-key{min-height:34px;font-size:13.5px;padding:4px 11px}
+.ma-key:hover{border-color:var(--ma-brand);background:#fffafa}
+.ma-key:active{transform:translateY(1px);box-shadow:0 1px 0 #e6d8ce}
+.ma-key.fn{background:#f5efe8;font-size:13.5px;color:var(--ma-muted)}
+
+/* G3 启蒙模式：题干字号与选项触控间距放大 */
+.ma-age-g3 .ma-q-text{font-size:17.5px;line-height:1.72}
+.ma-age-g3 .ma-opt{padding:14px 16px;font-size:15.5px}
+.ma-age-g3 .ma-read-btn{padding:8px 15px;font-size:14.5px}
 </style>"""
 
 COMMON_ARENA_JS = r"""
@@ -231,23 +265,115 @@ function maBoot(run){
 }
 function maStars(n){var s='',i;for(i=0;i<n;i++)s+='★';return s}
 function maClockText(sec){var s=Math.max(0,Math.floor(sec)),m=Math.floor(s/60),r=s%60;return (m<10?'0':'')+m+':'+(r<10?'0':'')+r}
-function maTopbar(active,pts){
+function maInitGrade(){
+  var m=/[?&]grade=([3456])/.exec(location.search||'');
+  if(m){window.__CY_ARENA_GRADE__=Number(m[1]);return Number(m[1])}
+  if(window.__CY_ARENA_GRADE__)return Number(window.__CY_ARENA_GRADE__);
+  return 0;
+}
+function maGradeQuery(g){
+  var gr=g||window.__CY_ARENA_GRADE__||0;
+  return gr?('?grade='+encodeURIComponent(gr)):'';
+}
+function maInferGrade(key,fallback){
+  var s=String(key||'').toUpperCase();
+  if(s.indexOf('G3-')===0)return 3;
+  if(s.indexOf('G4-')===0)return 4;
+  if(s.indexOf('G5-')===0)return 5;
+  if(s.indexOf('G6-')===0)return 6;
+  return fallback||5;
+}
+function maTopbar(active,pts,grade){
+  var curGrade=grade||window.__CY_ARENA_GRADE__||0;
+  var qStr=maGradeQuery(curGrade);
   var bar=el('div',{class:'ma-topbar'});
   var left=el('div',{class:'ma-topbar-left'},
     el('a',{class:'ma-link-btn',href:'/classic?legacy=1&unified=1&page=practice',text:'‹ 返回练习'}),
     el('div',{class:'ea-subj'},
-      el('a',{href:active==='sprints'?'/v1/math-sprints':'/v1/math-star-map',class:'on',text:'数学'}),
-      el('a',{href:active==='sprints'?'/v1/english-sprints':'/v1/english-star-map',text:'英语'}),
-      el('a',{href:active==='sprints'?'/v1/chinese-sprints':'/v1/chinese-star-map',text:'语文'})));
+      el('a',{href:(active==='sprints'?'/v1/math-sprints':'/v1/math-star-map')+qStr,class:'on',text:'数学'}),
+      el('a',{href:(active==='sprints'?'/v1/english-sprints':'/v1/english-star-map')+qStr,text:'英语'}),
+      el('a',{href:(active==='sprints'?'/v1/chinese-sprints':'/v1/chinese-star-map')+qStr,text:'语文'})));
   var seg=el('div',{class:'ma-seg'},
-    el('a',{href:'/v1/math-star-map',class:active==='map'?'on':'',text:'知识地图'}),
-    el('a',{href:'/v1/math-sprints',class:active==='sprints'?'on':'',text:'应试专项'}));
+    el('a',{href:'/v1/math-star-map'+qStr,class:active==='map'?'on':'',text:'知识地图'}),
+    el('a',{href:'/v1/math-sprints'+qStr,class:active==='sprints'?'on':'',text:'应试专项'}));
   var right=el('div',{class:'ma-topbar-right'});
   var u=window.__CY_ARENA_USER__;
   if(u&&u.name)right.appendChild(el('span',{class:'ma-user-pill',text:u.name+' · 学生'}));
   if(pts)right.appendChild(el('a',{class:'ma-pts',href:'/classic?legacy=1&unified=1&page=rewards',style:'text-decoration:none',title:'查看全站积分奖励 · 今日学习积分 '+pts.todayEarned+'/'+pts.dailyCap,text:'积分 '+pts.balance+' ›'}));
   bar.appendChild(left);bar.appendChild(seg);bar.appendChild(right);
   return bar;
+}
+function maRenderGradeBar(data,onSwitch){
+  var grades=(data&&data.availableGrades)||[
+    {grade:3,label:'三年级',relation:'review',relationLabel:'查漏补缺'},
+    {grade:4,label:'四年级',relation:'review',relationLabel:'查漏补缺'},
+    {grade:5,label:'五年级',relation:'current',relationLabel:'本年级'},
+    {grade:6,label:'六年级',relation:'advance',relationLabel:'超前探索'}
+  ];
+  var curG=(data&&data.grade)||window.__CY_ARENA_GRADE__||5;
+  var prof=(data&&data.ageProfile)||{};
+  var pills=el('div',{class:'ma-grade-pills'});
+  grades.forEach(function(item){
+    var isOn=Number(item.grade)===Number(curG);
+    var relCls='ma-grade-rel '+(item.relation||'');
+    var btn=el('button',{type:'button',class:'ma-grade-pill'+(isOn?' on':''),'data-grade':String(item.grade),onclick:function(){
+      if(Number(item.grade)===Number(curG))return;
+      window.__CY_ARENA_GRADE__=Number(item.grade);
+      if(window.history&&window.history.replaceState){
+        try{window.history.replaceState(null,'',location.pathname+'?grade='+item.grade+(location.hash||''))}catch(_e){}
+      }
+      if(typeof onSwitch==='function')onSwitch(Number(item.grade));
+    }},
+      el('span',{text:item.label||(item.grade+'年级')}),
+      item.relationLabel?el('span',{class:relCls,text:item.relationLabel}):null);
+    pills.appendChild(btn);
+  });
+  var badgeTxt=prof.tierLabel||prof.tierShortLabel||(curG+'年级适配模式');
+  return el('div',{class:'ma-grade-bar'},
+    pills,
+    el('span',{class:'ma-age-badge',text:'🎯 '+badgeTxt}));
+}
+function maSpeakStem(text,ageProfile){
+  if(!window.speechSynthesis||!window.SpeechSynthesisUtterance)return;
+  try{window.speechSynthesis.cancel()}catch(_e){}
+  var clean=String(text||'')
+    .replace(/×/g,' 乘 ')
+    .replace(/÷/g,' 除以 ')
+    .replace(/=/g,' 等于 ')
+    .replace(/_{2,}|（\s*）|\(\s*\)/g,' 括号 ')
+    .replace(/\s+/g,' ');
+  var u=new window.SpeechSynthesisUtterance(clean);
+  u.lang='zh-CN';
+  u.rate=(ageProfile&&ageProfile.speechRate)?Number(ageProfile.speechRate):0.9;
+  try{window.speechSynthesis.speak(u)}catch(_e2){}
+}
+function maBuildStemRow(q,ageProfile){
+  var p=el('p',{class:'ma-q-text',text:q.text});
+  if(!ageProfile||!ageProfile.stemReadAloud)return p;
+  var btn=el('button',{type:'button',class:'ma-read-btn','aria-label':'朗读题干',text:'🔊 读题',onclick:function(){
+    maSpeakStem(q.text,ageProfile);
+  }});
+  return el('div',{class:'ma-q-head'},p,btn);
+}
+function maBuildMathKeypad(inp,ageProfile,onSync){
+  var mode=(ageProfile&&ageProfile.mathKeypad)||'none';
+  if(mode!=='full'&&mode!=='compact')return null;
+  var keys=mode==='full'
+    ?['1','2','3','4','5','6','7','8','9','0','.','/','⌫','清空']
+    :['.','/','00','⌫','清空'];
+  var pad=el('div',{class:'ma-keypad'+(mode==='compact'?' compact':'')});
+  keys.forEach(function(k){
+    var isFn=(k==='⌫'||k==='清空');
+    var b=el('button',{type:'button',class:'ma-key'+(isFn?' fn':''),text:k==='⌫'?'⌫ 退格':k,onclick:function(){
+      var curVal=String(inp.value||'');
+      if(k==='清空'){inp.value=''}
+      else if(k==='⌫'){inp.value=curVal.slice(0,Math.max(0,curVal.length-1))}
+      else if(curVal.length<120){inp.value=curVal+k}
+      if(typeof onSync==='function')onSync(inp.value);
+    }});
+    pad.appendChild(b);
+  });
+  return pad;
 }
 function maFetchTasks(subject){
   return api('/student/arena-tasks').catch(function(){
@@ -308,7 +434,7 @@ function maQuestionHint(q){
 """
 
 STAR_MAP_JS = COMMON_ARENA_JS + r"""
-var MSM=null,MSEL=null,MTASKS=[],MTOP=null,MSUM=null,MMSG=null,MDETAIL=null,MQUIZ=null,MGRID=null,MMODE='map';
+var MSM=null,MSEL=null,MTASKS=[],MTOP=null,MSUM=null,MMSG=null,MDETAIL=null,MQUIZ=null,MGRID=null,MMODE='map',MGRADE=maInitGrade();
 function mSay(text,bad){
   MMSG.textContent=text||'';
   MMSG.className=text?('ma-notice show '+(bad?'warn':'info')):'ma-notice';
@@ -344,20 +470,27 @@ function mTag(light){
 function mRenderHeader(){
   var s=MSM.summary,pct=s.totalNodes?Math.round(s.litNodes/s.totalNodes*100):0;
   var revCnt=s.reviewDueCount||0;
+  var curGrade=MSM.grade||MGRADE||5;
+  window.__CY_ARENA_GRADE__=curGrade;
+  MGRADE=curGrade;
   MTOP.textContent='';
-  MTOP.appendChild(maTopbar('map',MSM.points));
+  MTOP.appendChild(maTopbar('map',MSM.points,curGrade));
   MSUM.textContent='';
+  MSUM.appendChild(maRenderGradeBar(MSM,function(newGrade){
+    MGRADE=newGrade;
+    mLoad(newGrade);
+  }));
   var top=el('div',{class:'ma-sum-top'},
     el('div',{},
-      el('div',{class:'ma-eyebrow',text:'小学数学 · 通用基础模块'}),
-      el('h2',{class:'ma-h1',text:'知识地图'}),
-      el('p',{class:'ma-sub',text:'不限教材版本，覆盖 24 个核心考点；点任意节点做 5 题微测，答对 80% 即点亮并加积分。'})),
+      el('div',{class:'ma-eyebrow',text:'小学数学 · '+curGrade+'年级通用基础模块'}),
+      el('h2',{class:'ma-h1',text:MSM.title||'知识地图'}),
+      el('p',{class:'ma-sub',text:'不限教材版本，覆盖 '+s.totalNodes+' 个核心考点；点任意节点做 5 题微测，答对 80% 即点亮并加积分。'})),
     el('div',{class:'ma-row'},
       s.repairNodes?el('button',{type:'button',class:'ma-btn ma-btn-primary ma-btn-sm',text:'去修补（'+s.repairNodes+'）',onclick:function(){
         var rep=MSM.nodes.filter(function(x){return x.light.needsRepair})[0];
         if(rep){mFocusNode(rep.key)}
       }}):null,
-      el('a',{class:'ma-btn ma-btn-ghost ma-btn-sm',href:'/v1/math-sprints',text:'去应试专项 ›'})));
+      el('a',{class:'ma-btn ma-btn-ghost ma-btn-sm',href:'/v1/math-sprints'+maGradeQuery(curGrade),text:'去应试专项 ›'})));
   var meta=el('div',{class:'ma-sum-meta'},
     el('span',{},'已点亮 ',el('b',{text:s.litNodes+'/'+s.totalNodes+'（'+pct+'%）'})),
     el('span',{},'精通 ',el('b',{text:String(s.masteredNodes)})),
@@ -365,8 +498,18 @@ function mRenderHeader(){
     revCnt>0?el('span',{style:'color:#b45309;font-weight:700'},'待温习 ',el('b',{style:'color:#b45309',text:String(revCnt)}),' 个'):null);
   MSUM.appendChild(el('div',{class:'ma-card'},top,meta,el('div',{class:'ma-prog-track'},el('div',{class:'ma-prog-fill',style:'width:'+pct+'%'}))));
   var banner=maRenderTaskBanner(MTASKS,function(t){
-    if(t.taskKind==='map_node'){mFocusNode(t.targetKey)}
-    else{location.href='/v1/math-sprints#sprint='+encodeURIComponent(t.targetKey)}
+    var tGrade=t.grade||maInferGrade(t.targetKey,curGrade);
+    if(t.taskKind==='map_node'){
+      if(Number(tGrade)!==Number(curGrade)){
+        MGRADE=Number(tGrade);window.__CY_ARENA_GRADE__=Number(tGrade);
+        location.hash='#node='+encodeURIComponent(t.targetKey);
+        mLoad(MGRADE);
+      }else{
+        mFocusNode(t.targetKey);
+      }
+    }else{
+      location.href='/v1/math-sprints?grade='+encodeURIComponent(tGrade)+'#sprint='+encodeURIComponent(t.targetKey);
+    }
   });
   if(banner)MSUM.appendChild(banner);
   var tipText=revCnt>0
@@ -374,19 +517,26 @@ function mRenderHeader(){
     :(s.repairNodes
       ?('你有 '+s.repairNodes+' 个考点在应试专项里丢过分，点红色「待修补」节点做 5 题，修好立刻消除红标并 +2 积分！')
       :(s.litNodes===0
-        ?'欢迎来到数学知识地图！先挑一个熟悉的考点做 5 道微测，答对 4 题就能点亮第一颗星并获得 +3 全站积分。'
+        ?'欢迎来到'+curGrade+'年级数学知识地图！先挑一个熟悉的考点做 5 道微测，答对 4 题就能点亮第一颗星并获得 +3 全站积分。'
         :(s.litNodes<s.totalNodes
           ?'已经点亮 '+s.litNodes+' 个考点啦！继续攻克未点亮节点，全部点亮后去应试专项冲刺 L4 钻章吧！'
-          :'太厉害了，全部 24 个数学核心考点已点亮！去应试专项刷满 L4 冲刺段位吧！')));
+          :'太厉害了，全部 '+s.totalNodes+' 个数学核心考点已点亮！去应试专项刷满 L4 冲刺段位吧！')));
   MSUM.appendChild(maHelperTip(tipText,'长缨助手 · 学习建议'));
 }
-var DOM_SUBS={D1:'小数乘除、简便运算、因数倍数与分数加减',D2:'图形运动、多边形面积、数对位置与长方体体积',D3:'字母与方程、分段计费、进一去尾、植树与找次品',D4:'确定与随机事件、可能性公平性与折线统计图'};
+var DOM_SUBS_BY_GRADE={
+  3:{D1:'万以内加减法验算、多位数乘一位数、一位数除法与两位数乘两位数',D2:'毫米分米千米、吨与千克换算、长方形与正方形周长面积',D3:'四则混合运算、两步应用题、分数与一位小数初步认识',D4:'时分秒与经过时间、年月日与24时计时法、复式统计表与集合重叠'},
+  4:{D1:'大数的认识与近似数、三位数乘两位数、除数是两位数除法与运算律',D2:'公顷与平方千米、角的度量、平行四边形梯形与三角形内角和',D3:'小数的意义性质、小数加减法、单价速度模型与烙饼沏茶统筹',D4:'条形统计图、平均数与复式条形图、鸡兔同笼与和差倍问题'},
+  5:{D1:'小数乘除、简便运算、因数倍数与分数加减',D2:'图形运动、多边形面积、数对位置与长方体体积',D3:'字母与方程、分段计费、进一去尾、植树与找次品',D4:'确定与随机事件、可能性公平性与折线统计图'},
+  6:{D1:'分数乘除法、比与按比分配、百分数与折扣税率利率',D2:'位置与方向、圆的周长面积、扇形圆环与圆柱圆锥体积',D3:'负数与数轴、解比例、正反比例应用与比例尺放大缩小',D4:'扇形统计图、分数工程问题、数与形规律及鸽巢原理行程压轴'}
+};
 function mRenderGrid(){
   MGRID.textContent='';
+  var curG=(MSM&&MSM.grade)||MGRADE||5;
+  var domMap=DOM_SUBS_BY_GRADE[curG]||DOM_SUBS_BY_GRADE[5];
   MSM.units.forEach(function(u){
     var box=el('div',{class:'ma-domain dom-'+u.key});
     box.appendChild(el('div',{class:'ma-domain-h'},
-      el('div',{},el('h3',{text:u.name}),el('div',{class:'ma-domain-sub',text:DOM_SUBS[u.key]||''})),
+      el('div',{},el('h3',{text:u.name}),el('div',{class:'ma-domain-sub',text:domMap[u.key]||''})),
       el('span',{class:'ma-domain-cnt',text:u.litNodes+'/'+u.totalNodes+' 已点亮'})));
     var list=el('div',{class:'ma-nodes'});
     MSM.nodes.filter(function(n){return n.unit===u.key}).forEach(function(n){
@@ -431,11 +581,14 @@ function mStartQuiz(n){
     mSay('');MMODE='quiz';
     MSUM.style.display='none';MDETAIL.style.display='none';MGRID.style.display='none';
     MQUIZ.style.display='';MQUIZ.textContent='';
+    var ageProf=d.ageProfile||(MSM&&MSM.ageProfile)||{};
+    var isG3=Number(d.grade||(MSM&&MSM.grade)||MGRADE)===3||ageProf.tier==='g3_guided';
     var answers={},cur=0,seq=0;
-    var hud=el('div',{class:'ma-hud'}),sheet=el('div',{class:'ma-sheet'}),qWrap=el('div');
+    var hud=el('div',{class:'ma-hud'}),sheet=el('div',{class:'ma-sheet'}),qWrap=el('div',{class:isG3?'ma-age-g3':''});
     MQUIZ.appendChild(el('div',{class:'ma-wrap'},hud,sheet,qWrap));
 
     function exitQuiz(){
+      if(window.speechSynthesis){try{window.speechSynthesis.cancel()}catch(_e){}}
       MMODE='map';MQUIZ.style.display='none';MQUIZ.textContent='';
       MSUM.style.display='';MDETAIL.style.display='';MGRID.style.display='';
     }
@@ -462,7 +615,7 @@ function mStartQuiz(n){
       var card=el('div',{class:'ma-q-card','data-q':q.id},
         el('div',{class:'ma-q-meta'},el('span',{text:'第 '+(cur+1)+' / '+d.count+' 题 · '+q.typeLabel}),el('span',{text:'难度：'+q.levelLabel})),
         q.isCustom?el('div',{class:'ma-custom-badge',text:'★ 老师精选'}):null,
-        el('p',{class:'ma-q-text',text:q.text}));
+        maBuildStemRow(q,ageProf));
       if(typeof cyIsDrawnFigure==='function'&&cyIsDrawnFigure(q.figure)){
         card.appendChild(el('div',{class:'ma-fig-box'},cyCubeSvgNode(q.figure)));
       }
@@ -486,13 +639,16 @@ function mStartQuiz(n){
       }else{
         var prev=answers[q.id]&&answers[q.id].text_answer?answers[q.id].text_answer:'';
         var inp=el('input',{class:'ma-input','aria-label':'第'+(cur+1)+'题答案',placeholder:'输入答案',maxlength:'120',value:prev});
-        inp.addEventListener('input',function(){
-          var v=inp.value.trim();
+        function syncInputVal(rawVal){
+          var v=String(rawVal||'').trim();
           if(v)answers[q.id]={question_id:q.id,text_answer:v};
           else delete answers[q.id];
           renderHudAndSheet();
-        });
+        }
+        inp.addEventListener('input',function(){syncInputVal(inp.value)});
         card.appendChild(inp);
+        var pad=maBuildMathKeypad(inp,ageProf,syncInputVal);
+        if(pad)card.appendChild(pad);
       }
       var leftBtns=el('div',{class:'ma-row'});
       if(cur>0)leftBtns.appendChild(el('button',{type:'button',class:'ma-btn ma-btn-ghost ma-btn-sm',text:'上一题',onclick:function(){cur--;renderStep()}}));
@@ -536,16 +692,27 @@ function mStartQuiz(n){
     window.scrollTo(0,0);
   }).catch(function(e){mSay(e.message,true)});
 }
-function mLoad(){
+function mLoad(reqGrade){
+  var g=reqGrade||MGRADE||maInitGrade();
   root.textContent='';
   MTOP=el('div');MSUM=el('div');MMSG=el('div',{class:'ma-notice',role:'status'});
   MQUIZ=el('div',{style:'display:none'});MDETAIL=el('div',{class:'ma-detail-dock'});MGRID=el('div',{class:'ma-domains'});
   root.appendChild(el('div',{class:'ma-wrap'},MTOP,MSUM,MMSG,MQUIZ,MGRID,MDETAIL));
-  Promise.all([api('/student/math-star-map'),maFetchTasks('数学')]).then(function(res){
+  var url='/student/math-star-map'+(g?('?grade='+encodeURIComponent(g)):'');
+  Promise.all([api(url),maFetchTasks('数学')]).then(function(res){
     MSM=res[0];MTASKS=res[1]||[];
+    if(MSM&&MSM.grade){MGRADE=MSM.grade;window.__CY_ARENA_GRADE__=MSM.grade}
     mRenderHeader();mRenderGrid();
     var want=/[#&]node=([^&]+)/.exec(location.hash);
-    var hit=want&&MSM.nodes.filter(function(x){return x.key===decodeURIComponent(want[1])})[0];
+    var wantKey=want?decodeURIComponent(want[1]):'';
+    if(wantKey&&!MSM.nodes.filter(function(x){return x.key===wantKey})[0]){
+      var inferred=maInferGrade(wantKey,0);
+      if(inferred&&inferred!==Number(MSM.grade)){
+        MGRADE=inferred;window.__CY_ARENA_GRADE__=inferred;
+        mLoad(inferred);return;
+      }
+    }
+    var hit=wantKey&&MSM.nodes.filter(function(x){return x.key===wantKey})[0];
     var pick=hit||MSM.nodes.filter(function(x){return x.light.needsRepair})[0]||MSM.nodes[0];
     if(pick){
       MSEL=pick.key;mRenderGrid();mRenderDetail(pick);
@@ -557,28 +724,44 @@ maBoot(mLoad);
 """
 
 SPRINTS_JS = COMMON_ARENA_JS + r"""
-var SPTIMER=null,SPTOP=null,SPMSG=null,SPBOX=null;
+var SPTIMER=null,SPTOP=null,SPMSG=null,SPBOX=null,SPGRADE=maInitGrade(),SPDATA=null;
 function spSay(text,bad){
   SPMSG.textContent=text||'';
   SPMSG.className=text?('ma-notice show '+(bad?'warn':'info')):'ma-notice';
 }
 function spClearTimer(){if(SPTIMER){clearInterval(SPTIMER);SPTIMER=null}}
-function spLoadList(){
+function spLoadList(reqGrade){
   spClearTimer();
+  var g=(typeof reqGrade==='number'&&reqGrade)?reqGrade:(SPGRADE||maInitGrade());
   root.textContent='';
   SPTOP=el('div');SPMSG=el('div',{class:'ma-notice',role:'status'});SPBOX=el('div',{class:'ma-wrap'});
   root.appendChild(el('div',{class:'ma-wrap'},SPTOP,SPMSG,SPBOX));
-  Promise.all([api('/student/math-sprints'),maFetchTasks('数学')]).then(function(res){
+  var url='/student/math-sprints'+(g?('?grade='+encodeURIComponent(g)):'');
+  Promise.all([api(url),maFetchTasks('数学')]).then(function(res){
     var d=res[0],tasks=res[1]||[];
-    SPTOP.textContent='';SPTOP.appendChild(maTopbar('sprints',d.points));
+    SPDATA=d;
+    var curGrade=d.grade||g||5;
+    SPGRADE=curGrade;window.__CY_ARENA_GRADE__=curGrade;
+    SPTOP.textContent='';SPTOP.appendChild(maTopbar('sprints',d.points,curGrade));
     SPBOX.textContent='';
+    SPBOX.appendChild(maRenderGradeBar(d,function(newGrade){
+      SPGRADE=newGrade;
+      spLoadList(newGrade);
+    }));
     SPBOX.appendChild(el('div',{class:'ma-card'},
-      el('div',{class:'ma-eyebrow',text:'小学数学 · 强应试限时模块'}),
+      el('div',{class:'ma-eyebrow',text:'小学数学 · '+curGrade+'年级强应试限时模块'}),
       el('h2',{class:'ma-h1',text:'应试专项'}),
       el('p',{class:'ma-sub',text:'多题型严格限时，倒计时归零自动交卷。按得分率与配速评定 L1（60%）/ L2 达标（75%）/ L3 熟练（85%）/ L4 冲刺（95%），达标自动反哺点亮知识地图。'})));
     var banner=maRenderTaskBanner(tasks,function(t){
-      if(t.taskKind==='sprint'){spStart(t.targetKey)}
-      else{location.href='/v1/math-star-map#node='+encodeURIComponent(t.targetKey)}
+      var tGrade=t.grade||maInferGrade(t.targetKey,curGrade);
+      if(t.taskKind==='sprint'){
+        if(Number(tGrade)!==Number(curGrade)){
+          SPGRADE=Number(tGrade);window.__CY_ARENA_GRADE__=Number(tGrade);
+        }
+        spStart(t.targetKey);
+      }else{
+        location.href='/v1/math-star-map?grade='+encodeURIComponent(tGrade)+'#node='+encodeURIComponent(t.targetKey);
+      }
     });
     if(banner)SPBOX.appendChild(banner);
     SPBOX.appendChild(maHelperTip('应试专项模拟真实考场，时间一到会自动交卷！建议先稳拿选择、判断和计算分，最后留时间攻克易错辨析与综合推理题。','长缨助手 · 考场配速建议'));
@@ -607,17 +790,29 @@ function spLoadList(){
       });
       SPBOX.appendChild(hist);
     }
+    var wantSp=/[#&]sprint=([^&]+)/.exec(location.hash);
+    if(wantSp){
+      var spSlug=decodeURIComponent(wantSp[1]);
+      if(window.history&&window.history.replaceState){
+        try{window.history.replaceState(null,'',location.pathname+location.search)}catch(_e){}
+      }
+      spStart(spSlug);
+    }
   }).catch(function(e){msg(e.message)});
 }
 function spStart(slug){
   spSay('正在生成限时试卷…');
   api('/student/math-sprints/'+encodeURIComponent(slug)+'/start',{method:'POST'}).then(function(d){
-    spSay('');spRunPaper(d);
+    spSay('');
+    if(d&&d.grade){SPGRADE=d.grade;window.__CY_ARENA_GRADE__=d.grade}
+    spRunPaper(d);
   }).catch(function(e){spSay(e.message,true)});
 }
 function spRunPaper(d){
   spClearTimer();
   SPBOX.textContent='';
+  var ageProf=d.ageProfile||(SPDATA&&SPDATA.ageProfile)||{};
+  var isG3=Number(d.grade||SPGRADE)===3||ageProf.tier==='g3_guided';
   var answers={},submitted=false,cur=0,allMode=false;
   var limitSec=d.timeLimitSec,endAt=Date.now()+limitSec*1000;
   var clockEl=el('span',{class:'ma-clock',text:'剩余 '+maClockText(limitSec)});
@@ -642,7 +837,7 @@ function spRunPaper(d){
       el('div',{class:'ma-row'},clockEl,modeBtn,exitBtn,submitBtn)),
     el('div',{class:'ma-prog-track'},barFill));
   var sheet=el('div',{class:'ma-sheet'});
-  var body=el('div',{class:'ma-wrap'});
+  var body=el('div',{class:'ma-wrap'+(isG3?' ma-age-g3':'')});
   SPBOX.appendChild(hud);SPBOX.appendChild(confirmHolder);SPBOX.appendChild(sheet);SPBOX.appendChild(body);
 
   function showConfirm(text,okLabel,onOk){
@@ -674,7 +869,7 @@ function spRunPaper(d){
   function buildQCard(q,idx){
     var card=el('div',{class:'ma-q-card','data-q':q.id},
       el('div',{class:'ma-q-meta'},el('span',{text:'第 '+(idx+1)+' / '+d.questionCount+' 题 · '+q.typeLabel+'（'+q.marks+' 分）'}),el('span',{text:'知识点 '+q.nodeKey})),
-      el('p',{class:'ma-q-text',text:q.text}));
+      maBuildStemRow(q,ageProf));
     if(typeof cyIsDrawnFigure==='function'&&cyIsDrawnFigure(q.figure)){
       card.appendChild(el('div',{class:'ma-fig-box'},cyCubeSvgNode(q.figure)));
     }
@@ -695,14 +890,17 @@ function spRunPaper(d){
     }else{
       var prev=answers[q.id]&&answers[q.id].text_answer?answers[q.id].text_answer:'';
       var inp=el('input',{class:'ma-input','aria-label':'第'+(idx+1)+'题答案',placeholder:'输入答案',maxlength:'120',value:prev});
-      inp.addEventListener('input',function(){
+      function syncSpVal(rawVal){
         if(submitted)return;
-        var v=inp.value.trim();
+        var v=String(rawVal||'').trim();
         if(v)answers[q.id]={question_id:q.id,text_answer:v};
         else delete answers[q.id];
         refreshSheet();
-      });
+      }
+      inp.addEventListener('input',function(){syncSpVal(inp.value)});
       card.appendChild(inp);
+      var pad=maBuildMathKeypad(inp,ageProf,syncSpVal);
+      if(pad)card.appendChild(pad);
     }
     return card;
   }
@@ -722,6 +920,7 @@ function spRunPaper(d){
   }
   function doSubmit(isAuto){
     if(submitted)return;
+    if(window.speechSynthesis){try{window.speechSynthesis.cancel()}catch(_e){}}
     submitted=true;spClearTimer();submitBtn.disabled=true;
     spSay(isAuto?'时间到，正在自动交卷…':'正在判分…');
     var list=[];Object.keys(answers).forEach(function(k){list.push(answers[k])});
@@ -744,7 +943,8 @@ function spRunPaper(d){
   window.scrollTo(0,0);
 }
 function spShowResult(d,r){
-  if(r.points){SPTOP.textContent='';SPTOP.appendChild(maTopbar('sprints',r.points))}
+  var curGrade=r.grade||d.grade||SPGRADE||5;
+  if(r.points){SPTOP.textContent='';SPTOP.appendChild(maTopbar('sprints',r.points,curGrade))}
   SPBOX.textContent='';
   SPBOX.appendChild(el('div',{class:'ma-card ma-res-head'},
     el('div',{class:'ma-res-tier',text:r.tier.code+' · '+r.tier.name}),
@@ -765,9 +965,10 @@ function spShowResult(d,r){
   var lossCard=el('div',{class:'ma-card'},el('h3',{text:r.topLosses.length?'失分点（已在地图标红待修补）':'零失分通关'}));
   if(r.topLosses.length){
     r.topLosses.forEach(function(x){
+      var nGrade=maInferGrade(x.key,curGrade);
       lossCard.appendChild(el('div',{class:'ma-loss-row'},
         el('span',{text:x.key+' '+x.name+'（失 '+x.lostMarks+'/'+x.marks+' 分）'}),
-        el('a',{class:'ma-btn ma-btn-primary ma-btn-sm',href:'/v1/math-star-map#node='+encodeURIComponent(x.key),text:'去地图修补'})));
+        el('a',{class:'ma-btn ma-btn-primary ma-btn-sm',href:'/v1/math-star-map?grade='+encodeURIComponent(nGrade)+'#node='+encodeURIComponent(x.key),text:'去地图修补'})));
     });
   }else{
     lossCard.appendChild(el('p',{class:'ma-muted',text:'本次专项全部答对，对应节点星星已同步提升。'}));
@@ -780,8 +981,8 @@ function spShowResult(d,r){
   SPBOX.appendChild(det);
   SPBOX.appendChild(el('div',{class:'ma-row'},
     el('button',{type:'button',class:'ma-btn ma-btn-primary',text:'再战一次',onclick:function(){spStart(d.slug)}}),
-    el('button',{type:'button',class:'ma-btn ma-btn-ghost',text:'返回专项列表',onclick:spLoadList}),
-    el('a',{class:'ma-btn ma-btn-ghost',href:'/v1/math-star-map',text:'查看知识地图'})));
+    el('button',{type:'button',class:'ma-btn ma-btn-ghost',text:'返回专项列表',onclick:function(){spLoadList(curGrade)}}),
+    el('a',{class:'ma-btn ma-btn-ghost',href:'/v1/math-star-map'+maGradeQuery(curGrade),text:'查看知识地图'})));
   window.scrollTo(0,0);
 }
 maBoot(spLoadList);

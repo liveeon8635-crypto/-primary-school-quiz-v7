@@ -30,6 +30,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, desc, insert, select, update
 
+from changying.services import arena_grade_profiles as agp
 from changying.services import arena_review_and_custom as arc
 from changying.services import chinese_ai_grader as caig
 from changying.services import chinese_arena_points as capts
@@ -258,10 +259,12 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
 
     # ---------------- 学生端：语文知识地图（4 知识点域） ----------------
     @router.get("/student/chinese-star-map")
-    def get_chinese_star_map(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    def get_chinese_star_map(grade: int | None = None, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "student")
         ensure_tables(db)
-        bp = cbm.get_map_blueprint()
+        student_grade = agp.detect_user_grade(implementation, db, u)
+        active_grade = agp.resolve_arena_grade(grade, student_grade)
+        bp = cbm.get_map_blueprint(active_grade)
         rows = db.execute(
             select(t_mastery).where(
                 t_mastery.c.school_id == u.school_id,
@@ -301,8 +304,12 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
             })
 
         return {
+            "title": bp.get("title", ""),
             "subject": bp["subject"],
-            "grade": bp["grade"],
+            "grade": active_grade,
+            "studentGrade": student_grade,
+            "availableGrades": agp.build_available_grades(active_grade, student_grade),
+            "ageProfile": agp.get_age_interaction_profile(active_grade),
             "domains": bp["domains"],
             "nodes": nodes_out,
             "summary": {
@@ -321,7 +328,10 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
     def start_chinese_node_quiz(node_key: str, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "student")
         ensure_tables(db)
-        node = cbm.NODE_BY_KEY.get(node_key)
+        student_grade = agp.detect_user_grade(implementation, db, u)
+        target_grade = agp.infer_grade_from_node_key(node_key, student_grade)
+        bp = cbm.get_map_blueprint(target_grade)
+        node = next((n for n in bp["nodes"] if n["key"] == node_key), None) or cbm.NODE_BY_KEY.get(node_key)
         if not node:
             raise HTTPException(404, "未找到该语文知识节点")
         prev_cnt = db.execute(
@@ -359,6 +369,8 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
         return {
             "quizId": quiz_id,
             "node": node,
+            "grade": target_grade,
+            "ageProfile": agp.get_age_interaction_profile(target_grade),
             "questions": public_qs,
         }
 
@@ -371,7 +383,10 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
     ):
         need(u, "student")
         ensure_tables(db)
-        node = cbm.NODE_BY_KEY.get(node_key)
+        student_grade = agp.detect_user_grade(implementation, db, u)
+        target_grade = agp.infer_grade_from_node_key(node_key, student_grade)
+        bp = cbm.get_map_blueprint(target_grade)
+        node = next((n for n in bp["nodes"] if n["key"] == node_key), None) or cbm.NODE_BY_KEY.get(node_key)
         if not node:
             raise HTTPException(404, "未找到该语文知识节点")
         row = db.execute(
@@ -480,6 +495,7 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
             "quizId": int(row.id),
             "nodeKey": node_key,
             "nodeName": node["name"],
+            "grade": target_grade,
             "correct": correct_cnt,
             "total": total,
             "ratePct": rate_pct,
@@ -493,9 +509,11 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
 
     # ---------------- 学生端：语文应试专项（4 大板块 + 混合计时） ----------------
     @router.get("/student/chinese-sprints")
-    def get_chinese_sprints(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    def get_chinese_sprints(grade: int | None = None, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "student")
         ensure_tables(db)
+        student_grade = agp.detect_user_grade(implementation, db, u)
+        active_grade = agp.resolve_arena_grade(grade, student_grade)
         rows = db.execute(
             select(t_sprints)
             .where(
@@ -511,7 +529,7 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
             by_slug.setdefault(r.slug, []).append(r)
 
         sprints_out: list[dict[str, Any]] = []
-        for s in ces.list_sprints("语文"):
+        for s in ces.list_sprints("语文", grade=active_grade):
             hist = by_slug.get(s["slug"], [])
             best_tier = None
             best_rate = 0
@@ -531,7 +549,10 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
 
         return {
             "subject": "语文",
-            "grade": 5,
+            "grade": active_grade,
+            "studentGrade": student_grade,
+            "availableGrades": agp.build_available_grades(active_grade, student_grade),
+            "ageProfile": agp.get_age_interaction_profile(active_grade),
             "tiers": ces.TIERS,
             "sprints": sprints_out,
             "points": capts.student_arena_points_summary(implementation, db, u),
@@ -544,6 +565,8 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
         sprint = ces.get_sprint(slug)
         if not sprint:
             raise HTTPException(404, "未找到该语文应试专项")
+        student_grade = agp.detect_user_grade(implementation, db, u)
+        target_grade = int(sprint.get("grade") or agp.infer_grade_from_sprint_slug(slug, student_grade))
         prev_cnt = db.execute(
             select(t_sprints.c.id).where(
                 t_sprints.c.school_id == u.school_id,
@@ -571,6 +594,8 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
         return {
             "attemptId": attempt_id,
             "sprint": sprint,
+            "grade": target_grade,
+            "ageProfile": agp.get_age_interaction_profile(target_grade),
             "timingMode": sprint["timingMode"],
             "perQuestionSec": int(sprint.get("perQuestionSec", 0)),
             "maxPlays": int(sprint.get("maxPlays", 0)),
@@ -601,6 +626,8 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
             raise HTTPException(409, "本次语文专项已经提交过")
 
         sprint = ces.get_sprint(row.slug) or {"slug": row.slug, "title": row.slug}
+        student_grade = agp.detect_user_grade(implementation, db, u)
+        target_grade = int(sprint.get("grade") or agp.infer_grade_from_sprint_slug(row.slug, student_grade))
         questions = json.loads(row.items_json)
         now = datetime.utcnow()
         elapsed_sec = max(1, int((now - row.started_at).total_seconds()))
@@ -619,7 +646,7 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
             school_id=int(u.school_id),
         )
 
-        node_names = {n["key"]: n["name"] for n in cbm.CHINESE_G5_NODES}
+        node_names = {n["key"]: n["name"] for n in cbm.ALL_CHINESE_NODES}
         map_changes: dict[str, list[dict[str, Any]]] = {"lit": [], "repaired": [], "flagged": []}
         all_entries: list[dict[str, Any]] = []
         capped = False
@@ -700,6 +727,7 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
         return {
             "attemptId": int(row.id),
             "slug": row.slug,
+            "grade": target_grade,
             "timingMode": row.timing_mode,
             "pointsAwarded": points_awarded,
             "points": capts.student_arena_points_summary(implementation, db, u),
@@ -709,7 +737,7 @@ def install_chinese_arena_views(implementation: Any) -> APIRouter:
 
     # ---------------- 教师 / 家长学情同步概览 ----------------
     def _summarize_student_arena(db: Any, stu: Any) -> dict[str, Any]:
-        node_names = {n["key"]: n["name"] for n in cbm.CHINESE_G5_NODES}
+        node_names = {n["key"]: n["name"] for n in cbm.ALL_CHINESE_NODES}
         m_rows = db.execute(
             select(t_mastery).where(t_mastery.c.school_id == stu.school_id, t_mastery.c.student_id == stu.id)
         ).all()

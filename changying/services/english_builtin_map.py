@@ -14,6 +14,9 @@ import hashlib
 import re
 from typing import Any, Iterable
 
+from changying.services import arena_grade_profiles as agp
+from changying.services import english_grade_curricula as egc
+
 SUBJECT_ENGLISH = "英语"
 DEFAULT_GRADE = 5
 
@@ -91,7 +94,25 @@ ENGLISH_G5_NODES: list[dict[str, Any]] = [
     {"key": "E4-4", "name": "完形选词与语境推断", "domain": "reading", "icon": "📝"},
 ]
 
-NODE_BY_KEY = {n["key"]: n for n in ENGLISH_G5_NODES}
+ENGLISH_G3_NODES = egc.ENGLISH_G3_NODES
+ENGLISH_G4_NODES = egc.ENGLISH_G4_NODES
+ENGLISH_G6_NODES = egc.ENGLISH_G6_NODES
+
+NODES_BY_GRADE: dict[int, list[dict[str, Any]]] = {
+    3: ENGLISH_G3_NODES,
+    4: ENGLISH_G4_NODES,
+    5: [{**n, "grade": 5} for n in ENGLISH_G5_NODES],
+    6: ENGLISH_G6_NODES,
+}
+
+ALL_ENGLISH_NODES: list[dict[str, Any]] = (
+    list(ENGLISH_G3_NODES)
+    + list(ENGLISH_G4_NODES)
+    + [{**n, "grade": 5} for n in ENGLISH_G5_NODES]
+    + list(ENGLISH_G6_NODES)
+)
+
+NODE_BY_KEY = {n["key"]: n for n in ALL_ENGLISH_NODES}
 DOMAIN_BY_ID = {d["id"]: d for d in ENGLISH_G5_DOMAINS}
 
 
@@ -134,6 +155,7 @@ def _q(
     item: dict[str, Any] = {
         "id": qid,
         "nodeKey": node_key,
+        "grade": agp.infer_grade_from_node_key(node_key, DEFAULT_GRADE),
         "questionType": qtype,
         "typeLabel": TYPE_LABELS.get(qtype, qtype),
         "level": level,
@@ -167,6 +189,9 @@ def _q(
         item["fallbackCorrectIndex"] = int(fallback_correct_index or 0)
     if passage:
         item["passage"] = passage
+    if qtype in ("word_spell", "sentence_fill"):
+        item["firstLetterHint"] = egc.make_first_letter_hint(answer)
+        item["assistChunks"] = egc.make_default_assist_chunks(answer, qtype, seed=len(qid))
     return item
 
 
@@ -761,11 +786,16 @@ def _build_question_bank() -> dict[str, list[dict[str, Any]]]:
     return bank
 
 
-QUESTION_BANK = _build_question_bank()
+G5_QUESTION_BANK = _build_question_bank()
+
+QUESTION_BANK: dict[str, list[dict[str, Any]]] = {}
+for _g_bank in (egc.G3_QUESTION_BANK, egc.G4_QUESTION_BANK, G5_QUESTION_BANK, egc.G6_QUESTION_BANK):
+    for _nk, _qs in _g_bank.items():
+        QUESTION_BANK[_nk] = list(_qs)
 
 
 def collect_audio_specs() -> list[dict[str, str]]:
-    """收集题库中全部需要预生成的静态 MP3 音频条目（按 audioId 去重）."""
+    """收集 G3、G4、G5、G6 题库中全部需要预生成的静态 MP3 音频条目（按 audioId 去重）."""
     seen: dict[str, dict[str, str]] = {}
     for qs in QUESTION_BANK.values():
         for q in qs:
@@ -780,12 +810,16 @@ def collect_audio_specs() -> list[dict[str, str]]:
     return list(seen.values())
 
 
-def get_map_blueprint() -> dict[str, Any]:
+def get_map_blueprint(grade: int = DEFAULT_GRADE) -> dict[str, Any]:
+    g = agp.clamp_arena_grade(grade, DEFAULT_GRADE)
+    nodes = NODES_BY_GRADE.get(g, NODES_BY_GRADE[DEFAULT_GRADE])
+    title = agp.GRADE_THEMES.get(g, agp.GRADE_THEMES[DEFAULT_GRADE])["englishTitle"]
     return {
         "subject": SUBJECT_ENGLISH,
-        "grade": DEFAULT_GRADE,
+        "grade": g,
+        "title": title,
         "domains": [dict(d) for d in ENGLISH_G5_DOMAINS],
-        "nodes": [dict(n) for n in ENGLISH_G5_NODES],
+        "nodes": [dict(n) for n in nodes],
     }
 
 
@@ -824,11 +858,22 @@ def generate_node_questions(
 def public_question(q: dict[str, Any]) -> dict[str, Any]:
     """脱敏返回给前端作答的题目结构（不暴露标准答案与解析）."""
     keep = (
-        "id", "nodeKey", "questionType", "typeLabel", "level", "levelLabel",
+        "id", "nodeKey", "grade", "questionType", "typeLabel", "level", "levelLabel",
         "marks", "text", "options", "audioId", "audioUrl", "hint",
         "tiles", "wordBank", "speakTarget", "fallbackOptions", "passage",
+        "firstLetterHint", "assistChunks",
     )
-    return {k: copy.deepcopy(q[k]) for k in keep if k in q}
+    out = {k: copy.deepcopy(q[k]) for k in keep if k in q}
+    if "grade" not in out:
+        out["grade"] = agp.infer_grade_from_node_key(q.get("nodeKey", ""), DEFAULT_GRADE)
+    qt = q.get("questionType", "")
+    ans = str(q.get("answer") or "")
+    if qt in ("word_spell", "sentence_fill") and ans:
+        if "firstLetterHint" not in out:
+            out["firstLetterHint"] = egc.make_first_letter_hint(ans)
+        if "assistChunks" not in out:
+            out["assistChunks"] = egc.make_default_assist_chunks(ans, qt, seed=len(str(q.get("id", ""))))
+    return out
 
 
 def _norm_text(s: str) -> str:
@@ -939,12 +984,17 @@ def compute_light_state(
 
 
 __all__ = [
+    "ALL_ENGLISH_NODES",
     "DEFAULT_GRADE",
     "DOMAIN_BY_ID",
+    "ENGLISH_G3_NODES",
+    "ENGLISH_G4_NODES",
     "ENGLISH_G5_DOMAINS",
     "ENGLISH_G5_NODES",
+    "ENGLISH_G6_NODES",
     "LEVEL_LABELS",
     "LIGHT_STATES",
+    "NODES_BY_GRADE",
     "NODE_BY_KEY",
     "QUESTION_BANK",
     "SUBJECT_ENGLISH",

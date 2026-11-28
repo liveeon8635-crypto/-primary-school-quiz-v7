@@ -12,7 +12,9 @@ from decimal import Decimal, InvalidOperation
 import re
 from typing import Any, Iterable
 
+from changying.services import math_grade_curricula as mgc
 from changying.services import visual_questions as vq
+from changying.services.arena_grade_profiles import infer_grade_from_node_key
 
 SUBJECT_MATH = "数学"
 DEFAULT_GRADE = 5
@@ -29,6 +31,7 @@ VISUAL_NODE_MAP: dict[str, tuple[str, ...]] = {
     "M3-1": ("5-1",),
     "M4-1": ("7-1",),
     "M4-2": ("7-2", "7-3"),
+    **mgc.GRADE_VISUAL_NODE_MAP,
 }
 
 LIGHT_STATES = {
@@ -144,12 +147,30 @@ MATH_G5_CORE_MAP: dict[str, Any] = {
 
 
 def get_builtin_math_map(grade: int | None = None) -> dict[str, Any]:
-    """返回去教材版本的通用数学知识地图副本."""
+    """返回去教材版本的通用数学知识地图副本（支持 3、4、5、6 年级）."""
+    if grade is not None:
+        try:
+            g = int(grade)
+        except (TypeError, ValueError):
+            g = DEFAULT_GRADE
+        if g in (3, 4, 6):
+            grade_map = mgc.get_grade_math_map(g)
+            if grade_map is not None:
+                return grade_map
     data = copy.deepcopy(MATH_G5_CORE_MAP)
     if grade is not None and int(grade) != DEFAULT_GRADE:
         data["grade"] = int(grade)
         data["title"] = f"小学数学通用知识地图（{int(grade)}年级·算理星图）"
     return data
+
+
+def get_all_math_nodes() -> dict[str, dict[str, Any]]:
+    """返回 G3/G4/G5/G6 所有数学节点的字典映射 (key -> node dict)."""
+    out: dict[str, dict[str, Any]] = {}
+    for m in (mgc.MATH_G3_CORE_MAP, mgc.MATH_G4_CORE_MAP, MATH_G5_CORE_MAP, mgc.MATH_G6_CORE_MAP):
+        for n in m["nodes"]:
+            out[n["key"]] = copy.deepcopy(n)
+    return out
 
 
 def _choice_q(
@@ -248,6 +269,11 @@ def _text_q(
 
 def _build_node_pool(node_key: str, seed: int) -> list[dict[str, Any]]:
     """为单个知识节点确定性生成覆盖 5 题型、3 难度档的 6 道自带题."""
+    k = str(node_key or "").strip().upper()
+    if k.startswith(("G3-", "G4-", "G6-")):
+        return mgc.build_grade_node_pool(k, seed)
+    if k.startswith("G5-"):
+        node_key = k[3:]
     s = abs(int(seed))
     a = 2 + (s % 7)          # 2..8
     b = 3 + ((s * 3) % 6)    # 3..8
@@ -911,7 +937,7 @@ def generate_node_questions(
     for offset in range(6):
         vis = _visual_questions_for_node(node_key, seed + offset) if offset < 2 else []
         base = _build_node_pool(node_key, seed + offset)
-        # 穿插带图题，避免清一色纯文字题
+        # 穿插带图题，并确保前 5 题至少包含 1 道 hard 题（支撑一次全对即可三星精通）
         mixed: list[dict[str, Any]] = []
         if vis:
             mixed.append(vis[0])
@@ -919,6 +945,10 @@ def generate_node_questions(
         if len(vis) > 1:
             mixed.append(vis[1])
         mixed.extend(base[3:])
+        if count >= 5 and len(mixed) > 5 and not any(q.get("level") == "hard" for q in mixed[:5]):
+            hard_idx = next((i for i in range(5, len(mixed)) if mixed[i].get("level") == "hard"), None)
+            if hard_idx is not None:
+                mixed[4], mixed[hard_idx] = mixed[hard_idx], mixed[4]
         _collect(mixed)
         if len(out) >= count:
             return out
@@ -928,14 +958,18 @@ def generate_node_questions(
 def public_question(q: dict[str, Any]) -> dict[str, Any]:
     """剥离答案，返回给学生端作答的公开题目结构."""
     base_label = TYPE_LABELS.get(q["questionType"], q["questionType"])
+    ans_str = str(q.get("answer", ""))
+    keypad_mode = "fraction" if "/" in ans_str else ("ratio" if ":" in ans_str else "number")
     return {
         "id": q["id"],
         "nodeKey": q["nodeKey"],
+        "grade": infer_grade_from_node_key(q["nodeKey"]),
         "level": q["level"],
         "levelLabel": LEVEL_LABELS.get(q["level"], q["level"]),
         "questionType": q["questionType"],
         "typeLabel": f"看图·{base_label}" if q.get("figure") else base_label,
         "hasFigure": bool(q.get("figure")),
+        "keypadMode": keypad_mode,
         "marks": q["marks"],
         "text": q["text"],
         "options": list(q.get("options") or []),
@@ -946,10 +980,34 @@ def public_question(q: dict[str, Any]) -> dict[str, Any]:
 def _normalize_text_answer(raw: Any) -> str:
     s = str(raw or "").strip()
     s = re.sub(r"\s+", "", s)
-    s = s.replace("，", ",").replace("。", ".").replace("％", "%")
+    s = s.replace("，", ",").replace("。", ".").replace("％", "%").replace("：", ":").replace("／", "/")
+    # 分数（如 3/4 或 -1/2）精确保持，必要时化为最简分数比对
+    m_frac = re.fullmatch(r"([+-]?\d+)/([1-9]\d*)", s)
+    if m_frac:
+        num = int(m_frac.group(1))
+        den = int(m_frac.group(2))
+        import math
+        g = math.gcd(abs(num), den)
+        num //= g
+        den //= g
+        return str(num) if den == 1 else f"{num}/{den}"
     # 去掉末尾常见单位以便比较纯数值
-    unit_stripped = re.sub(r"(元|米|厘米|分米|千米|平方米|平方分米|平方厘米|公顷|平方千米|千克|克|个|套|根|张|页|人|小时|分钟|度|°|cm²|cm|m²|m)$", "", s, flags=re.IGNORECASE)
+    unit_stripped = re.sub(
+        r"(元|米|厘米|分米|千米|毫米|平方米|平方分米|平方厘米|公顷|平方千米|立方米|立方分米|立方厘米|千克|克|吨|个|套|根|张|页|人|名|本|棵|只|盒|块|袋|杯|天|小时|分钟|分|秒|度|°|℃|%|万|cm³|cm²|cm|dm³|dm²|dm|m³|m²|m|km)$",
+        "",
+        s,
+        flags=re.IGNORECASE,
+    )
     candidate = unit_stripped or s
+    m_frac2 = re.fullmatch(r"([+-]?\d+)/([1-9]\d*)", candidate)
+    if m_frac2:
+        num = int(m_frac2.group(1))
+        den = int(m_frac2.group(2))
+        import math
+        g = math.gcd(abs(num), den)
+        num //= g
+        den //= g
+        return str(num) if den == 1 else f"{num}/{den}"
     try:
         return _fmt(Decimal(candidate))
     except (InvalidOperation, ValueError):
@@ -1014,8 +1072,10 @@ __all__ = [
     "SUBJECT_MATH",
     "TYPE_LABELS",
     "TYPE_POINTS",
+    "VISUAL_NODE_MAP",
     "compute_node_light_state",
     "generate_node_questions",
+    "get_all_math_nodes",
     "get_builtin_math_map",
     "grade_builtin_question",
     "public_question",

@@ -5,33 +5,21 @@
     "voice": "zh-CN-XiaoxiaoNeural",
     "size": 11232
   },
-  "zh_485063e9c4c7bb": {
-    "file": "zh_485063e9c4c7bb.mp3",
-    "text": "懒惰",
-    "voice": "zh-CN-XiaoxiaoNeural",
-    "size": 11232
-  },
-  "zh_13198ca320d96c": {
-    "file": "zh_13198ca320d96c.mp3",
-    "text": "侵略",
-    "voice": "zh-CN-XiaoxiaoNeural",
-    "size": 11232
-  },
   "zh_5d98d84e8e6123": {
     "file": "zh_5d98d84e8e6123.mp3",
     "text": "吩咐",
     "voice": "zh-CN-XiaoxiaoNeural",
     "size": 11232
   },
-  "zh_905c552f7a4578": {
-    "file": "zh_905c552f7a4578.mp3",
-    "text": "安居乐业",
-    "voice": "zh-CN-XiaoxiaoNeural",
-    "size": 11232
-  },
   "zh_11b77be2d3eeb3": {
     "file": "zh_11b77be2d3eeb3.mp3",
     "text": "迫不及待",
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "size": 11232
+  },
+  "zh_f3eb57b7c51a66": {
+    "file": "zh_f3eb57b7c51a66.mp3",
+    "text": "黎明",
     "voice": "zh-CN-XiaoxiaoNeural",
     "size": 11232
   },
@@ -47,9 +35,15 @@
     "voice": "zh-CN-XiaoxiaoNeural",
     "size": 11232
   },
-  "zh_5af40c3fff77df": {
-    "file": "zh_5af40c3fff77df.mp3",
-    "text": "辉煌",
+  "zh_0555a7e1963eff": {
+    "file": "zh_0555a7e1963eff.mp3",
+    "text": "领略",
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "size": 11232
+  },
+  "zh_485063e9c4c7bb": {
+    "file": "zh_485063e9c4c7bb.mp3",
+    "text": "懒惰",
     "voice": "zh-CN-XiaoxiaoNeural",
     "size": 11232
   },
@@ -59,17 +53,29 @@
     "voice": "zh-CN-XiaoxiaoNeural",
     "size": 11232
   },
-  "zh_f3eb57b7c51a66": {
-    "file": "zh_f3eb57b7c51a66.mp3",
-    "text": "黎明",
+  "zh_5af40c3fff77df": {
+    "file": "zh_5af40c3fff77df.mp3",
+    "text": "辉煌",
     "voice": "zh-CN-XiaoxiaoNeural",
     "size": 11232
   },
-  "zh_0555a7e1963eff": {
-    "file": "zh_0555a7e1963eff.mp3",
-    "text": "领略",
+  "zh_905c552f7a4578": {
+    "file": "zh_905c552f7a4578.mp3",
+    "text": "安居乐业",
     "voice": "zh-CN-XiaoxiaoNeural",
     "size": 11232
+  },
+  "zh_13198ca320d96c": {
+    "file": "zh_13198ca320d96c.mp3",
+    "text": "侵略",
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "size": 11232
+  },
+  "zh_913a95ca779fa2": {
+    "file": "zh_913a95ca779fa2.mp3",
+    "text": "敏而好学，不耻下问。",
+    "voice": "zh-CN-YunxiNeural",
+    "size": 20448
   },
   "zh_336aa4e093e1d7": {
     "file": "zh_336aa4e093e1d7.mp3",
@@ -142,12 +148,6 @@
     "text": "九州生气恃风雷，万马齐喑究可哀。",
     "voice": "zh-CN-YunxiNeural",
     "size": 28800
-  },
-  "zh_913a95ca779fa2": {
-    "file": "zh_913a95ca779fa2.mp3",
-    "text": "敏而好学，不耻下问。",
-    "voice": "zh-CN-YunxiNeural",
-    "size": 20448
   },
   "zh_b422d4c4809377": {
     "file": "zh_b422d4c4809377.mp3",

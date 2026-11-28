@@ -11,7 +11,30 @@ import re
 from typing import Any
 from urllib import request as urllib_request
 
+from changying.services import arena_grade_profiles as agp
 from changying.services import chinese_builtin_map as cbm
+
+
+GRADE_RUBRIC_GUIDANCE: dict[int, str] = {
+    3: "三年级（启蒙写话段）：重在语句通顺、标点基本正确、留心观察与大胆想象，能用上简单的比喻或拟人句即可给予积极鼓励。",
+    4: "四年级（进阶片段段）：重在连续动作与神态心理细节刻画、段意条理清楚（起因经过结果或总分结构）及批注感悟准确。",
+    5: "五年级（高阶运用段）：重在审题立意准确、说明方法或人物细节描写具体传神、修辞表现力与情感真挚。",
+    6: "六年级（小升初冲刺段）：重在审题立意深刻、点面结合或融情于景、修辞综合表现力与主旨升华。",
+}
+
+
+def build_grade_system_prompt(grades: set[int] | None = None) -> str:
+    """根据题目所属年级（3～6 年级）动态构建分学段评价标准系统提示词."""
+    active_grades = sorted(g for g in (grades or {5}) if g in (3, 4, 5, 6)) or [5]
+    rubric_lines = "；".join(GRADE_RUBRIC_GUIDANCE[g] for g in active_grades)
+    grade_desc = "、".join(f"{g}年级" for g in active_grades)
+    return (
+        f"你是小学语文特级教师（当前批改学段：{grade_desc}），正在实时批改学生的阅读简答题与微片段写作。"
+        f"请结合每道题所属年级(grade)动态调整评价标准：{rubric_lines}。"
+        "请严格按每题的满分(maxMarks)、参考要点(reference)和学生作答(studentAnswer)给出客观公平的分数与简明鼓励式点评（每题点评 25~60 字，包含1个亮点和1条具体改进建议）。"
+        "仅输出合法 JSON，格式为："
+        '{"results":[{"id":"题号","earnedMarks":整数,"comment":"简明点评"}]}'
+    )
 
 
 def _resolve_ai_config(implementation: Any | None, db: Any | None, school_id: int | None) -> tuple[str, str, str] | None:
@@ -67,12 +90,8 @@ def _extract_json_block(raw: str) -> dict[str, Any] | None:
 
 
 def _call_chat_completions(base_url: str, api_key: str, model: str, payload_items: list[dict[str, Any]], timeout: float = 15.0) -> dict[str, dict[str, Any]] | None:
-    sys_prompt = (
-        "你是小学五年级语文特级教师，正在实时批改学生的阅读简答题与微片段写作。"
-        "请严格按每题的满分(maxMarks)、参考要点(reference)和学生作答(studentAnswer)给出客观公平的分数与简明鼓励式点评（每题点评 25~60 字，包含1个亮点和1条具体改进建议）。"
-        "仅输出合法 JSON，格式为："
-        '{"results":[{"id":"题号","earnedMarks":整数,"comment":"简明点评"}]}'
-    )
+    grades = {int(it.get("grade") or 5) for it in payload_items if isinstance(it, dict)}
+    sys_prompt = build_grade_system_prompt(grades)
     user_content = json.dumps({"items": payload_items}, ensure_ascii=False)
     body = json.dumps(
         {
@@ -147,6 +166,7 @@ def grade_subjective_items(
     payload = [
         {
             "id": q["id"],
+            "grade": int(q.get("grade") or agp.infer_grade_from_node_key(str(q.get("nodeKey") or ""), 5)),
             "type": q.get("typeLabel", q.get("questionType", "")),
             "maxMarks": int(q.get("marks", 4)),
             "question": q["text"],
@@ -191,4 +211,4 @@ def grade_subjective_items(
     return results
 
 
-__all__ = ["grade_subjective_items"]
+__all__ = ["GRADE_RUBRIC_GUIDANCE", "build_grade_system_prompt", "grade_subjective_items"]
