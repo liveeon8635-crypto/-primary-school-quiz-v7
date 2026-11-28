@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import json
 import re
+import threading
 from typing import Any
 
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, desc, select
@@ -90,6 +91,34 @@ def compute_review_meta(
         "daysSincePractice": days_since,
         "reviewCycleDays": cycle_days,
     }
+
+
+_DDL_LOCK = threading.Lock()
+
+
+def ensure_tables_on_session(db: Any, *tables: Table) -> None:
+    """在同一 Session 已占用的连接上按 Engine 幂等建表，避免 db.get_bind() 额外抢占连接池导致 8 并发死锁."""
+    if not tables:
+        return
+    bind = db.get_bind()
+    ensured: set[str] | None = getattr(bind, "_cy_ensured_tables", None)
+    if ensured is not None and all(t.name in ensured for t in tables):
+        return
+    with _DDL_LOCK:
+        ensured = getattr(bind, "_cy_ensured_tables", None)
+        if ensured is None:
+            ensured = set()
+            try:
+                setattr(bind, "_cy_ensured_tables", ensured)
+            except Exception:
+                pass
+        pending = [t for t in tables if t.name not in ensured]
+        if not pending:
+            return
+        conn = db.connection()
+        for tbl in pending:
+            tbl.create(bind=conn, checkfirst=True)
+            ensured.add(tbl.name)
 
 
 def register_arena_custom_questions_table(implementation: Any) -> Table:
@@ -200,7 +229,7 @@ def fetch_custom_quiz_questions(
 ) -> list[dict[str, Any]]:
     """抽取本校该考点的有效老师私房题（最多 limit 题），构造成与微测兼容的题目字典."""
     tbl = register_arena_custom_questions_table(implementation)
-    tbl.create(bind=db.get_bind(), checkfirst=True)
+    ensure_tables_on_session(db, tbl)
     rows = db.execute(
         select(tbl)
         .where(
@@ -294,7 +323,7 @@ def grade_custom_question(
         try:
             cid = int(qid_str[len(CUSTOM_QUESTION_PREFIX):])
             tbl = register_arena_custom_questions_table(implementation)
-            tbl.create(bind=db.get_bind(), checkfirst=True)
+            ensure_tables_on_session(db, tbl)
             row = db.execute(select(tbl).where(tbl.c.id == cid)).first()
             if row is not None:
                 raw_qtype = str(row.question_type)
@@ -354,6 +383,7 @@ __all__ = [
     "CUSTOM_QUESTION_PREFIX",
     "CUSTOM_TYPE_LABELS",
     "compute_review_meta",
+    "ensure_tables_on_session",
     "fetch_custom_quiz_questions",
     "grade_custom_question",
     "is_custom_question_id",

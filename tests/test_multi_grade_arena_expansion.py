@@ -209,8 +209,75 @@ with TestClient(app) as client:
     st_tasks = client.get("/student/arena-tasks", headers=sh).json()["items"]
     g3_task = next(t for t in st_tasks if t["targetKey"] == "G3-E1-1")
     assert "grade=3" in g3_task["actionUrl"]
+
+    # 5. Single-connection pool (pool_size=1, max_overflow=0) must never deadlock on arena routes
+    from sqlalchemy import create_engine
+    limited_engine = create_engine(
+        legacy.engine.url,
+        pool_size=1,
+        max_overflow=0,
+        pool_timeout=0.2,
+        connect_args={"check_same_thread": False},
+    )
+    legacy.SessionLocal.configure(bind=limited_engine)
+    for path in (
+        "/student/math-star-map?grade=3",
+        "/student/math-sprints?grade=4",
+        "/student/english-star-map?grade=6",
+        "/student/english-sprints?grade=3",
+        "/student/chinese-star-map?grade=4",
+        "/student/chinese-sprints?grade=6",
+        "/student/arena-tasks",
+        "/student/arena-wrongbook",
+    ):
+        r = client.get(path, headers=sh)
+        assert r.status_code == 200, (path, r.status_code, r.text)
 print("OK")
 '''
+
+
+def test_ensure_tables_on_session_never_deadlocks_8_connection_pool(tmp_path: Path):
+    import threading
+    from sqlalchemy import Column, Integer, MetaData, Table, create_engine, select
+    from sqlalchemy.orm import sessionmaker
+    from changying.services.arena_review_and_custom import ensure_tables_on_session
+
+    db_file = tmp_path / "pool8.sqlite3"
+    eng = create_engine(
+        f"sqlite:///{db_file}",
+        pool_size=3,
+        max_overflow=5,
+        pool_timeout=1.5,
+        connect_args={"check_same_thread": False},
+    )
+    Session = sessionmaker(bind=eng)
+    md = MetaData()
+    t1 = Table("t_pool_1", md, Column("id", Integer, primary_key=True))
+    t2 = Table("t_pool_2", md, Column("id", Integer, primary_key=True))
+    t1.create(bind=eng, checkfirst=True)
+
+    barrier = threading.Barrier(8)
+    errors: list[str] = []
+
+    def worker() -> None:
+        s = Session()
+        try:
+            s.execute(select(t1)).all()  # holds 1 of 8 pool connections
+            barrier.wait(timeout=3.0)
+            ensure_tables_on_session(s, t1, t2)
+            s.execute(select(t2)).all()
+        except Exception as exc:
+            errors.append(f"{type(exc).__name__}: {exc}")
+        finally:
+            s.close()
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    eng.dispose()
+    assert errors == []
 
 
 def test_multi_grade_arena_end_to_end(tmp_path: Path):

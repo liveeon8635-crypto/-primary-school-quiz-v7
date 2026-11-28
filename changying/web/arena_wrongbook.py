@@ -11,6 +11,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, desc, insert, select, update
 
+from changying.services import arena_review_and_custom as arc
+
 SUBJECT_MAP_URL = {
     "数学": "/v1/math-star-map",
     "英语": "/v1/english-star-map",
@@ -60,7 +62,7 @@ def record_arena_outcomes(
 ) -> dict[str, int]:
     """根据本次交卷明细自动记录错题（入本/累加）与攻克错题（自动标为 mastered）."""
     tbl = register_arena_wrongbook_table(implementation)
-    tbl.create(bind=db.get_bind(), checkfirst=True)
+    arc.ensure_tables_on_session(db, tbl)
     now = datetime.utcnow()
     added = 0
     resolved = 0
@@ -145,7 +147,7 @@ def install_arena_wrongbook_views(implementation: Any) -> APIRouter:
         db: Any = Depends(get_db),
     ):
         need(u, "student")
-        tbl.create(bind=db.get_bind(), checkfirst=True)
+        arc.ensure_tables_on_session(db, tbl)
         q = select(tbl).where(
             tbl.c.school_id == u.school_id,
             tbl.c.student_id == u.id,
@@ -193,7 +195,7 @@ def install_arena_wrongbook_views(implementation: Any) -> APIRouter:
         db: Any = Depends(get_db),
     ):
         need(u, "student")
-        tbl.create(bind=db.get_bind(), checkfirst=True)
+        arc.ensure_tables_on_session(db, tbl)
         row = db.execute(
             select(tbl).where(
                 tbl.c.id == item_id,

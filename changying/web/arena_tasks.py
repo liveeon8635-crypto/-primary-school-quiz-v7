@@ -270,15 +270,14 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
     current_user, get_db, need = implementation.current_user, implementation.get_db, implementation.need
     router = APIRouter()
 
+    subj_tables: list[Table] = []
+    for _reg in (register_math_arena_tables, register_english_arena_tables, register_chinese_arena_tables):
+        _tmap = _reg(implementation)
+        subj_tables.extend([_tmap["mastery"], _tmap["quizzes"], _tmap["sprints"]])
+    all_arena_tables = (t_tasks, t_targets, t_cheers, t_custom, *subj_tables)
+
     def ensure_all_tables(db: Any) -> None:
-        bind = db.get_bind()
-        for tbl in (t_tasks, t_targets, t_cheers, t_custom):
-            tbl.create(bind=bind, checkfirst=True)
-        for subj in ("数学", "英语", "语文"):
-            m = _subject_meta(implementation, subj)
-            m["mastery_tbl"].create(bind=bind, checkfirst=True)
-            m["quizzes_tbl"].create(bind=bind, checkfirst=True)
-            m["sprints_tbl"].create(bind=bind, checkfirst=True)
+        arc.ensure_tables_on_session(db, *all_arena_tables)
 
     def _teacher_classes(db: Any, u: Any) -> list[Any]:
         SchoolClass = getattr(implementation, "SchoolClass", None)
