@@ -119,10 +119,10 @@ _GUIDE_SNIPPET = r'''
     if(!persona)return;
     const overlay=mountShell(),body=overlay.querySelector('.cy-onboarding-body');
     const introDesc=persona.id==='parent'
-      ?'不是看说明图。你会在临时虚拟环境里真实体验查看孩子学情、核对老师布置的知识点与专项任务、发送正向打气，以及查看错题与学习进度；所有训练数据都不会写入正式档案。'
+      ?'不是看说明图。你会在临时虚拟环境里完整走一遍家长端：查看孩子数/英/语三科知识地图与考点明细、核对老师布置的专项与温习任务、一键发送正向打气；所有训练数据都不会写入正式档案。'
       :(persona.id==='student'
-        ?'不是看说明图。你会在临时虚拟环境里真实体验在线做题、闯关点亮知识地图、订正错题和查看学习积分；所有训练数据都不会写入正式档案。'
-        :'不是看说明图。你会在临时虚拟环境里真实建班、加学生、组卷、布置、作答、查看结果和继续教学；需要关联角色时可选择亲自切换虚拟账号，或由系统自动模拟关联数据。所有训练业务数据都不会写入正式档案。');
+        ?'不是看说明图。你会在临时虚拟环境里完整走一遍学生端：先做顶部「老师今日任务」、5 题微测点亮数/英/语知识地图、14/30 天温习焕亮、挑战限时应试专项并自动收录错题赚积分；所有训练数据都不会写入正式档案。'
+        :'不是看说明图。你会在临时虚拟环境里真实建班、加学生、组卷、布置，并了解新版数/英/语三科知识地图与应试专项（薄弱热力分层派发、强制重刷、考点私房题与自动验收）；所有训练业务数据都不会写入正式档案。');
     body.innerHTML='<section class="cy-lesson-card" style="max-width:760px;margin:0 auto"><span class="tag">'+(firstVisit?'首次登录引导':'继续新手教学')+'</span><h1 style="margin:10px 0 7px">'+persona.icon+' '+esc(persona.name)+'：进入同身份实操沙盒</h1><p class="subtitle">'+esc(introDesc)+'</p><div class="cy-guide-summary"><div><b>真实操作</b><small>按长缨实际业务顺序完成每个页面任务</small></div><div><b>跨角色可选</b><small>亲自切换体验，或自动模拟后继续主身份</small></div><div><b>可反复重练</b><small>支持跳过、回退、场景起点和整条重置</small></div></div><div class="cy-guide-actions"><button class="btn primary" id="cy-current-start">进入实操沙盒</button><button class="btn" id="cy-current-exit">暂不学习</button></div></section>';
     body.querySelector('#cy-current-start').onclick=()=>{location.href='/v1/training'};
     body.querySelector('#cy-current-exit').onclick=closeOverlay;
