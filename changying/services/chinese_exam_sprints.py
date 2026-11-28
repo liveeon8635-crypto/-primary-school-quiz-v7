@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from changying.services import arena_grade_profiles as agp
 from changying.services import chinese_ai_grader as caig
 from changying.services import chinese_builtin_map as cbm
+from changying.services import chinese_grade_curricula as cgc
 from changying.services import exam_sprints as math_sprints
 
 GRACE_SECONDS = math_sprints.GRACE_SECONDS
@@ -83,11 +85,31 @@ CHINESE_G5_SPRINTS: list[dict[str, Any]] = [
     },
 ]
 
-SPRINT_BY_SLUG = {s["slug"]: s for s in CHINESE_G5_SPRINTS}
+SPRINTS_BY_GRADE: dict[int, list[dict[str, Any]]] = {
+    3: cgc.CHINESE_G3_SPRINTS,
+    4: cgc.CHINESE_G4_SPRINTS,
+    5: CHINESE_G5_SPRINTS,
+    6: cgc.CHINESE_G6_SPRINTS,
+}
+
+ALL_CHINESE_SPRINTS: list[dict[str, Any]] = (
+    list(cgc.CHINESE_G3_SPRINTS)
+    + list(cgc.CHINESE_G4_SPRINTS)
+    + list(CHINESE_G5_SPRINTS)
+    + list(cgc.CHINESE_G6_SPRINTS)
+)
+
+SPRINT_BY_SLUG: dict[str, dict[str, Any]] = {s["slug"]: s for s in ALL_CHINESE_SPRINTS}
 
 
-def list_sprints(subject: str = "语文") -> list[dict[str, Any]]:
-    return [dict(s) for s in CHINESE_G5_SPRINTS if s["subject"] == subject]
+def list_sprints(subject: str = "语文", grade: int | None = None) -> list[dict[str, Any]]:
+    target_grade = cbm.DEFAULT_GRADE if grade is None else agp.clamp_arena_grade(grade, cbm.DEFAULT_GRADE)
+    pool = SPRINTS_BY_GRADE.get(target_grade, CHINESE_G5_SPRINTS)
+    return [dict(s) for s in pool if s["subject"] == subject]
+
+
+def list_all_sprints(subject: str = "语文") -> list[dict[str, Any]]:
+    return [dict(s) for s in ALL_CHINESE_SPRINTS if s["subject"] == subject]
 
 
 def get_sprint(slug: str) -> dict[str, Any] | None:
@@ -194,7 +216,7 @@ def evaluate_sprint_attempt(
 
     type_stats: dict[str, dict[str, Any]] = {}
     node_stats: dict[str, dict[str, Any]] = {}
-    node_names = {n["key"]: n["name"] for n in cbm.CHINESE_G5_NODES}
+    node_names = {k: n["name"] for k, n in cbm.NODE_BY_KEY.items()}
     details: list[dict[str, Any]] = []
 
     for q in questions:
@@ -340,8 +362,10 @@ def evaluate_sprint_attempt(
 
 
 __all__ = [
+    "ALL_CHINESE_SPRINTS",
     "CHINESE_G5_SPRINTS",
     "GRACE_SECONDS",
+    "SPRINTS_BY_GRADE",
     "SPRINT_BY_SLUG",
     "TIERS",
     "TIER_BY_CODE",
@@ -349,5 +373,6 @@ __all__ = [
     "compose_sprint_questions",
     "evaluate_sprint_attempt",
     "get_sprint",
+    "list_all_sprints",
     "list_sprints",
 ]

@@ -67,7 +67,7 @@ function arenaRoleHub(role,subject,sess){
 
   /* ================= 教师端 4 Tab 控制台 ================= */
   if(isTeacher){
-    var curClassId=0,curTab='heat',diagData=null,taskData=null,customData=null;
+    var curClassId=0,curGrade=0,curTab='heat',diagData=null,taskData=null,customData=null;
     var curDueDate=defaultDueDate();
     var heatStatusFilter='all',heatModuleFilter='all';
     var stuSearchText='';
@@ -186,7 +186,25 @@ function arenaRoleHub(role,subject,sess){
           sel.appendChild(op);
         });
       }
-      sel.onchange=function(){curClassId=Number(sel.value||0);loadAll()};
+      sel.onchange=function(){curClassId=Number(sel.value||0);curGrade=0;loadAll()};
+
+      var activeGrade=(diagData&&diagData.grade)?Number(diagData.grade):(curGrade||5);
+      var gradeSeg=el('div',{class:'ea-subj',style:'white-space:nowrap'});
+      [[3,'三年级'],[4,'四年级'],[5,'五年级'],[6,'六年级']].forEach(function(g){
+        var ga=el('a',{href:'#',class:Number(activeGrade)===g[0]?'on':'',style:'white-space:nowrap',text:g[1]});
+        ga.onclick=function(e){
+          e.preventDefault();
+          curGrade=g[0];
+          loadAll();
+        };
+        gradeSeg.appendChild(ga);
+      });
+      var tierShort=(diagData&&diagData.ageProfile&&diagData.ageProfile.tierShortLabel)?String(diagData.ageProfile.tierShortLabel):'';
+      var tierPill=tierShort?el('span',{class:'ma-pill',style:'background:var(--ma-brand-soft);color:var(--ma-brand);font-weight:700;white-space:nowrap',text:tierShort}):null;
+      var gradeBox=el('div',{class:'ma-row',style:'gap:6px;font-size:13px;font-weight:700;color:var(--ma-muted);white-space:nowrap'},
+        el('span',{text:'课程年级：'}),
+        gradeSeg,
+        tierPill);
 
       var dueInput=el('input',{type:'date',class:'ma-input',value:curDueDate,style:'width:auto;max-width:155px;padding:6px 9px;font-size:13px'});
       dueInput.value=curDueDate;
@@ -208,12 +226,13 @@ function arenaRoleHub(role,subject,sess){
         tabs.appendChild(a);
       });
 
+      var tierFull=(diagData&&diagData.ageProfile&&(diagData.ageProfile.tierLabel||diagData.ageProfile.tierShortLabel))?(' · '+String(diagData.ageProfile.tierLabel||diagData.ageProfile.tierShortLabel)):'';
       ctrl.appendChild(el('div',{class:'ma-sum-top'},
         el('div',{style:'flex:1 1 240px;min-width:200px'},
-          el('div',{class:'ma-eyebrow',text:'教—学—家三端联动 · 小学'+subject}),
+          el('div',{class:'ma-eyebrow',text:'教—学—家三端联动 · 小学'+subject+'（'+activeGrade+'年级）'}),
           el('h2',{class:'ma-h1',text:subject+'班级诊断与任务派发'}),
-          el('p',{class:'ma-sub',text:'覆盖 '+(diagData?diagData.totalNodes:0)+' 个核心考点与 '+(diagData?diagData.totalSprints:0)+' 个限时专项，当前范围 '+(diagData?diagData.studentCount:0)+' 名学生。'})),
-        el('div',{class:'ma-row',style:'flex-wrap:wrap;gap:8px;align-items:center'},sel,dueBox)));
+          el('p',{class:'ma-sub',text:'覆盖 '+(diagData?diagData.totalNodes:0)+' 个核心考点与 '+(diagData?diagData.totalSprints:0)+' 个限时专项，当前范围 '+(diagData?diagData.studentCount:0)+' 名学生'+tierFull+'。'})),
+        el('div',{class:'ma-row',style:'flex-wrap:wrap;gap:8px;align-items:center'},sel,gradeBox,dueBox)));
       ctrl.appendChild(el('div',{style:'margin-top:12px'},tabs));
     }
 
@@ -293,10 +312,12 @@ function arenaRoleHub(role,subject,sess){
       allNodes.sort(function(a,b){return String(a.key).localeCompare(String(b.key))});
       var nodeNameMap={};
       allNodes.forEach(function(n){nodeNameMap[n.key]=n.name});
+      if(customFilterNode!=='all'&&!nodeNameMap[customFilterNode])customFilterNode='all';
+      var activeGrade=(diagData&&diagData.grade)?Number(diagData.grade):(curGrade||5);
 
       panel.appendChild(helperBar('添加本校专属考点私房题后，学生在对应考点微测时会自动优先抽到老师加的题目（单次最多混入 3 题）！','长缨助手 · 考点私房题'));
 
-      var formCard=el('div',{class:'ma-card'},el('h3',{text:'添加'+subject+'考点私房题'}));
+      var formCard=el('div',{class:'ma-card'},el('h3',{text:'添加'+subject+'（'+activeGrade+'年级）考点私房题'}));
       var nodeSel=el('select',{class:'ma-input',style:'max-width:260px;padding:7px 10px;font-size:13.5px'});
       allNodes.forEach(function(n){
         nodeSel.appendChild(el('option',{value:n.key,text:n.key+' '+n.name}));
@@ -642,16 +663,20 @@ function arenaRoleHub(role,subject,sess){
         customData=d;if(curTab==='custom')renderPanel();
       }).catch(function(e){say(e.message||'加载私房题失败',true)});
     }
-    function refreshDiagnosticsQuiet(){
-      api('/teacher/arena/diagnostics?subject='+encodeURIComponent(subject)+'&class_id='+curClassId).then(function(d){
+    function loadDiag(quiet){
+      var url='/teacher/arena/diagnostics?subject='+encodeURIComponent(subject)+'&class_id='+curClassId+(curGrade>0?'&grade='+curGrade:'');
+      return api(url).then(function(d){
         diagData=d;
         renderCtrl();
-        if(curTab==='heat'||curTab==='students')renderPanel();
-      }).catch(function(){});
+        if(!quiet||curTab==='heat'||curTab==='students'||curTab==='custom')renderPanel();
+      });
+    }
+    function refreshDiagnosticsQuiet(){
+      loadDiag(true).catch(function(){});
     }
     function loadAll(){
-      api('/teacher/arena/diagnostics?subject='+encodeURIComponent(subject)+'&class_id='+curClassId).then(function(d){
-        diagData=d;renderCtrl();renderPanel();loadTasks();
+      loadDiag(false).then(function(){
+        loadTasks();
       }).catch(function(e){say(e.message,true)});
     }
     loadAll();

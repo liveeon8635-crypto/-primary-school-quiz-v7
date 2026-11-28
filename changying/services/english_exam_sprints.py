@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from changying.services import arena_grade_profiles as agp
 from changying.services import english_builtin_map as ebm
+from changying.services import english_grade_curricula as egc
 from changying.services import exam_sprints as math_sprints
 
 GRACE_SECONDS = math_sprints.GRACE_SECONDS
@@ -82,11 +84,35 @@ ENGLISH_G5_SPRINTS: list[dict[str, Any]] = [
     },
 ]
 
-SPRINT_BY_SLUG = {s["slug"]: s for s in ENGLISH_G5_SPRINTS}
+ENGLISH_G3_SPRINTS = egc.ENGLISH_G3_SPRINTS
+ENGLISH_G4_SPRINTS = egc.ENGLISH_G4_SPRINTS
+ENGLISH_G6_SPRINTS = egc.ENGLISH_G6_SPRINTS
+
+SPRINTS_BY_GRADE: dict[int, list[dict[str, Any]]] = {
+    3: ENGLISH_G3_SPRINTS,
+    4: ENGLISH_G4_SPRINTS,
+    5: ENGLISH_G5_SPRINTS,
+    6: ENGLISH_G6_SPRINTS,
+}
+
+ALL_ENGLISH_SPRINTS: list[dict[str, Any]] = (
+    list(ENGLISH_G3_SPRINTS)
+    + list(ENGLISH_G4_SPRINTS)
+    + list(ENGLISH_G5_SPRINTS)
+    + list(ENGLISH_G6_SPRINTS)
+)
+
+SPRINT_BY_SLUG = {s["slug"]: s for s in ALL_ENGLISH_SPRINTS}
 
 
-def list_sprints(subject: str = "英语") -> list[dict[str, Any]]:
-    return [dict(s) for s in ENGLISH_G5_SPRINTS if s["subject"] == subject]
+def list_sprints(subject: str = "英语", grade: int | None = None) -> list[dict[str, Any]]:
+    target_grade = agp.clamp_arena_grade(grade, ebm.DEFAULT_GRADE) if grade is not None else ebm.DEFAULT_GRADE
+    pool = SPRINTS_BY_GRADE.get(target_grade, ENGLISH_G5_SPRINTS)
+    return [dict(s) for s in pool if s["subject"] == subject]
+
+
+def list_all_sprints(subject: str = "英语") -> list[dict[str, Any]]:
+    return [dict(s) for s in ALL_ENGLISH_SPRINTS if s["subject"] == subject]
 
 
 def get_sprint(slug: str) -> dict[str, Any] | None:
@@ -176,7 +202,7 @@ def evaluate_sprint_attempt(
 
     type_stats: dict[str, dict[str, Any]] = {}
     node_stats: dict[str, dict[str, Any]] = {}
-    node_names = {n["key"]: n["name"] for n in ebm.ENGLISH_G5_NODES}
+    node_names = {k: n["name"] for k, n in ebm.NODE_BY_KEY.items()}
     details: list[dict[str, Any]] = []
 
     for q in questions:
@@ -307,8 +333,13 @@ def evaluate_sprint_attempt(
 
 
 __all__ = [
+    "ALL_ENGLISH_SPRINTS",
+    "ENGLISH_G3_SPRINTS",
+    "ENGLISH_G4_SPRINTS",
     "ENGLISH_G5_SPRINTS",
+    "ENGLISH_G6_SPRINTS",
     "GRACE_SECONDS",
+    "SPRINTS_BY_GRADE",
     "SPRINT_BY_SLUG",
     "TIERS",
     "TIER_BY_CODE",
@@ -316,5 +347,6 @@ __all__ = [
     "compose_sprint_questions",
     "evaluate_sprint_attempt",
     "get_sprint",
+    "list_all_sprints",
     "list_sprints",
 ]

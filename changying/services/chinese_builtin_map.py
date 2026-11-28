@@ -14,8 +14,12 @@ import hashlib
 import re
 from typing import Any, Iterable
 
+from changying.services import arena_grade_profiles as agp
+from changying.services import chinese_grade_curricula as cgc
+
 SUBJECT_CHINESE = "语文"
 DEFAULT_GRADE = 5
+SUPPORTED_GRADES = (3, 4, 5, 6)
 
 LIGHT_STATES = {
     "unexplored": "未探索",
@@ -87,13 +91,30 @@ CHINESE_G5_NODES: list[dict[str, Any]] = [
     {"key": "C3-3", "name": "小古文重点实词与句意", "domain": "poetry", "icon": "📖"},
     {"key": "C3-4", "name": "名言警句与俗语积累", "domain": "poetry", "icon": "💬"},
     # C4 阅读方法与表达
-    {"key": "C4-1", "name": "抓关键句与概括主要内容", "domain": "reading", "icon": "🎯"},
-    {"key": "C4-2", "name": "说明方法与说明文细节", "domain": "reading", "icon": "🔬"},
-    {"key": "C4-3", "name": "人物描写与情感体会", "domain": "reading", "icon": "❤️"},
-    {"key": "C4-4", "name": "审题立意与细节升格", "domain": "reading", "icon": "🖋️"},
+    {"key": "C4-1", "name": "抓关键句与概括主要内容", "domain": "reading", "icon": "🎯", "grade": 5},
+    {"key": "C4-2", "name": "说明方法与说明文细节", "domain": "reading", "icon": "🔬", "grade": 5},
+    {"key": "C4-3", "name": "人物描写与情感体会", "domain": "reading", "icon": "❤️", "grade": 5},
+    {"key": "C4-4", "name": "审题立意与细节升格", "domain": "reading", "icon": "🖋️", "grade": 5},
 ]
 
-NODE_BY_KEY = {n["key"]: n for n in CHINESE_G5_NODES}
+for _n in CHINESE_G5_NODES:
+    _n.setdefault("grade", 5)
+
+NODES_BY_GRADE: dict[int, list[dict[str, Any]]] = {
+    3: cgc.CHINESE_G3_NODES,
+    4: cgc.CHINESE_G4_NODES,
+    5: CHINESE_G5_NODES,
+    6: cgc.CHINESE_G6_NODES,
+}
+
+ALL_CHINESE_NODES: list[dict[str, Any]] = (
+    list(cgc.CHINESE_G3_NODES)
+    + list(cgc.CHINESE_G4_NODES)
+    + list(CHINESE_G5_NODES)
+    + list(cgc.CHINESE_G6_NODES)
+)
+
+NODE_BY_KEY: dict[str, dict[str, Any]] = {n["key"]: n for n in ALL_CHINESE_NODES}
 DOMAIN_BY_ID = {d["id"]: d for d in CHINESE_G5_DOMAINS}
 
 
@@ -164,6 +185,18 @@ def _q(
         item["minChars"] = int(min_chars)
     if sample_answer:
         item["sampleAnswer"] = sample_answer
+    item["grade"] = agp.infer_grade_from_node_key(node_key, DEFAULT_GRADE)
+    if qtype in ("dictation_spell", "poem_fill"):
+        seed_val = sum(ord(c) for c in qid)
+        item["assistTiles"] = cgc.build_assist_tiles(answer, seed=seed_val)
+    if qtype in ("micro_writing", "reading_short"):
+        if qtype == "micro_writing" and item.get("minChars", 0) < 70 and item["grade"] == 5:
+            item["minChars"] = 70
+        item["scaffolds"] = [
+            "开头可用：结合题干情境，先用一句生动的话切入画面……",
+            "好词锦囊：生动传神、扣人心弦、历历在目、意味深长",
+            "结构支架：细节特写（动作/神态/感官）+ 修辞运用 + 情感或道理点题",
+        ]
     return item
 
 
@@ -741,11 +774,20 @@ def _build_question_bank() -> dict[str, list[dict[str, Any]]]:
     return bank
 
 
-QUESTION_BANK = _build_question_bank()
+def _build_all_question_bank() -> dict[str, list[dict[str, Any]]]:
+    merged: dict[str, list[dict[str, Any]]] = {}
+    merged.update(cgc.CHINESE_G3_QUESTIONS)
+    merged.update(cgc.CHINESE_G4_QUESTIONS)
+    merged.update(_build_question_bank())
+    merged.update(cgc.CHINESE_G6_QUESTIONS)
+    return merged
+
+
+QUESTION_BANK = _build_all_question_bank()
 
 
 def collect_audio_specs() -> list[dict[str, str]]:
-    """收集题库中全部需要离线生成的普通话 MP3 音频（按 audioId 去重）."""
+    """收集题库中全部需要离线生成的普通话 MP3 音频（汇总 G3、G4、G5、G6，按 audioId 去重）."""
     seen: dict[str, dict[str, str]] = {}
     for qs in QUESTION_BANK.values():
         for q in qs:
@@ -760,12 +802,16 @@ def collect_audio_specs() -> list[dict[str, str]]:
     return list(seen.values())
 
 
-def get_map_blueprint() -> dict[str, Any]:
+def get_map_blueprint(grade: int = DEFAULT_GRADE) -> dict[str, Any]:
+    g = agp.clamp_arena_grade(grade, DEFAULT_GRADE)
+    nodes = NODES_BY_GRADE.get(g, CHINESE_G5_NODES)
     return {
         "subject": SUBJECT_CHINESE,
-        "grade": DEFAULT_GRADE,
+        "grade": g,
+        "title": agp.GRADE_THEMES.get(g, {}).get("chineseTitle", "小学语文通用知识地图"),
+        "ageProfile": agp.get_age_interaction_profile(g),
         "domains": [dict(d) for d in CHINESE_G5_DOMAINS],
-        "nodes": [dict(n) for n in CHINESE_G5_NODES],
+        "nodes": [dict(n) for n in nodes],
     }
 
 
@@ -802,11 +848,14 @@ def generate_node_questions(
 
 def public_question(q: dict[str, Any]) -> dict[str, Any]:
     keep = (
-        "id", "nodeKey", "questionType", "typeLabel", "level", "levelLabel",
+        "id", "nodeKey", "grade", "questionType", "typeLabel", "level", "levelLabel",
         "marks", "text", "options", "audioId", "audioUrl", "hint",
-        "tiles", "passage", "minChars",
+        "tiles", "assistTiles", "scaffolds", "passage", "minChars",
     )
-    return {k: copy.deepcopy(q[k]) for k in keep if k in q}
+    out = {k: copy.deepcopy(q[k]) for k in keep if k in q}
+    if "grade" not in out:
+        out["grade"] = agp.infer_grade_from_node_key(str(q.get("nodeKey") or ""), DEFAULT_GRADE)
+    return out
 
 
 def _strip_cn_punct(s: str) -> str:
@@ -907,6 +956,7 @@ def compute_light_state(
 
 
 __all__ = [
+    "ALL_CHINESE_NODES",
     "CHINESE_G5_DOMAINS",
     "CHINESE_G5_NODES",
     "DEFAULT_GRADE",
@@ -914,10 +964,12 @@ __all__ = [
     "LEVEL_LABELS",
     "LIGHT_STATES",
     "MAP_FRIENDLY_TYPES",
+    "NODES_BY_GRADE",
     "NODE_BY_KEY",
     "QUESTION_BANK",
     "SUBJECTIVE_TYPES",
     "SUBJECT_CHINESE",
+    "SUPPORTED_GRADES",
     "TYPE_LABELS",
     "TYPE_POINTS",
     "collect_audio_specs",

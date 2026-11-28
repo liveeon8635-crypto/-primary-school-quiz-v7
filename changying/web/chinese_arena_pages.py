@@ -27,10 +27,91 @@ CHINESE_EXTRA_CSS = """<style>
 .ca-textarea:focus{outline:none;border-color:var(--ma-brand)}
 .ca-wc{margin-top:6px;font-size:12.5px;color:var(--ma-muted);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .ca-ai-box{margin-top:6px;padding:8px 10px;border-radius:9px;background:#fffaf3;border:1px solid #eed9bc;color:#6c4212;font-size:13px;line-height:1.6}
+.ca-scaffolds{margin-bottom:10px;padding:10px 12px;border-radius:12px;background:#fffaf3;border:1px solid #eed9bc}
+.ca-scaffolds-title{font-size:12.5px;font-weight:800;color:#92400e;margin-bottom:7px}
+.ca-scaffold-list{display:flex;gap:7px;flex-wrap:wrap}
+.ca-scaffold-chip{padding:5px 11px;border-radius:999px;border:1px solid #e6c699;background:#fff;color:#6c4212;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .12s ease}
+.ca-scaffold-chip:hover{border-color:var(--ma-brand);background:var(--ma-brand-soft);color:var(--ma-brand)}
 </style>"""
 
 COMMON_CHINESE_JS = r"""
 var CA_AUDIO_OBJ=null;
+function caGetActiveGrade(){
+  var m=/[?&]grade=([3456])/.exec(location.search||'');
+  if(m)return Number(m[1]);
+  if(window.__CY_ARENA_GRADE__)return Number(window.__CY_ARENA_GRADE__);
+  var u=window.__CY_ARENA_USER__;
+  if(u&&u.grade&&u.grade>=3&&u.grade<=6)return Number(u.grade);
+  return 0;
+}
+function caSetActiveGrade(g){
+  window.__CY_ARENA_GRADE__=Number(g);
+  if(window.history&&window.history.replaceState){
+    var url=location.pathname+'?grade='+encodeURIComponent(g)+(location.hash||'');
+    try{window.history.replaceState(null,'',url)}catch(_e){}
+  }
+}
+function caGradeQuery(){
+  var g=caGetActiveGrade();
+  return g?('?grade='+encodeURIComponent(g)):'';
+}
+function caGradeHref(path){
+  var g=caGetActiveGrade();
+  return g?(path+'?grade='+encodeURIComponent(g)):path;
+}
+function caRenderGradeBar(data,onSwitch){
+  if(!data)return null;
+  if(data.grade)window.__CY_ARENA_GRADE__=Number(data.grade);
+  var grades=(data.availableGrades&&data.availableGrades.length)?data.availableGrades:[
+    {grade:3,label:'三年级',relation:'review',relationLabel:'查漏补缺'},
+    {grade:4,label:'四年级',relation:'review',relationLabel:'查漏补缺'},
+    {grade:5,label:'五年级',relation:'current',relationLabel:'本年级'},
+    {grade:6,label:'六年级',relation:'advance',relationLabel:'超前探索'}
+  ];
+  var curG=Number(data.grade||caGetActiveGrade()||5);
+  var pills=el('div',{class:'ma-grade-pills'});
+  grades.forEach(function(item){
+    var isOn=(Number(item.grade)===curG);
+    var relCls='ma-grade-rel '+(item.relation||'');
+    var btn=el('button',{type:'button',class:'ma-grade-pill'+(isOn?' on':''),'data-grade':String(item.grade)},
+      el('span',{text:item.label}),
+      item.relationLabel?el('span',{class:relCls,text:item.relationLabel}):null);
+    btn.onclick=function(){
+      if(Number(item.grade)===curG)return;
+      caSetActiveGrade(item.grade);
+      if(onSwitch)onSwitch(item.grade);
+    };
+    pills.appendChild(btn);
+  });
+  var prof=data.ageProfile||{};
+  var badgeTxt=prof.tierLabel||prof.tierShortLabel||(curG+'年级适配模式');
+  return el('div',{class:'ma-grade-bar'},
+    pills,
+    el('span',{class:'ma-age-badge',text:'🎯 '+badgeTxt}));
+}
+function caPlayAudio(audioUrl,fallbackText,rate){
+  caStopAudio();
+  if(audioUrl){
+    try{
+      var au=new Audio(audioUrl);
+      CA_AUDIO_OBJ=au;
+      if(rate)au.playbackRate=rate;
+      var p=au.play();
+      if(p&&typeof p.catch==='function'){
+        p.catch(function(){caPlayAudio(null,fallbackText,rate)});
+      }
+      return;
+    }catch(_e){}
+  }
+  if(window.speechSynthesis&&fallbackText){
+    try{
+      var u=new SpeechSynthesisUtterance(String(fallbackText));
+      u.lang='zh-CN';
+      u.rate=rate||0.9;
+      window.speechSynthesis.speak(u);
+    }catch(_e2){}
+  }
+}
 function caStopAudio(){
   if(CA_AUDIO_OBJ){try{CA_AUDIO_OBJ.pause();CA_AUDIO_OBJ.currentTime=0}catch(_e){}CA_AUDIO_OBJ=null}
   if(window.speechSynthesis){try{window.speechSynthesis.cancel()}catch(_e2){}}
@@ -40,12 +121,12 @@ function caTopbar(active,pts){
   var left=el('div',{class:'ma-topbar-left'},
     el('a',{class:'ma-link-btn',href:'/classic?legacy=1&unified=1&page=practice',text:'‹ 返回练习'}),
     el('div',{class:'ea-subj'},
-      el('a',{href:active==='sprints'?'/v1/math-sprints':'/v1/math-star-map',text:'数学'}),
-      el('a',{href:active==='sprints'?'/v1/english-sprints':'/v1/english-star-map',text:'英语'}),
-      el('a',{href:active==='sprints'?'/v1/chinese-sprints':'/v1/chinese-star-map',class:'on',text:'语文'})));
+      el('a',{href:caGradeHref(active==='sprints'?'/v1/math-sprints':'/v1/math-star-map'),text:'数学'}),
+      el('a',{href:caGradeHref(active==='sprints'?'/v1/english-sprints':'/v1/english-star-map'),text:'英语'}),
+      el('a',{href:caGradeHref(active==='sprints'?'/v1/chinese-sprints':'/v1/chinese-star-map'),class:'on',text:'语文'})));
   var seg=el('div',{class:'ma-seg'},
-    el('a',{href:'/v1/chinese-star-map',class:active==='map'?'on':'',text:'知识地图'}),
-    el('a',{href:'/v1/chinese-sprints',class:active==='sprints'?'on':'',text:'应试专项'}));
+    el('a',{href:caGradeHref('/v1/chinese-star-map'),class:active==='map'?'on':'',text:'知识地图'}),
+    el('a',{href:caGradeHref('/v1/chinese-sprints'),class:active==='sprints'?'on':'',text:'应试专项'}));
   var right=el('div',{class:'ma-topbar-right'});
   var u=window.__CY_ARENA_USER__;
   if(u&&u.name)right.appendChild(el('span',{class:'ma-user-pill',text:u.name+' · 学生'}));
@@ -177,7 +258,8 @@ function caAudioBox(q,opts){
   var playState=opts.playState||{};
   var played=playState[q.id]||0;
   var rate=1.0;
-  var isPoem=(q.questionType==='poem_tiles'||q.questionType==='poem_fill'||q.nodeKey.indexOf('C3')===0);
+  var nk=String(q.nodeKey||'');
+  var isPoem=(q.questionType==='poem_tiles'||q.questionType==='poem_fill'||nk.indexOf('C3')>=0);
   var playLabel=isPoem?'▶ 听古诗朗诵':'▶ 听写读音';
   var box=el('div',{class:'ea-audio'});
   var btn=el('button',{type:'button',class:'ea-play-btn',text:playLabel});
@@ -218,8 +300,10 @@ function caAudioBox(q,opts){
   return box;
 }
 
-/* 语文 10 类题型渲染器 */
+/* 语文 10 类题型渲染器（含年龄段差异化交互适配） */
 function caRenderQuestionBody(q,ansObj,onChange,audioOpts){
+  audioOpts=audioOpts||{};
+  var ageProf=audioOpts.ageProfile||{};
   var wrap=el('div',{});
   if(q.passage){
     wrap.appendChild(el('div',{class:'ea-passage',text:q.passage}));
@@ -230,7 +314,13 @@ function caRenderQuestionBody(q,ansObj,onChange,audioOpts){
   if(q.isCustom){
     wrap.appendChild(el('div',{class:'ma-custom-badge',text:'★ 老师精选'}));
   }
-  wrap.appendChild(el('p',{class:'ma-q-text',text:q.text}));
+  if(ageProf.stemReadAloud){
+    wrap.appendChild(el('div',{class:'ma-q-stem-row'},
+      el('p',{class:'ma-q-text',text:q.text}),
+      el('button',{type:'button',class:'ma-tts-btn',text:'🔊 读题',onclick:function(){caPlayAudio(null,q.text,ageProf.speechRate||0.9)}})));
+  }else{
+    wrap.appendChild(el('p',{class:'ma-q-text',text:q.text}));
+  }
   if(q.hint){
     wrap.appendChild(el('p',{class:'ea-hint',text:'提示：'+q.hint}));
   }
@@ -292,20 +382,44 @@ function caRenderQuestionBody(q,ansObj,onChange,audioOpts){
   }
 
   if(qt==='reading_short'||qt==='micro_writing'){
+    var minCharsVal=q.minChars||(qt==='micro_writing'?(ageProf.writingMinChars||60):12);
+    var targetRange=ageProf.writingTargetChars||('不少于 '+minCharsVal+' 字');
     var ta=el('textarea',{
       class:'ca-textarea',
-      placeholder:qt==='micro_writing'?'请在此写出 60～120 字的微片段描写（交卷后 AI 老师实时批改点评）…':'请结合原文细节简洁作答（交卷后 AI 老师实时批改点评）…'
+      placeholder:qt==='micro_writing'
+        ?('请在此写出 '+targetRange+' 的微片段描写（建议不少于 '+minCharsVal+' 字，交卷后 AI 老师实时批改点评）…')
+        :'请结合原文细节简洁作答（交卷后 AI 老师实时批改点评）…'
     });
     ta.value=ansObj.text_answer||'';
     var wc=el('div',{class:'ca-wc'});
     function updWc(){
       var n=String(ta.value||'').replace(/\s+/g,'').length;
       wc.textContent='';
-      wc.appendChild(el('span',{text:'当前已写 '+n+' 字'+(q.minChars?'（建议不少于 '+q.minChars+' 字）':'')}));
+      wc.appendChild(el('span',{text:'当前已写 '+n+' 字'+(minCharsVal?('（目标要求：不少于 '+minCharsVal+' 字）'):'')}));
       wc.appendChild(el('span',{text:'交卷后由 AI 实时批改并给出修改建议'}));
     }
     ta.oninput=function(){ansObj.text_answer=ta.value;updWc();onChange(true)};
     updWc();
+
+    if(ageProf.writingScaffold&&q.scaffolds&&q.scaffolds.length){
+      var scBox=el('div',{class:'ca-scaffolds'},
+        el('div',{class:'ca-scaffolds-title',text:'✨ 写作支架与好词锦囊（点击可插入）'}));
+      var scList=el('div',{class:'ca-scaffold-list'});
+      q.scaffolds.forEach(function(sc){
+        var chip=el('button',{type:'button',class:'ca-scaffold-chip',text:'+ '+sc});
+        chip.onclick=function(){
+          var curVal=String(ta.value||'');
+          ta.value=curVal+sc;
+          ansObj.text_answer=ta.value;
+          updWc();
+          onChange(true);
+        };
+        scList.appendChild(chip);
+      });
+      scBox.appendChild(scList);
+      wrap.appendChild(scBox);
+    }
+
     wrap.appendChild(ta);wrap.appendChild(wc);
     return wrap;
   }
@@ -319,6 +433,39 @@ function caRenderQuestionBody(q,ansObj,onChange,audioOpts){
   inp.setAttribute('autocomplete','off');
   inp.oninput=function(){ansObj.text_answer=inp.value;onChange(true)};
   wrap.appendChild(inp);
+
+  var hanziPool=(q.assistTiles&&q.assistTiles.length)?q.assistTiles:((q.tiles&&q.tiles.length)?q.tiles:null);
+  if(ageProf.chineseAssistTiles&&(qt==='dictation_spell'||qt==='poem_fill')&&hanziPool&&hanziPool.length){
+    var hTray=el('div',{class:'ea-assist-tray'},
+      el('div',{class:'ea-assist-title',text:'🎯 三年级候选字托盘（点击汉字即可填入，也可直接打字）'}));
+    var hRow=el('div',{class:'ea-tiles'});
+    hanziPool.forEach(function(hz){
+      var hb=el('button',{type:'button',class:'ea-tile',text:hz});
+      hb.onclick=function(){
+        inp.value=String(inp.value||'')+String(hz);
+        ansObj.text_answer=inp.value;
+        onChange(true);
+      };
+      hRow.appendChild(hb);
+    });
+    var hTools=el('div',{class:'ma-row'});
+    var hBk=el('button',{type:'button',class:'ma-btn ma-btn-ghost ma-btn-sm',text:'⌫ 退一字'});
+    hBk.onclick=function(){
+      var s=String(inp.value||'');
+      inp.value=s.slice(0,Math.max(0,s.length-1));
+      ansObj.text_answer=inp.value;
+      onChange(true);
+    };
+    var hClr=el('button',{type:'button',class:'ma-btn ma-btn-ghost ma-btn-sm',text:'清空'});
+    hClr.onclick=function(){
+      inp.value='';
+      ansObj.text_answer='';
+      onChange(true);
+    };
+    hTools.appendChild(hBk);hTools.appendChild(hClr);
+    hTray.appendChild(hRow);hTray.appendChild(hTools);
+    wrap.appendChild(hTray);
+  }
   return wrap;
 }
 """
@@ -358,17 +505,21 @@ function cmRenderMap(){
   caStopAudio();
   CM_QBOX.textContent='';
   var d=CM_DATA,s=d.summary;
+  if(d.grade)window.__CY_ARENA_GRADE__=Number(d.grade);
+  var gLabel=(d.ageProfile&&d.ageProfile.gradeLabel)||(d.grade?d.grade+'年级':'五年级');
   var revCnt=s.reviewDueCount||0;
   CM_TOP.textContent='';CM_TOP.appendChild(caTopbar('map',d.points));
   var pct=s.totalNodes?Math.round(s.litNodes/s.totalNodes*100):0;
   CM_SUM.textContent='';
+  var gradeBar=caRenderGradeBar(d,function(){CM_SEL=null;cmLoad()});
+  if(gradeBar)CM_SUM.appendChild(gradeBar);
   CM_SUM.appendChild(el('div',{class:'ma-card'},
     el('div',{class:'ma-sum-top'},
       el('div',{},
-        el('div',{class:'ma-eyebrow',text:'小学五年级 · 通用语文知识地图'}),
-        el('h2',{class:'ma-h1',text:'语文知识地图'}),
+        el('div',{class:'ma-eyebrow',text:'小学'+gLabel+' · 通用语文知识地图'}),
+        el('h2',{class:'ma-h1',text:d.title||('语文知识地图（'+gLabel+'）')}),
         el('p',{class:'ma-sub',text:'按字词语音、句子修辞、古诗文积累、阅读方法四大知识点域闯关，不限时轻微测，答对 ≥ 80% 即点亮'})),
-      el('a',{class:'ma-btn ma-btn-ghost ma-btn-sm',href:'/v1/chinese-sprints',text:'去四大板块专项 ›'})),
+      el('a',{class:'ma-btn ma-btn-ghost ma-btn-sm',href:caGradeHref('/v1/chinese-sprints'),text:'去四大板块专项 ›'})),
     el('div',{class:'ma-sum-meta'},
       el('span',{},'已点亮 ',el('b',{text:s.litNodes+'/'+s.totalNodes}),'（'+pct+'%）'),
       el('span',{},'精通 ',el('b',{text:String(s.masteredNodes)})),
@@ -378,14 +529,14 @@ function cmRenderMap(){
     el('div',{class:'ma-prog-track'},el('div',{class:'ma-prog-fill',style:'width:'+pct+'%'}))));
   var banner=caRenderTaskBanner(CM_TASKS,function(t){
     if(t.taskKind==='map_node'){cmFocusNode(t.targetKey)}
-    else{location.href='/v1/chinese-sprints#sprint='+encodeURIComponent(t.targetKey)}
+    else{location.href=caGradeHref('/v1/chinese-sprints')+'#sprint='+encodeURIComponent(t.targetKey)}
   });
   if(banner)CM_SUM.appendChild(banner);
   var tipText=revCnt>0
     ?('你有 '+revCnt+' 个已点亮的语文考点快遗忘了，先点琥珀色「需温习」节点做 5 题保鲜吧！'+(s.repairNodes?' 另外还有 '+s.repairNodes+' 个标红待修补考点也别忘了哦！':''))
     :(s.repairNodes
       ?('你有 '+s.repairNodes+' 个标红的语文薄弱点，点下方红色节点做一次 5 题轻微测就能修补并得 +2 积分！')
-      :(s.litNodes===0?'欢迎来到语文知识地图！配普通话朗诵与字块默写，挑一个知识点点亮第一颗语文星吧！'
+      :(s.litNodes===0?'欢迎来到'+gLabel+'语文知识地图！配普通话朗诵与字块默写，挑一个知识点点亮第一颗语文星吧！'
         :'已经点亮 '+s.litNodes+' 个语文节点啦！继续冲刺三星精通，再去四大板块专项实战检验！'));
   CM_SUM.appendChild(caHelperTip(tipText,'长缨助手 · 语文闯关建议'));
 
@@ -394,8 +545,8 @@ function cmRenderMap(){
   var domSub={
     words:'多音字、形近字、高频成语与听写词语',
     sentence:'关联词、病句诊断、句式转换与修辞标点',
-    poetry:'写景爱国必背古诗、小古文实词与名言积累',
-    reading:'关键句概括、说明方法、人物描写与审题立意'
+    poetry:'必背古诗词、经典小古文与名言格言积累',
+    reading:'关键句概括、阅读理解方法与微片段表达'
   };
   d.domains.forEach(function(dom){
     var nodes=d.nodes.filter(function(n){return n.domain===dom.id});
@@ -474,6 +625,7 @@ function cmRenderQuiz(){
   caStopAudio();
   CM_QBOX.textContent='';
   var qd=CM_QUIZ,qs=qd.questions,q=qs[CM_IDX];
+  var ageProf=qd.ageProfile||(CM_DATA&&CM_DATA.ageProfile)||{};
   var ansObj=CM_ANS[q.id]||(CM_ANS[q.id]={});
   var doneCnt=0;
   qs.forEach(function(it){if(cmAnswered(CM_ANS[it.id]))doneCnt++});
@@ -493,7 +645,7 @@ function cmRenderQuiz(){
     el('div',{class:'ma-q-meta'},
       el('span',{text:'第 '+(CM_IDX+1)+' / '+qs.length+' 题 · '+q.typeLabel+'（'+q.levelLabel+'）'}),
       el('span',{text:'已完成 '+doneCnt+'/'+qs.length})));
-  qCard.appendChild(caRenderQuestionBody(q,ansObj,function(silent){if(!silent)cmRenderQuiz()},{maxPlays:0,allowSlow:true,playState:CM_PLAY}));
+  qCard.appendChild(caRenderQuestionBody(q,ansObj,function(silent){if(!silent)cmRenderQuiz()},{maxPlays:0,allowSlow:true,playState:CM_PLAY,ageProfile:ageProf}));
   qCard.appendChild(caHelperTip(caQuestionHint(q),'长缨助手 · 解题提示'));
 
   var prevBtn=el('button',{type:'button',class:'ma-btn ma-btn-ghost',text:'上一题'});
@@ -532,7 +684,7 @@ function cmSubmitQuiz(){
       caPointsGain(res.pointsAwarded,res.points),
       el('div',{class:'ma-row',style:'justify-content:center;margin-top:14px'},
         el('button',{type:'button',class:'ma-btn ma-btn-primary',text:'返回语文知识地图',onclick:function(){cmLoad()}}),
-        el('a',{class:'ma-btn ma-btn-ghost',href:'/v1/chinese-sprints',text:'去挑战语文应试专项'})));
+        el('a',{class:'ma-btn ma-btn-ghost',href:caGradeHref('/v1/chinese-sprints'),text:'去挑战语文应试专项'})));
     CM_QBOX.appendChild(head);
     var rev=el('div',{class:'ma-card'},el('h3',{text:'逐题解析'}));
     res.details.forEach(function(d,i){
@@ -548,14 +700,19 @@ function cmSubmitQuiz(){
   }).catch(function(e){cmNotice(e.message,true)});
 }
 function cmLoad(){
-  Promise.all([api('/student/chinese-star-map'),caFetchTasks('语文')]).then(function(res){
+  Promise.all([api('/student/chinese-star-map'+caGradeQuery()),caFetchTasks('语文')]).then(function(res){
     var d=res[0];
+    if(d&&d.grade)window.__CY_ARENA_GRADE__=Number(d.grade);
     CM_DATA=d;CM_TASKS=res[1]||[];
     var hit=null;
     var want=/[#&]node=([^&]+)/.exec(location.hash||'');
     if(want){
       var key=decodeURIComponent(want[1]);
       d.nodes.forEach(function(n){if(n.key===key){CM_SEL=n;hit=n}});
+    }
+    if(CM_SEL){
+      var stillIn=d.nodes.filter(function(n){return n.key===CM_SEL.key})[0];
+      CM_SEL=stillIn||null;
     }
     if(!CM_SEL&&d.nodes.length)CM_SEL=d.nodes[0];
     cmRenderMap();
@@ -582,15 +739,19 @@ function csAnswered(a){return a&&((a.selected_index!==undefined&&a.selected_inde
 function csRenderLobby(){
   csStopTimer();caStopAudio();
   var d=CS_DATA;
+  if(d.grade)window.__CY_ARENA_GRADE__=Number(d.grade);
+  var gLabel=(d.ageProfile&&d.ageProfile.gradeLabel)||(d.grade?d.grade+'年级':'五年级');
   CS_TOP.textContent='';CS_TOP.appendChild(caTopbar('sprints',d.points));
   CS_BODY.textContent='';
+  var gradeBar=caRenderGradeBar(d,function(){csLoad()});
+  if(gradeBar)CS_BODY.appendChild(gradeBar);
   CS_BODY.appendChild(el('div',{class:'ma-card'},
-    el('div',{class:'ma-eyebrow',text:'小学五年级 · 语文四大试卷板块应试专项'}),
-    el('h2',{class:'ma-h1',text:'语文应试专项'}),
-    el('p',{class:'ma-sub',text:'基础字词句采用「单题限时 20 秒」快节奏听写抢答；古诗文 / 现代文阅读 / 表达与微写作采用「整体倒计时」，阅读简答与微写作支持 AI 实时批改点评！'})));
+    el('div',{class:'ma-eyebrow',text:'小学'+gLabel+' · 语文四大试卷板块应试专项'}),
+    el('h2',{class:'ma-h1',text:'语文应试专项（'+gLabel+'）'}),
+    el('p',{class:'ma-sub',text:'基础字词句采用「单题限时」快节奏听写抢答；古诗文 / 现代文阅读 / 表达与微写作采用「整体倒计时」，阅读简答与微写作支持 AI 实时批改点评！'})));
   var banner=caRenderTaskBanner(CS_TASKS,function(t){
     if(t.taskKind==='sprint'){csStart(t.targetKey)}
-    else{location.href='/v1/chinese-star-map#node='+encodeURIComponent(t.targetKey)}
+    else{location.href=caGradeHref('/v1/chinese-star-map')+'#node='+encodeURIComponent(t.targetKey)}
   });
   if(banner)CS_BODY.appendChild(banner);
   CS_BODY.appendChild(caHelperTip('四个板块均可直接开考，无需先刷完地图！达标（L2+）自动反哺点亮语文地图，失分点会自动标红提醒修补。','长缨助手 · 备考提示'));
@@ -621,13 +782,19 @@ function csRenderLobby(){
   CS_BODY.appendChild(grid);
 }
 
+function csPerQuestionSec(att){
+  if(att&&att.perQuestionSec)return Number(att.perQuestionSec);
+  if(att&&att.ageProfile&&att.ageProfile.perQuestionSec)return Number(att.ageProfile.perQuestionSec);
+  return 20;
+}
+
 function csStart(slug){
   csNotice('正在组卷开考…');
   api('/student/chinese-sprints/'+encodeURIComponent(slug)+'/start',{method:'POST'}).then(function(att){
     csNotice('');
     CS_ATT=att;CS_ANS={};CS_IDX=0;CS_PLAY={};CS_SUBMITTING=false;
     CS_LEFT=att.timeLimitSec;
-    CS_QLEFT=att.perQuestionSec||20;
+    CS_QLEFT=csPerQuestionSec(att);
     csRenderExam();
     csStartClock();
   }).catch(function(e){csNotice(e.message,true)});
@@ -640,17 +807,18 @@ function csStartClock(){
     if(!CS_ATT||CS_SUBMITTING)return;
     CS_LEFT=Math.max(0,CS_LEFT-1);
     if(isPerQ){
+      var pqSec=csPerQuestionSec(CS_ATT);
       CS_QLEFT=Math.max(0,CS_QLEFT-1);
       var qClk=document.getElementById('cs-qclock');
       var qBar=document.getElementById('cs-qbar');
       if(qClk)qClk.textContent='本题剩余 '+caClockText(CS_QLEFT);
-      if(qBar&&CS_ATT.perQuestionSec){
-        qBar.style.width=Math.max(0,Math.round(CS_QLEFT/CS_ATT.perQuestionSec*100))+'%';
+      if(qBar&&pqSec){
+        qBar.style.width=Math.max(0,Math.round(CS_QLEFT/pqSec*100))+'%';
       }
       if(CS_QLEFT<=0){
         if(CS_IDX<CS_ATT.questions.length-1){
           CS_IDX++;
-          CS_QLEFT=CS_ATT.perQuestionSec||20;
+          CS_QLEFT=pqSec;
           csRenderExam();
         }else{
           csSubmit(true);
@@ -670,7 +838,10 @@ function csRenderExam(){
   caStopAudio();
   CS_BODY.textContent='';
   var att=CS_ATT,qs=att.questions,q=qs[CS_IDX];
+  var ageProf=att.ageProfile||(CS_DATA&&CS_DATA.ageProfile)||{};
   var isPerQ=(att.timingMode==='per_question');
+  var pqSec=csPerQuestionSec(att);
+  var maxPlaysVal=att.maxPlays||(isPerQ&&ageProf.maxPlays?ageProf.maxPlays:0);
   var ansObj=CS_ANS[q.id]||(CS_ANS[q.id]={});
   var doneCnt=0;
   qs.forEach(function(it){if(csAnswered(CS_ANS[it.id]))doneCnt++});
@@ -683,8 +854,8 @@ function csRenderExam(){
       el('div',{class:'ma-row'},
         isPerQ?el('span',{id:'cs-qclock',class:'ma-clock',text:'本题剩余 '+caClockText(CS_QLEFT)}):null,
         el('span',{id:'cs-clock',class:isPerQ?'ma-pill':'ma-clock',text:(isPerQ?'总剩余 ':'倒计时 ')+caClockText(CS_LEFT)}))));
-  if(isPerQ&&att.perQuestionSec){
-    var pct=Math.max(0,Math.round(CS_QLEFT/att.perQuestionSec*100));
+  if(isPerQ&&pqSec){
+    var pct=Math.max(0,Math.round(CS_QLEFT/pqSec*100));
     hud.appendChild(el('div',{class:'ea-qbar-track'},el('div',{id:'cs-qbar',class:'ea-qbar-fill',style:'width:'+pct+'%'})));
   }
   CS_BODY.appendChild(hud);
@@ -704,9 +875,10 @@ function csRenderExam(){
       el('span',{text:'第 '+(CS_IDX+1)+' 题 · '+q.typeLabel+'（'+q.marks+' 分）'}),
       el('span',{text:isPerQ?'单题限时模式（超时自动切题）':'整体限时模式（可自由回看）'})));
   qCard.appendChild(caRenderQuestionBody(q,ansObj,function(silent){if(!silent)csRenderExam()},{
-    maxPlays:att.maxPlays||0,
-    allowSlow:!isPerQ,
-    playState:CS_PLAY
+    maxPlays:maxPlaysVal,
+    allowSlow:!isPerQ||ageProf.grade===3,
+    playState:CS_PLAY,
+    ageProfile:ageProf
   }));
   qCard.appendChild(caHelperTip(caQuestionHint(q),'长缨助手 · 考场提示'));
 
@@ -722,7 +894,7 @@ function csRenderExam(){
   nextBtn.onclick=function(){
     if(!isLast){
       CS_IDX++;
-      if(isPerQ)CS_QLEFT=att.perQuestionSec||20;
+      if(isPerQ)CS_QLEFT=pqSec;
       csRenderExam();
       return;
     }
@@ -758,7 +930,7 @@ function csSubmit(autoSub){
       caPointsGain(res.pointsAwarded,res.points),
       el('div',{class:'ma-row',style:'justify-content:center;margin-top:14px'},
         el('button',{type:'button',class:'ma-btn ma-btn-primary',text:'返回语文应试专项',onclick:function(){csLoad()}}),
-        el('a',{class:'ma-btn ma-btn-ghost',href:'/v1/chinese-star-map',text:'查看语文知识地图'})));
+        el('a',{class:'ma-btn ma-btn-ghost',href:caGradeHref('/v1/chinese-star-map'),text:'查看语文知识地图'})));
     CS_BODY.appendChild(head);
 
     var resTip=res.topLosses&&res.topLosses.length
@@ -775,7 +947,7 @@ function csSubmit(autoSub){
       res.mapChanges.flagged.forEach(function(x){
         mc.appendChild(el('div',{class:'ma-loss-row'},
           el('span',{text:'待修补红标：'+x.key+' '+x.name}),
-          el('a',{class:'ma-btn ma-btn-primary ma-btn-sm',href:'/v1/chinese-star-map#node='+encodeURIComponent(x.key),text:'去地图修补 ›'})));
+          el('a',{class:'ma-btn ma-btn-primary ma-btn-sm',href:caGradeHref('/v1/chinese-star-map')+'#node='+encodeURIComponent(x.key),text:'去地图修补 ›'})));
       });
       CS_BODY.appendChild(mc);
     }
@@ -796,8 +968,10 @@ function csSubmit(autoSub){
 }
 
 function csLoad(){
-  Promise.all([api('/student/chinese-sprints'),caFetchTasks('语文')]).then(function(res){
-    CS_DATA=res[0];CS_TASKS=res[1]||[];
+  Promise.all([api('/student/chinese-sprints'+caGradeQuery()),caFetchTasks('语文')]).then(function(res){
+    CS_DATA=res[0];
+    if(CS_DATA&&CS_DATA.grade)window.__CY_ARENA_GRADE__=Number(CS_DATA.grade);
+    CS_TASKS=res[1]||[];
     csRenderLobby();
   }).catch(function(e){csNotice(e.message,true)});
 }

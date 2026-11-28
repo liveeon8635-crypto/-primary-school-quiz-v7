@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from changying.services import math_builtin_map as mbm
+from changying.services import math_grade_curricula as mgc
 
 GRACE_SECONDS = 15
 TOP_LOSSES = 3
@@ -104,11 +105,22 @@ MATH_G5_SPRINTS: list[dict[str, Any]] = [
         "typeMix": {"single_choice": 3, "true_false": 2, "fill_blank": 2, "calculation": 3, "error_diagnosis": 2, "short_answer": 2, "multi_step": 1},
     },
 ]
-SPRINT_BY_SLUG = {s["slug"]: s for s in MATH_G5_SPRINTS}
+ALL_MATH_SPRINTS: list[dict[str, Any]] = [
+    *mgc.MATH_G3_SPRINTS,
+    *mgc.MATH_G4_SPRINTS,
+    *MATH_G5_SPRINTS,
+    *mgc.MATH_G6_SPRINTS,
+]
+SPRINT_BY_SLUG = {s["slug"]: s for s in ALL_MATH_SPRINTS}
 
 
-def list_sprints(subject: str = "数学") -> list[dict[str, Any]]:
-    return [dict(s) for s in MATH_G5_SPRINTS if s["subject"] == subject]
+def list_sprints(subject: str = "数学", grade: int | None = None) -> list[dict[str, Any]]:
+    target_grade = 5 if grade is None else int(grade)
+    return [dict(s) for s in ALL_MATH_SPRINTS if s["subject"] == subject and int(s.get("grade", 5)) == target_grade]
+
+
+def list_all_sprints(subject: str = "数学") -> list[dict[str, Any]]:
+    return [dict(s) for s in ALL_MATH_SPRINTS if s["subject"] == subject]
 
 
 def get_sprint(slug: str) -> dict[str, Any] | None:
@@ -201,7 +213,7 @@ def evaluate_sprint_attempt(
     auto_submitted: bool = False,
 ) -> dict[str, Any]:
     """对一次强应试专项作答进行逐题判分、失分归因、分级达标评定与地图联动计算."""
-    node_names = {n["key"]: n["name"] for n in mbm.MATH_G5_CORE_MAP["nodes"]}
+    node_names = {k: n["name"] for k, n in mbm.get_all_math_nodes().items()}
     timed_out = elapsed_sec > (time_limit_sec + GRACE_SECONDS)
 
     total_marks = 0
@@ -327,8 +339,10 @@ def evaluate_sprint_attempt(
 
 
 __all__ = [
+    "ALL_MATH_SPRINTS",
     "GRACE_SECONDS",
     "MATH_G5_SPRINTS",
+    "SPRINT_BY_SLUG",
     "TIERS",
     "TIER_BY_CODE",
     "TOP_LOSSES",
@@ -336,5 +350,6 @@ __all__ = [
     "evaluate_sprint_attempt",
     "evaluate_tier",
     "get_sprint",
+    "list_all_sprints",
     "list_sprints",
 ]

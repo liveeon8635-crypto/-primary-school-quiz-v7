@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, desc, insert, select, update
 
+from changying.services import arena_grade_profiles as agp
 from changying.services import arena_points_core as pcore
 from changying.services import arena_review_and_custom as arc
 from changying.services import chinese_arena_points as capts
@@ -154,13 +155,28 @@ def _parse_due_date(raw: str | None, now: datetime) -> str:
         return default_due
 
 
-def _subject_meta(implementation: Any, subject: str) -> dict[str, Any]:
+def _subject_meta(implementation: Any, subject: str, grade: int | None = None) -> dict[str, Any]:
     if subject == "数学":
         tbls = register_math_arena_tables(implementation)
-        unit_map = {u["key"]: u["name"] for u in mbm.MATH_G5_CORE_MAP["units"]}
+        if grade is not None:
+            g = agp.clamp_arena_grade(grade, agp.DEFAULT_ARENA_GRADE)
+            m = mbm.get_builtin_math_map(g)
+            unit_map = {u["key"]: u["name"] for u in m["units"]}
+            nodes = list(m["nodes"])
+            sprints = list(mes.list_sprints("数学", grade=g))
+        else:
+            unit_map = {}
+            nodes = []
+            for g in agp.SUPPORTED_GRADES:
+                gm = mbm.get_builtin_math_map(g)
+                for u in gm["units"]:
+                    unit_map[u["key"]] = u["name"]
+                for n in gm["nodes"]:
+                    nodes.append({**n, "grade": g})
+            sprints = list(mes.list_all_sprints("数学"))
         return {
-            "nodes": list(mbm.MATH_G5_CORE_MAP["nodes"]),
-            "sprints": list(mes.MATH_G5_SPRINTS),
+            "nodes": nodes,
+            "sprints": sprints,
             "mastery_tbl": tbls["mastery"],
             "quizzes_tbl": tbls["quizzes"],
             "sprints_tbl": tbls["sprints"],
@@ -176,9 +192,17 @@ def _subject_meta(implementation: Any, subject: str) -> dict[str, Any]:
         }
     if subject == "英语":
         tbls = register_english_arena_tables(implementation)
+        if grade is not None:
+            g = agp.clamp_arena_grade(grade, agp.DEFAULT_ARENA_GRADE)
+            bp = ebm.get_map_blueprint(g)
+            nodes = list(bp["nodes"])
+            sprints = list(ees.list_sprints("英语", grade=g))
+        else:
+            nodes = list(ebm.ALL_ENGLISH_NODES)
+            sprints = list(ees.list_all_sprints("英语"))
         return {
-            "nodes": list(ebm.ENGLISH_G5_NODES),
-            "sprints": list(ees.ENGLISH_G5_SPRINTS),
+            "nodes": nodes,
+            "sprints": sprints,
             "mastery_tbl": tbls["mastery"],
             "quizzes_tbl": tbls["quizzes"],
             "sprints_tbl": tbls["sprints"],
@@ -193,9 +217,17 @@ def _subject_meta(implementation: Any, subject: str) -> dict[str, Any]:
             ),
         }
     tbls = register_chinese_arena_tables(implementation)
+    if grade is not None:
+        g = agp.clamp_arena_grade(grade, agp.DEFAULT_ARENA_GRADE)
+        bp = cbm.get_map_blueprint(g)
+        nodes = list(bp["nodes"])
+        sprints = list(ces.list_sprints("语文", grade=g))
+    else:
+        nodes = list(cbm.ALL_CHINESE_NODES)
+        sprints = list(ces.list_all_sprints("语文"))
     return {
-        "nodes": list(cbm.CHINESE_G5_NODES),
-        "sprints": list(ces.CHINESE_G5_SPRINTS),
+        "nodes": nodes,
+        "sprints": sprints,
         "mastery_tbl": tbls["mastery"],
         "quizzes_tbl": tbls["quizzes"],
         "sprints_tbl": tbls["sprints"],
@@ -211,11 +243,17 @@ def _subject_meta(implementation: Any, subject: str) -> dict[str, Any]:
     }
 
 
+def _subject_spec(implementation: Any, subject: str, grade: int | None = None) -> dict[str, Any]:
+    return _subject_meta(implementation, subject, grade=grade)
+
+
 def _action_url(subject: str, task_kind: str, target_key: str) -> str:
     map_url, sp_url = SUBJECT_URLS.get(subject, ("/v1/math-star-map", "/v1/math-sprints"))
     if task_kind == "map_node":
-        return f"{map_url}#node={target_key}"
-    return sp_url
+        g = agp.infer_grade_from_node_key(target_key)
+        return f"{map_url}?grade={g}#node={target_key}"
+    g = agp.infer_grade_from_sprint_slug(target_key)
+    return f"{sp_url}?grade={g}#sprint={target_key}"
 
 
 def install_arena_tasks_views(implementation: Any) -> APIRouter:
@@ -476,6 +514,7 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
     def teacher_arena_diagnostics(
         subject: str = "数学",
         class_id: int = 0,
+        grade: int | None = None,
         u: Any = Depends(current_user),
         db: Any = Depends(get_db),
     ):
@@ -488,9 +527,22 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
         use_class_id = int(class_id)
         if use_class_id and not any(c["id"] == use_class_id for c in class_list) and u.role == "teacher":
             raise HTTPException(403, "无权查看该班级")
+        if grade is not None:
+            active_grade = agp.clamp_arena_grade(grade, agp.DEFAULT_ARENA_GRADE)
+        elif use_class_id:
+            sel_cls = next((c for c in classes if int(c.id) == use_class_id), None)
+            if sel_cls is None:
+                SchoolClass = getattr(implementation, "SchoolClass", None)
+                if SchoolClass is not None:
+                    sel_cls = db.scalar(select(SchoolClass).where(SchoolClass.id == use_class_id))
+            cls_grade = getattr(sel_cls, "grade", None) if sel_cls is not None else None
+            active_grade = agp.clamp_arena_grade(cls_grade, agp.DEFAULT_ARENA_GRADE) if cls_grade else agp.DEFAULT_ARENA_GRADE
+        else:
+            active_grade = agp.DEFAULT_ARENA_GRADE
+
         students = _students_for_scope(db, int(u.school_id), use_class_id)
         sids = [int(s.id) for s in students]
-        meta = _subject_meta(implementation, subject)
+        meta = _subject_meta(implementation, subject, grade=active_grade)
         mastery_map, sprint_rank = _load_subject_maps(db, int(u.school_id), subject, sids)
         total_stu = len(students)
 
@@ -622,6 +674,9 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
 
         return {
             "subject": subject,
+            "grade": active_grade,
+            "availableGrades": agp.build_available_grades(active_grade, active_grade),
+            "ageProfile": agp.get_age_interaction_profile(active_grade),
             "classId": use_class_id,
             "classes": class_list,
             "studentCount": total_stu,
@@ -702,9 +757,15 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
                 insert(t_targets).values(task_id=task_id, student_id=sid, status="pending")
             )
         db.commit()
+        target_grade = (
+            agp.infer_grade_from_node_key(body.target_key)
+            if body.task_kind == "map_node"
+            else agp.infer_grade_from_sprint_slug(body.target_key)
+        )
         return {
             "taskId": task_id,
             "subject": body.subject,
+            "grade": target_grade,
             "targetTitle": target_title,
             "goalCode": goal_code,
             "goalLabel": GOAL_LABELS.get(goal_code, goal_code),
@@ -718,6 +779,7 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
     def list_teacher_arena_tasks(
         subject: str = "",
         class_id: int = 0,
+        grade: int | None = None,
         u: Any = Depends(current_user),
         db: Any = Depends(get_db),
     ):
@@ -743,14 +805,23 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
             for usr in db.scalars(select(User).where(User.id.in_(all_sids))).all():
                 stu_name_map[int(usr.id)] = usr.name or usr.username
 
+        filter_grade = agp.clamp_arena_grade(grade) if grade is not None else None
         items: list[dict[str, Any]] = []
         for tr in task_rows:
+            t_grade = (
+                agp.infer_grade_from_node_key(tr.target_key)
+                if tr.task_kind == "map_node"
+                else agp.infer_grade_from_sprint_slug(tr.target_key)
+            )
+            if filter_grade is not None and t_grade != filter_grade:
+                continue
             trs = by_task.get(int(tr.id), [])
             done_cnt = sum(1 for x in trs if x.status == "done")
             pending_names = [stu_name_map.get(int(x.student_id), f"学生#{x.student_id}") for x in trs if x.status != "done"]
             items.append({
                 "id": int(tr.id),
                 "subject": tr.subject,
+                "grade": t_grade,
                 "classId": int(tr.class_id),
                 "taskKind": tr.task_kind,
                 "targetKey": tr.target_key,
@@ -786,10 +857,12 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
         return {"id": int(row.id), "status": "closed"}
 
     # ---------------- 教师端：题目预览 + 考点私房题 CRUD ----------------
+    @router.get("/teacher/arena/target-preview")
     @router.get("/teacher/arena/preview-questions")
     def preview_arena_questions(
         subject: str = "数学",
         kind: str = "map_node",
+        task_kind: str = "",
         target_key: str = "",
         u: Any = Depends(current_user),
         db: Any = Depends(get_db),
@@ -797,7 +870,8 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
         need(u, "teacher", "admin")
         if subject not in ("数学", "英语", "语文"):
             raise HTTPException(400, "不支持的学科")
-        if kind not in ("map_node", "sprint"):
+        use_kind = (task_kind or kind or "map_node").strip()
+        if use_kind not in ("map_node", "sprint"):
             raise HTTPException(400, "kind 必须为 map_node 或 sprint")
         tk = target_key.strip()
         if not tk:
@@ -809,10 +883,11 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
         target_title = tk
         custom_node_keys: list[str] = []
 
-        if kind == "map_node":
+        if use_kind == "map_node":
             node = next((n for n in meta["nodes"] if n["key"] == tk), None)
             if not node:
                 raise HTTPException(404, "未找到该知识节点")
+            target_grade = agp.infer_grade_from_node_key(tk)
             target_title = f"{node['key']} {node['name']}"
             custom_node_keys = [tk]
             if subject == "数学":
@@ -825,6 +900,7 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
             sp = next((s for s in meta["sprints"] if s["slug"] == tk), None)
             if not sp:
                 raise HTTPException(404, "未找到该应试专项")
+            target_grade = int(sp.get("grade") or agp.infer_grade_from_sprint_slug(tk))
             target_title = sp["title"]
             custom_node_keys = list(sp.get("nodeKeys") or [])
             if subject == "数学":
@@ -866,12 +942,14 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
 
         return {
             "subject": subject,
-            "kind": kind,
+            "grade": target_grade,
+            "kind": use_kind,
             "targetKey": tk,
             "targetTitle": target_title,
             "builtinCount": len(builtin_items),
             "customCount": len(custom_items),
             "items": custom_items + builtin_items,
+            "questions": custom_items + builtin_items,
             "customQuestions": custom_items,
             "builtinQuestions": builtin_items,
         }
@@ -880,6 +958,7 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
     def list_custom_questions(
         subject: str = "",
         node_key: str = "",
+        grade: int | None = None,
         u: Any = Depends(current_user),
         db: Any = Depends(get_db),
     ):
@@ -891,7 +970,16 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
         if node_key.strip():
             q = q.where(t_custom.c.node_key == node_key.strip())
         rows = db.execute(q.order_by(desc(t_custom.c.id)).limit(200)).all()
-        return {"items": [arc.serialize_custom_question_row(r) for r in rows]}
+        filter_grade = agp.clamp_arena_grade(grade) if grade is not None else None
+        out_items: list[dict[str, Any]] = []
+        for r in rows:
+            item = arc.serialize_custom_question_row(r)
+            item_grade = agp.infer_grade_from_node_key(str(item.get("nodeKey") or r.node_key))
+            item["grade"] = item_grade
+            if filter_grade is not None and item_grade != filter_grade:
+                continue
+            out_items.append(item)
+        return {"items": out_items}
 
     @router.post("/teacher/arena/custom-questions")
     def create_custom_question(
@@ -940,7 +1028,9 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
         qid = int(res.inserted_primary_key[0])
         db.commit()
         row = db.execute(select(t_custom).where(t_custom.c.id == qid)).first()
-        return arc.serialize_custom_question_row(row)
+        serialized = arc.serialize_custom_question_row(row)
+        serialized["grade"] = agp.infer_grade_from_node_key(body.node_key)
+        return serialized
 
     @router.delete("/teacher/arena/custom-questions/{qid}")
     def delete_custom_question(
@@ -986,9 +1076,15 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
                 mine = next((x for x in by_task.get(int(t.id), []) if int(x.student_id) == int(u.id)), None)
                 if not mine:
                     continue
+                t_grade = (
+                    agp.infer_grade_from_node_key(t.target_key)
+                    if t.task_kind == "map_node"
+                    else agp.infer_grade_from_sprint_slug(t.target_key)
+                )
                 tasks_out.append({
                     "taskId": int(t.id),
                     "subject": t.subject,
+                    "grade": t_grade,
                     "taskKind": t.task_kind,
                     "targetKey": t.target_key,
                     "targetTitle": t.target_title,
@@ -1060,6 +1156,7 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
     @router.get("/parent/arena/summary")
     def parent_arena_summary(
         subject: str = "",
+        grade: int | None = None,
         u: Any = Depends(current_user),
         db: Any = Depends(get_db),
     ):
@@ -1072,6 +1169,8 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
         out_children: list[dict[str, Any]] = []
         for c in children:
             sid = int(c.id)
+            child_grade = agp.detect_user_grade(implementation, db, c)
+            active_grade = agp.resolve_arena_grade(grade, child_grade)
             tr_rows = db.execute(select(t_targets).where(t_targets.c.student_id == sid)).all()
             tids = [int(r.task_id) for r in tr_rows]
             child_tasks: list[dict[str, Any]] = []
@@ -1088,9 +1187,16 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
                 for t in t_rows:
                     mine = next((x for x in by_task.get(int(t.id), []) if int(x.student_id) == sid), None)
                     if mine:
+                        t_grade = (
+                            agp.infer_grade_from_node_key(t.target_key)
+                            if t.task_kind == "map_node"
+                            else agp.infer_grade_from_sprint_slug(t.target_key)
+                        )
                         child_tasks.append({
                             "taskId": int(t.id),
                             "subject": t.subject,
+                            "grade": t_grade,
+                            "targetKey": t.target_key,
                             "targetTitle": t.target_title,
                             "goalCode": t.goal_code,
                             "goalLabel": GOAL_LABELS.get(t.goal_code, t.goal_code),
@@ -1104,13 +1210,17 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
             total_review_due = 0
             all_node_details: list[dict[str, Any]] = []
             for sname in subjs:
-                meta = _subject_meta(implementation, sname)
+                grade_meta = _subject_meta(implementation, sname, grade=active_grade)
+                all_meta = _subject_meta(implementation, sname)
                 m_map, s_rank = _load_subject_maps(db, int(u.school_id), sname, [sid])
                 lit_n = mastered_n = review_due_n = 0
                 rep_names: list[str] = []
                 node_details: list[dict[str, Any]] = []
-                for n in meta["nodes"]:
-                    st = m_map.get((sid, n["key"]))
+                shown_keys: set[str] = set()
+                for n in grade_meta["nodes"]:
+                    nk = n["key"]
+                    shown_keys.add(nk)
+                    st = m_map.get((sid, nk))
                     state = st["state"] if st else "unexplored"
                     state_label = st.get("stateLabel", "未探索") if st else "未探索"
                     stars = int(st.get("stars", 0)) if st else 0
@@ -1122,14 +1232,15 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
                     if state == "mastered":
                         mastered_n += 1
                     if needs_rep:
-                        rep_names.append(f"{n['key']} {n['name']}")
+                        rep_names.append(f"{nk} {n['name']}")
                     if rev_due:
                         review_due_n += 1
                     node_details.append({
                         "subject": sname,
-                        "key": n["key"],
+                        "grade": active_grade,
+                        "key": nk,
                         "name": n["name"],
-                        "domain": meta["domain_name_fn"](n),
+                        "domain": grade_meta["domain_name_fn"](n),
                         "state": state,
                         "stateLabel": state_label,
                         "stars": stars,
@@ -1137,17 +1248,50 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
                         "reviewDue": rev_due,
                         "daysSincePractice": days_since,
                     })
+                if grade is None:
+                    for n in all_meta["nodes"]:
+                        nk = n["key"]
+                        if nk in shown_keys:
+                            continue
+                        st = m_map.get((sid, nk))
+                        if not st:
+                            continue
+                        n_grade = agp.infer_grade_from_node_key(nk, child_grade)
+                        state = st["state"]
+                        state_label = st.get("stateLabel", "未探索")
+                        stars = int(st.get("stars", 0))
+                        needs_rep = bool(st.get("needsRepair", False))
+                        rev_due = bool(st.get("reviewDue", False))
+                        days_since = int(st.get("daysSincePractice", 0))
+                        if needs_rep:
+                            rep_names.append(f"{nk} {n['name']}")
+                        if rev_due:
+                            review_due_n += 1
+                        node_details.append({
+                            "subject": sname,
+                            "grade": n_grade,
+                            "key": nk,
+                            "name": n["name"],
+                            "domain": all_meta["domain_name_fn"](n),
+                            "state": state,
+                            "stateLabel": state_label,
+                            "stars": stars,
+                            "needsRepair": needs_rep,
+                            "reviewDue": rev_due,
+                            "daysSincePractice": days_since,
+                        })
                 total_review_due += review_due_n
                 all_node_details.extend(node_details)
-                best_rk = max((s_rank.get((sid, sp["slug"]), -1) for sp in meta["sprints"]), default=-1)
+                best_rk = max((s_rank.get((sid, sp["slug"]), -1) for sp in all_meta["sprints"]), default=-1)
                 best_tier = next((t for t in mes.TIERS if t["rank"] == best_rk), None) if best_rk >= 0 else None
-                pts = meta["points_mod"].student_arena_points_summary(implementation, db, c)
+                pts = grade_meta["points_mod"].student_arena_points_summary(implementation, db, c)
                 points_balance = pts["balance"]
                 subj_stats.append({
                     "subject": sname,
+                    "grade": active_grade,
                     "litNodes": lit_n,
                     "masteredNodes": mastered_n,
-                    "totalNodes": len(meta["nodes"]),
+                    "totalNodes": len(grade_meta["nodes"]),
                     "reviewDueCount": review_due_n,
                     "repairNames": rep_names[:4],
                     "bestTier": best_tier,
@@ -1165,7 +1309,9 @@ def install_arena_tasks_views(implementation: Any) -> APIRouter:
             out_children.append({
                 "studentId": sid,
                 "name": c.name or c.username,
-                "grade": getattr(c, "grade", None),
+                "grade": active_grade,
+                "studentGrade": child_grade,
+                "availableGrades": agp.build_available_grades(active_grade, child_grade),
                 "pointsBalance": points_balance,
                 "cheeredToday": cheered_today,
                 "reviewDueCount": total_review_due,

@@ -23,6 +23,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, Integer, String, Table, Text, UniqueConstraint, desc, insert, select, update
 
+from changying.services import arena_grade_profiles as agp
 from changying.services import arena_review_and_custom as arc
 from changying.services import exam_sprints as es
 from changying.services import math_arena_points as mapts
@@ -205,9 +206,11 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
         )
         return prev_st, next_st
 
-    def build_map_payload(db: Any, u: Any) -> dict[str, Any]:
+    def build_map_payload(db: Any, u: Any, grade: int | None = None) -> dict[str, Any]:
         ensure_tables(db)
-        m = mbm.get_builtin_math_map(u.grade)
+        student_grade = agp.detect_user_grade(implementation, db, u)
+        active_grade = agp.resolve_arena_grade(grade, student_grade)
+        m = mbm.get_builtin_math_map(active_grade)
         rows = db.execute(
             select(t_mastery).where(t_mastery.c.school_id == u.school_id, t_mastery.c.student_id == u.id)
         ).all()
@@ -274,7 +277,10 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
         return {
             "title": m["title"],
             "subject": m["subject"],
-            "grade": m["grade"],
+            "grade": active_grade,
+            "studentGrade": student_grade,
+            "availableGrades": agp.build_available_grades(active_grade, student_grade),
+            "ageProfile": agp.get_age_interaction_profile(active_grade),
             "textbookAgnostic": True,
             "summary": {
                 "totalNodes": len(nodes_out),
@@ -302,16 +308,18 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
         return HTMLResponse(math_sprints_page_html(), headers=NO_CACHE)
 
     @router.get("/student/math-star-map")
-    def get_star_map(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    def get_star_map(grade: int | None = None, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "student")
-        return build_map_payload(db, u)
+        return build_map_payload(db, u, grade=grade)
 
     @router.post("/student/math-star-map/nodes/{key}/quiz")
     def start_node_quiz(key: str, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "student")
         ensure_tables(db)
-        m = mbm.get_builtin_math_map(u.grade)
-        node = next((n for n in m["nodes"] if n["key"] == key), None)
+        student_grade = agp.detect_user_grade(implementation, db, u)
+        target_grade = agp.infer_grade_from_node_key(key, student_grade)
+        m = mbm.get_builtin_math_map(target_grade)
+        node = next((n for n in m["nodes"] if n["key"] == key), None) or mbm.get_all_math_nodes().get(key)
         if node is None:
             raise HTTPException(404, "没有找到这个知识点")
         past_count = len(
@@ -353,6 +361,8 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
             "nodeKey": key,
             "nodeName": node["name"],
             "detail": node["detail"],
+            "grade": target_grade,
+            "ageProfile": agp.get_age_interaction_profile(target_grade),
             "count": len(qs),
             "questions": public_qs,
         }
@@ -361,6 +371,8 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
     def submit_node_quiz(key: str, body: NodeQuizSubmitBody, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "student")
         ensure_tables(db)
+        student_grade = agp.detect_user_grade(implementation, db, u)
+        target_grade = agp.infer_grade_from_node_key(key, student_grade)
         qrow = db.execute(
             select(t_quizzes).where(
                 t_quizzes.c.id == body.quiz_id,
@@ -407,8 +419,9 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
         total = len(qs)
         rate_pct = round((correct / total) * 100) if total else 0
         passed_light = rate_pct >= 80
-        m = mbm.get_builtin_math_map(u.grade)
-        node_name = next((n["name"] for n in m["nodes"] if n["key"] == key), key)
+        m = mbm.get_builtin_math_map(target_grade)
+        all_nodes = mbm.get_all_math_nodes()
+        node_name = next((n["name"] for n in m["nodes"] if n["key"] == key), all_nodes.get(key, {}).get("name", key))
         prev_state, light_state = upsert_node_mastery(
             db,
             u,
@@ -442,10 +455,11 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
             default_node_key=key, default_node_name=node_name,
         )
         db.commit()
-        map_payload = build_map_payload(db, u)
+        map_payload = build_map_payload(db, u, grade=target_grade)
         return {
             "quizId": qrow.id,
             "nodeKey": key,
+            "grade": target_grade,
             "correct": correct,
             "total": total,
             "accuracy": rate_pct,
@@ -459,9 +473,11 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
         }
 
     @router.get("/student/math-sprints")
-    def get_math_sprints(u: Any = Depends(current_user), db: Any = Depends(get_db)):
+    def get_math_sprints(grade: int | None = None, u: Any = Depends(current_user), db: Any = Depends(get_db)):
         need(u, "student")
         ensure_tables(db)
+        student_grade = agp.detect_user_grade(implementation, db, u)
+        active_grade = agp.resolve_arena_grade(grade, student_grade)
         rows = db.execute(
             select(t_sprints)
             .where(
@@ -476,7 +492,7 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
             by_slug.setdefault(r.slug, []).append(r)
 
         items: list[dict[str, Any]] = []
-        for sp in es.list_sprints("数学"):
+        for sp in es.list_sprints("数学", grade=active_grade):
             hist = by_slug.get(sp["slug"], [])
             best_tier = es.TIER_BY_CODE["L0"]
             best_rate = None
@@ -488,6 +504,7 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
                     best_rate = int(h.score_rate or 0)
             items.append({
                 "slug": sp["slug"],
+                "grade": int(sp.get("grade", active_grade)),
                 "title": sp["title"],
                 "subtitle": sp["subtitle"],
                 "icon": sp["icon"],
@@ -517,6 +534,10 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
             })
         return {
             "subject": "数学",
+            "grade": active_grade,
+            "studentGrade": student_grade,
+            "availableGrades": agp.build_available_grades(active_grade, student_grade),
+            "ageProfile": agp.get_age_interaction_profile(active_grade),
             "tiers": es.TIERS,
             "items": items,
             "recent": recent,
@@ -530,6 +551,8 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
         sp = es.get_sprint(slug)
         if sp is None:
             raise HTTPException(404, "没有找到这个应试专项")
+        student_grade = agp.detect_user_grade(implementation, db, u)
+        target_grade = int(sp.get("grade") or agp.infer_grade_from_sprint_slug(slug, student_grade))
         past_count = len(
             db.execute(
                 select(t_sprints.c.id).where(
@@ -558,6 +581,8 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
         return {
             "attemptId": attempt_id,
             "slug": slug,
+            "grade": target_grade,
+            "ageProfile": agp.get_age_interaction_profile(target_grade),
             "title": sp["title"],
             "icon": sp["icon"],
             "timeLimitSec": int(sp["timeLimitSec"]),
@@ -599,8 +624,11 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
         )
 
         # 双向联动：反哺知识地图节点点亮状态与待修补红标，并结算全站里程碑积分
-        node_names = {n["key"]: n["name"] for n in mbm.get_builtin_math_map(u.grade)["nodes"]}
         sp_meta = es.get_sprint(row.slug)
+        student_grade = agp.detect_user_grade(implementation, db, u)
+        target_grade = int((sp_meta or {}).get("grade") or agp.infer_grade_from_sprint_slug(row.slug, student_grade))
+        all_nodes = mbm.get_all_math_nodes()
+        node_names = {k: v["name"] for k, v in all_nodes.items()}
         sp_title = sp_meta["title"] if sp_meta else row.slug
 
         sprint_pts = mapts.settle_sprint_tier_milestones(
@@ -674,6 +702,7 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
         return {
             "attemptId": row.id,
             "slug": row.slug,
+            "grade": target_grade,
             "pointsAwarded": points_awarded,
             "points": mapts.student_arena_points_summary(implementation, db, u),
             "mapChanges": map_changes,
@@ -681,8 +710,10 @@ def install_math_arena_views(implementation: Any) -> APIRouter:
         }
 
     def _summarize_student_arena(db: Any, stu: Any) -> dict[str, Any]:
-        m = mbm.get_builtin_math_map(getattr(stu, "grade", None))
-        node_names = {n["key"]: n["name"] for n in m["nodes"]}
+        stu_grade = agp.detect_user_grade(implementation, db, stu)
+        m = mbm.get_builtin_math_map(stu_grade)
+        all_nodes = mbm.get_all_math_nodes()
+        node_names = {k: v["name"] for k, v in all_nodes.items()}
         m_rows = db.execute(
             select(t_mastery).where(t_mastery.c.school_id == stu.school_id, t_mastery.c.student_id == stu.id)
         ).all()

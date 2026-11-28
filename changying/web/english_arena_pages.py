@@ -20,6 +20,14 @@ ENGLISH_EXTRA_CSS = """<style>
 .ma-domain.dom-grammar .ma-domain-cnt{background:var(--ma-gold-soft);color:var(--ma-gold)}
 .ma-domain.dom-reading .ma-domain-cnt{background:var(--ma-blue-soft);color:var(--ma-blue)}
 
+.ma-q-stem-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px}
+.ma-q-stem-row .ma-q-text{margin:0;flex:1}
+.ma-tts-btn{display:inline-flex;align-items:center;gap:4px;padding:6px 11px;border-radius:999px;border:1.5px solid #efc0bc;background:var(--ma-brand-soft);color:var(--ma-brand);font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;flex-shrink:0;box-shadow:0 2px 0 #f2c6c2}
+.ma-tts-btn:hover{background:#fae3e1}
+.ea-spell-hint-box{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:9px;background:var(--ma-gold-soft);border:1px solid #f2d49b;color:#92400e;font-size:13.5px;font-weight:800;margin-bottom:10px;letter-spacing:.03em}
+.ea-assist-tray{margin-top:10px;padding:10px 12px;border-radius:12px;background:#fcf8f3;border:1.5px dashed #dfcbbd}
+.ea-assist-title{font-size:12px;font-weight:800;color:var(--ma-muted);margin-bottom:8px}
+
 /* 能力徽标（听/说/读/写） */
 .ea-ab{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:9px;font-size:14px;font-weight:900;color:#fff;flex-shrink:0;box-shadow:0 2px 0 rgba(0,0,0,.14)}
 .ea-ab-listening{background:#a8101c}
@@ -63,6 +71,69 @@ ENGLISH_EXTRA_CSS = """<style>
 
 COMMON_ENGLISH_JS = r"""
 var EA_AUDIO_OBJ=null;
+function eaGetActiveGrade(){
+  var m=/[?&]grade=([3456])/.exec(location.search||'');
+  if(m)return Number(m[1]);
+  if(window.__CY_ARENA_GRADE__)return Number(window.__CY_ARENA_GRADE__);
+  var u=window.__CY_ARENA_USER__;
+  if(u&&u.grade&&u.grade>=3&&u.grade<=6)return Number(u.grade);
+  return 0;
+}
+function eaSetActiveGrade(g){
+  window.__CY_ARENA_GRADE__=Number(g);
+  if(window.history&&window.history.replaceState){
+    var url=location.pathname+'?grade='+encodeURIComponent(g)+(location.hash||'');
+    try{window.history.replaceState(null,'',url)}catch(_e){}
+  }
+}
+function eaGradeQuery(){
+  var g=eaGetActiveGrade();
+  return g?('?grade='+encodeURIComponent(g)):'';
+}
+function eaGradeHref(path){
+  var g=eaGetActiveGrade();
+  return g?(path+'?grade='+encodeURIComponent(g)):path;
+}
+function eaRenderGradeBar(data,onSwitch){
+  if(!data)return null;
+  if(data.grade)window.__CY_ARENA_GRADE__=Number(data.grade);
+  var grades=(data.availableGrades&&data.availableGrades.length)?data.availableGrades:[
+    {grade:3,label:'三年级',relation:'review',relationLabel:'查漏补缺'},
+    {grade:4,label:'四年级',relation:'review',relationLabel:'查漏补缺'},
+    {grade:5,label:'五年级',relation:'current',relationLabel:'本年级'},
+    {grade:6,label:'六年级',relation:'advance',relationLabel:'超前探索'}
+  ];
+  var curG=Number(data.grade||eaGetActiveGrade()||5);
+  var pills=el('div',{class:'ma-grade-pills'});
+  grades.forEach(function(item){
+    var isOn=(Number(item.grade)===curG);
+    var relCls='ma-grade-rel '+(item.relation||'');
+    var btn=el('button',{type:'button',class:'ma-grade-pill'+(isOn?' on':''),'data-grade':String(item.grade)},
+      el('span',{text:item.label}),
+      item.relationLabel?el('span',{class:relCls,text:item.relationLabel}):null);
+    btn.onclick=function(){
+      if(Number(item.grade)===curG)return;
+      eaSetActiveGrade(item.grade);
+      if(onSwitch)onSwitch(item.grade);
+    };
+    pills.appendChild(btn);
+  });
+  var prof=data.ageProfile||{};
+  var badgeTxt=prof.tierLabel||prof.tierShortLabel||(curG+'年级适配模式');
+  return el('div',{class:'ma-grade-bar'},
+    pills,
+    el('span',{class:'ma-age-badge',text:'🎯 '+badgeTxt}));
+}
+function eaSpeakStem(text,rate){
+  if(!window.speechSynthesis||!text)return;
+  try{
+    window.speechSynthesis.cancel();
+    var u=new SpeechSynthesisUtterance(String(text));
+    u.lang='zh-CN';
+    u.rate=rate||0.9;
+    window.speechSynthesis.speak(u);
+  }catch(_e){}
+}
 function eaStopAudio(){
   if(EA_AUDIO_OBJ){try{EA_AUDIO_OBJ.pause();EA_AUDIO_OBJ.currentTime=0}catch(_e){}EA_AUDIO_OBJ=null}
   if(window.speechSynthesis){try{window.speechSynthesis.cancel()}catch(_e2){}}
@@ -72,12 +143,12 @@ function eaTopbar(active,pts){
   var left=el('div',{class:'ma-topbar-left'},
     el('a',{class:'ma-link-btn',href:'/classic?legacy=1&unified=1&page=practice',text:'‹ 返回练习'}),
     el('div',{class:'ea-subj'},
-      el('a',{href:active==='sprints'?'/v1/math-sprints':'/v1/math-star-map',text:'数学'}),
-      el('a',{href:active==='sprints'?'/v1/english-sprints':'/v1/english-star-map',class:'on',text:'英语'}),
-      el('a',{href:active==='sprints'?'/v1/chinese-sprints':'/v1/chinese-star-map',text:'语文'})));
+      el('a',{href:eaGradeHref(active==='sprints'?'/v1/math-sprints':'/v1/math-star-map'),text:'数学'}),
+      el('a',{href:eaGradeHref(active==='sprints'?'/v1/english-sprints':'/v1/english-star-map'),class:'on',text:'英语'}),
+      el('a',{href:eaGradeHref(active==='sprints'?'/v1/chinese-sprints':'/v1/chinese-star-map'),text:'语文'})));
   var seg=el('div',{class:'ma-seg'},
-    el('a',{href:'/v1/english-star-map',class:active==='map'?'on':'',text:'知识地图'}),
-    el('a',{href:'/v1/english-sprints',class:active==='sprints'?'on':'',text:'应试专项'}));
+    el('a',{href:eaGradeHref('/v1/english-star-map'),class:active==='map'?'on':'',text:'知识地图'}),
+    el('a',{href:eaGradeHref('/v1/english-sprints'),class:active==='sprints'?'on':'',text:'应试专项'}));
   var right=el('div',{class:'ma-topbar-right'});
   var u=window.__CY_ARENA_USER__;
   if(u&&u.name)right.appendChild(el('span',{class:'ma-user-pill',text:u.name+' · 学生'}));
@@ -267,8 +338,10 @@ function eaAudioBox(q,opts){
   return box;
 }
 
-/* 通用 10 类英语题型作答渲染器 */
+/* 通用 10 类英语题型作答渲染器（含年龄段差异化交互适配） */
 function eaRenderQuestionBody(q,ansObj,onChange,audioOpts){
+  audioOpts=audioOpts||{};
+  var ageProf=audioOpts.ageProfile||{};
   var wrap=el('div',{});
   if(q.passage){
     wrap.appendChild(el('div',{class:'ea-passage',text:q.passage}));
@@ -279,7 +352,13 @@ function eaRenderQuestionBody(q,ansObj,onChange,audioOpts){
   if(q.isCustom){
     wrap.appendChild(el('div',{class:'ma-custom-badge',text:'★ 老师精选'}));
   }
-  wrap.appendChild(el('p',{class:'ma-q-text',text:q.text}));
+  if(ageProf.stemReadAloud){
+    wrap.appendChild(el('div',{class:'ma-q-stem-row'},
+      el('p',{class:'ma-q-text',text:q.text}),
+      el('button',{type:'button',class:'ma-tts-btn',text:'🔊 读题',onclick:function(){eaSpeakStem(q.text,ageProf.speechRate||0.9)}})));
+  }else{
+    wrap.appendChild(el('p',{class:'ma-q-text',text:q.text}));
+  }
   if(q.hint){
     wrap.appendChild(el('p',{class:'ea-hint',text:'提示：'+q.hint}));
   }
@@ -468,7 +547,10 @@ function eaRenderQuestionBody(q,ansObj,onChange,audioOpts){
     return wrap;
   }
 
-  // 6. 纯键盘拼写 / 语法填空（关闭移动端自动纠错）
+  // 6. 键盘拼写 / 语法填空（G3/G4 提供首字母提示与 G3 点选辅助面板）
+  if(q.firstLetterHint&&ageProf.spellAssist&&ageProf.spellAssist!=='strict_keyboard'){
+    wrap.appendChild(el('div',{class:'ea-spell-hint-box',text:'💡 首字母与词长提示：'+q.firstLetterHint}));
+  }
   var inp=el('input',{
     class:'ma-input',
     type:'text',
@@ -481,6 +563,29 @@ function eaRenderQuestionBody(q,ansObj,onChange,audioOpts){
   inp.setAttribute('spellcheck','false');
   inp.oninput=function(){ansObj.text_answer=inp.value;onChange(true)};
   wrap.appendChild(inp);
+
+  var assistList=(q.assistChunks&&q.assistChunks.length)?q.assistChunks:((q.tiles&&q.tiles.length)?q.tiles:null);
+  if(ageProf.spellAssist==='tile_or_first_letter'&&assistList&&assistList.length){
+    var tray=el('div',{class:'ea-assist-tray'},
+      el('div',{class:'ea-assist-title',text:'🎯 三年级点选辅助面板（点击候选词块即可填入，也可直接键盘输入）'}));
+    var cRow=el('div',{class:'ea-tiles',style:'margin-bottom:0'});
+    assistList.forEach(function(chunk){
+      var isSingleChar=(String(chunk).length===1&&assistList.length>4);
+      var cb=el('button',{type:'button',class:'ea-tile'+(ansObj.text_answer===chunk?' picked':''),text:chunk});
+      cb.onclick=function(){
+        if(isSingleChar){
+          inp.value=String(inp.value||'')+String(chunk);
+        }else{
+          inp.value=String(chunk);
+        }
+        ansObj.text_answer=inp.value;
+        onChange();
+      };
+      cRow.appendChild(cb);
+    });
+    tray.appendChild(cRow);
+    wrap.appendChild(tray);
+  }
   return wrap;
 }
 """
@@ -520,17 +625,21 @@ function emRenderMap(){
   eaStopAudio();
   EM_QBOX.textContent='';
   var d=EM_DATA,s=d.summary;
+  if(d.grade)window.__CY_ARENA_GRADE__=Number(d.grade);
+  var gLabel=(d.ageProfile&&d.ageProfile.gradeLabel)||(d.grade?d.grade+'年级':'五年级');
   var revCnt=s.reviewDueCount||0;
   EM_TOP.textContent='';EM_TOP.appendChild(eaTopbar('map',d.points));
   var pct=s.totalNodes?Math.round(s.litNodes/s.totalNodes*100):0;
   EM_SUM.textContent='';
+  var gradeBar=eaRenderGradeBar(d,function(){EM_SEL=null;emLoad()});
+  if(gradeBar)EM_SUM.appendChild(gradeBar);
   EM_SUM.appendChild(el('div',{class:'ma-card'},
     el('div',{class:'ma-sum-top'},
       el('div',{},
-        el('div',{class:'ma-eyebrow',text:'小学五年级 · 通用英语知识地图'}),
-        el('h2',{class:'ma-h1',text:'英语知识地图'}),
+        el('div',{class:'ma-eyebrow',text:'小学'+gLabel+' · 通用英语知识地图'}),
+        el('h2',{class:'ma-h1',text:d.title||('英语知识地图（'+gLabel+'）')}),
         el('p',{class:'ma-sub',text:'按语音、词汇、语法、语篇四大知识点域闯关，每节点 5 题轻微测（不限时），答对 ≥ 80% 即点亮'})),
-      el('a',{class:'ma-btn ma-btn-ghost ma-btn-sm',href:'/v1/english-sprints',text:'去听说读写专项 ›'})),
+      el('a',{class:'ma-btn ma-btn-ghost ma-btn-sm',href:eaGradeHref('/v1/english-sprints'),text:'去听说读写专项 ›'})),
     el('div',{class:'ma-sum-meta'},
       el('span',{},'已点亮 ',el('b',{text:s.litNodes+'/'+s.totalNodes}),'（'+pct+'%）'),
       el('span',{},'精通 ',el('b',{text:String(s.masteredNodes)})),
@@ -540,14 +649,14 @@ function emRenderMap(){
     el('div',{class:'ma-prog-track'},el('div',{class:'ma-prog-fill',style:'width:'+pct+'%'}))));
   var banner=eaRenderTaskBanner(EM_TASKS,function(t){
     if(t.taskKind==='map_node'){emFocusNode(t.targetKey)}
-    else{location.href='/v1/english-sprints#sprint='+encodeURIComponent(t.targetKey)}
+    else{location.href=eaGradeHref('/v1/english-sprints')+'#sprint='+encodeURIComponent(t.targetKey)}
   });
   if(banner)EM_SUM.appendChild(banner);
   var tipText=revCnt>0
     ?('你有 '+revCnt+' 个已点亮的英语考点快遗忘了，先点琥珀色「需温习」节点做 5 题保鲜吧！'+(s.repairNodes?' 另外还有 '+s.repairNodes+' 个标红待修补考点也别忘了哦！':''))
     :(s.repairNodes
       ?('你有 '+s.repairNodes+' 个标红的英语薄弱点，建议先回地图做一次 5 题轻微测把它修补掉，立刻得 +2 积分！')
-      :(s.litNodes===0?'欢迎来到英语知识地图！这里不限教材版本、不设压迫倒计时，选一个你喜欢的知识点点亮第一颗星吧！'
+      :(s.litNodes===0?'欢迎来到'+gLabel+'英语知识地图！这里不限教材版本、不设压迫倒计时，选一个你喜欢的知识点点亮第一颗星吧！'
         :'已经点亮 '+s.litNodes+' 个英语节点啦！把每个节点冲到三星精通，再结合听说读写专项效果更棒！'));
   EM_SUM.appendChild(eaHelperTip(tipText,'长缨助手 · 英语闯关建议'));
 
@@ -556,7 +665,7 @@ function emRenderMap(){
   var domSub={
     phonics:'开闭音节、元音/辅音组合与自然拼读',
     vocab:'人物、饮食、星期活动与居家自然高频词',
-    grammar:'be 动词、单复数、一般现在时与 There be',
+    grammar:'be 动词、单复数、核心时态与重点句型',
     reading:'日常交际问答、特殊疑问句与短文完形'
   };
   d.domains.forEach(function(dom){
@@ -636,6 +745,7 @@ function emRenderQuiz(){
   eaStopAudio();
   EM_QBOX.textContent='';
   var qd=EM_QUIZ,qs=qd.questions,q=qs[EM_IDX];
+  var ageProf=qd.ageProfile||(EM_DATA&&EM_DATA.ageProfile)||{};
   var ansObj=EM_ANS[q.id]||(EM_ANS[q.id]={});
   var doneCnt=0;
   qs.forEach(function(it){if(emAnswered(EM_ANS[it.id]))doneCnt++});
@@ -655,7 +765,7 @@ function emRenderQuiz(){
     el('div',{class:'ma-q-meta'},
       el('span',{text:'第 '+(EM_IDX+1)+' / '+qs.length+' 题 · '+q.typeLabel+'（'+q.levelLabel+'）'}),
       el('span',{text:'已完成 '+doneCnt+'/'+qs.length})));
-  qCard.appendChild(eaRenderQuestionBody(q,ansObj,function(silent){if(!silent)emRenderQuiz()}, {maxPlays:0,allowSlow:true,playState:EM_PLAY}));
+  qCard.appendChild(eaRenderQuestionBody(q,ansObj,function(silent){if(!silent)emRenderQuiz()}, {maxPlays:0,allowSlow:true,playState:EM_PLAY,ageProfile:ageProf}));
   qCard.appendChild(eaHelperTip(eaQuestionHint(q),'长缨助手 · 解题提示'));
 
   var prevBtn=el('button',{type:'button',class:'ma-btn ma-btn-ghost',text:'上一题'});
@@ -694,7 +804,7 @@ function emSubmitQuiz(){
       eaPointsGain(res.pointsAwarded,res.points),
       el('div',{class:'ma-row',style:'justify-content:center;margin-top:14px'},
         el('button',{type:'button',class:'ma-btn ma-btn-primary',text:'返回英语知识地图',onclick:function(){emLoad()}}),
-        el('a',{class:'ma-btn ma-btn-ghost',href:'/v1/english-sprints',text:'去挑战听说读写专项'})));
+        el('a',{class:'ma-btn ma-btn-ghost',href:eaGradeHref('/v1/english-sprints'),text:'去挑战听说读写专项'})));
     EM_QBOX.appendChild(head);
     var rev=el('div',{class:'ma-card'},el('h3',{text:'逐题解析'}));
     res.details.forEach(function(d,i){
@@ -706,14 +816,19 @@ function emSubmitQuiz(){
   }).catch(function(e){emNotice(e.message,true)});
 }
 function emLoad(){
-  Promise.all([api('/student/english-star-map'),eaFetchTasks('英语')]).then(function(res){
+  Promise.all([api('/student/english-star-map'+eaGradeQuery()),eaFetchTasks('英语')]).then(function(res){
     var d=res[0];
+    if(d&&d.grade)window.__CY_ARENA_GRADE__=Number(d.grade);
     EM_DATA=d;EM_TASKS=res[1]||[];
     var hit=null;
     var want=/[#&]node=([^&]+)/.exec(location.hash||'');
     if(want){
       var key=decodeURIComponent(want[1]);
       d.nodes.forEach(function(n){if(n.key===key){EM_SEL=n;hit=n}});
+    }
+    if(EM_SEL){
+      var stillIn=d.nodes.filter(function(n){return n.key===EM_SEL.key})[0];
+      EM_SEL=stillIn||null;
     }
     if(!EM_SEL&&d.nodes.length)EM_SEL=d.nodes[0];
     emRenderMap();
@@ -740,15 +855,19 @@ function esAnswered(a){return a&&((a.selected_index!==undefined&&a.selected_inde
 function esRenderLobby(){
   esStopTimer();eaStopAudio();
   var d=ES_DATA;
+  if(d.grade)window.__CY_ARENA_GRADE__=Number(d.grade);
+  var gLabel=(d.ageProfile&&d.ageProfile.gradeLabel)||(d.grade?d.grade+'年级':'五年级');
   ES_TOP.textContent='';ES_TOP.appendChild(eaTopbar('sprints',d.points));
   ES_BODY.textContent='';
+  var gradeBar=eaRenderGradeBar(d,function(){esLoad()});
+  if(gradeBar)ES_BODY.appendChild(gradeBar);
   ES_BODY.appendChild(el('div',{class:'ma-card'},
-    el('div',{class:'ma-eyebrow',text:'小学五年级 · 听说读写四大能力应试专项'}),
-    el('h2',{class:'ma-h1',text:'英语应试专项'}),
+    el('div',{class:'ma-eyebrow',text:'小学'+gLabel+' · 听说读写四大能力应试专项'}),
+    el('h2',{class:'ma-h1',text:'英语应试专项（'+gLabel+'）'}),
     el('p',{class:'ma-sub',text:'听 / 说专项采用「单题限时」还原考场节奏；读 / 写专项采用「整体倒计时」支持回看检查。达标（L2+）自动反哺点亮知识地图！'})));
   var banner=eaRenderTaskBanner(ES_TASKS,function(t){
     if(t.taskKind==='sprint'){esStart(t.targetKey)}
-    else{location.href='/v1/english-star-map#node='+encodeURIComponent(t.targetKey)}
+    else{location.href=eaGradeHref('/v1/english-star-map')+'#node='+encodeURIComponent(t.targetKey)}
   });
   if(banner)ES_BODY.appendChild(banner);
   ES_BODY.appendChild(eaHelperTip('四个专项按「听、说、读、写」独立开考，无需先刷完地图！考完会自动把薄弱考点标红到地图，方便精准修补。','长缨助手 · 备考提示'));
@@ -779,13 +898,19 @@ function esRenderLobby(){
   ES_BODY.appendChild(grid);
 }
 
+function esPerQuestionSec(att){
+  if(att&&att.perQuestionSec)return Number(att.perQuestionSec);
+  if(att&&att.ageProfile&&att.ageProfile.perQuestionSec)return Number(att.ageProfile.perQuestionSec);
+  return 20;
+}
+
 function esStart(slug){
   esNotice('正在组卷开考…');
   api('/student/english-sprints/'+encodeURIComponent(slug)+'/start',{method:'POST'}).then(function(att){
     esNotice('');
     ES_ATT=att;ES_ANS={};ES_IDX=0;ES_PLAY={};ES_SUBMITTING=false;
     ES_LEFT=att.timeLimitSec;
-    ES_QLEFT=att.perQuestionSec||20;
+    ES_QLEFT=esPerQuestionSec(att);
     esRenderExam();
     esStartClock();
   }).catch(function(e){esNotice(e.message,true)});
@@ -798,17 +923,18 @@ function esStartClock(){
     if(!ES_ATT||ES_SUBMITTING)return;
     ES_LEFT=Math.max(0,ES_LEFT-1);
     if(isPerQ){
+      var pqSec=esPerQuestionSec(ES_ATT);
       ES_QLEFT=Math.max(0,ES_QLEFT-1);
       var qClk=document.getElementById('es-qclock');
       var qBar=document.getElementById('es-qbar');
       if(qClk)qClk.textContent='本题剩余 '+eaClockText(ES_QLEFT);
-      if(qBar&&ES_ATT.perQuestionSec){
-        qBar.style.width=Math.max(0,Math.round(ES_QLEFT/ES_ATT.perQuestionSec*100))+'%';
+      if(qBar&&pqSec){
+        qBar.style.width=Math.max(0,Math.round(ES_QLEFT/pqSec*100))+'%';
       }
       if(ES_QLEFT<=0){
         if(ES_IDX<ES_ATT.questions.length-1){
           ES_IDX++;
-          ES_QLEFT=ES_ATT.perQuestionSec||20;
+          ES_QLEFT=pqSec;
           esRenderExam();
         }else{
           esSubmit(true);
@@ -828,7 +954,10 @@ function esRenderExam(){
   eaStopAudio();
   ES_BODY.textContent='';
   var att=ES_ATT,qs=att.questions,q=qs[ES_IDX];
+  var ageProf=att.ageProfile||(ES_DATA&&ES_DATA.ageProfile)||{};
   var isPerQ=(att.timingMode==='per_question');
+  var pqSec=esPerQuestionSec(att);
+  var maxPlaysVal=att.maxPlays||(isPerQ&&ageProf.maxPlays?ageProf.maxPlays:0);
   var ansObj=ES_ANS[q.id]||(ES_ANS[q.id]={});
   var doneCnt=0;
   qs.forEach(function(it){if(esAnswered(ES_ANS[it.id]))doneCnt++});
@@ -841,8 +970,8 @@ function esRenderExam(){
       el('div',{class:'ma-row'},
         isPerQ?el('span',{id:'es-qclock',class:'ma-clock',text:'本题剩余 '+eaClockText(ES_QLEFT)}):null,
         el('span',{id:'es-clock',class:isPerQ?'ma-pill':'ma-clock',text:(isPerQ?'总剩余 ':'倒计时 ')+eaClockText(ES_LEFT)}))));
-  if(isPerQ&&att.perQuestionSec){
-    var pct=Math.max(0,Math.round(ES_QLEFT/att.perQuestionSec*100));
+  if(isPerQ&&pqSec){
+    var pct=Math.max(0,Math.round(ES_QLEFT/pqSec*100));
     hud.appendChild(el('div',{class:'ea-qbar-track'},el('div',{id:'es-qbar',class:'ea-qbar-fill',style:'width:'+pct+'%'})));
   }
   ES_BODY.appendChild(hud);
@@ -862,9 +991,10 @@ function esRenderExam(){
       el('span',{text:'第 '+(ES_IDX+1)+' 题 · '+q.typeLabel+'（'+q.marks+' 分）'}),
       el('span',{text:isPerQ?'单题限时模式（超时自动切题）':'整体限时模式（可自由回看）'})));
   qCard.appendChild(eaRenderQuestionBody(q,ansObj,function(silent){if(!silent)esRenderExam()}, {
-    maxPlays:att.maxPlays||0,
-    allowSlow:false,
-    playState:ES_PLAY
+    maxPlays:maxPlaysVal,
+    allowSlow:ageProf.grade===3,
+    playState:ES_PLAY,
+    ageProfile:ageProf
   }));
   qCard.appendChild(eaHelperTip(eaQuestionHint(q),'长缨助手 · 考场提示'));
 
@@ -880,7 +1010,7 @@ function esRenderExam(){
   nextBtn.onclick=function(){
     if(!isLast){
       ES_IDX++;
-      if(isPerQ)ES_QLEFT=att.perQuestionSec||20;
+      if(isPerQ)ES_QLEFT=pqSec;
       esRenderExam();
       return;
     }
@@ -915,7 +1045,7 @@ function esSubmit(autoSub){
       eaPointsGain(res.pointsAwarded,res.points),
       el('div',{class:'ma-row',style:'justify-content:center;margin-top:14px'},
         el('button',{type:'button',class:'ma-btn ma-btn-primary',text:'返回听说读写专项',onclick:function(){esLoad()}}),
-        el('a',{class:'ma-btn ma-btn-ghost',href:'/v1/english-star-map',text:'查看英语知识地图'})));
+        el('a',{class:'ma-btn ma-btn-ghost',href:eaGradeHref('/v1/english-star-map'),text:'查看英语知识地图'})));
     ES_BODY.appendChild(head);
 
     var resTip=res.topLosses&&res.topLosses.length
@@ -932,7 +1062,7 @@ function esSubmit(autoSub){
       res.mapChanges.flagged.forEach(function(x){
         mc.appendChild(el('div',{class:'ma-loss-row'},
           el('span',{text:'待修补红标：'+x.key+' '+x.name}),
-          el('a',{class:'ma-btn ma-btn-primary ma-btn-sm',href:'/v1/english-star-map#node='+encodeURIComponent(x.key),text:'去地图修补 ›'})));
+          el('a',{class:'ma-btn ma-btn-primary ma-btn-sm',href:eaGradeHref('/v1/english-star-map')+'#node='+encodeURIComponent(x.key),text:'去地图修补 ›'})));
       });
       ES_BODY.appendChild(mc);
     }
@@ -948,8 +1078,10 @@ function esSubmit(autoSub){
 }
 
 function esLoad(){
-  Promise.all([api('/student/english-sprints'),eaFetchTasks('英语')]).then(function(res){
-    ES_DATA=res[0];ES_TASKS=res[1]||[];
+  Promise.all([api('/student/english-sprints'+eaGradeQuery()),eaFetchTasks('英语')]).then(function(res){
+    ES_DATA=res[0];
+    if(ES_DATA&&ES_DATA.grade)window.__CY_ARENA_GRADE__=Number(ES_DATA.grade);
+    ES_TASKS=res[1]||[];
     esRenderLobby();
   }).catch(function(e){esNotice(e.message,true)});
 }

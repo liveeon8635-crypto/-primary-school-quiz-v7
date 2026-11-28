@@ -60,40 +60,62 @@ async function practice(){
  }
  $("#page").innerHTML=head("自主练习","知识地图点亮与应试专项分级")+
   '<div class="card" id="practice-hub-loading"><p class="muted">正在加载数学、英语与语文练习进度…</p></div>';
- const [sm,sp,em,ep,cm,cp,tk]=await Promise.all([
-  api("/student/math-star-map").catch(()=>null),
-  api("/student/math-sprints").catch(()=>null),
-  api("/student/english-star-map").catch(()=>null),
-  api("/student/english-sprints").catch(()=>null),
-  api("/student/chinese-star-map").catch(()=>null),
-  api("/student/chinese-sprints").catch(()=>null),
-  api("/student/arena-tasks").catch(()=>null)
- ]);
- const assignedTasks=(tk&&tk.items)||[];
- let parentCheers=(tk&&tk.cheers)||[];
- const ms=(sm&&sm.summary)||{totalNodes:24,litNodes:0,masteredNodes:0,repairNodes:0};
- const es=(em&&em.summary)||{totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0};
- const cs=(cm&&cm.summary)||{totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0};
- const mpts=(sm&&sm.points)||(sp&&sp.points)||{balance:0,todayEarned:0,dailyCap:30};
- const epts=(em&&em.points)||(ep&&ep.points)||{balance:mpts.balance||0,todayEarned:0,dailyCap:30};
- const cpts=(cm&&cm.points)||(cp&&cp.points)||{balance:mpts.balance||0,todayEarned:0,dailyCap:30};
- const mSpItems=(sp&&sp.items)||[];
- const eSpItems=(ep&&ep.sprints)||[];
- const cSpItems=(cp&&cp.sprints)||[];
- const pickBest=(arr)=>arr.reduce((acc,x)=>(x.bestTier&&(!acc||x.bestTier.rank>acc.rank)?x.bestTier:acc),null);
- const mBest=pickBest(mSpItems),eBest=pickBest(eSpItems),cBest=pickBest(cSpItems);
- const pctOf=(s)=>s.totalNodes?Math.round(s.litNodes/s.totalNodes*100):0;
  let curSubj=(window.__CY_PRACTICE_SUBJ__==='english'||window.__CY_PRACTICE_SUBJ__==='chinese')?window.__CY_PRACTICE_SUBJ__:'math';
+ let curGrade=[3,4,5,6].includes(Number(window.__CY_ARENA_GRADE__))?Number(window.__CY_ARENA_GRADE__):0;
+ let stuGrade=0,ageProfile=null;
+ let assignedTasks=[],parentCheers=[];
+ let ms={totalNodes:24,litNodes:0,masteredNodes:0,repairNodes:0},es={totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0},cs={totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0};
+ let mpts={balance:0,todayEarned:0,dailyCap:30},epts={balance:0,todayEarned:0,dailyCap:30},cpts={balance:0,todayEarned:0,dailyCap:30};
+ let mBest=null,eBest=null,cBest=null;
+ const pickBest=(arr)=>arr.reduce((acc,x)=>(x.bestTier&&(!acc||x.bestTier.rank>acc.rank)?x.bestTier:acc),null);
+ const pctOf=(s)=>s.totalNodes?Math.round(s.litNodes/s.totalNodes*100):0;
+
+ async function loadGradeData(targetGrade){
+  const gq=[3,4,5,6].includes(Number(targetGrade))?('?grade='+Number(targetGrade)):'';
+  const [sm,sp,em,ep,cm,cp,tk]=await Promise.all([
+   api("/student/math-star-map"+gq).catch(()=>null),
+   api("/student/math-sprints"+gq).catch(()=>null),
+   api("/student/english-star-map"+gq).catch(()=>null),
+   api("/student/english-sprints"+gq).catch(()=>null),
+   api("/student/chinese-star-map"+gq).catch(()=>null),
+   api("/student/chinese-sprints"+gq).catch(()=>null),
+   api("/student/arena-tasks").catch(()=>null)
+  ]);
+  if(tk){
+   assignedTasks=tk.items||[];
+   parentCheers=tk.cheers||[];
+  }
+  const respG=(sm&&sm.grade)||(em&&em.grade)||(cm&&cm.grade)||targetGrade||5;
+  const respStuG=(sm&&sm.studentGrade)||(em&&em.studentGrade)||(cm&&cm.studentGrade)||respG||5;
+  stuGrade=[3,4,5,6].includes(Number(respStuG))?Number(respStuG):5;
+  curGrade=[3,4,5,6].includes(Number(targetGrade))?Number(targetGrade):([3,4,5,6].includes(Number(respG))?Number(respG):stuGrade);
+  window.__CY_ARENA_GRADE__=curGrade;
+  ageProfile=(sm&&sm.ageProfile)||(em&&em.ageProfile)||(cm&&cm.ageProfile)||null;
+  ms=(sm&&sm.summary)||{totalNodes:24,litNodes:0,masteredNodes:0,repairNodes:0};
+  es=(em&&em.summary)||{totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0};
+  cs=(cm&&cm.summary)||{totalNodes:16,litNodes:0,masteredNodes:0,repairNodes:0};
+  mpts=(sm&&sm.points)||(sp&&sp.points)||{balance:0,todayEarned:0,dailyCap:30};
+  epts=(em&&em.points)||(ep&&ep.points)||{balance:mpts.balance||0,todayEarned:0,dailyCap:30};
+  cpts=(cm&&cm.points)||(cp&&cp.points)||{balance:mpts.balance||0,todayEarned:0,dailyCap:30};
+  mBest=pickBest((sp&&sp.items)||[]);
+  eBest=pickBest((ep&&ep.sprints)||[]);
+  cBest=pickBest((cp&&cp.sprints)||[]);
+ }
+
  function renderPracticeHub(){
   window.__CY_PRACTICE_SUBJ__=curSubj;
+  const gParam='?grade='+(curGrade||5);
+  const gradeLabel={3:'三年级',4:'四年级',5:'五年级',6:'六年级'}[curGrade]||'五年级';
+  const tierShort=(ageProfile&&ageProfile.tierShortLabel)?String(ageProfile.tierShortLabel):'';
+  const relText=stuGrade?(curGrade===stuGrade?'本年级':(curGrade<stuGrade?'查漏补缺':'超前探索')):'';
   const conf={
-   math:{name:'数学',s:ms,pts:mpts,best:mBest,mapHref:'/v1/math-star-map',spHref:'/v1/math-sprints',mapTitle:'数学知识地图',spTitle:'数学应试专项',
+   math:{name:'数学',s:ms,pts:mpts,best:mBest,mapHref:'/v1/math-star-map'+gParam,spHref:'/v1/math-sprints'+gParam,mapTitle:'数学知识地图',spTitle:'数学应试专项',
     mapDesc:'覆盖小学数学四大知识域，每个节点自带 5 题微测，答对 80% 即点亮。',
     spDesc:'多题型限时专项（含看图几何题），倒计时自动交卷，按 L1～L4 分级达标。'},
-   english:{name:'英语',s:es,pts:epts,best:eBest,mapHref:'/v1/english-star-map',spHref:'/v1/english-sprints',mapTitle:'英语知识地图',spTitle:'英语听说读写专项',
+   english:{name:'英语',s:es,pts:epts,best:eBest,mapHref:'/v1/english-star-map'+gParam,spHref:'/v1/english-sprints'+gParam,mapTitle:'英语知识地图',spTitle:'英语听说读写专项',
     mapDesc:'按语音自然拼读、核心词汇、语法句型、语篇交际四大知识点域闯关，不限时轻微测，答对 80% 即点亮。',
     spDesc:'按听 / 说 / 读 / 写四大能力独立开考（听/说单题限时，读/写整体倒计时），按 L1～L4 分级达标。'},
-   chinese:{name:'语文',s:cs,pts:cpts,best:cBest,mapHref:'/v1/chinese-star-map',spHref:'/v1/chinese-sprints',mapTitle:'语文知识地图',spTitle:'语文四大板块专项',
+   chinese:{name:'语文',s:cs,pts:cpts,best:cBest,mapHref:'/v1/chinese-star-map'+gParam,spHref:'/v1/chinese-sprints'+gParam,mapTitle:'语文知识地图',spTitle:'语文四大板块专项',
     mapDesc:'按字词语音、句子修辞、古诗文积累、阅读方法四大知识点域闯关，含普通话朗诵与字块默写，答对 80% 即点亮。',
     spDesc:'覆盖基础字词句（单题限时）、古诗文默写、现代文阅读与微写作（AI 实时点评），按 L1～L4 分级达标。'}
   }[curSubj];
@@ -116,26 +138,39 @@ async function practice(){
      }).join('')+
     '</div>'
    :'';
+  const gradeBtns=[[3,'三年级'],[4,'四年级'],[5,'五年级'],[6,'六年级']].map(g=>
+   '<button type="button" class="btn '+(curGrade===g[0]?'primary':'ghost')+' phGradeBtn" data-grade="'+g[0]+'" style="padding:5px 12px;min-height:auto;font-size:13px">'+g[1]+(stuGrade===g[0]?'·本年':'')+'</button>'
+  ).join('');
   $("#page").innerHTML=head("自主练习","不限教材版本 · 语数英各科独立每日 30 分上限 · 积分同步计入全站账本")+
    cheerHtml+taskHtml+
-   '<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px">'+
-    '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
-     '<div style="display:inline-flex;background:#efe6dc;border-radius:10px;padding:3px;gap:4px">'+
-      '<button type="button" id="phSubjMath" class="btn '+(curSubj==='math'?'primary':'ghost')+'" style="padding:6px 14px;min-height:auto;font-size:13.5px">数学</button>'+
-      '<button type="button" id="phSubjEng" class="btn '+(curSubj==='english'?'primary':'ghost')+'" style="padding:6px 14px;min-height:auto;font-size:13.5px">英语</button>'+
-      '<button type="button" id="phSubjChi" class="btn '+(curSubj==='chinese'?'primary':'ghost')+'" style="padding:6px 14px;min-height:auto;font-size:13.5px">语文</button>'+
+   '<div class="card" style="display:flex;flex-direction:column;gap:12px;padding:14px 18px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:10px;border-bottom:1px solid #f1e8df">'+
+     '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+      '<span class="muted" style="font-size:13px;font-weight:700">练习年级：</span>'+
+      '<div style="display:inline-flex;background:#efe6dc;border-radius:10px;padding:3px;gap:4px;flex-wrap:wrap">'+gradeBtns+'</div>'+
+      (relText?'<span class="badge" style="background:#f5efe8;color:#65595a;font-weight:700">'+esc(relText)+'</span>':'')+
+      (tierShort?'<span class="badge" style="background:#fdf1f0;color:#a8101c;border:1px solid #f2c6c2;font-weight:700">'+esc(tierShort)+'</span>':'')+
      '</div>'+
-     '<div><b>'+conf.name+'练习概览</b><div class="muted" style="margin-top:4px">已点亮 '+Number(s.litNodes)+'/'+Number(s.totalNodes)+'（'+pct+'%）'+(s.repairNodes?' · 待修补 '+Number(s.repairNodes)+' 个':'')+'</div></div>'+
+     '<span class="badge" style="background:#fdf1f0;color:#a8101c;border:1px solid #f2c6c2;font-weight:700">全站积分 '+Number(pts.balance||0)+'（本科今日 +'+Number(pts.todayEarned||0)+'/'+Number(pts.dailyCap||30)+'）</span>'+
     '</div>'+
-    '<span class="badge" style="background:#fdf1f0;color:#a8101c;border:1px solid #f2c6c2;font-weight:700">全站积分 '+Number(pts.balance||0)+'（本科今日 +'+Number(pts.todayEarned||0)+'/'+Number(pts.dailyCap||30)+'）</span>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'+
+     '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
+      '<div style="display:inline-flex;background:#efe6dc;border-radius:10px;padding:3px;gap:4px">'+
+       '<button type="button" id="phSubjMath" class="btn '+(curSubj==='math'?'primary':'ghost')+'" style="padding:6px 14px;min-height:auto;font-size:13.5px">数学</button>'+
+       '<button type="button" id="phSubjEng" class="btn '+(curSubj==='english'?'primary':'ghost')+'" style="padding:6px 14px;min-height:auto;font-size:13.5px">英语</button>'+
+       '<button type="button" id="phSubjChi" class="btn '+(curSubj==='chinese'?'primary':'ghost')+'" style="padding:6px 14px;min-height:auto;font-size:13.5px">语文</button>'+
+      '</div>'+
+      '<div><b>'+gradeLabel+' · '+conf.name+'练习概览</b><div class="muted" style="margin-top:4px">已点亮 '+Number(s.litNodes)+'/'+Number(s.totalNodes)+'（'+pct+'%）'+(s.repairNodes?' · 待修补 '+Number(s.repairNodes)+' 个':'')+'</div></div>'+
+     '</div>'+
+    '</div>'+
    '</div>'+
    '<div class="grid2" style="margin-top:12px;padding-bottom:84px">'+
     '<div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px">'+
-     '<div><h2 style="margin:0 0 6px">'+conf.mapTitle+'</h2><p class="muted" style="margin:0;line-height:1.6">'+conf.mapDesc+(s.repairNodes?' 当前有 '+Number(s.repairNodes)+' 个专项失分点待修补。':'')+'</p></div>'+
-     '<a class="btn primary full" href="'+conf.mapHref+'" style="text-align:center;text-decoration:none">进入'+conf.mapTitle+'</a>'+
+     '<div><h2 style="margin:0 0 6px">'+conf.mapTitle+'（'+gradeLabel+'）</h2><p class="muted" style="margin:0;line-height:1.6">'+conf.mapDesc+(s.repairNodes?' 当前有 '+Number(s.repairNodes)+' 个专项失分点待修补。':'')+'</p></div>'+
+     '<a class="btn primary full" href="'+conf.mapHref+'" style="text-align:center;text-decoration:none">打开'+conf.mapTitle+'</a>'+
     '</div>'+
     '<div class="card" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px">'+
-     '<div><h2 style="margin:0 0 6px">'+conf.spTitle+'</h2><p class="muted" style="margin:0;line-height:1.6">'+conf.spDesc+(best?' 当前最高：'+esc(best.code+' '+best.name)+'。':' 可直接开考，无需前置。')+'</p></div>'+
+     '<div><h2 style="margin:0 0 6px">'+conf.spTitle+'（'+gradeLabel+'）</h2><p class="muted" style="margin:0;line-height:1.6">'+conf.spDesc+(best?' 当前最高：'+esc(best.code+' '+best.name)+'。':' 可直接开考，无需前置。')+'</p></div>'+
      '<a class="btn secondary full" href="'+conf.spHref+'" style="text-align:center;text-decoration:none">进入'+conf.spTitle+'</a>'+
     '</div>'+
    '</div>';
@@ -144,7 +179,17 @@ async function practice(){
   if(be)be.onclick=()=>{curSubj='english';renderPracticeHub()};
   if(bc)bc.onclick=()=>{curSubj='chinese';renderPracticeHub()};
   if(ba)ba.onclick=()=>{parentCheers=[];api("/student/arena-cheers/seen",{method:"POST"}).catch(()=>{});renderPracticeHub()};
+  document.querySelectorAll(".phGradeBtn").forEach(btn=>{
+   btn.onclick=async()=>{
+    const g=Number(btn.dataset.grade||0);
+    if(!g||g===curGrade)return;
+    btn.disabled=true;
+    await loadGradeData(g);
+    renderPracticeHub();
+   };
+  });
  }
+ await loadGradeData(curGrade);
  renderPracticeHub();
 }
 '''
